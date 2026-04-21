@@ -1,8 +1,8 @@
+import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
+
 /**
- * WS6 — Approval queue as first-class state. Type-only stub published by WS5
- * so background-job code can compile against the interface WS6 will
- * implement. NO runtime behavior lives in this file: WS6 owns the
- * implementation, persistence, state machine, and UI.
+ * Approval queue contracts shared by the queue implementation, actions, and
+ * background planner.
  *
  * State machine (strict — no fallback transitions, no implicit re-entry):
  *
@@ -231,15 +231,11 @@ export class ApprovalNotFoundError extends Error {
 }
 
 /**
- * Queue interface. WS6 implementations MUST:
+ * Queue interface. Implementations must:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).
  *  - Treat `purgeExpired` as idempotent.
- *
- * WS5 callers use `enqueue` only. Convenience overload: `enqueue(req)` may
- * also be invoked as the minimal `Promise<id>` form called out in the task
- * spec — the `id` is read from the returned `ApprovalRequest`.
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
@@ -252,4 +248,3 @@ export interface ApprovalQueue {
   markExpired(id: string): Promise<ApprovalRequest>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
-import type { TravelBookingPayloadFields } from "./travel-booking.types.js";

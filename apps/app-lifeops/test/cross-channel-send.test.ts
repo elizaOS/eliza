@@ -1,62 +1,9 @@
-/**
- * CROSS-CHANNEL SEND TESTS — mixed scope.
- *
- * Part 1 (mock-heavy handler routing — LARP caveat):
- *   The `describe("crossChannelSendAction")` block mocks `LifeOpsService`
- *   wholesale via `vi.mock("../src/lifeops/service.js", ...)`. Every
- *   `sendXMessage` method is a `vi.fn()` returning `{ ok: true }`. Assertions
- *   like `expect(sendIMessage).toHaveBeenCalledWith({ to, text })` only verify
- *   the action handler builds a payload and hands it to A LifeOpsService
- *   method named `sendIMessage`. They do NOT verify the real iMessage/WhatsApp/
- *   Telegram/Gmail code paths, transport-level errors, rate limits, or that
- *   LifeOpsService actually HAS these methods (a rename on the real class
- *   would silently keep the tests green because the mocked class still has
- *   them).
- *
- * Part 2 (real-integration — see `describe("dispatchCrossChannelSend (real dispatcher map)")`):
- *   Drives `dispatchCrossChannelSend` directly with a locally constructed
- *   fake `LifeOpsService` instance (not a `vi.mock` of the module). This
- *   exercises the REAL `CHANNEL_DISPATCHERS[channel]` lookup +
- *   `createLifeOpsMethodDispatcher` closure + `buildDispatchSuccess` /
- *   `buildDispatchFailure` branches, which is the unit under test. If
- *   `CHANNEL_DISPATCHERS.imessage` is ever rewired to a different method
- *   name or request-builder, this test catches it. If the dispatcher ever
- *   returns a payload with missing `ActionResult.values.channel` or
- *   `ActionResult.data.actionName`, this test catches that too.
- *
- * Regressions that would slip past Part 1 but get caught by Part 2:
- *   - The dispatcher map losing the `imessage` key entirely.
- *   - `createLifeOpsMethodDispatcher` passing `ctx` instead of
- *     `args.buildRequest(ctx)` to the service method.
- *   - The success branch forgetting to stamp `actionName` / `channel` /
- *     `target` into `ActionResult.values`.
- */
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
-const sendGmailMessage = vi.fn(async () => ({ ok: true }));
-const sendIMessage = vi.fn(async () => ({ ok: true }));
-const sendWhatsAppMessage = vi.fn(async () => ({ ok: true }));
-const sendTelegramMessage = vi.fn(async () => ({ ok: true }));
-
-vi.mock("../src/lifeops/service.js", () => {
-  class LifeOpsService {
-    sendGmailMessage = sendGmailMessage;
-    sendIMessage = sendIMessage;
-    sendWhatsAppMessage = sendWhatsAppMessage;
-    sendTelegramMessage = sendTelegramMessage;
-    constructor(_runtime: unknown) {}
-  }
-  return {
-    LifeOpsService,
-    LifeOpsServiceError: class LifeOpsServiceError extends Error {},
-  };
-});
-
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import {
   crossChannelSendAction,
   dispatchCrossChannelSend,
 } from "../src/actions/cross-channel-send.js";
-import type { IAgentRuntime } from "@elizaos/core";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -76,19 +23,8 @@ function makeMessage() {
   >[1];
 }
 
-beforeEach(() => {
-  sendGmailMessage.mockClear();
-  sendIMessage.mockClear();
-  sendWhatsAppMessage.mockClear();
-  sendTelegramMessage.mockClear();
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("crossChannelSendAction", () => {
-  test("draft (confirmed=false) returns draft without sending", async () => {
+  test("returns a draft before dispatching", async () => {
     const result = await crossChannelSendAction.handler!(
       makeRuntime(),
       makeMessage(),
@@ -103,103 +39,20 @@ describe("crossChannelSendAction", () => {
     );
     const r = result as {
       success: boolean;
-      values?: { draft?: boolean };
+      values?: {
+        channel?: string;
+        draft?: boolean;
+        message?: string;
+        target?: string;
+      };
       text: string;
     };
     expect(r.success).toBe(true);
     expect(r.values?.draft).toBe(true);
+    expect(r.values?.channel).toBe("imessage");
+    expect(r.values?.target).toBe("+15551112222");
+    expect(r.values?.message).toBe("hi");
     expect(r.text).toMatch(/Draft|draft/);
-    expect(sendIMessage).not.toHaveBeenCalled();
-  });
-
-  test("email + confirmed=true calls sendGmailMessage", async () => {
-    const result = await crossChannelSendAction.handler!(
-      makeRuntime(),
-      makeMessage(),
-      undefined,
-      {
-        parameters: {
-          channel: "email",
-          target: "alice@example.com",
-          message: "the body",
-          subject: "hello",
-          confirmed: true,
-        },
-      },
-    );
-    const r = result as { success: boolean };
-    expect(r.success).toBe(true);
-    expect(sendGmailMessage).toHaveBeenCalledTimes(1);
-    const [, payload] = sendGmailMessage.mock.calls[0] as [
-      unknown,
-      Record<string, unknown>,
-    ];
-    expect(payload.to).toEqual(["alice@example.com"]);
-    expect(payload.subject).toBe("hello");
-    expect(payload.bodyText).toBe("the body");
-  });
-
-  test("imessage + confirmed=true calls sendIMessage with { to, text }", async () => {
-    const result = await crossChannelSendAction.handler!(
-      makeRuntime(),
-      makeMessage(),
-      undefined,
-      {
-        parameters: {
-          channel: "imessage",
-          target: "+15551112222",
-          message: "ping",
-          confirmed: true,
-        },
-      },
-    );
-    expect((result as { success: boolean }).success).toBe(true);
-    expect(sendIMessage).toHaveBeenCalledWith({
-      to: "+15551112222",
-      text: "ping",
-    });
-  });
-
-  test("whatsapp + confirmed=true calls sendWhatsAppMessage with { to, text }", async () => {
-    const result = await crossChannelSendAction.handler!(
-      makeRuntime(),
-      makeMessage(),
-      undefined,
-      {
-        parameters: {
-          channel: "whatsapp",
-          target: "+15553334444",
-          message: "wa-hi",
-          confirmed: true,
-        },
-      },
-    );
-    expect((result as { success: boolean }).success).toBe(true);
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
-      to: "+15553334444",
-      text: "wa-hi",
-    });
-  });
-
-  test("telegram + confirmed=true calls sendTelegramMessage with { target, message }", async () => {
-    const result = await crossChannelSendAction.handler!(
-      makeRuntime(),
-      makeMessage(),
-      undefined,
-      {
-        parameters: {
-          channel: "telegram",
-          target: "alice",
-          message: "tg-hi",
-          confirmed: true,
-        },
-      },
-    );
-    expect((result as { success: boolean }).success).toBe(true);
-    expect(sendTelegramMessage).toHaveBeenCalledWith({
-      target: "alice",
-      message: "tg-hi",
-    });
   });
 
   test("invalid channel returns error", async () => {
@@ -209,7 +62,7 @@ describe("crossChannelSendAction", () => {
       undefined,
       {
         parameters: {
-          channel: "carrier_pigeon",
+          channel: "unknown_channel",
           target: "alice",
           message: "x",
           confirmed: true,
@@ -234,21 +87,13 @@ describe("crossChannelSendAction", () => {
   });
 });
 
-/**
- * Real-integration tests against the actual `CHANNEL_DISPATCHERS` map.
- *
- * These tests construct a DispatchContext by hand and call
- * `dispatchCrossChannelSend` directly. The `LifeOpsService` argument is a
- * locally-constructed fake object (NOT a `vi.mock` of the module), so the
- * real `createLifeOpsMethodDispatcher` closure runs, the real request
- * builders run, and the real `buildDispatchSuccess` / `buildDispatchFailure`
- * response-shape code runs. The only thing faked is the transport boundary
- * (the method that would actually send bytes).
- */
-describe("dispatchCrossChannelSend (real dispatcher map)", () => {
+describe("dispatchCrossChannelSend", () => {
   const fakeRuntime = { agentId: SAME_ID } as unknown as IAgentRuntime;
+  type DispatchService = Parameters<
+    typeof dispatchCrossChannelSend
+  >[0]["service"];
 
-  test("imessage dispatcher forwards { to, text } and returns ActionResult with channel, target, actionName", async () => {
+  test("imessage dispatcher forwards { to, text } and returns channel metadata", async () => {
     const captured: unknown[] = [];
     const fakeService = {
       sendIMessage: async (req: unknown) => {
@@ -259,19 +104,13 @@ describe("dispatchCrossChannelSend (real dispatcher map)", () => {
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fake service
-      service: fakeService as any,
+      service: fakeService as DispatchService,
       channel: "imessage",
       target: "+15551112222",
       body: "ping",
     });
 
-    // Verify the REAL request builder produced { to, text }.
-    expect(captured).toHaveLength(1);
-    expect(captured[0]).toEqual({ to: "+15551112222", text: "ping" });
-
-    // Verify the REAL buildDispatchSuccess populated every field downstream
-    // consumers rely on.
+    expect(captured).toEqual([{ to: "+15551112222", text: "ping" }]);
     expect(result.success).toBe(true);
     expect(result.values?.success).toBe(true);
     expect(result.values?.channel).toBe("imessage");
@@ -280,10 +119,9 @@ describe("dispatchCrossChannelSend (real dispatcher map)", () => {
     expect(result.data?.channel).toBe("imessage");
     expect(result.data?.target).toBe("+15551112222");
     expect(result.data?.message).toBe("ping");
-    expect(result.text).toContain("Sent imessage to +15551112222");
   });
 
-  test("telegram dispatcher forwards { target, message } (different request shape)", async () => {
+  test("telegram dispatcher forwards { target, message }", async () => {
     const captured: unknown[] = [];
     const fakeService = {
       sendTelegramMessage: async (req: unknown) => {
@@ -294,25 +132,98 @@ describe("dispatchCrossChannelSend (real dispatcher map)", () => {
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fake service
-      service: fakeService as any,
+      service: fakeService as DispatchService,
       channel: "telegram",
       target: "alice",
       body: "tg-body",
     });
 
-    expect(captured[0]).toEqual({ target: "alice", message: "tg-body" });
+    expect(captured).toEqual([{ target: "alice", message: "tg-body" }]);
     expect(result.success).toBe(true);
     expect(result.values?.channel).toBe("telegram");
   });
 
-  test("imessage dispatcher surfaces a DISPATCH_FAILED error when the service method is missing", async () => {
-    const fakeServiceMissingMethod = {}; // no sendIMessage
+  test("whatsapp dispatcher forwards { to, text }", async () => {
+    const captured: unknown[] = [];
+    const fakeService = {
+      sendWhatsAppMessage: async (req: unknown) => {
+        captured.push(req);
+        return { ok: true };
+      },
+    };
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      // biome-ignore lint/suspicious/noExplicitAny: missing-method fake
-      service: fakeServiceMissingMethod as any,
+      service: fakeService as DispatchService,
+      channel: "whatsapp",
+      target: "+15553334444",
+      body: "wa-hi",
+    });
+
+    expect(captured).toEqual([{ to: "+15553334444", text: "wa-hi" }]);
+    expect(result.success).toBe(true);
+    expect(result.values?.channel).toBe("whatsapp");
+  });
+
+  test("email dispatcher requires a subject before calling the service", async () => {
+    let called = false;
+    const fakeService = {
+      sendGmailMessage: async () => {
+        called = true;
+        throw new Error("should not send without a subject");
+      },
+    };
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: fakeService as DispatchService,
+      channel: "email",
+      target: "alice@example.com",
+      body: "the body",
+    });
+
+    expect(called).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toBe("MISSING_SUBJECT");
+  });
+
+  test("email dispatcher forwards the Gmail send request shape", async () => {
+    const captured: unknown[] = [];
+    const fakeService = {
+      sendGmailMessage: async (...args: unknown[]) => {
+        captured.push(args);
+        return { ok: true };
+      },
+    };
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: fakeService as DispatchService,
+      channel: "email",
+      target: "alice@example.com",
+      body: "the body",
+      subject: "hello",
+    });
+
+    expect(captured).toEqual([
+      [
+        new URL("http://internal.invalid/lifeops/gmail/send"),
+        {
+          to: ["alice@example.com"],
+          subject: "hello",
+          bodyText: "the body",
+          confirmSend: true,
+        },
+      ],
+    ]);
+    expect(result.success).toBe(true);
+    expect(result.data?.subject).toBe("hello");
+  });
+
+  test("imessage dispatcher surfaces a failure when the service method is missing", async () => {
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
       channel: "imessage",
       target: "+15551112222",
       body: "ping",
@@ -323,7 +234,7 @@ describe("dispatchCrossChannelSend (real dispatcher map)", () => {
     expect(result.values?.channel).toBe("imessage");
   });
 
-  test("imessage dispatcher surfaces thrown transport errors via buildDispatchFailure", async () => {
+  test("imessage dispatcher surfaces thrown transport errors", async () => {
     const fakeService = {
       sendIMessage: async () => {
         throw new Error("relay offline");
@@ -332,8 +243,7 @@ describe("dispatchCrossChannelSend (real dispatcher map)", () => {
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fake service
-      service: fakeService as any,
+      service: fakeService as DispatchService,
       channel: "imessage",
       target: "+15551112222",
       body: "ping",

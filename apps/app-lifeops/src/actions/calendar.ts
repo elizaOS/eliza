@@ -33,6 +33,7 @@ import {
   type CreateEventTravelIntent,
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
+import { TravelTimeUnavailableError } from "../travel-time/service.js";
 import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
@@ -3439,8 +3440,13 @@ export const calendarAction: Action & {
             throw error;
           }
         }
-        const travelBuffer = travelIntent
-          ? await computeCreateEventTravelBuffer({
+        let travelBuffer: Awaited<
+          ReturnType<typeof computeCreateEventTravelBuffer>
+        > | null = null;
+        let travelTimeUnavailable: TravelTimeUnavailableError | null = null;
+        if (travelIntent) {
+          try {
+            travelBuffer = await computeCreateEventTravelBuffer({
               runtime,
               calendar: calendarLookup,
               event: {
@@ -3448,18 +3454,28 @@ export const calendarAction: Action & {
                 location: event.location ?? "",
               },
               travelIntent,
-            })
-          : null;
+            });
+          } catch (error) {
+            if (!(error instanceof TravelTimeUnavailableError)) {
+              throw error;
+            }
+            travelTimeUnavailable = error;
+          }
+        }
         const travelContext = travelBuffer
           ? {
               travelOriginAddress: travelBuffer.originAddress,
               travelDestinationAddress: travelBuffer.destinationAddress,
               travelBufferMinutes: travelBuffer.bufferMinutes,
               travelBufferMethod: travelBuffer.method,
-              ...(travelBuffer.reason
-                ? { travelBufferReason: travelBuffer.reason }
-                : {}),
               travelTime: travelBuffer,
+            }
+          : null;
+        const travelErrorContext = travelTimeUnavailable
+          ? {
+              travelTimeError: "TRAVEL_TIME_UNAVAILABLE",
+              travelTimeErrorCode: travelTimeUnavailable.code,
+              travelTimeErrorMessage: travelTimeUnavailable.message,
             }
           : null;
         const fallback = travelBuffer
@@ -3469,22 +3485,31 @@ export const calendarAction: Action & {
                 includeTimeZoneName: true,
               },
             )} with a ${travelBuffer.bufferMinutes}-minute travel buffer.`
-          : `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
-              event,
-              {
-                includeTimeZoneName: true,
-              },
-            )}.`;
+          : travelTimeUnavailable
+            ? `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
+                event,
+                {
+                  includeTimeZoneName: true,
+                },
+              )}. Travel buffer was not added: ${travelTimeUnavailable.message}`
+            : `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
+                event,
+                {
+                  includeTimeZoneName: true,
+                },
+              )}.`;
         return respond({
           success: true,
           text: await renderReply("created_event", fallback, {
             event,
             request: requestToCreate,
             ...(travelContext ?? {}),
+            ...(travelErrorContext ?? {}),
           }),
           data: toActionData({
             ...event,
             ...(travelContext ?? {}),
+            ...(travelErrorContext ?? {}),
             request: requestToCreate,
           }),
         });

@@ -18,7 +18,10 @@ import { req } from "../../../../test/helpers/http.ts";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime.ts";
 import { readRecentMessages } from "@elizaos/plugin-signal";
 import { crossChannelSendAction } from "../src/actions/cross-channel-send.js";
-import { createLifeOpsConnectorGrant } from "../src/lifeops/repository.js";
+import {
+  createLifeOpsConnectorGrant,
+  LifeOpsRepository,
+} from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import type { LifeOpsRouteContext } from "../src/routes/lifeops-routes.js";
 import { handleLifeOpsRoutes } from "../src/routes/lifeops-routes.js";
@@ -319,14 +322,17 @@ describe("Real E2E: LifeOps Signal", () => {
   let previousConfigPath: string | undefined;
   let previousPersistConfigPath: string | undefined;
   let previousDisableProactiveAgent: string | undefined;
+  let previousDisableLifeOpsScheduler: string | undefined;
   let previousSignalHttpUrl: string | undefined;
   let runtimeHandle: RealRuntimeHandle | undefined;
   let routeServer: RouteServerHandle | undefined;
   let signalStub: SignalStubHandle | undefined;
 
   async function createLifeOpsRuntime(): Promise<RealRuntimeHandle> {
-    const handle = await createRealTestRuntime();
-    await handle.runtime.registerPlugin(appLifeOpsPlugin);
+    const handle = await createRealTestRuntime({
+      plugins: [appLifeOpsPlugin],
+    });
+    await LifeOpsRepository.bootstrapSchema(handle.runtime);
     return handle;
   }
 
@@ -340,12 +346,15 @@ describe("Real E2E: LifeOps Signal", () => {
     previousConfigPath = process.env.ELIZA_CONFIG_PATH;
     previousPersistConfigPath = process.env.ELIZA_PERSIST_CONFIG_PATH;
     previousDisableProactiveAgent = process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    previousDisableLifeOpsScheduler =
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     previousSignalHttpUrl = process.env.SIGNAL_HTTP_URL;
     process.env.ELIZA_OAUTH_DIR = oauthDir;
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_CONFIG_PATH = configPath;
     process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
   });
 
   afterEach(async () => {
@@ -386,6 +395,12 @@ describe("Real E2E: LifeOps Signal", () => {
     } else {
       process.env.ELIZA_DISABLE_PROACTIVE_AGENT = previousDisableProactiveAgent;
     }
+    if (previousDisableLifeOpsScheduler === undefined) {
+      delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    } else {
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
+        previousDisableLifeOpsScheduler;
+    }
     if (previousSignalHttpUrl === undefined) {
       delete process.env.SIGNAL_HTTP_URL;
     } else {
@@ -404,6 +419,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/pair",
+        {},
       );
       expect(pairResponse.status).toBe(201);
       expect(pairResponse.data.provider).toBe("signal");
@@ -441,6 +457,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/stop",
+        {},
       );
       expect(stopResponse.status).toBe(200);
       expect(stopResponse.data.state).toBe("idle");
@@ -449,6 +466,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/disconnect",
+        {},
       );
       expect(disconnectResponse.status).toBe(200);
       expect(disconnectResponse.data.connected).toBe(false);

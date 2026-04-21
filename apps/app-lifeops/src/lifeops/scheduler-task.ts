@@ -141,11 +141,7 @@ async function waitForDbReady(
       return;
     } catch (error) {
       lastError = error;
-      if (
-        isMissingTasksTableError(error) &&
-        typeof runtime.runPluginMigrations === "function" &&
-        migrationRepairAttempts < 2
-      ) {
+      if (isMissingTasksTableError(error) && migrationRepairAttempts < 2) {
         migrationRepairAttempts += 1;
         await rerunPluginMigrations(runtime);
         continue;

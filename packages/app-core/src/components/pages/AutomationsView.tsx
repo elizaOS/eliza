@@ -64,13 +64,9 @@ import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
-import { PageScopedChat } from "../chat/PageScopedChat";
-import { RightSideChatPanel } from "../chat/RightSideChatPanel";
-import { AutomationRoomChatPane } from "./AutomationRoomChatPane";
+import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome";
 import {
   buildAutomationResponseRoutingMetadata,
-  buildCoordinatorConversationMetadata,
-  buildCoordinatorTriggerConversationMetadata,
   buildWorkflowConversationMetadata,
   buildWorkflowDraftConversationMetadata,
   getAutomationBridgeConversationId,
@@ -108,20 +104,6 @@ const WORKFLOW_SYSTEM_ADDENDUM =
   "workflow. Use the linked terminal conversation only when it directly " +
   "informs the workflow. Request keys and connector setup when needed, and " +
   "prefer owner-scoped LifeOps integrations for personal services.";
-const COORDINATOR_SYSTEM_ADDENDUM =
-  "You are in a workflow-specific automation room for a coordinator " +
-  "automation. Focus only on this automation. Use the linked terminal " +
-  "conversation only when it directly informs the automation.";
-const AUTOMATIONS_SYSTEM_ADDENDUM = `
-You are scoped to helping the user with automations on this page.
-Tools available:
-- CREATE_CRON, UPDATE_CRON, DELETE_CRON, LIST_CRONS, RUN_CRON — manage scheduled tasks.
-- n8n workflow actions (via plugin-n8n-workflow) — create/activate/deactivate/delete workflows.
-
-When creating or modifying a workflow, narrate the plan before calling the action.
-When the user asks to visualize a workflow or see the graph, emit the workflow id to the UI so the graph can render — just include the workflow name or id in your response text.
-For requests unrelated to automations, suggest the main chat.
-`;
 
 const NODE_CLASS_ORDER = [
   "agent",
@@ -1615,34 +1597,19 @@ function AutomationNodeCatalogPane({
 function TaskAutomationDetailPane({
   automation,
   nodes,
-  onAutomationMutated,
   onPromoteToWorkflow,
 }: {
   automation: AutomationItem;
   nodes: AutomationNodeDescriptor[];
-  onAutomationMutated: () => void;
   onPromoteToWorkflow: (item: AutomationItem) => Promise<void>;
 }) {
-  const { activeConversationId, conversations } = useApp();
   const { openEditTask, onDeleteTask, onToggleTaskCompleted, t } =
     useAutomationsViewContext();
   const task = automation.task;
-  const [chatCollapsed, setChatCollapsed] = useState(false);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   if (!task) {
     return null;
   }
-
-  const bridgeConversationId = getAutomationBridgeIdForItem(
-    automation,
-    activeConversationId,
-    conversations,
-  );
-  const metadata = buildCoordinatorConversationMetadata(
-    task.id,
-    bridgeConversationId,
-  );
 
   return (
     <div className="space-y-6">
@@ -1747,20 +1714,6 @@ function TaskAutomationDetailPane({
         )}
       </div>
 
-      {!automation.system && (
-        <AutomationRoomChatPane
-          assistantLabel={t("automations.chat.assistantLabel")}
-          collapsed={chatCollapsed}
-          composerRef={composerRef}
-          metadata={metadata}
-          onAutomationMutated={onAutomationMutated}
-          onToggleCollapse={() => setChatCollapsed((value) => !value)}
-          placeholder="Ask the coordinator to plan or execute this automation."
-          systemAddendum={COORDINATOR_SYSTEM_ADDENDUM}
-          title={automation.title}
-        />
-      )}
-
       <AutomationNodePalette
         nodes={nodes}
         title="Available Automation Nodes"
@@ -1773,15 +1726,12 @@ function TaskAutomationDetailPane({
 function TriggerAutomationDetailPane({
   automation,
   nodes,
-  onAutomationMutated,
   onPromoteToWorkflow,
 }: {
   automation: AutomationItem;
   nodes: AutomationNodeDescriptor[];
-  onAutomationMutated: () => void;
   onPromoteToWorkflow: (item: AutomationItem) => Promise<void>;
 }) {
-  const { activeConversationId, conversations } = useApp();
   const {
     t,
     uiLanguage,
@@ -1797,8 +1747,6 @@ function TriggerAutomationDetailPane({
     setSelectedItemKind,
   } = useAutomationsViewContext();
   const trigger = automation.trigger;
-  const [chatCollapsed, setChatCollapsed] = useState(false);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const triggerId = trigger?.id;
   const selectedRuns = triggerId ? (triggerRunsById[triggerId] ?? []) : [];
   const hasLoadedRuns = triggerId
@@ -1814,16 +1762,6 @@ function TriggerAutomationDetailPane({
   if (!trigger) {
     return null;
   }
-
-  const bridgeConversationId = getAutomationBridgeIdForItem(
-    automation,
-    activeConversationId,
-    conversations,
-  );
-  const metadata = buildCoordinatorTriggerConversationMetadata(
-    trigger.id,
-    bridgeConversationId,
-  );
 
   const { failureCount, successCount } = selectedRuns.reduce(
     (counts, run) => {
@@ -2022,18 +1960,6 @@ function TriggerAutomationDetailPane({
         )}
       </PagePanel>
 
-      <AutomationRoomChatPane
-        assistantLabel={t("automations.chat.assistantLabel")}
-        collapsed={chatCollapsed}
-        composerRef={composerRef}
-        metadata={metadata}
-        onAutomationMutated={onAutomationMutated}
-        onToggleCollapse={() => setChatCollapsed((value) => !value)}
-        placeholder="Ask the coordinator to refine or convert this scheduled automation."
-        systemAddendum={COORDINATOR_SYSTEM_ADDENDUM}
-        title={automation.title}
-      />
-
       <AutomationNodePalette
         nodes={nodes}
         title="Available Automation Nodes"
@@ -2050,12 +1976,10 @@ function WorkflowAutomationDetailPane({
   workflowFetchError,
   workflowBusyId,
   workflowOpsBusy,
-  onConversationResolved,
   onDeleteWorkflow,
   onRefreshWorkflows,
   onStartLocalN8n,
   onToggleWorkflowActive,
-  onWorkflowMutated,
 }: {
   automation: AutomationItem;
   nodes: AutomationNodeDescriptor[];
@@ -2063,40 +1987,16 @@ function WorkflowAutomationDetailPane({
   workflowFetchError: string | null;
   workflowBusyId: string | null;
   workflowOpsBusy: boolean;
-  onConversationResolved: (conversation: Conversation) => void;
   onDeleteWorkflow: (item: AutomationItem) => Promise<void>;
   onRefreshWorkflows: () => Promise<void>;
   onStartLocalN8n: () => Promise<void>;
   onToggleWorkflowActive: (item: AutomationItem) => Promise<void>;
-  onWorkflowMutated: () => void;
 }) {
-  const { activeConversationId, conversations, t, uiLanguage } = useApp();
-  const [chatCollapsed, setChatCollapsed] = useState(false);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const bridgeConversationId = getAutomationBridgeIdForItem(
-    automation,
-    activeConversationId,
-    conversations,
-  );
-  const metadata =
-    automation.workflowId && !automation.isDraft
-      ? buildWorkflowConversationMetadata(
-          automation.workflowId,
-          automation.title,
-          bridgeConversationId,
-        )
-      : buildWorkflowDraftConversationMetadata(
-          automation.draftId ?? createWorkflowDraftId(),
-          bridgeConversationId,
-        );
+  const { t, uiLanguage } = useApp();
   const nodeCount = getWorkflowNodeCount(automation);
   const busy =
     workflowOpsBusy ||
     (automation.workflowId != null && workflowBusyId === automation.workflowId);
-
-  useEffect(() => {
-    setChatCollapsed(false);
-  }, [automation.id]);
 
   return (
     <div className="space-y-6">
@@ -2106,23 +2006,6 @@ function WorkflowAutomationDetailPane({
         busy={busy}
         onRefresh={() => void onRefreshWorkflows()}
         onStartLocal={() => void onStartLocalN8n()}
-      />
-
-      <AutomationRoomChatPane
-        assistantLabel={t("automations.chat.assistantLabel")}
-        collapsed={chatCollapsed}
-        composerRef={composerRef}
-        metadata={metadata}
-        onConversationResolved={onConversationResolved}
-        onAutomationMutated={onWorkflowMutated}
-        onToggleCollapse={() => setChatCollapsed((value) => !value)}
-        placeholder={
-          automation.isDraft
-            ? "Describe the workflow you want to build."
-            : "Refine or debug this workflow with the automation agent."
-        }
-        systemAddendum={WORKFLOW_SYSTEM_ADDENDUM}
-        title={automation.title || WORKFLOW_DRAFT_TITLE}
       />
 
       <PagePanel variant="padded" className="space-y-5">
@@ -2499,7 +2382,6 @@ function AutomationsLayout() {
     n8nStatus,
     workflowFetchError,
   } = ctx;
-  const workflowComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null);
@@ -2721,10 +2603,6 @@ function AutomationsLayout() {
         setEditorOpen(false);
         setEditingId(null);
         ctx.setEditingTaskId(null);
-
-        window.requestAnimationFrame(() => {
-          workflowComposerRef.current?.focus();
-        });
       } catch (error) {
         setPageNotice(
           error instanceof Error
@@ -2759,18 +2637,11 @@ function AutomationsLayout() {
     [createWorkflowDraft],
   );
 
-  // Open a workflow draft and seed the composer with a template prompt.
+  // Open a workflow draft and seed it with the selected template prompt.
   const handleTemplateSelected = useCallback(
     async (seedPrompt: string) => {
       setTemplatesModalOpen(false);
-      // Create the draft room (no initialPrompt — user will refine it).
-      await createWorkflowDraft();
-      // Emit the seed-composer event so the ChatPane can prefill the textarea.
-      window.dispatchEvent(
-        new CustomEvent("milady:automations:seed-composer", {
-          detail: { text: seedPrompt, select: true },
-        }),
-      );
+      await createWorkflowDraft({ initialPrompt: seedPrompt });
     },
     [createWorkflowDraft],
   );
@@ -2803,10 +2674,6 @@ function AutomationsLayout() {
     showAutomationsList();
     openCreateTrigger();
   }, [openCreateTrigger, showAutomationsList]);
-
-  const handleWorkflowMutated = useCallback(() => {
-    void refreshAutomationsWithDraftBinding(activeWorkflowConversation);
-  }, [activeWorkflowConversation, refreshAutomationsWithDraftBinding]);
 
   const handleRefreshWorkflows = useCallback(async () => {
     setPageNotice(null);
@@ -3109,58 +2976,58 @@ function AutomationsLayout() {
           </button>
         ) : null}
 
-          {(pageNotice || combinedError) && (
-            <PagePanel
-              variant="padded"
-              className="mb-4 border border-danger/20 bg-danger/5"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-danger">
-                  {pageNotice ?? combinedError}
-                </p>
-                {pageNotice && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-danger hover:bg-danger/10"
-                    onClick={() => setPageNotice(null)}
-                  >
-                    Dismiss
-                  </Button>
-                )}
-              </div>
-            </PagePanel>
-          )}
+        {(pageNotice || combinedError) && (
+          <PagePanel
+            variant="padded"
+            className="mb-4 border border-danger/20 bg-danger/5"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-danger">
+                {pageNotice ?? combinedError}
+              </p>
+              {pageNotice && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-danger hover:bg-danger/10"
+                  onClick={() => setPageNotice(null)}
+                >
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          </PagePanel>
+        )}
 
-          {editorOpen || editingId || editingTaskId ? (
-            editorMode === "task" || editingTaskId ? (
-              <TaskForm />
-            ) : (
-              <HeartbeatForm
-                form={form}
-                editingId={editingId}
-                editorEnabled={editorEnabled}
-                modalTitle={modalTitle}
-                formError={formError}
-                triggersSaving={triggersSaving}
-                templateNotice={templateNotice}
-                triggers={triggers}
-                triggerRunsById={triggerRunsById}
-                t={t}
-                selectedTriggerId={editingId}
-                setField={setField}
-                setForm={setForm}
-                setFormError={setFormError}
-                closeEditor={closeEditor}
-                onSubmit={onSubmitTrigger}
-                onDelete={onDeleteTrigger}
-                onRunSelectedTrigger={onRunSelectedTrigger}
-                onToggleTriggerEnabled={onToggleTriggerEnabled}
-                saveFormAsTemplate={saveFormAsTemplate}
-                loadTriggerRuns={loadTriggerRuns}
-              />
-            )
-          ) : activeSubpage === "node-catalog" ? (
+        {editorOpen || editingId || editingTaskId ? (
+          editorMode === "task" || editingTaskId ? (
+            <TaskForm />
+          ) : (
+            <HeartbeatForm
+              form={form}
+              editingId={editingId}
+              editorEnabled={editorEnabled}
+              modalTitle={modalTitle}
+              formError={formError}
+              triggersSaving={triggersSaving}
+              templateNotice={templateNotice}
+              triggers={triggers}
+              triggerRunsById={triggerRunsById}
+              t={t}
+              selectedTriggerId={editingId}
+              setField={setField}
+              setForm={setForm}
+              setFormError={setFormError}
+              closeEditor={closeEditor}
+              onSubmit={onSubmitTrigger}
+              onDelete={onDeleteTrigger}
+              onRunSelectedTrigger={onRunSelectedTrigger}
+              onToggleTriggerEnabled={onToggleTriggerEnabled}
+              saveFormAsTemplate={saveFormAsTemplate}
+              loadTriggerRuns={loadTriggerRuns}
+            />
+          )
+        ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
@@ -3170,29 +3037,21 @@ function AutomationsLayout() {
             workflowFetchError={workflowFetchError}
             workflowBusyId={workflowBusyId}
             workflowOpsBusy={workflowOpsBusy}
-            onConversationResolved={setActiveWorkflowConversation}
             onDeleteWorkflow={handleDeleteWorkflow}
             onRefreshWorkflows={handleRefreshWorkflows}
             onStartLocalN8n={handleStartLocalN8n}
             onToggleWorkflowActive={handleToggleWorkflowActive}
-            onWorkflowMutated={handleWorkflowMutated}
           />
         ) : resolvedSelectedItem?.trigger ? (
           <TriggerAutomationDetailPane
             automation={resolvedSelectedItem}
             nodes={automationNodes}
-            onAutomationMutated={() => {
-              void ctx.refreshAutomations();
-            }}
             onPromoteToWorkflow={promoteAutomationToWorkflow}
           />
         ) : resolvedSelectedItem?.task ? (
           <TaskAutomationDetailPane
             automation={resolvedSelectedItem}
             nodes={automationNodes}
-            onAutomationMutated={() => {
-              void ctx.refreshAutomations();
-            }}
             onPromoteToWorkflow={promoteAutomationToWorkflow}
           />
         ) : showFirstRunEmptyState ? (
@@ -3237,5 +3096,14 @@ export function AutomationsView() {
 }
 
 export function AutomationsDesktopShell() {
-  return <AutomationsView />;
+  return (
+    <AppWorkspaceChrome
+      testId="automations-workspace"
+      main={
+        <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+          <AutomationsView />
+        </div>
+      }
+    />
+  );
 }

@@ -41,7 +41,6 @@ import org.json.JSONObject
 
 private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
 private const val FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls"
-private const val APP_AND_WEBSITE_USAGE_ENTITLEMENT = "com.apple.developer.family-controls.app-and-website-usage"
 private const val PACKAGE_USAGE_STATS_PERMISSION = "android.permission.PACKAGE_USAGE_STATS"
 
 @CapacitorPlugin(name = "MobileSignals")
@@ -606,7 +605,6 @@ class MobileSignalsPlugin : Plugin() {
             put("requirements", JSObject().apply {
                 put("entitlements", JSObject().apply {
                     put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
-                    put("appAndWebsiteUsage", APP_AND_WEBSITE_USAGE_ENTITLEMENT)
                 })
                 put("frameworks", listOf("FamilyControls", "DeviceActivity"))
                 put("deviceActivityReportExtension", false)
@@ -618,7 +616,6 @@ class MobileSignalsPlugin : Plugin() {
             })
             put("entitlements", JSObject().apply {
                 put("familyControls", false)
-                put("appAndWebsiteUsage", false)
             })
             put("provisioning", JSObject().apply {
                 put("satisfied", usageGranted)

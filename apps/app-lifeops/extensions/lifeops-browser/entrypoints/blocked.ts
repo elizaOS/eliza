@@ -25,7 +25,7 @@ interface BlockedHostResponse {
 const params = new URLSearchParams(window.location.search);
 const blockedUrl = params.get("url") || "Unknown site";
 const blockedHost = params.get("host") || blockedUrl;
-const apiBase = params.get("api") || "http://localhost:31337";
+const apiBase = normalizeApiBase(params.get("api"));
 
 const blockedSiteEl = document.getElementById("blockedSite");
 const taskListEl = document.getElementById("taskList");
@@ -36,7 +36,28 @@ if (blockedSiteEl) {
 }
 
 if (openLifeOpsEl) {
-  openLifeOpsEl.setAttribute("href", apiBase.replace(/:\d+$/, ":2138"));
+  if (apiBase) {
+    openLifeOpsEl.setAttribute("href", apiBase.replace(/:\d+$/, ":2138"));
+  } else {
+    openLifeOpsEl.removeAttribute("href");
+  }
+}
+
+function normalizeApiBase(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
 }
 
 function escapeHtml(text: string): string {
@@ -71,6 +92,9 @@ function renderFallback(): void {
 }
 
 async function fetchBlockingReason(): Promise<BlockedHostResponse | null> {
+  if (!apiBase) {
+    return null;
+  }
   try {
     const resp = await fetch(
       `${apiBase}/api/website-blocker?host=${encodeURIComponent(blockedHost)}`,

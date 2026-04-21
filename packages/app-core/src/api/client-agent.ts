@@ -2121,7 +2121,7 @@ ElizaClient.prototype.spawnShellSession = async function (
   this: ElizaClient,
   workdir?: string,
 ) {
-  const res = await this.fetch<{ session: { id: string } }>(
+  const res = await this.fetch<{ sessionId: string }>(
     "/api/coding-agents/spawn",
     {
       method: "POST",
@@ -2131,7 +2131,7 @@ ElizaClient.prototype.spawnShellSession = async function (
       }),
     },
   );
-  return { sessionId: res.session.id };
+  return { sessionId: res.sessionId };
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (

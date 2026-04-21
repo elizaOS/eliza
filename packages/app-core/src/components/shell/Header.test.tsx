@@ -8,13 +8,11 @@ const {
   isElectrobunRuntimeMock,
   useMediaQueryMock,
   useAppMock,
-  useBrandingMock,
 } = vi.hoisted(() => ({
   getTabGroupsMock: vi.fn(),
   isElectrobunRuntimeMock: vi.fn(),
   useMediaQueryMock: vi.fn(),
   useAppMock: vi.fn(),
-  useBrandingMock: vi.fn(),
 }));
 
 vi.mock("@elizaos/app-companion/ui", () => ({
@@ -41,10 +39,6 @@ vi.mock("@elizaos/app-core/components/shared/LanguageDropdown", () => ({
 
 vi.mock("@elizaos/app-core/components/shared/ThemeToggle", () => ({
   ThemeToggle: () => <div data-testid="header-theme-toggle" />,
-}));
-
-vi.mock("@elizaos/app-core/config/branding", () => ({
-  useBranding: () => useBrandingMock(),
 }));
 
 vi.mock("@elizaos/app-core/hooks", () => ({
@@ -93,7 +87,6 @@ describe("Header", () => {
   beforeEach(() => {
     cleanup();
     useAppMock.mockReset();
-    useBrandingMock.mockReset();
     isElectrobunRuntimeMock.mockReset();
     getTabGroupsMock.mockReset();
     useMediaQueryMock.mockReset();
@@ -105,7 +98,6 @@ describe("Header", () => {
     window.history.replaceState(null, "", "/");
 
     useAppMock.mockReturnValue(buildUseAppState());
-    useBrandingMock.mockReturnValue({ appName: "Milady" });
     isElectrobunRuntimeMock.mockReturnValue(false);
     useMediaQueryMock.mockReturnValue(false);
     getTabGroupsMock.mockReturnValue([
@@ -144,8 +136,9 @@ describe("Header", () => {
       ),
     ).toBe(true);
     expect(
-      screen.getByTestId("desktop-window-titlebar-label").textContent,
-    ).toBe("Milady");
+      screen.getByTestId("desktop-window-titlebar-drag-zone"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Milady")).toBeNull();
   });
 
   it("skips the custom title bar for detached desktop shells", () => {

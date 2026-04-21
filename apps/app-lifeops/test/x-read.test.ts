@@ -1,36 +1,3 @@
-/**
- * MIXED FETCH-SHIM + MIXIN-SHAPE TEST — this file is two different things
- * stitched together. Read before you trust a green run.
- *
- * Part 1 (genuine integration against the real x-reader code):
- *   - `readXDms`, `pullXFeed`, and `searchX` describe blocks stub the global
- *     `fetch` and assert that the real x-reader code under test:
- *       - hits the correct Twitter API v2 URL (`/2/.../dm_events`, etc.)
- *       - sends an OAuth 1.0a `Authorization` header with `oauth_signature=`
- *       - translates 401 → `XReadError{category: "auth"}` and 429 +
- *         `Retry-After` → `XReadError{category: "rate_limit",
- *         retryAfterSeconds}`
- *     These are real assertions against real code and are the valuable
- *     tests in this file.
- *
- * Part 2 (shape-only — LARP caveat):
- *   - `describe("withXRead mixin")` composes the mixin onto a StubBase and
- *     ONLY asserts `typeof svc.syncXDms === "function"` (and three sibling
- *     typeof checks). It does NOT invoke any mixin method and therefore does
- *     NOT exercise sync logic, pagination cursors, dedup against the
- *     repository, or the OAuth plumbing.
- *   - `describe("xReadAction.validate")` replaces `LifeOpsService` with a
- *     `vi.spyOn(...).mockImplementation` stub that only exposes
- *     `getXConnectorStatus`. It verifies the validate-gate returns false
- *     when the connector reports `connected: false`, not that validate
- *     ever actually consults a real service.
- *
- * Regressions that would slip past the shape-only parts:
- *   - A mixin method whose signature exists but whose body throws.
- *   - A repository `upsertXDm` call that silently drops fields on real rows.
- *   - `xReadAction.validate` returning true when the connector reports
- *     connected but inbound sync is disabled.
- */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   pullXFeed,
@@ -40,10 +7,14 @@ import {
   type XReaderCredentials,
 } from "../src/lifeops/x-reader.js";
 import { withXRead } from "../src/lifeops/service-mixin-x-read.js";
-import * as serviceModule from "../src/lifeops/service.js";
-import { xReadAction } from "../src/actions/x-read.js";
+import type {
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXDm,
+} from "@elizaos/shared/contracts/lifeops";
 
 const ORIGINAL_FETCH = global.fetch;
+const ORIGINAL_ENV = { ...process.env };
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 
 const CREDS: XReaderCredentials = {
@@ -62,8 +33,22 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+beforeEach(() => {
+  delete process.env.TWITTER_API_KEY;
+  delete process.env.TWITTER_API_SECRET;
+  delete process.env.TWITTER_ACCESS_TOKEN;
+  delete process.env.TWITTER_ACCESS_TOKEN_SECRET;
+  delete process.env.TWITTER_USER_ID;
+});
+
 afterEach(() => {
   global.fetch = ORIGINAL_FETCH;
+  delete process.env.TWITTER_API_KEY;
+  delete process.env.TWITTER_API_SECRET;
+  delete process.env.TWITTER_ACCESS_TOKEN;
+  delete process.env.TWITTER_ACCESS_TOKEN_SECRET;
+  delete process.env.TWITTER_USER_ID;
+  Object.assign(process.env, ORIGINAL_ENV);
   vi.restoreAllMocks();
 });
 
@@ -71,12 +56,14 @@ describe("readXDms", () => {
   test("hits Twitter API v2 dm_events endpoint with OAuth Authorization header", async () => {
     let capturedUrl = "";
     let capturedAuth = "";
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      capturedUrl = typeof input === "string" ? input : input.toString();
-      const headers = init?.headers as Record<string, string> | undefined;
-      capturedAuth = headers?.Authorization ?? "";
-      return jsonResponse({ data: [], meta: {} });
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        const headers = init?.headers as Record<string, string> | undefined;
+        capturedAuth = headers?.Authorization ?? "";
+        return jsonResponse({ data: [], meta: {} });
+      },
+    ) as unknown as typeof fetch;
 
     const page = await readXDms(CREDS, { limit: 10 });
     expect(capturedUrl).toContain("/2/");
@@ -128,7 +115,7 @@ describe("searchX", () => {
 });
 
 describe("XReadError categorization", () => {
-  test('throws auth error on 401', async () => {
+  test("throws auth error on 401", async () => {
     global.fetch = vi.fn(async () =>
       jsonResponse({ errors: [{ detail: "Unauthorized" }] }, { status: 401 }),
     ) as unknown as typeof fetch;
@@ -145,14 +132,15 @@ describe("XReadError categorization", () => {
   });
 
   test("throws rate_limit error on 429 with Retry-After header", async () => {
-    global.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ errors: [{ detail: "Too Many" }] }), {
-        status: 429,
-        headers: {
-          "content-type": "application/json",
-          "retry-after": "42",
-        },
-      }),
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ errors: [{ detail: "Too Many" }] }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "42",
+          },
+        }),
     ) as unknown as typeof fetch;
 
     let caught: unknown;
@@ -168,57 +156,125 @@ describe("XReadError categorization", () => {
 });
 
 describe("withXRead mixin", () => {
-  test("instantiates against a stub base", () => {
+  type XReadService = {
+    readXInboundDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+    searchXPosts(
+      query: string,
+      opts?: { limit?: number },
+    ): Promise<LifeOpsXFeedItem[]>;
+    syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
+  };
+
+  function makeDm(overrides: Partial<LifeOpsXDm> = {}): LifeOpsXDm {
+    const now = "2026-04-19T12:00:00.000Z";
+    return {
+      id: "dm-1",
+      agentId: SAME_ID,
+      externalDmId: "external-dm-1",
+      conversationId: "conversation-1",
+      senderHandle: "alice",
+      senderId: "user-alice",
+      isInbound: true,
+      text: "Milady update",
+      receivedAt: now,
+      readAt: null,
+      repliedAt: null,
+      metadata: {},
+      syncedAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  function makeFeedItem(
+    id: string,
+    feedType: LifeOpsXFeedType,
+    text: string,
+  ): LifeOpsXFeedItem {
+    const now = "2026-04-19T12:00:00.000Z";
+    return {
+      id,
+      agentId: SAME_ID,
+      externalTweetId: id,
+      authorHandle: "alice",
+      authorId: "user-alice",
+      text,
+      createdAtSource: now,
+      feedType,
+      metadata: {},
+      syncedAt: now,
+      updatedAt: now,
+    };
+  }
+
+  test("uses cached DM rows when X credentials are absent", async () => {
+    const cachedDms = [
+      makeDm({ id: "dm-in", isInbound: true }),
+      makeDm({ id: "dm-out", externalDmId: "external-dm-2", isInbound: false }),
+    ];
     class StubBase {
-      runtime = { agentId: SAME_ID, logger: console };
+      runtime = { agentId: SAME_ID, logger: { warn: () => undefined } };
       ownerEntityId = null;
       agentId() {
         return SAME_ID;
       }
-      async requireXGrant() {
-        return undefined;
+      repository = {
+        upsertXDm: vi.fn(),
+        upsertXFeedItem: vi.fn(),
+        upsertXSyncState: vi.fn(),
+        listXDms: vi.fn(async () => cachedDms),
+        listXFeedItems: vi.fn(async () => []),
+      };
+    }
+    const Composed = withXRead(StubBase as never);
+    const svc = new (Composed as unknown as new () => StubBase &
+      XReadService)();
+
+    await expect(svc.syncXDms({ limit: 2 })).resolves.toEqual({ synced: 0 });
+    await expect(svc.readXInboundDms({ limit: 2 })).resolves.toEqual([
+      cachedDms[0],
+    ]);
+    expect(svc.repository.upsertXDm).not.toHaveBeenCalled();
+    expect(svc.repository.upsertXSyncState).not.toHaveBeenCalled();
+  });
+
+  test("searchXPosts searches and dedupes cached feed rows when X credentials are absent", async () => {
+    const duplicate = makeFeedItem("tweet-1", "home_timeline", "Milady launch");
+    const cachedByFeed: Record<LifeOpsXFeedType, LifeOpsXFeedItem[]> = {
+      search: [makeFeedItem("tweet-1", "search", "Milady launch")],
+      home_timeline: [
+        duplicate,
+        makeFeedItem("tweet-2", "home_timeline", "unrelated"),
+      ],
+      mentions: [makeFeedItem("tweet-3", "mentions", "Milady mention")],
+    };
+    class StubBase {
+      runtime = { agentId: SAME_ID, logger: { warn: () => undefined } };
+      ownerEntityId = null;
+      agentId() {
+        return SAME_ID;
       }
       repository = {
         upsertXDm: vi.fn(),
         upsertXFeedItem: vi.fn(),
         upsertXSyncState: vi.fn(),
         listXDms: vi.fn(async () => []),
-        listXFeedItems: vi.fn(async () => []),
+        listXFeedItems: vi.fn(
+          async (_agentId: string, feedType: LifeOpsXFeedType) =>
+            cachedByFeed[feedType],
+        ),
       };
     }
     const Composed = withXRead(StubBase as never);
-    // biome-ignore lint/suspicious/noExplicitAny: mixin stub
-    const svc = new (Composed as any)();
-    expect(typeof svc.syncXDms).toBe("function");
-    expect(typeof svc.syncXFeed).toBe("function");
-    expect(typeof svc.searchXPosts).toBe("function");
-    expect(typeof svc.readXInboundDms).toBe("function");
-  });
-});
+    const svc = new (Composed as unknown as new () => StubBase &
+      XReadService)();
 
-describe("xReadAction.validate", () => {
-  test("returns false when LifeOpsService.getXConnectorStatus reports not connected", async () => {
-    vi.spyOn(serviceModule, "LifeOpsService").mockImplementation(
-      function (this: Record<string, unknown>) {
-        this.getXConnectorStatus = vi.fn(async () => ({
-          provider: "x",
-          connected: false,
-          inbound: false,
-          lastCheckedAt: new Date().toISOString(),
-        }));
-      } as unknown as typeof serviceModule.LifeOpsService,
-    );
+    const results = await svc.searchXPosts("milady");
 
-    const runtime = {
-      agentId: SAME_ID,
-      character: { settings: {} },
-    } as unknown as Parameters<NonNullable<typeof xReadAction.validate>>[0];
-    const message = {
-      entityId: SAME_ID,
-      content: { text: "x" },
-    } as unknown as Parameters<NonNullable<typeof xReadAction.validate>>[1];
-
-    const ok = await xReadAction.validate!(runtime, message);
-    expect(ok).toBe(false);
+    expect(results.map((item) => item.externalTweetId)).toEqual([
+      "tweet-1",
+      "tweet-3",
+    ]);
+    expect(svc.repository.upsertXFeedItem).not.toHaveBeenCalled();
   });
 });

@@ -26,9 +26,29 @@ import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   fail,
   normalizeEnumValue,
+  normalizeOptionalBoolean,
+  normalizeOptionalIsoString,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+import { normalizeBrowserActionInput } from "./service-normalize-task.js";
+import { normalizeOptionalRecord, requireRecord } from "./service-helpers-misc.js";
+import {
+  browserPageContextIdentityKey,
+  browserSessionMatchesCompanion,
+  browserTabIdentityKey,
+  browserUrlAllowedBySettings,
+  createBrowserSessionActions,
+  hashBrowserCompanionPairingToken,
+  normalizeBrowserSessionActionIndex,
+  normalizePageForms,
+  normalizePageHeadings,
+  normalizePageLinks,
+  normalizePendingBrowserPairingTokenHashes,
+  redactSecretLikeText,
+  resolveAwaitingBrowserActionId,
+  selectRememberedBrowserTabs,
+} from "./service-helpers-browser.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -91,14 +111,6 @@ export interface LifeOpsBrowserService {
   ): Promise<LifeOpsBrowserSession>;
 }
 
-// ---------------------------------------------------------------------------
-// Local helpers (copied from service.ts)
-// ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function mergeMetadata(
   current: Record<string, unknown>,
   updates?: Record<string, unknown>,
@@ -110,143 +122,7 @@ function mergeMetadata(
   return { ...current, ...cloned };
 }
 
-function requireRecord(value: unknown, field: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
-
-function normalizeOptionalBoolean(
-  value: unknown,
-  field: string,
-): boolean | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value === "boolean") return value;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  fail(400, `${field} must be a boolean`);
-}
-
-function normalizeOptionalIsoString(
-  value: unknown,
-  field: string,
-): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be an ISO 8601 string`);
-  }
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) {
-    fail(400, `${field} must be a valid ISO 8601 string`);
-  }
-  return value;
-}
-
-function normalizeOptionalRecord(
-  value: unknown,
-  field: string,
-): Record<string, unknown> | undefined {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
-
-// Browser-specific helpers
-
-function hashBrowserCompanionPairingToken(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-function normalizePendingBrowserPairingTokenHashes(
-  pending: string[],
-  currentHash: string,
-): string[] {
-  const MAX_PENDING = 3;
-  return pending
-    .filter((hash) => hash !== currentHash)
-    .slice(0, MAX_PENDING);
-}
-
-function browserSessionMatchesCompanion(
-  session: LifeOpsBrowserSession,
-  companion: LifeOpsBrowserCompanionStatus,
-): boolean {
-  if (session.companionId && session.companionId !== companion.id) {
-    return false;
-  }
-  if (session.browser && session.browser !== companion.browser) {
-    return false;
-  }
-  if (session.profileId && session.profileId !== companion.profileId) {
-    return false;
-  }
-  return true;
-}
-
-function normalizeBrowserSessionActionIndex(
-  value: unknown,
-  actionsLength: number,
-): number {
-  const num = typeof value === "string" ? Number(value) : value;
-  if (typeof num !== "number" || !Number.isInteger(num) || num < 0) {
-    fail(400, "currentActionIndex must be a non-negative integer");
-  }
-  return Math.min(num, Math.max(0, actionsLength - 1));
-}
-
-function browserTabIdentityKey(
-  tab: Pick<LifeOpsBrowserTabSummary, "browser" | "profileId" | "windowId" | "tabId">,
-): string {
-  return `${tab.browser}:${tab.profileId}:${tab.windowId}:${tab.tabId}`;
-}
-
-function browserPageContextIdentityKey(
-  context: Pick<LifeOpsBrowserPageContext, "browser" | "profileId" | "windowId" | "tabId">,
-): string {
-  return `${context.browser}:${context.profileId}:${context.windowId}:${context.tabId}`;
-}
-
-function selectRememberedBrowserTabs(
-  tabs: LifeOpsBrowserTabSummary[],
-  maxRememberedTabs: number,
-): LifeOpsBrowserTabSummary[] {
-  if (tabs.length <= maxRememberedTabs) return tabs;
-  const sorted = tabs.slice().sort((left, right) => {
-    if (left.focusedActive && !right.focusedActive) return -1;
-    if (!left.focusedActive && right.focusedActive) return 1;
-    if (left.activeInWindow && !right.activeInWindow) return -1;
-    if (!left.activeInWindow && right.activeInWindow) return 1;
-    const leftFocusMs = left.lastFocusedAt ? Date.parse(left.lastFocusedAt) : 0;
-    const rightFocusMs = right.lastFocusedAt ? Date.parse(right.lastFocusedAt) : 0;
-    return rightFocusMs - leftFocusMs;
-  });
-  return sorted.slice(0, maxRememberedTabs);
-}
-
 const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
-
-function browserUrlAllowedBySettings(
-  url: string,
-  settings: LifeOpsBrowserSettings,
-): boolean {
-  if (!url) return false;
-  try {
-    const parsed = new URL(url);
-    const origin = parsed.origin.toLowerCase();
-    if (settings.blockedOrigins.some((blocked) => origin.includes(blocked.toLowerCase()))) {
-      return false;
-    }
-    if (settings.siteAccessMode === "granted_sites_only" && settings.grantedOrigins.length > 0) {
-      return settings.grantedOrigins.some((granted) => origin.includes(granted.toLowerCase()));
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function browserDomainFromUrl(url: string): string | null {
   try {
@@ -259,45 +135,6 @@ function browserDomainFromUrl(url: string): string | null {
   } catch {
     return null;
   }
-}
-
-function redactSecretLikeText(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") return null;
-  return value;
-}
-
-function normalizePageLinks(
-  value: unknown,
-  field: string,
-): Array<{ text: string; href: string }> {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as Array<{ text: string; href: string }>;
-}
-
-function normalizePageHeadings(
-  value: unknown,
-  field: string,
-): string[] {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as string[];
-}
-
-function normalizePageForms(
-  value: unknown,
-  field: string,
-): Array<Record<string, unknown>> {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as Array<Record<string, unknown>>;
 }
 
 function normalizeBrowserSettingsUpdate(
@@ -316,7 +153,13 @@ function normalizeBrowserSettingsUpdate(
     blockedOrigins: request.blockedOrigins ?? [...current.blockedOrigins],
     maxRememberedTabs: request.maxRememberedTabs ?? current.maxRememberedTabs,
     pauseUntil: request.pauseUntil !== undefined ? (request.pauseUntil ?? null) : current.pauseUntil,
-    metadata: request.metadata !== undefined ? mergeMetadata(current.metadata, request.metadata as Record<string, unknown>) : current.metadata,
+    metadata:
+      request.metadata !== undefined
+        ? mergeMetadata(
+            current.metadata,
+            normalizeOptionalRecord(request.metadata, "metadata"),
+          )
+        : current.metadata,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -327,39 +170,6 @@ function normalizeOptionalBrowserKind(
 ): string | null {
   if (value === undefined || value === null) return null;
   return normalizeEnumValue(value, field, LIFEOPS_BROWSER_KINDS);
-}
-
-function normalizeBrowserActionInput(
-  value: unknown,
-  field: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
-
-function createBrowserSessionActions(
-  actions: Record<string, unknown>[],
-): any[] {
-  return actions.map((action, index) => ({
-    id: crypto.randomUUID(),
-    ...action,
-  }));
-}
-
-function resolveAwaitingBrowserActionId(
-  actions: readonly any[],
-): string | null {
-  for (const action of actions) {
-    if (
-      action.requireConfirmation === true ||
-      action.requiresConfirmation === true
-    ) {
-      return action.id ?? null;
-    }
-  }
-  return null;
 }
 
 // Imports from repository

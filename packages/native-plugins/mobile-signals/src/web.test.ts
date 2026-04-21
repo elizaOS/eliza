@@ -11,8 +11,6 @@ describe("MobileSignalsWeb Screen Time status", () => {
       requirements: {
         entitlements: {
           familyControls: "com.apple.developer.family-controls",
-          appAndWebsiteUsage:
-            "com.apple.developer.family-controls.app-and-website-usage",
         },
         frameworks: ["FamilyControls", "DeviceActivity"],
         deviceActivityReportExtension: false,
@@ -24,7 +22,6 @@ describe("MobileSignalsWeb Screen Time status", () => {
       },
       entitlements: {
         familyControls: false,
-        appAndWebsiteUsage: false,
       },
       provisioning: {
         satisfied: false,

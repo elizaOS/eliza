@@ -7,7 +7,6 @@ import { ListTodo, Settings } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { useBranding } from "../../config/branding";
 import { useMediaQuery } from "../../hooks";
 import { getTabGroups, type TabGroup } from "../../navigation";
 import {
@@ -89,7 +88,6 @@ export function Header({
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
 }: HeaderProps) {
-  const branding = useBranding();
   const {
     browserEnabled,
     chatLastUsage,
@@ -433,15 +431,14 @@ export function Header({
                 })}
               </nav>
               <div
-                className="pointer-events-none truncate px-4 text-sm font-medium tracking-[0.01em] text-txt/94"
+                className="pointer-events-none h-[2.375rem] w-[clamp(10rem,24vw,22.5rem)] min-w-0"
                 data-testid={
                   showMacDesktopTitleBar
-                    ? "desktop-window-titlebar-label"
+                    ? "desktop-window-titlebar-drag-zone"
                     : undefined
                 }
-              >
-                {branding.appName}
-              </div>
+                aria-hidden="true"
+              />
               {rightDesktopControls}
             </>
           )}

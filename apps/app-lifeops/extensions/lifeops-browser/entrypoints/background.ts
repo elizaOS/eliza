@@ -19,6 +19,7 @@ import {
   candidateApiBaseUrlsFromTabs,
   clearCompanionConfig,
   discoverReachableLifeOpsApiBaseUrls,
+  isValidApiBaseUrl,
   loadBackgroundState,
   loadCompanionConfig,
   normalizeCompanionConfig,
@@ -155,6 +156,29 @@ function autoPairErrorMessage(
   return error;
 }
 
+function readAutoPairResponsePayload(
+  payload: unknown,
+): CompanionAutoPairResponse | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as {
+    companion?: unknown;
+    config?: Partial<CompanionConfig>;
+  };
+  if (!record.companion || typeof record.companion !== "object") {
+    return null;
+  }
+  const config = normalizeCompanionConfig(record.config);
+  if (!config) {
+    return null;
+  }
+  return {
+    companion: record.companion as CompanionAutoPairResponse["companion"],
+    config,
+  };
+}
+
 async function requestAutoPairFromBackground(
   apiBaseUrl: string,
   request: CompanionAutoPairRequest,
@@ -186,10 +210,15 @@ async function requestAutoPairFromBackground(
           `${response.status} ${response.statusText}`,
       };
     }
-    return {
-      ok: true,
-      data: payload as CompanionAutoPairResponse,
-    };
+    const data = readAutoPairResponsePayload(payload);
+    if (!data) {
+      return {
+        ok: false,
+        status: response.status,
+        error: "Auto-pair returned an invalid companion config.",
+      };
+    }
+    return { ok: true, data };
   } catch (error) {
     return {
       ok: false,
@@ -259,9 +288,17 @@ async function requestAutoPairFromTab(
       [apiBaseUrl, request],
     );
     if (result.ok && result.data) {
+      const data = readAutoPairResponsePayload(result.data);
+      if (!data) {
+        return {
+          ok: false,
+          status: result.status,
+          error: "Auto-pair returned an invalid companion config.",
+        };
+      }
       return {
         ok: true,
-        data: result.data,
+        data,
       };
     }
     return {
@@ -763,86 +800,84 @@ const BLOCKING_RULE_ID_OFFSET = 10_001;
 const ALLOWLIST_RULE_ID_OFFSET = 20_001;
 
 async function syncBlockingRules(apiBase: string): Promise<void> {
-  try {
-    const resp = await fetch(`${apiBase}/api/website-blocker`);
-    if (!resp.ok) {
-      return;
-    }
-    const data = (await resp.json()) as {
-      active?: boolean;
-      blockedWebsites?: string[];
-      allowedWebsites?: string[];
-      websites?: string[];
-    };
-
-    const existingRules = await getDynamicRules();
-    const blockingRuleIds = existingRules
-      .filter(
-        (rule) =>
-          rule.id >= BLOCKING_RULE_ID_OFFSET &&
-          rule.id < BLOCKING_RULE_ID_OFFSET + 5_000,
-      )
-      .map((rule) => rule.id);
-    const allowRuleIds = existingRules
-      .filter(
-        (rule) =>
-          rule.id >= ALLOWLIST_RULE_ID_OFFSET &&
-          rule.id < ALLOWLIST_RULE_ID_OFFSET + 5_000,
-      )
-      .map((rule) => rule.id);
-
-    if (
-      !data.active ||
-      !Array.isArray(data.blockedWebsites ?? data.websites) ||
-      (data.blockedWebsites ?? data.websites)?.length === 0
-    ) {
-      const ruleIdsToRemove = [...blockingRuleIds, ...allowRuleIds];
-      if (ruleIdsToRemove.length > 0) {
-        await updateDynamicRules({ removeRuleIds: ruleIdsToRemove });
-      }
-      return;
-    }
-
-    const extensionBlockedPage = getExtensionUrl("blocked.html");
-    const blockedWebsites = (data.blockedWebsites ?? data.websites ?? []).filter(
-      (website): website is string => typeof website === "string",
+  const resp = await fetch(`${apiBase}/api/website-blocker`);
+  if (!resp.ok) {
+    throw new Error(
+      `website blocker sync failed: ${resp.status} ${resp.statusText}`,
     );
-    const allowedWebsites = (data.allowedWebsites ?? []).filter(
-      (website): website is string => typeof website === "string",
-    );
-    const blockedRules = blockedWebsites.map((host, index) => ({
-      id: BLOCKING_RULE_ID_OFFSET + index,
-      priority: 1,
-      action: {
-        type: "redirect" as const,
-        redirect: {
-          url: `${extensionBlockedPage}?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
-        },
-      },
-      condition: {
-        urlFilter: `||${host}^`,
-        resourceTypes: ["main_frame" as const],
-      },
-    }));
-    const allowRules = allowedWebsites.map((host, index) => ({
-      id: ALLOWLIST_RULE_ID_OFFSET + index,
-      priority: 2,
-      action: {
-        type: "allow" as const,
-      },
-      condition: {
-        urlFilter: `||${host}^`,
-        resourceTypes: ["main_frame" as const],
-      },
-    }));
-
-    await updateDynamicRules({
-      removeRuleIds: [...blockingRuleIds, ...allowRuleIds],
-      addRules: [...allowRules, ...blockedRules],
-    });
-  } catch (err) {
-    console.warn("[lifeops-browser] Failed to sync blocking rules:", err);
   }
+  const data = (await resp.json()) as {
+    active?: boolean;
+    blockedWebsites?: string[];
+    allowedWebsites?: string[];
+    websites?: string[];
+  };
+
+  const existingRules = await getDynamicRules();
+  const blockingRuleIds = existingRules
+    .filter(
+      (rule) =>
+        rule.id >= BLOCKING_RULE_ID_OFFSET &&
+        rule.id < BLOCKING_RULE_ID_OFFSET + 5_000,
+    )
+    .map((rule) => rule.id);
+  const allowRuleIds = existingRules
+    .filter(
+      (rule) =>
+        rule.id >= ALLOWLIST_RULE_ID_OFFSET &&
+        rule.id < ALLOWLIST_RULE_ID_OFFSET + 5_000,
+    )
+    .map((rule) => rule.id);
+
+  if (
+    !data.active ||
+    !Array.isArray(data.blockedWebsites ?? data.websites) ||
+    (data.blockedWebsites ?? data.websites)?.length === 0
+  ) {
+    const ruleIdsToRemove = [...blockingRuleIds, ...allowRuleIds];
+    if (ruleIdsToRemove.length > 0) {
+      await updateDynamicRules({ removeRuleIds: ruleIdsToRemove });
+    }
+    return;
+  }
+
+  const extensionBlockedPage = getExtensionUrl("blocked.html");
+  const blockedWebsites = (data.blockedWebsites ?? data.websites ?? []).filter(
+    (website): website is string => typeof website === "string",
+  );
+  const allowedWebsites = (data.allowedWebsites ?? []).filter(
+    (website): website is string => typeof website === "string",
+  );
+  const blockedRules = blockedWebsites.map((host, index) => ({
+    id: BLOCKING_RULE_ID_OFFSET + index,
+    priority: 1,
+    action: {
+      type: "redirect" as const,
+      redirect: {
+        url: `${extensionBlockedPage}?host=${encodeURIComponent(host)}&url=${encodeURIComponent(`https://${host}`)}&api=${encodeURIComponent(apiBase)}`,
+      },
+    },
+    condition: {
+      urlFilter: `||${host}^`,
+      resourceTypes: ["main_frame" as const],
+    },
+  }));
+  const allowRules = allowedWebsites.map((host, index) => ({
+    id: ALLOWLIST_RULE_ID_OFFSET + index,
+    priority: 2,
+    action: {
+      type: "allow" as const,
+    },
+    condition: {
+      urlFilter: `||${host}^`,
+      resourceTypes: ["main_frame" as const],
+    },
+  }));
+
+  await updateDynamicRules({
+    removeRuleIds: [...blockingRuleIds, ...allowRuleIds],
+    addRules: [...allowRules, ...blockedRules],
+  });
 }
 
 async function syncNow(reason: string): Promise<BackgroundState> {
@@ -884,9 +919,20 @@ async function syncNow(reason: string): Promise<BackgroundState> {
       rememberedTabCount: response.tabs.length,
     });
     if (response.session) {
-      void executeSession(client, response.session);
+      void executeSession(client, response.session).catch((error) => {
+        void setState({
+          lastError: `session execution failed: ${error instanceof Error ? error.message : String(error)}`,
+          lastSessionStatus: `failed ${response.session?.title ?? "browser session"}`,
+        }).catch(() => undefined);
+      });
     }
-    void syncBlockingRules(config.apiBaseUrl);
+    try {
+      await syncBlockingRules(config.apiBaseUrl);
+    } catch (error) {
+      await setState({
+        lastError: `website blocker sync failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   } catch (error) {
     const isPairingInvalid =
       error instanceof RelayApiError && error.status === 401;
@@ -942,6 +988,13 @@ async function handlePopupMessage(
         return { ok: true, state: backgroundState };
       }
       case "lifeops-browser:save-config": {
+        if (
+          typeof message.config?.apiBaseUrl === "string" &&
+          message.config.apiBaseUrl.trim().length > 0 &&
+          !isValidApiBaseUrl(message.config.apiBaseUrl)
+        ) {
+          throw new Error("apiBaseUrl must be an http:// or https:// URL");
+        }
         const nextConfig = normalizeCompanionConfig({
           ...(await readConfig()),
           ...(message.config ?? {}),

@@ -53,26 +53,6 @@ export async function executeLifeOpsSchedulerTask(
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["workflowRuns"];
 }> {
-  // Real dispatch runs unconditionally via `processScheduledWork` below.
-  //
-  // NOTE: This method previously also called `planJob(runtime, {
-  //   jobKind: "meeting_reminder", snapshot: { now, scheduler } })` per tick
-  // as "WS5 routing through the shared LLM planner". That call was a LARP:
-  //   - `jobKind` was hardcoded to "meeting_reminder" regardless of context.
-  //   - The snapshot carried only `{ now, scheduler }` — no pending
-  //     occurrences, no calendar events, no overdue follow-ups.
-  //   - The planner's returned `plan` was never used by
-  //     `processScheduledWork`; the enqueue-if-sensitive path only ran when
-  //     the LLM happened to return a sensitive action, which it couldn't
-  //     meaningfully do given the empty snapshot.
-  //   - Net effect: wasted LLM tokens per minute, zero influence on
-  //     dispatch.
-  //
-  // When this scheduler wants real planner integration, the caller must
-  // first build a populated `BackgroundJobContext.snapshot` with the
-  // relevant state, and the plan must actually gate dispatch. Until that
-  // happens, do NOT reintroduce the empty-snapshot call here — that would
-  // just regress this fix.
   const now = resolveSchedulerNowIso(options);
 
   const service = new LifeOpsService(runtime);
@@ -100,11 +80,11 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
         return state.enabled;
       } catch (error) {
         logger.warn(
-          `[lifeops-scheduler] loadLifeOpsAppState failed; defaulting shouldRun=true (scheduler runs even though LifeOps toggle state is unknown): ${
+          `[lifeops-scheduler] loadLifeOpsAppState failed; skipping scheduler tick because LifeOps toggle state is unknown: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        return true;
+        return false;
       }
     },
     execute: async (rt, options) =>

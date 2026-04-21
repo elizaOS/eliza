@@ -20,21 +20,21 @@ export function NftGrid({
 
   if (walletNftsLoading) {
     return (
-      <div className="flex min-h-[24rem] flex-1 items-center justify-center px-6 text-center text-sm text-muted">
+      <div className="flex min-h-[14rem] flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted">
         {t("wallet.loadingNfts")}
       </div>
     );
   }
   if (!walletNfts) {
     return (
-      <div className="flex min-h-[24rem] flex-1 items-center justify-center px-6 text-center text-sm text-muted">
+      <div className="flex min-h-[14rem] flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted">
         {t("wallet.noNftData")}
       </div>
     );
   }
   if (allNfts.length === 0) {
     return (
-      <div className="flex min-h-[24rem] flex-1 items-center justify-center px-6 text-center text-sm text-muted">
+      <div className="flex min-h-[14rem] flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted">
         {t("wallet.noNftsFound")}
       </div>
     );

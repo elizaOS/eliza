@@ -1,5 +1,5 @@
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import type { IAgentRuntime, Task } from "@elizaos/core";
+import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -79,9 +79,9 @@ function isLifeOpsSchedulerTask(task: Task): boolean {
 }
 
 function buildFallbackSchedulerMetadata(
-  agentId: string,
+  agentId: UUID,
 ): Record<string, unknown> {
-  const intervalMs = resolveLifeOpsTaskIntervalMs(agentId as never);
+  const intervalMs = resolveLifeOpsTaskIntervalMs(agentId);
   return {
     updateInterval: intervalMs,
     baseInterval: intervalMs,

@@ -90,11 +90,11 @@ describe("enforcement-windows", () => {
       expect(result.kind).toBe("none");
     });
 
-    it("falls back to UTC when timezone is invalid", () => {
-      // UTC 07:00 should match the default morning window under the fallback.
+    it("throws when timezone is invalid", () => {
       const now = new Date(Date.UTC(2025, 0, 15, 7, 0));
-      const result = getCurrentEnforcementWindow(now, "Not/A_Real_Zone");
-      expect(result.kind).toBe("morning");
+      expect(() => getCurrentEnforcementWindow(now, "Not/A_Real_Zone")).toThrow(
+        RangeError,
+      );
     });
 
     it("uses provided windows when supplied", () => {

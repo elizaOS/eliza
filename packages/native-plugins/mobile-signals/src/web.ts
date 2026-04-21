@@ -24,8 +24,6 @@ interface BatteryLike {
 const SCREEN_TIME_REQUIREMENTS = {
   entitlements: {
     familyControls: "com.apple.developer.family-controls",
-    appAndWebsiteUsage:
-      "com.apple.developer.family-controls.app-and-website-usage",
   },
   frameworks: ["FamilyControls", "DeviceActivity"],
   deviceActivityReportExtension: false,
@@ -54,7 +52,6 @@ function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
     requirements: SCREEN_TIME_REQUIREMENTS,
     entitlements: {
       familyControls: false,
-      appAndWebsiteUsage: false,
     },
     provisioning: {
       satisfied: false,

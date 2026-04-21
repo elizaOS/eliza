@@ -16,4 +16,5 @@ export { evaluatorsProvider } from "./evaluators.ts";
 export { providersProvider } from "./providers.ts";
 export { recentMessagesProvider } from "./recentMessages.ts";
 export { timeProvider } from "./time.ts";
+export { uiContextProvider } from "./uiContext.ts";
 export { worldProvider } from "./world.ts";

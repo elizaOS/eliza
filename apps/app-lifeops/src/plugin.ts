@@ -31,7 +31,6 @@ import {
 } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { chatThreadControlAction } from "./actions/chat-thread-control.js";
-// T9f — Morning/night check-in engine (plan §6.23).
 import {
   runMorningCheckinAction,
   runNightCheckinAction,
@@ -47,7 +46,6 @@ import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";
-// LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
 import { ownerCalendarAction } from "./actions/owner-calendar.js";
 import { ownerInboxAction } from "./actions/owner-inbox.js";
 import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
@@ -89,7 +87,6 @@ import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { LifeOpsBrowserPluginService } from "./service.ts";
-// T7g — Website blocker chat integration (plan §6.8).
 import {
   blockUntilTaskCompleteAction,
   listActiveBlocksAction,
@@ -98,7 +95,6 @@ import {
 } from "./website-blocker/chat-integration/index.js";
 
 import { screenTimeAction } from "./actions/screen-time.js";
-// T8d — Activity tracker (plan §6.12).
 import {
   getActivityReportAction,
   getTimeOnAppAction,
@@ -119,24 +115,14 @@ import {
   updateMeetingPreferencesAction,
 } from "./actions/scheduling.js";
 
-// T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
-// T8a — travel-time awareness (plan §6.9).
 import { computeTravelBufferAction } from "./travel-time/action.js";
 
-// T8e — browser extension bridge actions (plan §6.13).
 import {
   fetchBrowserActivityAction,
   registerBrowserSessionAction,
 } from "./actions/browser-extension.js";
 
-// LifeOps core providers
-
-// LifeOps runtime (scheduler task worker + registration)
-
-// Activity-profile (proactive agent: GM/GN/nudges)
-
-// Follow-up tracker (T7c — plan §6.4)
 import {
   FOLLOWUP_TRACKER_TASK_NAME,
   listOverdueFollowupsAction,
@@ -230,11 +216,6 @@ async function recordTaskInitFailure(
  * subsystem reports as "unavailable". The failure is surfaced via the
  * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
  * via logger.error so ops tooling can alert on it.
- *
- * Prior docs in REMEDIATION_LOG.md item #8 stated that this path should
- * "abort init after bounded retries" — that claim is NOT currently enforced
- * because aborting here would orphan an already-loaded plugin. Do not read
- * REMEDIATION_LOG #8 as a live contract; read this comment instead.
  */
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
@@ -273,6 +254,7 @@ const rawAppLifeOpsPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions: [
     manageLifeOpsBrowserAction,
+    ownerWebsiteBlockAction,
     blockWebsitesAction,
     getWebsiteBlockStatusAction,
     requestWebsiteBlockingPermissionAction,
@@ -280,12 +262,16 @@ const rawAppLifeOpsPlugin: Plugin = {
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
     releaseBlockAction,
+    ownerAppBlockAction,
     blockAppsAction,
     unblockAppsAction,
     getAppBlockStatusAction,
+    ownerCalendarAction,
     calendarAction,
     gmailAction,
+    ownerInboxAction,
     xReadAction,
+    scheduleXDmReplyAction,
     inboxAction,
     approveRequestAction,
     rejectRequestAction,
@@ -295,6 +281,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     runMorningCheckinAction,
     runNightCheckinAction,
     relationshipAction,
+    ownerScreenTimeAction,
     screenTimeAction,
     getActivityReportAction,
     getTimeOnAppAction,
@@ -302,10 +289,12 @@ const rawAppLifeOpsPlugin: Plugin = {
     twilioCallAction,
     callUserAction,
     callExternalAction,
+    ownerRemoteDesktopAction,
     remoteDesktopAction,
     revokeRemoteSessionAction,
     listRemoteSessionsAction,
     lifeOpsComputerUseAction,
+    ownerScheduleAction,
     crossChannelSendAction,
     searchAcrossChannelsAction,
     publishDeviceIntentAction,
@@ -327,6 +316,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     computeTravelBufferAction,
     healthAction,
     subscriptionsAction,
+    emailUnsubscribeAction,
+    chatThreadControlAction,
     registerBrowserSessionAction,
     fetchBrowserActivityAction,
   ],
@@ -361,7 +352,7 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
-    // Register the proactive agent (activity-profile: GM/GN/nudges)
+    // Register the proactive activity-profile task worker.
     const proactiveAgentDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_PROACTIVE_AGENT",
       "ENABLE_PROACTIVE_AGENT",
@@ -382,11 +373,9 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
-    // Register the follow-up tracker worker (T7c). computeOverdueFollowups
-    // degrades gracefully when RelationshipsService isn't registered.
+    // Register the follow-up tracker worker.
     registerFollowupTrackerWorker(runtime);
 
-    // T7g — Register the website blocker chat integration reconciler.
     registerBlockRuleReconcilerWorker(runtime);
 
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
@@ -471,7 +460,6 @@ export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export const lifeOpsBrowserPlugin = appLifeOpsPlugin;
 
-// T9f — Morning/night check-in engine (plan §6.23).
 export {
   runMorningCheckinAction,
   runNightCheckinAction,
@@ -498,7 +486,6 @@ export type {
   OverdueDigest,
   OverdueFollowup,
 } from "./followup/index.js";
-// Follow-up tracker (T7c)
 export {
   computeOverdueFollowups,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
