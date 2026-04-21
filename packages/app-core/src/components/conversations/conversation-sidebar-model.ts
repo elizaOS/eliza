@@ -4,8 +4,7 @@ import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import type { TranslateFn } from "../../types";
 import { getChatSourceMeta } from "@elizaos/ui";
-import type * as React from "react";
-import type { Conversation } from "../../api/client-types-chat";
+
 import {
   formatRelativeTime,
   getLocalizedConversationTitle,

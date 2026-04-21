@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import fs from "node:fs";
-import { createServer, type Server } from "node:http";
+
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";

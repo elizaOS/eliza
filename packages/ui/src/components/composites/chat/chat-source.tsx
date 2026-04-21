@@ -61,14 +61,6 @@ export function renderChatReactionEmoji(emoji: string): React.ReactNode | null {
   return chatReactionEmojiRenderer?.(emoji) ?? null;
 }
 
-export function registerChatSourceMetaEntries(
-  entries: Record<string, ChatSourceMeta>,
-): void {
-  for (const [source, meta] of Object.entries(entries)) {
-    SOURCE_META[source.trim().toLowerCase()] = meta;
-  }
-}
-
 function toTitleCase(source: string): string {
   return source
     .trim()

@@ -38,7 +38,6 @@ export interface DesktopActionParams {
   /** Text to type (for "type" action) */
   text?: string;
   key?: string;
-  modifiers?: string[];
   hold_keys?: string[];
   button?: "left" | "middle" | "right";
   clicks?: number;
@@ -132,14 +131,6 @@ export interface WindowActionParams {
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
-
-export type PermissionType = "accessibility" | "screen-recording";
-
-export type ApprovalMode =
-  | "full_control"
-  | "smart_approve"
-  | "approve_all"
-  | "off";
 
 export interface ComputerUseResult {
   success: boolean;
@@ -237,71 +228,12 @@ export interface TerminalActionResult extends ComputerUseResult {
   exitCode?: number;
 }
 
-export interface ComputerActionResult extends BaseActionResult {
-  screenshot?: string;
-  data?: unknown;
-}
-
-export interface BrowserActionResult extends BaseActionResult {
-  screenshot?: string;
-  frontendScreenshot?: string;
-  content?: string;
-  data?: unknown;
-  url?: string;
-  title?: string;
-  isOpen?: boolean;
-  is_open?: boolean;
-  tabs?: BrowserTab[];
-  elements?: ClickableElement[];
-  count?: number;
-}
-
-export interface WindowActionResult extends BaseActionResult {
-  windows?: WindowInfo[];
-  count?: number;
-}
-
-export interface FileActionResult extends BaseActionResult {
-  path?: string;
-  content?: string;
-  exists?: boolean;
-  isFile?: boolean;
-  isDirectory?: boolean;
-  is_file?: boolean;
-  is_directory?: boolean;
-  size?: number;
-  items?: FileEntry[];
-  count?: number;
-}
-
-export interface TerminalActionResult extends BaseActionResult {
-  output?: string;
-  exitCode?: number;
-  exit_code?: number;
-  sessionId?: string;
-  session_id?: string;
-  cwd?: string;
-}
-
-export type ComputerUseResult =
-  | ComputerActionResult
-  | BrowserActionResult
-  | WindowActionResult
-  | FileActionResult
-  | TerminalActionResult;
-
 // ── Shared Models ─────────────────────────────────────────────────────────
 
 export interface WindowInfo {
   id: string;
   title: string;
   app: string;
-}
-
-export interface FileEntry {
-  name: string;
-  type: "file" | "directory";
-  path: string;
 }
 
 export interface ScreenRegion {
@@ -376,30 +308,7 @@ export interface ComputerUseConfig {
   maxRecentActions: number;
   /** Approval mode for side-effecting commands */
   approvalMode: ApprovalMode;
-}
-
-export interface ApprovalSnapshot {
-  mode: ApprovalMode;
-  pendingCount: number;
-  pendingApprovals: PendingApproval[];
-}
-
-export interface ApprovalResolution {
-  id: string;
-  command: string;
-  approved: boolean;
-  cancelled: boolean;
-  mode: ApprovalMode;
-  requestedAt: string;
-  resolvedAt: string;
-  reason?: string;
-}
-
-export interface ComputerUseConfig {
-  screenshotAfterAction: boolean;
-  actionTimeoutMs: number;
-  maxRecentActions: number;
-  approvalMode: ApprovalMode;
+  /** Launch puppeteer-core in headless mode (default: false) */
   browserHeadless?: boolean;
 }
 
@@ -415,9 +324,6 @@ export interface BrowserState {
 export interface BrowserInfo extends BrowserState {
   success: boolean;
   error?: string;
-}
-
-export interface BrowserInfo extends BrowserState {
   userAgent?: string;
   viewport?: { width: number; height: number } | null;
   tabs?: number;

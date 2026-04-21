@@ -15,7 +15,6 @@ import {
 } from "../../config";
 import { useApp } from "../../state";
 import type { ConfigUiHint, TranslateFn as AppTranslateFn } from "../../types";
-import { Button, Switch } from "@elizaos/ui";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

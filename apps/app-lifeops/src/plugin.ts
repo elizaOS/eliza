@@ -1,6 +1,26 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { manageLifeOpsBrowserAction } from "./action.ts";
 import {
+  blockAppsAction,
+  getAppBlockStatusAction,
+  unblockAppsAction,
+} from "./actions/app-blocker.js";
+import { calendarAction } from "./actions/calendar.js";
+import { gmailAction } from "./actions/gmail.js";
+import { inboxAction } from "./actions/inbox.js";
+import {
+  blockWebsitesAction,
+  getWebsiteBlockStatusAction,
+  requestWebsiteBlockingPermissionAction,
+  unblockWebsitesAction,
+} from "./actions/website-blocker.js";
+import {
+  getSelfControlStatus,
+  type SelfControlPluginConfig,
+  setSelfControlPluginConfig,
+} from "./website-blocker/engine.js";
+import { WebsiteBlockerService } from "./website-blocker/service.js";
+import {
   approveRequestAction,
   rejectRequestAction,
 } from "./actions/approval.js";
@@ -51,11 +71,6 @@ import {
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
-// Follow-up tracker (T7c — plan §6.4)
-import {
-  FOLLOWUP_TRACKER_TASK_NAME,
-  registerFollowupTrackerWorker,
-} from "./followup/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -81,11 +96,7 @@ import {
   registerBlockRuleReconcilerWorker,
   releaseBlockAction,
 } from "./website-blocker/chat-integration/index.js";
-import {
-  runMorningCheckinAction,
-  runNightCheckinAction,
-} from "./actions/checkin.js";
-import { relationshipAction } from "./actions/relationships.js";
+
 import { screenTimeAction } from "./actions/screen-time.js";
 // T8d — Activity tracker (plan §6.12).
 import {
@@ -93,26 +104,13 @@ import {
   getTimeOnAppAction,
   getTimeOnSiteAction,
 } from "./actions/activity-report.js";
-import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
-import {
-  callExternalAction,
-  callUserAction,
-  twilioCallAction,
-} from "./actions/twilio-call.js";
+
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
 import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
-import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
-import { crossChannelSendAction } from "./actions/cross-channel-send.js";
+
 import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
-import { intentSyncAction } from "./actions/intent-sync.js";
-import { publishDeviceIntentAction } from "./actions/device-bus.js";
-import { passwordManagerAction } from "./actions/password-manager.js";
-import {
-  addAutofillWhitelistAction,
-  listAutofillWhitelistAction,
-  requestFieldFillAction,
-} from "./actions/autofill.js";
+
 import { calendlyAction } from "./actions/calendly.js";
 import {
   checkAvailabilityAction,
@@ -120,13 +118,12 @@ import {
   schedulingAction,
   updateMeetingPreferencesAction,
 } from "./actions/scheduling.js";
-import { dossierAction } from "./actions/dossier.js";
+
 // T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
 // T8a — travel-time awareness (plan §6.9).
 import { computeTravelBufferAction } from "./travel-time/action.js";
-import { healthAction } from "./actions/health.js";
-import { subscriptionsAction } from "./actions/subscriptions.js";
+
 // T8e — browser extension bridge actions (plan §6.13).
 import {
   fetchBrowserActivityAction,
@@ -134,24 +131,10 @@ import {
 } from "./actions/browser-extension.js";
 
 // LifeOps core providers
-import { inboxTriageProvider } from "./providers/inbox-triage.js";
-import { lifeOpsProvider } from "./providers/lifeops.js";
-import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps runtime (scheduler task worker + registration)
-import {
-  ensureLifeOpsSchedulerTask,
-  LIFEOPS_TASK_NAME,
-  registerLifeOpsTaskWorker,
-} from "./lifeops/runtime.js";
 
 // Activity-profile (proactive agent: GM/GN/nudges)
-import { activityProfileProvider } from "./providers/activity-profile.js";
-import {
-  ensureProactiveAgentTask,
-  PROACTIVE_TASK_NAME,
-  registerProactiveTaskWorker,
-} from "./activity-profile/proactive-worker.js";
 
 // Follow-up tracker (T7c — plan §6.4)
 import {

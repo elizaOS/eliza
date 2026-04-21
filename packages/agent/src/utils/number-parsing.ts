@@ -27,52 +27,10 @@ export function parseClampedInteger(
   value: string | null | undefined,
   options: ParseClampedIntegerOptions & { fallback: number },
 ): number;
-export function parseClampedInteger(
-  value: string | null | undefined,
-  options?: ParseClampedIntegerOptions,
-): number | undefined;
-export function parseClampedInteger(
-  value: string | null | undefined,
-  options: ParseClampedIntegerOptions = {},
-): number | undefined {
-  const raw = sanitizeNumericText(value);
-  if (!raw) return normalizeFallback(options.fallback);
-
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
-
-  const min = options.min;
-  if (min !== undefined && parsed < min) return min;
-
-  const max = options.max;
-  if (max !== undefined && parsed > max) return max;
-
-  return parsed;
-}
-
 export function parsePositiveInteger(
   value: string | null | undefined,
   fallback: number,
 ): number;
-export function parsePositiveInteger(
-  value: string | null | undefined,
-  fallback?: number,
-): number | undefined;
-export function parsePositiveInteger(
-  value: string | null | undefined,
-  fallback?: number,
-): number | undefined {
-  const raw = sanitizeNumericText(value);
-  if (!raw) return normalizeFallback(fallback);
-
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return normalizeFallback(fallback);
-  }
-
-  return Math.max(1, Math.floor(parsed));
-}
-
 export function parsePositiveFloat(
   value: string | null | undefined,
   options?: ParsePositiveNumberOptions,
@@ -92,21 +50,3 @@ export function parseClampedFloat(
   value: string | null | undefined,
   options: ParseClampedNumberOptions & { fallback: number },
 ): number;
-export function parseClampedFloat(
-  value: string | null | undefined,
-  options?: ParseClampedNumberOptions,
-): number | undefined;
-export function parseClampedFloat(
-  value: string | null | undefined,
-  options: ParseClampedNumberOptions = {},
-): number | undefined {
-  const raw = sanitizeNumericText(value);
-  if (!raw) return normalizeFallback(options.fallback);
-
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
-
-  const min = options.min ?? -Infinity;
-  const max = options.max ?? Infinity;
-  return Math.max(min, Math.min(max, parsed));
-}

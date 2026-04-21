@@ -7,13 +7,7 @@ import {
 } from "@elizaos/ui";
 
 import "../chat/chat-source-registration.js";
-import {
-  ChatPanelLayout,
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-} from "@elizaos/ui";
+
 import { memo } from "react";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state";
