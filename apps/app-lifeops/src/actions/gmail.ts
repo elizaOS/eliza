@@ -1097,6 +1097,26 @@ function normalizeGmailIntentPlan(
   };
 }
 
+function normalizeGmailPayloadPlan(
+  parsed: Record<string, unknown> | null,
+): GmailPayloadPlan {
+  if (!parsed) {
+    return { queries: [] };
+  }
+  return {
+    queries: dedupeQueries(extractPlannerQueries(parsed)),
+    messageId: normalizePlannerString(parsed.messageId),
+    replyNeededOnly: normalizeOptionalBoolean(parsed.replyNeededOnly),
+    confirmed: normalizeOptionalBoolean(parsed.confirmed),
+    holdForApproval: normalizeOptionalBoolean(parsed.holdForApproval),
+    to: normalizePlannerStringArray(parsed.to ?? parsed.recipients),
+    cc: normalizePlannerStringArray(parsed.cc),
+    bcc: normalizePlannerStringArray(parsed.bcc),
+    subject: normalizePlannerString(parsed.subject),
+    bodyText: normalizePlannerString(parsed.bodyText ?? parsed.body),
+  };
+}
+
 function shouldExtractGmailPayload(subaction: GmailSubaction): boolean {
   return subaction !== "triage" && subaction !== "send_batch_replies";
 }
