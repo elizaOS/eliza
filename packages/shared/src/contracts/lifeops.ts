@@ -1288,12 +1288,16 @@ export type LifeOpsRelativeTimeAnchorSource =
   | "day_boundary";
 
 export interface LifeOpsRelativeTime {
+  computedAt: string;
   localNowAt: string;
   phase: LifeOpsSchedulePhase;
   isProbablySleeping: boolean;
+  isAwake: boolean;
+  awakeState: "awake" | "probably_sleeping" | "unknown";
   wakeAnchorAt: string | null;
   wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null;
   minutesSinceWake: number | null;
+  minutesAwake: number | null;
   bedtimeTargetAt: string | null;
   bedtimeTargetSource: LifeOpsRelativeTimeAnchorSource | null;
   minutesUntilBedtimeTarget: number | null;
@@ -1344,6 +1348,54 @@ export interface LifeOpsScheduleInsight {
   nextMealWindowStartAt: string | null;
   nextMealWindowEndAt: string | null;
   nextMealConfidence: number;
+}
+
+export type LifeOpsCapabilityDomain =
+  | "core"
+  | "schedule"
+  | "reminders"
+  | "activity"
+  | "connectors"
+  | "profile";
+
+export type LifeOpsCapabilityState =
+  | "working"
+  | "degraded"
+  | "blocked"
+  | "not_configured";
+
+export interface LifeOpsCapabilityEvidence {
+  label: string;
+  state: LifeOpsCapabilityState;
+  detail: string | null;
+  observedAt: string | null;
+}
+
+export interface LifeOpsCapabilityStatus {
+  id: string;
+  domain: LifeOpsCapabilityDomain;
+  label: string;
+  state: LifeOpsCapabilityState;
+  summary: string;
+  confidence: number;
+  lastCheckedAt: string;
+  evidence: LifeOpsCapabilityEvidence[];
+}
+
+export interface LifeOpsCapabilitiesSummary {
+  totalCount: number;
+  workingCount: number;
+  degradedCount: number;
+  blockedCount: number;
+  notConfiguredCount: number;
+}
+
+export interface LifeOpsCapabilitiesStatus {
+  generatedAt: string;
+  appEnabled: boolean;
+  relativeTime: LifeOpsRelativeTime | null;
+  capabilities: LifeOpsCapabilityStatus[];
+  summary: LifeOpsCapabilitiesSummary;
 }
 
 export interface LifeOpsOverviewSection {
@@ -1734,10 +1786,10 @@ export interface LifeOpsXConnectorStatus {
   dmRead: boolean;
   dmWrite: boolean;
   /**
-   * DM inbound read is supported when `x.read` capability is granted.
+   * DM inbound read is supported when `x.dm.read` capability is granted.
    * Use `syncXDms()` to pull and persist, then `getXDms()` or
    * `readXInboundDms()` to retrieve.
-  */
+   */
   dmInbound: boolean;
   grant: LifeOpsConnectorGrant | null;
   degradations?: LifeOpsConnectorDegradation[];

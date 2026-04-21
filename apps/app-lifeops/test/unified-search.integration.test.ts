@@ -281,7 +281,7 @@ describe("unified-search WS1 integration", () => {
     };
     // Either the LLM returned shouldAct:false, or we have no LLM and the
     // handler falls back to the clarification path. In either case the
-    // response should be a no-op, not a fabricated result.
+    // response should be a successful no-op, not a fabricated result.
     expect(record.success).toBe(true);
     // data.noop should be true when the query was not derivable
     // (or when the LLM returned shouldAct=false / null query).

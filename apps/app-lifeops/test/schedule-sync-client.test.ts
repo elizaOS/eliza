@@ -12,12 +12,16 @@ const MERGED_STATE = {
   inferredAt: "2026-04-19T13:00:00.000Z",
   phase: "afternoon" as const,
   relativeTime: {
+    computedAt: "2026-04-19T13:00:00.000Z",
     localNowAt: "2026-04-19T13:00:00+00:00",
     phase: "afternoon" as const,
     isProbablySleeping: false,
+    isAwake: true,
+    awakeState: "awake" as const,
     wakeAnchorAt: "2026-04-19T07:30:00.000Z",
     wakeAnchorSource: "sleep_cycle" as const,
     minutesSinceWake: 330,
+    minutesAwake: 330,
     bedtimeTargetAt: "2026-04-19T23:30:00.000Z",
     bedtimeTargetSource: "typical_sleep" as const,
     minutesUntilBedtimeTarget: 630,
@@ -60,8 +64,9 @@ describe("LifeOpsScheduleSyncClient", () => {
 
   beforeEach(() => {
     requests.length = 0;
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
-      async (input, init) => {
+    fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
         requests.push({
           url: typeof input === "string" ? input : input.toString(),
           init,
@@ -76,8 +81,7 @@ describe("LifeOpsScheduleSyncClient", () => {
             headers: { "Content-Type": "application/json" },
           },
         );
-      },
-    );
+      });
   });
 
   afterEach(() => {
@@ -109,9 +113,9 @@ describe("LifeOpsScheduleSyncClient", () => {
     expect(requests[0]?.url).toBe(
       "https://agent.example.test/api/lifeops/schedule/observations",
     );
-    expect((requests[0]?.init?.headers as Record<string, string>)?.Authorization).toBe(
-      "Bearer remote-token",
-    );
+    expect(
+      (requests[0]?.init?.headers as Record<string, string>)?.Authorization,
+    ).toBe("Bearer remote-token");
     expect(requests[1]?.url).toBe(
       "https://agent.example.test/api/lifeops/schedule/merged-state?timezone=UTC&scope=cloud",
     );
@@ -142,8 +146,8 @@ describe("LifeOpsScheduleSyncClient", () => {
     expect(requests[0]?.url).toBe(
       "https://cloud.example.test/api/v1/milady/agents/agent-123/lifeops/schedule/observations",
     );
-    expect((requests[0]?.init?.headers as Record<string, string>)?.["X-API-Key"]).toBe(
-      "cloud-key",
-    );
+    expect(
+      (requests[0]?.init?.headers as Record<string, string>)?.["X-API-Key"],
+    ).toBe("cloud-key");
   });
 });

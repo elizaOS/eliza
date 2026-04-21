@@ -178,6 +178,16 @@ export function resolveLifeOpsRelativeTime(args: {
           : null;
   const startOfDayMs = Date.parse(dayBoundary.startOfDayAt);
   const endOfDayMs = Date.parse(dayBoundary.endOfDayAt);
+  const minutesSinceWake =
+    wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
+      ? minutesBetween(wakeAnchorMs, args.nowMs)
+      : null;
+  const awakeState = args.schedule.isProbablySleeping
+    ? "probably_sleeping"
+    : wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
+      ? "awake"
+      : "unknown";
+  const isAwake = awakeState === "awake";
   const minutesUntilBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs < args.nowMs
       ? null
@@ -187,18 +197,19 @@ export function resolveLifeOpsRelativeTime(args: {
       ? null
       : minutesBetween(bedtimeTargetMs, args.nowMs);
   return {
+    computedAt: new Date(args.nowMs).toISOString(),
     localNowAt: formatInstantAsRfc3339InTimeZone(
       new Date(args.nowMs),
       args.timezone,
     ),
     phase: args.schedule.phase,
     isProbablySleeping: args.schedule.isProbablySleeping,
+    isAwake,
+    awakeState,
     wakeAnchorAt,
     wakeAnchorSource,
-    minutesSinceWake:
-      wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
-        ? minutesBetween(wakeAnchorMs, args.nowMs)
-        : null,
+    minutesSinceWake,
+    minutesAwake: isAwake ? minutesSinceWake : null,
     bedtimeTargetAt:
       bedtimeTargetMs === null ? null : new Date(bedtimeTargetMs).toISOString(),
     bedtimeTargetSource,

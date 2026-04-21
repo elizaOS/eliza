@@ -3211,7 +3211,15 @@ export const lifeAction: Action & {
             : (deferredGoalDraft?.request.metadata ?? explicitMetadata);
         let evaluationSummary: string | null = null;
 
-        if (!deferredGoalDraft || editingDeferredGoalDraft) {
+        const hasExplicitGroundedGoal =
+          Boolean(title) &&
+          (createConfirmed ||
+            (Boolean(successCriteria) && Boolean(supportStrategy)));
+
+        if (
+          (!deferredGoalDraft || editingDeferredGoalDraft) &&
+          !hasExplicitGroundedGoal
+        ) {
           const llmPlan = await extractGoalCreatePlanWithLlm({
             runtime,
             intent,

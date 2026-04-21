@@ -1,19 +1,79 @@
-import { logger, type IAgentRuntime, type Plugin } from "@elizaos/core";
-import { lifeOpsSchema } from "./lifeops/schema.js";
-import { LifeOpsRepository } from "./lifeops/repository.js";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { manageLifeOpsBrowserAction } from "./action.ts";
-import { lifeOpsBrowserProvider } from "./provider.ts";
-import { LifeOpsBrowserPluginService } from "./service.ts";
-import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
-import { ownerAppBlockAction } from "./actions/owner-app-block.js";
-import { websiteBlockerProvider } from "./providers/website-blocker.js";
-import { appBlockerProvider } from "./providers/app-blocker.js";
 import {
-  type SelfControlPluginConfig,
-  getSelfControlStatus,
-  setSelfControlPluginConfig,
-} from "./website-blocker/engine.js";
-import { WebsiteBlockerService } from "./website-blocker/service.js";
+  approveRequestAction,
+  rejectRequestAction,
+} from "./actions/approval.js";
+import {
+  addAutofillWhitelistAction,
+  listAutofillWhitelistAction,
+  requestFieldFillAction,
+} from "./actions/autofill.js";
+import { bookTravelAction } from "./actions/book-travel.js";
+import { chatThreadControlAction } from "./actions/chat-thread-control.js";
+// T9f — Morning/night check-in engine (plan §6.23).
+import {
+  runMorningCheckinAction,
+  runNightCheckinAction,
+} from "./actions/checkin.js";
+import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
+import { crossChannelSendAction } from "./actions/cross-channel-send.js";
+import { crossPlatformGatewayAction } from "./actions/cross-platform-gateway.js";
+import { publishDeviceIntentAction } from "./actions/device-bus.js";
+import { dossierAction } from "./actions/dossier.js";
+import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
+import { toggleLifeOpsFeatureAction } from "./actions/feature-toggle.js";
+import { healthAction } from "./actions/health.js";
+import { intentSyncAction } from "./actions/intent-sync.js";
+import { lifeAction } from "./actions/life.js";
+import { ownerAppBlockAction } from "./actions/owner-app-block.js";
+// LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
+import { ownerCalendarAction } from "./actions/owner-calendar.js";
+import { ownerInboxAction } from "./actions/owner-inbox.js";
+import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
+import { ownerScheduleAction } from "./actions/owner-schedule.js";
+import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
+import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
+import { passwordManagerAction } from "./actions/password-manager.js";
+import { relationshipAction } from "./actions/relationships.js";
+import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
+import { subscriptionsAction } from "./actions/subscriptions.js";
+import {
+  callExternalAction,
+  callUserAction,
+  twilioCallAction,
+} from "./actions/twilio-call.js";
+import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
+import { xReadAction } from "./actions/x-read.js";
+import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
+import {
+  ensureProactiveAgentTask,
+  PROACTIVE_TASK_NAME,
+  registerProactiveTaskWorker,
+} from "./activity-profile/proactive-worker.js";
+// Follow-up tracker (T7c — plan §6.4)
+import {
+  FOLLOWUP_TRACKER_TASK_NAME,
+  registerFollowupTrackerWorker,
+} from "./followup/index.js";
+// LifeOps runtime (scheduler task worker + registration)
+import {
+  ensureLifeOpsSchedulerTask,
+  LIFEOPS_TASK_NAME,
+  registerLifeOpsTaskWorker,
+} from "./lifeops/runtime.js";
+import { lifeOpsSchema } from "./lifeops/schema.js";
+import { lifeOpsBrowserProvider } from "./provider.ts";
+// Activity-profile (proactive agent: GM/GN/nudges)
+import { activityProfileProvider } from "./providers/activity-profile.js";
+import { appBlockerProvider } from "./providers/app-blocker.js";
+import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
+
+// LifeOps core providers
+import { inboxTriageProvider } from "./providers/inbox-triage.js";
+import { lifeOpsProvider } from "./providers/lifeops.js";
+import { websiteBlockerProvider } from "./providers/website-blocker.js";
+import { LifeOpsBrowserPluginService } from "./service.ts";
 // T7g — Website blocker chat integration (plan §6.8).
 import {
   blockUntilTaskCompleteAction,
@@ -21,86 +81,12 @@ import {
   registerBlockRuleReconcilerWorker,
   releaseBlockAction,
 } from "./website-blocker/chat-integration/index.js";
-
-// LifeOps core actions (calendar, gmail, life/tasks, goals, inbox, owner profile)
-import { ownerCalendarAction } from "./actions/owner-calendar.js";
-import { ownerInboxAction } from "./actions/owner-inbox.js";
-import { ownerScheduleAction } from "./actions/owner-schedule.js";
-import { xReadAction } from "./actions/x-read.js";
-import { lifeAction } from "./actions/life.js";
-import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
-import { crossPlatformGatewayAction } from "./actions/cross-platform-gateway.js";
-import { chatThreadControlAction } from "./actions/chat-thread-control.js";
-import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
-// T9f — Morning/night check-in engine (plan §6.23).
 import {
-  runMorningCheckinAction,
-  runNightCheckinAction,
-} from "./actions/checkin.js";
-import { relationshipAction } from "./actions/relationships.js";
-import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
-import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
-import {
-  callExternalAction,
-  callUserAction,
-  twilioCallAction,
-} from "./actions/twilio-call.js";
-import { ownerRemoteDesktopAction } from "./actions/owner-remote-desktop.js";
-import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
-import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { intentSyncAction } from "./actions/intent-sync.js";
-import { publishDeviceIntentAction } from "./actions/device-bus.js";
-import { passwordManagerAction } from "./actions/password-manager.js";
-import {
-  addAutofillWhitelistAction,
-  listAutofillWhitelistAction,
-  requestFieldFillAction,
-} from "./actions/autofill.js";
-import { dossierAction } from "./actions/dossier.js";
-import { bookTravelAction } from "./actions/book-travel.js";
-import { toggleLifeOpsFeatureAction } from "./actions/feature-toggle.js";
-// T7f — meeting dossier (plan §6.7).
-import { generateDossierAction } from "./dossier/action.js";
-// T8a — travel-time awareness (plan §6.9).
-import { computeTravelBufferAction } from "./travel-time/action.js";
-import { healthAction } from "./actions/health.js";
-import { subscriptionsAction } from "./actions/subscriptions.js";
-import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
-// T8e — browser extension bridge actions (plan §6.13).
-import {
-  fetchBrowserActivityAction,
-  registerBrowserSessionAction,
-} from "./actions/browser-extension.js";
-import {
-  approveRequestAction,
-  rejectRequestAction,
-} from "./actions/approval.js";
-
-// LifeOps core providers
-import { inboxTriageProvider } from "./providers/inbox-triage.js";
-import { lifeOpsProvider } from "./providers/lifeops.js";
-import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
-
-// LifeOps runtime (scheduler task worker + registration)
-import {
-  ensureLifeOpsSchedulerTask,
-  LIFEOPS_TASK_NAME,
-  registerLifeOpsTaskWorker,
-} from "./lifeops/runtime.js";
-
-// Activity-profile (proactive agent: GM/GN/nudges)
-import { activityProfileProvider } from "./providers/activity-profile.js";
-import {
-  ensureProactiveAgentTask,
-  PROACTIVE_TASK_NAME,
-  registerProactiveTaskWorker,
-} from "./activity-profile/proactive-worker.js";
-
-// Follow-up tracker (T7c — plan §6.4)
-import {
-  FOLLOWUP_TRACKER_TASK_NAME,
-  registerFollowupTrackerWorker,
-} from "./followup/index.js";
+  getSelfControlStatus,
+  type SelfControlPluginConfig,
+  setSelfControlPluginConfig,
+} from "./website-blocker/engine.js";
+import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -210,47 +196,49 @@ const rawAppLifeOpsPlugin: Plugin = {
   description:
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   schema: lifeOpsSchema,
-  actions: [
-    manageLifeOpsBrowserAction,
-    ownerWebsiteBlockAction,
-    blockUntilTaskCompleteAction,
-    listActiveBlocksAction,
-    releaseBlockAction,
-    ownerAppBlockAction,
-    ownerCalendarAction,
-    ownerInboxAction,
-    ownerScheduleAction,
-    xReadAction,
-    scheduleXDmReplyAction,
-    lifeAction,
-    updateOwnerProfileAction,
-    crossPlatformGatewayAction,
-    chatThreadControlAction,
-    runMorningCheckinAction,
-    runNightCheckinAction,
-    relationshipAction,
-    ownerScreenTimeAction,
-    twilioCallAction,
-    callUserAction,
-    callExternalAction,
-    ownerRemoteDesktopAction,
-    lifeOpsComputerUseAction,
-    crossChannelSendAction,
-    bookTravelAction,
-    toggleLifeOpsFeatureAction,
-    publishDeviceIntentAction,
-    intentSyncAction,
-    approveRequestAction,
-    rejectRequestAction,
-    passwordManagerAction,
-    requestFieldFillAction,
-    addAutofillWhitelistAction,
-    listAutofillWhitelistAction,
-    dossierAction,
-    healthAction,
-    subscriptionsAction,
-    emailUnsubscribeAction,
-  ],
+  get actions() {
+    return [
+      manageLifeOpsBrowserAction,
+      ownerWebsiteBlockAction,
+      blockUntilTaskCompleteAction,
+      listActiveBlocksAction,
+      releaseBlockAction,
+      ownerAppBlockAction,
+      ownerCalendarAction,
+      ownerInboxAction,
+      ownerScheduleAction,
+      xReadAction,
+      scheduleXDmReplyAction,
+      lifeAction,
+      updateOwnerProfileAction,
+      crossPlatformGatewayAction,
+      chatThreadControlAction,
+      runMorningCheckinAction,
+      runNightCheckinAction,
+      relationshipAction,
+      ownerScreenTimeAction,
+      twilioCallAction,
+      callUserAction,
+      callExternalAction,
+      ownerRemoteDesktopAction,
+      lifeOpsComputerUseAction,
+      crossChannelSendAction,
+      bookTravelAction,
+      toggleLifeOpsFeatureAction,
+      publishDeviceIntentAction,
+      intentSyncAction,
+      approveRequestAction,
+      rejectRequestAction,
+      passwordManagerAction,
+      requestFieldFillAction,
+      addAutofillWhitelistAction,
+      listAutofillWhitelistAction,
+      dossierAction,
+      healthAction,
+      subscriptionsAction,
+      emailUnsubscribeAction,
+    ];
+  },
   providers: [
     lifeOpsBrowserProvider,
     websiteBlockerProvider,
@@ -392,27 +380,52 @@ export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export const lifeOpsBrowserPlugin = appLifeOpsPlugin;
 
-export {
-  LifeOpsBrowserPluginService,
-  lifeOpsBrowserProvider,
-  manageLifeOpsBrowserAction,
-};
-
-// LifeOps core exports
-export { ownerCalendarAction } from "./actions/owner-calendar.js";
-export { ownerInboxAction } from "./actions/owner-inbox.js";
-export { ownerScheduleAction } from "./actions/owner-schedule.js";
-export { lifeAction } from "./actions/life.js";
-export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
-export { inboxTriageProvider } from "./providers/inbox-triage.js";
-export { lifeOpsProvider } from "./providers/lifeops.js";
-
 // T9f — Morning/night check-in engine (plan §6.23).
 export {
   runMorningCheckinAction,
   runNightCheckinAction,
 } from "./actions/checkin.js";
+export { lifeAction } from "./actions/life.js";
+// App blocker exports
+export { ownerAppBlockAction } from "./actions/owner-app-block.js";
+// LifeOps core exports
+export { ownerCalendarAction } from "./actions/owner-calendar.js";
+export { ownerInboxAction } from "./actions/owner-inbox.js";
+export { ownerScheduleAction } from "./actions/owner-schedule.js";
+export { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
+export {
+  getAppBlockerPermissionState,
+  getAppBlockerStatus,
+  getCachedAppBlockerStatus,
+  getInstalledApps,
+  requestAppBlockerPermission,
+  selectAppsForBlocking,
+  startAppBlock,
+  stopAppBlock,
+} from "./app-blocker/engine.js";
+export type {
+  OverdueDigest,
+  OverdueFollowup,
+} from "./followup/index.js";
+// Follow-up tracker (T7c)
+export {
+  computeOverdueFollowups,
+  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
+  FOLLOWUP_MEMORY_TABLE,
+  FOLLOWUP_TRACKER_INTERVAL_MS,
+  FOLLOWUP_TRACKER_TASK_NAME,
+  FOLLOWUP_TRACKER_TASK_TAGS,
+  getFollowupTrackerRoomId,
+  listOverdueFollowupsAction,
+  markFollowupDoneAction,
+  reconcileFollowupsOnce,
+  registerFollowupTrackerWorker,
+  setFollowupThresholdAction,
+  writeOverdueDigestMemory,
+} from "./followup/index.js";
 export { CheckinService } from "./lifeops/checkin/checkin-service.js";
+export type { CheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
+export { resolveCheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
 export type {
   CheckinKind,
   CheckinReport,
@@ -423,62 +436,30 @@ export type {
   RecordAcknowledgementRequest,
   RunCheckinRequest,
 } from "./lifeops/checkin/types.js";
-export { resolveCheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
-export type { CheckinSchedule } from "./lifeops/checkin/schedule-resolver.js";
-
-// Routes (consumed by agent server.ts via import)
-export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
-export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
-export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
-
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
-  registerLifeOpsTaskWorker,
   executeLifeOpsSchedulerTask,
-  resolveLifeOpsTaskIntervalMs,
-  LIFEOPS_TASK_NAME,
-  LIFEOPS_TASK_TAGS,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,
+  LIFEOPS_TASK_NAME,
+  LIFEOPS_TASK_TAGS,
+  registerLifeOpsTaskWorker,
+  resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
-
-export * from "./website-blocker/public.ts";
-
-// App blocker exports
-export { ownerAppBlockAction } from "./actions/owner-app-block.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export { inboxTriageProvider } from "./providers/inbox-triage.js";
+export { lifeOpsProvider } from "./providers/lifeops.js";
+export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
+// Routes (consumed by agent server.ts via import)
+export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
+export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
+export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
+export * from "./website-blocker/public.ts";
 export {
-  getAppBlockerStatus,
-  getCachedAppBlockerStatus,
-  getAppBlockerPermissionState,
-  requestAppBlockerPermission,
-  getInstalledApps,
-  selectAppsForBlocking,
-  startAppBlock,
-  stopAppBlock,
-} from "./app-blocker/engine.js";
-
-// Follow-up tracker (T7c)
-export {
-  listOverdueFollowupsAction,
-  markFollowupDoneAction,
-  setFollowupThresholdAction,
-  registerFollowupTrackerWorker,
-  reconcileFollowupsOnce,
-  computeOverdueFollowups,
-  writeOverdueDigestMemory,
-  getFollowupTrackerRoomId,
-  FOLLOWUP_TRACKER_TASK_NAME,
-  FOLLOWUP_TRACKER_TASK_TAGS,
-  FOLLOWUP_TRACKER_INTERVAL_MS,
-  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
-  FOLLOWUP_MEMORY_TABLE,
-} from "./followup/index.js";
-export type {
-  OverdueDigest,
-  OverdueFollowup,
-} from "./followup/index.js";
+  LifeOpsBrowserPluginService,
+  lifeOpsBrowserProvider,
+  manageLifeOpsBrowserAction,
+};
 
 export default appLifeOpsPlugin;

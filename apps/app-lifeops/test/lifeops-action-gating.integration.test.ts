@@ -79,7 +79,9 @@ describe("LifeOps plugin action gating", () => {
     // existed for @elizaos/app-lifeops. Neither is set up in this test, so if
     // the wrapper were still in place validate() would return false here.
     const ownerInbox = findAction("OWNER_INBOX");
-    const message = ownerMessage("what emails do i have that i need to respond to");
+    const message = ownerMessage(
+      "what emails do i have that i need to respond to",
+    );
 
     const result = await ownerInbox.validate(runtime, message, emptyState);
 
@@ -96,6 +98,7 @@ describe("LifeOps plugin action gating", () => {
       "OWNER_RELATIONSHIP",
       "OWNER_SEND_MESSAGE",
       "BOOK_TRAVEL",
+      "PUBLISH_DEVICE_INTENT",
       "APPROVE_REQUEST",
       "REJECT_REQUEST",
     ]) {
@@ -107,7 +110,6 @@ describe("LifeOps plugin action gating", () => {
       "INBOX",
       "CALENDAR_ACTION",
       "SCHEDULING",
-      "PUBLISH_DEVICE_INTENT",
       "LIST_OVERDUE_FOLLOWUPS",
       "MARK_FOLLOWUP_DONE",
       "SET_FOLLOWUP_THRESHOLD",
@@ -121,7 +123,9 @@ describe("LifeOps plugin action gating", () => {
   });
 });
 
-describe.each(["OWNER_RELATIONSHIP"])("%s owner-only access gate", (actionName) => {
+describe.each([
+  "OWNER_RELATIONSHIP",
+])("%s owner-only access gate", (actionName) => {
   it("validate() rejects non-owner senders", async () => {
     const action = findAction(actionName);
     const result = await action.validate(

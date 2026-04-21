@@ -9,6 +9,7 @@
  * the user's language.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import type {
   Action,
   ActionExample,
@@ -17,8 +18,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -26,12 +26,12 @@ import {
   type ApprovalRequest,
   ApprovalStateTransitionError,
 } from "../lifeops/approval-queue.types.js";
-import { executeApprovedBookTravel } from "./book-travel.js";
-import {
-  dispatchCrossChannelSend,
-  type CrossChannelSendChannel,
-} from "./cross-channel-send.js";
 import { LifeOpsService } from "../lifeops/service.js";
+import { executeApprovedBookTravel } from "./book-travel-executor.js";
+import {
+  type CrossChannelSendChannel,
+  dispatchCrossChannelSend,
+} from "./cross-channel-send.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 type ApprovalIntent = "approve" | "reject";
@@ -86,6 +86,7 @@ Respond as strict JSON with exactly these keys:
   "requestId": "<id of the single targeted request, or null if ambiguous>",
   "reason": "<short human-readable reason in the user's language, or null if none given>"
 }`;
+  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
   const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
   const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
   if (!parsed || typeof parsed !== "object") {
@@ -285,9 +286,7 @@ async function resolveApprovalRequest(
         callback,
       });
     }
-    logger.info(
-      `[ApprovalAction] ${intent} ${updated.id} by ${subjectUserId}`,
-    );
+    logger.info(`[ApprovalAction] ${intent} ${updated.id} by ${subjectUserId}`);
     const text = `Rejected request ${updated.id}.`;
     if (callback) await callback({ text });
     return {

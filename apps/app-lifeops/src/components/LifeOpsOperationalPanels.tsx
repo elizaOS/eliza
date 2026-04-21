@@ -1,5 +1,7 @@
 import { Badge, Button, Textarea, useApp } from "@elizaos/app-core";
+import type { LifeOpsCapabilityState } from "@elizaos/shared/contracts/lifeops";
 import {
+  Activity,
   Clock3,
   FileText,
   Loader2,
@@ -9,8 +11,9 @@ import {
   UserRound,
   Wand2,
 } from "lucide-react";
-import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
+import { useCallback, useState } from "react";
+import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
 import { useLifeOpsStretchReminder } from "../hooks/useLifeOpsStretchReminder.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
@@ -68,6 +71,19 @@ function readXIdentity(
     : fallback;
 }
 
+function capabilityStateLabel(state: LifeOpsCapabilityState): string {
+  switch (state) {
+    case "working":
+      return "Working";
+    case "degraded":
+      return "Degraded";
+    case "blocked":
+      return "Blocked";
+    case "not_configured":
+      return "Not configured";
+  }
+}
+
 function PanelShell({
   title,
   icon,
@@ -93,6 +109,94 @@ function PanelShell({
   );
 }
 
+export function LifeOpsCapabilitiesPanel() {
+  const { t } = useApp();
+  const capabilities = useLifeOpsCapabilitiesStatus();
+  const status = capabilities.status;
+  const primary =
+    status?.capabilities.find((item) => item.id === "sleep.relative_time") ??
+    status?.capabilities[0] ??
+    null;
+
+  return (
+    <PanelShell
+      title={t("lifeopspanels.capabilities", {
+        defaultValue: "Capabilities",
+      })}
+      icon={<Activity className="h-4 w-4 shrink-0 text-muted" />}
+      status={
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void capabilities.refresh()}
+          disabled={capabilities.loading}
+        >
+          {capabilities.loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      }
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("lifeopspanels.capabilityHealth", {
+              defaultValue: "Health",
+            })}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {status
+              ? `${status.summary.workingCount}/${status.summary.totalCount} working`
+              : t("common.loading", { defaultValue: "Loading" })}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {status
+              ? `${status.summary.degradedCount} degraded · ${status.summary.blockedCount} blocked`
+              : " "}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("lifeopspanels.primaryCapability", {
+              defaultValue: "Awake clock",
+            })}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {primary?.summary ?? "—"}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {status?.relativeTime
+              ? `Computed ${formatDateTime(status.relativeTime.computedAt)}`
+              : " "}
+          </div>
+        </div>
+      </div>
+
+      {status ? (
+        <div className="flex flex-wrap gap-2">
+          {status.capabilities.map((capability) => (
+            <Badge
+              key={capability.id}
+              variant={capability.state === "working" ? "secondary" : "outline"}
+              className="text-2xs"
+              title={capability.summary}
+            >
+              {capability.label}: {capabilityStateLabel(capability.state)}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+      {capabilities.error ? (
+        <div className="text-xs text-danger">{capabilities.error}</div>
+      ) : null}
+    </PanelShell>
+  );
+}
+
 export function LifeOpsSchedulePanel() {
   const { t } = useApp();
   const schedule = useLifeOpsScheduleState({ scope: "effective" });
@@ -109,17 +213,18 @@ export function LifeOpsSchedulePanel() {
           : t("lifeopspanels.unknown", { defaultValue: "Unknown" })
     : t("common.loading", { defaultValue: "Loading" });
   const relativeWakeLabel =
-    merged?.relativeTime.minutesSinceWake !== null &&
-    merged?.relativeTime.minutesSinceWake !== undefined
+    merged?.relativeTime.minutesAwake !== null &&
+    merged?.relativeTime.minutesAwake !== undefined
       ? t("lifeopspanels.relativePhase", {
           defaultValue: "{{phase}} · woke {{duration}} ago",
           phase: merged.relativeTime.phase,
-          duration: formatMinutes(merged.relativeTime.minutesSinceWake),
+          duration: formatMinutes(merged.relativeTime.minutesAwake),
         })
       : merged
         ? t("lifeopspanels.relativePhaseCalibrating", {
-            defaultValue: "{{phase}} · wake anchor calibrating",
+            defaultValue: "{{phase}} · {{awakeState}}",
             phase: merged.relativeTime.phase,
+            awakeState: merged.relativeTime.awakeState,
           })
         : "—";
   const bedtimeRelativeLabel =
@@ -170,7 +275,9 @@ export function LifeOpsSchedulePanel() {
               defaultValue: "Sleep status",
             })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{sleepLabel}</div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {sleepLabel}
+          </div>
           <div className="mt-1 text-xs text-muted">
             {merged
               ? `${merged.phase} · ${formatPercent(merged.sleepConfidence)} confidence`
@@ -214,7 +321,9 @@ export function LifeOpsSchedulePanel() {
                 : "—"}
           </div>
           <div className="mt-1 text-xs text-muted">
-            {merged?.wakeAt ? `Wake target ${formatDateTime(merged.wakeAt)}` : " "}
+            {merged?.wakeAt
+              ? `Wake target ${formatDateTime(merged.wakeAt)}`
+              : " "}
             {merged?.lastSleepDurationMinutes
               ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
               : ""}
@@ -232,6 +341,9 @@ export function LifeOpsSchedulePanel() {
             </Badge>
             <Badge variant="outline" className="text-2xs">
               {merged.observationCount} observations
+            </Badge>
+            <Badge variant="outline" className="text-2xs">
+              computed {formatDateTime(merged.relativeTime.computedAt)}
             </Badge>
           </>
         ) : null}
@@ -271,10 +383,15 @@ export function LifeOpsXPanel() {
       icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" />}
       status={
         <div className="flex items-center gap-2">
-          <Badge variant={connected ? "secondary" : "outline"} className="text-2xs">
+          <Badge
+            variant={connected ? "secondary" : "outline"}
+            className="text-2xs"
+          >
             {connected
               ? t("lifeopspanels.connected", { defaultValue: "Connected" })
-              : t("lifeopspanels.disconnected", { defaultValue: "Disconnected" })}
+              : t("lifeopspanels.disconnected", {
+                  defaultValue: "Disconnected",
+                })}
           </Badge>
           <Button
             size="sm"
@@ -386,7 +503,9 @@ export function LifeOpsXPanel() {
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={!draft.trim() || x.actionPending || !connected || !hasWrite}
+            disabled={
+              !draft.trim() || x.actionPending || !connected || !hasWrite
+            }
             onClick={handlePost}
           >
             <Send className="mr-1.5 h-3.5 w-3.5" />
@@ -505,7 +624,8 @@ export function LifeOpsStretchPanel() {
             {t("lifeopspanels.reminder", { defaultValue: "Reminder" })}
           </div>
           <div className="mt-1 text-sm font-semibold text-txt">
-            {reminder?.title ?? t("lifeopspanels.none", { defaultValue: "None" })}
+            {reminder?.title ??
+              t("lifeopspanels.none", { defaultValue: "None" })}
           </div>
           <div className="mt-1 text-xs text-muted">
             {reminder
@@ -557,12 +677,16 @@ export function LifeOpsStretchPanel() {
           </div>
           <div className="mt-1">
             {inspection.attempts.length} attempts ·{" "}
-            {inspection.reminderPlan ? "reminder plan loaded" : "no reminder plan"}
+            {inspection.reminderPlan
+              ? "reminder plan loaded"
+              : "no reminder plan"}
           </div>
         </div>
       ) : null}
 
-      {stretch.error ? <div className="text-xs text-danger">{stretch.error}</div> : null}
+      {stretch.error ? (
+        <div className="text-xs text-danger">{stretch.error}</div>
+      ) : null}
     </PanelShell>
   );
 }

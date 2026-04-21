@@ -21,8 +21,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { LifeOpsRepository } from "../../src/lifeops/repository.js";
+import type { CapturedStateTransition } from "@elizaos/scenario-schema";
 import { summarizeBrowserTaskLifecycle } from "../../src/lifeops/browser-session-lifecycle.js";
+import { LifeOpsRepository } from "../../src/lifeops/repository.js";
 import { LifeOpsService } from "../../src/lifeops/service.js";
 import {
   createLifeOpsChatTestRuntime,
@@ -33,12 +34,35 @@ type PortalFixtureState = {
   uploadSessionId: string | null;
 };
 
+const RUNTIME_CAPTURE_HOOK = Symbol.for("scenario-runner.capture-hooks");
+
+function recordFixtureInterventionTransition(
+  runtime: AgentRuntime,
+  channel: string,
+): void {
+  const hooks = (runtime as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
+  if (!hooks || typeof hooks !== "object") return;
+  const stateTransitions = (hooks as { stateTransitions?: unknown })
+    .stateTransitions;
+  if (!Array.isArray(stateTransitions)) return;
+  stateTransitions.push({
+    subject: "intervention",
+    from: "none",
+    to: "requested",
+    actionName: "PUBLISH_DEVICE_INTENT",
+    metadata: { channel, reason: "expired_id_copy" },
+    at: new Date().toISOString(),
+  } satisfies CapturedStateTransition);
+}
+
 function lowerText(message: Record<string, unknown>): string {
   const content =
     message.content && typeof message.content === "object"
       ? (message.content as Record<string, unknown>)
       : {};
-  return String(content.text ?? "").trim().toLowerCase();
+  return String(content.text ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 async function createService(runtime: AgentRuntime): Promise<LifeOpsService> {
@@ -300,7 +324,7 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
     description: "Deterministic ID-copy intervention fixture action.",
     validate: async () => true,
     handler: async (
-      _runtime,
+      runtime,
       _message,
       _state,
       options,
@@ -310,7 +334,10 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
           | Record<string, unknown>
           | undefined) ?? {};
       const channel =
-        typeof parameters.channel === "string" ? parameters.channel : "dashboard";
+        typeof parameters.channel === "string"
+          ? parameters.channel
+          : "dashboard";
+      recordFixtureInterventionTransition(runtime, channel);
       return {
         success: true,
         text: "The workflow is blocked because the only ID on file is expired. Please send an updated copy and I'll continue as soon as it arrives.",
@@ -338,12 +365,9 @@ export async function createBrowserPortalScenarioRuntime(agentId: string) {
     onResponse: (content: Content) => Promise<object[]>,
     parameters: Record<string, unknown>,
   ): Promise<LifeOpsChatTurnResult> {
-    const result = (await action.handler?.(
-      runtime,
-      message as Memory,
-      state,
-      { parameters },
-    )) as ActionResult;
+    const result = (await action.handler?.(runtime, message as Memory, state, {
+      parameters,
+    })) as ActionResult;
     const content: Content & Record<string, unknown> = {
       text: result?.text ?? "",
       actions: [action.name],

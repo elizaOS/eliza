@@ -21,12 +21,16 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
           inferredAt: "2026-04-20T10:00:00.000Z",
           phase: "morning",
           relativeTime: {
+            computedAt: "2026-04-20T10:00:00.000Z",
             localNowAt: "2026-04-20T03:00:00-07:00",
             phase: "morning",
             isProbablySleeping: false,
+            isAwake: true,
+            awakeState: "awake",
             wakeAnchorAt: "2026-04-20T07:00:00.000Z",
             wakeAnchorSource: "sleep_cycle",
             minutesSinceWake: 180,
+            minutesAwake: 180,
             bedtimeTargetAt: "2026-04-21T06:00:00.000Z",
             bedtimeTargetSource: "typical_sleep",
             minutesUntilBedtimeTarget: 1200,
@@ -110,12 +114,16 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
           inferredAt: "2026-04-20T10:00:00.000Z",
           phase: "morning",
           relativeTime: {
+            computedAt: "2026-04-20T10:00:00.000Z",
             localNowAt: "2026-04-20T03:00:00-07:00",
             phase: "morning",
             isProbablySleeping: false,
+            isAwake: true,
+            awakeState: "awake",
             wakeAnchorAt: "2026-04-20T07:00:00.000Z",
             wakeAnchorSource: "sleep_cycle",
             minutesSinceWake: 180,
+            minutesAwake: 180,
             bedtimeTargetAt: "2026-04-21T06:00:00.000Z",
             bedtimeTargetSource: "typical_sleep",
             minutesUntilBedtimeTarget: 1200,
@@ -144,6 +152,50 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
           nextMealWindowStartAt: null,
           nextMealWindowEndAt: null,
           nextMealConfidence: 0.4,
+        },
+      })),
+      getLifeOpsCapabilitiesStatus: vi.fn(async () => ({
+        generatedAt: "2026-04-20T10:00:00.000Z",
+        appEnabled: true,
+        relativeTime: {
+          computedAt: "2026-04-20T10:00:00.000Z",
+          localNowAt: "2026-04-20T03:00:00-07:00",
+          phase: "morning",
+          isProbablySleeping: false,
+          isAwake: true,
+          awakeState: "awake",
+          wakeAnchorAt: "2026-04-20T07:00:00.000Z",
+          wakeAnchorSource: "sleep_cycle",
+          minutesSinceWake: 180,
+          minutesAwake: 180,
+          bedtimeTargetAt: "2026-04-21T06:00:00.000Z",
+          bedtimeTargetSource: "typical_sleep",
+          minutesUntilBedtimeTarget: 1200,
+          minutesSinceBedtimeTarget: null,
+          dayBoundaryStartAt: "2026-04-20T07:00:00.000Z",
+          dayBoundaryEndAt: "2026-04-21T07:00:00.000Z",
+          minutesSinceDayBoundaryStart: 180,
+          minutesUntilDayBoundaryEnd: 1260,
+          confidence: 0.81,
+        },
+        capabilities: [
+          {
+            id: "sleep.relative_time",
+            domain: "schedule",
+            label: "Awake-relative time",
+            state: "working",
+            summary: "morning; awake 3h; bedtime in 20h",
+            confidence: 0.81,
+            lastCheckedAt: "2026-04-20T10:00:00.000Z",
+            evidence: [],
+          },
+        ],
+        summary: {
+          totalCount: 1,
+          workingCount: 1,
+          degradedCount: 0,
+          blockedCount: 0,
+          notConfiguredCount: 0,
         },
       })),
       getLifeOpsSeedTemplates: vi.fn(async () => ({
@@ -179,7 +231,7 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
         provider: "x",
         mode: "local",
         connected: true,
-        grantedCapabilities: ["x.read", "x.write"],
+        grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
         grantedScopes: [],
         identity: { username: "milady" },
         hasCredentials: true,
@@ -200,6 +252,7 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
 vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
 vi.mock("react", async () => import(reactModuleUrl));
 
+import { useLifeOpsCapabilitiesStatus } from "./useLifeOpsCapabilitiesStatus";
 import { useLifeOpsScheduleState } from "./useLifeOpsScheduleState";
 import { useLifeOpsStretchReminder } from "./useLifeOpsStretchReminder";
 import { useLifeOpsXConnector } from "./useLifeOpsXConnector";
@@ -225,7 +278,24 @@ describe("LifeOps operational hooks", () => {
       await result.current.refresh();
     });
 
-    expect(clientMock.getLifeOpsScheduleMergedState).toHaveBeenCalled();
+    expect(clientMock.getLifeOpsScheduleMergedState).toHaveBeenLastCalledWith({
+      scope: "effective",
+      timezone: undefined,
+      refresh: true,
+    });
+  });
+
+  it("loads LifeOps capability status through the typed client", async () => {
+    const { result } = renderHook(() => useLifeOpsCapabilitiesStatus());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.status?.summary.workingCount).toBe(1);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(clientMock.getLifeOpsCapabilitiesStatus).toHaveBeenCalledTimes(2);
   });
 
   it("connects X and posts text through typed client methods", async () => {
@@ -239,7 +309,7 @@ describe("LifeOps operational hooks", () => {
     expect(clientMock.upsertXLifeOpsConnector).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "local",
-        capabilities: ["x.read", "x.write"],
+        capabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
       }),
     );
 

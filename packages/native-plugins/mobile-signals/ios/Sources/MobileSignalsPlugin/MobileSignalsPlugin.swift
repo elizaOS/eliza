@@ -80,7 +80,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     @available(iOS 13.0, *)
     private func handleBackgroundRefresh(task: BGAppRefreshTask) {
         let expirationHandler = { [weak task] in
-            task?.setTaskCompleted(success: false)
+            guard let task = task else { return }
+            task.setTaskCompleted(success: false)
         }
         task.expirationHandler = expirationHandler
         buildHealthSnapshot(reason: "background-refresh") { [weak self] healthSnapshot in

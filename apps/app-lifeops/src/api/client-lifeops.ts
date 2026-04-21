@@ -11,6 +11,7 @@
  * The `@elizaos/app-lifeops/widgets` entry point imports this transitively.
  */
 
+import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CompleteLifeOpsBrowserSessionRequest,
@@ -25,12 +26,12 @@ import type {
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
-  GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsIMessageMessagesRequest,
   LifeOpsActivitySignal,
-  LifeOpsBrowserCompanionPackageStatus,
   LifeOpsBrowserCompanionAutoPairResponse,
+  LifeOpsBrowserCompanionPackageStatus,
   LifeOpsBrowserCompanionPairingResponse,
   LifeOpsBrowserCompanionStatus,
   LifeOpsBrowserKind,
@@ -40,6 +41,7 @@ import type {
   LifeOpsBrowserSettings,
   LifeOpsBrowserTabSummary,
   LifeOpsCalendarFeed,
+  LifeOpsCapabilitiesStatus,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsDefinitionRecord,
@@ -56,13 +58,13 @@ import type {
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
-  LifeOpsXConnectorStatus,
-  OpenLifeOpsBrowserCompanionManagerResponse,
-  OpenLifeOpsBrowserCompanionPackagePathResponse,
   LifeOpsReminderInspection,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsTelegramConnectorStatus,
+  LifeOpsXConnectorStatus,
+  OpenLifeOpsBrowserCompanionManagerResponse,
+  OpenLifeOpsBrowserCompanionPackagePathResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
@@ -75,18 +77,15 @@ import type {
   StartLifeOpsTelegramAuthRequest,
   StartLifeOpsTelegramAuthResponse,
   SubmitLifeOpsTelegramAuthRequest,
-  VerifyLifeOpsTelegramConnectorRequest,
-  VerifyLifeOpsTelegramConnectorResponse,
   SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
+  VerifyLifeOpsTelegramConnectorRequest,
+  VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared/contracts/lifeops";
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
-import type {
-  GetLifeOpsScheduleMergedStateResponse,
-} from "../lifeops/schedule-sync-contracts.js";
+import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-sync-contracts.js";
 import type { RoutineSeedTemplate } from "../lifeops/seed-routines.js";
 
 type LifeOpsSeedRoutinesResponse = {
@@ -125,13 +124,15 @@ declare module "@elizaos/app-core/api/client-base" {
       enabled: boolean;
     }): Promise<{ enabled: boolean }>;
     getLifeOpsOverview(): Promise<LifeOpsOverview>;
+    getLifeOpsCapabilitiesStatus(): Promise<LifeOpsCapabilitiesStatus>;
     getLifeOpsScheduleMergedState(
       data?: LifeOpsScheduleMergedStateRequest,
     ): Promise<GetLifeOpsScheduleMergedStateResponse>;
     getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
-    seedLifeOpsRoutines(
-      data: { keys: string[]; timezone?: string },
-    ): Promise<LifeOpsSeedRoutinesResponse>;
+    seedLifeOpsRoutines(data: {
+      keys: string[];
+      timezone?: string;
+    }): Promise<LifeOpsSeedRoutinesResponse>;
     getLifeOpsBrowserSettings(): Promise<{ settings: LifeOpsBrowserSettings }>;
     updateLifeOpsBrowserSettings(
       data: UpdateLifeOpsBrowserSettingsRequest,
@@ -367,6 +368,12 @@ ElizaClient.prototype.updateLifeOpsAppState = async function (
 
 ElizaClient.prototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
+};
+
+ElizaClient.prototype.getLifeOpsCapabilitiesStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/capabilities");
 };
 
 ElizaClient.prototype.getLifeOpsScheduleMergedState = async function (

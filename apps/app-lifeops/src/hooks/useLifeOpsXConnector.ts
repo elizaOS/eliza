@@ -21,7 +21,7 @@ function defaultCapabilities(
   if (grantedCapabilities.length > 0) {
     return grantedCapabilities;
   }
-  return ["x.read", "x.write"];
+  return ["x.read", "x.write", "x.dm.read", "x.dm.write"];
 }
 
 export function useLifeOpsXConnector() {

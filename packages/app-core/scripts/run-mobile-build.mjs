@@ -38,16 +38,71 @@ const prepareIosCocoapodsScript =
 
 export const PLATFORM_TEMPLATE_FILES = {
   android: [
+    "gradlew",
+    "gradlew.bat",
+    "gradle.properties",
     "build.gradle",
     "settings.gradle",
     "variables.gradle",
     "capacitor.settings.gradle",
+    path.join("gradle", "wrapper", "gradle-wrapper.jar"),
+    path.join("gradle", "wrapper", "gradle-wrapper.properties"),
     path.join("app", "build.gradle"),
     path.join("app", "capacitor.build.gradle"),
+    path.join("app", "proguard-rules.pro"),
+    path.join("app", "src", "main"),
   ],
   ios: [
     path.join("App", "Podfile"),
     path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "App.entitlements"),
+    path.join("App", "App", "AppDelegate.swift"),
+    path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
+    path.join("App", "App", "Base.lproj", "Main.storyboard"),
+    path.join("App", "App", "Info.plist"),
+    path.join("App", "App", "Assets.xcassets", "Contents.json"),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "AppIcon.appiconset",
+      "AppIcon-512@2x.png",
+    ),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "AppIcon.appiconset",
+      "Contents.json",
+    ),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "Splash.imageset",
+      "Contents.json",
+    ),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "Splash.imageset",
+      "splash-2732x2732.png",
+    ),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "Splash.imageset",
+      "splash-2732x2732-1.png",
+    ),
+    path.join(
+      "App",
+      "App",
+      "Assets.xcassets",
+      "Splash.imageset",
+      "splash-2732x2732-2.png",
+    ),
     path.join("App", "App", "MiladyIntentPlugin.swift"),
     path.join(
       "App",
@@ -209,17 +264,22 @@ export function syncPlatformTemplateFiles(
 
   const targetRoot = path.join(appDirValue, platform);
   const copiedFiles = [];
+  const copiedFileSet = new Set();
 
-  for (const relativeFile of templateFiles) {
-    const sourcePath = path.join(templateRoot, relativeFile);
-    if (!fs.existsSync(sourcePath)) {
-      continue;
+  for (const relativeEntry of templateFiles) {
+    const relativeFiles = collectTemplateFiles(templateRoot, relativeEntry);
+    for (const relativeFile of relativeFiles) {
+      if (copiedFileSet.has(relativeFile)) {
+        continue;
+      }
+      copiedFileSet.add(relativeFile);
+
+      const sourcePath = path.join(templateRoot, relativeFile);
+      const destinationPath = path.join(targetRoot, relativeFile);
+      fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+      fs.copyFileSync(sourcePath, destinationPath);
+      copiedFiles.push(relativeFile);
     }
-
-    const destinationPath = path.join(targetRoot, relativeFile);
-    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    fs.copyFileSync(sourcePath, destinationPath);
-    copiedFiles.push(relativeFile);
   }
 
   if (copiedFiles.length > 0) {
@@ -229,6 +289,33 @@ export function syncPlatformTemplateFiles(
   }
 
   return copiedFiles;
+}
+
+function collectTemplateFiles(templateRoot, relativeEntry) {
+  const sourcePath = path.join(templateRoot, relativeEntry);
+  if (!fs.existsSync(sourcePath)) {
+    return [];
+  }
+
+  const stat = fs.statSync(sourcePath);
+  if (stat.isFile()) {
+    return [relativeEntry];
+  }
+  if (!stat.isDirectory()) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(sourcePath, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const childRelativePath = path.join(relativeEntry, entry.name);
+    if (entry.isDirectory()) {
+      return collectTemplateFiles(templateRoot, childRelativePath);
+    }
+    if (entry.isFile()) {
+      return [childRelativePath];
+    }
+    return [];
+  });
 }
 
 function getCapacitorPlatformRoot(platform) {
@@ -242,17 +329,23 @@ function resolveNativePluginRoot(pluginName) {
   ]);
 }
 
-function isCapacitorPlatformReady(platform) {
+export function isCapacitorPlatformReady(
+  platform,
+  { appDirValue = appDir } = {},
+) {
+  const androidDirValue = path.join(appDirValue, "android");
+  const iosDirValue = path.join(appDirValue, "ios", "App");
+
   if (platform === "android") {
     return (
-      fs.existsSync(path.join(androidDir, "gradlew")) &&
-      fs.existsSync(path.join(androidDir, "app", "build.gradle"))
+      fs.existsSync(path.join(androidDirValue, "gradlew")) &&
+      fs.existsSync(path.join(androidDirValue, "app", "build.gradle"))
     );
   }
 
   return (
-    fs.existsSync(path.join(iosDir, "Podfile")) &&
-    fs.existsSync(path.join(iosDir, "App.xcodeproj", "project.pbxproj"))
+    fs.existsSync(path.join(iosDirValue, "Podfile")) &&
+    fs.existsSync(path.join(iosDirValue, "App.xcodeproj", "project.pbxproj"))
   );
 }
 
@@ -261,11 +354,19 @@ async function ensureCapacitorPlatform(platform) {
     return;
   }
 
+  const syncedFiles = syncPlatformTemplateFiles(platform);
+  if (syncedFiles.length > 0 && isCapacitorPlatformReady(platform)) {
+    console.log(
+      `[mobile-build] Repaired incomplete Capacitor ${platform} platform from shipped templates.`,
+    );
+    return;
+  }
+
   const platformRootDir = getCapacitorPlatformRoot(platform);
   if (fs.existsSync(platformRootDir)) {
     if (process.env.CI !== "true") {
       throw new Error(
-        `Capacitor ${platform} platform at ${platformRootDir} is incomplete. Remove it or run 'bun x capacitor add ${platform}' before retrying.`,
+        `Capacitor ${platform} platform at ${platformRootDir} is incomplete and could not be repaired from shipped templates. Remove it or run 'bun x capacitor add ${platform}' before retrying.`,
       );
     }
 
@@ -546,6 +647,96 @@ const IOS_BONJOUR_BLOCK = `\t<key>NSBonjourServices</key>
 \t\t<string>_elizaos-gw._tcp</string>
 \t</array>`;
 
+function replaceFileContent(filePath, replacements) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  const current = fs.readFileSync(filePath, "utf8");
+  let next = current;
+  for (const [pattern, replacement] of replacements) {
+    next = next.replace(pattern, replacement);
+  }
+  if (next === current) {
+    return false;
+  }
+
+  fs.writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+export function applyIosAppIdentity({
+  appDirValue = appDir,
+  appId = APP.appId,
+  appGroup = `group.${appId}`,
+  developmentTeam = process.env.MILADY_IOS_DEVELOPMENT_TEAM ??
+    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
+    null,
+  log = console.log,
+} = {}) {
+  const iosAppRoot = path.join(appDirValue, "ios", "App");
+  const appExtensionId = `${appId}.WebsiteBlockerContentExtension`;
+  const changedFiles = [];
+  const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
+  const projectReplacements = [
+    [
+      /PRODUCT_BUNDLE_IDENTIFIER = ai\.elizaos\.app\.WebsiteBlockerContentExtension;/g,
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appExtensionId};`,
+    ],
+    [
+      /PRODUCT_BUNDLE_IDENTIFIER = ai\.elizaos\.app;/g,
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+    ],
+  ];
+
+  if (developmentTeam) {
+    projectReplacements.push([
+      /DEVELOPMENT_TEAM = [A-Z0-9]+;/g,
+      `DEVELOPMENT_TEAM = ${developmentTeam};`,
+    ]);
+  }
+
+  if (replaceFileContent(projectPath, projectReplacements)) {
+    changedFiles.push(path.relative(iosAppRoot, projectPath));
+  }
+
+  const identityFiles = [
+    path.join(iosAppRoot, "App", "App.entitlements"),
+    path.join(iosAppRoot, "App", "ScreenTimeSupport.swift"),
+    path.join(
+      iosAppRoot,
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      iosAppRoot,
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+  ];
+
+  for (const filePath of identityFiles) {
+    if (
+      replaceFileContent(filePath, [
+        [/group\.ai\.elizaos\.app/g, appGroup],
+        [/group\.com\.miladyai\.milady/g, appGroup],
+      ])
+    ) {
+      changedFiles.push(path.relative(iosAppRoot, filePath));
+    }
+  }
+
+  if (changedFiles.length > 0) {
+    log(
+      `[mobile-build] Applied iOS app identity (${appId}, ${appGroup}) to ${changedFiles.join(", ")}.`,
+    );
+  }
+
+  return changedFiles;
+}
+
 /**
  * Merge permission keys into Info.plist, copy entitlements, and overlay
  * any other iOS source files that Capacitor sync does not generate.
@@ -600,6 +791,8 @@ function overlayIosNativeFiles() {
       `[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`,
     );
   }
+
+  applyIosAppIdentity();
 
   // -- Copy AppDelegate.swift (Capacitor CLI template has broken API call) --
   const srcAppDelegate = path.join(
@@ -727,7 +920,7 @@ function generateIosPodfile() {
     ["ElizaosCapacitorWebsiteblocker", "websiteblocker"],
   ];
 
-  let podLines = [];
+  const podLines = [];
   podLines.push(`  pod 'Capacitor', :path => '${iosPath}'`);
   podLines.push(`  pod 'CapacitorCordova', :path => '${iosPath}'`);
 
