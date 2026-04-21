@@ -22,6 +22,7 @@ import type {
 import {
   LIFEOPS_BROWSER_KINDS,
 } from "@elizaos/app-lifeops/contracts";
+import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   fail,
   normalizeEnumValue,
