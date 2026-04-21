@@ -4167,7 +4167,6 @@ function renderCloudAgentsPage(
           <div class="cp-row"><span>Agent</span><strong>${escapeHtml(cloudSession.agentName || "Eliza")}</strong></div>
           <div class="cp-row"><span>Org</span><strong>${escapeHtml(cloudSession.organizationName)}</strong></div>
           <div class="cp-row"><span>API Key</span><strong>${escapeHtml(cloudSession.apiKey ? cloudSession.apiKey.slice(0,12) + "..." : "n/a")}</strong></div>
-          <div class="cp-row"><span>Model</span><strong>${escapeHtml(cloudSession.model || "n/a")}</strong></div>
         </div>
       </div>
 
