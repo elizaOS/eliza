@@ -17,6 +17,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private struct HealthCapture {
         let source: String
+        let screenTime: [String: Any]
         let permissions: [String: Bool]
         let sleep: [String: Any]
         let biometrics: [String: Any]
@@ -219,6 +220,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "status": status,
             "canRequest": overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
             "reason": overrideReason ?? NSNull(),
+            "screenTime": ScreenTimeSupport.buildStatus(),
             "permissions": [
                 "sleep": sleepGranted,
                 "biometrics": biometricGranted,
@@ -313,6 +315,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 reason: reason,
                 capture: HealthCapture(
                     source: "healthkit",
+                    screenTime: ScreenTimeSupport.buildStatus(),
                     permissions: ["sleep": false, "biometrics": false],
                     sleep: [
                         "available": false,
@@ -363,6 +366,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             group.notify(queue: .main) {
                 let capture = HealthCapture(
                     source: "healthkit",
+                    screenTime: ScreenTimeSupport.buildStatus(),
                     permissions: [
                         "sleep": sleepSummary?.permissions["sleep"] ?? false,
                         "biometrics": biometricsSummary?.permissions["biometrics"] ?? false,
@@ -422,6 +426,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "idleTimeSeconds": NSNull(),
             "onBattery": onBattery ?? NSNull(),
             "healthSource": capture.source,
+            "screenTime": capture.screenTime,
             "permissions": capture.permissions,
             "sleep": capture.sleep,
             "biometrics": capture.biometrics,
@@ -467,6 +472,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 completion(
                     HealthCapture(
                         source: "healthkit",
+                        screenTime: ScreenTimeSupport.buildStatus(),
                         permissions: ["sleep": false, "biometrics": false],
                         sleep: [
                             "available": false,
@@ -509,6 +515,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             completion(
                 HealthCapture(
                     source: "healthkit",
+                    screenTime: ScreenTimeSupport.buildStatus(),
                     permissions: ["sleep": true, "biometrics": false],
                     sleep: [
                         "available": true,
@@ -629,6 +636,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             completion(
                 HealthCapture(
                     source: "healthkit",
+                    screenTime: ScreenTimeSupport.buildStatus(),
                     permissions: [
                         "sleep": false,
                         "biometrics": hasBiometrics,

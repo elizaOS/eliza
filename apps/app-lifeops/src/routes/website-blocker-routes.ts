@@ -1,4 +1,5 @@
 import {
+  isWebsiteBlockedByPolicy,
   getSelfControlStatus,
   parseSelfControlBlockRequest,
   startSelfControlBlock,
@@ -142,11 +143,19 @@ export async function handleWebsiteBlockerRoutes(
       return true;
     }
 
-    const status = await getSelfControlStatus();
-    const blockedWebsites = status.blockedWebsites ?? status.websites;
-    const hostBlocked =
-      status.active &&
-      blockedWebsites.some((website) => website.toLowerCase() === queriedHost);
+  const status = await getSelfControlStatus();
+  const blockedWebsites = status.blockedWebsites ?? status.websites;
+  const allowedWebsites = status.allowedWebsites ?? [];
+  const hostBlocked =
+    status.active &&
+    isWebsiteBlockedByPolicy(
+      {
+        blockedWebsites,
+        allowedWebsites,
+        matchMode: status.matchMode ?? "exact",
+      },
+      queriedHost,
+    );
 
     const result: WebsiteBlockerHostResponse = {
       blocked: hostBlocked,

@@ -56,6 +56,7 @@ import type {
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
+  LifeOpsXConnectorStatus,
   OpenLifeOpsBrowserCompanionManagerResponse,
   OpenLifeOpsBrowserCompanionPackagePathResponse,
   LifeOpsReminderInspection,
@@ -83,6 +84,39 @@ import type {
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import type {
+  GetLifeOpsScheduleMergedStateResponse,
+} from "../lifeops/schedule-sync-contracts.js";
+import type { RoutineSeedTemplate } from "../lifeops/seed-routines.js";
+
+type LifeOpsSeedRoutinesResponse = {
+  createdIds: string[];
+};
+
+type LifeOpsSeedTemplatesResponse = {
+  needsSeeding: boolean;
+  availableTemplates: RoutineSeedTemplate[];
+};
+
+type LifeOpsXConnectorRequest = {
+  mode?: LifeOpsConnectorMode;
+  capabilities: LifeOpsXConnectorStatus["grantedCapabilities"];
+  grantedScopes?: string[];
+  identity?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+};
+
+type LifeOpsXPostRequest = {
+  mode?: LifeOpsConnectorMode;
+  text: string;
+  confirmPost?: boolean;
+};
+
+type LifeOpsScheduleMergedStateRequest = {
+  timezone?: string | null;
+  scope?: "local" | "cloud" | "effective";
+  refresh?: boolean;
+};
 
 declare module "@elizaos/app-core/api/client-base" {
   interface ElizaClient {
@@ -91,6 +125,13 @@ declare module "@elizaos/app-core/api/client-base" {
       enabled: boolean;
     }): Promise<{ enabled: boolean }>;
     getLifeOpsOverview(): Promise<LifeOpsOverview>;
+    getLifeOpsScheduleMergedState(
+      data?: LifeOpsScheduleMergedStateRequest,
+    ): Promise<GetLifeOpsScheduleMergedStateResponse>;
+    getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
+    seedLifeOpsRoutines(
+      data: { keys: string[]; timezone?: string },
+    ): Promise<LifeOpsSeedRoutinesResponse>;
     getLifeOpsBrowserSettings(): Promise<{ settings: LifeOpsBrowserSettings }>;
     updateLifeOpsBrowserSettings(
       data: UpdateLifeOpsBrowserSettingsRequest,
@@ -232,6 +273,19 @@ declare module "@elizaos/app-core/api/client-base" {
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
+    getXLifeOpsConnectorStatus(
+      mode?: LifeOpsConnectorMode,
+    ): Promise<LifeOpsXConnectorStatus>;
+    upsertXLifeOpsConnector(
+      data: LifeOpsXConnectorRequest,
+    ): Promise<LifeOpsXConnectorStatus>;
+    createXLifeOpsPost(data: LifeOpsXPostRequest): Promise<{
+      ok: boolean;
+      status: number | null;
+      postId?: string;
+      error?: string;
+      category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+    }>;
 
     // --- iMessage connector ---
     getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus>;
@@ -313,6 +367,42 @@ ElizaClient.prototype.updateLifeOpsAppState = async function (
 
 ElizaClient.prototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
+};
+
+ElizaClient.prototype.getLifeOpsScheduleMergedState = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.timezone) {
+    params.set("timezone", data.timezone);
+  }
+  if (data.scope) {
+    params.set("scope", data.scope);
+  }
+  if (data.refresh !== undefined) {
+    params.set("refresh", String(data.refresh));
+  }
+  const query = params.toString();
+  return this.fetch<GetLifeOpsScheduleMergedStateResponse>(
+    `/api/lifeops/schedule/merged-state${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsSeedTemplates = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/seed-templates");
+};
+
+ElizaClient.prototype.seedLifeOpsRoutines = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<LifeOpsSeedRoutinesResponse>("/api/lifeops/seed", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.getLifeOpsBrowserSettings = async function (
@@ -826,6 +916,38 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return this.fetch(`/api/lifeops/connectors/google/accounts${query}`);
+};
+
+ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
+  this: ElizaClient,
+  mode,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/x/status${query}`);
+};
+
+ElizaClient.prototype.upsertXLifeOpsConnector = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/x", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.createXLifeOpsPost = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/x/posts", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 // ---------------------------------------------------------------------------

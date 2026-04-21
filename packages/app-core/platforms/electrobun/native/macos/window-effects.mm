@@ -8,6 +8,10 @@ static NSString *const kElectrobunVibrancyViewIdentifier =
 	@"ElectrobunVibrancyView";
 static NSString *const kElectrobunNativeDragViewIdentifier =
 	@"ElectrobunNativeDragView";
+static NSString *const kElectrobunNativeDragTitleViewIdentifier =
+	@"ElectrobunNativeDragTitleView";
+static NSString *const kElectrobunNativeDragRightGapViewIdentifier =
+	@"ElectrobunNativeDragRightGapView";
 static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
@@ -15,10 +19,9 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 
 /** Transparent strip for moving the window. WKWebView does not honor
  *  -webkit-app-region reliably on system WebKit; this view is stacked
- *  NSWindowAbove the web view so clicks hit AppKit first. It passes through
- *  known titlebar control zones so React buttons still receive clicks. */
+ *  NSWindowAbove the web view so safe empty/title zones hit AppKit first.
+ *  It must never cover titlebar buttons; split views are used for gaps. */
 @interface ElectrobunNativeDragView : NSView
-@property(nonatomic, copy) NSArray<NSValue *> *passthroughRects;
 @end
 
 @implementation ElectrobunNativeDragView
@@ -28,15 +31,6 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 
 - (void)drawRect:(NSRect)dirtyRect {
 	(void)dirtyRect;
-}
-
-- (nullable NSView *)hitTest:(NSPoint)point {
-	for (NSValue *value in self.passthroughRects) {
-		if (NSPointInRect(point, [value rectValue])) {
-			return nil;
-		}
-	}
-	return [super hitTest:point];
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -273,8 +267,8 @@ static void elizaRemoveResizeStripOverlays(NSView *contentView) {
 static void elizaInstallResizeStripOverlays(NSWindow *window,
 											 NSView *contentView,
 											 CGFloat chromeDepth,
-											 ElectrobunNativeDragView *dragView) {
-	if (window == nil || contentView == nil || dragView == nil) {
+											 NSView *relativeView) {
+	if (window == nil || contentView == nil) {
 		return;
 	}
 
@@ -324,9 +318,9 @@ static void elizaInstallResizeStripOverlays(NSWindow *window,
 	[corner setFrame:cornerR];
 
 	// Back -> front among strips: bottom, right, corner (corner wins at BR).
-	[contentView addSubview:bottom
-				 positioned:NSWindowBelow
-				 relativeTo:dragView];
+	NSWindowOrderingMode bottomOrder =
+		relativeView == nil ? NSWindowAbove : NSWindowBelow;
+	[contentView addSubview:bottom positioned:bottomOrder relativeTo:relativeView];
 	[contentView addSubview:right
 				 positioned:NSWindowAbove
 				 relativeTo:bottom];
@@ -370,28 +364,56 @@ static CGFloat elizaChromeDepthPoints(NSWindow *window, double hostHeightHint) {
 	return MAX(18.0, MIN(38.0, round(d)));
 }
 
-static NSArray<NSValue *> *elizaTitlebarDragPassthroughRects(CGFloat width,
-															 CGFloat height) {
-	NSMutableArray<NSValue *> *rects = [NSMutableArray arrayWithCapacity:2];
-	const CGFloat leftControlsWidth = width <= 1380.0 ? 280.0 : 640.0;
-	const CGFloat rightControlsWidth = 320.0;
+static NSArray<NSString *> *elizaNativeDragViewIdentifiers(void) {
+	return @[
+		kElectrobunNativeDragViewIdentifier,
+		kElectrobunNativeDragTitleViewIdentifier,
+		kElectrobunNativeDragRightGapViewIdentifier,
+	];
+}
 
-	if (leftControlsWidth > 0.0) {
-		[rects addObject:[NSValue
-							 valueWithRect:NSMakeRect(0.0,
-													  0.0,
-													  MIN(leftControlsWidth, width),
-													  height)]];
+static NSArray<NSValue *> *elizaTitlebarNativeDragRects(CGFloat width,
+														CGFloat height,
+														BOOL flipped) {
+	(void)flipped;
+	if (width <= 0.0 || height <= 0.0) {
+		return @[];
 	}
 
-	if (width > rightControlsWidth) {
-		[rects addObject:[NSValue
-							 valueWithRect:NSMakeRect(width - rightControlsWidth,
-													  0.0,
-													  rightControlsWidth,
-													  height)]];
+	NSMutableArray<NSValue *> *rects = [NSMutableArray arrayWithCapacity:3];
+	const CGFloat minDragWidth = 56.0;
+	const CGFloat minTitleWidth = 96.0;
+	const CGFloat leftControlEnd = width <= 1380.0 ? 380.0 : 720.0;
+	const CGFloat rightControlsWidth = width <= 860.0 ? 96.0 : 360.0;
+	const CGFloat rightControlStart = MAX(leftControlEnd, width - rightControlsWidth);
+	if (rightControlStart - leftControlEnd < minTitleWidth) {
+		return rects;
 	}
 
+	CGFloat titleWidth = MIN(360.0, MAX(160.0, width * 0.24));
+	CGFloat titleStart = floor((width - titleWidth) / 2.0);
+	CGFloat titleEnd = titleStart + titleWidth;
+	titleStart = MAX(titleStart, leftControlEnd);
+	titleEnd = MIN(titleEnd, rightControlStart);
+
+	if (titleEnd - titleStart >= minTitleWidth) {
+		[rects addObject:[NSValue valueWithRect:NSMakeRect(titleStart,
+														   0.0,
+														   titleEnd - titleStart,
+														   height)]];
+	}
+	if (titleStart - leftControlEnd >= minDragWidth) {
+		[rects addObject:[NSValue valueWithRect:NSMakeRect(leftControlEnd,
+														   0.0,
+														   titleStart - leftControlEnd,
+														   height)]];
+	}
+	if (rightControlStart - titleEnd >= minDragWidth) {
+		[rects addObject:[NSValue valueWithRect:NSMakeRect(titleEnd,
+														   0.0,
+														   rightControlStart - titleEnd,
+														   height)]];
+	}
 	return rects;
 }
 
@@ -407,11 +429,14 @@ static NSVisualEffectView *findVibrancyView(NSView *contentView) {
 	return nil;
 }
 
-static ElectrobunNativeDragView *findNativeDragView(NSView *contentView) {
+static ElectrobunNativeDragView *findNativeDragView(NSView *contentView,
+													NSString *identifier) {
+	if (contentView == nil || identifier == nil) {
+		return nil;
+	}
 	for (NSView *subview in [contentView subviews]) {
 		if ([subview isKindOfClass:[ElectrobunNativeDragView class]] &&
-			[[subview identifier]
-				isEqualToString:kElectrobunNativeDragViewIdentifier]) {
+			[[subview identifier] isEqualToString:identifier]) {
 			return (ElectrobunNativeDragView *)subview;
 		}
 	}
@@ -419,16 +444,26 @@ static ElectrobunNativeDragView *findNativeDragView(NSView *contentView) {
 	return nil;
 }
 
-static ElectrobunNativeDragView *findNativeDragRightEdgeView(NSView *contentView) {
-	for (NSView *subview in [contentView subviews]) {
-		if ([subview isKindOfClass:[ElectrobunNativeDragView class]] &&
-			[[subview identifier]
-				isEqualToString:kElectrobunNativeDragRightEdgeIdentifier]) {
-			return (ElectrobunNativeDragView *)subview;
-		}
+static ElectrobunNativeDragView *ensureNativeDragView(NSView *contentView,
+													  NSString *identifier) {
+	ElectrobunNativeDragView *view = findNativeDragView(contentView, identifier);
+	if (view == nil) {
+		view = [[ElectrobunNativeDragView alloc] initWithFrame:NSZeroRect];
+		[view setIdentifier:identifier];
 	}
+	return view;
+}
 
-	return nil;
+static void removeNativeDragView(NSView *contentView, NSString *identifier) {
+	ElectrobunNativeDragView *view = findNativeDragView(contentView, identifier);
+	if (view != nil) {
+		[view removeFromSuperview];
+	}
+}
+
+static ElectrobunNativeDragView *findNativeDragRightEdgeView(NSView *contentView) {
+	return findNativeDragView(contentView,
+							  kElectrobunNativeDragRightEdgeIdentifier);
 }
 
 static ElizaInactiveTrafficLightsOverlayView *
@@ -657,6 +692,7 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 		if (buttonContainer == nil) {
 			return;
 		}
+		NSView *contentView = [window contentView];
 
 		CGFloat spacing = NSMinX(minimizeButton.frame) - NSMinX(closeButton.frame);
 		if (spacing <= 0) {
@@ -686,23 +722,48 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 			currentX += spacing;
 		}
 
-		ElizaInactiveTrafficLightsOverlayView *overlay =
-			ensureInactiveTrafficLightsOverlay(buttonContainer);
-		NSRect overlayFrame =
-			NSUnionRect(NSUnionRect(closeButton.frame, minimizeButton.frame),
-						zoomButton.frame);
-		[overlay setFrame:overlayFrame];
-		NSMutableArray<NSValue *> *dotRects = [NSMutableArray arrayWithCapacity:3];
-		for (NSButton *button in buttons) {
-			NSRect localRect = NSOffsetRect(button.frame,
-										   -overlayFrame.origin.x,
-										   -overlayFrame.origin.y);
-			[dotRects addObject:[NSValue valueWithRect:localRect]];
+		if (contentView != nil) {
+			ElizaInactiveTrafficLightsOverlayView *oldOverlay =
+				findInactiveTrafficLightsOverlay(buttonContainer);
+			if (oldOverlay != nil) {
+				[oldOverlay removeFromSuperview];
+			}
+
+			NSMutableArray<NSValue *> *buttonRectsInContent =
+				[NSMutableArray arrayWithCapacity:3];
+			NSRect overlayFrame = NSZeroRect;
+			BOOL hasOverlayFrame = NO;
+			for (NSButton *button in buttons) {
+				NSRect contentRect =
+					[buttonContainer convertRect:button.frame toView:contentView];
+				[buttonRectsInContent addObject:[NSValue valueWithRect:contentRect]];
+				overlayFrame =
+					hasOverlayFrame ? NSUnionRect(overlayFrame, contentRect)
+									: contentRect;
+				hasOverlayFrame = YES;
+			}
+
+			if (hasOverlayFrame) {
+				overlayFrame = NSInsetRect(overlayFrame, -1.0, -1.0);
+				ElizaInactiveTrafficLightsOverlayView *overlay =
+					ensureInactiveTrafficLightsOverlay(contentView);
+				[overlay setFrame:overlayFrame];
+				NSMutableArray<NSValue *> *dotRects =
+					[NSMutableArray arrayWithCapacity:3];
+				for (NSValue *value in buttonRectsInContent) {
+					NSRect localRect = NSOffsetRect([value rectValue],
+												   -overlayFrame.origin.x,
+												   -overlayFrame.origin.y);
+					[dotRects addObject:[NSValue valueWithRect:localRect]];
+				}
+				[overlay setDotRects:dotRects];
+				[overlay setHidden:!inactive];
+				[overlay setNeedsDisplay:YES];
+				[contentView addSubview:overlay
+							 positioned:NSWindowAbove
+							 relativeTo:nil];
+			}
 		}
-		[overlay setDotRects:dotRects];
-		[overlay setHidden:!inactive];
-		[overlay setNeedsDisplay:YES];
-		[buttonContainer addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
 
 		[buttonContainer setNeedsLayout:YES];
 		[buttonContainer layoutSubtreeIfNeeded];
@@ -802,8 +863,8 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		CGFloat dragX = MAX(0.0, x);
 		CGFloat dragHeight = elizaChromeDepthPoints(window, height);
 		CGFloat resizeDepth = MIN(dragHeight, 12.0);
-		CGFloat dragWidth = MAX(0.0, contentView.bounds.size.width - dragX);
-		if (dragWidth <= 0.0) {
+		CGFloat contentWidth = contentView.bounds.size.width;
+		if (contentWidth <= 0.0) {
 			return;
 		}
 
@@ -811,30 +872,42 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		CGFloat dragY = flipped ? 0.0 : contentView.bounds.size.height - dragHeight;
 		dragY = MAX(0.0, dragY);
 
-		ElectrobunNativeDragView *dragView = findNativeDragView(contentView);
-		if (dragView == nil) {
-			dragView = [[ElectrobunNativeDragView alloc] initWithFrame:NSZeroRect];
-			[dragView setIdentifier:kElectrobunNativeDragViewIdentifier];
-		}
+		NSArray<NSValue *> *dragRects =
+			elizaTitlebarNativeDragRects(contentWidth, dragHeight, flipped);
+		NSArray<NSString *> *identifiers = elizaNativeDragViewIdentifiers();
+		ElectrobunNativeDragView *lastDragView = nil;
+		for (NSUInteger index = 0; index < [identifiers count]; index++) {
+			NSString *identifier = identifiers[index];
+			if (index >= [dragRects count]) {
+				removeNativeDragView(contentView, identifier);
+				continue;
+			}
 
-		[dragView setFrame:NSMakeRect(dragX, dragY, dragWidth, dragHeight)];
-		[dragView
-			setPassthroughRects:elizaTitlebarDragPassthroughRects(dragWidth,
-																  dragHeight)];
-		if (flipped) {
-			[dragView setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
-		} else {
-			[dragView setAutoresizingMask:(NSViewWidthSizable | NSViewMaxYMargin)];
-		}
+			NSRect localRect = [dragRects[index] rectValue];
+			NSRect frame = NSMakeRect(MAX(dragX, localRect.origin.x),
+									  dragY,
+									  MAX(0.0,
+										  NSMaxX(localRect) -
+											  MAX(dragX, localRect.origin.x)),
+									  localRect.size.height);
+			if (frame.size.width <= 0.0 || frame.size.height <= 0.0) {
+				removeNativeDragView(contentView, identifier);
+				continue;
+			}
 
-		if ([dragView superview] == nil) {
-			[contentView addSubview:dragView];
+			ElectrobunNativeDragView *dragView =
+				ensureNativeDragView(contentView, identifier);
+			[dragView setFrame:frame];
+			[dragView setAutoresizingMask:NSViewNotSizable];
+
+			// Electrobun may insert WKWebView after our first pass -> always
+			// re-stack safe drag zones above the page. These zones deliberately do
+			// not overlap titlebar buttons, so button clicks stay in WebKit.
+			[contentView addSubview:dragView
+						 positioned:NSWindowAbove
+						 relativeTo:nil];
+			lastDragView = dragView;
 		}
-		// Electrobun may insert WKWebView after our first pass -> always re-stack on
-		// top so the drag strip is hit-testable (otherwise only a 1px seam works).
-		[contentView addSubview:dragView
-					 positioned:NSWindowAbove
-					 relativeTo:nil];
 
 		// Legacy Electrobun right-edge drag view would steal drags from the resize
 		// band; remove so ElizaResizeStripView owns the east edge.
@@ -844,7 +917,8 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 			[legacyRight removeFromSuperview];
 		}
 
-		elizaInstallResizeStripOverlays(window, contentView, resizeDepth, dragView);
+		elizaInstallResizeStripOverlays(window, contentView, resizeDepth,
+										lastDragView);
 
 		success = YES;
 	});

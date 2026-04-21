@@ -189,6 +189,7 @@ import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
+import { handleXRelayRoute } from "./x-relay-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -3766,6 +3767,15 @@ async function handleRequest(
       { config: state.config, runtime: state.runtime },
     );
     if (travelProviderHandled) return;
+
+    const xRelayHandled = await handleXRelayRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (xRelayHandled) return;
 
     const billingHandled = await handleCloudBillingRoute(
       req,

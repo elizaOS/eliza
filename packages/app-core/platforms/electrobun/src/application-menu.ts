@@ -1,5 +1,5 @@
-import type { ManagedWindowSnapshot } from "./surface-windows";
 import { getBrandConfig } from "./brand-config";
+import type { ManagedWindowSnapshot } from "./surface-windows";
 
 /**
  * OS menu bar structure for Electrobun. Each **`action`** is emitted as
@@ -17,7 +17,7 @@ type ApplicationMenuRole =
   | "services"
   | "hide"
   | "hideOthers"
-  | "unhide"
+  | "showAll"
   | "quit"
   | "undo"
   | "redo"
@@ -31,11 +31,12 @@ type ApplicationMenuRole =
   | "resetZoom"
   | "zoomIn"
   | "zoomOut"
-  | "togglefullscreen"
+  | "toggleFullScreen"
   | "minimize"
   | "close"
   | "zoom"
-  | "front";
+  | "bringAllToFront"
+  | "cycleThroughWindows";
 
 export type ApplicationMenuItem = {
   label?: string;
@@ -192,6 +193,33 @@ function buildDesktopMenu(): ApplicationMenuItem {
   };
 }
 
+function buildQuitMenuItem(
+  isMac: boolean,
+  appName: string,
+): ApplicationMenuItem {
+  if (isMac) {
+    return {
+      label: `Quit ${appName}`,
+      role: "quit",
+      accelerator: "Command+Q",
+    };
+  }
+
+  return {
+    label: `Quit ${appName}`,
+    action: "quit",
+    accelerator: "Ctrl+Q",
+  };
+}
+
+function buildCloseWindowMenuItem(isMac: boolean): ApplicationMenuItem {
+  return {
+    label: "Close Window",
+    role: "close",
+    accelerator: isMac ? "Command+W" : "Ctrl+F4",
+  };
+}
+
 function buildCloudMenu(windows: ManagedWindowSnapshot[]): ApplicationMenuItem {
   return {
     label: "Cloud",
@@ -280,13 +308,11 @@ export function buildApplicationMenu({
               { type: "separator" as const },
               { role: "hide" },
               { role: "hideOthers" },
-              { role: "unhide" },
+              { role: "showAll" },
               { type: "separator" as const },
             ]
           : []),
-        ...(isMac
-          ? ([{ role: "quit" }] as ApplicationMenuItem[])
-          : ([{ label: "Quit", action: "quit" }] as ApplicationMenuItem[])),
+        buildQuitMenuItem(isMac, appName),
       ] as ApplicationMenuItem[],
     },
     {
@@ -329,7 +355,7 @@ export function buildApplicationMenu({
         { label: "Zoom In", role: "zoomIn" },
         { label: "Zoom Out", role: "zoomOut" },
         { type: "separator" },
-        { label: "Toggle Full Screen", role: "togglefullscreen" },
+        { label: "Toggle Full Screen", role: "toggleFullScreen" },
       ],
     },
     buildDesktopMenu(),
@@ -352,12 +378,16 @@ export function buildApplicationMenu({
       label: "Window",
       submenu: [
         { role: "minimize" },
-        { role: "close" },
+        buildCloseWindowMenuItem(isMac),
         ...(isMac
           ? [
               { role: "zoom" },
+              {
+                role: "cycleThroughWindows",
+                accelerator: "Control+F4",
+              },
               { type: "separator" as const },
-              { role: "front" },
+              { role: "bringAllToFront" },
             ]
           : []),
         { type: "separator" },

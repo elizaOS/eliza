@@ -91,6 +91,8 @@ describe("owner schedule surfaces", () => {
       expect(inspection.insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
       expect(inspection.insight.nextMealLabel).toBe("lunch");
       expect(inspection.sleepEpisodes.length).toBeGreaterThan(0);
+      expect(inspection.sleepCycle.sleepStatus).toBe("slept");
+      expect(inspection.dayBoundary.anchor).toBe("before_sleep");
       expect(inspection.counts.screenTimeSessionCount).toBe(3);
     } finally {
       await fixture.cleanup();

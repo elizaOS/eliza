@@ -144,6 +144,9 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
+  { type: "GET", path: "/api/lifeops/x/dms/digest" },
+  { type: "POST", path: "/api/lifeops/x/dms/curate" },
+  { type: "POST", path: "/api/lifeops/x/dms/send" },
   // iMessage
   { type: "GET", path: "/api/lifeops/connectors/imessage/status" },
   { type: "GET", path: "/api/lifeops/connectors/imessage/chats" },

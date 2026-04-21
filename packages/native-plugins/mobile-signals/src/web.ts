@@ -4,6 +4,7 @@ import type {
   MobileSignalsPermissionStatus,
   MobileSignalsPlatform,
   MobileSignalsPlugin,
+  MobileSignalsScreenTimeStatus,
   MobileSignalsSnapshot,
   MobileSignalsSnapshotResult,
   MobileSignalsStartOptions,
@@ -27,6 +28,25 @@ function getPlatform(): MobileSignalsPlatform {
     return "ios";
   }
   return "web";
+}
+
+function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
+  return {
+    supported: false,
+    entitlements: {
+      familyControls: false,
+      appAndWebsiteUsage: false,
+    },
+    authorization: {
+      status: "unavailable",
+      canRequest: false,
+    },
+    reportAvailable: false,
+    coarseSummaryAvailable: false,
+    thresholdEventsAvailable: false,
+    rawUsageExportAvailable: false,
+    reason,
+  };
 }
 
 async function getBatterySnapshot(): Promise<{
@@ -97,6 +117,9 @@ function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
     idleTimeSeconds: null,
     onBattery: null,
     healthSource: "healthkit",
+    screenTime: buildScreenTimeStatus(
+      "Web fallback has no Family Controls or DeviceActivity access.",
+    ),
     permissions: {
       sleep: false,
       biometrics: false,
@@ -134,6 +157,9 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      screenTime: buildScreenTimeStatus(
+        "Web fallback has no Family Controls or DeviceActivity access.",
+      ),
       permissions: {
         sleep: false,
         biometrics: false,
@@ -226,3 +252,7 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     };
   }
 }
+
+export const __internal = {
+  buildScreenTimeStatus,
+};
