@@ -10,11 +10,15 @@ static NSString *const kElectrobunNativeDragViewIdentifier =
 	@"ElectrobunNativeDragView";
 static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
+static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
+	@"ElizaInactiveTrafficLightsOverlay";
 
 /** Transparent strip for moving the window. WKWebView does not honor
  *  -webkit-app-region reliably on system WebKit; this view is stacked
- *  NSWindowAbove the web view so clicks hit AppKit first. */
+ *  NSWindowAbove the web view so clicks hit AppKit first. It passes through
+ *  known titlebar control zones so React buttons still receive clicks. */
 @interface ElectrobunNativeDragView : NSView
+@property(nonatomic, copy) NSArray<NSValue *> *passthroughRects;
 @end
 
 @implementation ElectrobunNativeDragView
@@ -26,11 +30,55 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	(void)dirtyRect;
 }
 
+- (nullable NSView *)hitTest:(NSPoint)point {
+	for (NSValue *value in self.passthroughRects) {
+		if (NSPointInRect(point, [value rectValue])) {
+			return nil;
+		}
+	}
+	return [super hitTest:point];
+}
+
 - (void)mouseDown:(NSEvent *)event {
 	NSWindow *window = [self window];
 	if (window != nil && event != nil) {
 		// Standard API for dragging from client-area views (hiddenInset).
 		[window performWindowDragWithEvent:event];
+	}
+}
+@end
+
+@interface ElizaInactiveTrafficLightsOverlayView : NSView
+@property(nonatomic, copy) NSArray<NSValue *> *dotRects;
+@end
+
+@implementation ElizaInactiveTrafficLightsOverlayView
+- (BOOL)isOpaque {
+	return NO;
+}
+
+- (nullable NSView *)hitTest:(NSPoint)point {
+	(void)point;
+	return nil;
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+	(void)dirtyRect;
+	NSColor *fill = [NSColor colorWithCalibratedWhite:0.62 alpha:0.72];
+	NSColor *stroke = [NSColor colorWithCalibratedWhite:0.42 alpha:0.32];
+	for (NSValue *value in self.dotRects) {
+		NSRect rect = [value rectValue];
+		CGFloat diameter = MIN(MIN(rect.size.width, rect.size.height), 12.0);
+		NSRect dot = NSMakeRect(NSMidX(rect) - diameter / 2.0,
+								NSMidY(rect) - diameter / 2.0,
+								diameter,
+								diameter);
+		NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:dot];
+		[fill setFill];
+		[path fill];
+		[stroke setStroke];
+		[path setLineWidth:0.5];
+		[path stroke];
 	}
 }
 @end
@@ -358,6 +406,32 @@ static ElectrobunNativeDragView *findNativeDragRightEdgeView(NSView *contentView
 	return nil;
 }
 
+static ElizaInactiveTrafficLightsOverlayView *
+findInactiveTrafficLightsOverlay(NSView *container) {
+	for (NSView *subview in [container subviews]) {
+		if ([subview isKindOfClass:[ElizaInactiveTrafficLightsOverlayView class]] &&
+			[[subview identifier]
+				isEqualToString:kElizaInactiveTrafficLightsOverlayIdentifier]) {
+			return (ElizaInactiveTrafficLightsOverlayView *)subview;
+		}
+	}
+
+	return nil;
+}
+
+static ElizaInactiveTrafficLightsOverlayView *
+ensureInactiveTrafficLightsOverlay(NSView *container) {
+	ElizaInactiveTrafficLightsOverlayView *overlay =
+		findInactiveTrafficLightsOverlay(container);
+	if (overlay == nil) {
+		overlay = [[ElizaInactiveTrafficLightsOverlayView alloc]
+			initWithFrame:NSZeroRect];
+		[overlay setIdentifier:kElizaInactiveTrafficLightsOverlayIdentifier];
+		[container addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+	}
+	return overlay;
+}
+
 /**
  * Request accessibility permission with a system prompt.
  * Calls AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: true}),
@@ -564,6 +638,11 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 			spacing = closeButton.frame.size.width + 6.0;
 		}
 
+		BOOL inactive = ![NSApp isActive] || ![window isKeyWindow];
+		CGFloat buttonAlpha = inactive ? 0.62 : 1.0;
+		[buttonContainer setHidden:NO];
+		[buttonContainer setAlphaValue:1.0];
+
 		BOOL flipped = [buttonContainer isFlipped];
 		CGFloat targetY = yFromTop;
 		if (!flipped) {
@@ -575,7 +654,10 @@ extern "C" bool setWindowTrafficLightsPosition(void *windowPtr, double x,
 		CGFloat currentX = x;
 		NSArray<NSButton *> *buttons = @[ closeButton, minimizeButton, zoomButton ];
 		for (NSButton *button in buttons) {
+			[button setHidden:NO];
+			[button setAlphaValue:buttonAlpha];
 			[button setFrameOrigin:NSMakePoint(currentX, targetY)];
+			[button setNeedsDisplay:YES];
 			currentX += spacing;
 		}
 

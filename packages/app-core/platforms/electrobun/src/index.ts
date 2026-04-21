@@ -471,10 +471,10 @@ const MAC_TRAFFIC_LIGHTS_Y = 12;
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
  * Top drag strip height == right/bottom/BR overlay thickness (points).
- * Pin this lower than the old auto depth so toolbar controls can live in the
- * titlebar without sitting inside the native drag overlay.
+ * Pin this to the native minimum so the draggable band stays available without
+ * overlapping the top edge of the titlebar buttons.
  */
-const MAC_NATIVE_DRAG_REGION_HEIGHT = 18;
+const MAC_NATIVE_DRAG_REGION_HEIGHT = 12;
 
 /**
  * Vibrancy, shadow, traffic lights, and native chrome layout. Re-calls native
@@ -521,6 +521,12 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
   setTimeout(alignChrome, 120);
 
   win.on("resize", alignChrome);
+  win.on("focus", alignChrome);
+  win.on("blur", () => {
+    alignChrome();
+    setTimeout(alignChrome, 80);
+    setTimeout(alignChrome, 240);
+  });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
   win.on("move", alignChrome);
 

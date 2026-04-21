@@ -51,13 +51,13 @@ const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
 };
 
 const TOPBAR_NAV_BUTTON_CLASSNAME =
-  "group relative inline-flex h-9 min-h-9 shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 text-xs font-medium text-muted transition-[background-color,color,border-color] duration-150 hover:bg-accent/10 hover:text-txt";
-const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "bg-accent/12 text-txt after:absolute after:inset-x-2.5 after:bottom-[-0.55rem] after:h-[2px] after:rounded-full after:bg-accent/55";
+  "group relative inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 text-xs font-medium text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2.5 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
+const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
 const TOPBAR_ICON_BUTTON_CLASSNAME =
-  "inline-flex h-9 w-9 min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-[background-color,color,border-color] duration-150 hover:bg-accent/10 hover:text-txt";
+  "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
+const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
 const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
-  "inline-flex min-w-[4.25rem] shrink-0 flex-col items-center justify-center gap-1 rounded-[0.85rem] px-2 py-2 text-[10px] font-medium leading-tight transition-[background-color,color,border-color] duration-150";
+  "relative inline-flex min-w-0 flex-1 items-center justify-center rounded-[0.85rem] px-2 py-2.5 text-muted transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-[0.15rem] after:h-[2px] after:rounded-full after:bg-accent/60 after:opacity-0 after:transition-opacity after:duration-150";
 
 interface HeaderProps {
   mobileLeft?: ReactNode;
@@ -252,7 +252,7 @@ export function Header({
       size="icon"
       variant="ghost"
       className={`${TOPBAR_ICON_BUTTON_CLASSNAME} ${
-        tasksEventsPanelOpen ? "bg-accent/12 text-txt" : ""
+        tasksEventsPanelOpen ? TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME : ""
       }`}
       onClick={onToggleTasksPanel}
       onPointerDown={stopHeaderPointerPropagation}
@@ -314,7 +314,7 @@ export function Header({
         size="icon"
         variant="ghost"
         className={`${TOPBAR_ICON_BUTTON_CLASSNAME} ${
-          isSettingsActive ? "bg-accent/12 text-txt" : ""
+          isSettingsActive ? TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME : ""
         }`}
         onClick={() => setTab(settingsTabGroup?.tabs[0] ?? "settings")}
         onPointerDown={stopHeaderPointerPropagation}
@@ -344,7 +344,7 @@ export function Header({
           }
         >
           <div
-            className="grid min-h-[3.15rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
+            className="grid min-h-[2.375rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-3"
             data-window-titlebar-padding={
               showMacDesktopTitleBar ? "true" : undefined
             }
@@ -456,18 +456,18 @@ export function Header({
                   key={group.label}
                   className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
                     isActive
-                      ? "bg-accent/14 text-txt"
-                      : "text-muted hover:bg-accent/10 hover:text-txt"
+                      ? "text-accent after:opacity-100"
+                      : "hover:text-txt"
                   }`}
                   onClick={() => setTab(primaryTab)}
                   onPointerDown={stopHeaderPointerPropagation}
+                  aria-label={localizedGroup.label}
+                  title={localizedGroup.label}
                   style={HEADER_BUTTON_STYLE}
                   data-no-camera-drag="true"
                 >
-                  <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
-                  <span className="pointer-events-none truncate">
-                    {localizedGroup.label}
-                  </span>
+                  <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
+                  <span className="sr-only">{localizedGroup.label}</span>
                 </Button>
               );
             })}
