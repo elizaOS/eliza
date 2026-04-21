@@ -56,6 +56,47 @@ enum ScreenTimeSupport {
         ]
     }
 
+    static func requestAuthorizationIfAvailable(
+        completion: @escaping (String?) -> Void
+    ) {
+        let familyControlsEnabled = entitlementIsEnabled(familyControlsEntitlement)
+        let authorizationStatus = authorizationStatusString()
+        guard canRequestAuthorization(
+            familyControlsEnabled: familyControlsEnabled,
+            authorizationStatus: authorizationStatus
+        ) else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        if #available(iOS 16.0, *) {
+            Task { @MainActor in
+                do {
+                    try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+                    completion(nil)
+                } catch {
+                    completion("Screen Time authorization request failed: \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+
+        DispatchQueue.main.async {
+            AuthorizationCenter.shared.requestAuthorization { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion("Screen Time authorization request failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+
     private static func authorizationStatusString() -> String {
         runOnMain {
             switch AuthorizationCenter.shared.authorizationStatus {
