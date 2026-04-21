@@ -235,15 +235,12 @@ async function extractWebsiteBlockRequest(
     };
   }
 
-  return parseSelfControlBlockRequest(
-    {
-      parameters: {
-        websites,
-        durationMinutes,
-      },
-    } as HandlerOptions,
-    undefined,
-  );
+  return parseSelfControlBlockRequest({
+    parameters: {
+      websites,
+      durationMinutes,
+    },
+  } as HandlerOptions);
 }
 
 async function resolveWebsiteBlockRequest(
@@ -252,7 +249,7 @@ async function resolveWebsiteBlockRequest(
   options?: HandlerOptions,
 ): Promise<ReturnType<typeof parseSelfControlBlockRequest>> {
   if (hasExplicitBlockParameters(options)) {
-    return parseSelfControlBlockRequest(options, undefined);
+    return parseSelfControlBlockRequest(options);
   }
 
   return await extractWebsiteBlockRequest(runtime, message);

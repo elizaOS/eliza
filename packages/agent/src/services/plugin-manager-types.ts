@@ -23,6 +23,7 @@ export interface RegistryPluginInfo extends RegistryClientPluginInfo {
   displayName?: string;
   launchType?: string;
   launchUrl?: string | null;
+  heroImage?: string | null;
   viewer?: RegistryPluginViewerInfo;
   uiExtension?: AppUiExtensionConfig;
   category?: string;

@@ -4027,6 +4027,7 @@ async function handleRequest(
           ),
         stop: (pluginManager, name, runId) =>
           state.appManager.stop(pluginManager, name, runId),
+        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           state.appManager.getInfo(pluginManager, name),
       },

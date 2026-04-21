@@ -526,7 +526,12 @@ export async function handleAppsRoutes(
       error(res, `Hero image for "${slug}" is not available`, 404);
       return true;
     }
-    await streamAppHero(res, resolved.absolutePath, resolved.contentType, error);
+    await streamAppHero(
+      res,
+      resolved.absolutePath,
+      resolved.contentType,
+      error as (response: unknown, message: string, status?: number) => void,
+    );
     return true;
   }
 

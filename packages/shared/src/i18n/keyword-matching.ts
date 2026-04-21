@@ -11,7 +11,7 @@
 
 import type { CharacterLanguage } from "../contracts/onboarding.js";
 import { normalizeCharacterLanguage } from "../onboarding-presets.js";
-import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.js";
+import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
 
 // Re-export the generated data so existing consumers can still reach it
 export { VALIDATION_KEYWORD_DOCS };

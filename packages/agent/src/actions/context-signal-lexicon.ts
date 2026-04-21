@@ -20,6 +20,7 @@ export type ContextSignalKey =
   | "lifeops_skip"
   | "lifeops_snooze"
   | "lifeops_update"
+  | "link_entity"
   | "negative"
   | "read_channel"
   | "read_messages"
@@ -219,6 +220,13 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     },
   },
   search_entity: {
+    keywordKeys: {
+      strong: "contextSignal.search_entity.strong",
+      weak: "contextSignal.search_entity.weak",
+    },
+  },
+  link_entity: {
+    contextLimit: 8,
     keywordKeys: {
       strong: "contextSignal.search_entity.strong",
       weak: "contextSignal.search_entity.weak",

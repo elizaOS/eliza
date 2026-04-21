@@ -1003,6 +1003,13 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
+    async autoPairBrowserCompanion(
+      request: CreateLifeOpsBrowserCompanionPairingRequest,
+      _origin: string,
+    ): Promise<LifeOpsBrowserCompanionPairingResponse> {
+      return this.createBrowserCompanionPairing(request);
+    }
+
     async syncBrowserCompanion(
       companionId: string,
       pairingToken: string,
