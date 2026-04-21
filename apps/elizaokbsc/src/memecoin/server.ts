@@ -3214,6 +3214,8 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
 .goo-topbar__left{display:flex;align-items:center;gap:14px;}
 .goo-topbar__logo{font-size:20px;font-weight:700;color:var(--goo-brand);letter-spacing:.02em;text-decoration:none;display:flex;align-items:center;gap:10px;}
 .goo-topbar__logo img{width:34px;height:34px;border-radius:50%;border:2px solid rgba(0,199,210,.3);object-fit:cover;}
+.goo-collab{display:flex;align-items:center;gap:8px;}
+.goo-collab__x{font-size:14px;font-weight:700;color:var(--goo-text3);opacity:.5;}
 .goo-topbar__sub{font-size:12px;color:var(--goo-text3);font-weight:400;}
 .goo-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .goo-nav a{color:var(--goo-text3);font-size:12px;font-weight:500;text-decoration:none;padding:6px 14px;border:1px solid var(--goo-border);border-radius:var(--goo-r-sm);transition:all .2s;}
@@ -3364,7 +3366,11 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
   <div class="goo-topbar">
     <div class="goo-topbar__left">
       <a class="goo-topbar__logo" href="/goo">
-        <img src="/assets/avatar.png" alt="Goo" />
+        <span class="goo-collab">
+          <img src="/assets/avatar.png" alt="elizaOK" />
+          <span class="goo-collab__x">×</span>
+          <img src="/assets/goo-economy-logo.png" alt="Goo Economy" />
+        </span>
         Goo Economy Arena
       </a>
       <span class="goo-topbar__sub">Strategy Arena · elizaOK</span>
@@ -7989,8 +7995,8 @@ async function handleRequest(
     return;
   }
 
-  if (pathname === "/assets/avatar.png" || pathname === "/assets/cloud-banner.png") {
-    const fileName = pathname === "/assets/avatar.png" ? "avatar.png" : "cloud-banner.png";
+  if (pathname === "/assets/avatar.png" || pathname === "/assets/cloud-banner.png" || pathname === "/assets/goo-economy-logo.png") {
+    const fileName = pathname.split("/").pop()!;
     const filePath = path.join(ELIZAOK_ASSET_DIR, fileName);
     try {
       const content = await readFile(filePath);
