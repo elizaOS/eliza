@@ -15,7 +15,6 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import type {
   NativeCompletionParams,
   NativeCompletionResult,
-  NativeCompletionTokenProb,
   NativeContextParams,
   NativeLlamaContext,
 } from "llama-cpp-capacitor";
@@ -37,20 +36,18 @@ export {
 // Dynamically imported so the adapter can be bundled into a desktop build
 // without pulling in native-only module resolution noise.
 type NativeGenerateParams = Partial<Omit<NativeCompletionParams, "prompt">>;
+type NativeCompletionProbability = NonNullable<
+  NativeCompletionResult["completion_probabilities"]
+>[number];
 
 type TokenEventPayload = {
   token?: string;
-  completion_probabilities?: NativeCompletionTokenProb[];
+  completion_probabilities?: NativeCompletionProbability[];
   tokenResult?: {
     token?: string;
-    completion_probabilities?: NativeCompletionTokenProb[];
+    completion_probabilities?: NativeCompletionProbability[];
   };
 };
-
-interface LlamaCppCapacitorModule {
-  default?: LlamaCppPluginLike;
-  LlamaCpp?: LlamaCppPluginLike;
-}
 
 interface LlamaCppPluginLike {
   initContext: (options: {
@@ -103,10 +100,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (this.plugin) return this.plugin;
     if (this.pluginLoadPromise) return this.pluginLoadPromise;
     this.pluginLoadPromise = (async () => {
-      const mod = (await import(
-        "llama-cpp-capacitor"
-      )) as LlamaCppCapacitorModule;
-      const plugin = mod.default ?? mod.LlamaCpp;
+      const { LlamaCpp: plugin } = await import("llama-cpp-capacitor");
       if (!plugin || typeof plugin.initContext !== "function") {
         throw new Error(
           "llama-cpp-capacitor did not expose an initContext method",
