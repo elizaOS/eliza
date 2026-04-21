@@ -96,47 +96,51 @@ function buildRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+function stubCapabilityDependencies(service: LifeOpsService): void {
+  vi.spyOn(service, "getScheduleMergedState").mockResolvedValue(
+    buildMergedState(),
+  );
+  vi.spyOn(service, "getBrowserSettings").mockResolvedValue({
+    enabled: true,
+    trackingMode: "metadata",
+    allowBrowserControl: false,
+    requireConfirmationForAccountAffecting: true,
+    incognitoEnabled: false,
+    siteAccessMode: "allowlist",
+    grantedOrigins: ["https://x.com"],
+    blockedOrigins: [],
+    maxRememberedTabs: 50,
+    pauseUntil: null,
+    metadata: {},
+    updatedAt: NOW,
+  });
+  vi.spyOn(service, "listBrowserCompanions").mockResolvedValue([]);
+  vi.spyOn(service, "getHealthConnectorStatus").mockResolvedValue({
+    available: true,
+    backend: "healthkit",
+    lastCheckedAt: NOW,
+  });
+  vi.spyOn(service, "getXConnectorStatus").mockResolvedValue({
+    provider: "x",
+    mode: "local",
+    connected: true,
+    grantedCapabilities: ["x.read", "x.write"],
+    grantedScopes: ["tweet.read", "tweet.write"],
+    identity: { username: "milady" },
+    hasCredentials: true,
+    feedRead: true,
+    feedWrite: true,
+    dmRead: false,
+    dmWrite: false,
+    dmInbound: false,
+    grant: null,
+  });
+}
+
 describe("LifeOps capability status", () => {
   it("summarizes runtime, awake-relative time, scheduler, browser, features, and X", async () => {
     const service = new LifeOpsService(buildRuntime());
-    vi.spyOn(service, "getScheduleMergedState").mockResolvedValue(
-      buildMergedState(),
-    );
-    vi.spyOn(service, "getBrowserSettings").mockResolvedValue({
-      enabled: true,
-      trackingMode: "metadata",
-      allowBrowserControl: false,
-      requireConfirmationForAccountAffecting: true,
-      incognitoEnabled: false,
-      siteAccessMode: "allowlist",
-      grantedOrigins: ["https://x.com"],
-      blockedOrigins: [],
-      maxRememberedTabs: 50,
-      pauseUntil: null,
-      metadata: {},
-      updatedAt: NOW,
-    });
-    vi.spyOn(service, "listBrowserCompanions").mockResolvedValue([]);
-    vi.spyOn(service, "getHealthConnectorStatus").mockResolvedValue({
-      available: true,
-      backend: "healthkit",
-      lastCheckedAt: NOW,
-    });
-    vi.spyOn(service, "getXConnectorStatus").mockResolvedValue({
-      provider: "x",
-      mode: "local",
-      connected: true,
-      grantedCapabilities: ["x.read", "x.write"],
-      grantedScopes: ["tweet.read", "tweet.write"],
-      identity: { username: "milady" },
-      hasCredentials: true,
-      feedRead: true,
-      feedWrite: true,
-      dmRead: false,
-      dmWrite: false,
-      dmInbound: false,
-      grant: null,
-    });
+    stubCapabilityDependencies(service);
 
     const status = await service.getCapabilityStatus(new Date(NOW));
 
@@ -157,5 +161,26 @@ describe("LifeOps capability status", () => {
       status.capabilities.find((item) => item.id === "sleep.relative_time")
         ?.summary,
     ).toContain("awake 3h");
+  });
+
+  it("marks runtime and scheduler degraded when app state cannot be loaded", async () => {
+    const runtime = buildRuntime();
+    vi.mocked(runtime.getCache).mockRejectedValue(new Error("cache offline"));
+    const service = new LifeOpsService(runtime);
+    stubCapabilityDependencies(service);
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const app = status.capabilities.find((item) => item.id === "lifeops.app");
+    const scheduler = status.capabilities.find(
+      (item) => item.id === "reminders.scheduler",
+    );
+
+    expect(status.appEnabled).toBe(false);
+    expect(app?.state).toBe("degraded");
+    expect(app?.summary).toBe("LifeOps app state could not be loaded");
+    expect(scheduler?.state).toBe("degraded");
+    expect(scheduler?.summary).toBe(
+      "Scheduler status is degraded because LifeOps app state failed to load",
+    );
   });
 });

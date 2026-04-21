@@ -237,7 +237,9 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
         ),
       ]);
 
-      const appEnabled = appState.ok ? appState.value.enabled : true;
+      const appEnabled = appState.ok && appState.value.enabled;
+      const appStateLoadFailed = !appState.ok;
+      const appDisabled = appState.ok && !appState.value.enabled;
       const scheduleState = schedule.ok ? schedule.value : null;
       const featureStates = features.ok ? features.value : [];
       const browser =
@@ -271,16 +273,26 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           id: "lifeops.app",
           domain: "core",
           label: "LifeOps runtime",
-          state: appEnabled ? "working" : "blocked",
-          summary: appEnabled
-            ? "LifeOps is enabled for the owner"
-            : "LifeOps is disabled by the owner toggle",
+          state: appStateLoadFailed
+            ? "degraded"
+            : appEnabled
+              ? "working"
+              : "blocked",
+          summary: appStateLoadFailed
+            ? "LifeOps app state could not be loaded"
+            : appEnabled
+              ? "LifeOps is enabled for the owner"
+              : "LifeOps is disabled by the owner toggle",
           confidence: appState.ok ? 0.95 : 0.5,
           checkedAt,
           evidence: [
             {
               label: "App toggle",
-              state: appEnabled ? "working" : "blocked",
+              state: appStateLoadFailed
+                ? "degraded"
+                : appEnabled
+                  ? "working"
+                  : "blocked",
               detail: appState.ok ? null : appState.message,
               observedAt: appState.ok ? checkedAt : appState.observedAt,
             },
@@ -346,13 +358,17 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           id: "reminders.scheduler",
           domain: "reminders",
           label: "Reminder scheduler",
-          state: !appEnabled
+          state: appDisabled
             ? "blocked"
+            : appStateLoadFailed
+              ? "degraded"
             : workerRegistered && schedulerTask
               ? "working"
               : "degraded",
-          summary: !appEnabled
+          summary: appDisabled
             ? "Scheduler is intentionally suppressed while LifeOps is disabled"
+            : appStateLoadFailed
+              ? "Scheduler status is degraded because LifeOps app state failed to load"
             : workerRegistered && schedulerTask
               ? `Worker registered; interval ${Math.round(
                   schedulerIntervalMs / 1000,

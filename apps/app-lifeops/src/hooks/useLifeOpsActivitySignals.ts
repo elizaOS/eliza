@@ -18,6 +18,7 @@ import {
   APP_RESUME_EVENT,
 } from "@elizaos/app-core/events";
 import { useEffect, useRef } from "react";
+import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
@@ -72,6 +73,12 @@ function resolveActivityPlatform(): string {
     return "mobile_app";
   }
   return "web_app";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message.trim()
+    : String(error);
 }
 
 function fingerprintSignal(
@@ -155,6 +162,10 @@ export function useLifeOpsActivitySignals(enabled = true): void {
       error.path === "/api/lifeops/activity-signals";
 
     const reportCaptureError = (error: unknown): void => {
+      if (isRuntimeUnavailableError(error)) {
+        runtimeReadyRef.current = false;
+        return;
+      }
       if (
         isApiError(error) &&
         (error.kind === "network" ||
@@ -164,11 +175,10 @@ export function useLifeOpsActivitySignals(enabled = true): void {
       ) {
         return;
       }
-      if (isRuntimeUnavailableError(error)) {
-        runtimeReadyRef.current = false;
-        return;
-      }
-      console.warn("[lifeops] failed to capture activity signal", error);
+      dispatchLifeOpsActivitySignalsStatus({
+        status: "capture_error",
+        message: errorMessage(error),
+      });
     };
 
     const refreshRuntimeReady = async (): Promise<boolean> => {
@@ -339,7 +349,10 @@ export function useLifeOpsActivitySignals(enabled = true): void {
       if (snapshot.supported) {
         await sendSnapshotResult(snapshot);
       } else {
-        console.warn("[lifeops] mobile signals snapshot unavailable", reason);
+        dispatchLifeOpsActivitySignalsStatus({
+          status: "snapshot_unavailable",
+          reason,
+        });
       }
     };
 
@@ -379,10 +392,10 @@ export function useLifeOpsActivitySignals(enabled = true): void {
         try {
           const result = await mobileSignals.scheduleBackgroundRefresh();
           if (!result.scheduled && result.reason) {
-            console.warn(
-              "[lifeops] mobile background refresh not scheduled",
-              result.reason,
-            );
+            dispatchLifeOpsActivitySignalsStatus({
+              status: "background_refresh_unavailable",
+              reason: result.reason,
+            });
           }
         } catch (error) {
           reportCaptureError(error);

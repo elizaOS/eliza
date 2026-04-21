@@ -89,10 +89,10 @@ await runManagedTestCommand({
 
 await runManagedTestCommand({
   repoRoot,
-  lockName: "e2e-all",
-  label: "e2e-all",
+  lockName: "e2e",
+  label: "e2e",
   command: bunCmd,
-  args: ["run", "test:e2e:all"],
+  args: ["run", "test:e2e"],
   cwd: repoRoot,
   env: buildTestEnv(repoRoot),
 });

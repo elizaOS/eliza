@@ -1,7 +1,5 @@
 /** Selects a live LLM provider for integration tests from env and local config. */
 
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { test } from "vitest";
 
@@ -19,12 +17,6 @@ try {
   config({ path: path.join(REPO_ROOT, ".env") });
 } catch {
   // dotenv optional
-}
-
-const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function getTrimmedEnv(name: string): string | null {
@@ -80,35 +72,6 @@ function getLiveTestBaseUrlOverride(
 
   return null;
 }
-
-function readCloudApiKey(value: unknown): string {
-  if (!isRecord(value)) {
-    return "";
-  }
-
-  const { cloud } = value;
-  if (!isRecord(cloud)) {
-    return "";
-  }
-
-  const { apiKey } = cloud;
-  return typeof apiKey === "string" ? apiKey.trim() : "";
-}
-
-function loadConfiguredCloudApiKey(): string {
-  const configuredPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    path.join(os.homedir(), ".eliza", "eliza.json");
-
-  try {
-    const raw = fs.readFileSync(configuredPath, "utf8");
-    return readCloudApiKey(JSON.parse(raw));
-  } catch {
-    return "";
-  }
-}
-
-const configuredCloudApiKey = loadConfiguredCloudApiKey();
 
 export type LiveProviderName =
   | "groq"
@@ -212,39 +175,6 @@ const PROVIDERS: Array<{
   },
 ];
 
-function cloudOpenAiProvider(): LiveProviderConfig | null {
-  const cloudApiKey =
-    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
-    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
-    configuredCloudApiKey;
-  if (!cloudApiKey) {
-    return null;
-  }
-
-  const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
-  const largeModel =
-    getTrimmedEnv("OPENAI_LARGE_MODEL") ||
-    getTrimmedEnv("OPENAI_SMALL_MODEL") ||
-    "gpt-5.4-mini";
-
-  return {
-    name: "openai",
-    apiKey: cloudApiKey,
-    baseUrl: ELIZA_CLOUD_OPENAI_BASE_URL,
-    smallModel,
-    largeModel,
-    pluginPackage: "@elizaos/plugin-openai",
-    env: {
-      OPENAI_API_KEY: cloudApiKey,
-      OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
-      OPENAI_SMALL_MODEL: smallModel,
-      OPENAI_LARGE_MODEL: largeModel,
-      SMALL_MODEL: smallModel,
-      LARGE_MODEL: largeModel,
-    },
-  };
-}
-
 for (const provider of PROVIDERS) {
   for (const key of provider.keyEnvVars) {
     LIVE_PROVIDER_ENV_KEYS.add(key);
@@ -324,17 +254,6 @@ export function selectLiveProvider(
     };
   }
 
-  if (preferredProvider === "openai") {
-    return cloudOpenAiProvider();
-  }
-
-  if (!preferredProvider) {
-    const cloudProvider = cloudOpenAiProvider();
-    if (cloudProvider) {
-      return cloudProvider;
-    }
-  }
-
   return null;
 }
 
@@ -376,13 +295,6 @@ export function availableProviderNames(): LiveProviderName[] {
       }),
     ).map((def) => def.name),
   );
-  if (
-    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
-    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
-    configuredCloudApiKey
-  ) {
-    providers.add("openai");
-  }
   return [...providers];
 }
 
