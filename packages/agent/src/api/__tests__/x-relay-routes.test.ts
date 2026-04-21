@@ -6,12 +6,10 @@ vi.mock("../../cloud/validate-url.js", () => ({
   validateCloudBaseUrl: vi.fn(async () => null),
 }));
 
-import {
-  handleXRelayRoute,
-  type XRelayRouteState,
-} from "../x-relay-routes.js";
+import { handleXRelayRoute, type XRelayRouteState } from "../x-relay-routes.js";
 
 const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_CLOUD_API_KEY = process.env.ELIZAOS_CLOUD_API_KEY;
 
 function makeFetchMock(
   impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -82,10 +80,16 @@ function makeRuntimeWithCloudAuth(apiKey: string) {
 describe("X relay route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
   });
 
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_CLOUD_API_KEY === undefined) {
+      delete process.env.ELIZAOS_CLOUD_API_KEY;
+    } else {
+      process.env.ELIZAOS_CLOUD_API_KEY = ORIGINAL_CLOUD_API_KEY;
+    }
   });
 
   it("returns 401 when no Eliza Cloud API key is available", async () => {
@@ -149,7 +153,9 @@ describe("X relay route", () => {
     expect(handled).toBe(true);
     expect(getStatus()).toBe(402);
     expect(headers.get("www-authenticate")).toMatch(/^x402 /);
-    expect(readBody<{ paymentRequirements: Array<{ amount: string }> }>().paymentRequirements[0].amount)
-      .toBe("1500000");
+    expect(
+      readBody<{ paymentRequirements: Array<{ amount: string }> }>()
+        .paymentRequirements[0].amount,
+    ).toBe("1500000");
   });
 });

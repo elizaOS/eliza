@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { calendlyAction } from "../src/actions/calendly.js";
 import {
   CalendlyError,
   createCalendlySingleUseLink,
   listCalendlyEventTypes,
   readCalendlyCredentialsFromEnv,
 } from "../src/lifeops/calendly-client.js";
-import { calendlyAction } from "../src/actions/calendly.js";
 
 const ORIGINAL_ENV = { ...process.env };
 let originalFetch: typeof fetch;
@@ -23,9 +23,7 @@ function makeMessage() {
     entityId: SAME_ID,
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text: "calendly" },
-  } as unknown as Parameters<
-    NonNullable<typeof calendlyAction.handler>
-  >[1];
+  } as unknown as Parameters<NonNullable<typeof calendlyAction.handler>>[1];
 }
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -130,25 +128,28 @@ describe("listCalendlyEventTypes", () => {
 
 describe("createCalendlySingleUseLink", () => {
   test("POSTs with Bearer auth, body has max_event_count: 1", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(init?.method).toBe("POST");
-      const auth = new Headers(init?.headers as HeadersInit).get(
-        "Authorization",
-      );
-      expect(auth).toBe("Bearer tok-xyz");
-      const body = JSON.parse(String(init?.body));
-      expect(body.max_event_count).toBe(1);
-      expect(body.owner).toBe("https://api.calendly.com/event_types/et1");
-      expect(body.owner_type).toBe("EventType");
-      void input;
-      return jsonResponse({
-        resource: {
-          booking_url: "https://calendly.com/d/xyz",
-          owner: "et1",
-          owner_type: "EventType",
-        },
-      });
-    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.method).toBe("POST");
+        const auth = new Headers(init?.headers as HeadersInit).get(
+          "Authorization",
+        );
+        expect(auth).toBe("Bearer tok-xyz");
+        const body = JSON.parse(String(init?.body));
+        expect(body.max_event_count).toBe(1);
+        expect(body.owner).toBe("https://api.calendly.com/event_types/et1");
+        expect(body.owner_type).toBe("EventType");
+        void input;
+        return jsonResponse({
+          resource: {
+            booking_url: "https://calendly.com/d/xyz",
+            owner: "et1",
+            owner_type: "EventType",
+            expires_at: "2026-04-20T12:00:00.000Z",
+          },
+        });
+      },
+    );
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const result = await createCalendlySingleUseLink(
@@ -162,11 +163,12 @@ describe("createCalendlySingleUseLink", () => {
 
 describe("CalendlyError on non-2xx", () => {
   test("throws CalendlyError when API returns 4xx", async () => {
-    global.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ message: "Unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      }),
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: "Unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
 
     await expect(

@@ -8,6 +8,7 @@ import type {
 import { emptyBucketCounts } from "../src/activity-profile/types.js";
 
 const ZONE = "America/Los_Angeles";
+const PROFILE_NOW = Date.UTC(2026, 3, 19, 16, 0);
 
 function localDateInZone(
   year: number,
@@ -41,12 +42,13 @@ function localDateInZone(
   return candidate;
 }
 
-function buildProfile(overrides: Partial<ActivityProfile> = {}): ActivityProfile {
-  const now = Date.now();
+function buildProfile(
+  overrides: Partial<ActivityProfile> = {},
+): ActivityProfile {
   const todayKey = "2026-04-19";
   return {
     ownerEntityId: "00000000-0000-0000-0000-000000000001",
-    analyzedAt: now,
+    analyzedAt: PROFILE_NOW,
     analysisWindowDays: 14,
     timezone: ZONE,
     totalMessages: 10,
@@ -70,11 +72,11 @@ function buildProfile(overrides: Partial<ActivityProfile> = {}): ActivityProfile
     sleepSourcePlatform: null,
     sleepSource: null,
     typicalSleepDurationMinutes: null,
-    lastSeenAt: now - 60_000,
+    lastSeenAt: PROFILE_NOW - 60_000,
     lastSeenPlatform: "client_chat",
     isCurrentlyActive: true,
     hasOpenActivityCycle: true,
-    currentActivityCycleStartedAt: now - 60_000,
+    currentActivityCycleStartedAt: PROFILE_NOW - 60_000,
     currentActivityCycleLocalDate: todayKey,
     effectiveDayKey: todayKey,
     screenContextFocus: null,

@@ -230,7 +230,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     const source = await readRepoFile(
       "eliza/apps/app-lifeops/src/website-blocker/engine.ts",
     );
-    expect(source).toContain("parseSelfControlBlockRequest(\n  options?: HandlerOptions,");
+    expect(source).toContain(
+      "parseSelfControlBlockRequest(options?: HandlerOptions)",
+    );
     expect(source).not.toContain("parseSelfControlBlockRequest(\n  options?: HandlerOptions,\n  message?: Memory,");
     expect(source).not.toContain("extractDurationMinutesFromText(");
     expect(source).not.toContain("extractWebsiteTargetsFromText(");

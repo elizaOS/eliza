@@ -7,11 +7,12 @@ vi.mock("../../cloud/validate-url.js", () => ({
 }));
 
 import {
-  type TravelProviderRelayRouteState,
   handleTravelProviderRelayRoute,
+  type TravelProviderRelayRouteState,
 } from "../travel-provider-relay-routes.js";
 
 const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_CLOUD_API_KEY = process.env.ELIZAOS_CLOUD_API_KEY;
 
 function makeFetchMock(
   impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
@@ -44,10 +45,7 @@ function makeResponseCollector() {
   };
 }
 
-function makeReq(
-  url: string,
-  body?: unknown,
-): http.IncomingMessage {
+function makeReq(url: string, body?: unknown): http.IncomingMessage {
   const handlers = new Map<string, Array<(arg?: unknown) => void>>();
   const req = {
     url,
@@ -86,10 +84,16 @@ function makeRuntimeWithCloudAuth(apiKey: string) {
 describe("travel-provider relay route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
   });
 
   afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_CLOUD_API_KEY === undefined) {
+      delete process.env.ELIZAOS_CLOUD_API_KEY;
+    } else {
+      process.env.ELIZAOS_CLOUD_API_KEY = ORIGINAL_CLOUD_API_KEY;
+    }
   });
 
   it("returns 401 when no Eliza Cloud API key is available", async () => {
@@ -198,10 +202,10 @@ describe("travel-provider relay route", () => {
       expect(String(input)).toBe(
         "https://www.elizacloud.ai/api/v1/provider-a/offers/off_xyz",
       );
-      return new Response(
-        JSON.stringify({ error: "insufficient_credits" }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ error: "insufficient_credits" }), {
+        status: 402,
+        headers: { "Content-Type": "application/json" },
+      });
     });
     globalThis.fetch = fetchMock as typeof fetch;
 

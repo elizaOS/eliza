@@ -1,13 +1,12 @@
 import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
 import {
   ALL_FEATURE_KEYS,
-  BASE_FEATURE_DEFAULTS,
   type FeatureFlagChangeListener,
   type FeatureFlagService,
   type FeatureFlagSource,
   type FeatureFlagState,
-  type LifeOpsFeatureKey,
   isLifeOpsFeatureKey,
+  type LifeOpsFeatureKey,
   resolveFeatureDefaults,
 } from "./feature-flags.types.js";
 import {
@@ -49,9 +48,26 @@ interface CloudAuthService extends Service {
   isAuthenticated(): boolean;
 }
 
+function isCloudAuthService(
+  service: Service | null,
+): service is Service & CloudAuthService {
+  return (
+    service !== null &&
+    typeof (service as Partial<CloudAuthService>).isAuthenticated === "function"
+  );
+}
+
 function readCloudLinked(runtime: IAgentRuntime): boolean {
-  const service = runtime.getService<CloudAuthService>("CLOUD_AUTH");
-  if (!service || typeof service.isAuthenticated !== "function") {
+  const getService = (
+    runtime as IAgentRuntime & {
+      getService?: (serviceType: string) => Service | null;
+    }
+  ).getService;
+  const service =
+    typeof getService === "function"
+      ? getService.call(runtime, "CLOUD_AUTH")
+      : null;
+  if (!isCloudAuthService(service)) {
     return false;
   }
   return service.isAuthenticated() === true;
