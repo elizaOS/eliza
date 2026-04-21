@@ -49,6 +49,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
+import { formatMinutesDuration } from "../../../../utils/format-duration.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
@@ -1164,7 +1165,7 @@ function ScheduleSection({
             formatDateTime(schedule.lastSleepEndedAt) ??
             schedule.lastSleepEndedAt,
           duration: schedule.lastSleepDurationMinutes
-            ? ` • ${schedule.lastSleepDurationMinutes}m`
+            ? ` • ${formatMinutesDuration(schedule.lastSleepDurationMinutes)}`
             : "",
         })
       : t("lifeopsoverview.sleepStatus", {
@@ -1188,30 +1189,40 @@ function ScheduleSection({
         : t("lifeopsoverview.mealPatternCalibrating", {
             defaultValue: "Meal pattern calibrating",
           });
-  const relativeLine =
-    schedule.relativeTime.minutesSinceWake !== null
-      ? t("lifeopsoverview.relativeWakeAndBedtime", {
-          defaultValue:
-            schedule.relativeTime.minutesUntilBedtimeTarget !== null
-              ? "Woke {{wakeMinutes}}m ago · bedtime in {{bedMinutes}}m"
-              : "Woke {{wakeMinutes}}m ago · bedtime was {{bedMinutes}}m ago",
-          wakeMinutes: schedule.relativeTime.minutesSinceWake,
-          bedMinutes:
-            schedule.relativeTime.minutesUntilBedtimeTarget ??
-            schedule.relativeTime.minutesSinceBedtimeTarget ??
-            "—",
-        })
-      : schedule.relativeTime.minutesUntilBedtimeTarget !== null
-        ? t("lifeopsoverview.relativeBedtimeOnly", {
-            defaultValue: "Bedtime in {{bedMinutes}}m",
-            bedMinutes: schedule.relativeTime.minutesUntilBedtimeTarget,
-          })
-        : schedule.relativeTime.minutesSinceBedtimeTarget !== null
-          ? t("lifeopsoverview.relativeBedtimePastOnly", {
-              defaultValue: "Bedtime was {{bedMinutes}}m ago",
-              bedMinutes: schedule.relativeTime.minutesSinceBedtimeTarget,
-            })
-          : null;
+  const relativeLine = (() => {
+    const { minutesSinceWake, minutesUntilBedtimeTarget, minutesSinceBedtimeTarget } =
+      schedule.relativeTime;
+    if (minutesSinceWake !== null) {
+      if (minutesUntilBedtimeTarget !== null) {
+        return t("lifeopsoverview.relativeWakeAndBedtimeUpcoming", {
+          defaultValue: "Woke {{wakeMinutes}} ago · bedtime in {{bedMinutes}}",
+          wakeMinutes: formatMinutesDuration(minutesSinceWake),
+          bedMinutes: formatMinutesDuration(minutesUntilBedtimeTarget),
+        });
+      }
+      if (minutesSinceBedtimeTarget !== null) {
+        return t("lifeopsoverview.relativeWakeAndBedtimePast", {
+          defaultValue: "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
+          wakeMinutes: formatMinutesDuration(minutesSinceWake),
+          bedMinutes: formatMinutesDuration(minutesSinceBedtimeTarget),
+        });
+      }
+      return null;
+    }
+    if (minutesUntilBedtimeTarget !== null) {
+      return t("lifeopsoverview.relativeBedtimeOnly", {
+        defaultValue: "Bedtime in {{bedMinutes}}",
+        bedMinutes: formatMinutesDuration(minutesUntilBedtimeTarget),
+      });
+    }
+    if (minutesSinceBedtimeTarget !== null) {
+      return t("lifeopsoverview.relativeBedtimePastOnly", {
+        defaultValue: "Bedtime was {{bedMinutes}} ago",
+        bedMinutes: formatMinutesDuration(minutesSinceBedtimeTarget),
+      });
+    }
+    return null;
+  })();
 
   return (
     <div className="flex flex-col gap-2">
@@ -1234,10 +1245,12 @@ function ScheduleSection({
           <div className="mt-1 text-xs text-muted">{relativeLine}</div>
         ) : null}
         <div className="mt-1 text-xs text-muted">{mealLine}</div>
-        {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
+        {schedule.nextMealLabel &&
+        schedule.nextMealWindowStartAt &&
+        schedule.nextMealConfidence > 0 ? (
           <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
             {t("lifeopsoverview.confidence", {
-              defaultValue: "{{count}}% confidence",
+              defaultValue: "{{count}}% confidence in next meal window",
               count: Math.round(schedule.nextMealConfidence * 100),
             })}
           </div>
