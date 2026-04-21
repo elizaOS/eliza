@@ -12,6 +12,31 @@ type TokenPayload = {
   tokenResult?: { token?: string };
 };
 
+type InitContextOptions = {
+  contextId: number;
+  params: {
+    model: string;
+    n_ctx?: number;
+    n_gpu_layers?: number;
+    n_threads?: number;
+    use_mmap?: boolean;
+  };
+};
+
+type ContextOptions = { contextId: number };
+
+type GenerateTextOptions = {
+  contextId: number;
+  prompt: string;
+  params?: {
+    n_predict?: number;
+    temperature?: number;
+    top_p?: number;
+    stop?: string[];
+    emit_partial_completion?: boolean;
+  };
+};
+
 function setNativeCapacitor(platform: "ios" | "android" = "ios"): void {
   (globalThis as CapacitorGlobal).Capacitor = {
     getPlatform: () => platform,
@@ -28,7 +53,7 @@ function makePluginMock() {
   const listenerHandle = { remove: vi.fn(async () => undefined) };
 
   return {
-    initContext: vi.fn(async () => ({
+    initContext: vi.fn(async (_options: InitContextOptions) => ({
       contextId: 1,
       gpu: true,
       reasonNoGPU: "",
@@ -64,9 +89,9 @@ function makePluginMock() {
         isChatTemplateSupported: false,
       },
     })),
-    releaseContext: vi.fn(async () => undefined),
+    releaseContext: vi.fn(async (_options: ContextOptions) => undefined),
     releaseAllContexts: vi.fn(async () => undefined),
-    generateText: vi.fn(async () => ({
+    generateText: vi.fn(async (_options: GenerateTextOptions) => ({
       text: "hello",
       reasoning_content: "",
       tool_calls: [],
@@ -93,7 +118,7 @@ function makePluginMock() {
         predicted_per_second: 1,
       },
     })),
-    stopCompletion: vi.fn(async () => undefined),
+    stopCompletion: vi.fn(async (_options: ContextOptions) => undefined),
     addListener: vi.fn(
       async (_event: string, listener: (payload: TokenPayload) => void) => {
         tokenListener = listener;
