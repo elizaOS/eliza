@@ -39,7 +39,7 @@ syncElizaEnvAliases();
 
 const env = { ...process.env };
 if (!env.ELIZA_NAMESPACE) {
-  env.ELIZA_NAMESPACE = "eliza";
+  env.ELIZA_NAMESPACE = "milady";
 }
 // WHY: The child runs dist/eliza.js, which dynamic-imports @elizaos/plugin-*. Node does not
 // use cwd to resolve package names for import("pkg"); we must set NODE_PATH to repo root
