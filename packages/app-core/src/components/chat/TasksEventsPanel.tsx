@@ -2,7 +2,7 @@
  * Chat workspace widget bar.
  *
  * Desktop: persistent right rail alongside /chat.
- * Mobile: sheet content toggled from the chat header.
+ * Mobile: alternate chat workspace view toggled from the chat header.
  *
  * Renders the `chat-sidebar` widget slot via the plugin widget system.
  */
@@ -16,7 +16,7 @@ interface TasksEventsPanelProps {
   /** Activity events from the parent — kept alive even when the panel unmounts. */
   events: ActivityEvent[];
   clearEvents: () => void;
-  /** When true, renders as full-width content (inside a mobile DrawerSheet). */
+  /** When true, renders as full-width mobile content. */
   mobile?: boolean;
 }
 

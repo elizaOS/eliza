@@ -148,8 +148,6 @@ function dedupeCachedSearchResults(
 export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsXReadServiceMixin extends Base {
     async syncXDms(opts: XReadOpts = {}): Promise<{ synced: number }> {
-      // Ensures the X connector has been configured.
-      await this.requireXGrant();
       const credentials = toReaderCredentials();
       if (!credentials) {
         const cached = await this.repository.listXDms(this.agentId(), { limit: 1 });
@@ -157,6 +155,10 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           return { synced: 0 };
         }
         fail(409, "X credentials are not configured.");
+      }
+      const grant = await this.resolveXGrant();
+      if (!grant) {
+        fail(409, "X is not connected.");
       }
       let page;
       try {
@@ -189,7 +191,6 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       feedType: LifeOpsXFeedType,
       opts: XFeedReadOpts = {},
     ): Promise<{ synced: number }> {
-      await this.requireXGrant();
       const credentials = toReaderCredentials();
       if (!credentials) {
         const cached = await this.repository.listXFeedItems(
@@ -201,6 +202,10 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           return { synced: 0 };
         }
         fail(409, "X credentials are not configured.");
+      }
+      const grant = await this.resolveXGrant();
+      if (!grant) {
+        fail(409, "X is not connected.");
       }
       let page;
       try {
@@ -237,7 +242,6 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       query: string,
       opts: XReadOpts = {},
     ): Promise<LifeOpsXFeedItem[]> {
-      await this.requireXGrant();
       const trimmed = (query ?? "").trim();
       if (trimmed.length === 0) {
         fail(400, "searchXPosts requires a non-empty query.");
@@ -264,6 +268,10 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           return cached.slice(0, opts.limit ?? cached.length);
         }
         fail(409, "X credentials are not configured.");
+      }
+      const grant = await this.resolveXGrant();
+      if (!grant) {
+        fail(409, "X is not connected.");
       }
       let page;
       try {

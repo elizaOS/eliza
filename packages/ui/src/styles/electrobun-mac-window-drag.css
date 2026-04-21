@@ -18,7 +18,6 @@ html.eliza-electrobun-frameless {
    * on Apple Silicon macOS (was 56px — still overlapped the lights).
    */
   --eliza-macos-frame-left-inset: 78px;
-  --eliza-mobile-nav-height: 4.75rem;
   --eliza-mobile-nav-offset: 0px;
 }
 
@@ -88,16 +87,4 @@ html.eliza-electrobun-frameless [data-shell-scroll-region="true"] {
 /* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
 html.eliza-electrobun-frameless .onboarding-screen canvas {
   -webkit-app-region: drag;
-}
-
-html.eliza-mobile-bottom-nav {
-  --eliza-mobile-nav-offset: var(--eliza-mobile-nav-height);
-}
-
-html.eliza-mobile-bottom-nav [data-shell-scroll-region="true"] {
-  padding-bottom: calc(
-    var(--eliza-mobile-nav-height) +
-    max(env(safe-area-inset-bottom, 0px), 0px) +
-    1rem
-  );
 }

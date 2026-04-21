@@ -2,7 +2,9 @@
 import type {
   CreateLifeOpsXPostRequest,
   LifeOpsConnectorMode,
+  LifeOpsConnectorGrant,
   LifeOpsXConnectorStatus,
+  LifeOpsXDm,
   LifeOpsXPostResponse,
   UpsertLifeOpsXConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
@@ -22,12 +24,21 @@ import {
 import {
   normalizeOptionalRecord,
 } from "./service-helpers-misc.js";
-import { postToX, readXPosterCredentialsFromEnv } from "./x-poster.js";
+import {
+  postToX,
+  readXPosterCredentialsFromEnv,
+  sendXDm,
+} from "./x-poster.js";
+import { normalizeOptionalString } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
-function normalizeXCapabilityRequest(
-  value: unknown,
-): Array<"x.read" | "x.write"> {
+type LifeOpsXConnectorCapability =
+  | "x.read"
+  | "x.write"
+  | "x.dm.read"
+  | "x.dm.write";
+
+function normalizeXCapabilityRequest(value: unknown): LifeOpsXConnectorCapability[] {
   const entries = Array.isArray(value) ? value : [];
   if (entries.length === 0) {
     fail(400, "capabilities must include at least one X capability");
@@ -38,12 +49,62 @@ function normalizeXCapabilityRequest(
   return [...new Set(capabilities)];
 }
 
+function capabilitySummary(capabilities: readonly LifeOpsXConnectorCapability[]): {
+  feedRead: boolean;
+  feedWrite: boolean;
+  dmRead: boolean;
+  dmWrite: boolean;
+} {
+  return {
+    feedRead: capabilities.includes("x.read"),
+    feedWrite: capabilities.includes("x.write"),
+    dmRead: capabilities.includes("x.dm.read"),
+    dmWrite: capabilities.includes("x.dm.write"),
+  };
+}
+
+function resolveXCapabilities(
+  grantCapabilities: readonly string[] | undefined,
+  hasCredentials: boolean,
+): LifeOpsXConnectorCapability[] {
+  const normalized = (grantCapabilities ?? []).filter(
+    (candidate): candidate is LifeOpsXConnectorCapability =>
+      candidate === "x.read" ||
+      candidate === "x.write" ||
+      candidate === "x.dm.read" ||
+      candidate === "x.dm.write",
+  );
+  if (normalized.length > 0) {
+    return [...new Set(normalized)];
+  }
+  return hasCredentials
+    ? (["x.read", "x.write", "x.dm.read", "x.dm.write"] as const)
+    : [];
+}
+
+function createSyntheticXGrant(
+  agentId: string,
+  mode: LifeOpsConnectorMode,
+): LifeOpsConnectorGrant {
+  return createLifeOpsConnectorGrant({
+    agentId,
+    provider: "x",
+    identity: {},
+    grantedScopes: [],
+    capabilities: [...LIFEOPS_X_CAPABILITIES],
+    tokenRef: null,
+    mode,
+    metadata: { synthetic: true, source: "env_credentials" },
+    side: "owner",
+  });
+}
+
 /** @internal */
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsXServiceMixin extends Base {
-    async getXConnectorStatus(
+    async resolveXGrant(
       requestedMode?: LifeOpsConnectorMode,
-    ): Promise<LifeOpsXConnectorStatus> {
+    ): Promise<LifeOpsConnectorGrant | null> {
       const mode =
         normalizeOptionalConnectorMode(requestedMode, "mode") ?? "local";
       const grant = await this.repository.getConnectorGrant(
@@ -51,20 +112,38 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         "x",
         mode,
       );
-      const capabilities = (grant?.capabilities ?? []).filter(
-        (candidate): candidate is "x.read" | "x.write" =>
-          candidate === "x.read" || candidate === "x.write",
-      );
+      if (grant) {
+        return grant;
+      }
+      if (mode === "local" && readXPosterCredentialsFromEnv()) {
+        return createSyntheticXGrant(this.agentId(), mode);
+      }
+      return null;
+    }
+
+    async getXConnectorStatus(
+      requestedMode?: LifeOpsConnectorMode,
+    ): Promise<LifeOpsXConnectorStatus> {
+      const mode =
+        normalizeOptionalConnectorMode(requestedMode, "mode") ?? "local";
+      const grant = await this.resolveXGrant(mode);
+      const hasCredentials = Boolean(readXPosterCredentialsFromEnv());
+      const capabilities = resolveXCapabilities(grant?.capabilities, hasCredentials);
+      const capabilityFlags = capabilitySummary(capabilities);
       return {
         provider: "x",
         mode,
-        connected: Boolean(grant && readXPosterCredentialsFromEnv()),
+        connected:
+          mode === "cloud_managed"
+            ? Boolean(grant?.cloudConnectionId ?? grant)
+            : hasCredentials,
         grantedCapabilities: capabilities,
         grantedScopes: grant?.grantedScopes ?? [],
         identity:
           grant && Object.keys(grant.identity).length > 0 ? grant.identity : null,
-        hasCredentials: Boolean(readXPosterCredentialsFromEnv()),
-        dmInbound: capabilities.includes("x.read"),
+        hasCredentials,
+        ...capabilityFlags,
+        dmInbound: capabilityFlags.dmRead,
         grant,
       };
     }
@@ -124,15 +203,127 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
       return this.getXConnectorStatus(mode);
     }
 
+    async getXDmDigest(opts: { limit?: number; conversationId?: string } = {}): Promise<{
+      generatedAt: string;
+      conversationId: string | null;
+      unreadCount: number;
+      readCount: number;
+      repliedCount: number;
+      recent: LifeOpsXDm[];
+    }> {
+      const grant = await this.resolveXGrant();
+      if (!grant) {
+        fail(409, "X is not connected.");
+      }
+      const dms = await this.repository.listXDms(this.agentId(), {
+        conversationId: opts.conversationId,
+        limit: opts.limit ?? 25,
+      });
+      const unread = dms.filter((dm) => dm.isInbound && dm.readAt === null);
+      const read = dms.filter((dm) => dm.readAt !== null);
+      const replied = dms.filter((dm) => dm.repliedAt !== null);
+      return {
+        generatedAt: new Date().toISOString(),
+        conversationId: opts.conversationId ?? null,
+        unreadCount: unread.length,
+        readCount: read.length,
+        repliedCount: replied.length,
+        recent: dms,
+      };
+    }
+
+    async curateXDms(request: {
+      messageIds?: string[];
+      conversationId?: string;
+      markRead?: boolean;
+      markReplied?: boolean;
+    }): Promise<{ curated: number }> {
+      const grant = await this.resolveXGrant();
+      if (!grant) {
+        fail(409, "X is not connected.");
+      }
+      const now = new Date().toISOString();
+      const messages = await this.repository.listXDms(this.agentId(), {
+        conversationId: request.conversationId,
+        limit: Math.max(request.messageIds?.length ?? 0, 25),
+      });
+      const ids = new Set(request.messageIds ?? []);
+      let curated = 0;
+      for (const dm of messages) {
+        if (ids.size > 0 && !ids.has(dm.id)) {
+          continue;
+        }
+        const next = {
+          ...dm,
+          readAt: request.markRead ? dm.readAt ?? now : dm.readAt,
+          repliedAt: request.markReplied ? dm.repliedAt ?? now : dm.repliedAt,
+          updatedAt: now,
+        };
+        if (
+          next.readAt !== dm.readAt ||
+          next.repliedAt !== dm.repliedAt ||
+          next.updatedAt !== dm.updatedAt
+        ) {
+          await this.repository.upsertXDm(next);
+          curated += 1;
+        }
+      }
+      return { curated };
+    }
+
+    async sendXDirectMessage(request: {
+      participantId: string;
+      text: string;
+      confirmSend?: boolean;
+      mode?: LifeOpsConnectorMode;
+    }): Promise<{ ok: boolean; status: number | null; error?: string }> {
+      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+      const grant = await this.resolveXGrant(mode);
+      if (!grant) {
+        fail(409, "X is not connected.");
+      }
+      const capabilities = new Set(
+        resolveXCapabilities(grant.capabilities, Boolean(readXPosterCredentialsFromEnv())),
+      );
+      if (!capabilities.has("x.dm.write")) {
+        fail(403, "X DM write access has not been granted.");
+      }
+      const participantId = normalizeOptionalString(request.participantId)?.trim();
+      const text = normalizeOptionalString(request.text)?.trim();
+      if (!participantId) {
+        fail(400, "participantId is required");
+      }
+      if (!text) {
+        fail(400, "text is required");
+      }
+      if (request.confirmSend !== true) {
+        fail(409, "X DM sending requires explicit confirmation.");
+      }
+      const credentials = readXPosterCredentialsFromEnv();
+      if (!credentials) {
+        fail(409, "X credentials are not configured.");
+      }
+      const result = await sendXDm({
+        participantId,
+        text,
+        credentials,
+      });
+      if (!result.ok) {
+        fail(result.status ?? 502, result.error ?? "Failed to send X DM.");
+      }
+      return { ok: true, status: result.status };
+    }
+
     async createXPost(
       request: CreateLifeOpsXPostRequest,
     ): Promise<LifeOpsXPostResponse> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
-      const grant = await this.requireXGrant(mode);
+      const grant = await this.resolveXGrant(mode);
+      if (!grant) {
+        fail(409, "X is not connected.");
+      }
       const capabilities = new Set(
-        (grant.capabilities ?? []).filter(
-          (candidate) => candidate === "x.read" || candidate === "x.write",
-        ),
+        resolveXCapabilities(grant.capabilities, Boolean(readXPosterCredentialsFromEnv())),
       );
       if (!capabilities.has("x.write")) {
         fail(403, "X write access has not been granted.");

@@ -13,42 +13,53 @@ import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
 } from "@elizaos/shared/contracts/lifeops";
-import { createLifeOpsTaskDefinition } from "./repository.js";
-import {
-  fail,
-  normalizeEnumValue,
-  normalizeOptionalString,
-  normalizeValidTimeZone,
-  normalizePriority,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import {
-  normalizeCadence,
-  normalizeWebsiteAccessPolicy,
-  normalizeProgressionRule,
-} from "./service-normalize-task.js";
-import {
-  normalizeWindowPolicyInput,
-} from "./service-normalize-connector.js";
-import {
-  normalizeOptionalRecord,
-  mergeMetadata,
-  normalizeReminderPlanDraft,
-  cloneRecord,
-  computeSnoozedUntil,
-} from "./service-helpers-misc.js";
-import {
-  computeDefinitionPerformance,
-} from "./service-helpers-occurrence.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   ROUTINE_SEED_TEMPLATES,
   type RoutineSeedTemplate,
 } from "./seed-routines.js";
+import {
+  cloneRecord,
+  computeSnoozedUntil,
+  mergeMetadata,
+  normalizeOptionalRecord,
+  normalizeReminderPlanDraft,
+} from "./service-helpers-misc.js";
+import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeOptionalString,
+  normalizePriority,
+  normalizeValidTimeZone,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import { normalizeWindowPolicyInput } from "./service-normalize-connector.js";
+import {
+  normalizeCadence,
+  normalizeProgressionRule,
+  normalizeWebsiteAccessPolicy,
+} from "./service-normalize-task.js";
+
+const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
+
+function resolveRoutineSeedKey(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const seedKey = metadata?.seedKey;
+  return typeof seedKey === "string" && seedKey.length > 0 ? seedKey : null;
+}
+
+function buildRoutineSeedKey(templateKey: string): string {
+  return `${ROUTINE_SEED_METADATA_PREFIX}:${templateKey}`;
+}
 
 /** @internal */
-export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+) {
   class LifeOpsDefinitionsServiceMixin extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
@@ -83,7 +94,9 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       }));
     }
 
-    async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
+    async getDefinition(
+      definitionId: string,
+    ): Promise<LifeOpsDefinitionRecord> {
       return this.getDefinitionRecord(definitionId);
     }
 
@@ -131,8 +144,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         windowPolicy,
         progressionRule,
         websiteAccess:
-          normalizeWebsiteAccessPolicy(request.websiteAccess, "websiteAccess") ??
-          null,
+          normalizeWebsiteAccessPolicy(
+            request.websiteAccess,
+            "websiteAccess",
+          ) ?? null,
         reminderPlanId: null,
         goalId,
         source: normalizeOptionalString(request.source) ?? "manual",
@@ -241,29 +256,50 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         fail(400, "no valid seed template keys provided");
       }
 
+      const existingDefinitions = await this.repository.listDefinitions(
+        this.agentId(),
+      );
+      const existingBySeedKey = new Map(
+        existingDefinitions
+          .map((record) => {
+            const seedKey = resolveRoutineSeedKey(record.definition.metadata);
+            return seedKey ? [seedKey, record.definition.id] : null;
+          })
+          .filter((entry): entry is [string, string] => entry !== null),
+      );
+
       const createdIds: string[] = [];
       for (const template of templates) {
+        const seedKey = buildRoutineSeedKey(template.key);
+        const existingId = existingBySeedKey.get(seedKey);
+        if (existingId) {
+          continue;
+        }
         const result = await this.createDefinition({
           ...template.request,
           timezone: effectiveTimezone,
           source: "seed",
+          metadata: {
+            seedKey,
+          },
         });
         createdIds.push(result.definition.id);
       }
 
-      // Record that seeding was offered so we don't re-offer
-      await this.recordAudit(
-        "seeding_offered",
-        "definition",
-        `seeding:${this.agentId()}`,
-        "seed routines applied",
-        { keys },
-        {
-          appliedKeys: keys,
-          timezone: effectiveTimezone,
-          createdIds,
-        },
-      );
+      if (createdIds.length > 0) {
+        await this.recordAudit(
+          "seeding_offered",
+          "definition",
+          `seeding:${this.agentId()}`,
+          "seed routines applied",
+          { keys },
+          {
+            appliedKeys: keys,
+            timezone: effectiveTimezone,
+            createdIds,
+          },
+        );
+      }
 
       return createdIds;
     }
@@ -512,7 +548,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         return current;
       }
       if (["completed", "expired", "muted"].includes(occurrence.state)) {
-        fail(409, `occurrence cannot be skipped from state ${occurrence.state}`);
+        fail(
+          409,
+          `occurrence cannot be skipped from state ${occurrence.state}`,
+        );
       }
       const updatedOccurrence: LifeOpsOccurrence = {
         ...occurrence,
@@ -565,7 +604,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       if (
         ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
       ) {
-        fail(409, `occurrence cannot be snoozed from state ${occurrence.state}`);
+        fail(
+          409,
+          `occurrence cannot be snoozed from state ${occurrence.state}`,
+        );
       }
       const snoozedUntil = computeSnoozedUntil(definition, request, now);
       if (snoozedUntil.getTime() <= now.getTime()) {
