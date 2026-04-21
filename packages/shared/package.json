@@ -54,7 +54,8 @@
     "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
     "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
     "./recent-messages-state": "./src/recent-messages-state.ts",
-    "./type-guards": "./src/type-guards.ts"
+    "./type-guards": "./src/type-guards.ts",
+    "./contracts/lifeops-extensions": "./src/contracts/lifeops-extensions.ts"
   },
   "publishConfig": {
     "access": "public",
