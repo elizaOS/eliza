@@ -8,7 +8,8 @@ import {
   PagePanel,
   useApp,
 } from "@elizaos/app-core";
-import { ChevronDown } from "lucide-react";
+import { ChatView } from "@elizaos/app-core/components/pages/ChatView";
+import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
 import {
   type ReactNode,
   useCallback,
@@ -16,7 +17,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { LifeOpsWorkspaceView } from "./LifeOpsWorkspaceView.js";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
@@ -30,7 +30,6 @@ import {
 } from "../platform/lifeops-github.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
 import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
-import { LifeOpsDashboardSection } from "./LifeOpsDashboardSection.js";
 import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import {
@@ -40,6 +39,7 @@ import {
   LifeOpsStretchPanel,
   LifeOpsXPanel,
 } from "./LifeOpsOperationalPanels";
+import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
@@ -453,7 +453,11 @@ function LifeOpsSettingsSectionView({
 
 /* ── Inner view — rendered inside SelectionProvider ────────────────── */
 export function LifeOpsPageView() {
-  return <LifeOpsWorkspaceInner />;
+  return (
+    <LifeOpsSelectionProvider>
+      <LifeOpsWorkspaceInner />
+    </LifeOpsSelectionProvider>
+  );
 }
 
 function LifeOpsWorkspaceInner() {
@@ -480,7 +484,6 @@ function LifeOpsWorkspaceInner() {
   const [busyAgentGithubId, setBusyAgentGithubId] = useState<string | null>(
     null,
   );
-  const [setupOpen, setSetupOpen] = useState(false);
 
   const { section, navigate } = useLifeOpsSection();
   const appEnabled = lifeOpsApp.enabled;
@@ -953,15 +956,15 @@ function LifeOpsWorkspaceInner() {
     }
 
     switch (section) {
-      case "dashboard":
-        return <LifeOpsDashboardSection onNavigate={navigate} />;
+      case "overview":
+        return <LifeOpsOverviewSection onNavigate={navigate} />;
       case "calendar":
         return <LifeOpsCalendarSection />;
-      case "inbox":
+      case "messages":
         return <LifeOpsInboxSection />;
       case "reminders":
         return <LifeOpsRemindersSection />;
-      case "settings":
+      case "setup":
         return (
           <LifeOpsSettingsSectionView
             ownerGithub={ownerGithubSetup}
@@ -969,7 +972,7 @@ function LifeOpsWorkspaceInner() {
             githubError={githubError}
             onRunSetupAgain={() => {
               clearLifeOpsSetupGateDismissed();
-              navigate("dashboard");
+              navigate("overview");
             }}
             onDisableLifeOps={() => void handleSetLifeOpsEnabled(false)}
             disableLifeOpsDisabled={lifeOpsApp.loading || lifeOpsApp.saving}
@@ -982,80 +985,25 @@ function LifeOpsWorkspaceInner() {
   })();
 
   return (
-    <div
-      className="space-y-6 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
-      data-testid="lifeops-shell"
-    >
-      <div className="space-y-4">
-        <PagePanel.Header heading="LifeOps" className="px-0 py-0 sm:px-0" />
-
-        {lifeOpsApp.error ? (
-          <PagePanel.Notice tone="danger">
-            {lifeOpsApp.error}
-          </PagePanel.Notice>
-        ) : null}
-
-        {lifeOpsApp.loading ? (
-          <PagePanel.Loading
-            variant="surface"
-            heading="Loading LifeOps app state"
+    <AppWorkspaceChrome
+      testId="lifeops-shell"
+      nav={<LifeOpsNavRail activeSection={section} onNavigate={navigate} />}
+      main={
+        <div className="flex h-full min-h-0 flex-col">
+          <PagePanel.Header
+            heading="LifeOps"
+            className="px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6"
           />
-        ) : null}
-
-        {appEnabled && !runtimeReady ? (
-          <PagePanel.Loading
-            variant="surface"
-            heading="Waiting for LifeOps runtime"
-          />
-        ) : null}
-      </div>
-
-      {appEnabled && runtimeReady ? (
-        <>
-          <section>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 py-3 text-left"
-              onClick={() => setSetupOpen((current) => !current)}
-              aria-expanded={setupOpen}
-            >
-              <div className="text-sm font-semibold text-txt">Setup</div>
-              <ChevronDown
-                className={`h-4 w-4 text-muted transition-transform ${
-                  setupOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {setupOpen ? (
-              <div className="space-y-6 pt-2">
-                <LifeOpsSettingsSection
-                  ownerGithub={ownerGithubSetup}
-                  agentGithub={agentGithubSetup}
-                  githubError={githubError}
-                />
-                <MessagingConnectorGrid />
-              </div>
-            ) : null}
-          </section>
-
-          <LifeOpsWorkspaceView />
-
-          <PermissionsPanel />
-        </>
-      ) : null}
-
-      <div className="flex justify-end border-t border-border/16 pt-2">
-        <Button
-          variant={appEnabled ? "surfaceDestructive" : "default"}
-          size="sm"
-          className="rounded-full px-4 text-xs-tight font-semibold"
-          onClick={() => void handleSetLifeOpsEnabled(!appEnabled)}
-          disabled={lifeOpsApp.loading || lifeOpsApp.saving}
-        >
-          {appEnabled ? "Disable LifeOps" : "Enable LifeOps"}
-        </Button>
-      </div>
-    </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+            {mainContent}
+          </div>
+        </div>
+      }
+      chat={
+        <LifeOpsChatAdapter>
+          <ChatView variant="default" />
+        </LifeOpsChatAdapter>
+      }
+    />
   );
 }
