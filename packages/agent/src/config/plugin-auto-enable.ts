@@ -1,5 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import type { ElizaConfig } from "./types.js";
 
 export interface ApplyPluginAutoEnableResult {
@@ -156,22 +157,12 @@ const EVM_PLUGIN_SHORT_ID = "evm";
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
 
+// Delegates to resolveEvmSigningCapability so plugin-evm auto-enable and the
+// wallet-capability UI agree on whether a signing path exists. A cloud address
+// without signing (cloud-view-only) returns null — plugin-evm must not load
+// without a working signer.
 function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
-  if (env.EVM_PRIVATE_KEY?.trim()) {
-    return "env: EVM_PRIVATE_KEY";
-  }
-
-  // Steward-backed signing: plugin-evm uses a dummy key placeholder and the
-  // Steward EVM bridge replaces the WalletProvider account after boot. Works
-  // the same whether Steward is a cloud-provisioned sidecar or a self-hosted
-  // vault — the signing capability only needs the API URL + agent token.
-  if (env.STEWARD_API_URL?.trim() && env.STEWARD_AGENT_TOKEN?.trim()) {
-    return env.ELIZA_CLOUD_PROVISIONED === "1"
-      ? "cloud-provisioned Steward wallet"
-      : "self-hosted Steward wallet";
-  }
-
-  return null;
+  return evmAutoEnableReasonFromCapability(env);
 }
 
 export function isConnectorConfigured(
