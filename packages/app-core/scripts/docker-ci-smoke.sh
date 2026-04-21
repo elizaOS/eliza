@@ -243,6 +243,13 @@ log "Starting container smoke boot"
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
   -e APP_API_BIND=0.0.0.0 \
+  -e MILADY_STATE_DIR=/tmp/milady-smoke/state \
+  -e ELIZA_STATE_DIR=/tmp/milady-smoke/state \
+  -e MILADY_CONFIG_DIR=/tmp/milady-smoke/config \
+  -e ELIZA_CONFIG_DIR=/tmp/milady-smoke/config \
+  -e MILADY_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
+  -e ELIZA_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
+  -e PGLITE_DATA_DIR=/tmp/milady-smoke/pglite \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
@@ -270,11 +277,18 @@ probe_ok() {
 }
 
 deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
+last_log_dump=0
 while (( SECONDS < deadline )); do
   if ! "$DOCKER_BIN" ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
     timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
     log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
     fail "Container exited before smoke probe succeeded"
+  fi
+
+  if (( SECONDS - last_log_dump >= 30 )); then
+    last_log_dump=$SECONDS
+    log "Container still booting; recent logs follow"
+    timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
   fi
 
   if probe_ok "$health_url" /tmp/milady-docker-health.txt; then
