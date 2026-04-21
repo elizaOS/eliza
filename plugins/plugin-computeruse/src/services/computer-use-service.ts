@@ -291,8 +291,6 @@ export class ComputerUseService extends Service {
             params.coordinate[0],
             params.coordinate[1],
             params.modifiers ?? [],
-            params.button ?? "left",
-            params.clicks ?? 1,
           );
           break;
         case "double_click":

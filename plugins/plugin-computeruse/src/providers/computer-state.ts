@@ -78,7 +78,6 @@ export const computerStateProvider: Provider = {
         capabilities: caps,
         screenSize: screen,
         recentActions: recent,
-        approvals,
       },
     };
   },
