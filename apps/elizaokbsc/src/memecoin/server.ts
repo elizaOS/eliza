@@ -3471,7 +3471,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
     </div>
     ${agents.length > 0 ? agentRows : `
     <div class="goo-empty">
-      <div class="goo-empty__icon">&#x1F9EC;</div>
+      <div class="goo-empty__icon"><img src="/assets/goo-economy-logo.png" alt="Goo" style="width:32px;height:32px;border-radius:50%" /></div>
       <div class="goo-empty__text">No agents active yet. The system will auto-spawn agents when ready.</div>
     </div>`}
   </div>
@@ -6443,7 +6443,7 @@ function renderHtml(
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
         <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
-        <a class="tb-btn primary" href="/backtest" title="Strategy Backtest">&#x1F4C8; BACKTEST</a>
+        <a class="tb-btn primary" href="/backtest" title="Strategy Backtest"><img src="/assets/avatar.png" alt="elizaOK" style="width:16px;height:16px;border-radius:50%;vertical-align:middle;margin-right:2px;filter:drop-shadow(0 0 4px rgba(246,231,15,.5))" /> BACKTEST</a>
         <a class="tb-btn primary tb-btn--goo" href="/goo" title="Goo Economy Arena"><img src="/assets/goo-economy-logo.png" alt="Goo" class="tb-goo-icon" /> GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
@@ -6505,7 +6505,7 @@ function renderHtml(
           <button class="qa-btn" data-nav="flywheel"><span class="qa-btn__icon">&#x1F504;</span>FLYWHEEL</button>
           <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
           <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon"><img src="/assets/goo-economy-logo.png" alt="Goo" style="width:14px;height:14px;border-radius:50%;vertical-align:middle" /></span>GOO</button>
-          <button class="qa-btn" onclick="window.location='/backtest'"><span class="qa-btn__icon">&#x1F4C8;</span>BACKTEST</button>
+          <button class="qa-btn" onclick="window.location='/backtest'"><span class="qa-btn__icon"><img src="/assets/avatar.png" alt="elizaOK" style="width:14px;height:14px;border-radius:50%;vertical-align:middle;filter:drop-shadow(0 0 3px rgba(246,231,15,.5))" /></span>BACKTEST</button>
         </div>
 
         <!-- ElizaCloud -->
@@ -7214,7 +7214,7 @@ function renderHtml(
     // ── Event Timeline ──
     var evtIcons = {
       trade_buy:'\u{1F7E2}', trade_sell:'\u{1F534}', smart_exit:'\u26A0\uFE0F',
-      acquisition:'\u{1F9EC}', respawn:'\u{1F680}', trailing_stop:'\u{1F6E1}\uFE0F', kol_exit:'\u{1F451}'
+      acquisition:'\u{1F4A0}', respawn:'\u{1F680}', trailing_stop:'\u{1F6E1}\uFE0F', kol_exit:'\u{1F451}'
     };
     var evtClasses = { trade_buy:'buy', trade_sell:'sell', smart_exit:'smart_exit', acquisition:'acquisition', respawn:'respawn' };
     function refreshTimeline() {
