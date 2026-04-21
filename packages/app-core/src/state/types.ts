@@ -805,6 +805,9 @@ export interface AppActions {
   installSkillFromMarketplace: (item: SkillMarketplaceResult) => Promise<void>;
   uninstallMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
   installSkillFromGithubUrl: () => Promise<void>;
+  enableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
+  disableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
+  copyMarketplaceSkillSource: (skillId: string, name: string) => Promise<void>;
 
   // Logs
   loadLogs: () => Promise<void>;

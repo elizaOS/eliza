@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { config as loadDotenv } from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../../test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
@@ -30,8 +30,7 @@ const REPO_ROOT = path.resolve(
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 
 const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const CONNECTOR_CASES = [
   {
     name: "discord",
@@ -47,8 +46,7 @@ const CONNECTOR_CASES = [
 const CONFIGURED_CONNECTORS = CONNECTOR_CASES.filter((connector) =>
   connector.tokenKeys.some((key) => process.env[key]?.trim()),
 );
-const LIVE_CONNECTOR_SUITE_ENABLED =
-  LIVE && CONFIGURED_CONNECTORS.length > 0;
+const LIVE_CONNECTOR_SUITE_ENABLED = LIVE && CONFIGURED_CONNECTORS.length > 0;
 
 if (!LIVE_CONNECTOR_SUITE_ENABLED) {
   const warnings = [
@@ -68,10 +66,32 @@ async function getFreePort(): Promise<number> {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
-      if (!addr || typeof addr === "string") { server.close(); reject(new Error("no port")); return; }
+      if (!addr || typeof addr === "string") {
+        server.close();
+        reject(new Error("no port"));
+        return;
+      }
       server.close((e) => (e ? reject(e) : resolve(addr.port)));
     });
   });
+}
+
+function buildConfiguredConnectorConfig(): Record<string, Record<string, string>> {
+  const connectors: Record<string, Record<string, string>> = {};
+
+  const discordToken =
+    process.env.DISCORD_BOT_TOKEN?.trim() ||
+    process.env.DISCORD_API_TOKEN?.trim();
+  if (discordToken) {
+    connectors.discord = { token: discordToken };
+  }
+
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (telegramBotToken) {
+    connectors.telegram = { botToken: telegramBotToken };
+  }
+
+  return connectors;
 }
 
 import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
@@ -82,13 +102,21 @@ async function startRuntime(): Promise<Runtime> {
   const configPath = path.join(tmp, "eliza.json");
   const port = await getFreePort();
   const logBuf: string[] = [];
-  const allowPlugins = CONFIGURED_CONNECTORS.map((connector) => connector.pluginId);
+  const allowPlugins = CONFIGURED_CONNECTORS.map(
+    (connector) => connector.pluginId,
+  );
+  const connectors = buildConfiguredConnectorConfig();
 
   await mkdir(stateDir, { recursive: true });
-  await writeFile(configPath, JSON.stringify({
-    logging: { level: "info" },
-    plugins: { allow: allowPlugins },
-  }), "utf8");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      logging: { level: "info" },
+      connectors,
+      plugins: { allow: allowPlugins },
+    }),
+    "utf8",
+  );
 
   const child = spawn("bun", ["run", "start:eliza"], {
     cwd: REPO_ROOT,
@@ -116,7 +144,9 @@ async function startRuntime(): Promise<Runtime> {
         const d = (await r.json()) as { ready?: boolean; runtime?: string };
         if (d.ready === true && d.runtime === "ok") break;
       }
-    } catch { /* not ready */ }
+    } catch {
+      /* not ready */
+    }
     await sleep(1_000);
   }
 
@@ -126,7 +156,10 @@ async function startRuntime(): Promise<Runtime> {
     close: async () => {
       if (child.exitCode == null) {
         child.kill("SIGTERM");
-        await new Promise<void>((r) => { child.once("exit", () => r()); setTimeout(() => r(), 10_000); });
+        await new Promise<void>((r) => {
+          child.once("exit", () => r());
+          setTimeout(() => r(), 10_000);
+        });
         if (child.exitCode == null) child.kill("SIGKILL");
       }
       await rm(tmp, { recursive: true, force: true });
@@ -134,35 +167,58 @@ async function startRuntime(): Promise<Runtime> {
   };
 }
 
-describeIf(LIVE_CONNECTOR_SUITE_ENABLED)("Live: connector health endpoints", () => {
-  let rt: Runtime;
+describeIf(LIVE_CONNECTOR_SUITE_ENABLED)(
+  "Live: connector health endpoints",
+  () => {
+    let rt: Runtime;
 
-  beforeAll(async () => { rt = await startRuntime(); }, 180_000);
-  afterAll(async () => { if (rt) await rt.close(); });
+    beforeAll(async () => {
+      rt = await startRuntime();
+    }, 180_000);
+    afterAll(async () => {
+      if (rt) await rt.close();
+    });
 
-  it("lists each configured real connector in the live runtime", async () => {
-    const res = await req(rt.port, "GET", "/api/connectors");
-    expect(res.status).toBe(200);
-    const connectors = Array.isArray(res.data)
-      ? (res.data as Array<Record<string, unknown>>)
-      : Array.isArray(res.data.connectors)
-        ? (res.data.connectors as Array<Record<string, unknown>>)
-        : [];
-    expect(connectors.length).toBeGreaterThan(0);
+    it("lists each configured real connector in the live runtime", async () => {
+      const res = await req(rt.port, "GET", "/api/connectors");
+      expect(res.status).toBe(200);
+      const connectors = Array.isArray(res.data)
+        ? (res.data as Array<Record<string, unknown>>)
+        : Array.isArray(res.data.connectors)
+          ? (res.data.connectors as Array<Record<string, unknown>>)
+          : res.data?.connectors &&
+              typeof res.data.connectors === "object" &&
+              !Array.isArray(res.data.connectors)
+            ? Object.entries(
+                res.data.connectors as Record<string, Record<string, unknown>>,
+              ).map(([id, config]) => ({
+                id,
+                ...(config ?? {}),
+              }))
+            : [];
+      expect(connectors.length).toBeGreaterThan(0);
 
-    for (const connector of CONFIGURED_CONNECTORS) {
-      expect(
-        connectors.some((entry) => {
-          const id = String(entry.id ?? entry.name ?? "").toLowerCase();
-          const label = String(entry.label ?? "").toLowerCase();
-          return id.includes(connector.name) || label.includes(connector.name);
-        }),
-      ).toBe(true);
-    }
-  });
+      for (const connector of CONFIGURED_CONNECTORS) {
+        expect(
+          connectors.some((entry) => {
+            const id = String(entry.id ?? entry.name ?? "").toLowerCase();
+            const label = String(entry.label ?? "").toLowerCase();
+            return (
+              id.includes(connector.name) || label.includes(connector.name)
+            );
+          }),
+        ).toBe(true);
+      }
+    });
 
-  it("runtime does not crash when queried for unknown connector", async () => {
-    const res = await req(rt.port, "GET", "/api/connectors/nonexistent-connector");
-    expect(res.status).toBe(404);
-  });
-}, 300_000);
+    it("runtime does not crash when queried for unknown connector", async () => {
+      const res = await req(
+        rt.port,
+        "GET",
+        "/api/connectors/nonexistent-connector",
+      );
+      expect(res.status).toBe(404);
+    });
+  },
+  300_000,
+);

@@ -1,3 +1,4 @@
+import { hasAdminAccess } from "@elizaos/agent/security";
 import type {
   IAgentRuntime,
   Memory,
@@ -6,7 +7,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { LifeOpsService } from "./lifeops/service.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
 
 function formatSettingsLine(
   settings: Awaited<ReturnType<LifeOpsService["getBrowserSettings"]>>,
@@ -40,8 +40,8 @@ function formatTabLine(
 export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
-    "Owner/admin-only context for the user's personal Chrome and Safari LifeOps Browser companions. Separate from the Eliza browser workspace.",
-  descriptionCompressed: "Owner: Chrome/Safari LifeOps Browser companion context.",
+    "Owner/admin-only context for the user's real Chrome and Safari browsers connected through LifeOps Browser. Separate from Milady Desktop Browser.",
+  descriptionCompressed: "Owner: real Chrome/Safari browser context.",
   dynamic: true,
   position: 13,
   async get(
@@ -70,7 +70,7 @@ export const lifeOpsBrowserProvider: Provider = {
     );
     const lines = [
       "## LifeOps Browser",
-      "This is the user's personal browser companion, not the Eliza browser workspace.",
+      "This is the user's real browser profile connected through LifeOps Browser, not Milady Desktop Browser.",
       formatSettingsLine(settings),
       `Companions: ${companions.length}. Active sessions: ${activeSessions.length}.`,
     ];

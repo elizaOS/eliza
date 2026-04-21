@@ -1,13 +1,19 @@
+import { derivePopupStatusModel } from "../src/popup-model";
 import type {
   BackgroundState,
   CompanionConfig,
   PopupRequest,
   PopupResponse,
 } from "../src/protocol";
+import {
+  discoverLifeOpsApiBaseUrl,
+  LEGACY_LIFEOPS_API_BASE_URL,
+} from "../src/storage";
 import { sendRuntimeMessage } from "../src/webextension";
 
 type FormRefs = {
   apiBaseUrl: HTMLInputElement;
+  autoPairButton: HTMLButtonElement;
   browser: HTMLSelectElement;
   companionId: HTMLInputElement;
   pairingToken: HTMLInputElement;
@@ -15,8 +21,11 @@ type FormRefs = {
   profileLabel: HTMLInputElement;
   label: HTMLInputElement;
   pairingJson: HTMLTextAreaElement;
-  status: HTMLElement;
-  meta: HTMLElement;
+  statusBadge: HTMLElement;
+  statusTitle: HTMLElement;
+  statusDetail: HTMLElement;
+  statusChecklist: HTMLUListElement;
+  summary: HTMLElement;
   saveButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   syncButton: HTMLButtonElement;
@@ -34,6 +43,7 @@ function requireElement<T extends HTMLElement>(selector: string): T {
 function getFormRefs(): FormRefs {
   return {
     apiBaseUrl: requireElement<HTMLInputElement>("#apiBaseUrl"),
+    autoPairButton: requireElement<HTMLButtonElement>("#autoPair"),
     browser: requireElement<HTMLSelectElement>("#browser"),
     companionId: requireElement<HTMLInputElement>("#companionId"),
     pairingToken: requireElement<HTMLInputElement>("#pairingToken"),
@@ -41,8 +51,11 @@ function getFormRefs(): FormRefs {
     profileLabel: requireElement<HTMLInputElement>("#profileLabel"),
     label: requireElement<HTMLInputElement>("#label"),
     pairingJson: requireElement<HTMLTextAreaElement>("#pairingJson"),
-    status: requireElement<HTMLElement>("#status"),
-    meta: requireElement<HTMLElement>("#meta"),
+    statusBadge: requireElement<HTMLElement>("#statusBadge"),
+    statusTitle: requireElement<HTMLElement>("#statusTitle"),
+    statusDetail: requireElement<HTMLElement>("#statusDetail"),
+    statusChecklist: requireElement<HTMLUListElement>("#statusChecklist"),
+    summary: requireElement<HTMLElement>("#summary"),
     saveButton: requireElement<HTMLButtonElement>("#save"),
     importButton: requireElement<HTMLButtonElement>("#import"),
     syncButton: requireElement<HTMLButtonElement>("#sync"),
@@ -50,28 +63,80 @@ function getFormRefs(): FormRefs {
   };
 }
 
-function renderState(refs: FormRefs, state: BackgroundState): void {
+let autoPairAttempted = false;
+
+function renderChecklist(
+  listElement: HTMLUListElement,
+  entries: string[],
+): void {
+  listElement.innerHTML = "";
+  for (const entry of entries) {
+    const item = document.createElement("li");
+    item.textContent = entry;
+    listElement.appendChild(item);
+  }
+}
+
+function renderSummary(refs: FormRefs, entries: string[]): void {
+  refs.summary.replaceChildren();
+  for (const entry of entries) {
+    const pill = document.createElement("span");
+    pill.className = "summary-pill";
+    pill.textContent = entry;
+    refs.summary.appendChild(pill);
+  }
+}
+
+function renderState(
+  refs: FormRefs,
+  state: BackgroundState,
+  discoveredApiBaseUrl: string | null,
+): void {
   const config = state.config;
-  refs.apiBaseUrl.value = config?.apiBaseUrl ?? "http://127.0.0.1:31337";
+  refs.apiBaseUrl.value = config?.apiBaseUrl ?? LEGACY_LIFEOPS_API_BASE_URL;
   refs.browser.value = config?.browser ?? "chrome";
   refs.companionId.value = config?.companionId ?? "";
   refs.pairingToken.value = config?.pairingToken ?? "";
   refs.profileId.value = config?.profileId ?? "default";
   refs.profileLabel.value = config?.profileLabel ?? "default";
   refs.label.value = config?.label ?? "";
-  refs.status.textContent =
-    state.lastError ??
-    state.lastSessionStatus ??
-    (state.lastSyncAt
-      ? `Synced ${new Date(state.lastSyncAt).toLocaleTimeString()}`
-      : "Not synced yet");
-  refs.meta.textContent = [
-    `Remembered tabs: ${state.rememberedTabCount}`,
-    state.settingsSummary ? `Settings: ${state.settingsSummary}` : null,
-    state.activeSessionId ? `Session: ${state.activeSessionId}` : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
+  const model = derivePopupStatusModel({
+    state,
+    discoveredApiBaseUrl,
+  });
+  refs.statusBadge.textContent = model.badge;
+  refs.statusBadge.dataset.kind = model.kind;
+  refs.statusTitle.textContent = model.title;
+  refs.statusDetail.textContent = model.detail;
+  renderChecklist(refs.statusChecklist, model.checklist);
+  renderSummary(
+    refs,
+    state.activeSessionId
+      ? [...model.summary, `Session: ${state.activeSessionId}`]
+      : model.summary,
+  );
+  refs.autoPairButton.textContent = model.primaryLabel;
+  refs.autoPairButton.disabled = state.syncing;
+  refs.syncButton.hidden = !model.showSync || model.primaryAction === "sync";
+  refs.syncButton.disabled = state.syncing;
+}
+
+async function applyDiscoveredApiBaseUrl(
+  refs: FormRefs,
+  state: BackgroundState,
+): Promise<void> {
+  const configured = state.config?.apiBaseUrl?.trim() ?? "";
+  if (
+    configured.length > 0 &&
+    configured.replace(/\/+$/, "") !== LEGACY_LIFEOPS_API_BASE_URL
+  ) {
+    return;
+  }
+  const discovered = await discoverLifeOpsApiBaseUrl();
+  if (!discovered) {
+    return;
+  }
+  refs.apiBaseUrl.value = discovered;
 }
 
 async function sendMessage<T extends PopupRequest>(
@@ -125,10 +190,39 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
 async function refresh(refs: FormRefs): Promise<void> {
   const response = await sendMessage({ type: "lifeops-browser:get-state" });
   if (!response.ok || !response.state) {
-    refs.status.textContent = response.error;
+    refs.statusTitle.textContent = "LifeOps Browser could not load";
+    refs.statusDetail.textContent = response.error;
     return;
   }
-  renderState(refs, response.state);
+  const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+  renderState(refs, response.state, discoveredApiBaseUrl);
+  if (discoveredApiBaseUrl) {
+    refs.apiBaseUrl.value = discoveredApiBaseUrl;
+  } else {
+    await applyDiscoveredApiBaseUrl(refs, response.state);
+  }
+  if (!response.state.config && !autoPairAttempted) {
+    autoPairAttempted = true;
+    refs.statusTitle.textContent = "Looking for LifeOps in this browser";
+    refs.statusDetail.textContent =
+      "Searching open tabs for a live LifeOps app so this browser can connect itself.";
+    const autoPairResponse = await sendMessage({
+      type: "lifeops-browser:auto-pair",
+    });
+    if (autoPairResponse.ok && autoPairResponse.state) {
+      const nextDiscoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+      renderState(refs, autoPairResponse.state, nextDiscoveredApiBaseUrl);
+      if (nextDiscoveredApiBaseUrl) {
+        refs.apiBaseUrl.value = nextDiscoveredApiBaseUrl;
+      } else {
+        await applyDiscoveredApiBaseUrl(refs, autoPairResponse.state);
+      }
+      return;
+    }
+    if (!autoPairResponse.ok) {
+      refs.statusDetail.textContent = autoPairResponse.error;
+    }
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -136,26 +230,65 @@ document.addEventListener("DOMContentLoaded", () => {
 
   void refresh(refs);
 
+  refs.autoPairButton.addEventListener("click", async () => {
+    const currentResponse = await sendMessage({
+      type: "lifeops-browser:get-state",
+    });
+    const currentState = currentResponse.ok ? currentResponse.state : null;
+    const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    const model = currentState
+      ? derivePopupStatusModel({
+          state: currentState,
+          discoveredApiBaseUrl,
+        })
+      : null;
+    refs.statusDetail.textContent =
+      model?.primaryAction === "sync"
+        ? "Syncing this browser with LifeOps…"
+        : "Trying to auto-connect this browser…";
+    autoPairAttempted = true;
+    const response =
+      model?.primaryAction === "sync"
+        ? await sendMessage({ type: "lifeops-browser:sync-now" })
+        : await sendMessage({
+            type: "lifeops-browser:auto-pair",
+          });
+    if (!response.ok || !response.state) {
+      refs.statusDetail.textContent = response.error;
+      return;
+    }
+    const nextDiscoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    renderState(refs, response.state, nextDiscoveredApiBaseUrl);
+    if (nextDiscoveredApiBaseUrl) {
+      refs.apiBaseUrl.value = nextDiscoveredApiBaseUrl;
+    } else {
+      await applyDiscoveredApiBaseUrl(refs, response.state);
+    }
+  });
+
   refs.saveButton.addEventListener("click", async () => {
-    refs.status.textContent = "Saving companion pairing...";
+    refs.statusDetail.textContent = "Saving manual pairing…";
     const response = await sendMessage({
       type: "lifeops-browser:save-config",
       config: readConfig(refs),
     });
     if (!response.ok || !response.state) {
-      refs.status.textContent = response.error;
+      refs.statusDetail.textContent = response.error;
       return;
     }
-    renderState(refs, response.state);
+    autoPairAttempted = true;
+    const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    renderState(refs, response.state, discoveredApiBaseUrl);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.importButton.addEventListener("click", async () => {
-    refs.status.textContent = "Importing pairing JSON...";
+    refs.statusDetail.textContent = "Importing manual pairing JSON…";
     let config: Partial<CompanionConfig>;
     try {
       config = parsePairingJson(refs.pairingJson.value);
     } catch (error) {
-      refs.status.textContent =
+      refs.statusDetail.textContent =
         error instanceof Error ? error.message : String(error);
       return;
     }
@@ -164,21 +297,26 @@ document.addEventListener("DOMContentLoaded", () => {
       config,
     });
     if (!response.ok || !response.state) {
-      refs.status.textContent = response.error;
+      refs.statusDetail.textContent = response.error;
       return;
     }
     refs.pairingJson.value = "";
-    renderState(refs, response.state);
+    autoPairAttempted = true;
+    const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    renderState(refs, response.state, discoveredApiBaseUrl);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.syncButton.addEventListener("click", async () => {
-    refs.status.textContent = "Syncing...";
+    refs.statusDetail.textContent = "Syncing this browser with LifeOps…";
     const response = await sendMessage({ type: "lifeops-browser:sync-now" });
     if (!response.ok || !response.state) {
-      refs.status.textContent = response.error;
+      refs.statusDetail.textContent = response.error;
       return;
     }
-    renderState(refs, response.state);
+    const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    renderState(refs, response.state, discoveredApiBaseUrl);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 
   refs.clearButton.addEventListener("click", async () => {
@@ -186,9 +324,12 @@ document.addEventListener("DOMContentLoaded", () => {
       type: "lifeops-browser:clear-config",
     });
     if (!response.ok || !response.state) {
-      refs.status.textContent = response.error;
+      refs.statusDetail.textContent = response.error;
       return;
     }
-    renderState(refs, response.state);
+    autoPairAttempted = false;
+    const discoveredApiBaseUrl = await discoverLifeOpsApiBaseUrl();
+    renderState(refs, response.state, discoveredApiBaseUrl);
+    await applyDiscoveredApiBaseUrl(refs, response.state);
   });
 });

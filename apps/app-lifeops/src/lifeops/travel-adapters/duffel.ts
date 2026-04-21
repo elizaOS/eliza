@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -13,23 +13,56 @@ export class DuffelConfigError extends Error {
   }
 }
 
+/** Direct mode hits api.duffel.com with the user's own DUFFEL_API_KEY.
+ *  Cloud mode hits the local Eliza Cloud relay which performs the upstream
+ *  Duffel call, applies creator markup, and meters against the user's
+ *  Cloud credit balance. Cloud mode is the default. */
+export type DuffelMode = "cloud" | "direct";
+
 export interface DuffelConfig {
-  apiKey: string;
+  mode: DuffelMode;
+  /** Required when mode === "direct". */
+  apiKey: string | null;
+  /** Required when mode === "cloud". Local Eliza agent API base, e.g.
+   *  http://127.0.0.1:31337. The relay path is appended internally. */
+  cloudRelayBaseUrl: string | null;
 }
 
 const DUFFEL_API_BASE = "https://api.duffel.com";
 const DUFFEL_API_VERSION = "v2";
+const DEFAULT_CLOUD_RELAY_BASE = "http://127.0.0.1:31337";
+
+function resolveDirectFlag(env: NodeJS.ProcessEnv): boolean {
+  const value = env.MILADY_DUFFEL_DIRECT?.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+function resolveLocalApiBase(env: NodeJS.ProcessEnv): string {
+  const port = env.MILADY_API_PORT?.trim();
+  if (port && /^\d+$/.test(port)) {
+    return `http://127.0.0.1:${port}`;
+  }
+  return DEFAULT_CLOUD_RELAY_BASE;
+}
 
 export function readDuffelConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): DuffelConfig {
-  const apiKey = env.DUFFEL_API_KEY?.trim();
-  if (!apiKey) {
-    throw new DuffelConfigError(
-      "Duffel travel search is not configured. Set DUFFEL_API_KEY.",
-    );
+  if (resolveDirectFlag(env)) {
+    const apiKey = env.DUFFEL_API_KEY?.trim();
+    if (!apiKey) {
+      throw new DuffelConfigError(
+        "Duffel direct mode requested but DUFFEL_API_KEY is not set.",
+      );
+    }
+    return { mode: "direct", apiKey, cloudRelayBaseUrl: null };
   }
-  return { apiKey };
+
+  return {
+    mode: "cloud",
+    apiKey: null,
+    cloudRelayBaseUrl: resolveLocalApiBase(env),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +106,19 @@ export interface DuffelSlice {
   segments: DuffelSegment[];
 }
 
+export interface DuffelOfferPassenger {
+  id: string;
+  type: string;
+  givenName: string | null;
+  familyName: string | null;
+}
+
+export interface DuffelPaymentRequirements {
+  requiresInstantPayment: boolean;
+  priceGuaranteeExpiresAt: string | null;
+  paymentRequiredBy: string | null;
+}
+
 export interface DuffelOffer {
   id: string;
   totalAmount: string;
@@ -82,11 +128,100 @@ export interface DuffelOffer {
   expiresAt: string | null;
   /** Raw cabin class reported by Duffel for the first slice. */
   cabinClass: string | null;
+  passengers: DuffelOfferPassenger[];
+  paymentRequirements: DuffelPaymentRequirements | null;
 }
+
+/**
+ * Cost envelope returned by the cloud relay. The breakdown is computed
+ * server-side (commandment 2 — no client-side math) and the local code
+ * forwards it to the UI for display. In direct mode all values are zero
+ * because no markup is charged.
+ */
+export interface DuffelCallCost {
+  /** Net cost charged to the user's Cloud credit balance, in USD. */
+  totalUsd: number;
+  /** Portion that flows to the creator as markup, in USD. */
+  creatorMarkupUsd: number;
+  /** Eliza Cloud platform fee portion, in USD. */
+  platformFeeUsd: number;
+  /** Whether the call was metered (true in cloud mode, false in direct mode). */
+  metered: boolean;
+}
+
+const DIRECT_MODE_COST: DuffelCallCost = {
+  totalUsd: 0,
+  creatorMarkupUsd: 0,
+  platformFeeUsd: 0,
+  metered: false,
+};
 
 export interface SearchFlightsResult {
   offerRequestId: string;
   offers: DuffelOffer[];
+  cost: DuffelCallCost;
+}
+
+export interface DuffelOrderPassenger {
+  id: string;
+  givenName: string | null;
+  familyName: string | null;
+}
+
+export interface DuffelOrderPaymentStatus {
+  awaitingPayment: boolean;
+  paymentRequiredBy: string | null;
+  priceGuaranteeExpiresAt: string | null;
+}
+
+export interface DuffelOrderDocument {
+  type: string | null;
+  uniqueIdentifier: string | null;
+}
+
+export interface DuffelOrder {
+  id: string;
+  bookingReference: string | null;
+  totalAmount: string;
+  totalCurrency: string;
+  slices: DuffelSlice[];
+  passengers: DuffelOrderPassenger[];
+  paymentStatus: DuffelOrderPaymentStatus | null;
+  documents: DuffelOrderDocument[];
+}
+
+export interface DuffelPayment {
+  id: string;
+  orderId: string;
+  status: string;
+  currency: string;
+  amount: string;
+  type: string;
+  failureReason: string | null;
+  createdAt: string | null;
+}
+
+export interface DuffelOrderPassengerInput {
+  id: string;
+  title?: string;
+  gender?: string;
+  givenName: string;
+  familyName: string;
+  bornOn: string;
+  email?: string;
+  phoneNumber?: string;
+}
+
+export interface CreateDuffelOrderRequest {
+  selectedOffers: ReadonlyArray<string>;
+  passengers: ReadonlyArray<DuffelOrderPassengerInput>;
+  type: "hold" | "instant";
+  payment?: {
+    type: "balance";
+    amount: string;
+    currency: string;
+  };
+  metadata?: Readonly<Record<string, string>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +248,17 @@ interface DuffelApiOffer {
     }>;
     fare_brand_name: string | null;
   }>;
-  passengers: unknown[];
+  passengers: Array<{
+    id?: string;
+    type?: string;
+    given_name?: string | null;
+    family_name?: string | null;
+  }>;
+  payment_requirements?: {
+    requires_instant_payment?: boolean;
+    price_guarantee_expires_at?: string | null;
+    payment_required_by?: string | null;
+  };
 }
 
 interface DuffelOfferRequestResponse {
@@ -125,6 +270,45 @@ interface DuffelOfferRequestResponse {
 
 interface DuffelOfferResponse {
   data: DuffelApiOffer;
+}
+
+interface DuffelApiOrder {
+  id: string;
+  booking_reference?: string | null;
+  total_amount: string;
+  total_currency: string;
+  slices: DuffelApiOffer["slices"];
+  passengers: Array<{
+    id?: string;
+    given_name?: string | null;
+    family_name?: string | null;
+  }>;
+  payment_status?: {
+    awaiting_payment?: boolean;
+    payment_required_by?: string | null;
+    price_guarantee_expires_at?: string | null;
+  };
+  documents?: Array<{
+    type?: string | null;
+    unique_identifier?: string | null;
+  }>;
+}
+
+interface DuffelOrderResponse {
+  data: DuffelApiOrder;
+}
+
+interface DuffelPaymentResponse {
+  data: {
+    id: string;
+    order_id: string;
+    status: string;
+    currency: string;
+    amount: string;
+    type: string;
+    failure_reason?: string | null;
+    created_at?: string | null;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -141,8 +325,7 @@ function buildHeaders(apiKey: string): Record<string, string> {
 }
 
 function mapOffer(raw: DuffelApiOffer): DuffelOffer {
-  const cabinClass =
-    raw.slices[0]?.fare_brand_name ?? null;
+  const cabinClass = raw.slices[0]?.fare_brand_name ?? null;
 
   const slices: DuffelSlice[] = raw.slices.map((slice) => ({
     origin: slice.origin.iata_code,
@@ -158,27 +341,168 @@ function mapOffer(raw: DuffelApiOffer): DuffelOffer {
       duration: seg.duration,
     })),
   }));
+  const passengers: DuffelOfferPassenger[] = (raw.passengers ?? []).map(
+    (passenger, index) => ({
+      id: passenger.id?.trim() || `passenger_${index}`,
+      type: passenger.type?.trim() || "adult",
+      givenName: passenger.given_name?.trim() || null,
+      familyName: passenger.family_name?.trim() || null,
+    }),
+  );
+  const paymentRequirements = raw.payment_requirements
+    ? {
+        requiresInstantPayment:
+          raw.payment_requirements.requires_instant_payment !== false,
+        priceGuaranteeExpiresAt:
+          raw.payment_requirements.price_guarantee_expires_at ?? null,
+        paymentRequiredBy: raw.payment_requirements.payment_required_by ?? null,
+      }
+    : null;
 
   return {
     id: raw.id,
     totalAmount: raw.total_amount,
     totalCurrency: raw.total_currency,
-    passengerCount: Array.isArray(raw.passengers) ? raw.passengers.length : 1,
+    passengerCount: passengers.length > 0 ? passengers.length : 1,
     slices,
     expiresAt: raw.expires_at,
     cabinClass,
+    passengers,
+    paymentRequirements,
   };
 }
 
-async function duffelFetch<T>(args: {
-  apiKey: string;
+function mapOrder(raw: DuffelApiOrder): DuffelOrder {
+  return {
+    id: raw.id,
+    bookingReference: raw.booking_reference ?? null,
+    totalAmount: raw.total_amount,
+    totalCurrency: raw.total_currency,
+    slices: raw.slices.map((slice) => ({
+      origin: slice.origin.iata_code,
+      destination: slice.destination.iata_code,
+      duration: slice.duration,
+      segments: slice.segments.map((segment) => ({
+        origin: segment.origin.iata_code,
+        destination: segment.destination.iata_code,
+        departingAt: segment.departing_at,
+        arrivingAt: segment.arriving_at,
+        carrierIataCode: segment.operating_carrier.iata_code,
+        flightNumber: segment.flight_number ?? "",
+        duration: segment.duration,
+      })),
+    })),
+    passengers: (raw.passengers ?? []).map((passenger, index) => ({
+      id: passenger.id?.trim() || `passenger_${index}`,
+      givenName: passenger.given_name?.trim() || null,
+      familyName: passenger.family_name?.trim() || null,
+    })),
+    paymentStatus: raw.payment_status
+      ? {
+          awaitingPayment: raw.payment_status.awaiting_payment === true,
+          paymentRequiredBy: raw.payment_status.payment_required_by ?? null,
+          priceGuaranteeExpiresAt:
+            raw.payment_status.price_guarantee_expires_at ?? null,
+        }
+      : null,
+    documents: (raw.documents ?? []).map((document) => ({
+      type: document.type ?? null,
+      uniqueIdentifier: document.unique_identifier ?? null,
+    })),
+  };
+}
+
+function mapPayment(
+  raw: DuffelPaymentResponse["data"],
+): DuffelPayment {
+  return {
+    id: raw.id,
+    orderId: raw.order_id,
+    status: raw.status,
+    currency: raw.currency,
+    amount: raw.amount,
+    type: raw.type,
+    failureReason: raw.failure_reason ?? null,
+    createdAt: raw.created_at ?? null,
+  };
+}
+
+/**
+ * Cost meta envelope returned by the Eliza Cloud relay alongside the
+ * Duffel payload. Defined server-side; the client trusts whatever Cloud
+ * returns and never recomputes (commandment 2).
+ */
+interface RelayCostMeta {
+  total_usd?: number;
+  creator_markup_usd?: number;
+  platform_fee_usd?: number;
+}
+
+interface RelayMeta {
+  cost?: RelayCostMeta;
+}
+
+interface RelayEnvelope {
+  _meta?: RelayMeta;
+}
+
+function readRelayCost(envelope: unknown): DuffelCallCost {
+  if (
+    envelope === null ||
+    typeof envelope !== "object" ||
+    !("_meta" in envelope)
+  ) {
+    throw new Error(
+      "Duffel cloud relay response missing _meta envelope. Update Eliza Cloud or set MILADY_DUFFEL_DIRECT=1.",
+    );
+  }
+  const meta = (envelope as RelayEnvelope)._meta;
+  const cost = meta?.cost;
+  if (
+    !cost ||
+    typeof cost.total_usd !== "number" ||
+    typeof cost.creator_markup_usd !== "number" ||
+    typeof cost.platform_fee_usd !== "number"
+  ) {
+    throw new Error(
+      "Duffel cloud relay returned malformed _meta.cost. Refusing to proceed without billing receipt.",
+    );
+  }
+  return {
+    totalUsd: cost.total_usd,
+    creatorMarkupUsd: cost.creator_markup_usd,
+    platformFeeUsd: cost.platform_fee_usd,
+    metered: true,
+  };
+}
+
+interface DuffelFetchResult<T> {
+  data: T;
+  cost: DuffelCallCost;
+}
+
+interface DuffelRequest {
+  config: DuffelConfig;
   method: "GET" | "POST";
-  path: string;
+  /** Path on api.duffel.com (e.g. "/air/offer_requests"). */
+  directPath: string;
+  /** Path on the local cloud relay (e.g. "/api/cloud/duffel/offer-requests"). */
+  cloudRelayPath: string;
   body?: unknown;
   operation: string;
-}): Promise<T> {
-  const { apiKey, method, path, body, operation } = args;
-  const url = `${DUFFEL_API_BASE}${path}`;
+}
+
+async function duffelFetch<T>(args: DuffelRequest): Promise<DuffelFetchResult<T>> {
+  const { config, method, directPath, cloudRelayPath, body, operation } = args;
+
+  const isCloud = config.mode === "cloud";
+  const url = isCloud
+    ? `${config.cloudRelayBaseUrl ?? ""}${cloudRelayPath}`
+    : `${DUFFEL_API_BASE}${directPath}`;
+
+  const headers = isCloud
+    ? { "Content-Type": "application/json", Accept: "application/json" }
+    : buildHeaders(config.apiKey ?? "");
 
   const span = createIntegrationTelemetrySpan({
     boundary: "lifeops",
@@ -190,14 +514,14 @@ async function duffelFetch<T>(args: {
   try {
     response = await fetch(url, {
       method,
-      headers: buildHeaders(apiKey),
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(30_000),
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { boundary: "lifeops", integration: "duffel", operation, err: error instanceof Error ? error : undefined },
+      { boundary: "lifeops", integration: "duffel", operation, mode: config.mode, err: error instanceof Error ? error : undefined },
       `[lifeops-travel] Duffel ${operation} network error: ${msg}`,
     );
     span.failure({ error, errorKind: "network_error" });
@@ -208,20 +532,22 @@ async function duffelFetch<T>(args: {
     const errorBody = await response.text().catch(() => "");
     const errorMsg = errorBody || `HTTP ${response.status}`;
     logger.warn(
-      { boundary: "lifeops", integration: "duffel", operation, statusCode: response.status },
+      { boundary: "lifeops", integration: "duffel", operation, mode: config.mode, statusCode: response.status },
       `[lifeops-travel] Duffel ${operation} HTTP error: ${errorMsg}`,
     );
     span.failure({ statusCode: response.status, errorKind: "http_error" });
     throw new Error(`Duffel ${operation} failed (${response.status}): ${errorMsg}`);
   }
 
-  const data = (await response.json()) as T;
+  const payload = (await response.json()) as T;
   span.success({ statusCode: response.status });
-  return data;
+
+  const cost = isCloud ? readRelayCost(payload) : DIRECT_MODE_COST;
+  return { data: payload, cost };
 }
 
 // ---------------------------------------------------------------------------
-// Public API — read-only search. No booking method.
+// Public API
 // ---------------------------------------------------------------------------
 
 /**
@@ -230,8 +556,6 @@ async function duffelFetch<T>(args: {
  * Throws `DuffelConfigError` when DUFFEL_API_KEY is absent.
  * One-way search when `returnDate` is omitted; return search when provided.
  *
- * NOTE: This is read-only. Booking (offer order creation) is intentionally
- * absent from this adapter — it requires a separate user-approval flow (WS6).
  */
 export async function searchFlights(
   request: SearchFlightsRequest,
@@ -268,10 +592,11 @@ export async function searchFlights(
     `[lifeops-travel] Searching flights ${request.origin} → ${request.destination} on ${request.departureDate}`,
   );
 
-  const responseData = await duffelFetch<DuffelOfferRequestResponse>({
-    apiKey: resolvedConfig.apiKey,
+  const { data: responseData, cost } = await duffelFetch<DuffelOfferRequestResponse>({
+    config: resolvedConfig,
     method: "POST",
-    path: "/air/offer_requests?return_offers=true",
+    directPath: "/air/offer_requests?return_offers=true",
+    cloudRelayPath: "/api/cloud/duffel/offer-requests",
     body: requestBody,
     operation: "offer_request",
   });
@@ -279,13 +604,14 @@ export async function searchFlights(
   const offers = (responseData.data.offers ?? []).map(mapOffer);
 
   logger.info(
-    { boundary: "lifeops", integration: "duffel", offerRequestId: responseData.data.id, offerCount: offers.length },
+    { boundary: "lifeops", integration: "duffel", offerRequestId: responseData.data.id, offerCount: offers.length, costUsd: cost.totalUsd },
     `[lifeops-travel] Duffel returned ${offers.length} offers for request ${responseData.data.id}`,
   );
 
   return {
     offerRequestId: responseData.data.id,
     offers,
+    cost,
   };
 }
 
@@ -295,7 +621,6 @@ export async function searchFlights(
  * Use after `searchFlights` to get live pricing and full details for a
  * specific offer before presenting it to the user for approval.
  *
- * NOTE: This is read-only. Booking requires a separate approval flow (WS6).
  */
 export async function getOffer(
   id: string,
@@ -307,12 +632,124 @@ export async function getOffer(
     throw new Error("Duffel getOffer: offer id is required");
   }
 
-  const responseData = await duffelFetch<DuffelOfferResponse>({
-    apiKey: resolvedConfig.apiKey,
+  const { data: responseData } = await duffelFetch<DuffelOfferResponse>({
+    config: resolvedConfig,
     method: "GET",
-    path: `/air/offers/${encodeURIComponent(id.trim())}`,
+    directPath: `/air/offers/${encodeURIComponent(id.trim())}`,
+    cloudRelayPath: `/api/cloud/duffel/offers/${encodeURIComponent(id.trim())}`,
     operation: "offer_retrieve",
   });
 
   return mapOffer(responseData.data);
+}
+
+export async function createOrder(
+  request: CreateDuffelOrderRequest,
+  config?: DuffelConfig,
+): Promise<DuffelOrder> {
+  const resolvedConfig = config ?? readDuffelConfigFromEnv();
+  if (request.selectedOffers.length !== 1) {
+    throw new Error("Duffel createOrder: exactly one selected offer is required");
+  }
+  if (request.passengers.length === 0) {
+    throw new Error("Duffel createOrder: at least one passenger is required");
+  }
+
+  const data: Record<string, unknown> = {
+    type: request.type,
+    selected_offers: [...request.selectedOffers],
+    passengers: request.passengers.map((passenger) => ({
+      id: passenger.id,
+      title: passenger.title,
+      gender: passenger.gender,
+      given_name: passenger.givenName,
+      family_name: passenger.familyName,
+      born_on: passenger.bornOn,
+      email: passenger.email,
+      phone_number: passenger.phoneNumber,
+    })),
+  };
+  if (request.payment) {
+    data.payments = [
+      {
+        type: request.payment.type,
+        amount: request.payment.amount,
+        currency: request.payment.currency,
+      },
+    ];
+  }
+  if (request.metadata && Object.keys(request.metadata).length > 0) {
+    data.metadata = request.metadata;
+  }
+
+  const { data: response } = await duffelFetch<DuffelOrderResponse>({
+    config: resolvedConfig,
+    method: "POST",
+    directPath: "/air/orders",
+    cloudRelayPath: "/api/cloud/duffel/orders",
+    body: { data },
+    operation: "order_create",
+  });
+
+  return mapOrder(response.data);
+}
+
+export async function getOrder(
+  orderId: string,
+  config?: DuffelConfig,
+): Promise<DuffelOrder> {
+  const resolvedConfig = config ?? readDuffelConfigFromEnv();
+  if (!orderId || orderId.trim().length === 0) {
+    throw new Error("Duffel getOrder: order id is required");
+  }
+
+  const { data: response } = await duffelFetch<DuffelOrderResponse>({
+    config: resolvedConfig,
+    method: "GET",
+    directPath: `/air/orders/${encodeURIComponent(orderId.trim())}`,
+    cloudRelayPath: `/api/cloud/duffel/orders/${encodeURIComponent(orderId.trim())}`,
+    operation: "order_retrieve",
+  });
+
+  return mapOrder(response.data);
+}
+
+export async function createPayment(
+  args: {
+    orderId: string;
+    amount: string;
+    currency: string;
+  },
+  config?: DuffelConfig,
+): Promise<DuffelPayment> {
+  const resolvedConfig = config ?? readDuffelConfigFromEnv();
+  if (!args.orderId || args.orderId.trim().length === 0) {
+    throw new Error("Duffel createPayment: order id is required");
+  }
+  if (!args.amount || args.amount.trim().length === 0) {
+    throw new Error("Duffel createPayment: amount is required");
+  }
+  if (!args.currency || args.currency.trim().length === 0) {
+    throw new Error("Duffel createPayment: currency is required");
+  }
+
+  const { data: response } = await duffelFetch<DuffelPaymentResponse>({
+    config: resolvedConfig,
+    method: "POST",
+    directPath: "/air/payments",
+    cloudRelayPath: "/api/cloud/duffel/payments",
+    body: {
+      data: {
+        order_id: args.orderId.trim(),
+        payment: {
+          type: "balance",
+          amount: args.amount.trim(),
+          currency: args.currency.trim().toUpperCase(),
+        },
+      },
+    },
+    operation: "payment_create",
+  });
+
+  return mapPayment(response.data);
 }

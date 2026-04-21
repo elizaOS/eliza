@@ -1,6 +1,6 @@
-const format = require('../format-lines');
-const { product } = require('../../helpers');
-const { SIZES } = require('./Packing.opts');
+const format = require("../format-lines");
+const { product } = require("../../helpers");
+const { SIZES } = require("./Packing.opts");
 
 // TEMPLATE
 const header = `\
@@ -31,11 +31,11 @@ function testSymbolicReplace(bytes${outer} container, bytes${inner} newValue, ui
 // GENERATE
 module.exports = format(
   header,
-  'contract PackingTest is Test {',
+  "contract PackingTest is Test {",
   format(
     [].concat(
-      'using Packing for *;',
-      '',
+      "using Packing for *;",
+      "",
       product(SIZES, SIZES)
         .filter(([left, right]) => SIZES.includes(left + right))
         .map(([left, right]) => testPack(left, right)),
@@ -44,5 +44,5 @@ module.exports = format(
         .map(([outer, inner]) => testReplace(outer, inner)),
     ),
   ).trimEnd(),
-  '}',
+  "}",
 );

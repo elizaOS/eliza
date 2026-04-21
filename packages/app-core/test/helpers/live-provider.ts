@@ -32,6 +32,55 @@ function getTrimmedEnv(name: string): string | null {
   return value ? value : null;
 }
 
+function providerKeyMatchesSelection(
+  providerName: LiveProviderName,
+  apiKey: string,
+): boolean {
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (providerName === "openai" && /^gsk[-_]/i.test(trimmed)) {
+    return false;
+  }
+
+  return true;
+}
+
+function getLiveTestModelOverride(kind: "small" | "large"): string | null {
+  const key =
+    kind === "small"
+      ? ["MILADY_LIVE_TEST_SMALL_MODEL", "ELIZA_LIVE_TEST_SMALL_MODEL"]
+      : ["MILADY_LIVE_TEST_LARGE_MODEL", "ELIZA_LIVE_TEST_LARGE_MODEL"];
+
+  for (const name of key) {
+    const value = getTrimmedEnv(name);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getLiveTestBaseUrlOverride(
+  providerName: LiveProviderName,
+): string | null {
+  const suffix = providerName.toUpperCase().replace(/-/g, "_");
+  for (const name of [
+    `MILADY_LIVE_TEST_${suffix}_BASE_URL`,
+    `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
+  ]) {
+    const value = getTrimmedEnv(name);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function readCloudApiKey(value: unknown): string {
   if (!isRecord(value)) {
     return "";
@@ -80,10 +129,24 @@ export type LiveProviderConfig = {
   env: Record<string, string>;
 };
 
+export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
+  "SMALL_MODEL",
+  "LARGE_MODEL",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_CLOUD_API_KEY",
+  "ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS",
+]);
+
 const PROVIDERS: Array<{
   name: LiveProviderName;
   plugin: string;
+  /** Canonical env var names the plugin reads at runtime. First entry is the
+   *  primary name and is always set in the propagated env when discovered. */
   keyEnvVars: string[];
+  /** Additional env var names checked during discovery only (e.g. CI-scoped
+   *  `ELIZA_E2E_*` aliases). When one of these holds the key, it is
+   *  propagated under the canonical `keyEnvVars[0]` name so plugins find it. */
+  keyEnvVarAliases?: string[];
   baseUrlEnvVar?: string;
   defaultBaseUrl: string;
   smallModelEnvVar: string;
@@ -95,6 +158,7 @@ const PROVIDERS: Array<{
     name: "groq",
     plugin: "@elizaos/plugin-groq",
     keyEnvVars: ["GROQ_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_GROQ_API_KEY"],
     defaultBaseUrl: "https://api.groq.com/openai/v1",
     smallModelEnvVar: "GROQ_SMALL_MODEL",
     largeModelEnvVar: "GROQ_LARGE_MODEL",
@@ -105,6 +169,7 @@ const PROVIDERS: Array<{
     name: "openai",
     plugin: "@elizaos/plugin-openai",
     keyEnvVars: ["OPENAI_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_OPENAI_API_KEY"],
     baseUrlEnvVar: "OPENAI_BASE_URL",
     defaultBaseUrl: "https://api.openai.com/v1",
     smallModelEnvVar: "OPENAI_SMALL_MODEL",
@@ -116,6 +181,7 @@ const PROVIDERS: Array<{
     name: "anthropic",
     plugin: "@elizaos/plugin-anthropic",
     keyEnvVars: ["ANTHROPIC_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_ANTHROPIC_API_KEY"],
     defaultBaseUrl: "https://api.anthropic.com",
     smallModelEnvVar: "ANTHROPIC_SMALL_MODEL",
     largeModelEnvVar: "ANTHROPIC_LARGE_MODEL",
@@ -126,6 +192,7 @@ const PROVIDERS: Array<{
     name: "google",
     plugin: "@elizaos/plugin-google-genai",
     keyEnvVars: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY"],
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     smallModelEnvVar: "GOOGLE_SMALL_MODEL",
     largeModelEnvVar: "GOOGLE_LARGE_MODEL",
@@ -136,6 +203,7 @@ const PROVIDERS: Array<{
     name: "openrouter",
     plugin: "@elizaos/plugin-openrouter",
     keyEnvVars: ["OPENROUTER_API_KEY"],
+    keyEnvVarAliases: ["ELIZA_E2E_OPENROUTER_API_KEY"],
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     smallModelEnvVar: "OPENROUTER_SMALL_MODEL",
     largeModelEnvVar: "OPENROUTER_LARGE_MODEL",
@@ -143,6 +211,28 @@ const PROVIDERS: Array<{
     defaultLargeModel: "google/gemini-2.0-flash-001",
   },
 ];
+
+for (const provider of PROVIDERS) {
+  for (const key of provider.keyEnvVars) {
+    LIVE_PROVIDER_ENV_KEYS.add(key);
+  }
+  for (const key of provider.keyEnvVarAliases ?? []) {
+    LIVE_PROVIDER_ENV_KEYS.add(key);
+  }
+  if (provider.baseUrlEnvVar) {
+    LIVE_PROVIDER_ENV_KEYS.add(provider.baseUrlEnvVar);
+  }
+  LIVE_PROVIDER_ENV_KEYS.add(provider.smallModelEnvVar);
+  LIVE_PROVIDER_ENV_KEYS.add(provider.largeModelEnvVar);
+}
+
+/** All env var names (canonical + aliases) that may hold a key for `provider`. */
+function providerKeyEnvCandidates(provider: {
+  keyEnvVars: string[];
+  keyEnvVarAliases?: string[];
+}): string[] {
+  return [...provider.keyEnvVars, ...(provider.keyEnvVarAliases ?? [])];
+}
 
 /**
  * Select the first available LLM provider based on environment variables.
@@ -159,39 +249,36 @@ export function selectLiveProvider(
 
   for (const def of candidates) {
     let apiKey = "";
-    for (const envVar of def.keyEnvVars) {
+    for (const envVar of providerKeyEnvCandidates(def)) {
       const val = getTrimmedEnv(envVar);
-      if (val) {
+      if (val && providerKeyMatchesSelection(def.name, val)) {
         apiKey = val;
         break;
       }
     }
     if (!apiKey) continue;
 
-    const baseUrl = def.baseUrlEnvVar
-      ? (getTrimmedEnv(def.baseUrlEnvVar) ?? def.defaultBaseUrl)
-      : def.defaultBaseUrl;
+    const baseUrl = getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
 
     const smallModel =
-      getTrimmedEnv(def.smallModelEnvVar) ?? def.defaultSmallModel;
+      getLiveTestModelOverride("small") ?? def.defaultSmallModel;
     const largeModel =
-      getTrimmedEnv(def.largeModelEnvVar) ?? def.defaultLargeModel;
+      getLiveTestModelOverride("large") ?? def.defaultLargeModel;
 
     const env: Record<string, string> = {};
+    // Propagate the discovered key under every canonical name so plugin code
+    // reading e.g. `GROQ_API_KEY` finds it even when the source env only had
+    // the scoped alias `ELIZA_E2E_GROQ_API_KEY`.
     for (const envVar of def.keyEnvVars) {
-      const val = getTrimmedEnv(envVar);
-      if (val) env[envVar] = val;
+      env[envVar] = apiKey;
     }
     if (def.baseUrlEnvVar) {
-      const configuredBaseUrl = getTrimmedEnv(def.baseUrlEnvVar);
-      if (configuredBaseUrl) {
-        env[def.baseUrlEnvVar] = configuredBaseUrl;
-      }
+      env[def.baseUrlEnvVar] = baseUrl;
     }
     env[def.smallModelEnvVar] = smallModel;
     env[def.largeModelEnvVar] = largeModel;
-    env.SMALL_MODEL = getTrimmedEnv("SMALL_MODEL") ?? smallModel;
-    env.LARGE_MODEL = getTrimmedEnv("LARGE_MODEL") ?? largeModel;
+    env.SMALL_MODEL = smallModel;
+    env.LARGE_MODEL = largeModel;
 
     return {
       name: def.name,
@@ -208,7 +295,7 @@ export function selectLiveProvider(
     getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
     getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
     configuredCloudApiKey;
-  if (cloudApiKey && (!preferredProvider || preferredProvider === "openai")) {
+  if (cloudApiKey && !preferredProvider) {
     const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
     const largeModel =
       getTrimmedEnv("OPENAI_LARGE_MODEL") ||
@@ -227,8 +314,8 @@ export function selectLiveProvider(
         OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
         OPENAI_SMALL_MODEL: smallModel,
         OPENAI_LARGE_MODEL: largeModel,
-        SMALL_MODEL: getTrimmedEnv("SMALL_MODEL") ?? smallModel,
-        LARGE_MODEL: getTrimmedEnv("LARGE_MODEL") ?? largeModel,
+        SMALL_MODEL: smallModel,
+        LARGE_MODEL: largeModel,
       },
     };
   }
@@ -268,7 +355,10 @@ export function isLiveTestEnabled(): boolean {
 export function availableProviderNames(): LiveProviderName[] {
   const providers = new Set<LiveProviderName>(
     PROVIDERS.filter((def) =>
-      def.keyEnvVars.some((key) => getTrimmedEnv(key)),
+      providerKeyEnvCandidates(def).some((key) => {
+        const value = getTrimmedEnv(key);
+        return value ? providerKeyMatchesSelection(def.name, value) : false;
+      }),
     ).map((def) => def.name),
   );
   if (
@@ -279,4 +369,24 @@ export function availableProviderNames(): LiveProviderName[] {
     providers.add("openai");
   }
   return [...providers];
+}
+
+export function buildIsolatedLiveProviderEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  provider: Pick<LiveProviderConfig, "env"> | null | undefined,
+): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = { ...baseEnv };
+  for (const key of LIVE_PROVIDER_ENV_KEYS) {
+    nextEnv[key] = "";
+  }
+
+  if (provider?.env) {
+    for (const [key, value] of Object.entries(provider.env)) {
+      nextEnv[key] = value;
+    }
+  }
+
+  nextEnv.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS = "1";
+
+  return nextEnv;
 }

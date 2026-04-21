@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 export interface XPosterCredentials {
   apiKey: string;
@@ -17,9 +17,13 @@ export interface XPostResult {
   category: "success" | "auth" | "rate_limit" | "network" | "unknown";
 }
 
-const X_BASE_URL =
-  process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
-const X_POST_URL = `${X_BASE_URL}/2/tweets`;
+function getXBaseUrl(): string {
+  return process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+}
+
+function getXPostUrl(): string {
+  return `${getXBaseUrl()}/2/tweets`;
+}
 
 function percentEncode(value: string): string {
   return encodeURIComponent(value).replace(
@@ -128,14 +132,14 @@ export async function postToX(args: {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const authorization = buildOAuth1AuthorizationHeader({
     method: "POST",
-    url: X_POST_URL,
+    url: getXPostUrl(),
     credentials,
     nonce,
     timestamp,
   });
 
   try {
-    const response = await fetch(X_POST_URL, {
+    const response = await fetch(getXPostUrl(), {
       method: "POST",
       headers: {
         Authorization: authorization,
@@ -223,7 +227,9 @@ export interface XDmResult {
   category: "success" | "auth" | "rate_limit" | "network" | "unknown";
 }
 
-const X_DM_URL_TEMPLATE = `${X_BASE_URL}/2/dm_conversations/with/{participantId}/messages`;
+function getXDmUrl(participantId: string): string {
+  return `${getXBaseUrl()}/2/dm_conversations/with/${encodeURIComponent(participantId)}/messages`;
+}
 
 /**
  * Send a Direct Message on X (Twitter) via the v2 DM API.
@@ -240,7 +246,7 @@ export async function sendXDm(args: {
   credentials: XPosterCredentials;
 }): Promise<XDmResult> {
   const { participantId, text, credentials } = args;
-  const url = X_DM_URL_TEMPLATE.replace("{participantId}", encodeURIComponent(participantId));
+  const url = getXDmUrl(participantId);
   const nonce = crypto.randomBytes(16).toString("hex");
   const timestamp = String(Math.floor(Date.now() / 1000));
   const authorization = buildOAuth1AuthorizationHeader({

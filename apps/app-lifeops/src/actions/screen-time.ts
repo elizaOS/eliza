@@ -13,6 +13,7 @@ import type {
 } from "@elizaos/core";
 import { LifeOpsService } from "../lifeops/service.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
 
 type Subaction = "summary" | "today" | "weekly" | "by_app" | "by_website";
 
@@ -55,33 +56,17 @@ function formatSeconds(seconds: number): string {
   return `${m}m`;
 }
 
-function inferSubaction(
-  intent: string | undefined,
-  messageBody: string,
-): Subaction {
-  const text = `${intent ?? ""} ${messageBody}`.toLowerCase();
-  if (/\btoday\b/.test(text)) return "today";
-  if (/\b(this week|weekly|past (7|seven) days|last week)\b/.test(text)) {
-    return "weekly";
-  }
-  if (/\b(on|at|in|spent)\b.*\b(website|site|domain|url)\b/.test(text)) {
-    return "by_website";
-  }
-  if (/\b(in|on|using|app)\b/.test(text) && /\b(app|application)\b/.test(text)) {
-    return "by_app";
-  }
-  if (/\b(top|most used|top apps|top websites)\b/.test(text)) {
-    return "summary";
-  }
-  return "summary";
-}
-
 export const screenTimeAction: Action = {
   name: "SCREEN_TIME",
   similes: ["SCREENTIME", "APP_USAGE", "WEBSITE_USAGE", "DWELL_TIME"],
   description:
-    "Query screen time summaries (per app, per website, daily). Subactions: summary, today, weekly, by_app, by_website.",
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+    "Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break down my screen time by app this week', or 'which websites did I spend the most time on?'. Do not use this when the user is only reflecting or venting like 'I spend too much time on my phone' unless they actually ask for the numbers. Subactions: summary, today, weekly, by_app, by_website.",
+  validate: async (runtime, message) => {
+    if (looksLikeScreenTimeReflection(messageText(message))) {
+      return false;
+    }
+    return hasLifeOpsAccess(runtime, message);
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -96,8 +81,7 @@ export const screenTimeAction: Action = {
     }
 
     const params = getParams(options);
-    const body = messageText(message);
-    const subaction = params.subaction ?? inferSubaction(params.intent, body);
+    const subaction: Subaction = params.subaction ?? "summary";
     const service = new LifeOpsService(runtime);
 
     if (subaction === "today") {

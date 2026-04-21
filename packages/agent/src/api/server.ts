@@ -34,7 +34,6 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 import { TxService } from "@elizaos/app-steward/api/tx-service";
 import type {
   SwarmEvent,
@@ -181,15 +180,18 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
+import { handleDuffelRelayRoute } from "./duffel-relay-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
+import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
@@ -1115,13 +1117,13 @@ interface RequestContext {
   onRuntimeSwapped?: () => void;
 }
 
-import type { TrainingServiceLike } from "./server-types.js";
+import type { TrainingServiceWithRuntime } from "./server-types.js";
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
   getConfig: () => ElizaConfig;
   setConfig: (nextConfig: ElizaConfig) => void;
-}) => TrainingServiceLike;
+}) => TrainingServiceWithRuntime;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [
@@ -1481,15 +1483,6 @@ function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
   coordinator.setSwarmCompleteCallback(async (payload) => {
     await handleSwarmSynthesis(st, payload);
   });
-  // Same wiring path — install the task heartbeat so sessions running past
-  // 45s emit periodic "still working" pings that report the subagent's
-  // current tool activity. Synthesis delivers the final answer; heartbeat
-  // just tells the user the task is alive and moving.
-  const ptyService = st.runtime.getService("PTY_SERVICE");
-  if (ptyService) {
-    installTaskHeartbeat(st.runtime, ptyService);
-    logger.info("[task-heartbeat] installed");
-  }
   return true;
 }
 
@@ -1560,6 +1553,15 @@ type SynthesisTask = {
   completionSummary: string;
   status: string;
   workdir?: string;
+  /**
+   * The subagent framework that produced this task's output. `shell` sessions
+   * have no `~/.claude/projects/*.jsonl` of their own, so buildTaskLine must
+   * skip the jsonl read for them — otherwise the jsonl lookup falls through
+   * to whatever claude-code session happens to live under the encoded workdir
+   * path (e.g. a shell agent with cwd=/home/milady would end up reading the
+   * operator's own claude-code session at ~/.claude/projects/-home-milady/*).
+   */
+  agentType?: string;
 };
 
 async function buildSynthesisResultText(
@@ -1576,9 +1578,14 @@ async function buildSynthesisResultText(
 /**
  * Deliver the subagent's actual final answer — the last end_turn assistant
  * text from its session jsonl. Trust the agent to already have produced
- * a coherent response; synthesis does not rewrite or trim it. Falls back
- * to completionSummary, then a port-status check, then the original
- * prompt text when no jsonl is available.
+ * a coherent response; synthesis does not rewrite or trim it.
+ *
+ * Falls back only to a port-status check (for `port NNNN`-style tasks) and
+ * finally to an honest placeholder — never to `task.completionSummary`
+ * (the validator LLM's analysis paragraph, e.g. "The agent wrote the
+ * files, verified with curl, and reported the URL") or `task.originalTask`
+ * (echoes the user's original prompt). Both of those were the source of
+ * the "why doesn't the bot paste the actual URL" complaint.
  */
 async function buildTaskLine(
   task: SynthesisTask,
@@ -1586,19 +1593,52 @@ async function buildTaskLine(
 ): Promise<string> {
   const workdir =
     task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
-  if (workdir) {
-    const assistantText = await readLastAssistantTextFromJsonl(workdir);
-    if (assistantText) return assistantText;
+  // Shell subagents are raw /bin/bash sessions — they don't write a
+  // `~/.claude/projects/*.jsonl`. Reading one via the encoded workdir
+  // path can cross-contaminate with the operator's own claude-code
+  // session (e.g. a shell agent with cwd=/home/milady matches the
+  // operator's project dir at ~/.claude/projects/-home-milady/), so
+  // for shell agents we skip the jsonl lookup entirely and go
+  // straight to the completionSummary fallback below, which is
+  // populated from the coordinator's SharedDecision ledger.
+  const isShellAgent = task.agentType === "shell" || task.agentType === "pi";
+  if (workdir && !isShellAgent) {
+    // The PTY task_complete hook fires as soon as claude-code stops, but
+    // the session's jsonl flush can lag by a few hundred milliseconds,
+    // which races against synthesis. Retry briefly so we deliver the
+    // agent's actual end_turn text instead of the honest-fallback.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const assistantText = await readLastAssistantTextFromJsonl(workdir);
+      if (assistantText) return assistantText;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
   }
-  if (task.completionSummary) return task.completionSummary;
-  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
-  const port = portMatch?.[1];
-  if (!port) return task.originalTask;
-  if (await isPortServing(port)) {
-    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
-    return `built and serving at http://${host}:${port}`;
+  const port = task.originalTask.match(/port\s+(\d+)/i)?.[1];
+  if (port) {
+    if (await isPortServing(port)) {
+      const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
+      return `built and serving at http://${host}:${port}`;
+    }
+    return `built the files but server isn't running on port ${port} yet`;
   }
-  return `built the files but server isn't running on port ${port} yet`;
+  // Last resort: if we have a completionSummary, use it. For reasoning
+  // subagents (claude/gemini/codex/etc) the jsonl path above normally
+  // fires first, so this doesn't revive the validator-narrative-leaks
+  // that motivated removing the completionSummary fallback — reasoning
+  // agents have already delivered their real `end_turn` text by the
+  // time we get here. For `shell` agents there's no jsonl at all
+  // (shell output goes straight to the PTY buffer, not
+  // ~/.claude/projects/*.jsonl); the coordinator's per-turn
+  // SharedDecision ledger, which feeds completionSummary, is the only
+  // recorded output. Without this fallback shell prompts like
+  // "what's the vps uptime" would silently return the honest
+  // placeholder even when the agent successfully ran the command.
+  if (task.completionSummary?.trim()) {
+    return task.completionSummary.trim();
+  }
+  return "task finished but no output was captured — try again.";
 }
 
 function resolveSessionWorkdir(
@@ -1667,7 +1707,6 @@ import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
-import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
 // ── Parse Action Block from Eliza's Response ─────────────────────────
 import {
   parseActionBlock,
@@ -1728,9 +1767,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =
@@ -3673,21 +3710,6 @@ async function handleRequest(
   }
 
   if (
-    await handleWebsiteBlockerRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime ?? undefined,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
-
-  if (
     await handleBrowserWorkspaceRoutes({
       req,
       res,
@@ -3720,6 +3742,18 @@ async function handleRequest(
 
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
+    // Duffel travel relay — must run before the generic cloud passthrough
+    // so the upstream Duffel + billing path is hit, not the bare cloud
+    // proxy that would land on /api/v1/duffel/* with no markup logic.
+    const duffelHandled = await handleDuffelRelayRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (duffelHandled) return;
+
     const billingHandled = await handleCloudBillingRoute(
       req,
       res,
@@ -4025,8 +4059,15 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        stop: (pluginManager, name, runId) =>
-          state.appManager.stop(pluginManager, name, runId),
+        stop: (pluginManager, name, runId, runtime) =>
+          state.appManager.stop(
+            pluginManager,
+            name,
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
         recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           state.appManager.getInfo(pluginManager, name),
@@ -5396,10 +5437,16 @@ export async function startApiServer(opts?: {
           // non-fatal — use current time
         }
 
+        const conversationMetadata = extractConversationMetadataFromRoom(
+          room,
+          convId,
+        );
+
         state.conversations.set(convId, {
           id: convId,
           title: room.name || "Chat",
           roomId: room.id as UUID,
+          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
           createdAt: updatedAt,
           updatedAt,
         });

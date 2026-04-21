@@ -10,7 +10,9 @@ import {
 import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
+  type DeploymentTargetConfig,
   normalizeServiceRoutingConfig,
+  type ServiceRoutingConfig,
 } from "../contracts/service-routing.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
@@ -33,6 +35,44 @@ import {
  * Only runs once: subsequent requests see ui.presetId already set and bail.
  */
 let _cloudDefaultsApplied = false;
+
+function normalizeCanonicalRuntimeConfigForCurrentServer(args: {
+  deploymentTarget: DeploymentTargetConfig | null;
+  serviceRouting: ServiceRoutingConfig | null;
+  credentialInputs: ReturnType<typeof normalizeOnboardingCredentialInputs>;
+}): {
+  deploymentTarget: DeploymentTargetConfig | null;
+  serviceRouting: ServiceRoutingConfig | null;
+} {
+  const llmRoute = args.serviceRouting?.llmText;
+  if (
+    args.deploymentTarget?.runtime !== "remote" ||
+    args.deploymentTarget.provider !== "remote" ||
+    llmRoute?.transport !== "remote" ||
+    !llmRoute.backend ||
+    !args.credentialInputs?.llmApiKey
+  ) {
+    return {
+      deploymentTarget: args.deploymentTarget,
+      serviceRouting: args.serviceRouting,
+    };
+  }
+
+  return {
+    deploymentTarget: { runtime: "local" },
+    serviceRouting: {
+      ...(args.serviceRouting ?? {}),
+      llmText: {
+        backend: llmRoute.backend,
+        transport: "direct",
+        ...(llmRoute.primaryModel
+          ? { primaryModel: llmRoute.primaryModel }
+          : {}),
+      },
+    },
+  };
+}
+
 function ensureCloudContainerCharacterDefaults(
   ctx: OnboardingRouteContext,
 ): void {
@@ -494,6 +534,16 @@ export async function handleOnboardingRoutes(
       explicitLinkedAccountsRequested ||
       explicitServiceRoutingRequested ||
       explicitCredentialInputsRequested;
+    const normalizedCanonicalRuntimeConfig =
+      normalizeCanonicalRuntimeConfigForCurrentServer({
+        deploymentTarget: explicitDeploymentTarget,
+        serviceRouting: explicitServiceRouting,
+        credentialInputs: explicitCredentialInputs,
+      });
+    const normalizedDeploymentTarget =
+      normalizedCanonicalRuntimeConfig.deploymentTarget;
+    const normalizedServiceRouting =
+      normalizedCanonicalRuntimeConfig.serviceRouting;
 
     // ── Sandbox mode (from 3-mode onboarding: off / light / standard / max)
     const sandboxMode = (body.sandboxMode as string) || "off";
@@ -514,11 +564,11 @@ export async function handleOnboardingRoutes(
 
     if (hasCanonicalRuntimeConfig) {
       applyCanonicalOnboardingConfig(config, {
-        deploymentTarget: explicitDeploymentTarget,
+        deploymentTarget: normalizedDeploymentTarget,
         linkedAccounts: explicitLinkedAccounts,
-        serviceRouting: explicitServiceRouting,
+        serviceRouting: normalizedServiceRouting,
         clearRoutes:
-          explicitServiceRoutingRequested && !explicitServiceRouting?.llmText
+          explicitServiceRoutingRequested && !normalizedServiceRouting?.llmText
             ? ["llmText"]
             : [],
       });
@@ -526,10 +576,10 @@ export async function handleOnboardingRoutes(
       await applyOnboardingCredentialPersistence(config, {
         credentialInputs: explicitCredentialInputs,
         deploymentTarget:
-          explicitDeploymentTarget ??
+          normalizedDeploymentTarget ??
           normalizeDeploymentTargetConfig(config.deploymentTarget),
         serviceRouting:
-          explicitServiceRouting ??
+          normalizedServiceRouting ??
           normalizeServiceRoutingConfig(config.serviceRouting),
       });
 

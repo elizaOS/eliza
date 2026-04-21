@@ -236,9 +236,15 @@ export function createLifeOpsChatTestRuntime(options: {
           agentName: runtimeArg.character.name ?? "Agent",
           recentMessages,
         },
-        data: {},
+        data: {
+          providers: {
+            RECENT_MESSAGES: {
+              data: { recentMessages: memories },
+              values: { recentMessages },
+            },
+          },
+        },
         text: recentMessages,
-        recentMessagesData: memories,
       } as State;
 
       const turn = await options.handleTurn({

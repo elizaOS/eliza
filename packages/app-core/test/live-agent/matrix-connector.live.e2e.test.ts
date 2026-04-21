@@ -30,11 +30,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveMatrixPluginImportSpecifier,
 } from "@elizaos/app-core";
+import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
@@ -51,7 +51,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 const MATRIX_ACCESS_TOKEN = process.env.MATRIX_ACCESS_TOKEN;
 const MATRIX_HOMESERVER = process.env.MATRIX_HOMESERVER ?? "https://matrix.org";
 const MATRIX_USER_ID = process.env.MATRIX_USER_ID;
-const MATRIX_DEVICE_ID = process.env.MATRIX_DEVICE_ID;
+const _MATRIX_DEVICE_ID = process.env.MATRIX_DEVICE_ID;
 const MATRIX_ROOMS = process.env.MATRIX_ROOMS;
 
 const hasMatrixCreds = Boolean(MATRIX_ACCESS_TOKEN && MATRIX_HOMESERVER);
@@ -80,7 +80,6 @@ const LIVE_WRITE_TIMEOUT = 60_000;
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
-
 
 /** Parse room IDs from comma-separated string */
 function parseRooms(roomStr: string): string[] {

@@ -169,6 +169,12 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
       strong: "contextSignal.lifeops_update.strong",
     },
   },
+  link_entity: {
+    contextLimit: 8,
+    keywordKeys: {
+      strong: "contextSignal.link_entity.strong",
+    },
+  },
   calendar: {
     contextLimit: 12,
     keywordKeys: {

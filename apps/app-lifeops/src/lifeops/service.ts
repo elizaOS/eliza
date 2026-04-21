@@ -30,6 +30,9 @@ import { withScheduling } from "./service-mixin-scheduling.js";
 import { withDossier } from "./service-mixin-dossier.js";
 import { withHealth } from "./service-mixin-health.js";
 import { withDrive } from "./service-mixin-drive.js";
+import { withSubscriptions } from "./service-mixin-subscriptions.js";
+import { withEmailUnsubscribe } from "./service-mixin-email-unsubscribe.js";
+import { withTravel } from "./service-mixin-travel.js";
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of
@@ -39,7 +42,7 @@ import { withDrive } from "./service-mixin-drive.js";
  * (Calendar, Gmail, Drive) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposedBase extends withHealth(
+export class LifeOpsServiceComposedBase extends withHealth(
   withDossier(
   withScheduling(
   withScreenTime(
@@ -54,15 +57,21 @@ class LifeOpsServiceComposedBase extends withHealth(
             withGoals(
             withDefinitions(
               withWorkflows(
-                withBrowser(
+                withSubscriptions(
+                  withEmailUnsubscribe(
+                  withBrowser(
                   withReminders(
                     withGmail(
                       withDrive(
-                        withCalendar(
-                          withGoogle(LifeOpsServiceBase),
+                        withTravel(
+                          withCalendar(
+                            withGoogle(LifeOpsServiceBase),
+                          ),
                         ),
                       ),
                     ),
+                  ),
+                  ),
                   ),
                 ),
               ),

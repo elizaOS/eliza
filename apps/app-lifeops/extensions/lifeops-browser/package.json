@@ -9,7 +9,10 @@
     "build:safari-webextension": "bun scripts/build.mjs safari",
     "package:chrome": "bun scripts/package-chrome.mjs",
     "package:safari": "bun scripts/package-safari.mjs",
+    "package:stores": "bun scripts/package-store-assets.mjs",
     "package:release": "bun scripts/package-release.mjs",
-    "test": "bun test --preload ./src/test-dom-setup.ts scripts/ src/"
+    "test": "bunx vitest run --config ./vitest.extension.config.ts",
+    "test:smoke": "node scripts/extension-smoke.mjs",
+    "test:ci": "bun run test && bun run test:smoke"
   }
 }

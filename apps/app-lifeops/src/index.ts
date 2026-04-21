@@ -16,15 +16,11 @@ export {
   LifeOpsBrowserPluginService,
   lifeOpsBrowserProvider,
   manageLifeOpsBrowserAction,
-  calendarAction,
-  gmailAction,
-  inboxAction,
+  ownerCalendarAction,
+  ownerInboxAction,
   lifeAction,
   lifeOpsProvider,
   updateOwnerProfileAction,
-  proposeMeetingTimesAction,
-  checkAvailabilityAction,
-  updateMeetingPreferencesAction,
   inboxTriageProvider,
   handleLifeOpsRoutes,
   handleWebsiteBlockerRoutes,
@@ -41,6 +37,7 @@ export type { LifeOpsRouteContext } from "./plugin.ts";
 export type { WebsiteBlockerRouteContext } from "./plugin.ts";
 
 export { lifeopsPlugin } from "./routes/plugin.ts";
+export { getLifeOpsBrowserCompanionPackageStatus } from "./routes/lifeops-browser-packaging.ts";
 
 export * from "./website-blocker/public.ts";
 

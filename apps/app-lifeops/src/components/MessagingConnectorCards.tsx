@@ -1,10 +1,20 @@
-import { Badge, Button } from "@elizaos/app-core";
-import { Loader2, MessageCircle, Phone, QrCode, X } from "lucide-react";
-import { useCallback, useState } from "react";
-import { useSignalConnector } from "../hooks/useSignalConnector.js";
+import {
+  Badge,
+  Button,
+  client,
+  isElectrobunRuntime,
+  useApp,
+} from "@elizaos/app-core";
+import type {
+  LifeOpsOwnerBrowserAccessStatus,
+  LifeOpsTelegramAuthState,
+} from "@elizaos/shared/contracts/lifeops";
+import { Loader2, MessageCircle, Phone, QrCode } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
-import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
+import { useSignalConnector } from "../hooks/useSignalConnector.js";
+import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 
 function ConnectorCardShell({
   icon,
@@ -32,7 +42,9 @@ function ConnectorCardShell({
         <div className="flex items-center gap-2.5">
           {icon}
           <span className="text-sm font-medium text-txt">{platform}</span>
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
+          />
           <span className="text-xs text-muted">{status}</span>
         </div>
       </div>
@@ -43,7 +55,12 @@ function ConnectorCardShell({
 
 function SignalIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
     </svg>
   );
@@ -51,7 +68,12 @@ function SignalIcon({ className }: { className?: string }) {
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
       <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
     </svg>
   );
@@ -59,10 +81,156 @@ function DiscordIcon({ className }: { className?: string }) {
 
 function TelegramIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
       <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
     </svg>
   );
+}
+
+function inferTelegramRetryState(args: {
+  authState: LifeOpsTelegramAuthState;
+  authError: string | null;
+}): LifeOpsTelegramAuthState {
+  if (args.authState !== "error") {
+    return args.authState;
+  }
+
+  const message = (args.authError ?? "").trim().toUpperCase();
+  if (
+    message.includes("PASSWORD_HASH_INVALID") ||
+    message.includes("AUTH.CHECKPASSWORD") ||
+    message.includes("TWO-FACTOR PASSWORD")
+  ) {
+    return "waiting_for_password";
+  }
+  if (
+    message.includes("PHONE_CODE_INVALID") ||
+    message.includes("PHONE_CODE_EXPIRED") ||
+    message.includes("LOGIN CODE")
+  ) {
+    return "waiting_for_code";
+  }
+  if (message.includes("PROVISIONING CODE")) {
+    return "waiting_for_provisioning_code";
+  }
+  return "error";
+}
+
+function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
+  if (access.source === "desktop_browser") {
+    return "Milady Desktop Browser";
+  }
+  const browserLabel = access.browser === "safari" ? "Safari" : "Chrome";
+  const profileLabel = access.profileLabel?.trim() || "Default profile";
+  return `Your Browser · ${browserLabel} / ${profileLabel}`;
+}
+
+function browserAccessBadge(access: LifeOpsOwnerBrowserAccessStatus): {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+} {
+  if (access.active && access.tabState === "dm_inbox_visible") {
+    return { label: "Using now", variant: "default" };
+  }
+  if (access.active || access.available) {
+    return { label: "Available", variant: "secondary" };
+  }
+  return { label: "Not ready", variant: "outline" };
+}
+
+function browserAccessSourceLabel(
+  access: LifeOpsOwnerBrowserAccessStatus | null | undefined,
+): string {
+  if (!access) {
+    return "your browser";
+  }
+  return access.source === "desktop_browser"
+    ? "Milady Desktop Browser"
+    : "Your Browser";
+}
+
+function browserAccessActionLabel(
+  action: LifeOpsOwnerBrowserAccessStatus["nextAction"] | null | undefined,
+): string | null {
+  switch (action) {
+    case "connect_browser":
+      return "Connect Your Browser";
+    case "open_extension_popup":
+      return "Open Extension Popup";
+    case "enable_browser_access":
+      return "Turn On Browser Access";
+    case "enable_browser_control":
+      return "Enable Browser Control";
+    case "open_discord":
+      return "Open Discord";
+    case "open_dm_inbox":
+      return "Open Discord DMs";
+    case "focus_discord_manually":
+      return "Open Discord Manually";
+    case "focus_dm_inbox_manually":
+      return "Focus DMs Manually";
+    case "log_in":
+      return "Log In to Discord";
+    case "open_desktop_browser":
+      return "Open Milady Desktop";
+    default:
+      return null;
+  }
+}
+
+function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
+  const sourceLabel = browserAccessSourceLabel(access);
+  if (access.source === "lifeops_browser") {
+    if (!access.available && access.nextAction === "enable_browser_access") {
+      return access.active
+        ? "Browser access is paused in LifeOps Browser settings."
+        : "Browser access is turned off in LifeOps Browser settings.";
+    }
+    if (access.nextAction === "connect_browser") {
+      return "No browser profile is connected yet. Install the extension, then open its popup in the browser profile that has your account.";
+    }
+    if (access.nextAction === "open_extension_popup") {
+      return "A browser was paired before, but no profile is connected right now. Reopen the extension popup in the browser profile you want LifeOps to use.";
+    }
+    if (access.authState === "logged_out") {
+      return `Discord is open in ${sourceLabel}, but that profile still needs you to log in.`;
+    }
+    if (!access.canControl && access.tabState === "missing") {
+      return `${sourceLabel} is connected, but browser control is off, so LifeOps cannot open Discord for you.`;
+    }
+    if (!access.canControl && access.tabState !== "dm_inbox_visible") {
+      return `${sourceLabel} can see Discord, but browser control is off. Focus the Discord DM tab manually or turn browser control on.`;
+    }
+    if (access.siteAccessOk === false) {
+      return `${sourceLabel} is connected, but Discord has not been granted yet in this profile. Open Discord there and retry.`;
+    }
+    if (access.tabState === "missing") {
+      return `${sourceLabel} is connected, but Discord is not open in that browser profile yet.`;
+    }
+    if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+      return `${sourceLabel} sees your Discord session, but not the DM inbox yet.`;
+    }
+    return `${sourceLabel} is ready for Discord.`;
+  }
+
+  if (access.nextAction === "open_desktop_browser") {
+    return "Open Milady Desktop to use its built-in browser for your Discord session.";
+  }
+  if (access.authState === "logged_out") {
+    return "Discord is open in Milady Desktop Browser, but that session still needs you to log in.";
+  }
+  if (access.tabState === "missing") {
+    return "Milady Desktop Browser is available, but Discord is not open there yet.";
+  }
+  if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+    return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
+  }
+  return "Milady Desktop Browser is ready for Discord.";
 }
 
 export function SignalConnectorCard() {
@@ -76,11 +244,7 @@ export function SignalConnectorCard() {
       icon={<SignalIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Signal"
       status={
-        isConnected
-          ? "Connected"
-          : isPairing
-            ? "Pairing..."
-            : "Not connected"
+        isConnected ? "Connected" : isPairing ? "Pairing..." : "Not connected"
       }
       statusVariant={isConnected ? "ok" : "muted"}
     >
@@ -152,10 +316,21 @@ export function SignalConnectorCard() {
 
 export function DiscordConnectorCard() {
   const discord = useDiscordConnector();
+  const { setActionNotice, setTab } = useApp();
   const isConnected = discord.status?.connected === true;
   const busy = discord.actionPending || discord.loading;
   const username = discord.status?.identity?.username;
-  const available = discord.status?.available !== false;
+  const browserAccess = discord.status?.browserAccess ?? [];
+  const desktopAccess =
+    browserAccess.find((access) => access.source === "desktop_browser") ?? null;
+  const preferredAccess =
+    browserAccess.find((access) => access.active) ??
+    browserAccess.find((access) => access.available) ??
+    browserAccess[0] ??
+    null;
+  const available =
+    discord.status?.available === true ||
+    browserAccess.some((access) => access.available);
   const dmInboxVisible = discord.status?.dmInbox.visible === true;
   const visibleDmCount = discord.status?.dmInbox.count ?? 0;
   const lastError = discord.status?.lastError;
@@ -164,20 +339,32 @@ export function DiscordConnectorCard() {
       ?.map((preview) => preview.label)
       .filter((label, index, labels) => labels.indexOf(label) === index)
       .slice(0, 3) ?? [];
-  const pairing = discord.status?.reason === "pairing";
-  const authPending = discord.status?.reason === "auth_pending";
+  const pairing =
+    discord.status?.reason === "pairing" ||
+    preferredAccess?.nextAction === "open_discord" ||
+    preferredAccess?.nextAction === "open_dm_inbox";
+  const authPending =
+    discord.status?.reason === "auth_pending" ||
+    preferredAccess?.authState === "logged_out";
   const showConnectButton = available && (!isConnected || !dmInboxVisible);
-  const statusLabel = !available
-    ? "Browser access unavailable"
+  const statusLabel = dmInboxVisible
+    ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
-      ? "Log in to Discord in your browser"
-      : isConnected
-      ? dmInboxVisible
-        ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
-        : "Connected, opening DM inbox"
-      : pairing
-        ? "Opening Discord in LifeOps Browser…"
-        : "Not connected";
+      ? `Log in to Discord in ${browserAccessSourceLabel(preferredAccess)}`
+      : preferredAccess?.nextAction === "enable_browser_control"
+        ? "Enable browser control"
+        : preferredAccess?.nextAction === "connect_browser" ||
+            preferredAccess?.nextAction === "open_extension_popup"
+          ? "Connect Your Browser"
+          : preferredAccess?.nextAction === "open_desktop_browser"
+            ? "Open Milady Desktop"
+            : !available
+              ? "Browser access unavailable"
+              : isConnected
+                ? "Connected, opening DM inbox"
+                : pairing
+                  ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
+                  : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? dmInboxVisible
       ? "ok"
@@ -185,6 +372,30 @@ export function DiscordConnectorCard() {
     : pairing || authPending
       ? "warning"
       : "muted";
+
+  const handleOpenDesktopDiscord = useCallback(async () => {
+    try {
+      await client.openBrowserWorkspaceTab({
+        url: "https://discord.com/channels/@me",
+        title: "Discord",
+        show: true,
+      });
+      setTab("browser");
+      setActionNotice(
+        "Opened Discord in Milady Desktop Browser.",
+        "success",
+        3200,
+      );
+    } catch (cause) {
+      setActionNotice(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Milady Desktop Browser could not open Discord.",
+        "error",
+        4200,
+      );
+    }
+  }, [setActionNotice, setTab]);
 
   return (
     <ConnectorCardShell
@@ -200,13 +411,31 @@ export function DiscordConnectorCard() {
           disabled={busy || !available}
           onClick={() => void discord.connect()}
         >
-          {authPending
-            ? "Open Discord Login"
-            : isConnected
-              ? "Show Discord DMs"
-              : pairing
-                ? "Open Discord"
-                : "Connect Discord"}
+          {browserAccessActionLabel(preferredAccess?.nextAction) ??
+            (authPending
+              ? "Open Discord Login"
+              : isConnected
+                ? "Show Discord DMs"
+                : pairing
+                  ? "Open Discord"
+                  : "Connect Discord")}
+        </Button>
+      ) : null}
+
+      {isElectrobunRuntime() &&
+      desktopAccess &&
+      (desktopAccess.nextAction === "open_desktop_browser" ||
+        desktopAccess.nextAction === "open_discord" ||
+        desktopAccess.nextAction === "open_dm_inbox" ||
+        (!dmInboxVisible && desktopAccess.available)) ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={busy}
+          onClick={() => void handleOpenDesktopDiscord()}
+        >
+          Open in Milady Desktop Browser
         </Button>
       ) : null}
 
@@ -227,8 +456,8 @@ export function DiscordConnectorCard() {
             </div>
           ) : (
             <div className="text-xs text-muted">
-              LifeOps sees your Discord session, but not the DM inbox yet. Use
-              {" "}Show Discord DMs to focus the right tab.
+              LifeOps sees your Discord session, but not the DM inbox yet. Use{" "}
+              Show Discord DMs to focus the right tab.
             </div>
           )}
           <Button
@@ -245,14 +474,55 @@ export function DiscordConnectorCard() {
 
       {!isConnected && authPending ? (
         <div className="text-xs text-muted">
-          LifeOps found Discord, but that browser profile still needs you to log in.
+          {preferredAccess
+            ? browserAccessMessage(preferredAccess)
+            : "LifeOps found Discord, but that browser session still needs you to log in."}
         </div>
       ) : null}
 
       {!available ? (
         <div className="text-xs text-muted">
-          Discord needs either a connected LifeOps Browser companion or the
-          Milady desktop browser workspace.
+          Discord needs either Your Browser connected through the LifeOps
+          extension or Milady Desktop Browser.
+        </div>
+      ) : null}
+
+      {!dmInboxVisible && browserAccess.length > 0 ? (
+        <div className="space-y-2">
+          {browserAccess.map((access) => {
+            const badge = browserAccessBadge(access);
+            return (
+              <div
+                key={`${access.source}:${access.browser ?? "desktop"}:${access.profileId ?? "default"}`}
+                className="rounded-2xl border border-border/20 bg-card/18 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-txt">
+                    {browserAccessTitle(access)}
+                  </div>
+                  <Badge variant={badge.variant} className="text-2xs">
+                    {badge.label}
+                  </Badge>
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  {browserAccessMessage(access)}
+                </div>
+                <div className="mt-1 text-[11px] text-muted/80">
+                  {access.canControl ? "Control on" : "Control off"}
+                  {access.siteAccessOk === false
+                    ? " • Discord not granted yet"
+                    : ""}
+                  {access.tabState === "dm_inbox_visible"
+                    ? " • DM inbox visible"
+                    : access.tabState === "discord_open"
+                      ? " • Discord open"
+                      : access.tabState === "background_discord"
+                        ? " • Discord tab found"
+                        : ""}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
@@ -272,9 +542,19 @@ export function TelegramConnectorCard() {
   const [passwordInput, setPasswordInput] = useState("");
 
   const isConnected = telegram.status?.connected === true;
-  const authState = telegram.authState ?? "idle";
+  const authError = telegram.status?.authError ?? telegram.error;
+  const authState = inferTelegramRetryState({
+    authState: telegram.authState ?? "idle",
+    authError,
+  });
   const busy =
     telegram.actionPending || telegram.loading || telegram.verifyPending;
+
+  useEffect(() => {
+    if (telegram.status?.phone && phoneInput.trim().length === 0) {
+      setPhoneInput(telegram.status.phone);
+    }
+  }, [telegram.status?.phone, phoneInput]);
 
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
@@ -294,24 +574,43 @@ export function TelegramConnectorCard() {
     }
   }, [passwordInput, telegram]);
 
+  const handleRestartAuth = useCallback(() => {
+    setCodeInput("");
+    setPasswordInput("");
+    void telegram.cancelAuth();
+  }, [telegram]);
+
+  const showPhoneStep =
+    !isConnected && (authState === "idle" || authState === "error");
+  const showCodeStep =
+    authState === "waiting_for_provisioning_code" ||
+    authState === "waiting_for_code";
+  const showPasswordStep = authState === "waiting_for_password";
   const statusLabel = isConnected
     ? "Connected"
     : authState === "waiting_for_provisioning_code"
-      ? "Enter provisioning code"
+      ? "Enter my.telegram.org code"
       : authState === "waiting_for_code"
-      ? "Enter verification code"
-      : authState === "waiting_for_password"
-        ? "2FA password required"
-        : "Not connected";
+        ? "Enter verification code"
+        : authState === "waiting_for_password"
+          ? "2FA password required"
+          : authState === "error"
+            ? "Retry Telegram login"
+            : "Not connected";
+  const statusVariant: "ok" | "muted" | "warning" = isConnected
+    ? "ok"
+    : showCodeStep || showPasswordStep || authState === "error"
+      ? "warning"
+      : "muted";
 
   return (
     <ConnectorCardShell
       icon={<TelegramIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Telegram"
       status={statusLabel}
-      statusVariant={isConnected ? "ok" : "muted"}
+      statusVariant={statusVariant}
     >
-      {!isConnected && authState === "idle" ? (
+      {showPhoneStep ? (
         <div className="flex items-center gap-2">
           <input
             type="tel"
@@ -336,59 +635,90 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {authState === "waiting_for_provisioning_code" ||
-      authState === "waiting_for_code" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder={
-              authState === "waiting_for_provisioning_code"
-                ? "my.telegram.org code"
-                : "Verification code"
-            }
-            value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            autoComplete="one-time-code"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleVerifyCode();
+      {showCodeStep ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder={
+                authState === "waiting_for_provisioning_code"
+                  ? "my.telegram.org code"
+                  : "Verification code"
               }
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={busy || codeInput.trim().length === 0}
-            onClick={handleVerifyCode}
-          >
-            Verify
-          </Button>
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              autoComplete="one-time-code"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleVerifyCode();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy || codeInput.trim().length === 0}
+              onClick={handleVerifyCode}
+            >
+              Verify
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={handleRestartAuth}
+            >
+              Restart
+            </Button>
+          </div>
+          <div className="text-xs text-muted">
+            {authState === "waiting_for_provisioning_code"
+              ? "This is the code from my.telegram.org used to provision Telegram app credentials."
+              : "Enter the login code Telegram sent to your app or SMS, then retry if the code was wrong or expired."}
+          </div>
         </div>
       ) : null}
 
-      {authState === "waiting_for_password" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="password"
-            placeholder="2FA password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSubmitPassword();
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={busy || passwordInput.length === 0}
-            onClick={handleSubmitPassword}
-          >
-            Submit
-          </Button>
+      {showPasswordStep ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              placeholder="Telegram 2FA password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSubmitPassword();
+                }
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy || passwordInput.length === 0}
+              onClick={handleSubmitPassword}
+            >
+              Submit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={handleRestartAuth}
+            >
+              Restart
+            </Button>
+          </div>
+          <div className="text-xs text-muted">
+            This is your Telegram two-step verification password from Telegram
+            Settings → Privacy and Security → Two-Step Verification. It is not
+            the login code sent by SMS or the Telegram app.
+          </div>
         </div>
       ) : null}
 
@@ -397,7 +727,11 @@ export function TelegramConnectorCard() {
           {telegram.status?.identity ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <Phone className="h-3.5 w-3.5" />
-              {String(telegram.status.identity.username || telegram.status.identity.phone || "")}
+              {String(
+                telegram.status.identity.username ||
+                  telegram.status.identity.phone ||
+                  "",
+              )}
             </div>
           ) : null}
           <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
@@ -418,18 +752,21 @@ export function TelegramConnectorCard() {
           {telegram.verification ? (
             <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
               <div>
-                Read: {telegram.verification.read.ok
+                Read:{" "}
+                {telegram.verification.read.ok
                   ? `${telegram.verification.read.dialogCount} recent chats`
-                  : telegram.verification.read.error ?? "failed"}
+                  : (telegram.verification.read.error ?? "failed")}
               </div>
               <div>
-                Send: {telegram.verification.send.ok
+                Send:{" "}
+                {telegram.verification.send.ok
                   ? `sent to ${telegram.verification.send.target}`
-                  : telegram.verification.send.error ?? "failed"}
+                  : (telegram.verification.send.error ?? "failed")}
               </div>
               {telegram.verification.read.dialogs.length > 0 ? (
                 <div className="mt-1 truncate">
-                  Recent: {telegram.verification.read.dialogs
+                  Recent:{" "}
+                  {telegram.verification.read.dialogs
                     .slice(0, 3)
                     .map((dialog) => dialog.title)
                     .join(", ")}
@@ -449,8 +786,8 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {telegram.error ? (
-        <div className="text-xs text-danger">{telegram.error}</div>
+      {authError ? (
+        <div className="text-xs text-danger">{authError}</div>
       ) : null}
     </ConnectorCardShell>
   );
@@ -509,8 +846,13 @@ export function IMessageConnectorCard() {
             ? `Connected via ${bridgeLabel}`
             : "Connected"
         : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" =
-    isDegraded ? "warning" : isConnected ? "ok" : busy && !status ? "warning" : "muted";
+  const statusVariant: "ok" | "muted" | "warning" = isDegraded
+    ? "warning"
+    : isConnected
+      ? "ok"
+      : busy && !status
+        ? "warning"
+        : "muted";
 
   return (
     <ConnectorCardShell
@@ -537,12 +879,18 @@ export function IMessageConnectorCard() {
         ) : null}
         {isConnected ? (
           <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-            <div>Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}</div>
+            <div>
+              Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
+            </div>
             {status?.privateApiEnabled !== null ? (
-              <div>Private API: {status.privateApiEnabled ? "enabled" : "disabled"}</div>
+              <div>
+                Private API: {status.privateApiEnabled ? "enabled" : "disabled"}
+              </div>
             ) : null}
             {status?.helperConnected !== null ? (
-              <div>Helper: {status.helperConnected ? "connected" : "disconnected"}</div>
+              <div>
+                Helper: {status.helperConnected ? "connected" : "disconnected"}
+              </div>
             ) : null}
           </div>
         ) : null}

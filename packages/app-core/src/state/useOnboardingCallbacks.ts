@@ -166,7 +166,18 @@ async function persistOnboardingStyleVoice(args: {
   });
 }
 
-function buildOnboardingFeatureSubmitPayload(args: {
+async function ensureOnboardedAgentRunning(
+  clientRef: ElizaClient,
+): Promise<void> {
+  const status = await clientRef.startAndWait(120_000);
+  if (status.state !== "running") {
+    throw new Error(
+      `Agent failed to reach running state after onboarding (state: ${status.state}).`,
+    );
+  }
+}
+
+export function buildOnboardingFeatureSubmitPayload(args: {
   onboardingFeatureTelegram: boolean;
   onboardingFeatureDiscord: boolean;
   onboardingFeatureBrowser: boolean;
@@ -449,6 +460,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               err,
             );
           }
+          await ensureOnboardedAgentRunning(client);
 
           applySelectedLocalCapabilities();
           completeOnboarding();
@@ -645,6 +657,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           completeOnboarding("settings");
           return;
         }
+        await ensureOnboardedAgentRunning(client);
 
         completeOnboarding();
       } catch (err) {

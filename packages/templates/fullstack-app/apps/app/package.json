@@ -33,7 +33,7 @@
     "@capacitor/app": "^8.0.1",
     "@capacitor/core": "^8.0.2",
     "@capacitor/ios": "^8.0.2",
-    "@capacitor/keyboard": "8.0.0",
+    "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
     "@elizaos/app-core": "workspace:*",
@@ -57,13 +57,13 @@
     "three": "^0.182.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.2.0",
+    "@capacitor/cli": "8.3.1",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^4.2.1",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.0"

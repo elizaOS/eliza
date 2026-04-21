@@ -323,8 +323,26 @@ export function readFiredLogFromMetadata(
   if (!metadata?.firedActionsLog) return null;
   const log = metadata.firedActionsLog;
   if (!isRecord(log)) return null;
-  if (typeof log.date !== "string" || log.date !== todayDateStr) return null;
+  if (typeof log.date !== "string") return null;
   if (!Array.isArray(log.nudgedOccurrenceIds)) return null;
+  // If the log was written under a different effective day key, drop the
+  // per-day arrays (nudges/goals) but preserve the timestamps so the
+  // planner's timestamp-based once-per-day gate still sees the prior
+  // GM/GN fires. See planner `firedRecently()` for the consumer side.
+  if (log.date !== todayDateStr) {
+    return {
+      date: todayDateStr,
+      gmFiredAt: typeof log.gmFiredAt === "number" ? log.gmFiredAt : undefined,
+      gnFiredAt: typeof log.gnFiredAt === "number" ? log.gnFiredAt : undefined,
+      seedingOfferedAt:
+        typeof log.seedingOfferedAt === "number"
+          ? log.seedingOfferedAt
+          : undefined,
+      nudgedOccurrenceIds: [],
+      nudgedCalendarEventIds: [],
+      checkedGoalIds: [],
+    };
+  }
   return log as unknown as FiredActionsLog;
 }
 

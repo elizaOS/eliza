@@ -4,6 +4,8 @@
 // reported done without actually writing them.
 // Re-exported from `./lifeops.ts` so downstream imports work unchanged.
 
+import type { LifeOpsConnectorDegradation } from "./lifeops";
+
 // ── Message channels ─────────────────────────────────────────────────────────
 
 export const LIFEOPS_MESSAGE_CHANNELS = [
@@ -210,6 +212,7 @@ export interface LifeOpsIMessageConnectorStatus {
   lastSyncAt: string | null;
   lastCheckedAt: string | null;
   error: string | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsIMessageChat {

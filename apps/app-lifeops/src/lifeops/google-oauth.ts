@@ -14,6 +14,7 @@ import {
   normalizeGoogleCapabilities,
   unionGoogleCapabilities,
 } from "./google-scopes.js";
+import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 
 const GOOGLE_AUTHORIZATION_ENDPOINT =
   "https://accounts.google.com/o/oauth2/v2/auth";
@@ -558,7 +559,7 @@ function parseIdTokenClaims(
 async function fetchGoogleUserInfo(
   accessToken: string,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+  const response = await fetch(rewriteGoogleUrlForMock(GOOGLE_USERINFO_ENDPOINT), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -575,7 +576,7 @@ async function fetchGoogleUserInfo(
 async function exchangeGoogleToken(
   params: URLSearchParams,
 ): Promise<GoogleTokenResponse> {
-  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+  const response = await fetch(rewriteGoogleUrlForMock(GOOGLE_TOKEN_ENDPOINT), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

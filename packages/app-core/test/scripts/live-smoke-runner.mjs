@@ -109,7 +109,7 @@ function countAvailableLocalPluginPackages() {
   }
 }
 
-async function isPortBusy(port) {
+async function _isPortBusy(port) {
   return await new Promise((resolve) => {
     const server = net.createServer();
     server.once("error", () => resolve(true));

@@ -6,7 +6,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { InboxTriageRepository } from "../inbox/repository.js";
 import type { TriageEntry } from "../inbox/types.js";
 
@@ -21,8 +21,8 @@ export const inboxTriageProvider: Provider = {
   description:
     "Injects pending inbox triage items into admin context. Shows urgent messages, " +
     "items needing reply, and recent auto-replies across all channels including email. " +
-    "Use INBOX_RESPOND to draft and send replies. Use INBOX_TRIAGE to scan for new messages. " +
-    "Use INBOX_DIGEST for a daily summary.",
+    "Use OWNER_INBOX for cross-channel triage, digest, respond, Gmail search/read, and Gmail draft/send reply workflows. " +
+    "If the request is Gmail-only, OWNER_INBOX should use channel=gmail; if it is just 'my inbox', OWNER_INBOX should use the unified cross-channel path.",
   descriptionCompressed: "Pending inbox triage items across all channels incl email.",
   dynamic: true,
   position: 14, // after lifeops (12), before escalation (15)

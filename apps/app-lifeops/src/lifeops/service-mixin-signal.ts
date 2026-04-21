@@ -31,6 +31,10 @@ import {
   removeSignalConnectorConfig,
   upsertSignalConnectorConfig,
 } from "./signal-runtime-config.js";
+import {
+  readSignalInboundMessages,
+  readSignalLocalClientConfigFromEnv,
+} from "./signal-local-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 type ConnectorSetupServiceLike = {
@@ -112,7 +116,7 @@ async function ensureSignalPluginLoaded(
 /** @internal */
 export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsSignalServiceMixin extends Base {
-    #signalServiceConnected(): boolean {
+    lifeOpsSignalServiceConnected(): boolean {
       const signalService = this.runtime.getService("signal") as
         | {
             getAccountNumber?: () => string | null;
@@ -124,11 +128,11 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       );
     }
 
-    #signalServiceRegistered(): boolean {
+    lifeOpsSignalServiceRegistered(): boolean {
       return Boolean(this.runtime.getService("signal"));
     }
 
-    async #ensureSignalRuntimeReady(
+    async lifeOpsEnsureSignalRuntimeReady(
       authDir: string,
       phoneNumber: string,
     ): Promise<void> {
@@ -160,7 +164,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       this.runtime.setSetting("SIGNAL_AUTH_DIR", authDir, false);
       this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", phoneNumber, false);
 
-      if (!configChanged && this.#signalServiceRegistered()) {
+      if (!configChanged && this.lifeOpsSignalServiceRegistered()) {
         return;
       }
 
@@ -173,7 +177,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       }
     }
 
-    async #clearSignalRuntimeConfig(
+    async lifeOpsClearSignalRuntimeConfig(
       authDir: string | null,
       phoneNumber: string | null,
     ): Promise<void> {
@@ -202,7 +206,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", null, false);
       }
 
-      if (!configChanged && !this.#signalServiceConnected()) {
+      if (!configChanged && !this.lifeOpsSignalServiceConnected()) {
         return;
       }
 
@@ -235,7 +239,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       if (grant?.tokenRef) {
         const deviceInfo = readSignalLinkedDeviceInfo(grant.tokenRef);
         if (deviceInfo) {
-          await this.#ensureSignalRuntimeReady(
+          await this.lifeOpsEnsureSignalRuntimeReady(
             deviceInfo.authDir,
             deviceInfo.phoneNumber,
           );
@@ -264,6 +268,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         provider: "signal",
         side: resolvedSide,
         connected,
+        inbound: connected && capabilities.includes("signal.read"),
         reason,
         identity,
         grantedCapabilities: capabilities,
@@ -350,7 +355,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
           "local",
           resolvedSide,
         );
-        await this.#clearSignalRuntimeConfig(
+        await this.lifeOpsClearSignalRuntimeConfig(
           grant.tokenRef,
           deviceInfo?.phoneNumber ?? null,
         );
@@ -370,8 +375,18 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
     }
 
     /**
-     * Read recent inbound Signal messages via the Signal service's memory store.
-     * Returns an empty array when the Signal service is absent or disconnected.
+     * Read recent inbound Signal messages.
+     *
+     * Primary path: the Signal service (`@elizaos/plugin-signal`) is connected
+     * and exposes a `getRecentMessages()` call on its in-memory store.
+     *
+     * Fallback path: when the service is absent or disconnected but
+     * `SIGNAL_HTTP_URL` and `SIGNAL_ACCOUNT_NUMBER` are set, reads directly
+     * from the signal-cli REST API via {@link readSignalInboundMessages}.
+     * This mirrors how `telegram-local-client.ts` reads Telegram sessions
+     * without the plugin service being active.
+     *
+     * Returns an empty array when neither path is available.
      * Does not throw — callers should check connector status separately.
      */
     async readSignalInbound(
@@ -396,29 +411,35 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         >;
       };
       const signalService = this.runtime.getService("signal") as SignalServiceLike | null;
-
-      if (!signalService?.isServiceConnected?.()) {
-        return [];
-      }
-
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
-      const raw = await signalService.getRecentMessages?.(clampedLimit);
-      if (!raw || raw.length === 0) {
-        return [];
+
+      // Primary path: use the Signal service's in-memory message store.
+      if (signalService?.isServiceConnected?.()) {
+        const raw = await signalService.getRecentMessages?.(clampedLimit);
+        if (!raw || raw.length === 0) {
+          return [];
+        }
+        return raw.map(
+          (entry): LifeOpsSignalInboundMessage => ({
+            id: entry.id,
+            roomId: entry.roomId,
+            channelId: entry.channelId,
+            speakerName: entry.speakerName,
+            text: entry.text,
+            createdAt: entry.createdAt,
+            isInbound: !entry.isFromAgent,
+            isGroup: entry.isGroup,
+          }),
+        );
       }
 
-      return raw.map(
-        (entry): LifeOpsSignalInboundMessage => ({
-          id: entry.id,
-          roomId: entry.roomId,
-          channelId: entry.channelId,
-          speakerName: entry.speakerName,
-          text: entry.text,
-          createdAt: entry.createdAt,
-          isInbound: !entry.isFromAgent,
-          isGroup: entry.isGroup,
-        }),
-      );
+      // Fallback path: read directly from the signal-cli REST API.
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      if (localClientConfig) {
+        return readSignalInboundMessages(localClientConfig, clampedLimit);
+      }
+
+      return [];
     }
   }
 

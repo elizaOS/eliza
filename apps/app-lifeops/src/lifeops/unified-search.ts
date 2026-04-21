@@ -31,6 +31,10 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/agent/services/relationships-graph";
+import {
+  getMemoriesForCluster as getClusterMemories,
+  resolveRelationshipsGraphService,
+} from "@elizaos/agent/services/relationships-graph";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -241,7 +245,9 @@ async function searchGmail(
   degraded: UnifiedSearchDegraded[];
 }> {
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const lifeOps = runtime.getService("lifeops") as GmailSearchService | null;
+  const lifeOps = runtime.getService("lifeops") as unknown as
+    | GmailSearchService
+    | null;
   if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
     return {
       hits: [],
@@ -418,9 +424,32 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const service = runtime.getService(
-    "relationshipsGraph",
-  ) as RelationshipsGraphServiceWithCluster | null;
+  const baseService =
+    (await resolveRelationshipsGraphService(
+      runtime,
+    )) as RelationshipsGraphServiceWithCluster | null;
+  const service = baseService
+    ? ({
+        ...baseService,
+        getMemoriesForCluster:
+          baseService.getMemoriesForCluster ??
+          ((args) =>
+            getClusterMemories(runtime, args.primaryEntityId, {
+              tableName: args.tableName,
+              roomId: args.roomId,
+              worldId: args.worldId,
+              count: args.count,
+              limit: args.limit,
+              offset: args.offset,
+              unique: args.unique,
+              start: args.start,
+              end: args.end,
+              metadata: args.metadata,
+              orderBy: args.orderBy,
+              orderDirection: args.orderDirection,
+            })),
+      } satisfies RelationshipsGraphServiceWithCluster)
+    : null;
   if (!service) {
     return {
       service: null,

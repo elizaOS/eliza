@@ -24,7 +24,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
@@ -43,9 +43,10 @@ import {
 } from "../lifeops/notifications-push.js";
 import {
   readXPosterCredentialsFromEnv,
+  sendXDm,
 } from "../lifeops/x-poster.js";
 
-const ACTION_NAME = "CROSS_CHANNEL_SEND";
+const ACTION_NAME = "OWNER_SEND_MESSAGE";
 
 export const CROSS_CHANNEL_SEND_CHANNELS = [
   "email",
@@ -148,7 +149,7 @@ function twilioResultToActionResult(args: {
 
 async function dispatchViaRuntimeSendHandler(
   runtime: IAgentRuntime,
-  channel: "discord" | "signal",
+  channel: CrossChannelSendChannel,
   target: string,
   message: string,
 ): Promise<void> {
@@ -426,119 +427,93 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
-  // target = recipient Twitter/X user ID or @handle.
-  // Requires X API v2 credentials with dm.write scope.
+  // target = recipient Twitter/X numeric user ID (not a @handle).
+  // Requires X API v2 credentials with dm.write OAuth scope.
   x_dm: async ({ channel, target, body }) => {
     const credentials = readXPosterCredentialsFromEnv();
     if (!credentials) {
       return {
-        text: "X (Twitter) is not configured. Set X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, and X_ACCESS_SECRET.",
+        text: "X (Twitter) is not configured. Set TWITTER_API_KEY, TWITTER_API_SECRET_KEY, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET.",
         success: false,
         values: { success: false, error: "X_NOT_CONFIGURED", channel },
         data: { actionName: ACTION_NAME, channel },
       };
     }
-    // X API v2 DM send: POST /2/dm_conversations/with/:participant_id/messages
-    // Requires dm.write OAuth 1.0a scope on the access token.
     const participantId = target.replace(/^@/, "").trim();
     if (!participantId) {
       return {
-        text: "X DM requires a target user ID or @handle.",
+        text: "X DM requires a target numeric user ID.",
         success: false,
         values: { success: false, error: "MISSING_TARGET", channel },
         data: { actionName: ACTION_NAME, channel },
       };
     }
-    try {
-      // OAuth 1.0a signing for X API v2 DM endpoint.
-      const url = `https://api.twitter.com/2/dm_conversations/with/${encodeURIComponent(participantId)}/messages`;
-      // Build OAuth 1.0a Authorization header inline (no external dependency).
-      const oauthTimestamp = String(Math.floor(Date.now() / 1000));
-      const oauthNonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-      const bodyPayload = JSON.stringify({ text: body });
-
-      // The Authorization header for OAuth 1.0a requires HMAC-SHA1 signing.
-      // We import the `crypto` module at call time to avoid a top-level dep.
-      const { createHmac } = await import("node:crypto");
-      const params: Record<string, string> = {
-        oauth_consumer_key: credentials.apiKey,
-        oauth_nonce: oauthNonce,
-        oauth_signature_method: "HMAC-SHA1",
-        oauth_timestamp: oauthTimestamp,
-        oauth_token: credentials.accessToken,
-        oauth_version: "1.0",
-      };
-      const paramString = Object.entries(params)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-        .join("&");
-      const signatureBase = [
-        "POST",
-        encodeURIComponent(url),
-        encodeURIComponent(paramString),
-      ].join("&");
-      const signingKey = `${encodeURIComponent(credentials.apiSecretKey)}&${encodeURIComponent(credentials.accessTokenSecret)}`;
-      const signature = createHmac("sha1", signingKey)
-        .update(signatureBase)
-        .digest("base64");
-      const authHeader =
-        "OAuth " +
-        Object.entries({ ...params, oauth_signature: signature })
-          .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
-          .join(", ");
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: authHeader,
-          "Content-Type": "application/json",
-        },
-        body: bodyPayload,
-        signal: AbortSignal.timeout(15_000),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        return buildDispatchFailure({
-          channel,
-          target,
-          body,
-          error: `X API returned HTTP ${response.status}: ${errorBody}`,
-        });
-      }
-
-      const responseJson = (await response.json().catch(() => null)) as {
-        data?: { dm_conversation_id?: string; dm_event_id?: string };
-      } | null;
-      return buildDispatchSuccess({
-        channel,
-        target,
-        body,
-        result: responseJson?.data ?? null,
-      });
-    } catch (error) {
+    const result = await sendXDm({ participantId, text: body, credentials });
+    if (!result.ok) {
       return buildDispatchFailure({
         channel,
         target,
         body,
-        error: error instanceof Error ? error.message : String(error),
+        error: result.error ?? "X DM dispatch failed",
       });
     }
+    return buildDispatchSuccess({
+      channel,
+      target,
+      body,
+      result: {
+        dmConversationId: result.dmConversationId ?? null,
+        dmEventId: result.dmEventId ?? null,
+      },
+    });
   },
 };
 
-export const crossChannelSendAction: Action = {
+export async function dispatchCrossChannelSend(
+  ctx: DispatchContext,
+): Promise<ActionResult> {
+  return await CHANNEL_DISPATCHERS[ctx.channel](ctx);
+}
+
+export const crossChannelSendAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
+    "CROSS_CHANNEL_SEND",
     "SEND_MESSAGE_TO",
     "DRAFT_MESSAGE",
     "SEND_ACROSS_CHANNEL",
-    "SEND_MESSAGE",
+    "POST_TO_CHANNEL",
+    "POST_TO_DISCORD",
+    "POST_TO_SLACK",
+    "SEND_TELEGRAM",
+    "SEND_SIGNAL",
+    "SEND_WHATSAPP",
+    "SEND_IMESSAGE",
+    "SEND_SMS",
+    "OWNER_DM",
+    "OWNER_POST",
   ],
   description:
-    "Draft or send a message across any connected channel (email, telegram, " +
-    "discord, signal, sms, twilio_voice, imessage, whatsapp, notifications). Always " +
-    "drafts first; caller must re-invoke with confirmed: true to dispatch.",
+    "OWNER-scoped message send: the OWNER asks the agent to send a message " +
+    "on the OWNER's behalf, using the OWNER's connected accounts (email, " +
+    "telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, " +
+    "notifications). Always drafts first; caller must re-invoke with " +
+    "confirmed: true to dispatch. " +
+    "Use this for any 'post <msg> to <channel>', 'send <msg> on <platform>', " +
+    "or 'dm <person> on <platform>' request from the owner — the channel " +
+    "name in the sentence (discord, telegram, signal, etc.) is the strongest " +
+    "signal. " +
+    "Do NOT use this for the AGENT's own outbound messages to people or the " +
+    "owner (those use AGENT_SEND_MESSAGE). " +
+    "Do NOT use this for 'broadcast/push/send <X> to all my devices' or " +
+    "'broadcast a reminder to my phone/desktop/watch' — device-targeted " +
+    "reminders belong to PUBLISH_DEVICE_INTENT. " +
+    "Do NOT use OWNER_CALENDAR for channel-send requests even if the message " +
+    "mentions a meeting-like word (e.g. 'standup', 'sync'); OWNER_CALENDAR " +
+    "is for negotiating calendar proposals, not relaying chat messages.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),
@@ -714,7 +689,7 @@ export const crossChannelSendAction: Action = {
     }
 
     const service = new LifeOpsService(runtime);
-    return CHANNEL_DISPATCHERS[channel]({
+    return await dispatchCrossChannelSend({
       runtime,
       service,
       channel,

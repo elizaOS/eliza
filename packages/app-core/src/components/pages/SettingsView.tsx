@@ -40,9 +40,11 @@ import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
@@ -68,6 +70,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
   },
   {
+    // One section for every model source — cloud providers, local llama.cpp
+    // engine, and paired-device bridge all live here. Multiple can be
+    // enabled simultaneously; the runtime dispatches each ModelType to the
+    // highest-priority handler that claimed it.
     id: "ai-model",
     label: "settings.sections.aimodel.label",
     description: "settings.sections.aimodel.desc",
@@ -81,29 +87,22 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "api key",
       "inference",
       "llm",
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "download",
+      "offline",
+      "gpu",
+      "vram",
+      "device",
+      "phone",
     ],
     keywordKeys: [
       "settings.keyword.model",
       "settings.keyword.provider",
       "settings.keyword.apiKey",
       "settings.keyword.inference",
-    ],
-  },
-  {
-    id: "local-models",
-    label: "settings.sections.localModels.label",
-    description: "settings.sections.localModels.desc",
-    keywords: [
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "model",
-      "download",
-      "inference",
-      "offline",
-      "gpu",
-      "vram",
     ],
   },
   {
@@ -198,6 +197,43 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
+  },
+  {
+    id: "learned-skills",
+    label: "settings.sections.learnedSkills.label",
+    description: "settings.sections.learnedSkills.desc",
+    keywords: [
+      "learned",
+      "skills",
+      "curated",
+      "trajectory",
+      "training",
+      "agent",
+      "promote",
+      "disable",
+    ],
+    keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
+  },
+  {
+    id: "auto-training",
+    label: "settings.sections.autoTraining.label",
+    description: "settings.sections.autoTraining.desc",
+    keywords: [
+      "auto",
+      "training",
+      "auto-train",
+      "trigger",
+      "threshold",
+      "cooldown",
+      "vertex",
+      "atropos",
+      "tinker",
+      "native",
+      "trajectory",
+      "fine-tune",
+      "fine tune",
+    ],
+    keywordKeys: ["settings.keyword.training"],
   },
   {
     id: "updates",
@@ -1028,23 +1064,22 @@ export function SettingsView({
           description={t("settings.sections.aimodel.desc")}
           ref={registerContentItem("ai-model")}
         >
+          {/*
+            Cloud providers + subscriptions (Eliza Cloud, Anthropic, OpenAI,
+            Grok, Claude/ChatGPT subscriptions). Sets API keys and small /
+            large tier defaults.
+          */}
           <ProviderSwitcher />
-        </SettingsSection>
-      )}
 
-      {visibleSectionIds.has("local-models") && (
-        <SettingsSection
-          id="local-models"
-          title={t("settings.sections.localModels.label", {
-            defaultValue: "Local models",
-          })}
-          description={t("settings.sections.localModels.desc", {
-            defaultValue:
-              "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
-          })}
-          ref={registerContentItem("local-models")}
-        >
-          <LocalInferencePanel />
+          {/*
+            Local llama.cpp engine + paired-device bridge. Lives in the same
+            section because "what's running inference?" is one mental
+            question — multiple providers can coexist and the runtime
+            dispatches each ModelType to the highest-priority handler.
+          */}
+          <div className="mt-8 border-t border-border/40 pt-6">
+            <LocalInferencePanel />
+          </div>
         </SettingsSection>
       )}
 
@@ -1108,6 +1143,33 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("learned-skills") && (
+        <SettingsSection
+          id="learned-skills"
+          title={t("settings.sections.learnedSkills.label")}
+          description={t("settings.sections.learnedSkills.desc")}
+          ref={registerContentItem("learned-skills")}
+        >
+          <LearnedSkillsPanel />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("auto-training") && (
+        <SettingsSection
+          id="auto-training"
+          title={t("settings.sections.autoTraining.label", {
+            defaultValue: "Auto-training",
+          })}
+          description={t("settings.sections.autoTraining.desc", {
+            defaultValue:
+              "Counts completed trajectories per task and fires a training run when the threshold is hit.",
+          })}
+          ref={registerContentItem("auto-training")}
+        >
+          <TrainingSettingsPanel />
         </SettingsSection>
       )}
 

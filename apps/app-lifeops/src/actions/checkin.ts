@@ -1,5 +1,5 @@
-import type { Action, ProviderDataRecord } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import type { Action, ActionExample, ProviderDataRecord } from "@elizaos/core";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinReport } from "../lifeops/checkin/types.js";
 
@@ -21,15 +21,35 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
   };
 }
 
-export const runMorningCheckinAction: Action = {
+export const runMorningCheckinAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "RUN_MORNING_CHECKIN",
+  tags: ["always-include", "morning check-in", "start of day"],
   similes: [
     "MORNING_CHECKIN",
     "START_MORNING_CHECKIN",
     "MORNING_ROUTINE_CHECKIN",
+    "MORNING_REVIEW",
+    "MORNING_BRIEFING",
+    "START_MY_DAY",
+    "MORNING_BRIEF",
+    "DAILY_BRIEF",
+    "WHAT_MATTERS_TODAY",
+    "TODAYS_PRIORITIES",
+    "OPERATING_PICTURE",
+    "COMMAND_CENTER",
   ],
   description:
-    "Run the morning check-in: assemble overdue todos, today's meetings, and yesterday's wins for the owner.",
+    "Run the morning check-in: assemble the owner's start-of-day operating picture across overdue todos, today's meetings, " +
+    "priority inbox items, and yesterday's wins. Use this for explicit start-of-day review requests like 'run my morning check-in', " +
+    "'morning review', 'morning brief', 'start my day', 'what matters today', 'today's priorities', 'what's on my plate this morning', " +
+    "'give me my operating picture', or 'show me the command center for today'. " +
+    "When the owner asks for a morning brief or morning check-in, you must call this action rather than replying conversationally. " +
+    "This is an umbrella action: do not split the request into separate inbox, calendar, blocker-status, or todo-status actions. " +
+    "This action still owns the request when the output combines inbox, calendar, and task review in one morning briefing. " +
+    "It is not an inbox-only digest, unread-only cross-channel summary, or generic reply workflow.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message) => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -51,13 +71,66 @@ export const runMorningCheckinAction: Action = {
     };
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Let's do my morning check-in.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's your morning review: 2 overdue todos, 3 meetings today, and yesterday you closed out the onboarding draft.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What's on my plate this morning?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Morning check-in ready: 1 overdue todo, 2 meetings today, and yesterday's wins included the PR review.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
-export const runNightCheckinAction: Action = {
+export const runNightCheckinAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "RUN_NIGHT_CHECKIN",
-  similes: ["NIGHT_CHECKIN", "START_NIGHT_CHECKIN", "EVENING_CHECKIN"],
+  tags: ["always-include", "night check-in", "end of day"],
+  similes: [
+    "NIGHT_CHECKIN",
+    "START_NIGHT_CHECKIN",
+    "EVENING_CHECKIN",
+    "EVENING_WRAP_UP",
+    "END_OF_DAY_REVIEW",
+    "HOW_DID_TODAY_GO",
+    "NIGHT_BRIEF",
+    "DAILY_WRAP_UP",
+    "END_OF_DAY_BRIEF",
+    "DAY_RECAP",
+    "WHAT_HAPPENED_TODAY",
+    "DAY_REVIEW",
+  ],
   description:
-    "Run the night check-in: review today's meetings, completed wins, and any overdue todos for the owner.",
+    "Run the night check-in: review the owner's end-of-day picture across today's meetings, completed wins, outstanding todos, and any inbox or calendar loose ends that matter for tomorrow. " +
+    "Use this for explicit end-of-day review requests like 'give me my night check-in', 'evening wrap-up', 'night brief', 'daily wrap-up', " +
+    "'end of day review', 'end-of-day brief', 'day recap', 'what happened today', or 'how did today go?'. " +
+    "When the owner asks for a night brief or night check-in, you must call this action rather than replying conversationally. " +
+    "This is an umbrella action: do not split the request into separate inbox, calendar, blocker-status, or todo-status actions. " +
+    "This action still owns the request when the output combines inbox, calendar, and task review in one nightly recap. " +
+    "It is not an inbox-only digest, unread-only cross-channel summary, or generic reply workflow.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message) => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -79,4 +152,34 @@ export const runNightCheckinAction: Action = {
     };
   },
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Ready to wrap up for the day.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Here's your night check-in: 3 meetings done, 2 wins captured, 1 todo still open for tomorrow.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "How did today go?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Night recap ready: you closed 2 meetings and shipped the release notes; 1 todo rolls over.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

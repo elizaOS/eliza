@@ -14,7 +14,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   DossierService,
@@ -32,13 +32,14 @@ type GenerateDossierParams = {
 export const generateDossierAction: Action = {
   name: "GENERATE_DOSSIER",
   similes: [
-    "MEETING_DOSSIER",
-    "PREMEETING_BRIEFING",
-    "BRIEF_ME_FOR_MEETING",
-    "PREPARE_FOR_MEETING",
+    "MEETING_DOSSIER_BY_EVENT",
+    "EVENT_DOSSIER",
+    "GENERATE_DOSSIER_FROM_EVENT",
   ],
   description:
-    "Generate a structured pre-meeting dossier (attendee context, recent email threads, prior dossiers, meeting-link health) for an upcoming calendar event.",
+    "Low-level event-specific dossier generation for an already identified calendar event. " +
+    "Use this only when the event id or fuzzy event title is already known from a prior workflow. " +
+    "Prefer DOSSIER for generic user requests like 'brief me', 'background on the person I'm meeting', or 'prep me for my next meeting'.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -109,12 +110,12 @@ export const generateDossierAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Brief me for my 3pm meeting" },
+        content: { text: "Generate a dossier for event 'Board sync tomorrow'" },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "# Meeting Dossier — 3pm with Alex\n...",
+          text: "# Meeting Dossier — Board sync tomorrow\n...",
           action: "GENERATE_DOSSIER",
         },
       },

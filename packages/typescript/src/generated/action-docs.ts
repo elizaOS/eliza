@@ -95,11 +95,9 @@ export const coreActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -1349,11 +1347,9 @@ export const allActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
 			similes: [
 				"GREET",
-				"REPLY_TO_MESSAGE",
-				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -2783,21 +2779,6 @@ export const allActionsSpec = {
 			similes: ["SKILL_INFO", "SKILL_DETAILS"],
 		},
 		{
-			name: "GET_SKILL_GUIDANCE",
-			description:
-				"Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
-			parameters: [],
-			similes: [
-				"FIND_SKILL",
-				"SEARCH_SKILLS",
-				"SKILL_HELP",
-				"HOW_TO",
-				"GET_INSTRUCTIONS",
-				"LEARN_SKILL",
-				"LOOKUP_SKILL",
-			],
-		},
-		{
 			name: "HELP_COMMAND",
 			description:
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
@@ -3133,13 +3114,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "RUN_SKILL_SCRIPT",
-			description:
-				"Execute a script bundled with an installed skill. Provide skill slug and script name.",
-			parameters: [],
-			similes: ["EXECUTE_SKILL_SCRIPT", "SKILL_SCRIPT"],
-		},
-		{
 			name: "SAVE_PLAYLIST",
 			description:
 				"Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
@@ -3182,7 +3156,7 @@ export const allActionsSpec = {
 		{
 			name: "SEARCH_SKILLS",
 			description:
-				"Search the skill registry for available skills by keyword or category.",
+				"Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
 			parameters: [],
 			similes: ["BROWSE_SKILLS", "LIST_SKILLS", "FIND_SKILLS"],
 		},
@@ -3623,6 +3597,13 @@ export const allActionsSpec = {
 				"LOOK_AT_SCREEN",
 				"VIEW_SCREEN",
 			],
+		},
+		{
+			name: "USE_SKILL",
+			description:
+				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+			parameters: [],
+			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

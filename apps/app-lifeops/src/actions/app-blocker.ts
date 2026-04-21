@@ -1,42 +1,215 @@
 import type {
   Action,
   ActionExample,
-  HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
+} from "@elizaos/core";
+import {
+  ModelType,
+  parseJSONObjectFromText,
+  parseKeyValueXml,
 } from "@elizaos/core";
 import {
   getAppBlockerAccess,
   APP_BLOCKER_ACCESS_ERROR,
 } from "../app-blocker/access.ts";
 import {
+  getInstalledApps,
   getAppBlockerStatus,
   startAppBlock,
   stopAppBlock,
 } from "../app-blocker/engine.ts";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
-function extractDurationMinutesFromText(text: string): number | null {
-  const match = text.match(
-    /(\d+)\s*(min(?:ute)?s?|hrs?|hours?)\b/i,
+const APP_BLOCK_INTENT_RE =
+  /\b(block|blocking|blocked|unblock|unblocking|shield|app block|block apps|phone apps|focus mode|restrict apps)\b/i;
+
+type BlockAppsParameters = {
+  packageNames?: string[];
+  appTokens?: string[];
+  durationMinutes?: number | null;
+};
+
+type AppBlockPlan = {
+  shouldAct?: boolean | null;
+  response?: string;
+  packageNames: string[];
+  durationMinutes?: number | null;
+};
+
+type InstalledAppEntry = Awaited<ReturnType<typeof getInstalledApps>>[number];
+
+function normalizeShouldAct(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function normalizePlannerResponse(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizePackageNames(
+  value: unknown,
+  allowedPackageNames?: ReadonlySet<string>,
+): string[] {
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\s*\|\|\s*|,/)
+      : [];
+  const normalized = values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+  const unique = [...new Set(normalized)];
+  if (!allowedPackageNames) {
+    return unique;
+  }
+  return unique.filter((item) => allowedPackageNames.has(item));
+}
+
+function normalizeDurationMinutes(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) {
+      return undefined;
+    }
+    if (
+      trimmed === "indefinite" ||
+      trimmed === "manual" ||
+      trimmed === "until-unblocked" ||
+      trimmed === "forever"
+    ) {
+      return null;
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed);
+    }
+  }
+  return undefined;
+}
+
+async function resolveAppBlockPlanWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  status: Awaited<ReturnType<typeof getAppBlockerStatus>>;
+  installedApps: InstalledAppEntry[];
+}): Promise<AppBlockPlan> {
+  const recentConversation = (
+    await collectRecentConversationTexts({
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+      limit: 8,
+    })
+  ).join("\n");
+  const currentMessage = getMessageText(args.message).trim();
+  const allowedPackageNames = new Set(
+    args.installedApps.map((app) => app.packageName.toLowerCase()),
   );
-  if (!match) return null;
-  const amount = parseInt(match[1], 10);
-  const unit = match[2].toLowerCase();
-  if (unit.startsWith("h")) return amount * 60;
-  return amount;
+  const prompt = [
+    "Plan the app blocking action for this request.",
+    "Use the current request plus recent conversation context.",
+    "Return a JSON object with exactly these fields:",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when clarification is needed",
+    "  packageNames: array of Android package names to block",
+    "  durationMinutes: positive integer for a timed block, or null for an indefinite/manual block",
+    "",
+    `Current platform: ${args.status.platform}`,
+    "Rules:",
+    "- If the platform is android, choose packageNames only from the installed-app inventory below.",
+    "- Never invent package names.",
+    "- If the request is vague, asks for help, or names apps you cannot map safely, set shouldAct=false and ask for the missing detail.",
+    "- If the platform is ios and there are no explicit app tokens, set shouldAct=false and tell the user to select apps through the system picker in the mobile UI first.",
+    "- Use durationMinutes=null only when the user explicitly wants the block to last until manual removal.",
+    "",
+    "Installed Android apps:",
+    args.installedApps.length > 0
+      ? args.installedApps
+          .map((app) => `- ${app.displayName} => ${app.packageName}`)
+          .join("\n")
+      : "(none available or not applicable)",
+    "",
+    "Examples:",
+    '  "Block Twitter and Instagram for 2 hours" on Android -> {"shouldAct":true,"response":null,"packageNames":["com.twitter.android","com.instagram.android"],"durationMinutes":120}',
+    '  "Block social apps" with no safe package matches -> {"shouldAct":false,"response":"Tell me which installed apps to block so I can match them exactly on your device.","packageNames":[],"durationMinutes":null}',
+    '  "Block my apps" on iOS without selected app tokens -> {"shouldAct":false,"response":"Select the iPhone apps in the mobile app picker first, then I can start the block.","packageNames":[],"durationMinutes":null}',
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    if (!parsed) {
+      return {
+        packageNames: [],
+        shouldAct: null,
+      };
+    }
+    return {
+      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      response: normalizePlannerResponse(parsed.response),
+      packageNames: normalizePackageNames(
+        parsed.packageNames ?? parsed.packages,
+        allowedPackageNames,
+      ),
+      durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
+    };
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:app-blocker",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "App blocker planning model call failed",
+    );
+    return {
+      packageNames: [],
+      shouldAct: null,
+    };
+  }
 }
 
-function extractPackageNamesFromText(text: string): string[] {
-  const packageNamePattern = /\b([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,})\b/gi;
-  const matches = text.match(packageNamePattern) ?? [];
-  return [...new Set(matches.map((m) => m.toLowerCase()))];
-}
-
-export const blockAppsAction: Action = {
+export const blockAppsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "BLOCK_APPS",
   similes: [
     "BLOCK_APP",
@@ -49,13 +222,15 @@ export const blockAppsAction: Action = {
   description:
     "Admin-only. Block selected apps on the user's phone using native OS controls. " +
     "On iPhone, uses Family Controls to shield apps. On Android, uses Usage Access to detect and overlay blocked apps. " +
+    "Use this for requests like 'block all games on my phone until 6pm' or 'block the Slack app while I focus on deep work'. " +
     "Pass app package names (Android) or previously selected app tokens (iPhone) to block.",
   descriptionCompressed: "Admin: block phone apps via native OS controls (Family Controls/Usage Access).",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     const access = await getAppBlockerAccess(runtime, message);
     if (!access.allowed) {
       return {
@@ -83,20 +258,68 @@ export const blockAppsAction: Action = {
       };
     }
 
-    // Extract parameters
-    const params = options?.parameters as
-      | {
-          packageNames?: string[];
-          appTokens?: string[];
-          durationMinutes?: number | null;
-        }
-      | undefined;
+    const params = options?.parameters as BlockAppsParameters | undefined;
+    const explicitPackageNames = normalizePackageNames(params?.packageNames);
+    const appTokens =
+      Array.isArray(params?.appTokens) && params.appTokens.length > 0
+        ? params.appTokens.filter(
+            (token): token is string => typeof token === "string" && token.length > 0,
+          )
+        : undefined;
+    const explicitDurationMinutes = normalizeDurationMinutes(
+      params?.durationMinutes,
+    );
 
-    const packageNames = params?.packageNames ?? extractPackageNamesFromText(getMessageText(message));
-    const appTokens = params?.appTokens;
+    let installedApps: InstalledAppEntry[] = [];
+    if (status.platform === "android") {
+      try {
+        installedApps = await getInstalledApps();
+      } catch (error) {
+        runtime.logger?.warn?.(
+          {
+            src: "action:app-blocker",
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "App blocker installed-app lookup failed",
+        );
+      }
+    }
+
+    const llmPlan =
+      explicitPackageNames.length === 0 && !appTokens
+        ? await resolveAppBlockPlanWithLlm({
+            runtime,
+            message,
+            state,
+            status,
+            installedApps,
+          })
+        : null;
+
+    if (
+      llmPlan?.shouldAct === false &&
+      explicitPackageNames.length === 0 &&
+      !appTokens
+    ) {
+      return {
+        success: true,
+        text:
+          llmPlan.response ??
+          (status.platform === "ios"
+            ? "Select the iPhone apps in the mobile app picker first, then I can start the block."
+            : "Tell me which installed apps to block so I can match them exactly on your device."),
+        data: { noop: true },
+      };
+    }
+
+    const packageNames =
+      explicitPackageNames.length > 0
+        ? explicitPackageNames
+        : llmPlan?.packageNames ?? [];
     const durationMinutes =
-      params?.durationMinutes ??
-      extractDurationMinutesFromText(getMessageText(message));
+      explicitDurationMinutes !== undefined
+        ? explicitDurationMinutes
+        : llmPlan?.durationMinutes;
 
     if (
       (!packageNames || packageNames.length === 0) &&
@@ -105,9 +328,10 @@ export const blockAppsAction: Action = {
       return {
         success: false,
         text:
-          "Could not determine which apps to block. " +
-          "On Android, provide package names (e.g. com.twitter.android). " +
-          "On iPhone, the user needs to select apps through the system picker first.",
+          llmPlan?.response ??
+          (status.platform === "ios"
+            ? "Select the iPhone apps through the system picker first, then I can start the block."
+            : "I couldn’t determine which installed apps to block on this device. Name the apps clearly so I can match them against the device inventory."),
       };
     }
 
@@ -210,7 +434,7 @@ export const unblockAppsAction: Action = {
   descriptionCompressed: "Admin: remove app block, unshield all apps.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
   handler: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
@@ -272,7 +496,7 @@ export const getAppBlockStatusAction: Action = {
   descriptionCompressed: "Admin: check if app block is active.",
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
+    return access.allowed && APP_BLOCK_INTENT_RE.test(getMessageText(message));
   },
   handler: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);

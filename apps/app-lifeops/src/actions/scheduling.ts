@@ -16,6 +16,7 @@
 
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -28,7 +29,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import {
   LifeOpsService,
@@ -282,19 +283,41 @@ async function denyIfNoAccess(
   return !(await hasLifeOpsAccess(runtime, message));
 }
 
-export const proposeMeetingTimesAction: Action = {
+export const proposeMeetingTimesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "PROPOSE_MEETING_TIMES",
   similes: [
     "SUGGEST_MEETING_TIMES",
     "OFFER_MEETING_SLOTS",
     "FIND_MEETING_SLOTS",
     "PROPOSE_SLOTS",
+    "BUNDLE_MEETINGS_WHILE_TRAVELING",
+  ],
+  tags: [
+    "meeting slots",
+    "reschedule options",
   ],
   description:
-    "Propose candidate meeting time slots to offer to another person. " +
-    "Reads the owner's calendar busy times and meeting preferences " +
-    "(preferred hours, blackout windows, travel buffer) and returns " +
-    "three available slots by default over the next seven days.",
+    "Propose concrete meeting time slots to offer to another person. This is " +
+    "the dedicated action for any 'propose N times', 'suggest N slots', " +
+    "'offer three times', 'find me three slots', 'give me a few times' request " +
+    "targeted at another person or team. It reads the owner's calendar busy " +
+    "times and meeting preferences (preferred hours, blackout windows, travel " +
+    "buffer) and returns three available slots by default over the next seven " +
+    "days. Also correct for bundled scheduling while traveling or concrete " +
+    "reschedule options. " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
+    "'propose three times for a sync with <person>', 'suggest a few times for " +
+    "<person>', 'offer Marco three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send <person>'. " +
+    "DO NOT use this for small talk, weather, or vague conversation. " +
+    "DO NOT use this to check the owner's calendar, create a calendar event, " +
+    "or view upcoming events — that is CALENDAR_ACTION. " +
+    "DO NOT use this to start a multi-turn scheduling negotiation record — " +
+    "that is SCHEDULING (subaction: start). This action just generates the " +
+    "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
     if (await denyIfNoAccess(runtime, message)) {
@@ -373,7 +396,7 @@ export const proposeMeetingTimesAction: Action = {
     });
 
     const text = formatSlotsText(slots);
-    await callback?.({ text, source: "action", action: "PROPOSE_MEETING_TIMES" });
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
     return {
       text,
       success: true,
@@ -415,6 +438,22 @@ export const proposeMeetingTimesAction: Action = {
       description: "Optional ISO-8601 latest end for the search window.",
       schema: { type: "string" as const },
     },
+  ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "While I'm traveling, try to bundle meetings with PendingReality and Ryan on the same day if possible.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll propose bundled meeting slots that cluster those meetings together while you're traveling.",
+        },
+      },
+    ],
   ],
 };
 
@@ -486,7 +525,7 @@ export const checkAvailabilityAction: Action = {
       ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
       : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
 
-    await callback?.({ text, source: "action", action: "CHECK_AVAILABILITY" });
+    await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
     return {
       text,
       success: true,
@@ -518,20 +557,64 @@ export const checkAvailabilityAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Am I free tomorrow between 2pm and 4pm?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You're free from Tue, Apr 20, 2:00 PM to Tue, Apr 20, 4:00 PM.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Do I have anything on my calendar Friday afternoon?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "You have 1 conflict in that window: Design review with the team.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
-export const updateMeetingPreferencesAction: Action = {
+export const updateMeetingPreferencesAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "UPDATE_MEETING_PREFERENCES",
   similes: [
     "SET_MEETING_PREFERENCES",
     "SAVE_MEETING_PREFERENCES",
     "SET_PREFERRED_TIMES",
     "SET_BLACKOUT_WINDOWS",
+    "SLEEP_WINDOW",
+    "NO_CALL_HOURS",
+    "PROTECT_SLEEP",
+  ],
+  tags: [
+    "always-include",
+    "sleep window",
+    "no-call hours",
+    "protected hours",
+    "blackout window",
   ],
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +
     "of day (24h HH:MM local), blackout windows, default meeting duration, " +
-    "and travel buffer. These drive PROPOSE_MEETING_TIMES.",
+    "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
+    "sleep windows, no-call hours, and other recurring scheduling rules.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, _state, options, callback) => {
     if (await denyIfNoAccess(runtime, message)) {
@@ -567,7 +650,7 @@ export const updateMeetingPreferencesAction: Action = {
     await callback?.({
       text,
       source: "action",
-      action: "UPDATE_MEETING_PREFERENCES",
+      action: "OWNER_CALENDAR",
     });
     return {
       text,
@@ -610,6 +693,36 @@ export const updateMeetingPreferencesAction: Action = {
       schema: { type: "array" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Updated your meeting preferences to block calls from 11:00 PM to 8:00 AM unless you override it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Keep my mornings protected for deep work and don't schedule meetings before 10am.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Stored your meeting preferences so mornings stay protected and meetings start at 10:00 AM or later.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 // ── Multi-turn scheduling negotiation action ─────────────────────────────
@@ -724,6 +837,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, or CROSS_CHANNEL_SEND instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     "Examples:",
@@ -794,15 +908,23 @@ function formatProposalSummary(p: {
 export const schedulingAction: Action = {
   name: "SCHEDULING",
   similes: [
-    "SCHEDULE_MEETING",
     "NEGOTIATE_MEETING",
-    "COORDINATE_SCHEDULE",
     "MULTI_TURN_SCHEDULING",
+    "MANAGE_SCHEDULING_NEGOTIATION",
+    "RESPOND_TO_MEETING_PROPOSAL",
+    "FINALIZE_SCHEDULING_NEGOTIATION",
   ],
   description:
-    "Multi-turn scheduling coordinator. Manages negotiations with another " +
-    "party across proposal/response rounds: start a negotiation, propose " +
-    "times, record responses, finalize the confirmed slot, or cancel.",
+    "Multi-turn scheduling negotiation coordinator. Use this only for an " +
+    "existing proposal workflow: start a negotiation record, submit a concrete " +
+    "proposal for that negotiation, record accepted/declined responses, " +
+    "finalize the winning proposal, cancel, or list negotiations/proposals. " +
+    "Do not use this for first-turn calendar requests, recurring blocks, " +
+    "travel-time bundling, missed-call repair, or fresh candidate-slot " +
+    "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
+    "or CROSS_CHANNEL_SEND." +
+    " Use for 'help me schedule a meeting with <person/team>', 'set up a sync with <person>', 'find a time with <team>' — subaction: start. Use for 'propose N times for a sync with <person>' — subaction: propose.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -867,7 +989,7 @@ export const schedulingAction: Action = {
           timezone: params.timezone,
         });
         const text = `Started ${formatNegotiationSummary(neg)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
 
@@ -889,7 +1011,7 @@ export const schedulingAction: Action = {
           proposedBy: params.proposedBy ?? "agent",
         });
         const text = `Recorded ${formatProposalSummary(proposal)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
 
@@ -908,7 +1030,7 @@ export const schedulingAction: Action = {
           params.response,
         );
         const text = `Proposal ${proposal.id} is now ${proposal.status}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
 
@@ -927,7 +1049,7 @@ export const schedulingAction: Action = {
           params.proposalId,
         );
         const text = `Confirmed ${formatNegotiationSummary(neg)}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
 
@@ -943,7 +1065,7 @@ export const schedulingAction: Action = {
         }
         await service.cancelNegotiation(params.negotiationId, params.reason);
         const text = `Cancelled negotiation ${params.negotiationId}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return {
           text,
           success: true,
@@ -965,7 +1087,7 @@ export const schedulingAction: Action = {
         const text = proposals.length
           ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
           : `No proposals for ${params.negotiationId}.`;
-        await callback?.({ text, source: "action", action: "SCHEDULING" });
+        await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposals } };
       }
 
@@ -974,7 +1096,7 @@ export const schedulingAction: Action = {
       const text = active.length
         ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
         : "No active scheduling negotiations.";
-      await callback?.({ text, source: "action", action: "SCHEDULING" });
+      await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
       return { text, success: true, data: { negotiations: active } };
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {

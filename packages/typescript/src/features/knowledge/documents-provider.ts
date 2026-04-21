@@ -10,6 +10,7 @@ export const documentsProvider: Provider = {
 	description:
 		"List of documents available in the knowledge base. Shows which documents the agent can reference and retrieve information from.",
 	dynamic: true,
+	companionProviders: ["KNOWLEDGE"],
 	get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
 		try {
 			const knowledgeService = runtime.getService(

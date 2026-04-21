@@ -235,9 +235,9 @@ export function LogsView() {
               <span>{t("logsview.Tags")}</span>
               <span>{t("logsview.Message")}</span>
             </div>
-            {filteredLogs.map((entry: LogEntry) => (
+            {filteredLogs.map((entry: LogEntry, idx: number) => (
               <div
-                key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
+                key={`${idx}-${entry.timestamp}-${entry.source}-${entry.level}`}
                 className="flex items-start gap-3 px-3 py-3 text-sm"
                 data-testid="log-entry"
               >

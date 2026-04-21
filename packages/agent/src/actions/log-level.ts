@@ -136,6 +136,7 @@ export const logLevelAction: Action = {
       return { success: false, error: "Not supported" };
     }
   },
+  parameters: [],
   examples: [
     [
       {

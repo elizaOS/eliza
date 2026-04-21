@@ -4,6 +4,9 @@
  * LLM-driven param extraction (no regex, no English-only keyword
  * matching) — feeds runUnifiedSearch() and returns a clipboard-ready
  * payload citing the source platform + room + timestamp for each hit.
+ * Use this for cross-channel brief/context requests when the owner wants
+ * one person or topic searched across Gmail, chat connectors, calendar,
+ * and memory.
  */
 
 import type {
@@ -16,7 +19,8 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   type UnifiedSearchChannel,
   UNIFIED_SEARCH_CHANNELS,
@@ -77,17 +81,8 @@ function isUnifiedChannel(value: unknown): value is UnifiedSearchChannel {
 }
 
 function recentTexts(state: State | undefined, limit = 8): string[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-  const stateRecord = state as Record<string, unknown>;
-  const recent =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (!Array.isArray(recent)) {
-    return [];
-  }
   const out: string[] = [];
-  for (const item of recent) {
+  for (const item of getRecentMessagesData(state)) {
     if (!item || typeof item !== "object") continue;
     const content = (item as { content?: unknown }).content;
     if (!content || typeof content !== "object") continue;

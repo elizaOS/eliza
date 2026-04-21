@@ -62,7 +62,9 @@ function isDiscordUrl(value: string | null | undefined): boolean {
   }
 }
 
-function selectedDiscordDmChannelId(value: string | null | undefined): string | null {
+function selectedDiscordDmChannelId(
+  value: string | null | undefined,
+): string | null {
   const normalized = normalizeDiscordText(value);
   if (!normalized) return null;
   const match = normalized.match(/\/channels\/@me\/([^/?#]+)/);
@@ -120,10 +122,12 @@ function discordAnchorTextParts(anchor: Element): string[] {
 function discordAnchorLabel(anchor: Element): string | null {
   const ariaLabel = normalizeDiscordText(anchor.getAttribute("aria-label"));
   if (ariaLabel) {
-    return ariaLabel
-      .split(",")
-      .map((part) => normalizeDiscordText(part))
-      .find((part) => part !== null && !/\bunread\b/i.test(part)) ?? ariaLabel;
+    return (
+      ariaLabel
+        .split(",")
+        .map((part) => normalizeDiscordText(part))
+        .find((part) => part !== null && !/\bunread\b/i.test(part)) ?? ariaLabel
+    );
   }
 
   const parts = discordAnchorTextParts(anchor);
@@ -136,7 +140,10 @@ function discordAnchorLabel(anchor: Element): string | null {
   );
 }
 
-function discordAnchorSnippet(anchor: Element, label: string | null): string | null {
+function discordAnchorSnippet(
+  anchor: Element,
+  label: string | null,
+): string | null {
   const parts = discordAnchorTextParts(anchor);
   return (
     parts.find(
@@ -245,7 +252,8 @@ export function probeDiscordCapturedPage(
   ) {
     return {
       ...emptyDiscordTabProbe(safeUrl),
-      rawSnippet: normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+      rawSnippet:
+        normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
     };
   }
 
@@ -255,7 +263,7 @@ export function probeDiscordCapturedPage(
   for (const candidate of page.links ?? []) {
     if (!isDiscordUrl(candidate.href)) continue;
     const href = normalizeDiscordText(candidate.href);
-    if (!href || !href.includes("/channels/@me/")) continue;
+    if (!href?.includes("/channels/@me/")) continue;
     const channelId = selectedDiscordDmChannelId(href);
     const dedupeKey = channelId ?? href;
     if (seen.has(dedupeKey)) continue;
@@ -264,7 +272,8 @@ export function probeDiscordCapturedPage(
     previews.push({
       channelId,
       href,
-      label: normalizeDiscordText(candidate.text) ?? channelId ?? "Direct message",
+      label:
+        normalizeDiscordText(candidate.text) ?? channelId ?? "Direct message",
       selected: channelId !== null && channelId === selectedChannelId,
       unread: false,
       snippet: null,
@@ -279,7 +288,8 @@ export function probeDiscordCapturedPage(
       username: null,
       discriminator: null,
     },
-    rawSnippet: normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+    rawSnippet:
+      normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
     dmInbox: {
       visible: previews.length > 0 || safeUrl.includes("/channels/@me"),
       count: previews.length,
@@ -327,14 +337,11 @@ export function probeDiscordDocumentState(
       panel?.querySelector('[class*="nameTag"] [class*="discrim"]') ||
       document.querySelector('[class*="nameTag"] [class*="discrim"]');
     const username = normalizeDiscordText(nameEl?.textContent ?? null);
-    const discriminator = normalizeDiscordText(tagEl?.textContent ?? null)?.replace(
-      /^#/,
-      "",
-    ) ?? null;
-    const snippet = normalizeDiscordText(panel?.textContent ?? null)?.slice(
-      0,
-      160,
-    ) ?? null;
+    const discriminator =
+      normalizeDiscordText(tagEl?.textContent ?? null)?.replace(/^#/, "") ??
+      null;
+    const snippet =
+      normalizeDiscordText(panel?.textContent ?? null)?.slice(0, 160) ?? null;
     const selectedChannelId = selectedDiscordDmChannelId(safeUrl ?? null);
     const previews = extractDiscordDmPreviews(document, selectedChannelId);
 
@@ -421,7 +428,7 @@ export async function ensureDiscordTab(args: {
   const env = args.env ?? process.env;
   if (!discordBrowserWorkspaceAvailable(env)) {
     throw new Error(
-      "Discord connector requires the Milady desktop app's browser workspace.",
+      "Discord connector requires the Milady Desktop Browser workspace.",
     );
   }
 
@@ -617,7 +624,10 @@ export async function searchDiscordMessages(args: {
     }
   })();`;
 
-  await evaluateBrowserWorkspaceTab({ id: args.tabId, script: searchScript }, env);
+  await evaluateBrowserWorkspaceTab(
+    { id: args.tabId, script: searchScript },
+    env,
+  );
   // Wait for Discord's search results panel to render.
   await new Promise((resolve) => setTimeout(resolve, 1200));
 

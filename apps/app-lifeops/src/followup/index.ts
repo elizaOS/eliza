@@ -7,6 +7,7 @@ export {
   computeOverdueFollowups,
   writeOverdueDigestMemory,
   reconcileFollowupsOnce,
+  executeFollowupTrackerTick,
   registerFollowupTrackerWorker,
   getFollowupTrackerRoomId,
   getRelationshipsServiceLike,

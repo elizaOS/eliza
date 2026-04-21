@@ -3,7 +3,7 @@ import type {
   ActionExample,
   IAgentRuntime,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
   computeOverdueFollowups,
@@ -20,6 +20,7 @@ export const listOverdueFollowupsAction: Action = {
   ],
   description:
     "List contacts whose last-contacted-at timestamp exceeds their follow-up threshold. " +
+    "Use this for overdue or pending follow-up list queries, not for scheduling a new reminder. " +
     "Returns an empty list when the RelationshipsService is not available.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime: IAgentRuntime) => {

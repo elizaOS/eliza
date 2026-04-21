@@ -14,11 +14,16 @@ import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { ActiveModelBar } from "./ActiveModelBar";
+import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
+import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { ModelHubView } from "./ModelHubView";
+import { ProvidersList } from "./ProvidersList";
+import { RoutingMatrix } from "./RoutingMatrix";
+import { SlotAssignments } from "./SlotAssignments";
 
 /**
  * Settings page entry for local inference. Owns the hub snapshot state,
@@ -199,6 +204,56 @@ export function LocalInferencePanel() {
     [refresh, setActionNotice, withBusy],
   );
 
+  const handleVerify = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        const result = await client.verifyLocalInferenceModel(modelId);
+        const tone =
+          result.state === "ok"
+            ? "success"
+            : result.state === "unknown"
+              ? "success"
+              : "error";
+        const message =
+          result.state === "ok"
+            ? "Model verified"
+            : result.state === "unknown"
+              ? "Baseline hash recorded — future verifies will compare against it"
+              : result.state === "missing"
+                ? "Model file is missing from disk"
+                : result.state === "truncated"
+                  ? "Model file is corrupt (not a valid GGUF)"
+                  : "Model hash doesn't match the installed copy — re-download recommended";
+        setActionNotice(message, tone, 4000);
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy],
+  );
+
+  const handleRedownload = useCallback(
+    (modelId: string) => {
+      void withBusy(async () => {
+        // Uninstall + re-queue a fresh download. Safe for curated catalog
+        // ids only; HF-search ad-hoc entries keep their install.
+        await client.uninstallLocalInferenceModel(modelId);
+        await client.startLocalInferenceDownload(modelId);
+        setActionNotice("Redownload started", "success", 2000);
+        await refresh();
+      });
+    },
+    [refresh, setActionNotice, withBusy],
+  );
+
+  const handleAssignmentsChange = useCallback(
+    (next: { [slot: string]: string | undefined }) => {
+      setHub((prev) =>
+        prev ? { ...prev, assignments: next as typeof prev.assignments } : prev,
+      );
+    },
+    [],
+  );
+
   if (error && !hub) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -234,7 +289,20 @@ export function LocalInferencePanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <header className="flex flex-col gap-1">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Local models
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Run llama.cpp on this machine or on a paired device. Enable alongside
+          cloud providers — the agent will prefer whichever handler has the
+          highest priority for each ModelType. Use the slot assignments below to
+          pin a specific local model to a slot, or leave them unset to let cloud
+          take priority when configured.
+        </p>
+      </header>
       <HardwareBadge hardware={hub.hardware} />
+      <DeviceBridgeStatusBar />
       {mobile && (
         <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
           On-device inference on mobile requires the Milady native runtime
@@ -295,6 +363,8 @@ export function LocalInferencePanel() {
           onCancel={handleCancel}
           onActivate={handleActivate}
           onUninstall={handleUninstall}
+          onVerify={handleVerify}
+          onRedownload={handleRedownload}
           busy={busy}
         />
       )}
@@ -327,6 +397,14 @@ export function LocalInferencePanel() {
         />
       )}
 
+      <ProvidersList />
+      <RoutingMatrix />
+      <SlotAssignments
+        installed={hub.installed}
+        assignments={hub.assignments}
+        onChange={handleAssignmentsChange}
+      />
+      <DevicesPanel />
       <ExternalInstalledSummary
         installed={hub.installed}
         onActivate={handleActivate}

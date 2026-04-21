@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
 
-const X_BASE_URL =
-  process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+function getXBaseUrl(): string {
+  return process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+}
 
 /**
  * Read-side credentials for the X/Twitter API v2. Mirrors the shape used by
@@ -315,7 +316,7 @@ export async function readXDms(
   options: XReadPageOptions = {},
 ): Promise<XReadPage<XRawDm>> {
   const limit = clampLimit(options.limit);
-  const url = `${X_BASE_URL}/2/dm_events`;
+  const url = `${getXBaseUrl()}/2/dm_events`;
   const queryParams: Record<string, string> = {
     max_results: String(limit),
     "dm_event.fields": "id,event_type,text,sender_id,dm_conversation_id,created_at",
@@ -369,7 +370,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `${X_BASE_URL}/2/users/${encodeURIComponent(credentials.userId)}/timelines/reverse_chronological`;
+    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(credentials.userId)}/timelines/reverse_chronological`;
   } else if (feedType === "mentions") {
     if (!credentials.userId) {
       throw new XReadError("mentions requires credentials.userId", {
@@ -377,7 +378,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `${X_BASE_URL}/2/users/${encodeURIComponent(credentials.userId)}/mentions`;
+    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(credentials.userId)}/mentions`;
   } else {
     const query = (options.query ?? "").trim();
     if (query.length === 0) {
@@ -386,7 +387,7 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `${X_BASE_URL}/2/tweets/search/recent`;
+    url = `${getXBaseUrl()}/2/tweets/search/recent`;
     baseQuery.query = query;
   }
 

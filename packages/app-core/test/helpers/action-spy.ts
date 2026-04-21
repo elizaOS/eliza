@@ -25,6 +25,7 @@ function normalize(name: string): string {
 export class ActionSpy {
   private started: ActionSpyCall[] = [];
   private completed: ActionSpyCall[] = [];
+  private roomIdFilter: UUID | null = null;
   private startedHandler:
     | ((payload: ActionEventPayload) => Promise<void>)
     | null = null;
@@ -32,8 +33,19 @@ export class ActionSpy {
     | ((payload: ActionEventPayload) => Promise<void>)
     | null = null;
 
+  constructor(roomIdFilter?: UUID) {
+    this.roomIdFilter = roomIdFilter ?? null;
+  }
+
+  setRoomFilter(roomId: UUID | null): void {
+    this.roomIdFilter = roomId;
+  }
+
   attach(runtime: IAgentRuntime): void {
     this.startedHandler = async (payload: ActionEventPayload) => {
+      if (this.roomIdFilter && payload.roomId !== this.roomIdFilter) {
+        return;
+      }
       this.started.push({
         phase: "started",
         actionName: extractActionName(payload),
@@ -46,6 +58,9 @@ export class ActionSpy {
       });
     };
     this.completedHandler = async (payload: ActionEventPayload) => {
+      if (this.roomIdFilter && payload.roomId !== this.roomIdFilter) {
+        return;
+      }
       this.completed.push({
         phase: "completed",
         actionName: extractActionName(payload),

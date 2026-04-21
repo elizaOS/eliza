@@ -33,8 +33,6 @@ export {
 export {
   getSelfControlPermissionState,
   getSelfControlStatus,
-  hasWebsiteBlockDeferralIntent,
-  hasWebsiteBlockIntent,
   openSelfControlPermissionLocation,
   parseSelfControlBlockRequest,
   registerNativeWebsiteBlockerBackend,

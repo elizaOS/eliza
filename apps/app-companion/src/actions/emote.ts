@@ -6,7 +6,7 @@
  * (`gatePluginSessionForHostedApp`).
  */
 
-import { hasRoleAccess } from "@elizaos/agent/security/access";
+import { hasRoleAccess } from "@elizaos/agent/security";
 import type {
   Action,
   HandlerOptions,

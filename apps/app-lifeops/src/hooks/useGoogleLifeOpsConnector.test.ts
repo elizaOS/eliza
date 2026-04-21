@@ -60,7 +60,8 @@ vi.mock("@elizaos/app-core/events", () => ({
 }));
 vi.mock("../events/index.js", () => ({
   LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT: "lifeops-google-connector-refresh",
-  dispatchLifeOpsGoogleConnectorRefresh: dispatchLifeOpsGoogleConnectorRefreshMock,
+  dispatchLifeOpsGoogleConnectorRefresh:
+    dispatchLifeOpsGoogleConnectorRefreshMock,
 }));
 
 import { useGoogleLifeOpsConnector } from "./useGoogleLifeOpsConnector";
@@ -77,6 +78,73 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
 
   afterEach(() => {
     vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("skips account fetches unless includeAccounts is enabled", async () => {
+    const firstHook = renderHook(() => useGoogleLifeOpsConnector());
+    await waitFor(() => expect(firstHook.result.current.loading).toBe(false));
+
+    expect(clientMock.getGoogleLifeOpsConnectorStatus).toBeCalledTimes(1);
+    expect(clientMock.getGoogleLifeOpsConnectorAccounts).not.toHaveBeenCalled();
+
+    firstHook.unmount();
+    vi.clearAllMocks();
+    clientMock.getGoogleLifeOpsConnectorStatus.mockResolvedValue(
+      clientMock.disconnectedStatus,
+    );
+    clientMock.getGoogleLifeOpsConnectorAccounts.mockResolvedValue([]);
+
+    const secondHook = renderHook(() =>
+      useGoogleLifeOpsConnector({ includeAccounts: true }),
+    );
+    await waitFor(() =>
+      expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(
+        1,
+      ),
+    );
+    expect(clientMock.getGoogleLifeOpsConnectorAccounts).toHaveBeenCalledTimes(
+      1,
+    );
+    secondHook.unmount();
+  });
+
+  it("coalesces bursty silent refresh signals into one request", async () => {
+    vi.useFakeTimers();
+
+    const hook = renderHook(() => useGoogleLifeOpsConnector());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(clientMock.getGoogleLifeOpsConnectorStatus).toHaveBeenCalledTimes(1);
+    clientMock.getGoogleLifeOpsConnectorStatus.mockClear();
+    clientMock.getGoogleLifeOpsConnectorAccounts.mockClear();
+
+    act(() => {
+      for (let index = 0; index < 3; index += 1) {
+        window.dispatchEvent(
+          new CustomEvent("lifeops-google-connector-refresh", {
+            detail: {
+              side: "owner",
+              source: "callback",
+            },
+          }),
+        );
+      }
+    });
+
+    expect(clientMock.getGoogleLifeOpsConnectorStatus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+      await Promise.resolve();
+    });
+
+    expect(
+      clientMock.getGoogleLifeOpsConnectorStatus.mock.calls.length,
+    ).toBeLessThan(3);
+    expect(clientMock.getGoogleLifeOpsConnectorAccounts).not.toHaveBeenCalled();
+    hook.unmount();
   });
 
   it("is null on initial render", async () => {

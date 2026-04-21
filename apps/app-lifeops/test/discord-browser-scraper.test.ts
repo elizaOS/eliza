@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { JSDOM } from "jsdom";
 import {
+  captureDiscordDeliveryStatus,
   closeDiscordTab,
   discordBrowserWorkspaceAvailable,
   discordPartitionFor,
   ensureDiscordTab,
   probeDiscordDocumentState,
   probeDiscordTab,
+  searchDiscordMessages,
+  type DiscordMessageSearchResult,
 } from "../src/lifeops/discord-browser-scraper.js";
 
 interface RecordedRequest {
@@ -385,6 +388,216 @@ describe("discord browser scraper (end-to-end vs fake bridge)", () => {
       (r) => r.method === "DELETE" && r.pathname === `/tabs/${tab.tabId}`,
     );
     expect(deleteRequest).toBeDefined();
+  });
+});
+
+describe("searchDiscordMessages (fake bridge)", () => {
+  let bridge: BridgeFixture;
+  const originalUrl = process.env.ELIZA_BROWSER_WORKSPACE_URL;
+  const originalToken = process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
+
+  beforeEach(async () => {
+    bridge = await startFakeBridge();
+    process.env.ELIZA_BROWSER_WORKSPACE_URL = bridge.baseUrl;
+    process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = bridge.token;
+  });
+
+  afterEach(async () => {
+    await bridge.close();
+    if (originalUrl === undefined) {
+      delete process.env.ELIZA_BROWSER_WORKSPACE_URL;
+    } else {
+      process.env.ELIZA_BROWSER_WORKSPACE_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
+    } else {
+      process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = originalToken;
+    }
+  });
+
+  test("injects search script then reads results from DOM eval", async () => {
+    // Pre-create a fake tab so searchDiscordMessages has a tabId.
+    bridge.tabs.set("tab_search1", {
+      id: "tab_search1",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+
+    const expectedResults: DiscordMessageSearchResult[] = [
+      {
+        id: "123456789012345678",
+        content: "the quick brown fox",
+        authorName: "alice",
+        channelId: "999",
+        timestamp: "2026-04-17T10:00:00.000Z",
+        deliveryStatus: "unknown",
+      },
+    ];
+
+    // The fake bridge returns evalResult for every eval call.
+    // First eval (inject search script) → bridge returns null (injected=false is fine).
+    // Second eval (read results panel) → return the expected results array.
+    let evalCallCount = 0;
+    const origEvalResult = bridge.evalResult;
+    Object.defineProperty(bridge, "evalResult", {
+      get() {
+        evalCallCount += 1;
+        // First call: search injection acknowledgement.
+        if (evalCallCount === 1) return { injected: true };
+        // Second call: results panel DOM scrape.
+        return expectedResults;
+      },
+      configurable: true,
+    });
+
+    const results = await searchDiscordMessages({
+      tabId: "tab_search1",
+      query: "quick brown fox",
+      env: process.env,
+    });
+
+    expect(Array.isArray(results)).toBe(true);
+    expect(results).toEqual(expectedResults);
+
+    // Verify that the bridge received at least two eval calls (inject + read).
+    const evalRequests = bridge.requests.filter((r) =>
+      r.pathname.endsWith("/eval"),
+    );
+    expect(evalRequests.length).toBeGreaterThanOrEqual(2);
+
+    // Restore.
+    Object.defineProperty(bridge, "evalResult", {
+      value: origEvalResult,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  test("returns empty array when eval result is not an array", async () => {
+    bridge.tabs.set("tab_search2", {
+      id: "tab_search2",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+    // Bridge always returns null — search injection may fail, results panel empty.
+    bridge.evalResult = null;
+
+    const results = await searchDiscordMessages({
+      tabId: "tab_search2",
+      query: "no results expected",
+      env: process.env,
+    });
+
+    expect(results).toEqual([]);
+  });
+
+  test("rejects empty query string", async () => {
+    bridge.tabs.set("tab_search3", {
+      id: "tab_search3",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+    bridge.evalResult = null;
+
+    await expect(
+      searchDiscordMessages({
+        tabId: "tab_search3",
+        query: "   ",
+        env: process.env,
+      }),
+    ).rejects.toThrow(/query must not be empty/i);
+  });
+});
+
+describe("captureDiscordDeliveryStatus (fake bridge)", () => {
+  let bridge: BridgeFixture;
+  const originalUrl = process.env.ELIZA_BROWSER_WORKSPACE_URL;
+  const originalToken = process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
+
+  beforeEach(async () => {
+    bridge = await startFakeBridge();
+    process.env.ELIZA_BROWSER_WORKSPACE_URL = bridge.baseUrl;
+    process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = bridge.token;
+  });
+
+  afterEach(async () => {
+    await bridge.close();
+    if (originalUrl === undefined) {
+      delete process.env.ELIZA_BROWSER_WORKSPACE_URL;
+    } else {
+      process.env.ELIZA_BROWSER_WORKSPACE_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.ELIZA_BROWSER_WORKSPACE_TOKEN;
+    } else {
+      process.env.ELIZA_BROWSER_WORKSPACE_TOKEN = originalToken;
+    }
+  });
+
+  test("returns DOM-scraped delivery results from the active channel", async () => {
+    bridge.tabs.set("tab_delivery1", {
+      id: "tab_delivery1",
+      url: "https://discord.com/channels/@me/555",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+
+    const domResults: DiscordMessageSearchResult[] = [
+      {
+        id: "111111111111111111",
+        content: "sent message",
+        authorName: null,
+        channelId: "555",
+        timestamp: "2026-04-17T09:00:00.000Z",
+        deliveryStatus: "sent",
+      },
+      {
+        id: "222222222222222222",
+        content: "sending in progress",
+        authorName: null,
+        channelId: "555",
+        timestamp: "2026-04-17T09:01:00.000Z",
+        deliveryStatus: "sending",
+      },
+      {
+        id: "333333333333333333",
+        content: "failed to send",
+        authorName: null,
+        channelId: "555",
+        timestamp: "2026-04-17T09:02:00.000Z",
+        deliveryStatus: "failed",
+      },
+    ];
+    bridge.evalResult = domResults;
+
+    const results = await captureDiscordDeliveryStatus({
+      tabId: "tab_delivery1",
+      env: process.env,
+    });
+
+    expect(results).toEqual(domResults);
+    // Verify delivery statuses are preserved as returned by the DOM script.
+    expect(results.map((r) => r.deliveryStatus)).toEqual([
+      "sent",
+      "sending",
+      "failed",
+    ]);
+  });
+
+  test("returns empty array when no messages are rendered", async () => {
+    bridge.tabs.set("tab_delivery2", {
+      id: "tab_delivery2",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+    bridge.evalResult = [];
+
+    const results = await captureDiscordDeliveryStatus({
+      tabId: "tab_delivery2",
+      env: process.env,
+    });
+
+    expect(results).toEqual([]);
   });
 });
 

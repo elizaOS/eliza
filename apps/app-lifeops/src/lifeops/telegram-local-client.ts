@@ -23,8 +23,12 @@ export interface TelegramLocalClientLike {
   ): Promise<{ id?: unknown } | null | undefined>;
   getMessages(
     entity: unknown,
-    args: { search: string; limit: number },
-  ): Promise<ReadonlyArray<TelegramMessageLike>>;
+    args: {
+      search?: string;
+      ids?: number | number[];
+      limit?: number;
+    },
+  ): Promise<ReadonlyArray<TelegramMessageLike | null | undefined>>;
 }
 
 export interface TelegramMessageLike {
@@ -34,10 +38,31 @@ export interface TelegramMessageLike {
   out?: boolean;
   fromId?: { userId?: unknown } | null;
   peerId?: { userId?: unknown; chatId?: unknown; channelId?: unknown } | null;
-  /** Read receipt flag: for outbound messages, indicates the other side has read it */
+  /** Whether the current account was mentioned in this message. */
   mentioned?: boolean;
-  /** Number of reads (for group messages via `getMessageReadParticipants`) */
+  /** Optional group/channel read count when present on the returned message. */
   readCount?: number | null;
+}
+
+export type TelegramDeliveryStatus = "delivered_read" | "sent" | "unknown";
+
+export interface TelegramMessageSearchResult {
+  id: string | null;
+  dialogId: string | null;
+  dialogTitle: string | null;
+  username: string | null;
+  content: string;
+  timestamp: string | null;
+  outgoing: boolean;
+}
+
+export interface TelegramReadReceiptResult {
+  messageId: string;
+  status: TelegramDeliveryStatus;
+  isRead: boolean | null;
+  timestamp: string | null;
+  content: string | null;
+  outgoing: boolean | null;
 }
 
 export interface TelegramDialogLike {
@@ -45,6 +70,9 @@ export interface TelegramDialogLike {
   name?: string;
   title?: string;
   unreadCount?: number;
+  dialog?: {
+    readOutboxMaxId?: unknown;
+  } | null;
   message?: {
     message?: string;
     date?: Date | number | string;
@@ -68,6 +96,9 @@ export interface TelegramLocalClientDeps {
 
 const DEFAULT_RECENT_LIMIT = 5;
 const MAX_RECENT_LIMIT = 10;
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_SEARCH_LIMIT = 25;
+const MAX_TARGET_LOOKUP_DIALOGS = 100;
 
 function createGramJsClient(args: {
   sessionString: string;
@@ -202,6 +233,29 @@ function collectDialogAliases(dialog: TelegramDialogLike): string[] {
   return [...aliases];
 }
 
+function findMatchingDialog(
+  target: string,
+  dialogs: ReadonlyArray<TelegramDialogLike>,
+): TelegramDialogLike | null {
+  const lookup = normalizeLookup(target);
+  if (lookup.length === 0) {
+    return null;
+  }
+
+  const exact = dialogs.find((dialog) =>
+    collectDialogAliases(dialog).includes(lookup),
+  );
+  if (exact) {
+    return exact;
+  }
+
+  return (
+    dialogs.find((dialog) =>
+      collectDialogAliases(dialog).some((alias) => alias.includes(lookup)),
+    ) ?? null
+  );
+}
+
 async function resolveTelegramTarget(
   client: TelegramLocalClientLike,
   target: string,
@@ -215,19 +269,9 @@ async function resolveTelegramTarget(
   try {
     return await client.getEntity(trimmed);
   } catch {
-    const lookup = normalizeLookup(trimmed);
-    const exact = dialogs.find((dialog) =>
-      collectDialogAliases(dialog).includes(lookup),
-    );
-    if (exact) {
-      return exact.inputEntity ?? exact.entity ?? exact;
-    }
-
-    const partial = dialogs.find((dialog) =>
-      collectDialogAliases(dialog).some((alias) => alias.includes(lookup)),
-    );
-    if (partial) {
-      return partial.inputEntity ?? partial.entity ?? partial;
+    const dialog = findMatchingDialog(trimmed, dialogs);
+    if (dialog) {
+      return dialog.inputEntity ?? dialog.entity ?? dialog;
     }
   }
 
@@ -279,6 +323,41 @@ function normalizeRecentLimit(limit?: number): number {
   return Math.max(1, Math.min(MAX_RECENT_LIMIT, Math.trunc(limit as number)));
 }
 
+function normalizeSearchLimit(limit?: number): number {
+  if (!Number.isFinite(limit)) {
+    return DEFAULT_SEARCH_LIMIT;
+  }
+  return Math.max(1, Math.min(MAX_SEARCH_LIMIT, Math.trunc(limit as number)));
+}
+
+function normalizeMessageContent(message: TelegramMessageLike): string {
+  return typeof message.message === "string" ? message.message.trim() : "";
+}
+
+function parseNumericId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "bigint" && value > 0n) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+function readOutboxMaxId(dialog: TelegramDialogLike | null): number | null {
+  return parseNumericId(dialog?.dialog?.readOutboxMaxId);
+}
+
+function isGlobalSearchScope(scope?: string): boolean {
+  const normalized = scope?.trim().toLowerCase();
+  return !normalized || normalized === "*" || normalized === "all" || normalized === "global";
+}
+
 export function telegramLocalSessionAvailable(
   deps: Pick<TelegramLocalClientDeps, "loadSessionString"> = {},
 ): boolean {
@@ -309,12 +388,150 @@ export async function sendTelegramAccountMessage(args: {
 }): Promise<{ messageId: string | null }> {
   const deps = args.deps ?? {};
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
-    const dialogs = Array.from(await client.getDialogs({ limit: MAX_RECENT_LIMIT }));
+    const dialogs = Array.from(
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
+    );
     const entity = await resolveTelegramTarget(client, args.target, dialogs);
     const sent = await client.sendMessage(entity, { message: args.message });
     return {
       messageId: sent?.id !== undefined ? serializeTelegramId(sent.id) : null,
     };
+  });
+}
+
+export async function searchTelegramMessages(args: {
+  tokenRef: string;
+  query: string;
+  scope?: string;
+  limit?: number;
+  deps?: TelegramLocalClientDeps;
+}): Promise<TelegramMessageSearchResult[]> {
+  const deps = args.deps ?? {};
+  const query = args.query.trim();
+  if (query.length === 0) {
+    throw new Error("Telegram search query is required.");
+  }
+
+  const limit = normalizeSearchLimit(args.limit);
+  return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
+    const dialogs = Array.from(
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
+    );
+    const scoped = !isGlobalSearchScope(args.scope);
+    const scope = args.scope?.trim() ?? "";
+    const dialog = scoped ? findMatchingDialog(scope, dialogs) : null;
+    const entity = scoped
+      ? await resolveTelegramTarget(client, scope, dialogs)
+      : undefined;
+    const messages = Array.from(
+      await client.getMessages(entity, { search: query, limit }),
+    );
+
+    return messages
+      .filter((message): message is TelegramMessageLike => Boolean(message))
+      .slice(0, limit)
+      .map((message) => ({
+        id:
+          message.id !== undefined ? serializeTelegramId(message.id) || null : null,
+        dialogId:
+          dialog?.id !== undefined ? serializeTelegramId(dialog.id) || null : null,
+        dialogTitle: dialog ? normalizeDialogTitle(dialog) : null,
+        username:
+          typeof dialog?.entity?.username === "string" &&
+          dialog.entity.username.trim().length > 0
+            ? dialog.entity.username.trim()
+            : null,
+        content: normalizeMessageContent(message),
+        timestamp: toIsoDate(message.date),
+        outgoing: message.out === true,
+      }));
+  });
+}
+
+export async function getTelegramReadReceipts(args: {
+  tokenRef: string;
+  target: string;
+  messageIds: string[];
+  deps?: TelegramLocalClientDeps;
+}): Promise<TelegramReadReceiptResult[]> {
+  const deps = args.deps ?? {};
+  const target = args.target.trim();
+  if (target.length === 0) {
+    throw new Error("Telegram receipt lookup target is required.");
+  }
+
+  const requestedIds = args.messageIds
+    .map((messageId) => ({
+      raw: messageId,
+      parsed: parseNumericId(messageId),
+    }))
+    .filter((entry) => entry.raw.trim().length > 0);
+  if (requestedIds.length === 0) {
+    return [];
+  }
+
+  return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
+    const dialogs = Array.from(
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
+    );
+    const dialog = findMatchingDialog(target, dialogs);
+    const entity = await resolveTelegramTarget(client, target, dialogs);
+    const ids = requestedIds
+      .map((entry) => entry.parsed)
+      .filter((value): value is number => value !== null);
+    const readMaxId = readOutboxMaxId(dialog);
+    const messageMap = new Map<number, TelegramMessageLike>();
+
+    if (ids.length > 0) {
+      const messages = Array.from(await client.getMessages(entity, { ids }));
+      for (const message of messages) {
+        if (!message) {
+          continue;
+        }
+        const messageId = parseNumericId(message.id);
+        if (messageId !== null) {
+          messageMap.set(messageId, message);
+        }
+      }
+    }
+
+    return requestedIds.map(({ raw, parsed }) => {
+      if (parsed === null) {
+        return {
+          messageId: raw,
+          status: "unknown",
+          isRead: null,
+          timestamp: null,
+          content: null,
+          outgoing: null,
+        };
+      }
+
+      const message = messageMap.get(parsed);
+      if (!message) {
+        return {
+          messageId: raw,
+          status: "unknown",
+          isRead: null,
+          timestamp: null,
+          content: null,
+          outgoing: null,
+        };
+      }
+
+      const outgoing = message.out === true;
+      const isRead =
+        outgoing && readMaxId !== null ? parsed <= readMaxId : null;
+      return {
+        messageId: raw,
+        status:
+          isRead === true ? "delivered_read" : outgoing ? "sent" : "unknown",
+        isRead,
+        timestamp: toIsoDate(message.date),
+        content: normalizeMessageContent(message) || null,
+        outgoing,
+      };
+    });
   });
 }
 

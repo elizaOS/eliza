@@ -9,19 +9,27 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { ActiveModelCoordinator } from "./active-model";
+import { readAssignments, setAssignment } from "./assignments";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
-import { listInstalledModels, removeMiladyModel } from "./registry";
+import {
+  listInstalledModels,
+  removeMiladyModel,
+  upsertMiladyModel,
+} from "./registry";
 import type {
   ActiveModelState,
+  AgentModelSlot,
   CatalogModel,
   DownloadEvent,
   DownloadJob,
   HardwareProbe,
+  ModelAssignments,
   ModelHubSnapshot,
 } from "./types";
+import { type VerifyResult, verifyInstalledModel } from "./verify";
 
 export class LocalInferenceService {
   private readonly downloader = new Downloader();
@@ -47,10 +55,22 @@ export class LocalInferenceService {
     return this.activeModel.snapshot();
   }
 
+  async getAssignments(): Promise<ModelAssignments> {
+    return readAssignments();
+  }
+
+  async setSlotAssignment(
+    slot: AgentModelSlot,
+    modelId: string | null,
+  ): Promise<ModelAssignments> {
+    return setAssignment(slot, modelId);
+  }
+
   async snapshot(): Promise<ModelHubSnapshot> {
-    const [installed, hardware] = await Promise.all([
+    const [installed, hardware, assignments] = await Promise.all([
       this.getInstalled(),
       this.getHardware(),
+      this.getAssignments(),
     ]);
     return {
       catalog: this.getCatalog(),
@@ -58,6 +78,7 @@ export class LocalInferenceService {
       active: this.getActive(),
       downloads: this.getDownloads(),
       hardware,
+      assignments,
     };
   }
 
@@ -72,6 +93,47 @@ export class LocalInferenceService {
     limit?: number,
   ): Promise<CatalogModel[]> {
     return searchHuggingFaceGguf(query, limit);
+  }
+
+  /**
+   * Verify an installed model's file integrity. When the model was a
+   * Milady-download and there was no stored sha256 yet (legacy entry), the
+   * computed hash is persisted so subsequent verifies have a baseline.
+   */
+  async verifyModel(id: string): Promise<VerifyResult> {
+    const installed = await listInstalledModels();
+    const model = installed.find((m) => m.id === id);
+    if (!model) {
+      throw new Error(`Model not installed: ${id}`);
+    }
+    const result = await verifyInstalledModel(model);
+
+    // Self-heal: when a Milady-owned legacy entry has no sha256 yet and
+    // the file passes the structural GGUF check, pin the computed hash as
+    // the baseline. External models are never mutated.
+    if (
+      result.state === "unknown" &&
+      result.currentSha256 &&
+      model.source === "milady-download"
+    ) {
+      await upsertMiladyModel({
+        ...model,
+        sha256: result.currentSha256,
+        lastVerifiedAt: new Date().toISOString(),
+      });
+      return {
+        ...result,
+        state: "ok",
+        expectedSha256: result.currentSha256,
+      };
+    }
+    if (result.state === "ok" && model.source === "milady-download") {
+      await upsertMiladyModel({
+        ...model,
+        lastVerifiedAt: new Date().toISOString(),
+      });
+    }
+    return result;
   }
 
   cancelDownload(modelId: string): boolean {

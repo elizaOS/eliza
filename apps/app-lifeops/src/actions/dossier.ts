@@ -7,7 +7,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { LifeOpsService } from "../lifeops/service.js";
 
 const ACTION_NAME = "DOSSIER";
@@ -41,7 +41,9 @@ function coerceHandles(value: unknown): string[] {
   return [];
 }
 
-export const dossierAction: Action = {
+export const dossierAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "GENERATE_DOSSIER",
@@ -49,11 +51,26 @@ export const dossierAction: Action = {
     "MEETING_BRIEFING",
     "PREPARE_FOR_MEETING",
     "BRIEF_ME",
+    "BACKGROUND_BRIEF",
+    "PERSON_BACKGROUND",
+    "NEXT_MEETING_BRIEF",
+    "WHO_AM_I_MEETING",
+  ],
+  tags: [
+    "always-include",
+    "dossier",
+    "briefing",
+    "next meeting",
+    "next event",
+    "meeting prep",
   ],
   description:
-    "Generate a pre-meeting briefing dossier with context about attendees, recent interactions, and upcoming event details.",
+    "Generate a pre-meeting or person-background briefing dossier with context about attendees, recent interactions, and upcoming event details. " +
+    "Use this for requests like 'pull up a dossier on Satya Nadella', 'give me the background on the person I'm meeting next: Julia Chen', or 'brief me for my next meeting'. " +
+    "If the user explicitly wants a brief, backgrounder, prep sheet, or dossier, use this action instead of replying from ENTITIES, FACTS, or memory alone.",
   descriptionCompressed:
     "Pre-meeting briefing dossier with attendees, recent context, and event details. Admin only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 
@@ -167,6 +184,32 @@ export const dossierAction: Action = {
     [
       {
         name: "{{name1}}",
+        content: { text: "Pull up a dossier on Satya Nadella" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "# Satya Nadella Briefing\n\n## Summary\n...",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Give me the background on the person I'm meeting next: Julia Chen",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "# Julia Chen Briefing\n\n## Summary\n...\n## Recent Context\n...",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
         content: { text: "Brief me for my 2pm meeting with Alice" },
       },
       {
@@ -197,6 +240,18 @@ export const dossierAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "# Product Review Briefing\n\n## Summary\n...\n## Suggested Talking Points\n...",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Give me the dossier for my next meeting or event." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "# Meeting Briefing\n\n## Summary\nHere's the dossier for your next meeting or event, including the people, logistics, and recent context.",
         },
       },
     ],

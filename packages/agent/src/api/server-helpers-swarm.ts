@@ -3,7 +3,6 @@
  */
 
 import crypto from "node:crypto";
-import type http from "node:http";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
@@ -19,6 +18,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -359,9 +359,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =

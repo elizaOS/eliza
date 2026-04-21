@@ -25,12 +25,13 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
 
@@ -216,7 +217,7 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
   describe("CALENDAR planner multilingual parity", () => {
     for (const row of CALENDAR_COMMANDS) {
       for (const lang of ["en", "es", "fr", "ja"] as const) {
-        it(
+        stochasticTest(
           `${row.label} [${lang}]`,
           async () => {
             const text = row[lang];
@@ -233,7 +234,7 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
               `CALENDAR planner picked ${plan.subaction ?? "null"} for "${text}" (expected ${row.expectedSubaction})`,
             ).toBe(row.expectedSubaction);
           },
-          TEST_TIMEOUT,
+          { perRunTimeoutMs: TEST_TIMEOUT, label: `calendar/${row.label}/${lang}` },
         );
       }
     }
@@ -242,7 +243,7 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
   describe("LIFE extractor multilingual parity", () => {
     for (const row of LIFE_COMMANDS) {
       for (const lang of ["en", "es", "fr", "ja"] as const) {
-        it(
+        stochasticTest(
           `${row.label} [${lang}]`,
           async () => {
             const text = row[lang];
@@ -259,7 +260,7 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
               `LIFE extractor picked ${plan.operation ?? "null"} for "${text}" (expected ${row.expectedOperation})`,
             ).toBe(row.expectedOperation);
           },
-          TEST_TIMEOUT,
+          { perRunTimeoutMs: TEST_TIMEOUT, label: `life/${row.label}/${lang}` },
         );
       }
     }

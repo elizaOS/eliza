@@ -53,6 +53,25 @@ function coerceString(value: unknown): string | null {
   return null;
 }
 
+const TASK_GATE_SIGNAL_RE =
+  /\buntil\b[\s\S]{0,80}\b(finish|complete|done|todo|task|workout|assignment|report)\b|\b(after|once)\b[\s\S]{0,80}\b(finish|complete|done|todo|task|workout|assignment|report)\b|\b(finish|complete|done)\b[\s\S]{0,40}\b(todo|task|workout|assignment|report)\b/i;
+const FIXED_DURATION_SIGNAL_RE =
+  /\bfor\s+\d+\s*(minute|minutes|min|hour|hours|hr|hrs|day|days)\b|\b\d+\s*(minute|minutes|min|hour|hours|hr|hrs|day|days)\b/i;
+
+function getMessageText(message: { content?: { text?: unknown } } | undefined): string {
+  return typeof message?.content?.text === "string" ? message.content.text.trim() : "";
+}
+
+function shouldRejectFixedDurationRequest(messageText: string): boolean {
+  if (!messageText) {
+    return false;
+  }
+  return (
+    FIXED_DURATION_SIGNAL_RE.test(messageText) &&
+    !TASK_GATE_SIGNAL_RE.test(messageText)
+  );
+}
+
 async function findTodoIdByName(
   runtime: IAgentRuntime,
   name: string,
@@ -130,19 +149,32 @@ export const blockUntilTaskCompleteAction: Action = {
     "BLOCK_SITES_UNTIL_TODO_DONE",
     "BLOCK_WEBSITE_UNTIL_TASK",
     "CONDITIONAL_WEBSITE_BLOCK",
+    "BLOCK_UNTIL_DONE",
+    "FOCUS_UNTIL_TASK_DONE",
   ],
   description:
-    "Block websites until a specific todo is marked complete. Creates a block rule whose release is gated on todo completion. " +
-    "If todoName is provided with no matching active todo, the todo is created first.",
+    "Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. " +
+    "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
+    "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are OWNER_WEBSITE_BLOCK.",
   descriptionCompressed:
     "Block websites until a named todo is completed.",
-  validate: async () => true,
+  validate: async (_runtime, message) =>
+    !shouldRejectFixedDurationRequest(getMessageText(message)),
   handler: async (
     runtime: IAgentRuntime,
-    _message,
+    message,
     _state,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
+    const messageText = getMessageText(message);
+    if (shouldRejectFixedDurationRequest(messageText)) {
+      return {
+        success: false,
+        text:
+          "BLOCK_UNTIL_TASK_COMPLETE only applies when the user explicitly ties the unblock condition to finishing a task or todo. Use BLOCK_WEBSITES for fixed-duration focus blocks.",
+      };
+    }
+
     const params = (options?.parameters ?? {}) as BlockUntilTaskCompleteParams;
     const websites = coerceStringArray(params.websites);
     if (websites.length === 0) {
@@ -245,6 +277,19 @@ export const blockUntilTaskCompleteAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Block rule created for x.com until todo workout is completed.",
+          action: "BLOCK_UNTIL_TASK_COMPLETE",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Block youtube until I finish this report." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Block rule created for youtube.com until todo report is completed.",
           action: "BLOCK_UNTIL_TASK_COMPLETE",
         },
       },

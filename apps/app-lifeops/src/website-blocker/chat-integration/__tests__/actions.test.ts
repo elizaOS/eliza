@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResult, HandlerOptions, Memory, UUID } from "@elizaos/core";
 import { blockUntilTaskCompleteAction } from "../actions/blockUntilTaskComplete.js";
 import { listActiveBlocksAction } from "../actions/listActiveBlocks.js";
 import { releaseBlockAction } from "../actions/releaseBlock.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
+import * as websiteBlockerEngine from "../../engine.js";
 import {
   createBlockRuleHarness,
   seedTodo,
@@ -43,6 +44,7 @@ describe("T7g actions", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await harness.close();
   });
 
@@ -114,6 +116,55 @@ describe("T7g actions", () => {
     const rules = data.rules;
     expect(Array.isArray(rules)).toBe(true);
     expect((rules as unknown[]).length).toBe(1);
+  });
+
+  it("LIST_ACTIVE_BLOCKS includes live blocker status when no managed rules exist", async () => {
+    vi.spyOn(websiteBlockerEngine, "getSelfControlStatus").mockResolvedValue({
+      available: true,
+      active: true,
+      hostsFilePath: "/etc/hosts",
+      startedAt: "2026-04-19T03:00:00.000Z",
+      endsAt: "2026-04-19T05:00:00.000Z",
+      websites: ["x.com"],
+      managedBy: "eliza-selfcontrol",
+      metadata: null,
+      scheduledByAgentId: null,
+      canUnblockEarly: true,
+      requiresElevation: false,
+      engine: "hosts-file",
+      platform: process.platform,
+      supportsElevationPrompt: false,
+      elevationPromptMethod: null,
+    });
+
+    const result = await listActiveBlocksAction.handler(
+      harness.runtime,
+      EMPTY_MESSAGE,
+      undefined,
+      undefined,
+    );
+
+    expect((result as ActionResult).text ?? "").toContain(
+      "A live website block is active for x.com until 2026-04-19T05:00:00.000Z.",
+    );
+    expect((result as ActionResult).text ?? "").toContain(
+      "No managed website block rules are active.",
+    );
+    expect(actionData(result).rules).toEqual([]);
+  });
+
+  it("BLOCK_UNTIL_TASK_COMPLETE validate rejects fixed-duration-only prompts", async () => {
+    const shouldValidate = await blockUntilTaskCompleteAction.validate?.(
+      harness.runtime,
+      {
+        ...EMPTY_MESSAGE,
+        content: {
+          text: "Block x.com for 2 hours so I can focus.",
+        },
+      } as Memory,
+    );
+
+    expect(shouldValidate).toBe(false);
   });
 
   it("RELEASE_BLOCK without confirmed fails; harsh_no_bypass cannot be released", async () => {
