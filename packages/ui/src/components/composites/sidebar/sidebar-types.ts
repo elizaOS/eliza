@@ -16,6 +16,7 @@ export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
   collapsedContent?: React.ReactNode;
   collapsedRailAction?: React.ReactNode;
   collapsedRailItems?: React.ReactNode;
+  collapseButtonLeading?: React.ReactNode;
   onMobileClose?: () => void;
   mobileTitle?: React.ReactNode;
   mobileMeta?: React.ReactNode;

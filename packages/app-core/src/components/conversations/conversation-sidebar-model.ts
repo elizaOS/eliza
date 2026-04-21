@@ -8,10 +8,18 @@ import {
 } from "./conversation-utils";
 
 export const ELIZA_SOURCE_SCOPE = "eliza";
+export const TERMINAL_SOURCE_SCOPE = "terminal";
 export const ALL_CONNECTORS_SOURCE_SCOPE = "__all_connectors__";
 export const ALL_WORLDS_SCOPE = "__all_worlds__";
 
 const UNKNOWN_WORLD_KEY = "__unknown_world__";
+const DMS_WORLD_PREFIX = "__dms__";
+
+const MS_PER_DAY = 86_400_000;
+const MAX_DAY_BUCKET_RANK = 10_000_000;
+const MAX_WEEK_BUCKET_RANK = 9_000_000;
+const MAX_MONTH_BUCKET_RANK = 8_000_000;
+const MAX_YEAR_BUCKET_RANK = 7_000_000;
 
 type TranslateFn = (
   key: string,
@@ -78,6 +86,14 @@ function normalizeWorldLabel(
   chat: InboxChatSidebarRow,
   t?: TranslateFn,
 ): string {
+  const trimmedWorldId = chat.worldId?.trim();
+  if (!trimmedWorldId) {
+    return (
+      t?.("conversations.scopeDms", {
+        defaultValue: "DMs",
+      }) ?? "DMs"
+    );
+  }
   const trimmed = chat.worldLabel?.trim();
   if (trimmed) {
     return trimmed;
@@ -89,12 +105,12 @@ function normalizeWorldLabel(
   );
 }
 
-function worldKey(chat: InboxChatSidebarRow, t?: TranslateFn): string {
+function worldKey(chat: InboxChatSidebarRow, normalizedSource: string): string {
   const trimmedWorldId = chat.worldId?.trim();
   if (trimmedWorldId) {
     return trimmedWorldId;
   }
-  return `${UNKNOWN_WORLD_KEY}:${normalizeWorldLabel(chat, t).toLowerCase()}`;
+  return `${DMS_WORLD_PREFIX}:${normalizedSource}`;
 }
 
 function buildConversationRows(
@@ -129,8 +145,8 @@ function buildInboxRows(
   return inboxChats
     .map((chat) => {
       const isoDate = new Date(chat.lastMessageAt).toISOString();
-      const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       const normalizedSource = normalizeConnectorSource(chat.source);
+      const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       return {
         avatarUrl: chat.avatarUrl,
         canSend: chat.canSend,
@@ -143,7 +159,7 @@ function buildInboxRows(
         title: chat.title,
         updatedAtLabel: formatRelativeTime(isoDate, t),
         ...(chat.worldId ? { worldId: chat.worldId } : {}),
-        worldKey: worldKey(chat, t),
+        worldKey: worldKey(chat, normalizedSource),
         worldLabel: normalizedWorldLabel,
       };
     })
@@ -174,8 +190,14 @@ function buildSourceOptions(
     {
       count: appRows.length,
       icon: getChatSourceMeta("eliza").Icon,
-      label: t("conversations.scopeApp", { defaultValue: "Terminal" }),
+      label: t("conversations.scopeApp", { defaultValue: "Messages" }),
       value: ELIZA_SOURCE_SCOPE,
+    },
+    {
+      count: 0,
+      icon: getChatSourceMeta("terminal").Icon,
+      label: t("conversations.scopeTerminal", { defaultValue: "Terminal" }),
+      value: TERMINAL_SOURCE_SCOPE,
     },
   ];
 
@@ -200,6 +222,7 @@ function buildWorldOptions(
 ): ConversationsSidebarOption[] {
   if (
     sourceScope === ELIZA_SOURCE_SCOPE ||
+    sourceScope === TERMINAL_SOURCE_SCOPE ||
     sourceScope === ALL_CONNECTORS_SOURCE_SCOPE
   ) {
     return [];
@@ -255,6 +278,11 @@ function filterRowsByScope(
     return appRows;
   }
 
+  if (sourceScope === TERMINAL_SOURCE_SCOPE) {
+    // Terminal rows are injected by the sidebar component, not the model.
+    return [];
+  }
+
   if (sourceScope === ALL_CONNECTORS_SOURCE_SCOPE) {
     return connectorRows;
   }
@@ -270,66 +298,151 @@ function filterRowsByScope(
   });
 }
 
+function startOfLocalDay(date: Date): number {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
+}
+
+interface TimeBucket {
+  key: string;
+  label: string;
+  rank: number;
+}
+
+function timeBucket(sortKey: number, now: Date, t: TranslateFn): TimeBucket {
+  const nowDay = startOfLocalDay(now);
+  const rowDay = startOfLocalDay(new Date(sortKey));
+  const dayDelta = Math.max(0, Math.round((nowDay - rowDay) / MS_PER_DAY));
+
+  if (dayDelta <= 0) {
+    return {
+      key: "t:today",
+      label: t("conversations.bucketToday", { defaultValue: "Today" }),
+      rank: MAX_DAY_BUCKET_RANK,
+    };
+  }
+  if (dayDelta === 1) {
+    return {
+      key: "t:yesterday",
+      label: t("conversations.bucketYesterday", { defaultValue: "Yesterday" }),
+      rank: MAX_DAY_BUCKET_RANK - 1,
+    };
+  }
+  if (dayDelta < 7) {
+    return {
+      key: `t:days-${dayDelta}`,
+      label: t("conversations.bucketDaysAgo", {
+        count: dayDelta,
+        defaultValue: `${dayDelta} days ago`,
+      }),
+      rank: MAX_DAY_BUCKET_RANK - dayDelta,
+    };
+  }
+
+  const weekDelta = Math.floor(dayDelta / 7);
+  if (weekDelta === 1) {
+    return {
+      key: "t:weeks-1",
+      label: t("conversations.bucketLastWeek", { defaultValue: "Last week" }),
+      rank: MAX_WEEK_BUCKET_RANK - 1,
+    };
+  }
+  if (weekDelta < 5) {
+    return {
+      key: `t:weeks-${weekDelta}`,
+      label: t("conversations.bucketWeeksAgo", {
+        count: weekDelta,
+        defaultValue: `${weekDelta} weeks ago`,
+      }),
+      rank: MAX_WEEK_BUCKET_RANK - weekDelta,
+    };
+  }
+
+  const monthDelta = Math.floor(dayDelta / 30);
+  if (monthDelta === 1) {
+    return {
+      key: "t:months-1",
+      label: t("conversations.bucketLastMonth", { defaultValue: "Last month" }),
+      rank: MAX_MONTH_BUCKET_RANK - 1,
+    };
+  }
+  if (monthDelta < 12) {
+    return {
+      key: `t:months-${monthDelta}`,
+      label: t("conversations.bucketMonthsAgo", {
+        count: monthDelta,
+        defaultValue: `${monthDelta} months ago`,
+      }),
+      rank: MAX_MONTH_BUCKET_RANK - monthDelta,
+    };
+  }
+
+  const yearDelta = Math.max(1, Math.floor(dayDelta / 365));
+  if (yearDelta === 1) {
+    return {
+      key: "t:years-1",
+      label: t("conversations.bucketLastYear", {
+        defaultValue: "Over a year ago",
+      }),
+      rank: MAX_YEAR_BUCKET_RANK - 1,
+    };
+  }
+  return {
+    key: `t:years-${yearDelta}`,
+    label: t("conversations.bucketYearsAgo", {
+      count: yearDelta,
+      defaultValue: `${yearDelta} years ago`,
+    }),
+    rank: MAX_YEAR_BUCKET_RANK - yearDelta,
+  };
+}
+
 function buildSections(
   rows: ConversationsSidebarRow[],
-  sourceScope: string,
   t: TranslateFn,
+  now: Date = new Date(),
 ): ConversationsSidebarSection[] {
   if (rows.length === 0) {
     return [];
   }
 
-  const groups = new Map<string, ConversationsSidebarSection>();
+  const groups = new Map<
+    string,
+    ConversationsSidebarSection & { rank: number }
+  >();
   for (const row of rows) {
-    let key = sourceScope;
-    let label = t("conversations.scopeApp", { defaultValue: "Terminal" });
-
-    if (row.kind === "inbox") {
-      if (sourceScope === ALL_CONNECTORS_SOURCE_SCOPE) {
-        key = `${row.sourceKey}:${row.worldKey ?? "unknown"}`;
-        label = `${sourceLabel(row.sourceKey)} • ${
-          row.worldLabel ??
-          t("conversations.scopeUnknownWorld", {
-            defaultValue: "Unknown world",
-          })
-        }`;
-      } else {
-        key = row.worldKey ?? `${UNKNOWN_WORLD_KEY}:unknown`;
-        label =
-          row.worldLabel ??
-          t("conversations.scopeUnknownWorld", {
-            defaultValue: "Unknown world",
-          });
-      }
-    }
-
-    const existing = groups.get(key);
+    const bucket = timeBucket(row.sortKey, now, t);
+    const existing = groups.get(bucket.key);
     if (existing) {
       existing.rows.push(row);
       existing.count += 1;
       continue;
     }
 
-    groups.set(key, {
+    groups.set(bucket.key, {
       count: 1,
-      key,
-      label,
+      key: bucket.key,
+      label: bucket.label,
+      rank: bucket.rank,
       rows: [row],
     });
   }
 
   return Array.from(groups.values())
     .map((section) => ({
-      ...section,
+      count: section.count,
+      key: section.key,
+      label: section.label,
+      rank: section.rank,
       rows: [...section.rows].sort(
         (left, right) => right.sortKey - left.sortKey,
       ),
     }))
-    .sort((left, right) => {
-      const leftNewest = left.rows[0]?.sortKey ?? 0;
-      const rightNewest = right.rows[0]?.sortKey ?? 0;
-      return rightNewest - leftNewest;
-    });
+    .sort((left, right) => right.rank - left.rank)
+    .map(({ rank: _rank, ...section }) => section);
 }
 
 export function buildConversationsSidebarModel({
@@ -383,7 +496,7 @@ export function buildConversationsSidebarModel({
       : scopedRows.filter((row) =>
           row.title.toLowerCase().includes(normalizedSearchQuery),
         );
-  const sections = buildSections(filteredRows, normalizedSourceScope, t);
+  const sections = buildSections(filteredRows, t);
 
   return {
     rows: sections.flatMap((section) => section.rows),

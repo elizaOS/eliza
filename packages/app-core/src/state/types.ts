@@ -685,6 +685,14 @@ export interface AppState {
     worldLabel?: string;
   } | null;
 
+  /**
+   * Currently-selected PTY session in the Terminal channel. When
+   * non-null, ChatView renders a full-window terminal bound to this
+   * session id. Mutually exclusive with `activeInboxChat` and a live
+   * dashboard conversation.
+   */
+  activeTerminalSessionId: string | null;
+
   // Sub-tabs
   appsSubTab: "browse" | "running" | "games";
   agentSubTab: "character" | "inventory" | "knowledge";

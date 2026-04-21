@@ -46,6 +46,10 @@ export interface ChatComposerProps {
   voice: ChatComposerVoiceState;
   codingAgentsAvailable?: boolean;
   onCreateTask?: (description: string, agentType: string) => void;
+  /** Hide the attach-image button (used where outbound attachments aren't supported). */
+  hideAttachButton?: boolean;
+  /** Placeholder override for the textarea. */
+  placeholder?: string;
 }
 
 export function ChatComposer({
@@ -69,6 +73,8 @@ export function ChatComposer({
   onToggleAgentVoice,
   codingAgentsAvailable = false,
   onCreateTask,
+  hideAttachButton = false,
+  placeholder,
 }: ChatComposerProps) {
   const [isNarrow, setIsNarrow] = useState(
     () => typeof window !== "undefined" && window.innerWidth < 310,
@@ -188,7 +194,7 @@ export function ChatComposer({
           : "flex items-end gap-1.5 sm:gap-2"
       }
     >
-      {!isGameModal ? (
+      {!isGameModal && !hideAttachButton ? (
         <Button
           variant={chatPendingImagesCount > 0 ? "surfaceAccent" : "surface"}
           size="icon"
@@ -270,7 +276,7 @@ export function ChatComposer({
               ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-3xl border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
               : "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-3xl border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] px-4 py-[13px] text-[15px] leading-[1.55] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_24px_-22px_rgba(15,23,42,0.12)] placeholder:text-muted"
           }
-          placeholder={defaultTextareaPlaceholder}
+          placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
           disabled={isComposerLocked}
         />

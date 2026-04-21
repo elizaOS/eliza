@@ -422,6 +422,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       collapsedContent,
       collapsedRailAction,
       collapsedRailItems,
+      collapseButtonLeading,
       onMobileClose,
       mobileTitle,
       mobileMeta,
@@ -743,7 +744,18 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           </div>
         ) : null}
         {supportsCollapsedRail ? (
-          <div className={cn(sidebarFooterVariants(), footerClassName)}>
+          <div
+            className={cn(
+              sidebarFooterVariants(),
+              collapseButtonLeading ? "justify-between" : undefined,
+              footerClassName,
+            )}
+          >
+            {collapseButtonLeading ? (
+              <div className="flex min-w-0 items-center gap-2">
+                {collapseButtonLeading}
+              </div>
+            ) : null}
             <Button
               variant="surface"
               size="icon"

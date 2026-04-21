@@ -8,7 +8,7 @@ export interface PtyConsoleBaseProps {
   activeSessionId: string;
   sessions: CodingAgentSession[];
   onClose: () => void;
-  variant: "drawer" | "side-panel";
+  variant: "drawer" | "side-panel" | "full";
 }
 
 /** X icon for side-panel close button. */
