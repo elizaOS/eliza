@@ -188,7 +188,7 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
                 type="button"
                 onClick={openLifeOps}
                 data-testid={`lifeops-calendar-row-${event.id}`}
-                className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-1 text-left text-2xs transition-colors hover:bg-bg-hover/40"
+                className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
               >
                 <span className="min-w-0 flex-1 truncate text-txt">
                   {event.title}
@@ -242,7 +242,7 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
               type="button"
               onClick={openLifeOps}
               data-testid={`lifeops-inbox-row-${message.id}`}
-              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-1 text-left text-2xs transition-colors hover:bg-bg-hover/40"
+              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
             >
               <span className="min-w-0 flex-1 truncate text-txt">
                 {message.subject}
@@ -363,7 +363,7 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
               type="button"
               onClick={openLifeOps}
               data-testid={`lifeops-automation-row-${trigger.id}`}
-              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-1 text-left text-2xs transition-colors hover:bg-bg-hover/40"
+              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
             >
               <span className="min-w-0 flex-1 truncate text-txt">
                 {trigger.displayName || trigger.id}
