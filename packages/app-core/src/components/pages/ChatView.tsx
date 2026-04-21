@@ -1,16 +1,3 @@
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
-import { client } from "../../api/client";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
-import { useApp } from "../../state/useApp";
-import type { TranslateFn } from "../../types";
-import { getVrmPreviewUrl } from "../../state/vrm";
-
 import {
   type ChangeEvent,
   type DragEvent,
@@ -22,8 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CodingAgentSession } from "../../api/client";
-import { client } from "../../api/client";
+import { type CodingAgentSession, client } from "../../api/client";
 import type {
   ConversationMessage,
   ImageAttachment,
@@ -34,6 +20,7 @@ import { useChatComposer } from "../../state/ChatComposerContext";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
+import type { TranslateFn } from "../../types";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
 import {

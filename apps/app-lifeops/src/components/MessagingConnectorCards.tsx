@@ -641,18 +641,11 @@ export function TelegramConnectorCard() {
       ) : null}
 
       {authState === "waiting_for_code" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Verification code"
-            value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
-            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            autoComplete="one-time-code"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleVerifyCode();
-              }
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Verification code"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
               className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"

@@ -891,11 +891,8 @@ async function buildGmailPlanningContext(args: {
   const currentMessage = messageText(args.message).trim();
   const timeZone = resolveDefaultTimeZone();
   const now = new Date();
-  return {
-    recentConversation,
-    latestReplyDraft: latestGmailReplyDraftContext(args.state),
-    latestMessageTarget: latestGmailMessageTargetContext(args.state),
-    currentMessage,
+  const nowIso = now.toISOString();
+  const localNow = new Intl.DateTimeFormat(undefined, {
     timeZone,
     year: "numeric",
     month: "2-digit",
@@ -905,6 +902,35 @@ async function buildGmailPlanningContext(args: {
     second: "2-digit",
     hour12: false,
   }).format(now);
+  return {
+    recentConversation,
+    latestReplyDraft: latestGmailReplyDraftContext(args.state),
+    latestMessageTarget: latestGmailMessageTargetContext(args.state),
+    currentMessage,
+    timeZone,
+    nowIso,
+    localNow,
+  };
+}
+
+async function buildGmailPlanningPrompt(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  activeComposeDraft?: GmailComposeDraft | null;
+}): Promise<{ context: GmailPlanningContext; prompt: string }> {
+  const context = await buildGmailPlanningContext(args);
+  const { intent, activeComposeDraft } = args;
+  const {
+    recentConversation,
+    latestReplyDraft,
+    latestMessageTarget,
+    currentMessage,
+    timeZone,
+    nowIso,
+    localNow,
+  } = context;
   const prompt = [
     "Plan the Gmail action for this request.",
     "The user may speak in any language.",
@@ -1011,6 +1037,8 @@ async function buildGmailPlanningContext(args: {
     `Resolved intent: ${JSON.stringify(intent)}`,
     `Recent conversation: ${JSON.stringify(recentConversation)}`,
   ].join("\n");
+  return { context, prompt };
+}
 
 function parseGmailPlannerRecord(
   rawResponse: string,
