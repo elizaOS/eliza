@@ -1,0 +1,121 @@
+{
+  "id": "b5062e3e-641c-4e3a-907b-ac864d2e7652",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Please help me to extract the name, e-mail, and affiliation of the first author from each paper in the folder and organize them in an Excel table. Include headers for each field. Sort the authors by their full names alphabetically and save the table as \"~/authors.xlsx\".",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Papers"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Papers/zhang_appagent.pdf",
+            "url": "https://arxiv.org/pdf/2312.13771.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Papers/niu_screenagent.pdf",
+            "url": "https://arxiv.org/pdf/2402.07945.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Papers/koh_visualwebarena.pdf",
+            "url": "https://arxiv.org/pdf/2401.13649.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Papers/deng_mind2web.pdf",
+            "url": "https://papers.nips.cc/paper_files/paper/2023/file/5950bf290a1570ea401bf98882128160-Paper-Datasets_and_Benchmarks.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Documents/Papers"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/b5062e3e-641c-4e3a-907b-ac864d2e7652",
+  "related_apps": [
+    "libreoffice_calc",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "libreoffice",
+            "--convert-to",
+            "csv:Text - txt - csv (StarCalc):44,34,UTF-8,,,,false,true,true,false,false,1",
+            "--outdir",
+            "/home/user",
+            "/home/user/authors.xlsx"
+          ]
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/authors.xlsx",
+      "dest": "authors.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/b5062e3e-641c-4e3a-907b-ac864d2e7652/authors-ground_truth.xlsx",
+      "dest": "authors-gt.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_fuzzy",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1",
+          "rules": [
+            {
+              "range": [
+                "A1:C1"
+              ],
+              "type": "includes",
+              "ignore_case": true
+            },
+            {
+              "range": [
+                "A2:B5"
+              ],
+              "type": "exact_match",
+              "trim_leadings": " ",
+              "trim_trailings": " "
+            },
+            {
+              "range": [
+                "C2:C5"
+              ],
+              "type": "exact_match",
+              "trim_leadings": " ",
+              "trim_trailings": " ",
+              "ignore_case": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

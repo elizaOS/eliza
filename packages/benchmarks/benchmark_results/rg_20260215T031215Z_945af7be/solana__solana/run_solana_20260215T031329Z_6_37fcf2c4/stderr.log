@@ -1,0 +1,29 @@
+# command: python -m benchmarks.solana.eliza_agent
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_solana_20260215T031329Z_6_37fcf2c4
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_agent.py", line 669, in <module>
+    asyncio.run(main())
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_agent.py", line 663, in main
+    await go(
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_agent.py", line 648, in go
+    m = await agent.run(env)
+        ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_agent.py", line 319, in run
+    self._runtime = await self._initialize_runtime()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/eliza_agent.py", line 295, in _initialize_runtime
+    runtime = AgentRuntime(
+              ^^^^^^^^^^^^^
+TypeError: AgentRuntime.__init__() got an unexpected keyword argument 'enable_extended_capabilities'

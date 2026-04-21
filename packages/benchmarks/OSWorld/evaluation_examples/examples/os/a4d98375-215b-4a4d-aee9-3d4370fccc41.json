@@ -1,0 +1,51 @@
+{
+  "id": "a4d98375-215b-4a4d-aee9-3d4370fccc41",
+  "snapshot": "os",
+  "instruction": "I want to have my computer automatically locked after I leaved. Can you help me?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/privacy-screen-lock.html.en",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "gsettings",
+          "set",
+          "org.gnome.desktop.screensaver",
+          "lock-enabled",
+          "false"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "gsettings get org.gnome.desktop.screensaver lock-enabled",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "true\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

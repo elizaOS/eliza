@@ -1,0 +1,114 @@
+{
+  "id": "386dbd0e-0241-4a0a-b6a2-6704fba26b1c",
+  "snapshot": "chrome",
+  "instruction": "I am reading lecture note in PDF while a music video is running in VLC media player. But I find I need to switch to the player every time I need to pause/start.Could you help me change the setting to allow pausing the video using keyboard shortcut without minimizing the PDF reader? I want to focus on the lecture note and don't be disturbed by the app switching.",
+  "source": "https://superuser.com/questions/1708415/pause-and-play-vlc-in-background?rq=1",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vlc/386dbd0e-0241-4a0a-b6a2-6704fba26b1c/lecture_pdf.pdf",
+            "path": "/home/user/Desktop/lecture.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vlc/386dbd0e-0241-4a0a-b6a2-6704fba26b1c/Colorful-Flowers%28chosic.com%29.mp3",
+            "path": "/home/user/Desktop/Colorful-Flowers.mp3"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show --start-time=10 /home/user/Desktop/Colorful-Flowers.mp3",
+        "shell": true
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/lecture.pdf"
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "lecture.pdf — 6.006 Introduction to Algorithms, Lecture 2: Data Structures",
+        "strict": true
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 0.5
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; pyautogui.press('f11');"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "launch",
+        "parameters": {
+          "command": [
+            "pkill",
+            "vlc"
+          ]
+        }
+      },
+      {
+        "type": "launch",
+        "parameters": {
+          "command": "vlc --no-audio --no-video-title-show",
+          "shell": true
+        }
+      }
+    ],
+    "func": "check_global_key_play_pause",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected_global_key_play_pause": 1
+      }
+    },
+    "result": {
+      "type": "vlc_config",
+      "dest": "vlcrc"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

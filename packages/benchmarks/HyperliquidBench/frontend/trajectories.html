@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HyperLiquidBench — Action Logs</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" defer src="assets/trajectories.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="border-b bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a id="site-title" href="./" class="font-semibold tracking-tight">HyperLiquidBench</a>
+      <nav class="text-sm">
+        <a id="nav-home" class="hover:underline mr-4" href="./">Overview</a>
+        <a id="nav-trajectories" class="hover:underline mr-4" href="./trajectories.html">Action Logs</a>
+        <a id="nav-breakdown" class="hover:underline" href="./lc.html">Domain Breakdown</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <h1 id="traj-title" class="text-2xl font-bold">Action logs</h1>
+    <p id="traj-subtitle" class="mt-2 text-sm text-slate-600"></p>
+
+    <div class="mt-4 p-4 bg-white border rounded-lg shadow-sm">
+      <div class="flex flex-col lg:flex-row gap-3 lg:items-center">
+        <label class="text-sm flex items-center gap-2">
+          <span id="traj-select-label" class="text-slate-700"></span>
+          <select id="traj-select" class="border rounded px-2 py-1 text-sm bg-white"></select>
+        </label>
+        <button id="load-sample" class="px-3 py-2 rounded bg-slate-900 text-white text-sm">Load selected run</button>
+        <div class="text-xs text-slate-500" id="traj-or">or</div>
+        <label class="text-sm">
+          <input id="pick-run" type="file" webkitdirectory directory multiple class="hidden" />
+          <span id="traj-pick-label" class="px-3 py-2 rounded border bg-white inline-block cursor-pointer">Upload run folder</span>
+        </label>
+        <div class="text-xs text-slate-500" id="traj-note">Required: eval_per_tx.jsonl, per_tx.jsonl (optional: eval_score.json)</div>
+      </div>
+    </div>
+
+    <div id="run-info" class="mt-6 hidden">
+      <h2 class="font-semibold text-lg">Run</h2>
+      <div class="text-sm text-slate-600" id="meta"></div>
+    </div>
+
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full text-sm bg-white border rounded-lg shadow-sm">
+        <thead class="bg-slate-100 text-slate-700">
+          <tr>
+            <th class="px-3 py-2 text-left">Step</th>
+            <th class="px-3 py-2 text-left">Action</th>
+            <th class="px-3 py-2 text-left">Domains</th>
+            <th class="px-3 py-2 text-left">Signatures</th>
+            <th class="px-3 py-2 text-right">Window (ms)</th>
+            <th class="px-3 py-2 text-left">Ignored</th>
+            <th class="px-3 py-2 text-left">Reason</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+    </div>
+
+    <dialog id="dlg" class="w-full max-w-3xl rounded-lg border p-0">
+      <div class="p-4 border-b flex justify-between items-center">
+        <div id="traj-detail-title" class="font-semibold">Action detail</div>
+        <form method="dialog"><button class="text-slate-500 hover:text-slate-800">✕</button></form>
+      </div>
+      <div class="p-4 text-sm">
+        <pre id="dlg-content" class="whitespace-pre-wrap text-xs bg-slate-50 p-3 rounded border overflow-x-auto"></pre>
+      </div>
+      <div class="p-3 border-t text-right">
+        <form method="dialog"><button id="traj-close" class="px-3 py-1.5 rounded bg-slate-900 text-white text-sm">Close</button></form>
+      </div>
+    </dialog>
+  </main>
+</body>
+</html>

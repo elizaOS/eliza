@@ -1,0 +1,82 @@
+{
+  "id": "51b11269-2ca8-4b2a-9163-f21758420e78",
+  "snapshot": "excel",
+  "instruction": "Could you help me to sort the records according to the amounts ascendingly?",
+  "source": "https://www.reddit.com/r/LibreOfficeCalc/comments/186pcc6/how_to_arrange_numbers_in_a_column_from_minimum/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/51b11269-2ca8-4b2a-9163-f21758420e78/Arrang_Value_min_to_max.xlsx",
+            "path": "c:\\users\\User\\Arrang_Value_min_to_max.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "c:\\users\\User\\Arrang_Value_min_to_max.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/51b11269-2ca8-4b2a-9163-f21758420e78",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Arrang_Value_min_to_max - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/51b11269-2ca8-4b2a-9163-f21758420e78/Arrang_Value_min_to_max_gold.xlsx",
+      "dest": "Arrang_Value_min_to_max_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "c:\\users\\User\\Arrang_Value_min_to_max.xlsx",
+      "dest": "Arrang_Value_min_to_max.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# command: bash run.sh --py-only
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/framework
+# run_id: run_framework_20260212T090301Z_4_dfd38d68
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 49, in <module>
+    from .metrics import (
+    ...<10 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/metrics.py", line 17, in <module>
+    import psutil
+ModuleNotFoundError: No module named 'psutil'

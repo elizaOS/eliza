@@ -1,0 +1,1 @@
+ai.eliza.plugins.swabble

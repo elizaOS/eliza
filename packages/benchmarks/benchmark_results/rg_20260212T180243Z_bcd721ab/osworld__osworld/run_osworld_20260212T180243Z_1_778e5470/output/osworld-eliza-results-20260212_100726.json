@@ -1,0 +1,19 @@
+{
+  "model": "qwen/qwen3-32b",
+  "agent": "eliza",
+  "observation_type": "screenshot_a11y_tree",
+  "action_space": "pyautogui",
+  "total_tasks": 1,
+  "passed_tasks": 0,
+  "overall_success_rate": 0.0,
+  "timestamp": "20260212_100726",
+  "results": [
+    {
+      "task_id": "bb5e4c0d-f964-439c-97b6-bdb9747de3f4",
+      "domain": "chrome",
+      "instruction": "Can you make Bing the main search engine when I look stuff up on the internet?",
+      "score": 0.0,
+      "error": "a bytes-like object is required, not 'NoneType'"
+    }
+  ]
+}

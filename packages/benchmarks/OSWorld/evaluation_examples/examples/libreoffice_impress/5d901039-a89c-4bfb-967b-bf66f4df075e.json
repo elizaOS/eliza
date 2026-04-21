@@ -1,0 +1,76 @@
+{
+  "id": "5d901039-a89c-4bfb-967b-bf66f4df075e",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I want to turn the rectangular image of Columbus on the first page into a cover page. Could you help me stretch this image to fill the entire page, keeping its proportion and centering the image?",
+  "source": "https://superuser.com/questions/986776/how-can-i-stretch-an-image-in-a-libreoffice-impress-presentation-to-fill-the-pag",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/5d901039-a89c-4bfb-967b-bf66f4df075e/CPD_Background_Investigation_Process.pptx",
+            "path": "/home/user/Desktop/CPD_Background_Investigation_Process.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/CPD_Background_Investigation_Process.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "CPD_Background_Investigation_Process.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "check_image_stretch_and_center",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/5d901039-a89c-4bfb-967b-bf66f4df075e/CPD_Background_Investigation_Process.pptx",
+      "dest": "CPD_Background_Investigation_Process_Original.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/CPD_Background_Investigation_Process.pptx",
+      "dest": "CPD_Background_Investigation_Process.pptx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

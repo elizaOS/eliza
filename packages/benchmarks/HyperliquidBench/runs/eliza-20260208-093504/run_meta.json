@@ -1,0 +1,119 @@
+{
+  "builderCode": null,
+  "demoMode": true,
+  "effectTimeoutMs": 2000,
+  "llmDryRun": false,
+  "network": "demo",
+  "outDir": "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/runs/eliza-20260208-093504",
+  "plan": {
+    "steps": [
+      {
+        "perp_orders": {
+          "builderCode": "COV1",
+          "orders": [
+            {
+              "builderCode": "COV1",
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -0.5
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.01,
+              "tif": "ALO",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "perp_orders": {
+          "builderCode": "COV2",
+          "orders": [
+            {
+              "builderCode": "COV2",
+              "coin": "BTC",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": 1.0
+                }
+              },
+              "reduceOnly": true,
+              "side": "sell",
+              "sz": 0.005,
+              "tif": "GTC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "perp_orders": {
+          "builderCode": "COV3",
+          "orders": [
+            {
+              "builderCode": "COV3",
+              "coin": "SOL",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -0.25
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.1,
+              "tif": "IOC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "cancel_last": {
+          "coin": "ETH"
+        }
+      },
+      {
+        "cancel_all": {
+          "coin": "BTC"
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": true,
+          "usdc": 500.0
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "ETH",
+          "cross": false,
+          "leverage": 10
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "BTC",
+          "cross": true,
+          "leverage": 5
+        }
+      },
+      {
+        "sleep_ms": {
+          "durationMs": 2000
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": false,
+          "usdc": 250.0
+        }
+      }
+    ]
+  },
+  "timestamp": "20260208-173504",
+  "wallet": null,
+  "windowMs": 200
+}

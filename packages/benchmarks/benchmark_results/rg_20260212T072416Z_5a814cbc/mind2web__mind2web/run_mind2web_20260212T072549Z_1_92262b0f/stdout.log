@@ -1,0 +1,18 @@
+No model provider available. Set GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.
+Error running task sample_001: No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.
+No model provider available. Set GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.
+Error running task sample_002: No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.
+No model provider available. Set GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.
+Error running task sample_003: No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.
+
+============================================================
+Mind2Web Benchmark Results
+============================================================
+Tasks: 3, Trials: 3
+Task Success Rate: 0.0%
+Step Accuracy: 0.0%
+Element Accuracy: 0.0%
+Avg Latency: 0ms
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T072416Z_5a814cbc/mind2web__mind2web/run_mind2web_20260212T072549Z_1_92262b0f/output
+============================================================

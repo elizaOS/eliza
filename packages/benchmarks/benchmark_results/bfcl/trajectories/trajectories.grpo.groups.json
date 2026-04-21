@@ -1,0 +1,1331 @@
+[
+  {
+    "group_id": "group-0",
+    "scenario_id": "bfcl_parallel_multiple",
+    "trajectories": [
+      {
+        "trajectory_id": "9ed401ce-ac80-417f-b756-0e2e145aa308",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402304743,
+        "end_time": 1770402317049,
+        "duration_ms": 12306,
+        "episode_id": "parallel_multiple_151",
+        "scenario_id": "bfcl_parallel_multiple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "9c02eed9-a4c1-4943-83e6-202611af9407",
+            "step_number": 0,
+            "timestamp": 1770402304743,
+            "environment_state": {
+              "timestamp": 1770402304743,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "parallel_multiple_151"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "4e832467-9844-4eff-8132-d2ce945b7f24",
+                "timestamp": 1770402317049,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'book_hotel', 'description': 'Book a room in a specific hotel with particular preferences', 'parameters': {'type': 'object', 'properties': {'hotel_name': {'type': 'string', 'description': 'The name of the hotel.'}, 'location': {'type': 'string', 'description': 'The location of the hotel.'}, 'room_type': {'type': 'string', 'description': 'The type of room preferred.'}, 'start_date': {'type': 'string', 'description': 'The starting date of the stay in format MM-DD-YYYY.'}, 'stay_duration': {'type': 'number', 'description': 'The duration of the stay in days.'}, 'view': {'type': 'string', 'description': 'The preferred view from the room, can be ignored if no preference. If none provided, assumes no preference.', 'default': 'No preference'}}, 'required': ['hotel_name', 'location', 'room_type', 'start_date', 'stay_duration']}}}, {'type': 'function', 'function': {'name': 'safeway.order', 'description': 'Order specified items from a Safeway location.', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The location of the Safeway store, e.g. Palo Alto, CA.'}, 'items': {'type': 'array', 'description': 'List of items to order.', 'items': {'type': 'string'}}, 'quantity': {'type': 'array', 'description': 'Quantity of each item in the order list.', 'items': {'type': 'integer'}}}, 'required': ['location', 'items', 'quantity']}}}, {'type': 'function', 'function': {'name': 'latest_exchange_rate', 'description': 'Retrieve the latest exchange rate between two specified currencies.', 'parameters': {'type': 'object', 'properties': {'source_currency': {'type': 'string', 'description': 'The currency you are converting from.'}, 'target_currency': {'type': 'string', 'description': 'The currency you are converting to.'}, 'amount': {'type': 'number', 'description': 'The amount to be converted. If omitted, default to xchange rate of 1 unit source currency.'}}, 'required': ['source_currency', 'target_currency']}}}, {'type': 'function', 'function': {'name': 'light_travel_time', 'description': 'Calculate the time taken for light to travel from a celestial body to another.', 'parameters': {'type': 'object', 'properties': {'distance_in_light_years': {'type': 'number', 'description': 'The distance between the two celestial bodies in light years.'}, 'speed_of_light': {'type': 'number', 'description': 'The speed of light in vacuum, in m/s. Default value is 299792458 m/s.'}}, 'required': ['distance_in_light_years']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': '\"Imagine you are planning a vacation to Paris, France. You want to stay at the \\'Hotel Le Bristol Paris\\' in a suite room for 10 days starting from 12-01-2022. You also have a preference for a city view from your room. How would you book this hotel? After booking, you want to know how much 1000 US dollars would be in Euros. Can you find out the latest exchange rate? On your way to the hotel, you want to stop by a Safeway store in Palo Alto, CA to pick up some items. You need to order 2 bottles of water, 3 apples, and 1 loaf of bread. How would you place this order? Lastly, you are curious about the universe and want to know how long it would take for light to travel from Earth to Proxima Centauri, which is approximately 4.24 light years away, considering the speed of light in vacuum is 299792458 m/s. Can you calculate this?\"'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "[{\"name\":\"book_hotel\",\"arguments\":{\"hotel_name\":\"Hotel Le Bristol Paris\",\"location\":\"Paris, France\",\"room_type\":\"Suite\",\"start_date\":\"12-01-2022\",\"stay_duration\":10,\"view\":\"City view\"}},{\"name\":\"latest_exchange_rate\",\"arguments\":{\"source_currency\":\"USD\",\"target_currency\":\"EUR\",\"amount\":1000}},{\"name\":\"safeway.order\",\"arguments\":{\"location\":\"Palo Alto, CA\",\"items\":[\"bottled water\",\"apple\",\"loaf of bread\"],\"quantity\":[2,3,1]}},{\"name\":\"light_travel_time\",\"arguments\":{\"distance_in_light_years\":4.24,\"speed_of_light\":299792458}}]",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 12305,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "f2d84898-2e15-489c-9481-344e33ba1c9e",
+              "timestamp": 1770402317049,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'book_hotel', 'arguments': {'hotel_name': 'Hotel Le Bristol Paris', 'location': 'Paris, France', 'room_type': 'Suite', 'start_date': '12-01-2022', 'stay_duration': 10, 'view': 'City view'}}, {'name': 'latest_exchange_rate', 'arguments': {'source_currency': 'USD', 'target_currency': 'EUR', 'amount': 1000}}, {'name': 'safeway.order', 'arguments': {'location': 'Palo Alto, CA', 'items': ['bottled water', 'apple', 'loaf of bread'], 'quantity': [2, 3, 1]}}, {'name': 'light_travel_time', 'arguments': {'distance_in_light_years': 4.24, 'speed_of_light': 299792458}}]"
+              },
+              "reasoning": "[{\"name\":\"book_hotel\",\"arguments\":{\"hotel_name\":\"Hotel Le Bristol Paris\",\"location\":\"Paris, France\",\"room_type\":\"Suite\",\"start_date\":\"12-01-2022\",\"stay_duration\":10,\"view\":\"City view\"}},{\"name\":\"latest_exchange_rate\",\"arguments\":{\"source_currency\":\"USD\",\"target_currency\":\"EUR\",\"amount\":1000}},{\"name\":\"safeway.order\",\"arguments\":{\"location\":\"Palo Alto, CA\",\"items\":[\"bottled water\",\"apple\",\"loaf of bread\"],\"quantity\":[2,3,1]}},{\"name\":\"light_travel_time\",\"arguments\":{\"distance_in_light_years\":4.24",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 4
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 0.2,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 12305,
+          "predicted_calls": 4
+        },
+        "metadata": {
+          "test_case_id": "parallel_multiple_151",
+          "category": "parallel_multiple",
+          "question": "[[{'role': 'user', 'content': '\"Imagine you are planning a vacation to Paris, France. You want to stay at the \\'Hotel Le Bristol Paris\\' in a suite room for 10 days starting from 12-01-2022. You also have a preference for a city view from your room. How would you book this hotel? After booking, you want to know how much 1000 US dollars would be in Euros. Can you find out the latest exchange rate? On your way to the hotel, you want to stop by a Safeway store in Palo Alto, CA to pick up some items. You need to order 2 bottles of water, 3 apples, and 1 loaf of bread. How would you place this order? Lastly, you are curious about the universe and want to know how long it would take for light to travel from Earth to Proxima Centauri, which is approximately 4.24 light years away, considering the speed of light in vacuum is 299792458 m/s. Can you calculate this?\"'}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": false,
+          "exec_match": false,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'book_hotel', 'description': 'Book a room in a specific hotel with particular preferences', 'parameters': {'type': 'object', 'properties': {'hotel_name': {'type': 'string', 'description': 'The name of the hotel.'}, 'location': {'type': 'string', 'description': 'The location of the hotel.'}, 'room_type': {'type': 'string', 'description': 'The type of room preferred.'}, 'start_date': {'type': 'string', 'description': 'The starting date of the stay in format MM-DD-YYYY.'}, 'stay_duration': {'type': 'number', 'description': 'The duration of the stay in days.'}, 'view': {'type': 'string', 'description': 'The preferred view from the room, can be ignored if no preference. If none provided, assumes no preference.', 'default': 'No preference'}}, 'required': ['hotel_name', 'location', 'room_type', 'start_date', 'stay_duration']}}}, {'type': 'function', 'function': {'name': 'safeway.order', 'description': 'Order specified items from a Safeway location.', 'parameters': {'type': 'object', 'properties': {'location': {'type': 'string', 'description': 'The location of the Safeway store, e.g. Palo Alto, CA.'}, 'items': {'type': 'array', 'description': 'List of items to order.', 'items': {'type': 'string'}}, 'quantity': {'type': 'array', 'description': 'Quantity of each item in the order list.', 'items': {'type': 'integer'}}}, 'required': ['location', 'items', 'quantity']}}}, {'type': 'function', 'function': {'name': 'latest_exchange_rate', 'description': 'Retrieve the latest exchange rate between two specified currencies.', 'parameters': {'type': 'object', 'properties': {'source_currency': {'type': 'string', 'description': 'The currency you are converting from.'}, 'target_currency': {'type': 'string', 'description': 'The currency you are converting to.'}, 'amount': {'type': 'number', 'description': 'The amount to be converted. If omitted, default to xchange rate of 1 unit source currency.'}}, 'required': ['source_currency', 'target_currency']}}}, {'type': 'function', 'function': {'name': 'light_travel_time', 'description': 'Calculate the time taken for light to travel from a celestial body to another.', 'parameters': {'type': 'object', 'properties': {'distance_in_light_years': {'type': 'number', 'description': 'The distance between the two celestial bodies in light years.'}, 'speed_of_light': {'type': 'number', 'description': 'The speed of light in vacuum, in m/s. Default value is 299792458 m/s.'}}, 'required': ['distance_in_light_years']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': '\"Imagine you are planning a vacation to Paris, France. You want to stay at the \\'Hotel Le Bristol Paris\\' in a suite room for 10 days starting from 12-01-2022. You also have a preference for a city view from your room. How would you book this hotel? After booking, you want to know how much 1000 US dollars would be in Euros. Can you find out the latest exchange rate? On your way to the hotel, you want to stop by a Safeway store in Palo Alto, CA to pick up some items. You need to order 2 bottles of water, 3 apples, and 1 loaf of bread. How would you place this order? Lastly, you are curious about the universe and want to know how long it would take for light to travel from Earth to Proxima Centauri, which is approximately 4.24 light years away, considering the speed of light in vacuum is 299792458 m/s. Can you calculate this?\"'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "[{\"name\":\"book_hotel\",\"arguments\":{\"hotel_name\":\"Hotel Le Bristol Paris\",\"location\":\"Paris, France\",\"room_type\":\"Suite\",\"start_date\":\"12-01-2022\",\"stay_duration\":10,\"view\":\"City view\"}},{\"name\":\"latest_exchange_rate\",\"arguments\":{\"source_currency\":\"USD\",\"target_currency\":\"EUR\",\"amount\":1000}},{\"name\":\"safeway.order\",\"arguments\":{\"location\":\"Palo Alto, CA\",\"items\":[\"bottled water\",\"apple\",\"loaf of bread\"],\"quantity\":[2,3,1]}},{\"name\":\"light_travel_time\",\"arguments\":{\"distance_in_light_years\":4.24,\"speed_of_light\":299792458}}]",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-1",
+    "scenario_id": "bfcl_parallel",
+    "trajectories": [
+      {
+        "trajectory_id": "a72aa8aa-43ed-49f5-b3bf-2856d6b9b070",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402317050,
+        "end_time": 1770402320482,
+        "duration_ms": 3432,
+        "episode_id": "parallel_111",
+        "scenario_id": "bfcl_parallel",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "f42aa420-d180-450d-b185-a10837743a1a",
+            "step_number": 0,
+            "timestamp": 1770402317050,
+            "environment_state": {
+              "timestamp": 1770402317050,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "parallel_111"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "7a0334b7-f933-4cb5-8ff9-9dfafe6ea9ea",
+                "timestamp": 1770402320482,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'calculate_molecular_weight', 'description': 'Calculate the molecular weight of a compound given the compound formula.', 'parameters': {'type': 'object', 'properties': {'compound': {'type': 'string', 'description': 'The molecular formula of the compound.'}, 'to_unit': {'type': 'string', 'description': \"The unit in which to return the result. Default is 'grams/mole'\"}}, 'required': ['compound', 'to_unit']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"What is the molecular weight of the compound C6H12O6 (Glucose) in 'grams/mole' and how does it compare to the molecular weight of the compound C12H22O11 (Sucrose) in the same unit?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "[{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C6H12O6\",\"to_unit\":\"grams/mole\"}},{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C12H22O11\",\"to_unit\":\"grams/mole\"}}]",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 3432,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "2e70972f-6590-4d4a-aa68-152b86279393",
+              "timestamp": 1770402320482,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'calculate_molecular_weight', 'arguments': {'compound': 'C6H12O6', 'to_unit': 'grams/mole'}}, {'name': 'calculate_molecular_weight', 'arguments': {'compound': 'C12H22O11', 'to_unit': 'grams/mole'}}]"
+              },
+              "reasoning": "[{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C6H12O6\",\"to_unit\":\"grams/mole\"}},{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C12H22O11\",\"to_unit\":\"grams/mole\"}}]",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 2
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 3432,
+          "predicted_calls": 2
+        },
+        "metadata": {
+          "test_case_id": "parallel_111",
+          "category": "parallel",
+          "question": "[[{'role': 'user', 'content': \"What is the molecular weight of the compound C6H12O6 (Glucose) in 'grams/mole' and how does it compare to the molecular weight of the compound C12H22O11 (Sucrose) in the same unit?\"}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'calculate_molecular_weight', 'description': 'Calculate the molecular weight of a compound given the compound formula.', 'parameters': {'type': 'object', 'properties': {'compound': {'type': 'string', 'description': 'The molecular formula of the compound.'}, 'to_unit': {'type': 'string', 'description': \"The unit in which to return the result. Default is 'grams/mole'\"}}, 'required': ['compound', 'to_unit']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"What is the molecular weight of the compound C6H12O6 (Glucose) in 'grams/mole' and how does it compare to the molecular weight of the compound C12H22O11 (Sucrose) in the same unit?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "[{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C6H12O6\",\"to_unit\":\"grams/mole\"}},{\"name\":\"calculate_molecular_weight\",\"arguments\":{\"compound\":\"C12H22O11\",\"to_unit\":\"grams/mole\"}}]",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-2",
+    "scenario_id": "bfcl_javascript",
+    "trajectories": [
+      {
+        "trajectory_id": "5ee851ce-046c-4973-bff0-2dba8f71f0c1",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402320483,
+        "end_time": 1770402323592,
+        "duration_ms": 3109,
+        "episode_id": "javascript_6",
+        "scenario_id": "bfcl_javascript",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "b6886a18-ede4-45f4-98ab-c94158b2748d",
+            "step_number": 0,
+            "timestamp": 1770402320482,
+            "environment_state": {
+              "timestamp": 1770402320482,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "javascript_6"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "e620a95b-f1b5-452c-89e8-a10b4512f3cd",
+                "timestamp": 1770402323592,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'mapTransitions', 'description': 'This function creates a mapping where each key is an element from a given array (up to a specified limit of elements) and each value is set to a predefined category. This is useful for defining categories for CSS transitions.', 'parameters': {'type': 'object', 'properties': {'category': {'type': 'string', 'description': 'The category to be assigned to each element in the mapping.'}, 'limit': {'type': 'number', 'description': 'The number of elements from the array to include in the mapping.'}}, 'required': ['category', 'limit']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"Help me create a mapping that assigns each of the first 4 elements from a given array to the category 'transition' for use in CSS transitions?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"mapTransitions\",\"arguments\":{\"category\":\"transition\",\"limit\":4}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 3109,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "3805c8cb-ef61-466c-a95c-8abdfd04e7ea",
+              "timestamp": 1770402323592,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'mapTransitions', 'arguments': {'category': 'transition', 'limit': 4}}]"
+              },
+              "reasoning": "{\"name\":\"mapTransitions\",\"arguments\":{\"category\":\"transition\",\"limit\":4}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 3109,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "javascript_6",
+          "category": "javascript",
+          "question": "[[{'role': 'user', 'content': \"Help me create a mapping that assigns each of the first 4 elements from a given array to the category 'transition' for use in CSS transitions?\"}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'mapTransitions', 'description': 'This function creates a mapping where each key is an element from a given array (up to a specified limit of elements) and each value is set to a predefined category. This is useful for defining categories for CSS transitions.', 'parameters': {'type': 'object', 'properties': {'category': {'type': 'string', 'description': 'The category to be assigned to each element in the mapping.'}, 'limit': {'type': 'number', 'description': 'The number of elements from the array to include in the mapping.'}}, 'required': ['category', 'limit']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"Help me create a mapping that assigns each of the first 4 elements from a given array to the category 'transition' for use in CSS transitions?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "{\"name\":\"mapTransitions\",\"arguments\":{\"category\":\"transition\",\"limit\":4}}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-3",
+    "scenario_id": "bfcl_simple",
+    "trajectories": [
+      {
+        "trajectory_id": "713ad72d-c961-4760-84bf-d3bde59531f4",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402323592,
+        "end_time": 1770402325295,
+        "duration_ms": 1703,
+        "episode_id": "simple_34",
+        "scenario_id": "bfcl_simple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "de99e3e2-1628-4d2f-82f3-e707396f35d8",
+            "step_number": 0,
+            "timestamp": 1770402323592,
+            "environment_state": {
+              "timestamp": 1770402323592,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "simple_34"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "2a2de91c-939b-454b-b345-a2ff6f0f29db",
+                "timestamp": 1770402325295,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'travel_itinerary_generator', 'description': 'Generate a travel itinerary based on specific destination, duration and daily budget, with preferred exploration type.', 'parameters': {'type': 'object', 'properties': {'destination': {'type': 'string', 'description': 'Destination city of the trip.'}, 'days': {'type': 'number', 'description': 'Number of days for the trip.'}, 'daily_budget': {'type': 'number', 'description': 'The maximum daily budget for the trip.'}, 'exploration_type': {'type': 'string', 'description': 'The preferred exploration type.', 'enum': ['nature', 'urban', 'history', 'culture'], 'default': 'urban'}}, 'required': ['destination', 'days', 'daily_budget']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': 'Create an itinerary for a 7 days trip to Tokyo with daily budgets not exceeding $100 and prefer exploring nature.'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"travel_itinerary_generator\",\"arguments\":{\"destination\":\"Tokyo\",\"days\":7,\"daily_budget\":100,\"exploration_type\":\"nature\"}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 1703,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "a23bfa95-a5b5-4027-b107-136c3d21bbc6",
+              "timestamp": 1770402325295,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'travel_itinerary_generator', 'arguments': {'destination': 'Tokyo', 'days': 7, 'daily_budget': 100, 'exploration_type': 'nature'}}]"
+              },
+              "reasoning": "{\"name\":\"travel_itinerary_generator\",\"arguments\":{\"destination\":\"Tokyo\",\"days\":7,\"daily_budget\":100,\"exploration_type\":\"nature\"}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 1703,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "simple_34",
+          "category": "simple",
+          "question": "[[{'role': 'user', 'content': 'Create an itinerary for a 7 days trip to Tokyo with daily budgets not exceeding $100 and prefer exploring nature.'}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'travel_itinerary_generator', 'description': 'Generate a travel itinerary based on specific destination, duration and daily budget, with preferred exploration type.', 'parameters': {'type': 'object', 'properties': {'destination': {'type': 'string', 'description': 'Destination city of the trip.'}, 'days': {'type': 'number', 'description': 'Number of days for the trip.'}, 'daily_budget': {'type': 'number', 'description': 'The maximum daily budget for the trip.'}, 'exploration_type': {'type': 'string', 'description': 'The preferred exploration type.', 'enum': ['nature', 'urban', 'history', 'culture'], 'default': 'urban'}}, 'required': ['destination', 'days', 'daily_budget']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': 'Create an itinerary for a 7 days trip to Tokyo with daily budgets not exceeding $100 and prefer exploring nature.'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "{\"name\":\"travel_itinerary_generator\",\"arguments\":{\"destination\":\"Tokyo\",\"days\":7,\"daily_budget\":100,\"exploration_type\":\"nature\"}}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-4",
+    "scenario_id": "bfcl_relevance",
+    "trajectories": [
+      {
+        "trajectory_id": "eb2b58ea-9fb4-4f7c-9a3a-9620515b50dd",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402325296,
+        "end_time": 1770402336982,
+        "duration_ms": 11686,
+        "episode_id": "irrelevance_211",
+        "scenario_id": "bfcl_relevance",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "9d62b57a-5f43-48b9-89c2-7dcbd7dd6396",
+            "step_number": 0,
+            "timestamp": 1770402325296,
+            "environment_state": {
+              "timestamp": 1770402325296,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "irrelevance_211"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "61eab9f6-274b-47c0-a914-13dc6b5ee7fd",
+                "timestamp": 1770402336982,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'recipe_calculator.calculate_time', 'description': 'Calculates the time to cook a recipe based on weight and per unit time.', 'parameters': {'type': 'object', 'properties': {'weight': {'type': 'number', 'description': 'The weight of the item to be cooked.'}, 'per_unit_time': {'type': 'number', 'description': 'The time required to cook per unit weight.'}, 'unit_of_time': {'type': 'string', 'description': 'Unit of time, such as minutes or hours. Default is minutes.'}}, 'required': ['weight', 'per_unit_time']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"What's the recipe to cook five chicken\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "[]",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 11686,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "140f26b5-62e9-4e5e-aeb6-514e2d1a15f0",
+              "timestamp": 1770402336982,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[]"
+              },
+              "reasoning": "[]",
+              "llm_call_id": null,
+              "success": false,
+              "result": {
+                "predicted_calls": 0
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 0.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 11686,
+          "predicted_calls": 0
+        },
+        "metadata": {
+          "test_case_id": "irrelevance_211",
+          "category": "relevance",
+          "question": "[[{'role': 'user', 'content': \"What's the recipe to cook five chicken\"}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'recipe_calculator.calculate_time', 'description': 'Calculates the time to cook a recipe based on weight and per unit time.', 'parameters': {'type': 'object', 'properties': {'weight': {'type': 'number', 'description': 'The weight of the item to be cooked.'}, 'per_unit_time': {'type': 'number', 'description': 'The time required to cook per unit weight.'}, 'unit_of_time': {'type': 'string', 'description': 'Unit of time, such as minutes or hours. Default is minutes.'}}, 'required': ['weight', 'per_unit_time']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"What's the recipe to cook five chicken\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "[]",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-5",
+    "scenario_id": "bfcl_multiple",
+    "trajectories": [
+      {
+        "trajectory_id": "44565d88-cf2d-434d-a662-078ef3a2b7c4",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402336982,
+        "end_time": 1770402339530,
+        "duration_ms": 2548,
+        "episode_id": "multiple_84",
+        "scenario_id": "bfcl_multiple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "0a44f844-5a07-4058-95f1-c33d29fd046a",
+            "step_number": 0,
+            "timestamp": 1770402336982,
+            "environment_state": {
+              "timestamp": 1770402336982,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "multiple_84"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "b19309fd-3f7c-46c7-8b45-0dd5598c3e9a",
+                "timestamp": 1770402339530,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'getTopGoalScorers', 'description': 'Returns the top goal scorers for a specific competition and team', 'parameters': {'type': 'object', 'properties': {'competition': {'type': 'string', 'description': \"The name of the competition (for example, 'UEFA Champions League').\"}, 'team': {'type': 'string', 'description': \"The name of the team (for example, 'Barcelona').\"}, 'number': {'type': 'number', 'description': 'The number of top goal scorers to retrieve.'}}, 'required': ['competition', 'team', 'number']}}}, {'type': 'function', 'function': {'name': 'getTopAssists', 'description': 'Returns the top assist makers for a specific competition and team', 'parameters': {'type': 'object', 'properties': {'competition': {'type': 'string', 'description': \"The name of the competition (for example, 'UEFA Champions League').\"}, 'team': {'type': 'string', 'description': \"The name of the team (for example, 'Barcelona').\"}, 'number': {'type': 'number', 'description': 'The number of top assist makers to retrieve.'}}, 'required': ['competition', 'team', 'number']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': 'Give me the top 10 goal scorers in the UEFA Champions League from Barcelona team.'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"getTopGoalScorers\",\"arguments\":{\"competition\":\"UEFA Champions League\",\"team\":\"Barcelona\",\"number\":10}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 2548,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "fae2e157-bb9c-443e-8e64-3b4ce3bc1505",
+              "timestamp": 1770402339530,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'getTopGoalScorers', 'arguments': {'competition': 'UEFA Champions League', 'team': 'Barcelona', 'number': 10}}]"
+              },
+              "reasoning": "{\"name\":\"getTopGoalScorers\",\"arguments\":{\"competition\":\"UEFA Champions League\",\"team\":\"Barcelona\",\"number\":10}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 2547,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "multiple_84",
+          "category": "multiple",
+          "question": "[[{'role': 'user', 'content': 'Give me the top 10 goal scorers in the UEFA Champions League from Barcelona team.'}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      },
+      {
+        "trajectory_id": "65b50628-36dc-4022-9ca7-83977dae99e4",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402349434,
+        "end_time": 1770402356781,
+        "duration_ms": 7347,
+        "episode_id": "multiple_26",
+        "scenario_id": "bfcl_multiple",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "575d44a5-764f-4719-866c-1d7800132b43",
+            "step_number": 0,
+            "timestamp": 1770402349434,
+            "environment_state": {
+              "timestamp": 1770402349434,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "multiple_26"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "387328ae-93ee-4f6e-9ff0-e7b400b9ca62",
+                "timestamp": 1770402356781,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'game_scores.get', 'description': 'Retrieve scores and rankings based on player\u2019s performance in a certain game.', 'parameters': {'type': 'object', 'properties': {'game': {'type': 'string', 'description': 'The name of the game.'}, 'platform': {'type': 'string', 'description': 'The gaming platform e.g. Xbox, Playstation, PC'}, 'level': {'type': 'number', 'description': 'The level of the game for which you want to retrieve the scores.'}, 'player': {'type': 'string', 'description': \"The name of the player for whom you want to retrieve scores. Default ''\"}}, 'required': ['game', 'platform', 'level']}}}, {'type': 'function', 'function': {'name': 'game_rewards.get', 'description': 'Retrieve information about different types of rewards that you can receive when playing a certain game.', 'parameters': {'type': 'object', 'properties': {'game': {'type': 'string', 'description': 'The name of the game.'}, 'platform': {'type': 'string', 'description': 'The gaming platform e.g. Xbox, Playstation, PC'}, 'mission': {'type': 'string', 'description': \"The mission for which you want to know the rewards. Default to ''\"}, 'trophy': {'type': 'string', 'description': \"The trophy level for which you want to know the rewards. Default to ''\"}}, 'required': ['game', 'platform']}}}, {'type': 'function', 'function': {'name': 'game_missions.list', 'description': 'List all missions for a certain game.', 'parameters': {'type': 'object', 'properties': {'game': {'type': 'string', 'description': 'The name of the game.'}}, 'required': ['game']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': 'Find out the rewards for playing Fortnite on Playstation platform with different missions and trophies'}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"game_rewards.get\",\"arguments\":{\"game\":\"Fortnite\",\"platform\":\"Playstation\",\"mission\":\"\",\"trophy\":\"\"}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 7347,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "215f5227-3f45-4b7f-a444-4edc9be6d610",
+              "timestamp": 1770402356781,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'game_rewards.get', 'arguments': {'game': 'Fortnite', 'platform': 'Playstation', 'mission': '', 'trophy': ''}}]"
+              },
+              "reasoning": "{\"name\":\"game_rewards.get\",\"arguments\":{\"game\":\"Fortnite\",\"platform\":\"Playstation\",\"mission\":\"\",\"trophy\":\"\"}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 7347,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "multiple_26",
+          "category": "multiple",
+          "question": "[[{'role': 'user', 'content': 'Find out the rewards for playing Fortnite on Playstation platform with different missions and trophies'}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-6",
+    "scenario_id": "bfcl_sql",
+    "trajectories": [
+      {
+        "trajectory_id": "1745865c-cf24-45ef-bf5e-9954465b2d35",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402339530,
+        "end_time": 1770402343398,
+        "duration_ms": 3868,
+        "episode_id": "sql_13",
+        "scenario_id": "bfcl_sql",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "7b1e83fe-e11c-4c10-af5f-40c936003dfd",
+            "step_number": 0,
+            "timestamp": 1770402339530,
+            "environment_state": {
+              "timestamp": 1770402339530,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "sql_13"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "d85dbd0a-1611-437f-a575-22bd1bed714b",
+                "timestamp": 1770402343398,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'sql.execute', 'description': 'Execute SQL queries based on user-defined parameters like SQL keyword, table name, column names, and conditions.', 'parameters': {'type': 'object', 'properties': {'sql_keyword': {'type': 'string', 'description': 'The SQL keyword to define the type of operation.', 'enum': ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE']}, 'table_name': {'type': 'string', 'description': 'The name of the database table to operate on.'}, 'columns': {'type': 'array', 'description': \"The column names involved in the SQL operation. If not specified use '*' to represent all columns.\", 'items': {'type': 'string'}}, 'insert_values': {'type': 'array', 'description': 'Values of an INSERT statement.', 'items': {'type': 'array', 'items': {'type': 'string'}}}, 'update_values': {'type': 'array', 'description': 'Values of an UPDATE statement corresponding to columns to set.', 'items': {'type': 'string'}}, 'conditions': {'type': 'array', 'description': \"Conditions for the SQL operation, formatted as a SQL WHERE clause. Put them in the format of ['cond1 > val1', 'cond2 = val2', 'cond3<val3'] and etc.\", 'items': {'type': 'array', 'items': {'type': 'string'}}}}, 'required': ['sql_keyword', 'table_name']}}}]\n```\n\n# User Query\n\n[{'role': 'user', 'content': 'Can you establish a new database table called \"ParticleData\" with the columns \"ParticleID\", \"ParticleName\", \"DiscoveredBy\", \"YearDiscovered\", \"Charge\", \"Spin\", \"Mass\" to record the properties of elementary particles discovered in particle physics?'}]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"sql.execute\",\"arguments\":{\"sql_keyword\":\"CREATE\",\"table_name\":\"ParticleData\",\"columns\":[\"ParticleID\",\"ParticleName\",\"DiscoveredBy\",\"YearDiscovered\",\"Charge\",\"Spin\",\"Mass\"]}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 3868,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "8547eea2-b173-4f5c-96a9-ea1979187d13",
+              "timestamp": 1770402343398,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'sql.execute', 'arguments': {'sql_keyword': 'CREATE', 'table_name': 'ParticleData', 'columns': ['ParticleID', 'ParticleName', 'DiscoveredBy', 'YearDiscovered', 'Charge', 'Spin', 'Mass']}}]"
+              },
+              "reasoning": "{\"name\":\"sql.execute\",\"arguments\":{\"sql_keyword\":\"CREATE\",\"table_name\":\"ParticleData\",\"columns\":[\"ParticleID\",\"ParticleName\",\"DiscoveredBy\",\"YearDiscovered\",\"Charge\",\"Spin\",\"Mass\"]}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 3867,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "sql_13",
+          "category": "sql",
+          "question": "[{'role': 'user', 'content': 'Can you establish a new database table called \"ParticleData\" with the columns \"ParticleID\", \"ParticleName\", \"DiscoveredBy\", \"YearDiscovered\", \"Charge\", \"Spin\", \"Mass\" to record the properties of elementary particles discovered in particle physics?'}]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'sql.execute', 'description': 'Execute SQL queries based on user-defined parameters like SQL keyword, table name, column names, and conditions.', 'parameters': {'type': 'object', 'properties': {'sql_keyword': {'type': 'string', 'description': 'The SQL keyword to define the type of operation.', 'enum': ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE']}, 'table_name': {'type': 'string', 'description': 'The name of the database table to operate on.'}, 'columns': {'type': 'array', 'description': \"The column names involved in the SQL operation. If not specified use '*' to represent all columns.\", 'items': {'type': 'string'}}, 'insert_values': {'type': 'array', 'description': 'Values of an INSERT statement.', 'items': {'type': 'array', 'items': {'type': 'string'}}}, 'update_values': {'type': 'array', 'description': 'Values of an UPDATE statement corresponding to columns to set.', 'items': {'type': 'string'}}, 'conditions': {'type': 'array', 'description': \"Conditions for the SQL operation, formatted as a SQL WHERE clause. Put them in the format of ['cond1 > val1', 'cond2 = val2', 'cond3<val3'] and etc.\", 'items': {'type': 'array', 'items': {'type': 'string'}}}}, 'required': ['sql_keyword', 'table_name']}}}]\n```\n\n# User Query\n\n[{'role': 'user', 'content': 'Can you establish a new database table called \"ParticleData\" with the columns \"ParticleID\", \"ParticleName\", \"DiscoveredBy\", \"YearDiscovered\", \"Charge\", \"Spin\", \"Mass\" to record the properties of elementary particles discovered in particle physics?'}]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "{\"name\":\"sql.execute\",\"arguments\":{\"sql_keyword\":\"CREATE\",\"table_name\":\"ParticleData\",\"columns\":[\"ParticleID\",\"ParticleName\",\"DiscoveredBy\",\"YearDiscovered\",\"Charge\",\"Spin\",\"Mass\"]}}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-7",
+    "scenario_id": "bfcl_java",
+    "trajectories": [
+      {
+        "trajectory_id": "7c3b610a-b452-48ae-b6c5-9f2ae700ec89",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402343398,
+        "end_time": 1770402346389,
+        "duration_ms": 2991,
+        "episode_id": "java_42",
+        "scenario_id": "bfcl_java",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "2130ddce-937a-4915-ba80-e2c593dd23b6",
+            "step_number": 0,
+            "timestamp": 1770402343398,
+            "environment_state": {
+              "timestamp": 1770402343398,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "java_42"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "5162d329-a778-4567-b4fc-1bb4b6b38d06",
+                "timestamp": 1770402346389,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'TermQueryBuilderTests.termQuery', 'description': 'Constructs a term query based on the provided field type, value, and case sensitivity setting.', 'parameters': {'type': 'object', 'properties': {'mapper': {'type': 'string', 'description': 'The MappedFieldType instance for the field to be queried.'}, 'value': {'type': 'string', 'description': 'The value to query for.'}, 'caseInsensitive': {'type': 'boolean', 'description': 'Whether the term query should be case insensitive.'}}, 'required': ['mapper', 'value', 'caseInsensitive']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"Help me create a term query for a field type `usernameField` that searches for the value 'JohnDoe' in a case-insensitive manner within an Elasticsearch test case?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"TermQueryBuilderTests.termQuery\",\"arguments\":{\"mapper\":\"usernameField\",\"value\":\"JohnDoe\",\"caseInsensitive\":true}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 2991,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "3db1027c-d475-48af-a8d6-072f5fa12d9a",
+              "timestamp": 1770402346389,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'TermQueryBuilderTests.termQuery', 'arguments': {'mapper': 'usernameField', 'value': 'JohnDoe', 'caseInsensitive': True}}]"
+              },
+              "reasoning": "{\"name\":\"TermQueryBuilderTests.termQuery\",\"arguments\":{\"mapper\":\"usernameField\",\"value\":\"JohnDoe\",\"caseInsensitive\":true}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 2990,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "java_42",
+          "category": "java",
+          "question": "[[{'role': 'user', 'content': \"Help me create a term query for a field type `usernameField` that searches for the value 'JohnDoe' in a case-insensitive manner within an Elasticsearch test case?\"}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl",
+          "ast_match": true,
+          "exec_match": true,
+          "evaluated": true
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'TermQueryBuilderTests.termQuery', 'description': 'Constructs a term query based on the provided field type, value, and case sensitivity setting.', 'parameters': {'type': 'object', 'properties': {'mapper': {'type': 'string', 'description': 'The MappedFieldType instance for the field to be queried.'}, 'value': {'type': 'string', 'description': 'The value to query for.'}, 'caseInsensitive': {'type': 'boolean', 'description': 'Whether the term query should be case insensitive.'}}, 'required': ['mapper', 'value', 'caseInsensitive']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"Help me create a term query for a field type `usernameField` that searches for the value 'JohnDoe' in a case-insensitive manner within an Elasticsearch test case?\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "{\"name\":\"TermQueryBuilderTests.termQuery\",\"arguments\":{\"mapper\":\"usernameField\",\"value\":\"JohnDoe\",\"caseInsensitive\":true}}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  },
+  {
+    "group_id": "group-8",
+    "scenario_id": "bfcl_rest_api",
+    "trajectories": [
+      {
+        "trajectory_id": "daf594eb-79c4-4f9e-9618-c90eceedd5bd",
+        "agent_id": "BFCLBenchmarkAgent",
+        "start_time": 1770402346389,
+        "end_time": 1770402349434,
+        "duration_ms": 3045,
+        "episode_id": "rest_66",
+        "scenario_id": "bfcl_rest_api",
+        "batch_id": null,
+        "group_index": null,
+        "steps": [
+          {
+            "step_id": "78371eef-bf59-4c90-b36d-aab1f1bdd0cc",
+            "step_number": 0,
+            "timestamp": 1770402346389,
+            "environment_state": {
+              "timestamp": 1770402346389,
+              "agent_balance": 0.0,
+              "agent_points": 0.0,
+              "agent_pnl": 0.0,
+              "open_positions": 0,
+              "active_markets": null,
+              "portfolio_value": null,
+              "unread_messages": null,
+              "recent_engagement": null,
+              "custom": {
+                "test_case_id": "rest_66"
+              }
+            },
+            "observation": {},
+            "llm_calls": [
+              {
+                "call_id": "69e7fe17-04af-4304-b74d-9a259475f467",
+                "timestamp": 1770402349433,
+                "model": "TEXT_LARGE",
+                "model_version": null,
+                "system_prompt": "",
+                "user_prompt": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'requests.get', 'description': 'Sends a GET request to the specified URL.', 'parameters': {'type': 'object', 'properties': {'url': {'type': 'string', 'description': 'The api provides a simple way to query the holidays of over 100 countries, also it is possible to query long weekends. countryCode is ISO 3166-1 alpha-2', 'default': 'https://date.nager.at/api/v3/LongWeekend/{year}/{countryCode}'}, 'headers': {'type': 'object', 'description': ''}, 'timeout': {'type': 'number', 'description': 'How many seconds to wait for the server to send data before giving up.'}, 'params': {'type': 'object', 'description': ''}, 'auth': {'type': 'string', 'description': 'A tuple to enable a certain HTTP authentication.', 'default': 'None', 'items': {'type': 'string'}}, 'cert': {'type': 'string', 'description': 'A String or Tuple specifying a cert file or key.', 'default': 'None'}, 'cookies': {'type': 'object', 'description': 'Dictionary of cookies to send with the request.'}, 'proxies': {'type': 'object', 'description': 'Dictionary of the protocol to the proxy url.'}, 'stream': {'type': 'boolean', 'description': 'A Boolean indication if the response should be immediately downloaded (False) or streamed (True).', 'default': False}, 'verify': {'type': 'string', 'description': 'A Boolean or a String indication to verify the servers TLS certificate or not.', 'default': True}}, 'required': ['url']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"As a travel blogger, I'm planning my trips for the upcoming year and I'd like to take advantage of the long weekends. Could you help me find out when the long weekends will occur in Canada for the year 2023? I need this information to optimize my travel schedule and make the most of my time off.\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+                "messages": null,
+                "response": "{\"name\":\"requests.get\",\"arguments\":{\"url\":\"https://date.nager.at/api/v3/LongWeekend/2023/CA\"}}",
+                "reasoning": null,
+                "temperature": 0.0,
+                "max_tokens": 0,
+                "top_p": null,
+                "prompt_tokens": null,
+                "completion_tokens": null,
+                "latency_ms": 3044,
+                "purpose": "action",
+                "action_type": "runtime.use_model"
+              }
+            ],
+            "provider_accesses": [],
+            "reasoning": null,
+            "action": {
+              "attempt_id": "a27af45a-429b-4fc9-8c75-d38cb6843a09",
+              "timestamp": 1770402349434,
+              "action_type": "function_call",
+              "action_name": "BFCL_CALL",
+              "parameters": {
+                "calls": "[{'name': 'requests.get', 'arguments': {'url': 'https://date.nager.at/api/v3/LongWeekend/2023/CA'}}]"
+              },
+              "reasoning": "{\"name\":\"requests.get\",\"arguments\":{\"url\":\"https://date.nager.at/api/v3/LongWeekend/2023/CA\"}}",
+              "llm_call_id": null,
+              "success": true,
+              "result": {
+                "predicted_calls": 1
+              },
+              "error": null,
+              "immediate_reward": null
+            },
+            "reward": 1.0,
+            "done": false,
+            "metadata": null
+          }
+        ],
+        "total_reward": 1.0,
+        "reward_components": {
+          "environment_reward": 0.0,
+          "ai_judge_reward": null,
+          "components": null,
+          "judge_model": null,
+          "judge_reasoning": null,
+          "judge_timestamp": null
+        },
+        "metrics": {
+          "episode_length": 1,
+          "final_status": "completed",
+          "final_balance": null,
+          "final_pnl": null,
+          "trades_executed": null,
+          "posts_created": null,
+          "messages_handled": null,
+          "success_rate": null,
+          "error_count": null,
+          "latency_ms": 3044,
+          "predicted_calls": 1
+        },
+        "metadata": {
+          "test_case_id": "rest_66",
+          "category": "rest_api",
+          "question": "[[{'role': 'user', 'content': \"As a travel blogger, I'm planning my trips for the upcoming year and I'd like to take advantage of the long weekends. Could you help me find out when the long weekends will occur in Canada for the year 2023? I need this information to optimize my travel schedule and make the most of my time off.\"}]]",
+          "model": "openai/gpt-5-mini",
+          "provider": "openai",
+          "benchmark": "bfcl"
+        }
+      }
+    ],
+    "shared_prefix": [
+      {
+        "role": "system",
+        "content": "You are Agent, an autonomous agent. Your goal is to make good decisions.",
+        "name": null
+      },
+      {
+        "role": "user",
+        "content": "# Available Functions for This Query\n\nYou have access to the following functions. Analyze the user's request and call the appropriate function(s).\n\n```json\n[{'type': 'function', 'function': {'name': 'requests.get', 'description': 'Sends a GET request to the specified URL.', 'parameters': {'type': 'object', 'properties': {'url': {'type': 'string', 'description': 'The api provides a simple way to query the holidays of over 100 countries, also it is possible to query long weekends. countryCode is ISO 3166-1 alpha-2', 'default': 'https://date.nager.at/api/v3/LongWeekend/{year}/{countryCode}'}, 'headers': {'type': 'object', 'description': ''}, 'timeout': {'type': 'number', 'description': 'How many seconds to wait for the server to send data before giving up.'}, 'params': {'type': 'object', 'description': ''}, 'auth': {'type': 'string', 'description': 'A tuple to enable a certain HTTP authentication.', 'default': 'None', 'items': {'type': 'string'}}, 'cert': {'type': 'string', 'description': 'A String or Tuple specifying a cert file or key.', 'default': 'None'}, 'cookies': {'type': 'object', 'description': 'Dictionary of cookies to send with the request.'}, 'proxies': {'type': 'object', 'description': 'Dictionary of the protocol to the proxy url.'}, 'stream': {'type': 'boolean', 'description': 'A Boolean indication if the response should be immediately downloaded (False) or streamed (True).', 'default': False}, 'verify': {'type': 'string', 'description': 'A Boolean or a String indication to verify the servers TLS certificate or not.', 'default': True}}, 'required': ['url']}}}]\n```\n\n# User Query\n\n[[{'role': 'user', 'content': \"As a travel blogger, I'm planning my trips for the upcoming year and I'd like to take advantage of the long weekends. Could you help me find out when the long weekends will occur in Canada for the year 2023? I need this information to optimize my travel schedule and make the most of my time off.\"}]]\n\n# Instructions\n\nBased on the available functions and the user's query:\n1. Identify which function(s) should be called\n2. Extract the required argument values from the query\n3. Respond with a valid JSON function call\n\nResponse format for single function:\n{\"name\": \"function_name\", \"arguments\": {\"param1\": value1, \"param2\": value2}}\n\nResponse format for multiple functions:\n[{\"name\": \"func1\", \"arguments\": {...}}, {\"name\": \"func2\", \"arguments\": {...}}]\n\nIMPORTANT: Numbers should be numbers (not strings), booleans should be true/false (not strings).\nRespond ONLY with the JSON function call, no other text.",
+        "name": null
+      },
+      {
+        "role": "assistant",
+        "content": "{\"name\":\"requests.get\",\"arguments\":{\"url\":\"https://date.nager.at/api/v3/LongWeekend/2023/CA\"}}",
+        "name": null
+      }
+    ],
+    "rankings": null,
+    "normalized_rewards": null,
+    "ruler_scores": null,
+    "created_at": 1770402356785,
+    "model_version": null
+  }
+]

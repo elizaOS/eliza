@@ -1,0 +1,21 @@
+:root {
+  --tag-perp: #2563eb;      /* blue-600 */
+  --tag-account: #0d9488;   /* teal-500 */
+  --tag-risk: #f97316;      /* orange-500 */
+  --tag-generic: #475569;   /* slate-600 */
+  --tag-pass: #047857;      /* emerald-700 */
+  --tag-warning: #f59e0b;   /* amber-500 */
+  --tag-partial: #6366f1;   /* indigo-500 */
+  --tag-fail: #dc2626;      /* red-600 */
+}
+.tag { display:inline-block; padding:2px 6px; border-radius:999px; font-size:11px; color:#fff; }
+.tag-perp { background: var(--tag-perp); }
+.tag-account { background: var(--tag-account); }
+.tag-risk { background: var(--tag-risk); }
+.tag-generic { background: var(--tag-generic); }
+.tag-pass { background: var(--tag-pass); }
+.tag-warning { background: var(--tag-warning); }
+.tag-partial { background: var(--tag-partial); }
+.tag-fail { background: var(--tag-fail); }
+code { background: #f1f5f9; padding: 0 4px; border-radius: 4px; }
+dialog::backdrop { background: rgba(0,0,0,.3); }

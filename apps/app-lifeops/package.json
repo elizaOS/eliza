@@ -1,0 +1,76 @@
+{
+  "name": "@elizaos/app-lifeops",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "sideEffects": [
+    "./src/widgets/index.ts",
+    "./src/api/client-lifeops.ts"
+  ],
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./inbox/types": "./src/inbox/types.ts",
+    "./types": "./src/types/index.ts",
+    "./types/app-blocker-settings-card": "./src/types/app-blocker-settings-card.ts",
+    "./types/website-blocker-settings-card": "./src/types/website-blocker-settings-card.ts",
+    "./ui": "./src/ui.ts",
+    "./agent-lifeops": "./src/agent-lifeops.ts",
+    "./plugin": "./src/plugin.ts",
+    "./selfcontrol": "./src/website-blocker/public.ts",
+    "./selfcontrol/selfcontrol": "./src/website-blocker/engine.ts",
+    "./website-blocker": "./src/website-blocker/public.ts",
+    "./lifeops": "./src/lifeops/index.ts",
+    "./lifeops/*": "./src/lifeops/*.ts",
+    "./inbox/*": "./src/inbox/*.ts",
+    "./actions/*": "./src/actions/*.ts",
+    "./actions/*.js": "./src/actions/*.ts",
+    "./providers/*": "./src/providers/*.ts",
+    "./routes/*": "./src/routes/*.ts",
+    "./activity-profile/*": "./src/activity-profile/*.ts",
+    "./api/client-lifeops": "./src/api/client-lifeops.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./events": "./src/events/index.ts",
+    "./platform": "./src/platform/index.ts",
+    "./platform/*": "./src/platform/*.ts",
+    "./utils": "./src/utils/index.ts",
+    "./utils/*": "./src/utils/*.ts",
+    "./widgets": "./src/widgets/index.ts",
+    "./components/*": "./src/components/*"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "test:app-state": "vitest run --config vitest.config.ts eliza/apps/app-lifeops/test/lifeops-app-state.test.ts",
+    "test:integration": "cd ../../.. && vitest run --config test/vitest/integration.config.ts eliza/apps/app-lifeops/test/life-smoke.integration.test.ts",
+    "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/native-activity-tracker": "workspace:*",
+    "@elizaos/plugin-signal": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "lucide-react": "^1.0.0",
+    "sharp": "^0.34.5"
+  },
+  "peerDependencies": {
+    "react": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

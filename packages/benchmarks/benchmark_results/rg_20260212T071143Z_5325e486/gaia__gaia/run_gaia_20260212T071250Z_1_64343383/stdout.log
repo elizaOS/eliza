@@ -1,0 +1,24 @@
+Running quick test (5 questions) with groq/qwen/qwen3-32b...
+GAIA dataset access denied (gated). Request access at https://huggingface.co/datasets/gaia-benchmark/GAIA and provide a token via HF_TOKEN or --hf-token.
+GAIA dataset is gated; running built-in sample dataset for quick test instead. Set HF_TOKEN (and request access) to run the official GAIA benchmark.
+Leaderboard comparison skipped (dataset_source is not 'gaia'). Run with --dataset gaia for official GAIA/leaderboard comparison.
+
+============================================================
+GAIA Benchmark - Final Results
+============================================================
+
+Overall Accuracy: 100.0%
+Total Questions: 5
+Correct: 5
+Errors: 0
+
+By Level:
+  Level 1: 100.0% (2 questions)
+  Level 2: 100.0% (2 questions)
+  Level 3: 100.0% (1 questions)
+
+============================================================
+
+=== Results: groq/qwen/qwen3-32b ===
+Overall Accuracy: 100.0%
+Correct: 5/5

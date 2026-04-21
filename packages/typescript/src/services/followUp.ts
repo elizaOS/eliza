@@ -8,7 +8,7 @@ import type { ServiceTypeName } from "../types/service";
 import { Service } from "../types/service";
 import type { Task, TaskWorker } from "../types/task";
 import { stringToUuid } from "../utils";
-import type { ContactInfo, RolodexService } from "./rolodex.ts";
+import type { ContactInfo, RelationshipsService } from "./relationships.ts";
 
 export interface FollowUpTask {
 	entityId: UUID;
@@ -33,41 +33,25 @@ export class FollowUpService extends Service {
 	capabilityDescription =
 		"Task-based follow-up scheduling and management for contacts";
 
-	private rolodexService!: RolodexService;
+	private relationshipsService!: RelationshipsService;
 
 	constructor(runtime?: IAgentRuntime) {
 		super();
 		if (runtime) {
 			this.runtime = runtime;
-			// Wait for RolodexService to become available using service promise
-			this.runtime
-				.getServiceLoadPromise("rolodex" as ServiceTypeName)
-				.then((service) => {
-					this.rolodexService = service as RolodexService;
-					logger.info(
-						"[FollowUpService] Successfully acquired RolodexService via service promise",
-					);
-				})
-				.catch((error) => {
-					logger.error(
-						"[FollowUpService] Failed to acquire RolodexService:",
-						error instanceof Error ? error.message : String(error),
-					);
-					throw new Error("[FollowUpService] RolodexService is not available");
-				});
 		}
 	}
 
 	async initialize(runtime: IAgentRuntime): Promise<void> {
 		this.runtime = runtime;
 
-		// If rolodexService is not already initialized, wait for it
-		if (!this.rolodexService) {
-			this.rolodexService = (await this.runtime.getServiceLoadPromise(
-				"rolodex" as ServiceTypeName,
-			)) as RolodexService;
+		// If relationshipsService is not already initialized, wait for it
+		if (!this.relationshipsService) {
+			this.relationshipsService = (await this.runtime.getServiceLoadPromise(
+				"relationships" as ServiceTypeName,
+			)) as RelationshipsService;
 			logger.info(
-				"[FollowUpService] Successfully acquired RolodexService via service promise",
+				"[FollowUpService] Successfully acquired RelationshipsService via service promise",
 			);
 		}
 
@@ -78,7 +62,7 @@ export class FollowUpService extends Service {
 	}
 
 	async stop(): Promise<void> {
-		// rolodexService will be cleaned up by the runtime
+		// relationshipsService will be cleaned up by the runtime
 		logger.info("[FollowUpService] Stopped successfully");
 	}
 
@@ -97,7 +81,7 @@ export class FollowUpService extends Service {
 		message?: string,
 	): Promise<Task> {
 		// Ensure contact exists
-		const contact = await this.rolodexService.getContact(entityId);
+		const contact = await this.relationshipsService.getContact(entityId);
 		if (!contact) {
 			throw new Error(`Contact ${entityId} not found`);
 		}
@@ -108,9 +92,10 @@ export class FollowUpService extends Service {
 			name: "follow_up",
 			description: `Follow-up with contact: ${reason}`,
 			entityId: this.runtime.agentId,
-			roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
-			worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
-			tags: ["follow-up", priority, "rolodex", "queue"],
+			agentId: this.runtime.agentId,
+			roomId: stringToUuid(`relationships-${this.runtime.agentId}`),
+			worldId: stringToUuid(`relationships-world-${this.runtime.agentId}`),
+			tags: ["follow-up", priority, "relationships", "queue"],
 			dueAt: scheduledAt.getTime(),
 			metadata: {
 				targetEntityId: entityId,
@@ -127,7 +112,7 @@ export class FollowUpService extends Service {
 		await this.runtime.createTask(task);
 
 		// Update contact with next follow-up
-		await this.rolodexService.updateContact(entityId, {
+		await this.relationshipsService.updateContact(entityId, {
 			customFields: {
 				...contact.customFields,
 				nextFollowUpAt: scheduledAt.toISOString(),
@@ -176,7 +161,8 @@ export class FollowUpService extends Service {
 			// Get contact info
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.rolodexService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
 					upcomingFollowUps.push({ task, contact });
 				}
@@ -217,13 +203,14 @@ export class FollowUpService extends Service {
 			// Clear next follow-up from contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.rolodexService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
 					const customFields = { ...contact.customFields };
 					delete customFields.nextFollowUpAt;
 					delete customFields.nextFollowUpReason;
 
-					await this.rolodexService.updateContact(targetEntityId, {
+					await this.relationshipsService.updateContact(targetEntityId, {
 						customFields,
 					});
 				}
@@ -248,6 +235,7 @@ export class FollowUpService extends Service {
 
 			// Update task metadata
 			await this.runtime.updateTask(taskId, {
+				dueAt: newDate.getTime(),
 				metadata: {
 					...task.metadata,
 					scheduledAt: newDate.toISOString(),
@@ -260,9 +248,10 @@ export class FollowUpService extends Service {
 			// Update contact
 			const targetEntityId = task.metadata?.targetEntityId as UUID;
 			if (targetEntityId) {
-				const contact = await this.rolodexService.getContact(targetEntityId);
+				const contact =
+					await this.relationshipsService.getContact(targetEntityId);
 				if (contact) {
-					await this.rolodexService.updateContact(targetEntityId, {
+					await this.relationshipsService.updateContact(targetEntityId, {
 						customFields: {
 							...contact.customFields,
 							nextFollowUpAt: newDate.toISOString(),
@@ -286,9 +275,9 @@ export class FollowUpService extends Service {
 	// Smart Follow-up Suggestions
 	async getFollowUpSuggestions(): Promise<FollowUpSuggestion[]> {
 		// Get all contacts
-		const contacts = await this.rolodexService.searchContacts({});
+		const contacts = await this.relationshipsService.searchContacts({});
 
-		const insights = await this.rolodexService.getRelationshipInsights(
+		const insights = await this.relationshipsService.getRelationshipInsights(
 			this.runtime.agentId,
 		);
 		const needsAttentionById = new Map(
@@ -309,7 +298,7 @@ export class FollowUpService extends Service {
 					if (!needsAttention) return null;
 
 					// Get relationship analytics
-					const analytics = await this.rolodexService.analyzeRelationship(
+					const analytics = await this.relationshipsService.analyzeRelationship(
 						this.runtime.agentId,
 						contact.entityId,
 					);
@@ -390,14 +379,14 @@ export class FollowUpService extends Service {
 						id: createUniqueUuid(runtime, `followup-memory-${Date.now()}`),
 						entityId: runtime.agentId,
 						agentId: runtime.agentId,
-						roomId: stringToUuid(`rolodex-${runtime.agentId}`),
+						roomId: stringToUuid(`relationships-${runtime.agentId}`),
 						content: {
 							text: `Follow-up reminder: ${entity.names[0]} - ${task.metadata?.reason || "Check in"}. ${message}`,
 							type: "follow_up_reminder",
 						},
 						metadata: {
 							type: MemoryType.CUSTOM,
-							source: "rolodex",
+							source: "relationships",
 							targetEntityId: targetEntityId as string,
 							taskId: (task.id ?? "") as string,
 							priority: (task.metadata?.priority as string) ?? "medium",

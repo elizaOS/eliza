@@ -5,7 +5,7 @@
  * real inference capabilities. Throws errors if no provider is found.
  */
 
-import { z } from "zod";
+import z from "zod";
 import { logger } from "../logger";
 
 /** Default Ollama endpoint */
@@ -67,6 +67,11 @@ const CLOUD_PROVIDERS: CloudProviderConfig[] = [
 		name: "anthropic",
 		envVars: ["ANTHROPIC_API_KEY"],
 		endpoint: "https://api.anthropic.com",
+	},
+	{
+		name: "groq",
+		envVars: ["GROQ_API_KEY"],
+		endpoint: "https://api.groq.com/openai/v1",
 	},
 	{
 		name: "google",
@@ -171,7 +176,8 @@ function buildSummary(
 			"   1. Start Ollama locally: ollama serve\n" +
 			"   2. Set OPENAI_API_KEY environment variable\n" +
 			"   3. Set ANTHROPIC_API_KEY environment variable\n" +
-			"   4. Set GOOGLE_API_KEY environment variable"
+			"   4. Set GROQ_API_KEY environment variable\n" +
+			"   5. Set GOOGLE_API_KEY environment variable"
 		);
 	}
 

@@ -1,0 +1,116 @@
+{
+  "id": "f23acfd2-c485-4b7c-a1e7-d4303ddfe864",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Add a bullet point to the content of this slide.",
+  "source": "https://arxiv.org/pdf/2311.01767.pdf",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/f23acfd2-c485-4b7c-a1e7-d4303ddfe864/69_4.pptx",
+            "path": "/home/user/Desktop/69_4.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/69_4.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "69_4.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": [
+      "compare_pptx_files",
+      "compare_pptx_files",
+      "compare_pptx_files",
+      "compare_pptx_files"
+    ],
+    "conj": "or",
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/f23acfd2-c485-4b7c-a1e7-d4303ddfe864/69_4_Gold.pptx",
+        "dest": "69_4_Gold.pptx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/f23acfd2-c485-4b7c-a1e7-d4303ddfe864/69_4_Gold2.pptx",
+        "dest": "69_4_Gold2.pptx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/f23acfd2-c485-4b7c-a1e7-d4303ddfe864/69_4_Gold_all_fonts_1.pptx",
+        "dest": "69_4_Gold_all_fonts_1.pptx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/f23acfd2-c485-4b7c-a1e7-d4303ddfe864/69_4_Gold_all_fonts_2.pptx",
+        "dest": "69_4_Gold_all_fonts_2.pptx"
+      }
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/69_4.pptx",
+        "dest": "69_4.pptx"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/69_4.pptx",
+        "dest": "69_4.pptx"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/69_4.pptx",
+        "dest": "69_4.pptx"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/69_4.pptx",
+        "dest": "69_4.pptx"
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

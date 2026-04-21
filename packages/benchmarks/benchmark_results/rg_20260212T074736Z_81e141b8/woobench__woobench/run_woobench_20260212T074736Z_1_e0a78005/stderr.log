@@ -1,0 +1,587 @@
+# command: python -m benchmarks.woobench --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074736Z_81e141b8/woobench__woobench/run_woobench_20260212T074736Z_1_e0a78005/output
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/woobench
+# run_id: run_woobench_20260212T074736Z_1_e0a78005
+2026-02-11 23:47:36,502 [INFO] benchmarks.woobench.runner: Running scenario: Luna's Studio Dream (true_believer_tarot_01)
+2026-02-11 23:47:36,647 [INFO] benchmarks.woobench.runner: Running scenario: The Skeptic's Challenge (skeptic_tarot_01)
+2026-02-11 23:47:36,659 [INFO] benchmarks.woobench.runner: Running scenario: First Tarot Experience (curious_newbie_tarot_01)
+2026-02-11 23:47:36,671 [INFO] benchmarks.woobench.runner: Running scenario: The Endless Chatter (time_waster_tarot_01)
+2026-02-11 23:47:37,113 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,114 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,114 [ERROR] benchmarks.woobench.runner: Scenario true_believer_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,116 [INFO] benchmarks.woobench.runner: Running scenario: The Influencer Hustle (scammer_tarot_01)
+2026-02-11 23:47:37,129 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,129 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,129 [ERROR] benchmarks.woobench.runner: Scenario time_waster_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,130 [INFO] benchmarks.woobench.runner: Running scenario: A Mother's Grief (emotional_crisis_tarot_01)
+2026-02-11 23:47:37,172 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,172 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,172 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,172 [INFO] benchmarks.woobench.runner: Running scenario: Mei's Follow-Up (repeat_customer_tarot_01)
+2026-02-11 23:47:37,205 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,207 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,207 [ERROR] benchmarks.woobench.runner: Scenario skeptic_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,208 [INFO] benchmarks.woobench.runner: Running scenario: Chad Busts Psychics (antagonist_tarot_01)
+2026-02-11 23:47:37,348 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,348 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,348 [ERROR] benchmarks.woobench.runner: Scenario emotional_crisis_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,348 [INFO] benchmarks.woobench.runner: Running scenario: Grandfather's Wisdom (true_believer_iching_01)
+2026-02-11 23:47:37,369 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,369 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,369 [ERROR] benchmarks.woobench.runner: Scenario repeat_customer_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,369 [INFO] benchmarks.woobench.runner: Running scenario: The Professor's Dare (skeptic_iching_01)
+2026-02-11 23:47:37,534 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,535 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,535 [ERROR] benchmarks.woobench.runner: Scenario true_believer_iching_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,535 [INFO] benchmarks.woobench.runner: Running scenario: The Algorithm of the Ancients (curious_newbie_iching_01)
+2026-02-11 23:47:37,594 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,594 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,594 [ERROR] benchmarks.woobench.runner: Scenario scammer_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,594 [INFO] benchmarks.woobench.runner: Running scenario: The Warrior's Rest (emotional_crisis_iching_01)
+2026-02-11 23:47:37,626 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,626 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,626 [ERROR] benchmarks.woobench.runner: Scenario antagonist_tarot_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,626 [INFO] benchmarks.woobench.runner: Running scenario: Saturn Return Crucible (true_believer_astrology_01)
+2026-02-11 23:47:37,763 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,764 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,764 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_iching_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,764 [INFO] benchmarks.woobench.runner: Running scenario: The Astrophysicist's Gag Gift (skeptic_astrology_01)
+2026-02-11 23:47:37,776 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,777 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,777 [ERROR] benchmarks.woobench.runner: Scenario emotional_crisis_iching_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,777 [INFO] benchmarks.woobench.runner: Running scenario: More Than a Sun Sign (curious_newbie_astrology_01)
+2026-02-11 23:47:37,795 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,796 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,796 [ERROR] benchmarks.woobench.runner: Scenario skeptic_iching_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,796 [INFO] benchmarks.woobench.runner: Running scenario: The Reading Addict (time_waster_astrology_01)
+2026-02-11 23:47:37,812 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,813 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,813 [ERROR] benchmarks.woobench.runner: Scenario true_believer_astrology_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,950 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,950 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,950 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_astrology_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,957 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:37,957 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:37,957 [ERROR] benchmarks.woobench.runner: Scenario skeptic_astrology_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:38,249 [INFO] httpx: HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-02-11 23:47:38,249 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+2026-02-11 23:47:38,249 [ERROR] benchmarks.woobench.runner: Scenario time_waster_astrology_01 failed: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 126, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '400 Bad Request' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/__main__.py", line 198, in <module>
+    main()
+    ~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/__main__.py", line 194, in main
+    asyncio.run(_run(args))
+    ~~~~~~~~~~~^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/__main__.py", line 169, in _run
+    filepath = WooBenchRunner.save_results(result, output_dir=args.output)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 193, in save_results
+    with open(filepath, "w") as f:
+         ~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T074736Z_81e141b8/woobench__woobench/run_woobench_20260212T074736Z_1_e0a78005/output/woobench_qwen/qwen3-32b_20260211_234738.json'

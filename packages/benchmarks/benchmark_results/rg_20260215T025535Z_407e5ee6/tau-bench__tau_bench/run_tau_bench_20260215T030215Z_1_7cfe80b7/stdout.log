@@ -1,0 +1,81 @@
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║                  ElizaOS Tau-bench Benchmark Runner                   ║
+║           Tool-Agent-User Interaction in Real-World Domains           ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+📋 Configuration:
+   Domains: retail, airline
+   Data Path: ./sample-data
+   Output: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/tau-bench__tau_bench/run_tau_bench_20260215T030215Z_1_7cfe80b7/output
+   Trials per Task: 1
+   Max Tasks: 2
+   Max Turns: 15
+   Timeout: 120000ms
+   Memory Tracking: ✅
+   LLM Judge: ❌
+   Mode: 🤖 Real LLM (ElizaOS)
+   Temperature: 0.0
+   Provider: groq
+   Trajectories: ❌ (art)
+
+🚀 Starting Tau-bench evaluation...
+
+[TauBenchRunner] No tasks found, using sample tasks
+[2m2026-02-15T03:02:20.127204Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:22.911882Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:32.284846Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:48.744136Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:49.428995Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:50.317333Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T03:02:56.489554Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mTauBenchAgent[0m][0m [36mactionName[0m=[35mEXECUTE_TOOL[0m [36merrors[0m=[35m["Parameter 'arguments' expected string, got dict"][0m [36msrc[0m=[35mruntime:actions[0m
+
+======================================================================
+📊 TAU-BENCH RESULTS SUMMARY
+======================================================================
+
+🎯 Overall Performance:
+   Status: NEEDS_IMPROVEMENT
+   Success Rate: 25.0%
+   Total Tasks: 4 (4 trials)
+   Passed: 1
+
+📈 Pass^k Reliability:
+   Pass^1: 25.0%
+   Pass^2: 0.0%
+   Pass^4: 0.0%
+   Pass^8: 0.0%
+
+⚡ Performance Metrics:
+   Tool Accuracy: 14.6%
+   Policy Compliance: 100.0%
+   Response Quality: 32.2%
+   Avg Duration: 10689ms
+
+🏆 Leaderboard Comparison:
+   Closest Model: llama-3.1-70b
+   Difference: 11.9% behind
+
+📌 Key Findings:
+   • Significant improvement needed in task completion
+
+💪 Strengths:
+   ✅ Strong policy compliance
+
+⚠️ Areas for Improvement:
+   • Low overall success rate
+   • Tool selection needs improvement
+   • Weak performance in airline domain
+
+💡 Recommendations:
+   • Focus on improving tool selection accuracy
+   • Improve parameter extraction from context
+
+======================================================================
+
+📁 Full results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/tau-bench__tau_bench/run_tau_bench_20260215T030215Z_1_7cfe80b7/output/
+   - tau-bench-results.json (main results)
+   - tau-bench-summary.md (human-readable summary)
+   - tau-bench-detailed.json (per-task details)
+
+✅ Tau-bench evaluation completed successfully!

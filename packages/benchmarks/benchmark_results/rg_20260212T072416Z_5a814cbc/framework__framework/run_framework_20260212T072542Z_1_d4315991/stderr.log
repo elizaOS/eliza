@@ -1,0 +1,4 @@
+# command: bash run.sh
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/framework
+# run_id: run_framework_20260212T072542Z_1_d4315991
+error: Script not found "build:core"

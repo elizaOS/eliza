@@ -1,0 +1,213 @@
+import crypto from "node:crypto";
+import type http from "node:http";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  ensureCompatApiAuthorized,
+  getCompatApiToken,
+  tokenMatches,
+} from "./auth";
+import {
+  type CompatRuntimeState,
+  hasCompatPersistedOnboardingState,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
+import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
+
+// ---------------------------------------------------------------------------
+// Pairing state & helpers
+// ---------------------------------------------------------------------------
+
+const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PAIRING_WINDOW_MS = 10 * 60 * 1000;
+const PAIRING_MAX_ATTEMPTS = 5;
+const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+let pairingCode: string | null = null;
+let pairingExpiresAt = 0;
+const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
+
+// Periodic sweep to prevent unbounded memory growth
+const PAIRING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const pairingSweepTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of pairingAttempts) {
+    if (now > entry.resetAt) {
+      pairingAttempts.delete(key);
+    }
+  }
+}, PAIRING_SWEEP_INTERVAL_MS);
+if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
+  pairingSweepTimer.unref();
+}
+
+function pairingEnabled(): boolean {
+  return (
+    Boolean(getCompatApiToken()) &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1"
+  );
+}
+
+function normalizePairingCode(code: string): string {
+  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function generatePairingCode(): string {
+  const bytes = crypto.randomBytes(12);
+  let raw = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  }
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+}
+
+function ensurePairingCode(): string | null {
+  if (!pairingEnabled()) {
+    return null;
+  }
+
+  const now = Date.now();
+  if (!pairingCode || now > pairingExpiresAt) {
+    pairingCode = generatePairingCode();
+    pairingExpiresAt = now + PAIRING_TTL_MS;
+    console.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
+  }
+
+  return pairingCode;
+}
+
+function rateLimitPairing(ip: string | null): boolean {
+  const key = ip ?? "unknown";
+  const now = Date.now();
+  const current = pairingAttempts.get(key);
+
+  if (!current || now > current.resetAt) {
+    pairingAttempts.set(key, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
+    return true;
+  }
+
+  if (current.count >= PAIRING_MAX_ATTEMPTS) {
+    return false;
+  }
+
+  current.count += 1;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Auth / pairing routes:
+ *
+ * - `GET  /api/onboarding/status`
+ * - `GET  /api/auth/status`
+ * - `POST /api/auth/pair`
+ */
+export async function handleAuthPairingCompatRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  _state: CompatRuntimeState,
+): Promise<boolean> {
+  const method = (req.method ?? "GET").toUpperCase();
+  const url = new URL(req.url ?? "/", "http://localhost");
+
+  // ── GET /api/onboarding/status ──────────────────────────────────────
+  if (method === "GET" && url.pathname === "/api/onboarding/status") {
+    // Cloud-provisioned containers always report onboarding complete and
+    // skip auth so the SPA can read this before pairing/token exchange.
+    if (_isCloudProvisioned()) {
+      sendJsonResponse(res, 200, { complete: true, cloudProvisioned: true });
+      return true;
+    }
+    if (!ensureCompatApiAuthorized(req, res)) {
+      return true;
+    }
+    const config = loadElizaConfig();
+    sendJsonResponse(res, 200, {
+      complete: hasCompatPersistedOnboardingState(config),
+    });
+    return true;
+  }
+
+  // ── GET /api/auth/status ────────────────────────────────────────────
+  if (method === "GET" && url.pathname === "/api/auth/status") {
+    if (_isCloudProvisioned()) {
+      sendJsonResponse(res, 200, {
+        required: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+      return true;
+    }
+    const required = Boolean(getCompatApiToken());
+    const enabled = pairingEnabled();
+    if (enabled) {
+      ensurePairingCode();
+    }
+    sendJsonResponse(res, 200, {
+      required,
+      pairingEnabled: enabled,
+      expiresAt: enabled ? pairingExpiresAt : null,
+    });
+    return true;
+  }
+
+  // ── POST /api/auth/pair ─────────────────────────────────────────────
+  if (method === "POST" && url.pathname === "/api/auth/pair") {
+    const body = await readCompatJsonBody(req, res);
+    if (body == null) {
+      return true;
+    }
+
+    const token = getCompatApiToken();
+    if (!token) {
+      sendJsonErrorResponse(res, 400, "Pairing not enabled");
+      return true;
+    }
+    if (!pairingEnabled()) {
+      sendJsonErrorResponse(res, 403, "Pairing disabled");
+      return true;
+    }
+    const remoteAddress = req.socket.remoteAddress;
+    if (!remoteAddress) {
+      sendJsonErrorResponse(res, 403, "Cannot determine client address");
+      return true;
+    }
+    if (!rateLimitPairing(remoteAddress)) {
+      sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
+      return true;
+    }
+
+    const provided = normalizePairingCode(
+      typeof body.code === "string" ? body.code : "",
+    );
+    const current = ensurePairingCode();
+    if (!current || Date.now() > pairingExpiresAt) {
+      ensurePairingCode();
+      sendJsonErrorResponse(
+        res,
+        410,
+        "Pairing code expired. Check server logs for a new code.",
+      );
+      return true;
+    }
+
+    if (!tokenMatches(normalizePairingCode(current), provided)) {
+      sendJsonErrorResponse(res, 403, "Invalid pairing code");
+      return true;
+    }
+
+    pairingCode = null;
+    pairingExpiresAt = 0;
+    sendJsonResponse(res, 200, { token });
+    return true;
+  }
+
+  return false;
+}

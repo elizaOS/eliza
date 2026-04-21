@@ -1,0 +1,65 @@
+{
+  "id": "48d05431-6cd5-4e76-82eb-12b60d823f7d",
+  "snapshot": "os",
+  "instruction": "When I ran \"conda install datasets\" in terminal, I got \"conda: command not found\". Could you help me solve it so that I can use conda command right away?",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5); pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5); pyautogui.hotkey('ctrl', 'alt', 't'); time.sleep(0.5)"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Terminal"
+      }
+    }
+  ],
+  "trajectory": "trajectories/48d05431-6cd5-4e76-82eb-12b60d823f7d",
+  "related_apps": [
+    "os",
+    "chrome"
+  ],
+  "evaluator": {
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "grep -q 'conda initialize' ~/.bashrc && echo 1 || echo 0",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "1\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

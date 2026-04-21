@@ -31,6 +31,14 @@ const packageDir = path.resolve(repoRoot, packageDirArg);
 const packageJsonPath = path.join(packageDir, "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const workspaceVersions = collectWorkspaceVersions(repoRoot);
+const skipLocalUpstreams =
+  process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1" ||
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
+const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
+  ["@elizaos/plugin-sql", "alpha"],
+  ["@elizaos/plugin-ollama", "alpha"],
+  ["@elizaos/plugin-local-ai", "alpha"],
+]);
 
 const publishManifest = {
   ...packageJson,
@@ -88,7 +96,11 @@ writeFileSync(
 );
 
 function collectWorkspaceVersions(rootDir) {
-  const packageRoots = [path.join(rootDir, "packages"), path.join(rootDir, "plugins")];
+  const packageRoots = [
+    path.join(rootDir, "packages"),
+    path.join(rootDir, "plugins"),
+    path.join(rootDir, "apps"),
+  ];
   const versions = new Map();
 
   for (const packageRoot of packageRoots) {
@@ -149,22 +161,41 @@ function rewriteWorkspaceDeps(section, versions) {
     return undefined;
   }
 
-  const rewritten = Object.fromEntries(
-    Object.entries(section).map(([name, version]) => {
-      if (typeof version === "string" && version.startsWith("workspace:")) {
-        const resolvedVersion = versions.get(name);
-        if (!resolvedVersion) {
-          throw new Error(
-            `no local version found for workspace dependency ${name}`,
-          );
+  const rewrittenEntries = [];
+  for (const [name, version] of Object.entries(section)) {
+    if (typeof version === "string" && version.startsWith("workspace:")) {
+      const resolvedVersion = versions.get(name);
+      if (!resolvedVersion) {
+        if (skipLocalUpstreams) {
+          const fallbackVersion = resolveWorkspaceFallbackVersion(name);
+          if (fallbackVersion) {
+            rewrittenEntries.push([name, fallbackVersion]);
+          }
+          continue;
         }
-        return [name, normalizeWorkspaceVersion(version, resolvedVersion)];
+        throw new Error(
+          `no local version found for workspace dependency ${name}`,
+        );
       }
-      return [name, version];
-    }),
-  );
+      rewrittenEntries.push([
+        name,
+        normalizeWorkspaceVersion(version, resolvedVersion),
+      ]);
+      continue;
+    }
+    rewrittenEntries.push([name, version]);
+  }
+
+  const rewritten = Object.fromEntries(rewrittenEntries);
 
   return rewritten;
+}
+
+function resolveWorkspaceFallbackVersion(name) {
+  if (!skipLocalUpstreams) {
+    return null;
+  }
+  return OPTIONAL_PLUGIN_FALLBACK_VERSIONS.get(name) ?? null;
 }
 
 function normalizeWorkspaceVersion(spec, resolvedVersion) {

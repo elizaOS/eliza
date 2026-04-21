@@ -1,0 +1,134 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_profile_settings",
+            "description": "Opens profile settings page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_password_settings",
+            "description": "Opens password/autofill settings page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_privacy_settings",
+            "description": "Opens privacy settings page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_appearance_settings",
+            "description": "Opens appearance settings page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_search_engine_settings",
+            "description": "Opens search engine settings page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.bring_back_last_tab",
+            "description": "Restores last-closed tab (Ctrl+Shift+T).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.print",
+            "description": "Opens print dialog (Ctrl+P).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.delete_browsing_data",
+            "description": "Opens clear browsing data dialog (Ctrl+Shift+Del).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_extensions",
+            "description": "Opens extensions management page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.bookmark_page",
+            "description": "Bookmarks current page (Ctrl+D).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "BrowserTools.open_bookmarks",
+            "description": "Opens bookmarks page.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]

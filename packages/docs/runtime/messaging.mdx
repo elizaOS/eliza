@@ -704,8 +704,22 @@ Available extractors:
 | ------------------------- | ----------------------------------------- |
 | `PassthroughExtractor`    | Streams all content as-is                 |
 | `XmlTagExtractor`         | Extracts content from specific XML tags   |
-| `ResponseStreamExtractor` | Default - action-aware XML extraction     |
+| `ResponseStreamExtractor` | Action-aware XML extraction (available but no longer used by `DefaultMessageService` — see note below) |
 | `ActionStreamFilter`      | Auto-detects content type (JSON/XML/text) |
+
+<Note>
+  **Architecture change:** `DefaultMessageService.handleMessage` previously
+  created a `ResponseStreamExtractor` and wrapped `processMessage` in
+  `runWithStreamingContext` (AsyncLocalStorage). This caused a dual-extractor
+  collision — both the `ValidationStreamExtractor` (from
+  `dynamicPromptExecFromState`) and the `ResponseStreamExtractor` received
+  the same raw LLM tokens and emitted independently, producing garbled
+  TTS output. The `ResponseStreamExtractor` is no longer used in the default
+  message pipeline. Voice first-sentence detection now wraps the caller's
+  `onStreamChunk` callback and uses the `accumulated` parameter from
+  `StreamChunkCallback`. `ResponseStreamExtractor` remains exported for
+  custom implementations.
+</Note>
 
 ## See Also
 

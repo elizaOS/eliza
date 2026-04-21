@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  elizaOS AWS Lambda Worker
+
+  Deploy an elizaOS agent as a serverless Lambda function with API Gateway.
+
+# Global settings
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+# Input parameters
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    Description: OpenAI API key for the LLM provider
+    NoEcho: true
+
+  OpenAIModel:
+    Type: String
+    Default: gpt-5-mini
+    Description: OpenAI model to use
+
+  CharacterName:
+    Type: String
+    Default: Eliza
+    Description: Name of the AI agent
+
+  CharacterBio:
+    Type: String
+    Default: A helpful AI assistant.
+    Description: Biography/description of the AI agent
+
+  CharacterSystem:
+    Type: String
+    Default: You are a helpful, concise AI assistant. Respond thoughtfully to user messages.
+    Description: System prompt for the AI agent
+
+  RuntimeLanguage:
+    Type: String
+    Default: typescript
+    AllowedValues:
+      - typescript
+      - python
+      - rust
+    Description: Runtime language for the Lambda function
+
+# Conditional settings based on runtime
+Conditions:
+  IsTypeScript: !Equals [!Ref RuntimeLanguage, typescript]
+  IsPython: !Equals [!Ref RuntimeLanguage, python]
+  IsRust: !Equals [!Ref RuntimeLanguage, rust]
+
+Resources:
+  # API Gateway HTTP API
+  ElizaApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+      Description: elizaOS Worker API
+
+  # TypeScript Lambda Function
+  ElizaWorkerTypeScript:
+    Type: AWS::Serverless::Function
+    Condition: IsTypeScript
+    Properties:
+      FunctionName: eliza-worker-typescript
+      Description: elizaOS chat worker (TypeScript)
+      CodeUri: typescript/dist/
+      Handler: handler.handler
+      Runtime: nodejs20.x
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          OPENAI_MODEL: !Ref OpenAIModel
+          CHARACTER_NAME: !Ref CharacterName
+          CHARACTER_BIO: !Ref CharacterBio
+          CHARACTER_SYSTEM: !Ref CharacterSystem
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /
+            Method: GET
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /health
+            Method: GET
+        Chat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /chat
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - handler.ts
+
+  # Python Lambda Function
+  ElizaWorkerPython:
+    Type: AWS::Serverless::Function
+    Condition: IsPython
+    Properties:
+      FunctionName: eliza-worker-python
+      Description: elizaOS chat worker (Python)
+      CodeUri: python/
+      Handler: handler.handler
+      Runtime: python3.11
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          OPENAI_MODEL: !Ref OpenAIModel
+          CHARACTER_NAME: !Ref CharacterName
+          CHARACTER_BIO: !Ref CharacterBio
+          CHARACTER_SYSTEM: !Ref CharacterSystem
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /
+            Method: GET
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /health
+            Method: GET
+        Chat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /chat
+            Method: POST
+
+  # Rust Lambda Function (custom runtime)
+  ElizaWorkerRust:
+    Type: AWS::Serverless::Function
+    Condition: IsRust
+    Properties:
+      FunctionName: eliza-worker-rust
+      Description: elizaOS chat worker (Rust)
+      CodeUri: rust/target/lambda/bootstrap/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      MemorySize: 256
+      Timeout: 30
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          OPENAI_MODEL: !Ref OpenAIModel
+          CHARACTER_NAME: !Ref CharacterName
+          CHARACTER_BIO: !Ref CharacterBio
+          CHARACTER_SYSTEM: !Ref CharacterSystem
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /
+            Method: GET
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /health
+            Method: GET
+        Chat:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ElizaApi
+            Path: /chat
+            Method: POST
+
+# Outputs
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  ChatEndpoint:
+    Description: Chat endpoint URL
+    Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod/chat"
+
+  HealthEndpoint:
+    Description: Health check endpoint URL
+    Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod/health"
+
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !If
+      - IsTypeScript
+      - !GetAtt ElizaWorkerTypeScript.Arn
+      - !If
+        - IsPython
+        - !GetAtt ElizaWorkerPython.Arn
+        - !GetAtt ElizaWorkerRust.Arn
+
+
+

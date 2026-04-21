@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/agentbench/run_benchmark.py --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/agentbench__agentbench/run_agentbench_20260215T030807Z_2_25a85b07/output --env os --max-tasks 1 --elizaos
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_agentbench_20260215T030807Z_2_25a85b07

@@ -1,0 +1,67 @@
+{
+  "id": "36037439-2044-4b50-b9d1-875b5a332143",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Could you please pull up the Google Scholar page of the corresponding author for me in Chrome?",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/36037439-2044-4b50-b9d1-875b5a332143/shi17a.pdf",
+            "path": "/home/user/Desktop/shi17a.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/shi17a.pdf"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 2
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.hotkey('f11'); time.sleep(0.5); pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5); pyautogui.scroll(-40)"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/36037439-2044-4b50-b9d1-875b5a332143",
+  "related_apps": [
+    "OS",
+    "Chrome"
+  ],
+  "evaluator": {
+    "func": "is_expected_url_pattern_match",
+    "result": {
+      "type": "active_url_from_accessTree",
+      "goto_prefix": "https://"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "type": "url",
+        "url": "?hl=en&",
+        "expected": [
+          "https://scholar.google.com/citations",
+          "user=qRAQ5BsAAAAJ"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

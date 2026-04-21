@@ -1,0 +1,56 @@
+{
+  "id": "aa4b5023-aef6-4ed9-bdc9-705f59ab9ad6",
+  "snapshot": "base_setup",
+  "instruction": "Hey, could you turn this video the right way up for me? And once it's flipped around, could you save it for me with the name '1984_Apple_Macintosh_Commercial.mp4' on the main screen where all my files are?",
+  "source": "https://www.dedoimedo.com/computers/vlc-rotate-videos.html",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vlc/aa4b5023-aef6-4ed9-bdc9-705f59ab9ad6/flipped_1984_Apple_Macintosh_Commercial.mp4",
+            "path": "/home/user/Desktop/flipped_1984_Apple_Macintosh_Commercial.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show /home/user/Desktop/flipped_1984_Apple_Macintosh_Commercial.mp4",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "func": "compare_videos",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vlc/aa4b5023-aef6-4ed9-bdc9-705f59ab9ad6/1984_Apple_Macintosh_Commercial.mp4",
+      "dest": "1984_Apple_Macintosh_Commercial_gold.mp4"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/1984_Apple_Macintosh_Commercial.mp4",
+      "dest": "1984_Apple_Macintosh_Commercial.mp4"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

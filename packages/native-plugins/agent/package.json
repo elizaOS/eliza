@@ -1,0 +1,59 @@
+{
+  "name": "@elizaos/capacitor-agent",
+  "version": "1.0.0",
+  "description": "Starts, stops, and monitors the embedded Eliza agent runtime.",
+  "keywords": [
+    "agent-runtime",
+    "lifecycle",
+    "chat",
+    "runtime-control"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "dist/"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "apps/app/plugins/agent"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.0.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.59.0",
+    "typescript": "^6.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaCapacitorAgent"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

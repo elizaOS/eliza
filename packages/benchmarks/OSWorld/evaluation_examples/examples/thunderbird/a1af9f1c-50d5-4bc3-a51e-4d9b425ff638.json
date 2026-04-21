@@ -1,0 +1,51 @@
+{
+  "id": "a1af9f1c-50d5-4bc3-a51e-4d9b425ff638",
+  "snapshot": "thunderbird",
+  "instruction": "Due to certain security considerations and the nature of my work, I prefer not to configure an incoming email service in Thunderbird. However, I still need to send emails. Can you help me set up Thunderbird to send emails from anonym-x2024@outlook.com without configuring its incoming email service?",
+  "source": "https://superuser.com/questions/1764409/how-to-send-email-with-thunderbird-without-configuring-an-incoming-email-service",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/thunderbird/15c3b339-88f7-4a86-ab16-e71c58dcb01e/thunderbird-profile-blank.tar.gz",
+            "path": "/home/user/thunderbird-profile-blank.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile-blank.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "/usr/bin/thunderbird"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/99146c54-4f37-4ab8-9327-5f3291665e1e",
+  "related_apps": [
+    "thunderbird"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,93 @@
+{
+  "id": "e2dd0213-26db-4349-abe5-d5667bfd725c",
+  "snapshot": "gimp",
+  "instruction": "Can you assist me in shifting the text box to the left? I keep accidentally selecting the image layer beneath it.",
+  "source": "https://superuser.com/questions/839650/how-to-move-an-inserted-text-box-in-gimp",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/e2dd0213-26db-4349-abe5-d5667bfd725c/orange_background.xcf",
+            "path": "/home/user/Desktop/orange_background.xcf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/orange_background.xcf"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import pyautogui; pyautogui.hotkey([\"shift\", \"ctrl\", \"e\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; pyautogui.write(\"leftside_textbox\");time.sleep(1);pyautogui.press([\"enter\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 2
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import pyautogui; pyautogui.press([\"enter\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 5
+        }
+      }
+    ],
+    "func": "check_textbox_on_leftside",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/leftside_textbox.png",
+      "dest": "leftside_textbox.png"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

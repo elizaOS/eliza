@@ -1,0 +1,86 @@
+{
+  "id": "a669ef01-ded5-4099-9ea9-25e99b569840",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I want to do something like the following on Page 3 of the current LibreOffice Impress file: make the \"continuation of the sub topics\" indented the same as \"main idea\" and \"sub topics\" without a bullet in front of it. Could you help me with it?",
+  "source": "https://superuser.com/questions/1628656/in-libreoffice-impress-how-can-i-have-a-bullet-indentation-no-bullet-item",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/a669ef01-ded5-4099-9ea9-25e99b569840/Writing-Outlines.pptx",
+            "path": "/home/user/Desktop/Writing-Outlines.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Writing-Outlines.pptx"
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Writing-Outlines.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/a669ef01-ded5-4099-9ea9-25e99b569840/Writing-Outlines_Gold.pptx",
+      "dest": "Writing-Outlines_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/Writing-Outlines.pptx",
+      "dest": "Writing-Outlines.pptx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

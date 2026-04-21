@@ -1,0 +1,106 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "bridge",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "l2ToL1Sender",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    }
+  ],
+  "bytecode": {
+    "object": "0x60a060405233608052348015610013575f80fd5b5060805161016c6100315f395f8181606101526086015261016c5ff3fe608060405234801561000f575f80fd5b5060043610610034575f3560e01c806380648b0214610038578063e78cea921461005c575b5f80fd5b610040610083565b6040516001600160a01b03909116815260200160405180910390f35b6100407f000000000000000000000000000000000000000000000000000000000000000081565b5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03166370348f3e6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156100e0573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101049190610109565b905090565b5f60208284031215610119575f80fd5b81516001600160a01b038116811461012f575f80fd5b939250505056fea264697066735822122001e1dc1945087a2fbbea285f2257b71daf4a8f650195814fb476483570fef20764736f6c63430008140033",
+    "sourceMap": "1688:305:112:-:0;;;1852:10;1818:44;;1688:305;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b5060043610610034575f3560e01c806380648b0214610038578063e78cea921461005c575b5f80fd5b610040610083565b6040516001600160a01b03909116815260200160405180910390f35b6100407f000000000000000000000000000000000000000000000000000000000000000081565b5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03166370348f3e6040518163ffffffff1660e01b8152600401602060405180830381865afa1580156100e0573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906101049190610109565b905090565b5f60208284031215610119575f80fd5b81516001600160a01b038116811461012f575f80fd5b939250505056fea264697066735822122001e1dc1945087a2fbbea285f2257b71daf4a8f650195814fb476483570fef20764736f6c63430008140033",
+    "sourceMap": "1688:305:112:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1869:122;;;:::i;:::-;;;-1:-1:-1;;;;;178:32:310;;;160:51;;148:2;133:18;1869:122:112;;;;;;;1818:44;;;;;1869:122;1914:7;1961:6;-1:-1:-1;;;;;1940:42:112;;:44;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;1933:51;;1869:122;:::o;222:290:310:-;292:6;345:2;333:9;324:7;320:23;316:32;313:52;;;361:1;358;351:12;313:52;387:16;;-1:-1:-1;;;;;432:31:310;;422:42;;412:70;;478:1;475;468:12;412:70;501:5;222:290;-1:-1:-1;;;222:290:310:o",
+    "linkReferences": {},
+    "immutableReferences": {
+      "14772": [{ "start": 97, "length": 32 }, { "start": 134, "length": 32 }]
+    }
+  },
+  "methodIdentifiers": { "bridge()": "e78cea92", "l2ToL1Sender()": "80648b02" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"name\":\"bridge\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"l2ToL1Sender\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"stateVariables\":{\"bridge\":{\"custom:oz-upgrades-unsafe-allow\":\"state-variable-immutable state-variable-assignment\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":\"BridgeArbitrumL1Outbox\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":{\"keccak256\":\"0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2\",\"dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]},\"lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol\":{\"keccak256\":\"0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138\",\"dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "bridge",
+          "outputs": [
+            { "internalType": "address", "name": "", "type": "address" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "l2ToL1Sender",
+          "outputs": [
+            { "internalType": "address", "name": "", "type": "address" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": "BridgeArbitrumL1Outbox"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": {
+        "keccak256": "0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511",
+        "urls": [
+          "bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2",
+          "dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol": {
+        "keccak256": "0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7",
+        "urls": [
+          "bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138",
+          "dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 112
+}

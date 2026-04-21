@@ -12,13 +12,23 @@ import {
 	withCanonicalEvaluatorDocs,
 } from "./action-docs";
 import { parseActionParams, validateActionParams } from "./actions";
+import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
-} from "./basic-capabilities/index";
-import { ensureConnection as ensureConnectionStandalone } from "./connection";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+} from "./features/basic-capabilities/index";
 import { createLogger } from "./logger";
+import { simpleHash } from "./optimization/ab-analysis";
+import { getOptimizationRootDir } from "./optimization-root-dir";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	getNativeRuntimeFeaturePlugin,
+	type NativeRuntimeFeature,
+	nativeRuntimeFeatureDefaults,
+	nativeRuntimeFeaturePluginNames,
+	resolveNativeRuntimeFeatureFromPluginName,
+} from "./plugins/native-features";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -26,9 +36,14 @@ import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
 	getStreamingContext,
+	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
+	type StreamingContext,
 } from "./streaming-context";
-import { getTrajectoryContext } from "./trajectory-context";
+import {
+	getTrajectoryContext,
+	setTrajectoryPurpose,
+} from "./trajectory-context";
 import {
 	type Action,
 	type ActionContext,
@@ -48,6 +63,7 @@ import {
 	type GenerateTextOptions,
 	type GenerateTextParams,
 	type GenerateTextResult,
+	getModelFallbackChain,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -69,11 +85,17 @@ import {
 	type PairingRequest,
 	type Participant,
 	type PatchOp,
+	type PipelineHookContext,
+	type PipelineHookPhase,
+	type PipelineHookSpec,
 	type Plugin,
+	type PluginOwnership,
 	type PromptSegment,
 	type Provider,
+	type ProviderResult,
 	type ProviderValue,
 	type Relationship,
+	type ResolvedPipelineHook,
 	type Room,
 	type Route,
 	type RuntimeEventStorage,
@@ -84,19 +106,42 @@ import {
 	type ServiceTypeName,
 	type State,
 	type StateValue,
+	type StreamChunkCallback,
 	type TargetInfo,
 	type Task,
 	type TaskWorker,
+	type TextGenerationModelType,
 	type TextStreamResult,
 	type UUID,
 	type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
+import {
+	afterMemoryPersistedPipelineHookContext,
+	modelStreamChunkPipelineHookContext,
+	modelStreamEndPipelineHookContext,
+	outgoingPipelineHookContext,
+	PIPELINE_HOOK_DEBUG_LOG_MS,
+	PIPELINE_HOOK_ERROR_LOG_MS,
+	PIPELINE_HOOK_WARN_MS,
+	pipelineHookMetricRoomId,
+	postModelPipelineHookContext,
+	preModelPipelineHookContext,
+	resolvePipelineHookSpec,
+	sortPipelineHooksByPosition,
+} from "./types/pipeline-hooks";
+import type { PromptOptimizationRuntimeHooks } from "./types/prompt-optimization-hooks";
+import { ScoreCard } from "./types/prompt-optimization-score-card";
+import type {
+	ExecutionTrace,
+	ScoreSignal,
+} from "./types/prompt-optimization-trace";
 import type {
 	RetryBackoffConfig,
 	SchemaRow,
 	SchemaValueSpec,
 	StreamEvent,
+	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
@@ -104,38 +149,90 @@ import {
 	parseKeyValueXml,
 	stringToUuid,
 } from "./utils";
+import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
+import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
 } from "./utils/streaming";
+import { encodeToonValue } from "./utils/toon";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
+const RUNTIME_TEMPLATE_CACHE = new Map<
+	string,
+	Handlebars.TemplateDelegate<Record<string, unknown>>
+>();
+const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = 30_000;
+const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
+	"agentName",
+	"bio",
+	"system",
+	"topic",
+	"topics",
+	"adjective",
+	"messageDirections",
+	"postDirections",
+	"directions",
+	"examples",
+	"characterPostExamples",
+	"characterMessageExamples",
+	"actionNames",
+	"actionsWithDescriptions",
+	"providersWithDescriptions",
+]);
+const STABLE_PROMPT_PROVIDER_NAMES = new Set([
+	"ACTIONS",
+	"CHARACTER",
+	"PROVIDERS",
+]);
+const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
+const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
+const TOON_FIELD_PATTERN =
+	/^[A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?:/m;
+const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
+const JSON_OBJECT_KEY_PATTERN =
+	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 
-export class Semaphore {
-	private permits: number;
-	private waiting: Array<() => void> = [];
-	constructor(count: number) {
-		this.permits = count;
+type StructuredResponseFormat = "XML" | "JSON" | "TOON";
+
+type StructuredResponseCandidate = {
+	text: string;
+	formats: StructuredResponseFormat[];
+	source: string;
+};
+
+function coerceOutgoingMessageText(text: unknown): string {
+	if (text === null || text === undefined) {
+		return "";
 	}
-	async acquire(): Promise<void> {
-		if (this.permits > 0) {
-			this.permits -= 1;
-			return Promise.resolve();
-		}
-		return new Promise<void>((resolve) => {
-			this.waiting.push(resolve);
-		});
+	return String(text);
+}
+
+function resolveDynamicPromptModelType(
+	modelType?: TextGenerationModelType,
+	modelSize?: "nano" | "small" | "medium" | "large" | "mega",
+): TextGenerationModelType {
+	if (modelType) {
+		return modelType;
 	}
-	release(): void {
-		this.permits += 1;
-		const nextResolve = this.waiting.shift();
-		if (nextResolve && this.permits > 0) {
-			this.permits -= 1;
-			nextResolve();
-		}
+
+	switch (modelSize) {
+		case "nano":
+			return ModelType.TEXT_NANO;
+		case "small":
+			return ModelType.TEXT_SMALL;
+		case "medium":
+			return ModelType.TEXT_MEDIUM;
+		case "mega":
+			return ModelType.TEXT_MEGA;
+		default:
+			return ModelType.TEXT_LARGE;
 	}
 }
 
@@ -159,6 +256,13 @@ function isTextStreamResult(
 	);
 }
 
+function callbackContentHasVisibleOutput(content: Content): boolean {
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100 as number;
 	readonly agentId: UUID;
@@ -169,6 +273,14 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
 	readonly plugins: Plugin[] = [];
+	public unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>;
+	public reloadPlugin!: (plugin: Plugin) => Promise<void>;
+	public applyPluginConfig!: (
+		pluginName: string,
+		config: Record<string, string>,
+	) => Promise<boolean>;
+	public getPluginOwnership!: (pluginName: string) => PluginOwnership | null;
+	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
 	readonly fetch = fetch;
@@ -181,12 +293,28 @@ export class AgentRuntime implements IAgentRuntime {
 	private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
 		new Map();
 
+	/**
+	 * In-flight execution traces keyed by trace.id (unique uuid).
+	 * A single run can produce multiple DPE calls; each gets its own trace.
+	 * `runToTraces` maps runId -> set of trace ids for enrichment lookup.
+	 */
+	private activeTraces = new Map<string, ExecutionTrace>();
+	private runToTraces = new Map<string, Set<string>>();
+	/** Optional DPE-side prompt optimization I/O (merge, registry, baseline/failure traces). */
+	private promptOptimizationHooks: PromptOptimizationRuntimeHooks | null = null;
+
+	private pipelineHookEntries: ResolvedPipelineHook[] = [];
+	private pipelineHookIdToIndex = new Map<string, number>();
+
 	// A map of all plugins available to the runtime, keyed by name, for dependency resolution.
 	private allAvailablePlugins = new Map<string, Plugin>();
 	// The initial list of plugins specified by the character configuration.
 	private characterPlugins: Plugin[] = [];
 	// Capability options for basic capabilities configuration
 	private capabilityOptions: CapabilityConfig = {};
+	private readonly nativeFeatureOptions: Partial<
+		Record<NativeRuntimeFeature, boolean>
+	>;
 	// Action planning option (undefined means use settings, true/false is explicit)
 	private actionPlanningOption?: boolean;
 	// LLM mode option for overriding model selection (undefined means use settings)
@@ -281,6 +409,15 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
+		/** Enable trust engine, security, and permissions infrastructure. */
+		enableTrust?: boolean;
+		/** Enable encrypted secrets management and dynamic plugin activation. */
+		enableSecretsManager?: boolean;
+		/** Enable plugin introspection, install/eject/sync. */
+		enablePluginManager?: boolean;
+		enableKnowledge?: boolean;
+		enableRelationships?: boolean;
+		enableTrajectories?: boolean;
 		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
 		companionUrl?: string;
 	}) {
@@ -315,6 +452,14 @@ export class AgentRuntime implements IAgentRuntime {
 			advancedCapabilities: opts.advancedCapabilities,
 			skipCharacterProvider: this.isAnonymousCharacter,
 			enableAutonomy: opts.enableAutonomy,
+			enableTrust: opts.enableTrust,
+			enableSecretsManager: opts.enableSecretsManager,
+			enablePluginManager: opts.enablePluginManager,
+		};
+		this.nativeFeatureOptions = {
+			knowledge: opts.enableKnowledge,
+			relationships: opts.enableRelationships,
+			trajectories: opts.enableTrajectories,
 		};
 		// Generate deterministic UUID from character name
 		// Falls back to random UUID only if no character name is provided
@@ -328,7 +473,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Create the logger with namespace and log level (defaults to "error")
 		this.logger = createLogger({
-			namespace: character.name,
+			namespace: `agent:${character.name ?? "unknown"}`,
 			level: opts.logLevel ?? "error",
 		});
 
@@ -389,6 +534,8 @@ export class AgentRuntime implements IAgentRuntime {
 				50,
 			) as number;
 		}
+
+		installRuntimePluginLifecycle(this);
 	}
 
 	/**
@@ -424,6 +571,465 @@ export class AgentRuntime implements IAgentRuntime {
 			this.currentRunId = this.createRunId();
 		}
 		return this.currentRunId;
+	}
+
+	private resolveServiceTypeAlias(
+		serviceType: ServiceTypeName | string,
+	): string {
+		return serviceType;
+	}
+
+	private resolveNativeFeatureEnabled(feature: NativeRuntimeFeature): boolean {
+		const explicit = this.nativeFeatureOptions[feature];
+		if (explicit !== undefined) {
+			return explicit;
+		}
+
+		const settingKey = `ENABLE_${feature.toUpperCase()}`;
+		const settingValue = parseBooleanValue(this.getSetting(settingKey));
+		if (settingValue !== undefined) {
+			return settingValue;
+		}
+
+		return nativeRuntimeFeatureDefaults[feature];
+	}
+
+	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
+		const pluginName = nativeRuntimeFeaturePluginNames[feature];
+		return this.plugins.some((plugin) => plugin.name === pluginName);
+	}
+
+	private resolveNativeFeatureForServiceType(
+		serviceType: ServiceTypeName | string,
+	): NativeRuntimeFeature | null {
+		switch (serviceType) {
+			case "knowledge":
+				return "knowledge";
+			case "relationships":
+				return "relationships";
+			case "trajectories":
+				return "trajectories";
+			default:
+				return null;
+		}
+	}
+
+	private isNativeFeatureServiceEnabled(
+		serviceType: ServiceTypeName | string,
+	): boolean {
+		const feature = this.resolveNativeFeatureForServiceType(serviceType);
+		if (!feature) {
+			return true;
+		}
+		return this.hasNativeRuntimeFeature(feature);
+	}
+
+	private isPluginManagedAsNativeFeature(
+		plugin: Plugin | null | undefined,
+	): boolean {
+		return resolveNativeRuntimeFeatureFromPluginName(plugin?.name) !== null;
+	}
+
+	private async setNativeRuntimeFeatureEnabled(
+		feature: NativeRuntimeFeature,
+		enabled: boolean,
+	): Promise<void> {
+		const current = this.hasNativeRuntimeFeature(feature);
+		if (current === enabled) {
+			return;
+		}
+
+		if (enabled) {
+			await this.registerPlugin(getNativeRuntimeFeaturePlugin(feature));
+		} else {
+			await this.unloadPlugin(nativeRuntimeFeaturePluginNames[feature]);
+		}
+
+		this.setSetting(`ENABLE_${feature.toUpperCase()}`, enabled);
+	}
+
+	async enableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", true);
+	}
+
+	async disableKnowledge(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("knowledge", false);
+	}
+
+	isKnowledgeEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("knowledge");
+	}
+
+	async enableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", true);
+	}
+
+	async disableRelationships(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("relationships", false);
+	}
+
+	isRelationshipsEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("relationships");
+	}
+
+	async enableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", true);
+	}
+
+	async disableTrajectories(): Promise<void> {
+		await this.setNativeRuntimeFeatureEnabled("trajectories", false);
+	}
+
+	isTrajectoriesEnabled(): boolean {
+		return this.hasNativeRuntimeFeature("trajectories");
+	}
+
+	private hooksForPhase(phase: PipelineHookPhase): ResolvedPipelineHook[] {
+		return this.pipelineHookEntries.filter((e) => e.phase === phase);
+	}
+
+	private upsertPipelineHook(entry: ResolvedPipelineHook): void {
+		const existing = this.pipelineHookIdToIndex.get(entry.id);
+		if (existing !== undefined) {
+			this.pipelineHookEntries[existing] = entry;
+			return;
+		}
+		this.pipelineHookIdToIndex.set(entry.id, this.pipelineHookEntries.length);
+		this.pipelineHookEntries.push(entry);
+	}
+
+	private async invokePipelineHooks(
+		phase: PipelineHookPhase,
+		ctx: PipelineHookContext,
+		logLabel: string,
+		pipelineHookTelemetry = true,
+	): Promise<void> {
+		const hooks = sortPipelineHooksByPosition(this.hooksForPhase(phase));
+		if (!hooks.length) {
+			return;
+		}
+		const runtime = this as unknown as IAgentRuntime;
+		const roomId = pipelineHookMetricRoomId(ctx);
+
+		const runOne = async (entry: ResolvedPipelineHook) => {
+			const t0 = performance.now();
+			let errorMessage: string | undefined;
+			try {
+				await entry.handler(runtime, ctx);
+			} catch (error) {
+				errorMessage = error instanceof Error ? error.message : String(error);
+				this.logger.error(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase: entry.phase,
+						error: errorMessage,
+					},
+					`${logLabel} threw; continuing`,
+				);
+			}
+			{
+				const durationMs = Math.round(performance.now() - t0);
+				if (!pipelineHookTelemetry) {
+					const baseLite = {
+						src: "pipeline_hook" as const,
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase,
+						roomId,
+						durationMs,
+					};
+					if (durationMs >= PIPELINE_HOOK_WARN_MS) {
+						this.logger.warn(
+							baseLite,
+							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+						this.logger.error(
+							baseLite,
+							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+				} else {
+					const slow = durationMs >= PIPELINE_HOOK_WARN_MS;
+					const baseFields = {
+						src: "pipeline_hook" as const,
+						agentId: this.agentId,
+						hookId: entry.id,
+						phase,
+						roomId,
+						durationMs,
+					};
+					if (durationMs >= PIPELINE_HOOK_DEBUG_LOG_MS) {
+						this.logger.debug(baseFields, "Pipeline hook timing");
+					}
+					if (slow) {
+						this.logger.warn(
+							baseFields,
+							`PIPELINE HOOK SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					if (durationMs >= PIPELINE_HOOK_ERROR_LOG_MS) {
+						this.logger.error(
+							baseFields,
+							`PIPELINE HOOK VERY SLOW (${durationMs}ms): ${entry.id} phase=${phase}`,
+						);
+					}
+					try {
+						await this.emitEvent(EventType.PIPELINE_HOOK_METRIC, {
+							phase,
+							hookId: entry.id,
+							durationMs,
+							roomId,
+							slow,
+							...(errorMessage !== undefined ? { error: errorMessage } : {}),
+						});
+					} catch (metricError) {
+						this.logger.debug(
+							{
+								src: "pipeline_hook",
+								agentId: this.agentId,
+								hookId: entry.id,
+								phase,
+								error:
+									metricError instanceof Error
+										? metricError.message
+										: String(metricError),
+							},
+							"PIPELINE_HOOK_METRIC listener failed",
+						);
+					}
+				}
+			}
+		};
+
+		if (
+			phase === "parallel_with_should_respond" ||
+			phase === "model_stream_chunk"
+		) {
+			await Promise.all(hooks.map((h) => runOne(h)));
+			return;
+		}
+
+		const mutators = hooks.filter((h) => h.mutatesPrimary);
+		const serialReaders = hooks.filter(
+			(h) => !h.mutatesPrimary && h.schedule === "serial",
+		);
+		const concurrentReaders = hooks.filter(
+			(h) => !h.mutatesPrimary && h.schedule === "concurrent",
+		);
+
+		for (const h of mutators) {
+			await runOne(h);
+		}
+		for (const h of serialReaders) {
+			await runOne(h);
+		}
+		await Promise.all(concurrentReaders.map((h) => runOne(h)));
+	}
+
+	registerPipelineHook(spec: PipelineHookSpec): void {
+		this.upsertPipelineHook(resolvePipelineHookSpec(spec));
+	}
+
+	unregisterPipelineHook(id: string): void {
+		const idx = this.pipelineHookIdToIndex.get(id);
+		if (idx === undefined) {
+			return;
+		}
+		this.pipelineHookEntries.splice(idx, 1);
+		this.pipelineHookIdToIndex.clear();
+		for (let i = 0; i < this.pipelineHookEntries.length; i++) {
+			const e = this.pipelineHookEntries[i];
+			this.pipelineHookIdToIndex.set(e.id, i);
+		}
+	}
+
+	/**
+	 * Run pipeline hooks for a phase (skip metadata, ordering, and outgoing redact).
+	 * @param pipelineHookTelemetry When false, skips debug logs / `PIPELINE_HOOK_METRIC` per hook
+	 * (still logs warn/error for slow hooks). Defaults to false for `model_stream_chunk` only.
+	 */
+	async applyPipelineHooks(
+		phase: PipelineHookPhase,
+		ctx: PipelineHookContext,
+		pipelineHookTelemetry?: boolean,
+	): Promise<void> {
+		if (ctx.phase !== phase) {
+			throw new Error(
+				`applyPipelineHooks: phase mismatch (expected ${phase}, ctx.phase=${ctx.phase})`,
+			);
+		}
+
+		const hookTelemetry =
+			pipelineHookTelemetry !== undefined
+				? pipelineHookTelemetry
+				: phase !== "model_stream_chunk";
+
+		const hasHooks = this.hooksForPhase(phase).length > 0;
+
+		switch (phase) {
+			case "incoming_before_compose": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "incoming_before_compose" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipIncomingMessageHooks === true) {
+					return;
+				}
+				const messageId = c.message.id;
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Incoming pipeline hook",
+					hookTelemetry,
+				);
+				if (messageId) {
+					this.stateCache.delete(messageId);
+					this.stateCache.delete(`${messageId}_action_results`);
+				}
+				return;
+			}
+			case "pre_should_respond": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "pre_should_respond" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipPreShouldRespondHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Pre-should-respond pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "parallel_with_should_respond": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "parallel_with_should_respond" }
+				>;
+				const md = c.message.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipParallelWithShouldRespondHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"Parallel should-respond pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "outgoing_before_deliver": {
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "outgoing_before_deliver" }
+				>;
+				if (hasHooks) {
+					await this.invokePipelineHooks(
+						phase,
+						c,
+						"Outgoing pipeline hook",
+						hookTelemetry,
+					);
+				}
+				c.content.text = this.redactSecrets(
+					coerceOutgoingMessageText(c.content.text),
+				);
+				return;
+			}
+			case "pre_model":
+			case "post_model": {
+				if (!hasHooks) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					ctx as Extract<
+						PipelineHookContext,
+						{ phase: "pre_model" | "post_model" }
+					>,
+					phase === "pre_model"
+						? "Pre-model pipeline hook"
+						: "Post-model pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "after_memory_persisted": {
+				if (!hasHooks) {
+					return;
+				}
+				const c = ctx as Extract<
+					PipelineHookContext,
+					{ phase: "after_memory_persisted" }
+				>;
+				const md = c.memory.content?.metadata;
+				const meta =
+					typeof md === "object" && md !== null
+						? (md as Record<string, unknown>)
+						: null;
+				if (meta?.skipAfterMemoryPersistedHooks === true) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					c,
+					"After-memory-persisted pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			case "model_stream_chunk":
+			case "model_stream_end": {
+				if (!hasHooks) {
+					return;
+				}
+				await this.invokePipelineHooks(
+					phase,
+					ctx as Extract<
+						PipelineHookContext,
+						{ phase: "model_stream_chunk" | "model_stream_end" }
+					>,
+					phase === "model_stream_chunk"
+						? "Model stream chunk pipeline hook"
+						: "Model stream end pipeline hook",
+					hookTelemetry,
+				);
+				return;
+			}
+			default: {
+				throw new Error(`Unknown pipeline hook phase: ${String(phase)}`);
+			}
+		}
 	}
 
 	async registerPlugin(plugin: Plugin): Promise<void> {
@@ -470,18 +1076,35 @@ export class AgentRuntime implements IAgentRuntime {
 				this.capabilityOptions.enableAutonomy ??
 				(settings?.ENABLE_AUTONOMY === true ||
 					settings?.ENABLE_AUTONOMY === "true");
+			const enableTrust =
+				this.capabilityOptions.enableTrust ??
+				(settings?.ENABLE_TRUST === true || settings?.ENABLE_TRUST === "true");
+			const enableSecretsManager =
+				this.capabilityOptions.enableSecretsManager ??
+				(settings?.ENABLE_SECRETS_MANAGER === true ||
+					settings?.ENABLE_SECRETS_MANAGER === "true");
+			const enablePluginManager =
+				this.capabilityOptions.enablePluginManager ??
+				(settings?.ENABLE_PLUGIN_MANAGER === true ||
+					settings?.ENABLE_PLUGIN_MANAGER === "true");
 
 			if (
 				disableBasic ||
 				enableExtended ||
 				skipCharacterProvider ||
-				enableAutonomy
+				enableAutonomy ||
+				enableTrust ||
+				enableSecretsManager ||
+				enablePluginManager
 			) {
 				const config: CapabilityConfig = {
 					disableBasic,
 					enableExtended,
 					skipCharacterProvider,
 					enableAutonomy,
+					enableTrust,
+					enableSecretsManager,
+					enablePluginManager,
 				};
 				const configuredPlugin = createBasicCapabilitiesPlugin(config);
 				pluginToRegister = {
@@ -519,8 +1142,24 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 		if (pluginToRegister.actions) {
+			const existingActionNames = new Set(
+				this.actions.map((action) => action.name),
+			);
 			for (const action of pluginToRegister.actions) {
+				if (existingActionNames.has(action.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin action",
+					);
+					continue;
+				}
 				this.registerAction(action);
+				existingActionNames.add(action.name);
 			}
 		}
 		if (pluginToRegister.evaluators) {
@@ -742,9 +1381,20 @@ export class AgentRuntime implements IAgentRuntime {
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
 
+		for (const feature of Object.keys(
+			nativeRuntimeFeatureDefaults,
+		) as NativeRuntimeFeature[]) {
+			const enabled = this.resolveNativeFeatureEnabled(feature);
+			if (enabled) {
+				pluginRegistrationPromises.push(
+					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
+				);
+			}
+		}
+
 		if (this.character.advancedPlanning === true) {
 			const { createAdvancedPlanningPlugin } = await import(
-				"./advanced-planning/index.ts"
+				"./features/advanced-planning/index.ts"
 			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedPlanningPlugin()),
@@ -753,7 +1403,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		if (this.character.advancedMemory === true) {
 			const { createAdvancedMemoryPlugin } = await import(
-				"./advanced-memory/index.ts"
+				"./features/advanced-memory/index.ts"
 			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedMemoryPlugin()),
@@ -761,7 +1411,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		for (const plugin of this.characterPlugins) {
-			if (plugin) {
+			if (plugin && !this.isPluginManagedAsNativeFeature(plugin)) {
 				pluginRegistrationPromises.push(this.registerPlugin(plugin));
 			}
 		}
@@ -1261,6 +1911,137 @@ export class AgentRuntime implements IAgentRuntime {
 		return true;
 	}
 
+	getOptimizationDir(): string {
+		const setting = this.getSetting("OPTIMIZATION_DIR");
+		return getOptimizationRootDir(typeof setting === "string" ? setting : null);
+	}
+
+	registerPromptOptimizationHooks(
+		hooks: PromptOptimizationRuntimeHooks | null,
+	): void {
+		this.promptOptimizationHooks = hooks;
+	}
+
+	getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null {
+		return this.promptOptimizationHooks;
+	}
+
+	resolveProviderModelString(
+		resolvedModelType: string,
+		optionsModel?: string,
+		effectiveModelId?: string,
+	): string {
+		if (effectiveModelId) return effectiveModelId;
+		if (optionsModel) return optionsModel;
+
+		const slotToSetting: Record<string, string> = {
+			TEXT_NANO: "NANO_MODEL",
+			TEXT_MINI: "MINI_MODEL",
+			TEXT_SMALL: "SMALL_MODEL",
+			TEXT_LARGE: "LARGE_MODEL",
+			TEXT_MEGA: "MEGA_MODEL",
+			RESPONSE_HANDLER: "RESPONSE_HANDLER_MODEL",
+			ACTION_PLANNER: "ACTION_PLANNER_MODEL",
+			REASONING_SMALL: "REASONING_SMALL_MODEL",
+			REASONING_LARGE: "REASONING_LARGE_MODEL",
+			TEXT_COMPLETION: "COMPLETION_MODEL",
+		};
+
+		const providerPrefixes = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
+		for (const candidate of getModelFallbackChain(
+			resolvedModelType as ModelTypeName,
+		)) {
+			const settingKey = slotToSetting[candidate];
+			if (!settingKey) continue;
+			for (const prefix of providerPrefixes) {
+				const val = this.getSetting(`${prefix}${settingKey}`);
+				if (typeof val === "string" && val) return val;
+			}
+		}
+
+		return resolvedModelType;
+	}
+
+	enrichTrace(runId: string, signal: ScoreSignal): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return;
+
+		const targetTraceId = (signal as { traceId?: string }).traceId;
+
+		for (const tid of traceIds) {
+			if (targetTraceId && tid !== targetTraceId) continue;
+
+			const trace = this.activeTraces.get(tid);
+			if (!trace) continue;
+			trace.scoreCard.signals.push(signal);
+			const card = ScoreCard.fromJSON(trace.scoreCard);
+			trace.scoreCard.compositeScore = card.composite();
+			trace.enrichedAt = Date.now();
+		}
+	}
+
+	getActiveTrace(runId: string): ExecutionTrace | undefined {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return undefined;
+		let latest: ExecutionTrace | undefined;
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) latest = t;
+		}
+		return latest;
+	}
+
+	getActiveTracesForRun(runId: string): ExecutionTrace[] {
+		const traceIds = this.runToTraces.get(runId);
+		if (!traceIds) return [];
+		const traces: ExecutionTrace[] = [];
+		for (const tid of traceIds) {
+			const t = this.activeTraces.get(tid);
+			if (t) traces.push(t);
+		}
+		return traces;
+	}
+
+	deleteActiveTrace(runId: string): void {
+		const traceIds = this.runToTraces.get(runId);
+		if (traceIds) {
+			for (const tid of traceIds) {
+				this.activeTraces.delete(tid);
+			}
+			this.runToTraces.delete(runId);
+		}
+	}
+
+	deleteActiveTraceById(traceId: string): void {
+		this.activeTraces.delete(traceId);
+		for (const [rid, tids] of this.runToTraces) {
+			if (tids.delete(traceId) && tids.size === 0) {
+				this.runToTraces.delete(rid);
+			}
+		}
+	}
+
+	private static readonly ACTIVE_TRACE_TTL_MS = 5 * 60 * 1000;
+	private activeTraceTtlPurgeCounter = 0;
+
+	private purgeStaleActiveTraces(): void {
+		const now = Date.now();
+		const ttl = AgentRuntime.ACTIVE_TRACE_TTL_MS;
+		for (const [id, t] of this.activeTraces) {
+			if (now - t.createdAt <= ttl) continue;
+			this.activeTraces.delete(id);
+			for (const [rid, tids] of this.runToTraces) {
+				tids.delete(id);
+				if (tids.size === 0) this.runToTraces.delete(rid);
+			}
+		}
+	}
+
+	private maybeRunActiveTraceTTLPurge(): void {
+		if (++this.activeTraceTtlPurgeCounter % 100 !== 0) return;
+		this.purgeStaleActiveTraces();
+	}
+
 	/**
 	 * Get the messaging adapter if available
 	 *
@@ -1297,7 +2078,7 @@ export class AgentRuntime implements IAgentRuntime {
 	registerAction(action: Action) {
 		const canonical = withCanonicalActionDocs(action);
 		if (this.actions.find((a) => a.name === canonical.name)) {
-			this.logger.warn(
+			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, action: canonical.name },
 				"Action already registered, skipping",
 			);
@@ -1410,9 +2191,10 @@ export class AgentRuntime implements IAgentRuntime {
 		state?: State,
 		callback?: HandlerCallback,
 		processOptions?: {
-			onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void> {
+		setTrajectoryPurpose("action");
 		// Check if action planning is enabled
 		const actionPlanningEnabled = this.isActionPlanningEnabled();
 
@@ -1500,13 +2282,18 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		let actionIndex = 0;
+		// Track which action names have already been executed in this
+		// processActions invocation. The LLM sometimes emits the same action
+		// twice in `actions` (e.g. ["GMAIL_ACTION", "CALENDAR_ACTION",
+		// "CALENDAR_ACTION"] when the user has multiple sub-intents the LLM
+		// can't split into per-action params). Without dedupe the second run
+		// uses the same params as the first → identical output → discord
+		// dedup layer rejects it as a duplicate callback. Two identical
+		// action+params runs in one turn is never useful, so collapse them.
+		const executedActionKeys = new Set<string>();
 
 		for (const response of responsesToProcess) {
-			if (
-				!response.content ||
-				!response.content.actions ||
-				response.content.actions.length === 0
-			) {
+			if (!response.content?.actions || response.content.actions.length === 0) {
 				this.logger.warn(
 					{ src: "agent", agentId: this.agentId },
 					"No action found in response",
@@ -1514,11 +2301,7 @@ export class AgentRuntime implements IAgentRuntime {
 				continue;
 			}
 			const actions = response.content.actions;
-			const paramsXml =
-				response.content && typeof response.content.params === "string"
-					? response.content.params
-					: undefined;
-			const actionParamsByName = parseActionParams(paramsXml);
+			const actionParamsByName = parseActionParams(response.content?.params);
 
 			const actionResults: ActionResult[] = [];
 			let accumulatedState = state;
@@ -1707,13 +2490,45 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation incomplete; continuing to handler",
+							"Skipping action with invalid parameters",
 						);
-						options.parameterErrors = validation.errors;
+						if (actionPlan?.steps?.[actionIndex]) {
+							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+								status: "failed",
+								error: validation.errors.join("; "),
+							});
+						}
+						actionIndex++;
+						continue;
 					}
 
 					if (validation.params) options.parameters = validation.params;
 				}
+
+				// Dedupe: same action name + identical params bucket means
+				// repeating the run would emit identical output. Skip the
+				// repeat instead of letting the discord callback layer reject
+				// it as a duplicate. Key includes the JSON of params so that
+				// distinct invocations with different params still go through.
+				const actionDedupeKey = `${action.name.trim().toUpperCase()}::${
+					options.parameters
+						? JSON.stringify(options.parameters)
+						: "<no-params>"
+				}`;
+				if (executedActionKeys.has(actionDedupeKey)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: action.name,
+							dedupeKey: actionDedupeKey,
+						},
+						"Skipping duplicate action invocation in same turn",
+					);
+					actionIndex++;
+					continue;
+				}
+				executedActionKeys.add(actionDedupeKey);
 
 				const actionId = uuidv4() as UUID;
 				// Separate ID for streamed response message (independent from action badge)
@@ -1769,10 +2584,20 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 
 				const storedCallbackData: Content[] = [];
+				let visibleCallbackIndex: number | null = null;
 
 				const storageCallback = async (response: Content) => {
 					// Use responseMessageId for the text response (separate from action badge)
 					response.responseId = responseMessageId;
+					if (callbackContentHasVisibleOutput(response)) {
+						if (visibleCallbackIndex === null) {
+							visibleCallbackIndex = storedCallbackData.length;
+							storedCallbackData.push(response);
+						} else {
+							storedCallbackData[visibleCallbackIndex] = response;
+						}
+						return [];
+					}
 					storedCallbackData.push(response);
 					return [];
 				};
@@ -1784,33 +2609,70 @@ export class AgentRuntime implements IAgentRuntime {
 				// onStreamEnd is called after each useModel stream completes, allowing us to reset
 				// the filter so content type detection from one call doesn't affect the next.
 				let actionStreamingContext:
-					| {
-							messageId: string;
-							onStreamChunk: (
-								chunk: string,
-								messageId?: string,
-							) => Promise<void>;
-							onStreamEnd: () => void;
-					  }
+					| (StreamingContext & { onStreamEnd: () => void })
 					| undefined;
 				if (processOptions?.onStreamChunk) {
 					let currentFilter: ActionStreamFilter | null = null;
 					const onStreamChunk = processOptions.onStreamChunk;
+					// Track locally accumulated filtered text for this action stream.
+					// Note: upstream `accumulated` is discarded because ActionStreamFilter may
+					// transform/drop content, making upstream accumulated inconsistent with
+					// the actual deltas the consumer receives.
+					let filteredAccumulated = "";
 
 					actionStreamingContext = {
 						messageId: responseMessageId,
-						onStreamChunk: async (chunk: string, msgId?: string) => {
+						onStreamChunk: async (
+							chunk: string,
+							msgId?: string,
+							_accumulated?: string,
+						) => {
 							if (!currentFilter) {
 								currentFilter = new ActionStreamFilter();
 							}
 							const textToStream = currentFilter.push(chunk);
 							if (textToStream && onStreamChunk) {
-								await onStreamChunk(textToStream, msgId);
+								filteredAccumulated += textToStream;
+								await this.applyPipelineHooks(
+									"model_stream_chunk",
+									modelStreamChunkPipelineHookContext({
+										source: "process_actions",
+										chunk: textToStream,
+										messageId: msgId,
+										roomId: message.roomId,
+										runId,
+										responseId: responseMessageId,
+										accumulated: filteredAccumulated,
+									}),
+								);
+								await onStreamChunk(textToStream, msgId, filteredAccumulated);
 							}
 						},
 						onStreamEnd: () => {
-							// Reset filter for next useModel call
+							const textSnapshot = filteredAccumulated;
+							void this.applyPipelineHooks(
+								"model_stream_end",
+								modelStreamEndPipelineHookContext({
+									source: "process_actions",
+									roomId: message.roomId,
+									runId,
+									responseId: responseMessageId,
+									messageId: responseMessageId,
+									text: textSnapshot,
+								}),
+							).catch((err) => {
+								this.logger.debug(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										error: err instanceof Error ? err.message : String(err),
+									},
+									"model_stream_end pipeline hook failed",
+								);
+							});
+							// Reset filter and local accumulator for next useModel call
 							currentFilter = null;
+							filteredAccumulated = "";
 						},
 					};
 				}
@@ -1945,6 +2807,10 @@ export class AgentRuntime implements IAgentRuntime {
 
 				const isSuccess = actionResult?.success !== false;
 				const statusText = isSuccess ? "completed" : "failed";
+				const actionText =
+					typeof actionResult?.text === "string"
+						? actionResult.text.trim()
+						: "";
 
 				await this.emitEvent(EventType.ACTION_COMPLETED, {
 					messageId: actionId,
@@ -1963,28 +2829,66 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 				});
 
+				if (
+					callback &&
+					actionText &&
+					!storedCallbackData.some((content) =>
+						callbackContentHasVisibleOutput(content),
+					)
+				) {
+					storedCallbackData.push({
+						text: actionText,
+						source: "action",
+						action: action.name,
+					});
+				}
+
 				if (callback) {
 					for (const content of storedCallbackData) {
-						// Redact any secrets from callback content before sending
-						if (content.text) {
-							content.text = this.redactSecrets(content.text);
-						}
+						await this.applyPipelineHooks(
+							"outgoing_before_deliver",
+							outgoingPipelineHookContext(content, {
+								source: "action",
+								roomId: message.roomId,
+								message,
+								actionName: action.name,
+								responseId: content.responseId,
+							}),
+						);
 						await callback(content);
 					}
 				}
 
-				// Store action result as memory
-				const actionMemory: Memory = {
-					id: actionId,
-					entityId: this.agentId,
-					roomId: message.roomId,
-					worldId: message.worldId,
-					content: {
-						text: actionResult?.text || `Executed action: ${action.name}`,
-						source: "action",
-					},
-				};
-				await this.createMemory(actionMemory, "messages");
+				// Only persist action memories when the handler returned a real user-facing
+				// message. Placeholder bookkeeping text is internal runtime state, not chat.
+				if (actionText) {
+					const actionMemory: Memory = {
+						id: actionId,
+						entityId: this.agentId,
+						roomId: message.roomId,
+						worldId: message.worldId,
+						content: {
+							text: actionText,
+							source: "action",
+							type: "action_result",
+							actionName: action.name,
+							actionStatus: statusText,
+							runId,
+							...(actionPlan
+								? {
+										planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+										planThought: actionPlan.thought,
+									}
+								: {}),
+							...(actionResult?.data
+								? {
+										data: actionResult.data as import("./types/proto.js").JsonObject,
+									}
+								: {}),
+						},
+					};
+					await this.createMemory(actionMemory, "messages");
+				}
 
 				this.logger.debug(
 					{ src: "agent", agentId: this.agentId, action: action.name },
@@ -2056,6 +2960,7 @@ export class AgentRuntime implements IAgentRuntime {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) {
+		setTrajectoryPurpose("evaluation");
 		const evaluatorPromises = this.evaluators.map(
 			async (evaluator: Evaluator) => {
 				if (!evaluator.handler) {
@@ -2082,33 +2987,34 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		await Promise.all(
-			evaluators.map(async (evaluator) => {
-				if (evaluator.handler) {
-					await evaluator.handler(
-						this as unknown as IAgentRuntime,
-						message,
-						state,
-						{},
-						callback,
-						responses,
-					);
-					this.adapter.createLogs([
-						{
-							entityId: message.entityId,
-							roomId: message.roomId,
-							type: "evaluator",
-							body: {
-								evaluator: evaluator.name,
-								messageId: message.id,
-								message: message.content.text,
-								runId: this.getCurrentRunId(),
-							},
-						},
-					]);
-				}
-			}),
-		);
+		// Run evaluator handlers sequentially because multiple evaluators can
+		// mutate shared memories/relationships for the same turn.
+		for (const evaluator of evaluators) {
+			if (!evaluator.handler) {
+				continue;
+			}
+			await evaluator.handler(
+				this as unknown as IAgentRuntime,
+				message,
+				state,
+				{},
+				callback,
+				responses,
+			);
+			this.adapter.createLogs([
+				{
+					entityId: message.entityId,
+					roomId: message.roomId,
+					type: "evaluator",
+					body: {
+						evaluator: evaluator.name,
+						messageId: message.id,
+						message: message.content.text,
+						runId: this.getCurrentRunId(),
+					},
+				},
+			]);
+		}
 		return evaluators;
 	}
 
@@ -2261,6 +3167,7 @@ export class AgentRuntime implements IAgentRuntime {
 	async ensureConnection(params: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		worldId?: UUID;
 		worldName?: string;
 		userName?: string;
@@ -2509,7 +3416,10 @@ export class AgentRuntime implements IAgentRuntime {
 				providersToGet.push(provider);
 			}
 		}
-		providersToGet.sort((a, b) => (a.position || 0) - (b.position || 0));
+		providersToGet.sort(
+			(a, b) =>
+				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
+		);
 
 		// Optional trajectory logging service (no-op by default).
 		type TrajectoryLogger = Service & {
@@ -2519,43 +3429,90 @@ export class AgentRuntime implements IAgentRuntime {
 				data: Record<string, string | number | boolean | null>;
 				purpose: string;
 				query?: Record<string, string | number | boolean | null>;
+				runId?: string;
+				roomId?: string;
+				messageId?: string;
+				executionTraceId?: string;
 			}) => void;
 		};
 		const trajLogger = (await this._ensureServiceStarted(
-			"trajectory_logger",
+			"trajectories",
 		)) as TrajectoryLogger | null;
 		const providerData = await Promise.all(
 			providersToGet.map(async (provider) => {
 				const start = Date.now();
-				const result = await provider.get(
-					this as unknown as IAgentRuntime,
-					message,
-					cachedState,
-				);
-				const duration = Date.now() - start;
+				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+				let timedOut = false;
+				try {
+					const result = await Promise.race([
+						provider.get(
+							this as unknown as IAgentRuntime,
+							message,
+							cachedState,
+						),
+						new Promise<ProviderResult>((resolve) => {
+							timeoutHandle = setTimeout(() => {
+								timedOut = true;
+								this.logger.error(
+									{
+										src: "agent",
+										agentId: this.agentId,
+										provider: provider.name,
+										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
+									},
+									"Provider timed out during state composition",
+								);
+								resolve({ text: "", values: {}, data: {} });
+							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
+						}),
+					]);
+					const duration = Date.now() - start;
 
-				// only need to inform if it's taking a long time
-				if (duration > 100) {
-					this.logger.debug(
+					// Only log slow successful providers. Timed-out providers already logged above.
+					if (!timedOut && duration > 100) {
+						this.logger.debug(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								provider: provider.name,
+								duration,
+							},
+							"Slow provider",
+						);
+					}
+					return {
+						...result,
+						providerName: provider.name,
+					};
+				} catch (error) {
+					this.logger.error(
 						{
 							src: "agent",
 							agentId: this.agentId,
 							provider: provider.name,
-							duration,
+							error: error instanceof Error ? error.message : String(error),
 						},
-						"Slow provider",
+						"Provider failed during state composition",
 					);
+					return {
+						text: "",
+						values: {},
+						data: {},
+						providerName: provider.name,
+					};
+				} finally {
+					if (timeoutHandle !== undefined) {
+						clearTimeout(timeoutHandle);
+					}
 				}
-				return {
-					...result,
-					providerName: provider.name,
-				};
 			}),
 		);
 
 		if (trajectoryStepId && trajLogger) {
 			const userText =
 				typeof message.content?.text === "string" ? message.content.text : "";
+			const trajCtx = getTrajectoryContext();
+			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const r of providerData) {
 				try {
 					const textLen = typeof r.text === "string" ? r.text.length : 0;
@@ -2565,6 +3522,10 @@ export class AgentRuntime implements IAgentRuntime {
 						data: { textLength: textLen },
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
+						runId: trajCtx?.runId,
+						roomId: trajCtx?.roomId,
+						messageId: trajCtx?.messageId,
+						executionTraceId: providerTraceId,
 					});
 				} catch {
 					// Trajectory logging must never break core message flow.
@@ -2622,6 +3583,11 @@ export class AgentRuntime implements IAgentRuntime {
 		// Redact any secrets from provider context before use
 		const rawProvidersText = orderedTexts.join("\n");
 		const providersText = this.redactSecrets(rawProvidersText);
+		const conversationSeed = buildDeterministicSeed(
+			this.agentId,
+			message.roomId,
+			"conversation",
+		);
 		const aggregatedStateValues: Record<string, StateValue> = {
 			...(cachedState.values || {}),
 		};
@@ -2650,10 +3616,13 @@ export class AgentRuntime implements IAgentRuntime {
 		const newState = {
 			values: {
 				...aggregatedStateValues,
+				__conversationSeed: conversationSeed,
 				providers: providersText,
 			},
 			data: {
 				...(cachedState.data || {}),
+				__conversationSeed: conversationSeed,
+				providerOrder: providersToGet.map((provider) => provider.name),
 				providers: currentProviderResults,
 			},
 			text: providersText,
@@ -2670,7 +3639,8 @@ export class AgentRuntime implements IAgentRuntime {
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.stopped) return null;
-		const key = serviceType as ServiceTypeName;
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0];
@@ -2771,7 +3741,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getService<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T | null {
-		const instances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return null;
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const instances = this.services.get(key);
 		if (instances && instances.length > 0) {
 			return instances[0] as T;
 		}
@@ -2799,10 +3773,14 @@ export class AgentRuntime implements IAgentRuntime {
 	getServicesByType<T extends Service = Service>(
 		serviceName: ServiceTypeName | string,
 	): T[] {
-		const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceName)) {
+			return [];
+		}
+		const key = this.resolveServiceTypeAlias(serviceName) as ServiceTypeName;
+		const serviceInstances = this.services.get(key);
 		if (!serviceInstances || serviceInstances.length === 0) {
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, serviceName },
+				{ src: "agent", agentId: this.agentId, serviceName: key },
 				"No services found for type",
 			);
 			return [];
@@ -2824,7 +3802,11 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns true if the service is registered
 	 */
 	hasService(serviceType: ServiceTypeName | string): boolean {
-		const classes = this.serviceTypes.get(serviceType as ServiceTypeName);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return false;
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const classes = this.serviceTypes.get(key);
 		return classes !== undefined && classes.length > 0;
 	}
 
@@ -2836,10 +3818,11 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceRegistrationStatus(
 		serviceType: ServiceTypeName | string,
 	): "pending" | "registering" | "registered" | "failed" | "unknown" {
-		return (
-			this.serviceRegistrationStatus.get(serviceType as ServiceTypeName) ||
-			"unknown"
-		);
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			return "unknown";
+		}
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
 	/**
@@ -2953,9 +3936,12 @@ export class AgentRuntime implements IAgentRuntime {
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service> {
-		return this._ensureServiceStarted(serviceType).then((s) => {
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		return this._ensureServiceStarted(key).then((s) => {
 			if (!s)
-				throw new Error(`Service ${serviceType} not found or failed to start`);
+				throw new Error(
+					`Service ${String(serviceType)} not found or failed to start`,
+				);
 			return s;
 		});
 	}
@@ -2969,8 +3955,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider: string,
 		priority?: number,
 	): void {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		const modelKey = String(modelType);
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -2993,6 +3978,61 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private resolveModelRegistration(
+		modelType: ModelTypeName | string,
+		provider?: string,
+	):
+		| {
+				handler: (
+					runtime: IAgentRuntime,
+					params: Record<string, JsonValue | object>,
+				) => Promise<JsonValue | object>;
+				modelKey: string;
+				provider: string;
+		  }
+		| undefined {
+		const requestedModelKey = String(modelType);
+
+		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
+			const models = this.models.get(candidateKey);
+			if (!models?.length) {
+				continue;
+			}
+
+			const modelWithProvider =
+				provider && models.find((model) => model.provider === provider);
+			if (provider && !modelWithProvider) {
+				continue;
+			}
+
+			const resolvedModel = modelWithProvider ?? models[0];
+			if (!resolvedModel) {
+				continue;
+			}
+
+			if (candidateKey !== requestedModelKey) {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						requestedModel: requestedModelKey,
+						resolvedModel: candidateKey,
+						provider: resolvedModel.provider,
+					},
+					"Model fallback applied",
+				);
+			}
+
+			return {
+				handler: resolvedModel.handler,
+				modelKey: candidateKey,
+				provider: resolvedModel.provider,
+			};
+		}
+
+		return undefined;
+	}
+
 	getModel(
 		modelType: ModelTypeName | string,
 	):
@@ -3001,10 +4041,8 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
-		const models = this.models.get(modelKey);
-		if (!models || !models.length) {
+		const resolvedModel = this.resolveModelRegistration(modelType);
+		if (!resolvedModel) {
 			return undefined;
 		}
 
@@ -3013,12 +4051,12 @@ export class AgentRuntime implements IAgentRuntime {
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
-				provider: models[0].provider,
+				model: resolvedModel.modelKey,
+				provider: resolvedModel.provider,
 			},
 			"Using model",
 		);
-		return models[0].handler;
+		return resolvedModel.handler;
 	}
 
 	/**
@@ -3134,31 +4172,45 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
-		this.adapter.createLogs([
-			{
-				entityId: this.agentId,
-				roomId: this.currentRoomId ?? this.agentId,
-				body: {
-					modelType,
-					modelKey,
-					prompt: promptContent ?? undefined,
-					systemPrompt: this.character.system ?? undefined,
-					runId: this.getCurrentRunId(),
-					timestamp: Date.now(),
-					executionTime: elapsedTime,
-					provider:
-						provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-					actionContext: this.currentActionContext
-						? {
-								actionName: this.currentActionContext.actionName,
-								actionId: this.currentActionContext.actionId,
-							}
-						: undefined,
-					response: responseValue,
+		void this.adapter
+			.createLogs([
+				{
+					entityId: this.agentId,
+					roomId: this.currentRoomId ?? this.agentId,
+					body: {
+						modelType,
+						modelKey,
+						prompt: promptContent ?? undefined,
+						systemPrompt: this.character.system ?? undefined,
+						runId: this.getCurrentRunId(),
+						timestamp: Date.now(),
+						executionTime: elapsedTime,
+						provider:
+							provider ||
+							this.models.get(modelKey)?.[0]?.provider ||
+							"unknown",
+						actionContext: this.currentActionContext
+							? {
+									actionName: this.currentActionContext.actionName,
+									actionId: this.currentActionContext.actionId,
+								}
+							: undefined,
+						response: responseValue,
+					},
+					type: `useModel:${modelKey}`,
 				},
-				type: `useModel:${modelKey}`,
-			},
-		]);
+			])
+			.catch((error) => {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: modelKey,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Model call log write failed",
+				);
+			});
 	}
 
 	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -3166,40 +4218,42 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
-		let modelKey =
-			typeof modelType === "string" ? modelType : ModelType[modelType];
+		let requestedModelKey = String(modelType);
 
 		// Apply LLM mode override for text generation models
 		const llmMode = this.getLLMMode();
 		if (llmMode !== "DEFAULT") {
 			// List of text generation model types that can be overridden
 			const textGenerationModels = [
+				ModelType.TEXT_NANO,
 				ModelType.TEXT_SMALL,
+				ModelType.TEXT_MEDIUM,
 				ModelType.TEXT_LARGE,
-				ModelType.TEXT_REASONING_SMALL,
-				ModelType.TEXT_REASONING_LARGE,
+				ModelType.TEXT_MEGA,
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
 				ModelType.TEXT_COMPLETION,
 			];
 
 			if (
 				textGenerationModels.includes(
-					modelKey as (typeof textGenerationModels)[number],
+					requestedModelKey as (typeof textGenerationModels)[number],
 				)
 			) {
 				const overrideModelKey =
 					llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
-				if (modelKey !== overrideModelKey) {
+				if (requestedModelKey !== overrideModelKey) {
 					this.logger.debug(
 						{
 							src: "agent",
 							agentId: this.agentId,
-							originalModel: modelKey,
+							originalModel: requestedModelKey,
 							overrideModel: overrideModelKey,
 							llmMode,
 						},
 						"LLM mode override applied",
 					);
-					modelKey = overrideModelKey as typeof modelKey;
+					requestedModelKey = overrideModelKey as typeof requestedModelKey;
 				}
 			}
 		}
@@ -3222,13 +4276,14 @@ export class AgentRuntime implements IAgentRuntime {
 				? JSON.stringify(paramsObj.messages)
 				: null) ||
 			(typeof params === "string" ? params : null);
-		const model = this.getModel(modelKey);
-		const modelsForKey = this.models.get(modelKey);
-		const modelWithProvider =
-			provider && modelsForKey?.find((m) => m.provider === provider);
-		const handler = modelWithProvider ? modelWithProvider.handler : model;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			provider,
+		);
+		const resolvedModelKey = resolvedModel?.modelKey ?? requestedModelKey;
+		const handler = resolvedModel?.handler;
 		if (!handler) {
-			const errorMsg = `No handler found for delegate type: ${modelKey}`;
+			const errorMsg = `No handler found for delegate type: ${requestedModelKey}`;
 			throw new Error(errorMsg);
 		}
 
@@ -3240,9 +4295,14 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
-		if (!binaryModels.includes(modelKey)) {
+		if (!binaryModels.includes(resolvedModelKey)) {
 			this.logger.trace(
-				{ src: "agent", agentId: this.agentId, model: modelKey, params },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					params,
+				},
 				"Model input",
 			);
 		} else {
@@ -3267,7 +4327,7 @@ export class AgentRuntime implements IAgentRuntime {
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					size: sizeInfo,
 				},
 				"Model input (binary)",
@@ -3287,7 +4347,7 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams = paramsClone as ModelParamsMap[T];
 		} else {
 			// Include model settings from character configuration if available
-			const modelSettings = this.getModelSettings(modelKey);
+			const modelSettings = this.getModelSettings(requestedModelKey);
 
 			if (modelSettings) {
 				// Apply model settings if configured
@@ -3305,11 +4365,14 @@ export class AgentRuntime implements IAgentRuntime {
 			// We only auto-populate when user is undefined (not explicitly set to empty string or null)
 			// to allow users to intentionally set an empty identifier if needed.
 			const shouldAttachUser =
-				modelKey === ModelType.TEXT_SMALL ||
-				modelKey === ModelType.TEXT_LARGE ||
-				modelKey === ModelType.TEXT_REASONING_SMALL ||
-				modelKey === ModelType.TEXT_REASONING_LARGE ||
-				modelKey === ModelType.TEXT_COMPLETION;
+				requestedModelKey === ModelType.TEXT_NANO ||
+				requestedModelKey === ModelType.TEXT_SMALL ||
+				requestedModelKey === ModelType.TEXT_MEDIUM ||
+				requestedModelKey === ModelType.TEXT_LARGE ||
+				requestedModelKey === ModelType.TEXT_MEGA ||
+				requestedModelKey === ModelType.RESPONSE_HANDLER ||
+				requestedModelKey === ModelType.ACTION_PLANNER ||
+				requestedModelKey === ModelType.TEXT_COMPLETION;
 			if (
 				shouldAttachUser &&
 				isPlainObject(modelParams) &&
@@ -3334,10 +4397,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Define interface for params that may have streaming properties
 		interface StreamingParams {
 			stream?: boolean;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		}
 		const streamingCtx = getStreamingContext();
 		const paramsAsStreaming = isPlainObject(modelParams)
@@ -3360,41 +4420,119 @@ export class AgentRuntime implements IAgentRuntime {
 			delete paramsAsStreaming.onStreamChunk;
 		}
 
-		const response = await handler(
+		await this.invokePipelineHooks(
+			"pre_model",
+			preModelPipelineHookContext({
+				requestedModelType: String(modelType),
+				resolvedModelKey,
+				provider: resolvedModel?.provider ?? provider,
+				roomId: getTrajectoryContext()?.roomId,
+				params: modelParams,
+			}),
+			"Pre-model pipeline hook",
+		);
+
+		const rawResponse = await handler(
 			this as unknown as IAgentRuntime,
 			modelParams as Record<string, JsonValue | object>,
 		);
+
+		const resultRef: { current: unknown } = { current: rawResponse };
+		const modelOutToTrajectoryString = (v: unknown) =>
+			typeof v === "string" ? v : JSON.stringify(v);
 
 		// Stream: broadcast to callbacks if streaming
 		if (
 			shouldStream &&
 			(paramsChunk || ctxChunk) &&
-			isTextStreamResult(response)
+			isTextStreamResult(rawResponse)
 		) {
+			// WHY undefined for accumulated: raw LLM tokens have no field-level
+			// extraction — accumulated text is only meaningful after an XML
+			// extractor (ValidationStreamExtractor) has parsed and isolated a
+			// field. Passing undefined is honest; consumers that need
+			// accumulated data get it from the extractor's onChunk bridge in
+			// dynamicPromptExecFromState, not from the raw token loop.
 			let fullText = "";
-			for await (const chunk of response.textStream) {
+			for await (const chunk of rawResponse.textStream) {
 				if (abortSignal?.aborted) break;
 				fullText += chunk;
-				if (paramsChunk) await paramsChunk(chunk, msgId);
-				if (ctxChunk) await ctxChunk(chunk, msgId);
+				const trajStream = getTrajectoryContext();
+				await this.invokePipelineHooks(
+					"model_stream_chunk",
+					modelStreamChunkPipelineHookContext({
+						source: "use_model",
+						chunk,
+						messageId: msgId,
+						roomId:
+							(trajStream?.roomId as UUID | undefined) ??
+							this.currentRoomId ??
+							this.agentId,
+						runId: this.getCurrentRunId(),
+						...(trajStream?.messageId
+							? { responseId: trajStream.messageId as UUID }
+							: {}),
+						accumulated: fullText,
+					}),
+					"Model stream chunk (useModel)",
+					false,
+				);
+				await runInsideModelStreamChunkDelivery(async () => {
+					if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
+					if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+				});
 			}
+
+			const trajStreamEnd = getTrajectoryContext();
+			await this.invokePipelineHooks(
+				"model_stream_end",
+				modelStreamEndPipelineHookContext({
+					source: "use_model",
+					roomId:
+						(trajStreamEnd?.roomId as UUID | undefined) ??
+						this.currentRoomId ??
+						this.agentId,
+					runId: this.getCurrentRunId(),
+					messageId: msgId ?? trajStreamEnd?.messageId,
+					text: fullText,
+				}),
+				"Model stream end (useModel)",
+				true,
+			);
 
 			// Signal stream end to allow context to reset state between useModel calls
 			const streamingCtxEnd = getStreamingContext();
 			const ctxEnd = streamingCtxEnd?.onStreamEnd;
 			if (ctxEnd) ctxEnd();
 
-			// Log the completed stream
+			resultRef.current = fullText;
+
 			const elapsedTime =
 				(typeof performance !== "undefined" &&
 				typeof performance.now === "function"
 					? performance.now()
 					: Date.now()) - startTime;
+
+			await this.invokePipelineHooks(
+				"post_model",
+				postModelPipelineHookContext({
+					requestedModelType: String(modelType),
+					resolvedModelKey,
+					provider: resolvedModel?.provider ?? provider,
+					roomId: getTrajectoryContext()?.roomId,
+					durationMs: Math.round(elapsedTime),
+					params: modelParams,
+					result: resultRef,
+					streaming: true,
+				}),
+				"Post-model pipeline hook",
+			);
+
 			this.logger.trace(
 				{
 					src: "agent",
 					agentId: this.agentId,
-					model: modelKey,
+					model: resolvedModelKey,
 					duration: Number(elapsedTime.toFixed(2)),
 					streaming: true,
 				},
@@ -3402,13 +4540,13 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 
 			this.logModelCall(
-				modelType,
-				modelKey,
+				String(modelType),
+				resolvedModelKey,
 				params,
 				promptContent,
 				elapsedTime,
-				provider,
-				fullText,
+				resolvedModel?.provider ?? provider,
+				resultRef.current,
 			);
 
 			// Optional trajectory logging: associate model calls with current trajectory step
@@ -3427,11 +4565,17 @@ export class AgentRuntime implements IAgentRuntime {
 							purpose: string;
 							actionType: string;
 							latencyMs: number;
+							modelSlot?: string;
+							runId?: string;
+							roomId?: string;
+							messageId?: string;
+							executionTraceId?: string;
 						}) => void;
 					};
-					const stepId = getTrajectoryContext()?.trajectoryStepId;
+					const trajCtx = getTrajectoryContext();
+					const stepId = trajCtx?.trajectoryStepId;
 					const trajLogger = (await this._ensureServiceStarted(
-						"trajectory_logger",
+						"trajectories",
 					)) as TrajectoryLogger | null;
 					if (stepId && trajLogger) {
 						const tempRaw = isPlainObject(modelParams)
@@ -3440,20 +4584,26 @@ export class AgentRuntime implements IAgentRuntime {
 						const maxTokensRaw = isPlainObject(modelParams)
 							? (modelParams as { maxTokens?: number }).maxTokens
 							: undefined;
+						const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 						trajLogger.logLlmCall({
 							stepId,
-							model: String(modelKey),
+							model: String(resolvedModelKey),
 							systemPrompt:
 								typeof this.character.system === "string"
 									? this.character.system
 									: "",
 							userPrompt: promptContent ?? "",
-							response: fullText,
+							response: modelOutToTrajectoryString(resultRef.current),
 							temperature: typeof tempRaw === "number" ? tempRaw : 0,
 							maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-							purpose: "action",
+							purpose: trajCtx?.purpose ?? "action",
 							actionType: "runtime.useModel",
 							latencyMs: Math.max(0, Math.round(elapsedTime)),
+							modelSlot: String(modelType),
+							runId: trajCtx?.runId,
+							roomId: trajCtx?.roomId,
+							messageId: trajCtx?.messageId,
+							executionTraceId: activeTrace?.id,
 						});
 					}
 				} catch {
@@ -3461,7 +4611,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 
-			return fullText as R;
+			return resultRef.current as R;
 		}
 
 		const elapsedTime =
@@ -3470,25 +4620,39 @@ export class AgentRuntime implements IAgentRuntime {
 				? performance.now()
 				: Date.now()) - startTime;
 
-		// Log timing / response (keep debug log if useful)
+		await this.invokePipelineHooks(
+			"post_model",
+			postModelPipelineHookContext({
+				requestedModelType: String(modelType),
+				resolvedModelKey,
+				provider: resolvedModel?.provider ?? provider,
+				roomId: getTrajectoryContext()?.roomId,
+				durationMs: Math.round(elapsedTime),
+				params: modelParams,
+				result: resultRef,
+				streaming: false,
+			}),
+			"Post-model pipeline hook",
+		);
+
 		this.logger.trace(
 			{
 				src: "agent",
 				agentId: this.agentId,
-				model: modelKey,
+				model: resolvedModelKey,
 				duration: Number(elapsedTime.toFixed(2)),
 			},
 			"Model output",
 		);
 
 		this.logModelCall(
-			modelType,
-			modelKey,
+			String(modelType),
+			resolvedModelKey,
 			params,
 			promptContent,
 			elapsedTime,
-			provider,
-			response,
+			resolvedModel?.provider ?? provider,
+			resultRef.current,
 		);
 
 		// Optional trajectory logging: associate model calls with current trajectory step
@@ -3507,11 +4671,17 @@ export class AgentRuntime implements IAgentRuntime {
 						purpose: string;
 						actionType: string;
 						latencyMs: number;
+						modelSlot?: string;
+						runId?: string;
+						roomId?: string;
+						messageId?: string;
+						executionTraceId?: string;
 					}) => void;
 				};
-				const stepId = getTrajectoryContext()?.trajectoryStepId;
+				const trajCtx2 = getTrajectoryContext();
+				const stepId = trajCtx2?.trajectoryStepId;
 				const trajLogger = (await this._ensureServiceStarted(
-					"trajectory_logger",
+					"trajectories",
 				)) as TrajectoryLogger | null;
 				if (stepId && trajLogger) {
 					const tempRaw = isPlainObject(modelParams)
@@ -3520,30 +4690,33 @@ export class AgentRuntime implements IAgentRuntime {
 					const maxTokensRaw = isPlainObject(modelParams)
 						? (modelParams as { maxTokens?: number }).maxTokens
 						: undefined;
+					const activeTrace = this.getActiveTrace(this.getCurrentRunId());
 					trajLogger.logLlmCall({
 						stepId,
-						model: String(modelKey),
+						model: String(resolvedModelKey),
 						systemPrompt:
 							typeof this.character.system === "string"
 								? this.character.system
 								: "",
 						userPrompt: promptContent ?? "",
-						response:
-							typeof response === "string"
-								? response
-								: JSON.stringify(response),
+						response: modelOutToTrajectoryString(resultRef.current),
 						temperature: typeof tempRaw === "number" ? tempRaw : 0,
 						maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-						purpose: "action",
+						purpose: trajCtx2?.purpose ?? "action",
 						actionType: "runtime.useModel",
 						latencyMs: Math.max(0, Math.round(elapsedTime)),
+						modelSlot: String(modelType),
+						runId: trajCtx2?.runId,
+						roomId: trajCtx2?.roomId,
+						messageId: trajCtx2?.messageId,
+						executionTraceId: activeTrace?.id,
 					});
 				}
 			} catch {
 				// Trajectory logging must never break core model flow.
 			}
 		}
-		return response as R;
+		return resultRef.current as R;
 	}
 
 	/**
@@ -3553,7 +4726,7 @@ export class AgentRuntime implements IAgentRuntime {
 		input: string,
 		options?: GenerateTextOptions,
 	): Promise<GenerateTextResult> {
-		if (!input || !input.trim()) {
+		if (!input?.trim()) {
 			throw new Error("Input cannot be empty");
 		}
 
@@ -3646,6 +4819,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private static readonly METRICS_MAX_ENTRIES = 100;
 	private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
+	private static readonly STRUCTURED_FAILURE_PREVIEW_LIMIT = 4000;
 
 	/**
 	 * Get or create metrics entry with LRU eviction.
@@ -3697,6 +4871,48 @@ export class AgentRuntime implements IAgentRuntime {
 		return metric;
 	}
 
+	private setStructuredOutputFailureState(
+		state: State,
+		failure: StructuredOutputFailure,
+	): void {
+		const issues = Array.isArray(failure.issues)
+			? failure.issues.filter(
+					(issue): issue is string =>
+						typeof issue === "string" && issue.trim().length > 0,
+				)
+			: [];
+		const summaryParts = [
+			`Structured output ${failure.kind.replaceAll("_", " ")}`,
+			`model=${failure.model}`,
+			`format=${failure.format}`,
+			`attempt=${failure.attempts}/${failure.maxRetries + 1}`,
+			...(issues.length > 0 ? [`issue=${issues[0]}`] : []),
+			...(failure.parseError ? [`error=${failure.parseError}`] : []),
+		];
+
+		state.values = {
+			...state.values,
+			structuredOutputFailureSummary: summaryParts.join("; "),
+		};
+		state.data = {
+			...state.data,
+			structuredOutputFailure: failure,
+		};
+	}
+
+	private clearStructuredOutputFailureState(state: State): void {
+		if (state.values?.structuredOutputFailureSummary !== undefined) {
+			const { structuredOutputFailureSummary: _discard, ...restValues } =
+				state.values;
+			state.values = restValues;
+		}
+
+		if (state.data?.structuredOutputFailure !== undefined) {
+			const { structuredOutputFailure: _discard, ...restData } = state.data;
+			state.data = restData;
+		}
+	}
+
 	/**
 	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
 	 *
@@ -3712,32 +4928,32 @@ export class AgentRuntime implements IAgentRuntime {
 	 * 3. Performance tracking: Tracks success/failure rates per model+schema
 	 */
 	async dynamicPromptExecFromState({
-		state,
+		state: stateArg,
 		params,
 		schema,
 		options = {},
 	}: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "small" | "large";
+			promptName?: string;
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
+			modelType?: import("./types").TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "xml";
-			forceFormat?: "json" | "xml";
+			preferredEncapsulation?: "json" | "xml" | "toon";
+			forceFormat?: "json" | "xml" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
+			checkpointCodes?: boolean;
 			maxRetries?: number;
 			retryBackoff?: number | RetryBackoffConfig;
 			disableCache?: boolean;
 			cacheTTL?: number;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 			onStreamEvent?: (
 				event: StreamEvent,
 				messageId?: string,
@@ -3745,11 +4961,15 @@ export class AgentRuntime implements IAgentRuntime {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null> {
+		const state: State =
+			stateArg ?? ({ values: {}, data: {}, text: "" } as State);
+
 		// Validate schema input
 		if (!schema || schema.length === 0) {
 			this.logger.error(
 				"dynamicPromptExecFromState: schema must have at least one entry",
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
@@ -3770,13 +4990,17 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logger.error(
 				`dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
 			);
+			this.clearStructuredOutputFailureState(state);
 			return null;
 		}
 
 		// Generate keys for metrics
+		const resolvedModelType = resolveDynamicPromptModelType(
+			options.modelType,
+			options.modelSize,
+		);
 		const modelIdentifier =
-			options.model ||
-			(options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
+			options.modelType || options.model || resolvedModelType;
 		const schemaKey = this.buildSchemaMetricKey(schema);
 		const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
@@ -3810,7 +5034,13 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		const maxRetries = options.maxRetries ?? defaultRetries;
+		const checkpointCodesEnabled =
+			options.checkpointCodes ??
+			parseBooleanValue(this.getSetting("PROMPT_CHECKPOINT_CODES")) ??
+			false;
 		let currentRetry = 0;
+		const promptCode = () => uuidv4().replaceAll("-", "").slice(0, 8);
+		let lastStructuredFailure: StructuredOutputFailure | null = null;
 
 		// Initialize metrics with LRU eviction
 		const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
@@ -3820,10 +5050,55 @@ export class AgentRuntime implements IAgentRuntime {
 		let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
 		const perFieldCodes = new Map<string, string>();
 
+		let traceModelId: string | undefined;
+		let tracePromptKey: string | undefined;
+		let traceVariant = "baseline";
+		let traceArtifactVersion: number | undefined;
+		const traceStartTime = Date.now();
+		const optimizationHooks = this.getPromptOptimizationHooks();
+
+		if (optimizationHooks) {
+			traceModelId = this.resolveProviderModelString(
+				resolvedModelType,
+				options.model,
+			);
+			const schemaHash = this.buildSchemaMetricKey(schema)
+				.split("")
+				.reduce((h, c) => ((h * 31) ^ c.charCodeAt(0)) >>> 0, 5381)
+				.toString(16)
+				.slice(0, 8);
+			tracePromptKey = options.promptName ?? schemaHash;
+		}
+
 		while (currentRetry <= maxRetries) {
 			const template = params.prompt;
 			const templateStr =
 				typeof template === "function" ? template({ state }) : template;
+
+			let finalTemplateStr = templateStr;
+			if (
+				optimizationHooks &&
+				traceModelId &&
+				tracePromptKey &&
+				currentRetry === 0
+			) {
+				try {
+					const merged = await optimizationHooks.mergePromptTemplate(this, {
+						baselineTemplate: templateStr,
+						modelId: traceModelId,
+						modelSlot: resolvedModelType,
+						promptKey: tracePromptKey,
+					});
+					finalTemplateStr = merged.template;
+					traceVariant = merged.variant;
+					traceArtifactVersion = merged.artifactVersion;
+				} catch (optErr) {
+					this.logger.warn(
+						{ error: optErr },
+						"Optimization artifact lookup failed",
+					);
+				}
+			}
 
 			// Get keys from state (excluding text, values, data)
 			const stateKeys = Object.keys(state);
@@ -3837,26 +5112,18 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 				{},
 			);
+			const templateContext = { ...filteredState, ...state.values };
 
-			// Compile template
-			const templateFunction = Handlebars.compile(
-				this.upgradeDoubleToTriple(templateStr),
+			const outputSegments = this.renderPromptTemplateSegments(
+				finalTemplateStr,
+				templateContext,
+				state,
 			);
-			const rawOutput = templateFunction({ ...filteredState, ...state.values });
-			// Strip any <output>...</output> section from the compiled template.
-			// dynamicPromptExecFromState appends its own <output> block with
-			// validation codes; keeping the template's copy creates duplicate
-			// conflicting format instructions that cause the model to follow the
-			// first block and ignore the validation-code echo-back request.
-			// Templates used via composePromptFromState (e.g. post generation) are
-			// unaffected because they never reach this code path.
-			const output = rawOutput
-				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
-				.trimEnd();
+			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
-			let format: "XML" | "JSON" = "XML";
+			let format: "XML" | "JSON" | "TOON" = "TOON";
 			if (options.forceFormat) {
 				if (options.forceFormat === "xml" && hasNestedSchema) {
 					this.logger.warn(
@@ -3864,10 +5131,12 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					format = "JSON";
 				} else {
-					format = options.forceFormat.toUpperCase() as "XML" | "JSON";
+					format = options.forceFormat.toUpperCase() as "XML" | "JSON" | "TOON";
 				}
 			} else if (options.preferredEncapsulation === "json" || hasNestedSchema) {
 				format = "JSON";
+			} else if (options.preferredEncapsulation === "xml") {
+				format = "XML";
 			}
 
 			/**
@@ -3907,15 +5176,15 @@ export class AgentRuntime implements IAgentRuntime {
 						const defaultValidate = contextLevel === 1;
 						const needsValidation = row.validateField ?? defaultValidate;
 						if (needsValidation) {
-							perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+							perFieldCodes.set(row.field, promptCode());
 						}
 					}
 				}
 			}
 
-			// Checkpoint codes: level 2+ gets first codes, level 3 gets both
-			const first = contextLevel >= 2;
-			const last = contextLevel >= 3;
+			// Optional checkpoint codes: level 2+ gets first codes, level 3 gets both.
+			const first = checkpointCodesEnabled && contextLevel >= 2;
+			const last = checkpointCodesEnabled && contextLevel >= 3;
 
 			// Build extended schema with validation codes
 			const extSchema: Array<{
@@ -3927,15 +5196,15 @@ export class AgentRuntime implements IAgentRuntime {
 			const codesSchema = (prefix: string) => [
 				{
 					field: `${prefix}initial_code`,
-					description: "echo the initial UUID code from prompt",
+					description: "echo the initial prompt code",
 				},
 				{
 					field: `${prefix}middle_code`,
-					description: "echo the middle UUID code from prompt",
+					description: "echo the middle prompt code",
 				},
 				{
 					field: `${prefix}end_code`,
-					description: "echo the end UUID code from prompt",
+					description: "echo the end prompt code",
 				},
 			];
 
@@ -3967,12 +5236,15 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Generate prompt with format example
 			const isXML = format === "XML";
-			const CONTAINER_START = isXML ? "<response>" : "{";
-			const CONTAINER_END = isXML ? "</response>" : "}";
+			const isJSON = format === "JSON";
+			const CONTAINER_START = isXML ? "<response>" : isJSON ? "{" : "TOON root";
+			const CONTAINER_END = isXML ? "</response>" : isJSON ? "}" : "[end]";
 
 			const EXAMPLE = isXML
 				? this.renderXmlSchemaExample(schema)
-				: this.renderJsonSchemaExample(schema);
+				: isJSON
+					? this.renderJsonSchemaExample(schema)
+					: this.renderToonSchemaExample(schema);
 			const VALIDATION_INSTRUCTIONS = this.buildValidationOutputInstructions({
 				format,
 				schema,
@@ -3981,26 +5253,33 @@ export class AgentRuntime implements IAgentRuntime {
 				includeLastCheckpoint: last,
 			});
 
-			const initCode = uuidv4();
-			const midCode = uuidv4();
-			const finalCode = uuidv4();
+			const initCode = checkpointCodesEnabled ? promptCode() : "";
+			const midCode = checkpointCodesEnabled ? promptCode() : "";
+			const finalCode = checkpointCodesEnabled ? promptCode() : "";
 
 			// Check for smart retry context (set by previous retry iteration)
+			const smartRetryContextRaw = (state as Record<string, unknown>)
+				._smartRetryContext;
 			const smartRetryContext =
-				(state as Record<string, unknown>)._smartRetryContext || "";
+				typeof smartRetryContextRaw === "string"
+					? smartRetryContextRaw.trim()
+					: "";
 
 			const section_start = isXML ? "<output>" : "# Strict Output instructions";
 			const section_end = isXML ? "</output>" : "";
 
-			const variableBlock =
-				"initial code: " +
-				initCode +
-				"\n" +
-				output +
-				smartRetryContext +
-				"middle code: " +
-				midCode +
-				"\n";
+			const variableSegments = this.joinPromptSegmentGroups([
+				checkpointCodesEnabled
+					? [{ content: `initial code: ${initCode}`, stable: false }]
+					: [],
+				outputSegments,
+				smartRetryContext
+					? [{ content: smartRetryContext, stable: false }]
+					: [],
+				checkpointCodesEnabled
+					? [{ content: `middle code: ${midCode}`, stable: false }]
+					: [],
+			]).concat({ content: "\n", stable: false });
 			// Prompt cache hints: build segments so providers can cache the stable prefix.
 			// WHY: We only mark content stable when it is identical across calls for the same
 			// schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
@@ -4008,30 +5287,36 @@ export class AgentRuntime implements IAgentRuntime {
 			// would never hit. Format instructions and example (same for same schema) are stable.
 			const formatStablePrefix =
 				section_start +
-				`
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the ${format} response format without any preamble or explanation.
+				`\nReturn only ${format}. No prose before or after it. No <think>.
 
 `;
 			const formatStableSuffix = `
-Respond using ${format} format like this:
+Use this shape:
 ${EXAMPLE}
 
-IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
+Return exactly one ${
+				isXML
+					? `${CONTAINER_START}...${CONTAINER_END}`
+					: isJSON
+						? "JSON object"
+						: "TOON document"
+			}.
 ${section_end}`;
-			const endBlock = `\nend code: ${finalCode}\n`;
+			const endBlock = checkpointCodesEnabled
+				? `\nend code: ${finalCode}\n`
+				: "\n";
 			// Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
 			const formatMiddleBlock = VALIDATION_INSTRUCTIONS
 				? `${VALIDATION_INSTRUCTIONS}\n\n`
 				: "\n\n";
 
-			const segments: PromptSegment[] = [
-				{ content: variableBlock, stable: false },
+			const segments: PromptSegment[] = this.mergePromptSegments([
+				...variableSegments,
 				{ content: formatStablePrefix, stable: true },
 				{ content: formatMiddleBlock, stable: false },
 				{ content: formatStableSuffix, stable: true },
 				{ content: endBlock, stable: false },
-			];
+			]);
 			const prompt = segments.map((s) => s.content).join("");
 
 			// Token estimate used for:
@@ -4071,13 +5356,20 @@ ${section_end}`;
 
 				const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+				// WHY accumulated is forwarded: the VSE tracks the full extracted text
+				// per field internally (`content` in emitFieldContent). Surfacing it
+				// here means consumers like first-sentence voice detection or Eliza's
+				// streaming-text resolver can use the authoritative value instead of
+				// Note: this design prevents dual extractor conflicts by providing authoritative accumulated data
+				// re-accumulating from deltas — which broke when two extractors ran
+				// concurrently (the dual-extractor garbling bug).
 				extractor = new ValidationStreamExtractor({
 					level: contextLevel,
 					schema,
 					streamFields: finalStreamFields,
 					expectedCodes: perFieldCodes,
-					onChunk: (chunk) => {
-						options.onStreamChunk?.(chunk, streamMessageId);
+					onChunk: (chunk, _field, accumulated) => {
+						return options.onStreamChunk?.(chunk, streamMessageId, accumulated);
 					},
 					onEvent: options.onStreamEvent
 						? (event) => options.onStreamEvent?.(event, streamMessageId)
@@ -4086,11 +5378,6 @@ ${section_end}`;
 					hasRichConsumer,
 				});
 			}
-
-			const modelType =
-				options.modelSize === "small"
-					? ModelType.TEXT_SMALL
-					: ModelType.TEXT_LARGE;
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
 			const modelParams = {
@@ -4115,23 +5402,50 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
 			let response: string;
 			try {
-				response = await this.useModel<typeof modelType, string>(
-					modelType,
+				response = await this.useModel(
+					resolvedModelType,
 					modelParams,
 					options.model,
 				);
 			} catch (modelError) {
-				this.logger.error(`Model call failed: ${String(modelError)}`);
+				const modelErrorMessage = getErrorMessage(modelError);
+				const isTransientFailure = isTransientModelError(modelError);
+				const willRetry = currentRetry + 1 <= maxRetries;
+				const failureMessage = isTransientFailure
+					? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
+					: `Model call failed: ${modelErrorMessage}`;
+				if (isTransientFailure) {
+					this.logger.warn(failureMessage);
+				} else {
+					this.logger.error(failureMessage);
+				}
+				lastStructuredFailure = {
+					source: "dynamicPromptExecFromState",
+					kind: "model_error",
+					model: String(modelIdentifier),
+					format,
+					schemaFields: flattenedSchema.map((row) => row.field),
+					attempts: currentRetry + 1,
+					maxRetries,
+					timestamp: Date.now(),
+					key: options.key ?? modelSchemaKey,
+					parseError: modelErrorMessage,
+					issues: [
+						"Model call failed before a structured response could be validated.",
+					],
+				};
 				currentRetry++;
 
 				if (options.abortSignal?.aborted) {
 					extractor?.signalError("Cancelled by user");
 					delete (state as Record<string, unknown>)._smartRetryContext;
+					this.clearStructuredOutputFailureState(state);
 					return null;
 				}
 
@@ -4154,6 +5468,7 @@ ${section_end}`;
 						if (aborted) {
 							extractor?.signalError("Cancelled by user");
 							delete (state as Record<string, unknown>)._smartRetryContext;
+							this.clearStructuredOutputFailureState(state);
 							return null;
 						}
 					}
@@ -4171,16 +5486,17 @@ ${section_end}`;
 			const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
 
 			let responseContent: Record<string, unknown> | null = null;
+			let parseErrorMessage: string | undefined;
+			const validationIssues: string[] = [];
 			try {
-				responseContent = isXML
-					? parseKeyValueXml(cleanResponse)
-					: parseJSONObjectFromText(cleanResponse);
+				responseContent = this.parseStructuredResponse(cleanResponse, format);
 				this.logger.debug(
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
+				parseErrorMessage = e instanceof Error ? e.message : String(e);
 				this.logger.error(
-					`dynamicPromptExecFromState parse error: ${String(e)}`,
+					`dynamicPromptExecFromState parse error: ${parseErrorMessage}`,
 				);
 			}
 
@@ -4188,7 +5504,15 @@ ${section_end}`;
 
 			// Validate response
 			let allGood = true;
+			let schemaValidation: { missingPaths: string[]; invalidPaths: string[] } =
+				{
+					missingPaths: [],
+					invalidPaths: [],
+				};
 			if (!responseContent) {
+				validationIssues.push(
+					"No structured output could be parsed from the model response.",
+				);
 				this.logger.warn(
 					`dynamicPromptExecFromState parse problem: ${cleanResponse}`,
 				);
@@ -4204,6 +5528,9 @@ ${section_end}`;
 						const endCode = responseContent[endCodeField];
 
 						if (startCode !== expectedCode || endCode !== expectedCode) {
+							validationIssues.push(
+								`Per-field validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`,
 							);
@@ -4234,6 +5561,9 @@ ${section_end}`;
 
 					for (const [field, expected] of validationCodes) {
 						if (responseContent[field] !== expected) {
+							validationIssues.push(
+								`Checkpoint validation failed for ${field}.`,
+							);
 							this.logger.warn(
 								`Checkpoint ${field} mismatch: expected ${expected}`,
 							);
@@ -4253,7 +5583,7 @@ ${section_end}`;
 					}
 				}
 
-				const schemaValidation = this.validateResponseAgainstSchema(
+				schemaValidation = this.validateResponseAgainstSchema(
 					responseContent,
 					schema,
 				);
@@ -4262,11 +5592,17 @@ ${section_end}`;
 					schemaValidation.invalidPaths.length > 0
 				) {
 					if (schemaValidation.missingPaths.length > 0) {
+						validationIssues.push(
+							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required schema paths: ${schemaValidation.missingPaths.join(", ")}`,
 						);
 					}
 					if (schemaValidation.invalidPaths.length > 0) {
+						validationIssues.push(
+							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
+						);
 						this.logger.warn(
 							`Invalid schema paths: ${schemaValidation.invalidPaths.join(", ")}`,
 						);
@@ -4292,6 +5628,9 @@ ${section_end}`;
 							isMissingField(responseContent[field]),
 					);
 					if (missingFields.length > 0) {
+						validationIssues.push(
+							`Missing required fields: ${missingFields.join(", ")}`,
+						);
 						this.logger.warn(
 							`Missing required fields: ${missingFields.join(", ")}`,
 						);
@@ -4324,8 +5663,134 @@ ${section_end}`;
 
 				// Clean up smart retry context from state
 				delete (state as Record<string, unknown>)._smartRetryContext;
+
+				if (optimizationHooks && traceModelId && tracePromptKey) {
+					try {
+						const scoreCard = new ScoreCard();
+						scoreCard.add({
+							source: "dpe",
+							kind: "parseSuccess",
+							value: 1.0,
+							reason: "Structured output parsed successfully",
+						});
+						const schemaOk =
+							schemaValidation.missingPaths.length === 0 &&
+							schemaValidation.invalidPaths.length === 0;
+						scoreCard.add({
+							source: "dpe",
+							kind: "schemaValid",
+							value: schemaOk ? 1.0 : 0.0,
+							reason: schemaOk
+								? "Response matched schema paths"
+								: `Schema issues: missing [${schemaValidation.missingPaths.join(", ")}]; invalid [${schemaValidation.invalidPaths.join(", ")}]`,
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "retriesUsed",
+							value: Math.max(0, 1.0 - currentRetry / Math.max(maxRetries, 1)),
+							reason: `Succeeded on attempt ${currentRetry + 1} of ${maxRetries + 1}`,
+						});
+						scoreCard.add({
+							source: "dpe",
+							kind: "tokenEfficiency",
+							value: Math.min(1.0, 500 / Math.max(outputTokenEst, 1)),
+							reason: `Estimated output tokens ${outputTokenEst} vs reference 500`,
+						});
+
+						const templateHashInput =
+							typeof params.prompt === "string"
+								? params.prompt
+								: tracePromptKey;
+						const computedTemplateHash = simpleHash(templateHashInput);
+
+						const trace: ExecutionTrace = {
+							id: uuidv4(),
+							traceVersion: 1,
+							type: "trace",
+							promptKey: tracePromptKey,
+							modelSlot: resolvedModelType,
+							modelId: traceModelId,
+							runId: this.getCurrentRunId?.() ?? undefined,
+							templateHash: computedTemplateHash,
+							schemaFingerprint: schemaKey,
+							artifactVersion: traceArtifactVersion,
+							variant: traceVariant,
+							parseSuccess: true,
+							schemaValid:
+								schemaValidation.missingPaths.length === 0 &&
+								schemaValidation.invalidPaths.length === 0,
+							validationCodesMatched: true,
+							retriesUsed: currentRetry,
+							tokenEstimate: outputTokenEst,
+							latencyMs: Date.now() - traceStartTime,
+							response: responseContent,
+							scoreCard: scoreCard.toJSON(),
+							createdAt: Date.now(),
+						};
+
+						this.maybeRunActiveTraceTTLPurge();
+						const runId = trace.runId;
+						if (runId) {
+							this.activeTraces.set(trace.id, trace);
+							if (!this.runToTraces.has(runId)) {
+								this.runToTraces.set(runId, new Set());
+							}
+							this.runToTraces.get(runId)?.add(trace.id);
+						}
+
+						void optimizationHooks
+							.persistRegistryEntry(this, {
+								promptKey: tracePromptKey,
+								schemaFingerprint: schemaKey,
+								templateHash: computedTemplateHash,
+								promptTemplate:
+									typeof params.prompt === "string" ? params.prompt : "",
+								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+							})
+							.catch((err) => {
+								this.logger.warn(
+									{ error: err, src: "dpe" },
+									"Failed to write prompt optimization registry",
+								);
+							});
+						void optimizationHooks
+							.appendBaselineTrace(this, { trace })
+							.catch((err) => {
+								this.logger.warn("Failed to write optimization trace", err);
+							});
+					} catch (traceErr) {
+						this.logger.warn(
+							{ error: traceErr },
+							"Failed to build optimization trace",
+						);
+					}
+				}
+
+				this.clearStructuredOutputFailureState(state);
 				return responseContent;
 			}
+
+			lastStructuredFailure = {
+				source: "dynamicPromptExecFromState",
+				kind: !responseContent
+					? parseErrorMessage
+						? "parse_error"
+						: "parse_problem"
+					: "validation_error",
+				model: String(modelIdentifier),
+				format,
+				schemaFields: flattenedSchema.map((row) => row.field),
+				attempts: currentRetry + 1,
+				maxRetries,
+				timestamp: Date.now(),
+				key: options.key ?? modelSchemaKey,
+				parseError: parseErrorMessage,
+				issues: validationIssues,
+				responsePreview: this.redactSecrets(cleanResponse).slice(
+					0,
+					AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+				),
+			};
 
 			// Failure - update metrics
 			metric.failedAttempts++;
@@ -4341,6 +5806,7 @@ ${section_end}`;
 			if (options.abortSignal?.aborted) {
 				extractor?.signalError("Cancelled by user");
 				delete (state as Record<string, unknown>)._smartRetryContext;
+				this.clearStructuredOutputFailureState(state);
 				return null;
 			}
 
@@ -4363,6 +5829,7 @@ ${section_end}`;
 					if (aborted) {
 						extractor?.signalError("Cancelled by user");
 						delete (state as Record<string, unknown>)._smartRetryContext;
+						this.clearStructuredOutputFailureState(state);
 						return null;
 					}
 				}
@@ -4386,7 +5853,15 @@ ${section_end}`;
 						for (const [field, content] of validatedContent) {
 							const truncated =
 								content.length > 500 ? `${content.slice(0, 500)}...` : content;
-							validatedParts.push(`<${field}>${truncated}</${field}>`);
+							if (format === "TOON") {
+								validatedParts.push(
+									encodeToonValue({
+										[field]: truncated,
+									}),
+								);
+							} else {
+								validatedParts.push(`<${field}>${truncated}</${field}>`);
+							}
 						}
 						if (validatedParts.length > 0) {
 							smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
@@ -4423,13 +5898,99 @@ ${section_end}`;
 			);
 		}
 
-		this.logger.error(
-			`dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`,
-			`${metric.successfulAttempts}/${metric.totalAttempts} successful`,
-		);
+		const finalFailureMessage = `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`;
+		const finalFailureSummary = `${metric.successfulAttempts}/${metric.totalAttempts} successful`;
+		if (
+			lastStructuredFailure?.kind === "model_error" &&
+			isTransientModelError(lastStructuredFailure.parseError)
+		) {
+			this.logger.warn(finalFailureMessage, finalFailureSummary);
+		} else {
+			this.logger.error(finalFailureMessage, finalFailureSummary);
+		}
+
+		if (optimizationHooks && traceModelId && tracePromptKey) {
+			try {
+				this.purgeStaleActiveTraces();
+
+				const scoreCard = new ScoreCard();
+				scoreCard.add({
+					source: "dpe",
+					kind: "parseSuccess",
+					value: 0.0,
+					reason: `No valid parse after ${maxRetries} retries`,
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "schemaValid",
+					value: 0.0,
+					reason: "Parse or validation never succeeded",
+				});
+				scoreCard.add({
+					source: "dpe",
+					kind: "retriesUsed",
+					value: 0.0,
+					reason: "All retry attempts exhausted",
+				});
+
+				const failTemplateHash = simpleHash(
+					typeof params.prompt === "string" ? params.prompt : tracePromptKey,
+				);
+
+				const trace: ExecutionTrace = {
+					id: uuidv4(),
+					traceVersion: 1,
+					type: "trace",
+					promptKey: tracePromptKey,
+					modelSlot: resolvedModelType,
+					modelId: traceModelId,
+					runId: this.getCurrentRunId?.() ?? undefined,
+					templateHash: failTemplateHash,
+					schemaFingerprint: schemaKey,
+					artifactVersion: traceArtifactVersion,
+					variant: traceVariant,
+					parseSuccess: false,
+					schemaValid: false,
+					validationCodesMatched: false,
+					retriesUsed: maxRetries,
+					tokenEstimate: 0,
+					latencyMs: Date.now() - traceStartTime,
+					scoreCard: scoreCard.toJSON(),
+					createdAt: Date.now(),
+				};
+
+				void optimizationHooks
+					.persistRegistryEntry(this, {
+						promptKey: tracePromptKey,
+						schemaFingerprint: schemaKey,
+						templateHash: failTemplateHash,
+						promptTemplate:
+							typeof params.prompt === "string" ? params.prompt : "",
+						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
+					})
+					.catch((err) => {
+						this.logger.warn(
+							{ error: err, src: "dpe" },
+							"Failed to write prompt optimization registry",
+						);
+					});
+				void optimizationHooks
+					.appendFailureTrace(this, { trace })
+					.catch((err) => {
+						this.logger.warn("Failed to write failure trace", err);
+					});
+			} catch (traceErr) {
+				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
+			}
+		}
 
 		// Clean up smart retry context from state
 		delete (state as Record<string, unknown>)._smartRetryContext;
+		if (lastStructuredFailure) {
+			this.setStructuredOutputFailureState(state, lastStructuredFailure);
+		} else {
+			this.clearStructuredOutputFailureState(state);
+		}
 		return null;
 	}
 
@@ -4473,6 +6034,13 @@ ${section_end}`;
 			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
 		);
 		return `${JSON.stringify(exampleObject, null, 2)}\n`;
+	}
+
+	private renderToonSchemaExample(rows: SchemaRow[]): string {
+		const exampleObject = Object.fromEntries(
+			rows.map((row) => [row.field, this.buildJsonExampleValue(row)]),
+		);
+		return `${encodeToonValue(exampleObject)}\n`;
 	}
 
 	private buildJsonExampleValue(spec: SchemaValueSpec): unknown {
@@ -4651,20 +6219,23 @@ ${section_end}`;
 		includeFirstCheckpoint,
 		includeLastCheckpoint,
 	}: {
-		format: "XML" | "JSON";
+		format: "XML" | "JSON" | "TOON";
 		schema: SchemaRow[];
 		perFieldCodes: Map<string, string>;
 		includeFirstCheckpoint: boolean;
 		includeLastCheckpoint: boolean;
 	}): string {
 		const isXML = format === "XML";
+		const isJsonLike = format === "JSON" || format === "TOON";
 		const lines: string[] = [];
 
 		if (includeFirstCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <one_initial_code>, <one_middle_code>, and <one_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "one_initial_code", "one_middle_code", and "one_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the prompt checkpoint tags: <one_initial_code>, <one_middle_code>, <one_end_code>."
+					: isJsonLike
+						? 'Echo the prompt checkpoint fields: "one_initial_code", "one_middle_code", "one_end_code".'
+						: "",
 			);
 		}
 
@@ -4676,16 +6247,20 @@ ${section_end}`;
 
 			lines.push(
 				isXML
-					? `For <${row.field}>, also include <code_${row.field}_start>${fieldCode}</code_${row.field}_start> before it and <code_${row.field}_end>${fieldCode}</code_${row.field}_end> after it.`
-					: `For "${row.field}", also include sibling fields "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`,
+					? `Wrap <${row.field}> with <code_${row.field}_start>${fieldCode}</code_${row.field}_start> and <code_${row.field}_end>${fieldCode}</code_${row.field}_end>.`
+					: isJsonLike
+						? `For "${row.field}", include "code_${row.field}_start": "${fieldCode}" and "code_${row.field}_end": "${fieldCode}".`
+						: "",
 			);
 		}
 
 		if (includeLastCheckpoint) {
 			lines.push(
 				isXML
-					? "Also include <two_initial_code>, <two_middle_code>, and <two_end_code> tags that echo the matching prompt UUIDs."
-					: 'Also include "two_initial_code", "two_middle_code", and "two_end_code" fields that echo the matching prompt UUIDs.',
+					? "Echo the final checkpoint tags: <two_initial_code>, <two_middle_code>, <two_end_code>."
+					: isJsonLike
+						? 'Echo the final checkpoint fields: "two_initial_code", "two_middle_code", "two_end_code".'
+						: "",
 			);
 		}
 
@@ -4847,6 +6422,199 @@ ${section_end}`;
 	}
 
 	/**
+	 * Template rendering helpers for prompt caching and deterministic compilation.
+	 */
+	private getCompiledRuntimeTemplate(
+		template: string,
+		alreadyUpgraded = false,
+	): Handlebars.TemplateDelegate<Record<string, unknown>> {
+		const source = alreadyUpgraded
+			? template
+			: this.upgradeDoubleToTriple(template);
+		const cached = RUNTIME_TEMPLATE_CACHE.get(source);
+		if (cached) {
+			return cached;
+		}
+
+		const compiled = Handlebars.compile(source);
+		RUNTIME_TEMPLATE_CACHE.set(source, compiled);
+		if (RUNTIME_TEMPLATE_CACHE.size > RUNTIME_TEMPLATE_CACHE_LIMIT) {
+			const oldestKey = RUNTIME_TEMPLATE_CACHE.keys().next().value;
+			if (typeof oldestKey === "string") {
+				RUNTIME_TEMPLATE_CACHE.delete(oldestKey);
+			}
+		}
+
+		return compiled;
+	}
+
+	private cleanDynamicPromptTemplateOutput(rawOutput: string): string {
+		return rawOutput
+			.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
+			.replace(/\noutput:\n[\s\S]*$/i, "")
+			.replace(/\r\n/g, "\n")
+			.replace(/[ \t]+\n/g, "\n")
+			.replace(/\n{3,}/g, "\n\n")
+			.trim();
+	}
+
+	private extractTemplatePlaceholderKeys(templateChunk: string): string[] {
+		const keys = new Set<string>();
+		const PLACEHOLDER_PATTERN = /\{\{\{?\s*([a-zA-Z0-9_.]+)\s*\}?\}\}/g;
+		let match = PLACEHOLDER_PATTERN.exec(templateChunk);
+		while (match) {
+			if (match[1]) {
+				keys.add(match[1]);
+			}
+			match = PLACEHOLDER_PATTERN.exec(templateChunk);
+		}
+		return [...keys];
+	}
+
+	private isTemplateChunkStable(templateChunk: string): boolean {
+		const placeholderKeys = this.extractTemplatePlaceholderKeys(templateChunk);
+		return placeholderKeys.every(
+			(key) => key !== "providers" && STABLE_PROMPT_TEMPLATE_KEYS.has(key),
+		);
+	}
+
+	private getPromptProviderSegments(state: State): PromptSegment[] {
+		const providerResults = state.data.providers as
+			| Record<string, { text?: string; providerName?: string }>
+			| undefined;
+		if (!providerResults) {
+			return [];
+		}
+
+		const providerOrder = Array.isArray(state.data.providerOrder)
+			? (state.data.providerOrder as string[])
+			: Object.keys(providerResults).sort((left, right) =>
+					left.localeCompare(right),
+				);
+
+		const segments: PromptSegment[] = [];
+		for (const providerName of providerOrder) {
+			const result = providerResults[providerName];
+			if (!result?.text || result.text.trim() === "") {
+				continue;
+			}
+
+			if (segments.length > 0) {
+				segments.push({ content: "\n", stable: false });
+			}
+
+			segments.push({
+				content: result.text,
+				stable: STABLE_PROMPT_PROVIDER_NAMES.has(providerName),
+			});
+		}
+
+		return this.mergePromptSegments(segments);
+	}
+
+	private renderPromptTemplateSegments(
+		templateStr: string,
+		context: Record<string, unknown>,
+		state: State,
+	): PromptSegment[] {
+		const upgradedTemplate = this.upgradeDoubleToTriple(templateStr);
+		const templateWithMarkers = upgradedTemplate.replace(
+			/\{\{\{?\s*providers\s*\}?\}\}/g,
+			PROVIDERS_PROMPT_MARKER,
+		);
+		const templateFunction = this.getCompiledRuntimeTemplate(
+			templateWithMarkers,
+			true,
+		);
+		const renderedWithMarkers = this.cleanDynamicPromptTemplateOutput(
+			templateFunction(context),
+		);
+
+		if (
+			!templateWithMarkers.includes(PROVIDERS_PROMPT_MARKER) ||
+			!renderedWithMarkers.includes(PROVIDERS_PROMPT_MARKER)
+		) {
+			return [
+				{
+					content: renderedWithMarkers,
+					stable: this.isTemplateChunkStable(upgradedTemplate),
+				},
+			];
+		}
+
+		const providerSegments = this.getPromptProviderSegments(state);
+		if (providerSegments.length === 0) {
+			return [
+				{
+					content: renderedWithMarkers.replaceAll(
+						PROVIDERS_PROMPT_MARKER,
+						String(context.providers ?? ""),
+					),
+					stable: false,
+				},
+			];
+		}
+
+		const templateChunks = templateWithMarkers.split(PROVIDERS_PROMPT_MARKER);
+		const renderedChunks = renderedWithMarkers.split(PROVIDERS_PROMPT_MARKER);
+		const segments: PromptSegment[] = [];
+
+		for (let i = 0; i < renderedChunks.length; i += 1) {
+			const renderedChunk = renderedChunks[i] ?? "";
+			if (renderedChunk.length > 0) {
+				segments.push({
+					content: renderedChunk,
+					stable: this.isTemplateChunkStable(templateChunks[i] ?? ""),
+				});
+			}
+
+			if (i < renderedChunks.length - 1) {
+				segments.push(...providerSegments.map((segment) => ({ ...segment })));
+			}
+		}
+
+		return this.mergePromptSegments(segments);
+	}
+
+	private joinPromptSegmentGroups(groups: PromptSegment[][]): PromptSegment[] {
+		const result: PromptSegment[] = [];
+
+		for (const group of groups) {
+			const normalized = this.mergePromptSegments(group);
+			if (normalized.length === 0) {
+				continue;
+			}
+
+			if (result.length > 0) {
+				result.push({ content: "\n\n", stable: false });
+			}
+
+			result.push(...normalized.map((segment) => ({ ...segment })));
+		}
+
+		return result;
+	}
+
+	private mergePromptSegments(segments: PromptSegment[]): PromptSegment[] {
+		const merged: PromptSegment[] = [];
+
+		for (const segment of segments) {
+			if (!segment.content || segment.content.length === 0) {
+				continue;
+			}
+
+			const previous = merged[merged.length - 1];
+			if (previous && previous.stable === segment.stable) {
+				previous.content += segment.content;
+			} else {
+				merged.push({ ...segment });
+			}
+		}
+
+		return merged;
+	}
+
+	/**
 	 * Convert double-brace Handlebars bindings to triple-brace (non-escaping).
 	 *
 	 * Handlebars uses:
@@ -4911,6 +6679,305 @@ ${section_end}`;
 		return responseContent;
 	}
 
+	private parseStructuredResponse(
+		response: string,
+		expectedFormat: StructuredResponseFormat,
+	): Record<string, unknown> | null {
+		const parserOrder =
+			expectedFormat === "JSON"
+				? (["JSON", "XML_OR_TOON"] as const)
+				: (["XML_OR_TOON", "JSON"] as const);
+		const candidates = this.extractStructuredResponseCandidates(response);
+
+		for (const candidate of candidates) {
+			for (const parser of parserOrder) {
+				if (parser === "JSON") {
+					if (!candidate.formats.includes("JSON")) {
+						continue;
+					}
+
+					const parsed = parseJSONObjectFromText(candidate.text);
+					if (parsed) {
+						if (candidate.source !== "raw" || expectedFormat !== "JSON") {
+							this.logger.debug(
+								`dynamicPromptExecFromState recovered JSON from ${candidate.source}`,
+							);
+						}
+						return parsed;
+					}
+					continue;
+				}
+
+				if (
+					!candidate.formats.includes("TOON") &&
+					!candidate.formats.includes("XML")
+				) {
+					continue;
+				}
+
+				const parsed = parseKeyValueXml(candidate.text);
+				if (parsed) {
+					if (candidate.source !== "raw" || expectedFormat === "JSON") {
+						this.logger.debug(
+							`dynamicPromptExecFromState recovered ${candidate.formats.includes("TOON") ? "TOON/XML" : "XML"} from ${candidate.source}`,
+						);
+					}
+					return parsed;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private extractStructuredResponseCandidates(
+		response: string,
+	): StructuredResponseCandidate[] {
+		const seen = new Set<string>();
+		const candidates: StructuredResponseCandidate[] = [];
+
+		const addCandidate = (
+			text: string,
+			source: string,
+			hints: StructuredResponseFormat[] = [],
+		): void => {
+			const trimmed = text.trim();
+			if (!trimmed || seen.has(trimmed)) {
+				return;
+			}
+
+			const formats = Array.from(
+				new Set([...hints, ...this.detectStructuredResponseFormats(trimmed)]),
+			);
+			if (formats.length === 0) {
+				return;
+			}
+
+			seen.add(trimmed);
+			candidates.push({ text: trimmed, formats, source });
+		};
+
+		addCandidate(response, "raw");
+
+		for (const match of response.matchAll(STRUCTURED_CODE_FENCE_PATTERN)) {
+			const label = match[1]?.trim().toLowerCase() ?? "";
+			const content = match[2]?.trim() ?? "";
+			const hints: StructuredResponseFormat[] =
+				label === "json" || label === "json5"
+					? ["JSON"]
+					: label === "xml"
+						? ["XML"]
+						: label === "toon"
+							? ["TOON"]
+							: [];
+			addCandidate(content, label ? `fence:${label}` : "fence", hints);
+		}
+
+		const embeddedJson = this.extractEmbeddedJsonObject(response);
+		if (embeddedJson) {
+			addCandidate(embeddedJson, "embedded-json", ["JSON"]);
+		}
+
+		const embeddedToon = this.extractEmbeddedToonDocument(response);
+		if (embeddedToon) {
+			addCandidate(embeddedToon, "embedded-toon", ["TOON"]);
+		}
+
+		return candidates;
+	}
+
+	private detectStructuredResponseFormats(
+		text: string,
+	): StructuredResponseFormat[] {
+		const trimmed = text.trim();
+		const formats: StructuredResponseFormat[] = [];
+
+		if (this.looksLikeJsonObject(trimmed)) {
+			formats.push("JSON");
+		}
+		if (this.looksLikeToonDocument(trimmed)) {
+			formats.push("TOON");
+		}
+		if (XML_LIKE_PATTERN.test(trimmed)) {
+			formats.push("XML");
+		}
+
+		return formats;
+	}
+
+	private looksLikeJsonObject(text: string): boolean {
+		const trimmed = text.trim();
+		return (
+			trimmed.startsWith("{") &&
+			trimmed.includes("}") &&
+			JSON_OBJECT_KEY_PATTERN.test(trimmed)
+		);
+	}
+
+	private looksLikeToonDocument(text: string): boolean {
+		const lines = text
+			.trim()
+			.split(/\r?\n/)
+			.filter((line) => line.trim().length > 0);
+		if (lines.length === 0) {
+			return false;
+		}
+
+		const firstLine = lines[0]?.trim() ?? "";
+		if (TOON_HEADER_PATTERN.test(firstLine)) {
+			return lines
+				.slice(1)
+				.some((line) => TOON_FIELD_PATTERN.test(line.trim()));
+		}
+
+		if (!TOON_FIELD_PATTERN.test(firstLine)) {
+			return false;
+		}
+
+		if (lines.length === 1) {
+			const [, value = ""] = firstLine.split(/:(.*)/s);
+			const trimmedValue = value.trim();
+			return !(trimmedValue.startsWith("{") && trimmedValue.endsWith("}"));
+		}
+
+		let structuredFieldCount = 0;
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (TOON_FIELD_PATTERN.test(trimmed)) {
+				structuredFieldCount += 1;
+				continue;
+			}
+			if (/^[\t ]+/.test(line)) {
+				continue;
+			}
+			return false;
+		}
+
+		return structuredFieldCount > 0;
+	}
+
+	private extractEmbeddedToonDocument(text: string): string | null {
+		const lines = text.trim().split(/\r?\n/);
+		const startIndex = lines.findIndex((line) => {
+			const trimmed = line.trim();
+			return (
+				TOON_HEADER_PATTERN.test(trimmed) || TOON_FIELD_PATTERN.test(trimmed)
+			);
+		});
+
+		if (startIndex === -1) {
+			return null;
+		}
+
+		const collected: string[] = [];
+		let sawStructuredField = false;
+
+		for (let index = startIndex; index < lines.length; index++) {
+			const line = lines[index] ?? "";
+			const trimmed = line.trim();
+			const isStructuredField = TOON_FIELD_PATTERN.test(trimmed);
+			const isIndented = /^[\t ]+/.test(line);
+			const isHeader = TOON_HEADER_PATTERN.test(trimmed);
+
+			if (isHeader && !sawStructuredField) {
+				collected.push(line);
+				continue;
+			}
+
+			if (isStructuredField) {
+				sawStructuredField = true;
+				collected.push(line);
+				continue;
+			}
+
+			if (trimmed.length === 0 || isIndented) {
+				if (collected.length > 0) {
+					collected.push(line);
+					continue;
+				}
+			}
+
+			break;
+		}
+
+		return sawStructuredField ? collected.join("\n").trim() : null;
+	}
+
+	private extractEmbeddedJsonObject(text: string): string | null {
+		const trimmed = text.trim();
+		if (this.looksLikeJsonObject(trimmed)) {
+			return trimmed;
+		}
+
+		for (
+			let start = text.indexOf("{");
+			start !== -1;
+			start = text.indexOf("{", start + 1)
+		) {
+			const candidate = this.extractBalancedJsonObject(text, start);
+			if (candidate && this.looksLikeJsonObject(candidate)) {
+				return candidate.trim();
+			}
+		}
+
+		return null;
+	}
+
+	private extractBalancedJsonObject(
+		text: string,
+		startIndex: number,
+	): string | null {
+		let depth = 0;
+		let inString = false;
+		let stringQuote = "";
+		let escaped = false;
+
+		for (let index = startIndex; index < text.length; index++) {
+			const char = text[index] ?? "";
+
+			if (inString) {
+				if (escaped) {
+					escaped = false;
+					continue;
+				}
+				if (char === "\\") {
+					escaped = true;
+					continue;
+				}
+				if (char === stringQuote) {
+					inString = false;
+					stringQuote = "";
+				}
+				continue;
+			}
+
+			if (char === '"' || char === "'") {
+				inString = true;
+				stringQuote = char;
+				continue;
+			}
+
+			if (char === "{") {
+				depth += 1;
+				continue;
+			}
+
+			if (char !== "}") {
+				continue;
+			}
+
+			depth -= 1;
+			if (depth === 0) {
+				return text.slice(startIndex, index + 1);
+			}
+			if (depth < 0) {
+				return null;
+			}
+		}
+
+		return null;
+	}
+
 	registerEvent<T extends keyof EventPayloadMap>(
 		event: T,
 		handler: EventHandler<T>,
@@ -4933,6 +7000,28 @@ ${section_end}`;
 					params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
 				) => Promise<void>,
 			);
+		}
+	}
+
+	unregisterEvent<T extends keyof EventPayloadMap>(
+		event: T,
+		handler: EventHandler<T>,
+	): void;
+	unregisterEvent<P extends EventPayload = EventPayload>(
+		event: string,
+		handler: (params: P) => Promise<void>,
+	): void;
+	unregisterEvent(
+		event: string,
+		handler: (params: EventPayload) => Promise<void>,
+	): void {
+		const handlers = this.events?.[event];
+		if (!handlers) return;
+		const filtered = handlers.filter((h) => h !== handler);
+		if (filtered.length > 0) {
+			this.events[event] = filtered;
+		} else {
+			delete this.events[event];
 		}
 	}
 
@@ -4994,7 +7083,7 @@ ${section_end}`;
 		// Pass null to get a test vector for dimension detection
 		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
 		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		if (!embedding || !embedding.length) {
+		if (!embedding?.length) {
 			throw new Error("Invalid embedding received");
 		}
 
@@ -5017,6 +7106,10 @@ ${section_end}`;
 
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
+	}
+
+	unregisterTaskWorker(name: string): boolean {
+		return this.taskWorkers.delete(name);
 	}
 
 	get db(): object {
@@ -5165,7 +7258,7 @@ ${section_end}`;
 	}
 	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		const entities = await this.adapter.getEntitiesByIds([entityId]);
-		if (!entities || !entities.length) return null;
+		if (!entities?.length) return null;
 		return entities[0];
 	}
 
@@ -5302,13 +7395,23 @@ ${section_end}`;
 		entityId?: UUID;
 		agentId?: UUID;
 		roomId?: UUID;
+		limit?: number;
 		count?: number;
+		offset?: number;
 		unique?: boolean;
 		tableName: string;
 		start?: number;
 		end?: number;
+		worldId?: UUID;
+		metadata?: Record<string, unknown>;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
 	}): Promise<Memory[]> {
-		return await this.adapter.getMemories(params);
+		return await this.adapter.getMemories({
+			...params,
+			limit: params.limit ?? params.count,
+			tableName: params.tableName ?? "messages",
+		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
 		const tables = ["memories", "messages", "facts", "documents"];
@@ -5318,7 +7421,7 @@ ${section_end}`;
 			const memories = await this.adapter.getMemories({
 				agentId: this.agentId,
 				tableName,
-				count: 10000, // Get a large number to fetch all
+				limit: 10000, // Get a large number to fetch all
 			});
 			allMemories.push(...memories);
 		}
@@ -5350,14 +7453,17 @@ ${section_end}`;
 		embedding: number[];
 		query?: string;
 		match_threshold?: number;
-		count?: number;
+		limit?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
 		entityId?: UUID;
 		tableName: string;
 	}): Promise<Memory[]> {
-		const memories = await this.adapter.searchMemories(params);
+		const memories = await this.adapter.searchMemories({
+			...params,
+			tableName: params.tableName ?? "messages",
+		});
 		if (params.query) {
 			const rerankedMemories = await this.rerankMemories(
 				params.query,
@@ -5456,13 +7562,13 @@ ${section_end}`;
 			return await this.adapter.countMemories({
 				roomIds: [roomIdOrParams as UUID],
 				unique,
-				tableName,
+				tableName: tableName ?? "messages",
 			});
 		}
 		return await this.adapter.countMemories({
 			roomIds: roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined,
 			unique: roomIdOrParams.unique,
-			tableName: roomIdOrParams.tableName,
+			tableName: roomIdOrParams.tableName ?? "messages",
 			entityId: roomIdOrParams.entityId,
 			agentId: roomIdOrParams.agentId,
 			metadata: roomIdOrParams.metadata,
@@ -5472,7 +7578,7 @@ ${section_end}`;
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		count?: number;
+		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
 		return await this.adapter.getLogs(params);
@@ -5513,10 +7619,6 @@ ${section_end}`;
 	async deleteWorld(worldId: UUID): Promise<void> {
 		await this.adapter.deleteWorlds([worldId]);
 	}
-	/** @deprecated Use deleteWorld instead */
-	async removeWorld(worldId: UUID): Promise<void> {
-		await this.deleteWorld(worldId);
-	}
 	async getAllWorlds(): Promise<World[]> {
 		return await this.adapter.getAllWorlds();
 	}
@@ -5543,7 +7645,7 @@ ${section_end}`;
 
 	async getRoom(roomId: UUID): Promise<Room | null> {
 		const rooms = await this.adapter.getRoomsByIds([roomId]);
-		if (!rooms || !rooms.length) return null;
+		if (!rooms?.length) return null;
 		return rooms[0];
 	}
 
@@ -5636,12 +7738,23 @@ ${section_end}`;
 		await this.adapter.updateParticipantUserStates(updates);
 	}
 	async getRelationships(params: {
-		entityId: UUID;
+		entityIds?: UUID[];
+		entityId?: UUID;
 		tags?: string[];
+		limit?: number;
+		offset?: number;
 	}): Promise<Relationship[]> {
+		const entityIds =
+			Array.isArray(params.entityIds) && params.entityIds.length > 0
+				? params.entityIds
+				: params.entityId
+					? [params.entityId]
+					: [];
 		return await this.adapter.getRelationships({
-			entityIds: [params.entityId],
+			entityIds,
 			tags: params.tags,
+			limit: params.limit,
+			offset: params.offset,
 		});
 	}
 	// Batch cache methods
@@ -5811,7 +7924,7 @@ ${section_end}`;
 		});
 	}
 
-	// Deprecated entity wrapper
+	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
 		return await this.adapter.updateEntities([entity]);
 	}
@@ -5833,7 +7946,7 @@ ${section_end}`;
 		return await this.adapter.deleteComponents(componentIds);
 	}
 
-	// Deprecated component wrappers
+	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
 		return ids.length > 0;
@@ -5984,7 +8097,7 @@ ${section_end}`;
 		return await this.adapter.deleteRelationships(relationshipIds);
 	}
 
-	// Deprecated relationship wrappers
+	// Single-item relationship wrappers
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -6068,7 +8181,12 @@ ${section_end}`;
 		const ids = await this.adapter.createMemories([
 			{ memory, tableName, unique },
 		]);
-		return ids[0];
+		const memoryId = ids[0];
+		await this.applyPipelineHooks(
+			"after_memory_persisted",
+			afterMemoryPersistedPipelineHookContext(memory, tableName, memoryId),
+		);
+		return memoryId;
 	}
 
 	async updateMemory(
@@ -6112,7 +8230,7 @@ ${section_end}`;
 		return await this.adapter.deleteRooms(roomIds);
 	}
 
-	// Deprecated room wrappers
+	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
 		return await this.adapter.updateRooms([room]);
 	}
@@ -6204,7 +8322,7 @@ ${section_end}`;
 	}
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
-		count?: number;
+		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
 		return await this.adapter.getMemoriesByWorldId(params);
@@ -6291,7 +8409,7 @@ ${section_end}`;
 		return await this.adapter.deletePairingAllowlistEntries(ids);
 	}
 
-	// Deprecated pairing wrappers
+	// Single-item pairing wrappers
 	async createPairingRequest(request: PairingRequest): Promise<UUID> {
 		const ids = await this.adapter.createPairingRequests([request]);
 		return ids[0];

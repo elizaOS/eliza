@@ -1,0 +1,39 @@
+Unknown model: qwen/qwen3-32b
+
+🤖 Model: llama-3.1-8b-instant (groq)
+   Provider: groq
+
+🚀 Running full BFCL benchmark...
+
+Unknown model: qwen/qwen3-32b
+[2m2026-02-15T02:52:36.278528Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:52:55.057292Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:52:55.627646Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:52:55.627787Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:52:55.627902Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:01.112651Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:01.719030Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:01.719183Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:01.719333Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:03.032182Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:11.901158Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:11.902030Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:13.957402Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:16.100417Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:17.786026Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:20.147611Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:26.404672Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:30.732478Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:31.804052Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T02:53:32.974365Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:36.619428Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:39.188707Z[0m [[31m[1merror    [0m] [1mAction not found: BFCLE_CALL  [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:39.822980Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:46.987930Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:47.720559Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T02:53:51.830380Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:57.663709Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:53:59.775196Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'function': 'calculate_population_growth', 'parameters': {'initial_population': 35000, 'growth_rate': 0.015, 'years': 5}}]
+[2m2026-02-15T02:54:02.116489Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-15T02:54:07.611339Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m

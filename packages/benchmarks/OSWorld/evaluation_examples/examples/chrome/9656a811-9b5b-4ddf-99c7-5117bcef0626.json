@@ -1,0 +1,86 @@
+{
+  "id": "9656a811-9b5b-4ddf-99c7-5117bcef0626",
+  "snapshot": "chrome",
+  "instruction": "I want Chrome to warn me whenever I visit a potentially harmful or unsafe website. Can you enable this safety feature?",
+  "source": "https://www.quora.com/How-do-I-set-the-security-settings-for-the-Google-Chrome-browser-for-the-best-security#:~:text=Enable%20Safe%20Browsing:%20Chrome%20has%20a%20built%2Din,Security%20%3E%20Security%20%3E%20Enable%20Safe%20Browsing.",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "echo {CLIENT_PASSWORD} | sudo -S apt update -y && echo {CLIENT_PASSWORD} | sudo -S apt install jq -y",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir -p /home/user/.config/google-chrome/Default && if [ ! -f /home/user/.config/google-chrome/Default/Preferences ]; then echo '{}' > /home/user/.config/google-chrome/Default/Preferences; fi && cd /home/user/.config/google-chrome/Default && jq '. + {\"safebrowsing\":{\"enabled\":false,\"enhanced\":false}}' Preferences > temp && mv temp Preferences",
+        "shell": true
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "launch",
+        "parameters": {
+          "command": [
+            "pkill",
+            "chrome"
+          ]
+        }
+      },
+      {
+        "type": "launch",
+        "parameters": {
+          "command": [
+            "google-chrome",
+            "--remote-debugging-port=1337"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 3
+        }
+      }
+    ],
+    "func": "exact_match",
+    "result": {
+      "type": "enable_safe_browsing"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "true"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

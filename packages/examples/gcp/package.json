@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/gcp-examples",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS GCP Cloud Run examples and test client",
+  "type": "module",
+  "scripts": {
+    "test-client": "bun run test-client.ts",
+    "test-client:stream": "bun run test-client.ts --stream",
+    "test:ts": "cd typescript && npm install && npm run dev",
+    "test:py": "cd python && pip install -r requirements.txt && python handler.py",
+    "test:rust": "cd rust && cargo run",
+    "build:ts": "cd typescript && npm install && npm run build",
+    "build:py": "cd python && pip install -r requirements.txt",
+    "build:rust": "cd rust && cargo build --release",
+    "docker:build:ts": "cd typescript && docker build -t eliza-worker-ts .",
+    "docker:build:py": "cd python && docker build -t eliza-worker-py .",
+    "docker:build:rust": "cd rust && docker build -t eliza-worker-rust .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  }
+}

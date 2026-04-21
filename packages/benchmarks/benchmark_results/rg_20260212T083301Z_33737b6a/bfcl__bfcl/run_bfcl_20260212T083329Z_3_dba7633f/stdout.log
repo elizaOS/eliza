@@ -1,0 +1,746 @@
+Unknown model: qwen/qwen3-32b
+
+🤖 Model: llama-3.1-8b-instant (groq)
+   Provider: groq
+
+🚀 Running full BFCL benchmark...
+
+Unknown model: qwen/qwen3-32b
+[2m2026-02-12T08:33:32.093973Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:33.232422Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:33.232521Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:33.232591Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:34.397978Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:42.840046Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:45.211935Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:33:50.615661Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:50.615765Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:51.139676Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:51.139777Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:51.139851Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:51.627687Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:33:52.679735Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{("name": "get_shortest_driving_distance", "arguments": {"origin": "San Francisco", "destination": "San Diego"}}]}
+[2m2026-02-12T08:34:06.174451Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:14.594073Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:15.882857Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:20.502651Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:26.658005Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:27.204017Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:27.204126Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:27.204211Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:28.958688Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:31.481412Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:35.071524Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:39.235874Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:40.420966Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:40.421091Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:40.421176Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:43.199237Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:44.769740Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:49.970663Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:49.970833Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:55.794985Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:34:57.363038Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:01.073964Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:02.286320Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:03.221893Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:07.910466Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:08.554139Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:08.554284Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:08.554378Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:09.113944Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:09.114039Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:10.434204Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:15.613514Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:23.359280Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:25.918746Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:27.202874Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:28.803061Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:35:31.165446Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:32.930596Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:38.266192Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:44.433442Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:35:45.929216Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:35:58.696440Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:02.184571Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:04.228308Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:07.790737Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:08.979151Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:10.866905Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:29.581937Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:29.582351Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:30.705848Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:32.642157Z[0m [[31m[1merror    [0m] [1mAction not found: ACTIONS     [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:33.234141Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:34.022463Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for details about a lawsuit case numbered 'LAX2019080202' in the Los Angeles court. I need to figure out which function to call here.\n\nLooking at the previous interaction, the assistant used BFCL_CALL with a function called get_lawsuit_details. The parameters were case_number and court_location. The user provided the case number as 'LAX2019080202' and the court location is Los Angeles. So I should use the same function again but with the correct parame"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:34.022631Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:36.421879Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:38.454429Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:39.066223Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:39.538400Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:41.854800Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:42.832562Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:42.832652Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:45.538251Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:36:47.104625Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:47.624594Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:47.624684Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:47.624756Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:36:56.200470Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:01.622447Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:03.158069Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:12.085589Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:13.903451Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, the user is asking about the population growth in London over the next five years. Let me think about how to approach this.\n\nFirst, I need to check if there's a function available that can provide population data or growth projections. The user mentioned that the previous response was waiting for a query, so maybe the system has functions related to data retrieval.\n\nSince the user's question is about future population growth, it's likely that there's no direct function to predict t"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:13.903614Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"social_media_analytics.most_followed\", \"arguments\": {\"topic\": \"AI\"}}]
+[2m2026-02-12T08:37:16.721472Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:37:21.021348Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:23.006080Z[0m [[31m[1merror    [0m] [1mAction not found: FUNCTIONCALL[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:28.531146Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:31.072334Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:31.702846Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:32.924250Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user is asking, "Who discovered the neutron? Give me detail information." I need to figure out which function to call here.\n\nIn the previous interaction, the user had a similar query about the discovery of DNA\'s structure, and I used the get_discoverer function with parameters for the discovery and detail. Now, the question is about the neutron. So, the same function might apply here. The function name is get_discoverer, and the parameters should be the discovery (ne'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:32.924422Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:37:34.602943Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:36.307060Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:40.471942Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:42.841168Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "paint_requirement.calculate", "arguments": {"area": {"width": 12, "height": 10}, "paint_coverage": 350, "exclusion": {"type": "window", "area": 20}}]}
+[2m2026-02-12T08:37:53.889293Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:37:53.889387Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:04.086157Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:06.654119Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:38:07.949391Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:09.489586Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:10.489400Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:10.989597Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:10.989694Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:10.989786Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:13.741753Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'search_concerts', 'arguments': {'genre': 'pop', 'location': 'New York', 'date_range': 'next_month'}}]
+[2m2026-02-12T08:38:19.197930Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:25.685859Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'music_composer.create_mix', 'arguments': {'scale': 'C Major', 'note_duration': 'quarter', 'track_length': 180}}]
+[2m2026-02-12T08:38:30.038596Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:30.551148Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:30.551238Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:30.551317Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:33.345952Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:33.346058Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:33.862796Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:33.862896Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:33.862975Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:41.303471Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:42.813859Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:44.077862Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking about Ronaldo's match statistics in 2021. I need to use the player_statistic function. The previous example had parameters like player_name, year, and team_name. But the user didn't mention the team, so maybe I should just include the player name and year. Wait, the function might require team_name. Hmm, but if it's not provided, maybe it's optional? Or maybe I can leave it out. Let me check the function's required parameters. The example had all three"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:38:44.078031Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:38:54.153531Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:02.442221Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:39:04.114114Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'detailed_weather_forecast', 'arguments': {'location': 'London, United Kingdom', 'days': 3, 'details': ['high_low_temperature', 'humidity', 'precipitation']}}]
+[2m2026-02-12T08:39:05.761968Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:06.361756Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:06.361851Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:06.361925Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:20.682460Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:21.377932Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:24.125373Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:24.125469Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:27.741969Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:35.785589Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:39.889634Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:39.889728Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:49.003927Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:49.550899Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:50.714947Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to convert 3pm from the New York time zone to London. I remember that the previous response had a BFCL_CALL action but missing parameters. The error message says the 'calls' parameter is required for BFCL_CALL.\n\nLooking at the user's query again, they mentioned converting time from New York (America/New_York) to London (Europe/London). The function needed is probably 'timezone.convert' with the time, from_timezone, and to_timezone arguments. \n\nIn the previ"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:39:50.715134Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"hilton_hotel.check_availability\", \"arguments\": {\"location\": \"San Francisco\", \"check_in_date\": \"2026-02-14\", \"check_out_date\": \"2026-02-16\", \"no_of_adults\": 2, \"hotel_ch
+[2m2026-02-12T08:39:57.892371Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:05.480805Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:06.555316Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:40:13.401574Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:14.050243Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:14.050336Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:14.050420Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:18.751175Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:26.765905Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:27.168891Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user wants to calculate the average grade for John with the given scores. The previous response indicated a BFCL_CALL is needed. The function probably requires the scores as a parameter. The scores are provided as a dictionary: {\'math\':90, \'science\':75, \'history\':82, \'music\':89}. I need to pass this in the function call. The correct action is to call the function with these parameters. Let me structure the JSON accordingly.\n</think>\n\n[{"BFCL_CALL": {"parameters": {"s'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:27.169067Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'database.modify_columns', 'arguments': {'db_name': 'employees', 'table': 'hr_table', 'operation': 'add', 'columns': ['employee_id', 'name', 'department']}}]
+[2m2026-02-12T08:40:32.078117Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:40.829038Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:44.218857Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:40:44.869962Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'function': 'get_price_estimate', 'parameters': {'material': 'marble', 'size': 3.0}}]
+[2m2026-02-12T08:40:50.805875Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:51.437938Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:40:53.102154Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:56.066778Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:56.066914Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:56.535398Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:56.535500Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:56.535599Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:57.661154Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:40:59.274818Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:41:01.485266Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:02.574485Z[0m [[31m[1merror    [0m] [1mAction not found: BENCHMARK   [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:09.825239Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:11.835578Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:14.371456Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:14.974497Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants me to sort the list ['Sam', 'Alice', 'Jack'] in ascending order. First, I need to figure out which function to use. The available action is BFCL_CALL, which requires parameters. The previous response didn't include the necessary parameters, so I need to correct that.\n\nWait, the user provided an example where BFCL_CALL is used with a function and arguments. So, I should call a function that can sort a list. The function might be something like sorted(), but"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:14.974676Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:41:24.829662Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:25.305749Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:25.305841Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:25.305873Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:25.305945Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:26.910770Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:40.013796Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:41:41.281867Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:41:45.210114Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:41:53.320282Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:00.162377Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:05.253942Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:06.855999Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:07.954150Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:07.954244Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:09.611288Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:13.467186Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:15.975779Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:16.543716Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:23.787218Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:30.178740Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking to calculate the probability of drawing a king from a deck of cards. Hmm, I need to figure out which function to call here. The available action is BFCL_CALL, which requires the 'calls' parameter. But what function should I use?\n\nFirst, the problem is about probability. A standard deck has 52 cards, and there are 4 kings. So the probability is 4/52, which simplifies to 1/13. But the user might want the assistant to perform this calculation using a func"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:30.179650Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:32.473417Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:33.533599Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to run a two-sample T-test comparing Group A and Group B with equal variance. The data for Group A is [3,4,5,6,4] and Group B is [7,8,9,8,7]. \n\nFirst, I need to recall the function they mentioned earlier. In the previous response, there was a function called run_two_sample_ttest. The parameters it took were group1, group2, and equal_variance. The example had group1 as [10,12,9] and group2 as [8,11,7], with equal_variance set to true.\n\nSo, applying that to "[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:33.533757Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:42:37.277474Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:39.894907Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:41.630445Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:42.178399Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:42.178486Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:42.178561Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:47.181666Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:51.269701Z[0m [[31m[1merror    [0m] [1mAction not found: LIST OF ACTIONS TO TAKE (COMMA-SEPARATED)[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:55.581524Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:57.126350Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:58.096606Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for key war events in German history from 1871 to 1945. I need to figure out which function to call here. The previous example used BFCL_CALL with a function called history.get_key_events, so maybe that's the right one again.\n\nWait, in the user's query, the country is Germany, not France this time. The previous response had France, so I should adjust the country parameter to Germany. The start_year is 1871 and end_year is 1945. Let me check if those ye"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:42:58.096791Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:43:00.240897Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:01.707135Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user is asking, "Who discovered the neutron? Give me detail information." I need to figure out how to respond.\n\nFirst, I remember that the neutron was discovered by James Chadwick. But wait, maybe I should verify that. Let me think. Chadwick did his work in the early 20th century. He conducted experiments that led to the discovery of the neutron in 1932. That\'s right. So the answer should include his name, the year, and maybe some details about his experiments.\n\nBut '[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:01.710267Z[0m [[31m[1merror    [0m] [1mError processing message: options
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 699, in handle_message
+    await runtime.process_actions(message, responses, state, callback)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 935, in process_actions
+    result = await action.handler(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/actions/choice.py", line 57, in handler
+    if message.content and message.content.options:
+                           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: options. Did you mean: 'actions'?
+[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Query failed for multiple_155: options
+[2m2026-02-12T08:43:08.816543Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:14.820837Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:16.406494Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:43:26.485596Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:27.289718Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, the user is asking for Manchester United's next six Premier League games. I need to figure out which function to use here. The available action is BFCL_CALL, which requires the 'calls' parameter. Since the user's query is about sports schedules, there's probably a function related to sports data. The example responses show that BFCL_CALL is used with a function name and parameters.\n\nWait, the user mentioned the Premier League, so the function might be something like 'get_premier_le"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:27.289914Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:43:31.401686Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:32.926011Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'get_last_game_details', 'arguments': {'team': 'Liverpool F.C.', 'include_stats': True}}]
+[2m2026-02-12T08:43:37.409585Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:38.493760Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:41.866460Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'geometry.area_circle', 'arguments': {'radius': 5}}, {'name': 'find_recipes', 'arguments': {'diet': 'vegan', 'meal_type': 'breakfast'}}, {'name': 'whole_foods.check_price', 'arguments': {'lo
+[2m2026-02-12T08:43:48.953808Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:50.481928Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:50.482026Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:51.486207Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:43:52.001775Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:54.573967Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:43:56.377703Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:00.826042Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:05.221442Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:05.810419Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:05.810543Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:05.810692Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:14.970554Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:17.788710Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:20.565963Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:23.538018Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:26.334810Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to calculate the monthly mortgage payment for a $400,000 loan with a 4% annual interest rate over 15, 20, and 30 years. \n\nFirst, I need to recall the function they mentioned earlier. The previous response used 'calculate_mortgage_payment' with parameters loan_amount, interest_rate, and loan_term. The user's current query has different values: loan_amount is $400,000, interest_rate is 4% (so 0.04 as a decimal), and loan_terms of 15, 20, and 30 years.\n\nWait,"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:26.335147Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:28.019568Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:29.764627Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:31.524459Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"get_current_and_future_temperature\", \"arguments\": {\"location\": \"San Francisco\", \"hours\": 5}}]
+[2m2026-02-12T08:44:39.596358Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:40.835843Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:43.995840Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to book two flights: one from San Francisco to Tokyo on May 3rd, 2022, and another from Tokyo to Sydney on May 18th, 2022. \n\nFirst, I need to check if there's a function available for booking flights. The previous response mentioned using BFCL_CALL, which is for function calls. The user's request definitely requires a function that can handle flight bookings with parameters like origin, destination, and date.\n\nLooking at the example responses, they used BF"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:43.996021Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:46.565640Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:47.908602Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:55.154006Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:55.861733Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:55.861828Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:55.861920Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:44:57.772413Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:44:59.414458Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"whole_foods.order\", \"arguments\": {\"location\": \"123 Main St\", \"items\": [\"almond milk\", \"avocado\"], \"size\": \"medium\"}}]
+[2m2026-02-12T08:45:08.949992Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:45:10.984744Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'get_conversion_cost', 'arguments': {'amount': 15000, 'from_currency': 'EUR', 'to_currency': 'USD'}}, {'name': 'get_conversion_cost', 'arguments': {'amount': 200, 'from_currency': 'GBP', 'to
+[2m2026-02-12T08:45:17.300403Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:45:40.129976Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:45:40.672687Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:45:40.672804Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:45:40.672971Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: Not applicable; no function was called as the query does not provide sufficient context or values for function execution.
+[2m2026-02-12T08:45:51.514030Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:46:18.377163Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:19.667780Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:19.667879Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:19.667955Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:21.833465Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:22.473734Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:46:26.185270Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:28.133957Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:32.091646Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user is asking about the annual carbon emissions for three types of vehicles: gasoline, diesel, and electric. They each drive 15,000 miles per year. The emission factors given are default for gasoline, 2.7 for diesel, and 0 for electric.\n\nFirst, I need to figure out which function to use. The previous response mentioned "calculate_vehicle_emission", so I should use that. But wait, the user provided specific emission factors for diesel and electric, and the default fo'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:32.091815Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:46:33.194751Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:35.473996Z[0m [[33m[1mwarning  [0m] [1mCheckpoint one_end_code mismatch: expected 75d73ce0-1571-4d2c-40be-ed6e8cb6169b[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:35.989623Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:35.989713Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:35.989910Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:37.210016Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:43.863830Z[0m [[31m[1merror    [0m] [1mError processing message: options
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 699, in handle_message
+    await runtime.process_actions(message, responses, state, callback)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 935, in process_actions
+    result = await action.handler(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/actions/choice.py", line 57, in handler
+    if message.content and message.content.options:
+                           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: options. Did you mean: 'actions'?
+[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Query failed for parallel_134: options
+[2m2026-02-12T08:46:45.193787Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:46:57.902629Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:04.075618Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:06.620304Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:47:09.335470Z[0m [[31m[1merror    [0m] [1mError processing message: options
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 699, in handle_message
+    await runtime.process_actions(message, responses, state, callback)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 935, in process_actions
+    result = await action.handler(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/actions/choice.py", line 57, in handler
+    if message.content and message.content.options:
+                           ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: options. Did you mean: 'actions'?
+[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Query failed for parallel_161: options
+[2m2026-02-12T08:47:10.674989Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:19.488363Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:22.532264Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:23.720181Z[0m [[31m[1merror    [0m] [1mAction not found: BFC         [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:25.004106Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:29.041541Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:29.509550Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:29.509647Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:29.509681Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:29.509754Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:34.347052Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:35.317711Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:35.317803Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:35.317839Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:35.317913Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:40.117974Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"event_finder.find_upcoming\", \"arguments\": {\"location\": \"San Francisco, CA\", \"genre\": \"music\", \"days_ahead\": 7}}]
+[2m2026-02-12T08:47:43.481496Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:44.869728Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:48.466091Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:47:55.479239Z[0m [[31m[1merror    [0m] [1mAction not found: BENCHMARKING[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:55.479464Z[0m [[31m[1merror    [0m] [1mAction not found: FUNCTIONS   [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:47:57.068310Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:15.975410Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants me to find all prime numbers between 50 and 150 and then get the Fibonacci series up to 150. \n\nFirst, I need to check if there are functions available for these tasks. The user mentioned using BFCL_CALL, which is a function-calling action. So, I should look for functions that can generate primes and Fibonacci numbers.\n\nFor the prime numbers, there's likely a function called something like 'find_primes_in_range' that takes start and end parameters. The user"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:16.781893Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:48:20.669781Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:23.930142Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:25.901886Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:28.308472Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:34.145955Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:48:38.082150Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:38.590448Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:38.590579Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:38.590724Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:42.044350Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:44.343373Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:46.395455Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:48:48.469637Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:48:49.039497Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:49.039591Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:51.651729Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:51.651834Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:48:56.387079Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:48:56.970192Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:10.986650Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:12.318446Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:12.318543Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:12.318621Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:32.186279Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:35.791440Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for information about game rewards and missions across different games and platforms. They mentioned Call of Duty on PlayStation, FIFA level 3 scores on Xbox, all missions in Assassin Creed, and Fortnite's Master trophy rewards on PC.\n\nFirst, I need to check if there are functions available to retrieve this data. The previous response indicated an issue, probably because the necessary functions weren't provided. Since the user is asking for specific da"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:35.791625Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:49:36.941985Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:39.272076Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's tackle the user's query step by step. They've given three tasks: solving a quadratic equation, converting RGB to hex, and reversing a string.\n\nFirst, the quadratic equation. The coefficients are a=5, b=6, c=1. The standard formula is (-b ± sqrt(b²-4ac))/(2a). I need to calculate the discriminant first. Let's see, 6 squared is 36, 4*5*1 is 20. So discriminant is 16. Square root of 16 is 4. Then the roots would be (-6 ±4)/10. That gives (-6+4)/10 = -0.2 and (-6-4)/10 = -1. So t"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:39.272250Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:49:40.381940Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:40.382029Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:40.926065Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:40.926162Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:40.926241Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:41.449990Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:48.022000Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:48.022098Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:49:57.558010Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:00.245842Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:16.593450Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:20.941121Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:50:21.466500Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'get_religion_info', 'params': {'religion': 'Buddhism', 'info_type': 'origin'}}, {'name': 'get_religion_info', 'params': {'religion': 'Buddhism', 'info_type': 'founder'}}, {'name': 'get_reli
+[2m2026-02-12T08:50:25.122727Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:33.301474Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:41.958417Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:44.630216Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:50:49.158633Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:49.158726Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"lawsuit_details.find\", \"arguments\": {\"company_name\": \"CompanyA\", \"year\": 2024, \"case_type\": \"Commercial\"}}]
+[2m2026-02-12T08:50:56.590258Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:57.305825Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:57.305918Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:57.305995Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:50:58.005733Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:18.646059Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's tackle this step by step. The user has three main requests here. First, modifying a painting's attributes. Second, predicting the evolutionary rate of African elephants using the Darwin model. Third, calculating the probability of a royal flush in poker.\n\nStarting with the painting: The original is 24x36 inches, acrylic, blue. They want to change size to 30x40, medium to oil, color to red. So the new attributes should be straightforward. I'll note those down as the first part"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:18.646411Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:51:25.135605Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:28.775759Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:33.040169Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:51:35.238053Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:35.238181Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:35.681459Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:35.681552Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:35.681585Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:35.681654Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:39.283134Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:51:50.826264Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:51:52.633773Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:52:00.990374Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:01.474744Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:01.474879Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:01.475262Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:02.621853Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:05.994288Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:52:07.013981Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:09.214142Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for three different pieces of information. First, the calories in the Chicken Alfredo recipe from AllRecipes. Second, the current stock prices for Apple, Microsoft, and Tesla. Third, the FIFA ranking of Brazil's men's soccer team in 2018.\n\nHmm, I need to check which functions are available. The user mentioned that I previously selected actions but didn't provide parameters. The missing params were for BFCL_CALL, which requires the 'calls' parameter. Th"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:09.214308Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:52:11.406012Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:12.098230Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:12.098325Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:12.098399Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:12.614017Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \", \", \": \}]
+[2m2026-02-12T08:52:18.818727Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:21.094106Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:21.094203Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:22.290260Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:22.890038Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:22.890141Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:22.890218Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:23.418303Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{function calls}]
+[2m2026-02-12T08:52:26.474233Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:31.703802Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:52:32.906212Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:34.050360Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:52:42.294432Z[0m [[31m[1merror    [0m] [1mAction not found: BUILDING_RESPONSE[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:45.374317Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:45.942532Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:45.942634Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:45.942706Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:46.658619Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'requests.get', 'arguments': {'url': 'https://geocode.maps.co/search', 'params': {'q': '5331 Rexford Court, Montgomery AL 36116', 'api_key': 'YOUR-GEOCODE-API-KEY', 'format': 'geojson'}}}]
+[2m2026-02-12T08:52:50.854481Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:52:58.160473Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:53:01.541682Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:07.937210Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:10.622240Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:19.013381Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:20.527295Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let me try to figure this out. The user wants to understand the slang term "bet" by fetching definitions from an online slang dictionary. They provided an API key and the host. \n\nFirst, I need to recall how to make a GET request using the Urban Dictionary API. The host is mashape-community-urban-dictionary.p.rapidapi.com, and the endpoint is probably /define. The parameters should include the term "bet". \n\nWait, the user mentioned using their API key. So I need to include that in t'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:20.527527Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:53:24.501602Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:25.817867Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user wants to find the age rating and full plot for "The Social Network" using the OMDB API. They provided their API key. I need to make a BFCL_CALL with the correct parameters.\n\nFirst, the OMDB API endpoint is http://www.omdbapi.com/. The parameters required are \'t\' for the title and \'apikey\'. The user mentioned the API key as \'YOUR-OMDB-API-KEY\', so I should use that. The title here is \'The Social Network\'. \n\nWait, in the previous example, the assistant used a JSON'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:25.818042Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:53:28.413707Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:30.885727Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:31.685777Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:53:32.294064Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:36.093646Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:36.093742Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:44.729838Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:53:47.142007Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:50.382297Z[0m [[31m[1merror    [0m] [1mAction not found: BUILD_DEFAULT[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:51.381868Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:51.381964Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:52.607053Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["name", "email"], "conditions": [["age > 25", "location = 'San Francisco'"]]}]}
+[2m2026-02-12T08:53:55.589776Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:53:55.589869Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:01.259571Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:02.867095Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "employees", "columns": ["name", "age"], "conditions": [["age > 30"]]}]}
+[2m2026-02-12T08:54:06.299197Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["id", "name"], "conditions": [["age > 25"]]}]
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["name", "email"], "conditions": [["status = \"active\"", "age > 30"]]}]
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["name", "email"], "conditions": [["age > 25", "status = active"]]}]
+[2m2026-02-12T08:54:18.149867Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:18.762326Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:18.762414Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:18.762504Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["name", "email"], "conditions": [["age >", "25"]]}]
+[2m2026-02-12T08:54:21.525357Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:23.301726Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:25.599122Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:26.581815Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:27.281216Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:27.281314Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:27.281384Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"sql.execute\", \"arguments\": {\"sql_keyword\": \"SELECT\", \"table_name\": \"employees\", \"columns\": [\"id\", \"name\"], \"conditions\": [[\"age\", \">\", \"30\"]]}}]
+[2m2026-02-12T08:54:30.265511Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:30.753385Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:30.753474Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:30.753508Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:30.753577Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:31.269350Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:31.269476Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:31.769438Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'function': "INSERT INTO Students ('StudentID', 'FirstName', 'LastName', 'Age', 'Grade') VALUES ('S101', 'John', 'Doe', '15', '10')", 'arguments': {}}]
+[2m2026-02-12T08:54:42.018264Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:42.965306Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:44.024921Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to update the GDP value for the United States in the 'country_gdp' table. The specific column is 'gdp', and the new value is '21.44 trillion USD'. They also mentioned that the operation should only affect the row where 'country_name' is 'United States'.\n\nFirst, I need to determine the correct SQL command. Since the user is modifying an existing record, the appropriate command is an UPDATE statement. The table name is 'country_gdp', so the syntax should be "[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:44.025102Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:54:47.258901Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:47.772060Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:47.772152Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:47.772229Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:49.992151Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:56.812482Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:58.273312Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:58.273408Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:58.749710Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:58.749807Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:54:58.749884Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{"name": "sql.execute", "arguments": {"sql_keyword": "SELECT", "table_name": "users", "columns": ["name", "age"], "conditions": [["age >", "30"]]}]}
+[2m2026-02-12T08:55:03.525547Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:04.199002Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:06.645909Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user wants to remove all records from the 'employees' table where the 'salary' is less than 50000. So the correct SQL command here would be a DELETE statement. The table name is employees, and the condition is salary < 50000.\n\nIn the previous response, the assistant used a SELECT statement on the 'users' table with conditions. But now, the action needed is DELETE. So I need to adjust the function call accordingly. The function name is probably 'sql.execute' again, bu"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:06.646077Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:55:07.121693Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:16.014396Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:17.093918Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:17.094024Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:17.094152Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:19.797756Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:22.642216Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:33.239419Z[0m [[31m[1merror    [0m] [1mAction not found: BFC         [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:36.593951Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:39.243398Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:40.529982Z[0m [[31m[1merror    [0m] [1mAction not found: BFC_LNONE   [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:42.842960Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:46.283339Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking about creating a stubbed source map for a nested document structure in Elasticsearch, using a filtered source map called `docFields` that includes only 'name' and 'address'. \n\nFirst, I need to understand what a source map in Elasticsearch is. From what I remember, the source map is used to control how the source of a document is stored and retrieved. When you have nested documents, the source mapping becomes more complex because each nested object is s"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:55:46.283508Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:55:51.800275Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'name': 'Basic.checkSizes', 'arguments': {'environ': 'envVariables', 'size': 5}}]
+[2m2026-02-12T08:55:54.117055Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:07.758009Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:11.127833Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for help to create an Elasticsearch query where the 'age' field is between 30 and 40, including 30 but not 40. They mentioned that the previous response required parameters but they weren't provided. The assistant's last attempt used a function call called 'withinQuery' with parameters like field, from, to, includeFrom, and includeTo. But the user is pointing out that the parameters were missing in the response.\n\nWait, looking at the previous response,"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:11.128000Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:56:19.515094Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:20.881136Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:20.881229Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:23.280640Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:23.280782Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:34.118156Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:56:39.440664Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:45.118630Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:56:46.981444Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:56:50.058194Z[0m [[31m[1merror    [0m] [1mAction not found: BFC         [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:51.681886Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:52.637687Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:52.637779Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:53.805853Z[0m [[33m[1mwarning  [0m] [1mCheckpoint one_initial_code mismatch: expected f4113ee3-722e-be5c-6bd6-4a5d674d723a[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:53.805949Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:53.805983Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:53.806055Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:56:54.961985Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{'function': 'extractFollowingKeyValuePairs', 'params': {'jsonData': 'dataAnalysisContext', 'targetKey': 'userId'}}]
+[2m2026-02-12T08:56:59.434447Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:00.430693Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:57:03.970351Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:06.985124Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking for help to generate a dynamic chart using their provided data array, apply a scaling factor of 3 to the axis values, and link it to a given dashboard element.\n\nFirst, I need to recall the available functions. The previous response mentioned a function called DynamicChartGenerator. Let me check the parameters it requires. The user mentioned userDataArray, scaling factor of 3, and dashboardElement. The previous example used userData as an array of strin"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:06.985312Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:57:10.482309Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:11.062706Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:11.062803Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:11.062876Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:14.805111Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:16.938352Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:24.671849Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:25.237003Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:25.237101Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:25.237176Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:27.777918Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:31.033956Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:31.034046Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:33.269843Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:33.269945Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:34.681811Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:57:36.470182Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{function: 'tavily_search_results_json', parameters: {query: 'latest news on international trade agreements'}}]
+[2m2026-02-12T08:57:42.791294Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"Hotels_2_SearchHouse\", \"arguments\": {\"where_to\": \"Berkeley, CA\", \"has_laundry_service\": true, \"number_of_adults\": \"2\", \"rating\": 4.0}}]
+[2m2026-02-12T08:57:48.270198Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:54.326041Z[0m [[31m[1merror    [0m] [1mAction not found: BENCHMARKING FOR EVALUATION[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:57:54.326131Z[0m [[31m[1merror    [0m] [1mAction not found: WAITING FOR USER INPUT[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:03.695670Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:13.123843Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:16.915966Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:21.593191Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:21.593295Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:33.569631Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:40.231807Z[0m [[31m[1merror    [0m] [1mAction not found: BENCHMARK TASK REQUIRES EVALUATING AND DETERMINING FUNCTION CALLS.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:47.498729Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:58:50.442109Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:51.013173Z[0m [[31m[1merror    [0m] [1mAction not found: BFCCL_CALL  [0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:52.677409Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:53.733692Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:58:58.837254Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:03.109103Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:03.696576Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:03.696672Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:03.696745Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:11.280484Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:59:11.932464Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:12.481990Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:12.482082Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:12.482158Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:12.975348Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:59:21.535845Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:59:22.666242Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:24.779647Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:30.806481Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:31.370206Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:31.370303Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:31.370384Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:37.862405Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:40.686356Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:42.098184Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user is asking about the casualty number of the Battle of Waterloo. In the previous interaction, I tried to get the date of the Moon landing, which was a different event. So I need to adjust my approach here.\n\nFirst, I should figure out which function to use. The user mentioned "casualty number," so maybe there\'s a function related to historical events that can provide casualty data. The previous function I used was historical_event.get_date, but that\'s for dates. Pe'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:42.098359Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:59:44.578077Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:51.298169Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:54.151499Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user is asking who proposed the special theory of relativity. I know that Albert Einstein is the scientist associated with that. But wait, the system is expecting a function call. However, the previous response mentioned that no valid function call was needed. But now the user is pointing out that the required parameters for BFCL_CALL were missing.\n\nHmm, maybe I need to check if there's a function available that can answer this. If there's a function like 'get_scient"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:54.151670Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T08:59:55.417980Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:55.981926Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:55.982024Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T08:59:55.982100Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:01.511487Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:02.178747Z[0m [[33m[1mwarning  [0m] [1mCheckpoint one_middle_code mismatch: expected a42cbaae-c920-0a7f-60ff-80a85cdce510[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:02.178884Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:02.178984Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:03.884884Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:07.687331Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:13.066143Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:15.678235Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:19.946105Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:20.966753Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T09:00:29.183881Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:31.358514Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let\'s see. The user is asking, "Who played for Clippers in NBA." So they want to know the players who are currently on the Clippers team in the NBA.\n\nFirst, I need to figure out which function to use. The available action is BFCL_CALL, which is for making function calls. The user\'s query requires fetching data about the Clippers\' roster. \n\nLooking at the parameters needed for BFCL_CALL, the example shows that the function name and arguments should be provided. The function name her'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:31.358699Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T09:00:32.678409Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:33.806287Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:35.250133Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:35.250231Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:38.954510Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T09:00:39.466082Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:39.882789Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:39.882949Z[0m [[33m[1mwarning  [0m] [1mMissing required field: actions[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:39.883008Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:39.883223Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:00:57.767700Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:01.698789Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:04.680068Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:05.383813Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:06.242803Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): "<think>\nOkay, let's see. The user asked for the recipe for lasagna. My previous response tried to call a function called get_calories_in_recipe with some parameters about flour and sugar. But wait, that doesn't make sense. The user isn't asking about calories; they want the actual recipe steps and ingredients. I must have confused the function. The available function is get_recipe, not get_calories_in_recipe. So I need to correct that. The correct function call should be get_recipe with the reci"[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:06.242976Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T09:01:17.342479Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Parameter 'calls' expected string, got list"][0m [36msrc[0m=[35mruntime:actions[0m
+[2m2026-02-12T09:01:17.878377Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-12T09:01:19.643709Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: groq/llama-3.1-8b-instant
+Provider: groq
+
+Overall Score: 6.14%
+AST Accuracy:  8.82%
+Exec Accuracy: 8.82%
+Relevance:     43.50%
+
+Tests: 133/1508 passed
+Avg Latency: 1061.2ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -62.36%
+  vs mistral-large: -63.66%
+  vs qwen-2.5-72b: -65.06%
+============================================================
+
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: groq/llama-3.1-8b-instant
+Provider: groq
+
+Overall Score: 6.14%
+AST Accuracy:  8.82%
+Exec Accuracy: 8.82%
+Relevance:     43.50%
+
+Tests: 133/1508 passed
+Avg Latency: 1061.2ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -62.36%
+  vs mistral-large: -63.66%
+  vs qwen-2.5-72b: -65.06%
+============================================================
+

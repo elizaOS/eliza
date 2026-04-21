@@ -1,0 +1,54 @@
+Unknown model: qwen/qwen3-32b
+
+🤖 Model: llama-3.1-8b-instant (groq)
+   Provider: groq
+
+🚀 Running full BFCL benchmark...
+
+Unknown model: qwen/qwen3-32b
+Failed to create Groq plugin: No module named 'elizaos_plugin_groq'
+No model provider plugin available. Set GROQ_API_KEY (recommended), OPENAI_API_KEY, ANTHROPIC_API_KEY, or other provider keys. Agent will run in mock mode.
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: Unknown
+Provider: groq
+
+Overall Score: 11.11%
+AST Accuracy:  17.11%
+Exec Accuracy: 17.11%
+Relevance:     15.92%
+
+Tests: 258/1508 passed
+Avg Latency: 0.0ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -57.39%
+  vs mistral-large: -58.69%
+  vs qwen-2.5-72b: -60.09%
+============================================================
+
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: Unknown
+Provider: groq
+
+Overall Score: 11.11%
+AST Accuracy:  17.11%
+Exec Accuracy: 17.11%
+Relevance:     15.92%
+
+Tests: 258/1508 passed
+Avg Latency: 0.0ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -57.39%
+  vs mistral-large: -58.69%
+  vs qwen-2.5-72b: -60.09%
+============================================================
+

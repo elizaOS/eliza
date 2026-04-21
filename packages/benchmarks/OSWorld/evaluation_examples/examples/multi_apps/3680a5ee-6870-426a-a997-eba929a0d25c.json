@@ -1,0 +1,89 @@
+{
+  "id": "3680a5ee-6870-426a-a997-eba929a0d25c",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I have file1.xlsx and file2.ods on my Desktop, each containing a single column. Using only the command line, help me merge these two columns into a single column by concatenating the strings from both rows, save the result as ~/Desktop/output.csv, and open it in LibreOffice Calc from the terminal",
+  "source": "https://unix.stackexchange.com/questions/510850/how-to-open-calc-from-terminal-and-insert-files",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/file1.xlsx",
+            "path": "/home/user/Desktop/file1.xlsx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/file2.ods",
+            "path": "/home/user/Desktop/file2.ods"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "export DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus'\ngnome-terminal --maximize --working-directory=/home/user/Desktop",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_calc",
+    "terminal"
+  ],
+  "evaluator": {
+    "func": [
+      "check_include_exclude",
+      "compare_csv"
+    ],
+    "conj": "and",
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "/bin/bash",
+          "-c",
+          "output=$(ps aux | grep \"[s]office\" | awk '{print $7}' | grep -E \"pts/|tty\"); if [ -z \"$output\" ]; then echo \"use no terminal\"; else echo \"use terminal\"; fi;"
+        ]
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/output.csv",
+        "dest": "output.csv"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "use terminal"
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "multi": true,
+        "path": [
+          "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/output.csv",
+          "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/output_gold2.csv",
+          "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/output_gold3.csv"
+        ],
+        "dest": [
+          "output_gold.csv",
+          "output_gold2.csv",
+          "output_gold3.csv"
+        ],
+        "gives": [
+          0,
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

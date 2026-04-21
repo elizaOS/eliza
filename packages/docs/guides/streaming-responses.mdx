@@ -128,6 +128,42 @@ The streaming API emits these event types:
 }
 ```
 
+## StreamChunkCallback
+
+All streaming callbacks use the canonical `StreamChunkCallback` type:
+
+```typescript
+import type { StreamChunkCallback } from "@elizaos/core";
+
+// Simple consumer — just the delta
+const simple: StreamChunkCallback = (chunk) => {
+  process.stdout.write(chunk);
+};
+
+// Full consumer — delta, session ID, and accumulated text
+const full: StreamChunkCallback = (chunk, messageId, accumulated) => {
+  // chunk: new text since last emission (delta)
+  // messageId: streaming session identifier
+  // accumulated: full extracted text so far (when available)
+  if (accumulated) {
+    // Use accumulated for stateful operations like sentence detection
+    // instead of re-accumulating from deltas
+    detectFirstSentence(accumulated);
+  }
+  sendToClient(chunk, messageId);
+};
+```
+
+| Parameter     | Type     | Description |
+| ------------- | -------- | ----------- |
+| `chunk`       | `string` | Delta text since the last emission |
+| `messageId`   | `string?` | Streaming session / message identifier |
+| `accumulated` | `string?` | Full extracted field text so far. Present when the stream originates from a `ValidationStreamExtractor` (structured XML output). `undefined` for raw token streams. |
+
+**Why `accumulated` exists:** When consumers need the full text (e.g. for sentence detection, progress display, or deduplication), re-accumulating from deltas is fragile — especially if multiple extraction pipelines run concurrently. The extractor already tracks this value internally, so surfacing it is zero-cost and eliminates an entire class of reassembly bugs.
+
+**Why `void | Promise<void>`:** Allows both sync callbacks (loggers, test spies) and async ones (network I/O, TTS). The framework `await`s the callback at some call sites but not all, so consumers should not rely on backpressure.
+
 ## Custom Stream Extractors
 
 ElizaOS uses **stream extractors** to filter LLM output for streaming. The framework provides several built-in extractors:
@@ -282,9 +318,17 @@ flowchart TB
 **Data Flow:**
 
 1. **LLM Provider** generates tokens via async iterator
-2. **Stream Extractor** filters output, extracts streamable content, buffers for tag boundaries
-3. **SSE/WebSocket** sends chunks to client progressively
-4. **UI** updates in real-time as chunks arrive
+2. **`useModel`** fans out raw tokens to the extractor's `onStreamChunk` callback
+3. **`ValidationStreamExtractor`** parses XML, extracts field content, emits `(delta, messageId, accumulated)` via `StreamChunkCallback`
+4. **Consumer** (SSE handler, voice detector, UI) receives chunks with optional accumulated text
+5. **UI** updates in real-time as chunks arrive
+
+<Note>
+  Only one extractor pipeline processes each `useModel` call. The `accumulated`
+  parameter comes from the `ValidationStreamExtractor` that tracks per-field
+  extracted text. Raw token streams (no extractor) pass `undefined` for
+  `accumulated`.
+</Note>
 
 ## Next Steps
 

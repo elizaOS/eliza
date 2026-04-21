@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HyperLiquidBench — Domain Breakdown</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" defer src="assets/lc.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="border-b bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a id="site-title" href="./" class="font-semibold tracking-tight">HyperLiquidBench</a>
+      <nav class="text-sm">
+        <a id="nav-home" class="hover:underline mr-4" href="./">Overview</a>
+        <a id="nav-trajectories" class="hover:underline mr-4" href="./trajectories.html">Action Logs</a>
+        <a id="nav-breakdown" class="hover:underline" href="./lc.html">Domain Breakdown</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+    <header>
+      <h1 id="lc-title" class="text-2xl font-bold">Domain & signature breakdown</h1>
+      <p id="lc-subtitle" class="mt-2 text-sm text-slate-600"></p>
+    </header>
+
+    <section class="grid gap-4 md:grid-cols-2">
+      <article class="bg-white border rounded-lg shadow-sm p-4 flex flex-col gap-3">
+        <div class="text-xs uppercase tracking-wide text-slate-500" id="lc-knowledge-label">Domain policy</div>
+        <div class="text-sm font-semibold text-slate-800" id="lc-knowledge-path"></div>
+        <p id="lc-knowledge-desc" class="text-xs text-slate-500"></p>
+        <a id="lc-knowledge-cta" href="#" class="px-3 py-2 rounded bg-slate-900 text-white text-sm w-fit" target="_blank" rel="noreferrer">Open policy</a>
+      </article>
+      <article class="bg-white border rounded-lg shadow-sm p-4 flex flex-col gap-3">
+        <div class="text-xs uppercase tracking-wide text-slate-500" id="lc-hian-label">Unique signatures</div>
+        <div class="text-sm font-semibold text-slate-800" id="lc-hian-path"></div>
+        <p id="lc-hian-desc" class="text-xs text-slate-500"></p>
+        <a id="lc-hian-cta" href="#" class="px-3 py-2 rounded bg-slate-900 text-white text-sm w-fit" target="_blank" rel="noreferrer">Open manifest</a>
+      </article>
+    </section>
+
+    <section class="bg-white border rounded-lg shadow-sm">
+      <div class="p-4 border-b">
+        <h2 class="font-semibold text-lg" id="lc-table-caption">Knowledge & HiaN ranking</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[780px]">
+          <thead class="bg-slate-100 text-slate-700">
+            <tr>
+              <th class="px-3 py-2 text-left" id="lc-col-rank">Rank</th>
+              <th class="px-3 py-2 text-left" id="lc-col-model">Agent</th>
+              <th class="px-3 py-2 text-right" id="lc-col-final">Final</th>
+              <th class="px-3 py-2 text-right" id="lc-col-base">Base</th>
+              <th class="px-3 py-2 text-right" id="lc-col-bonus">Bonus</th>
+              <th class="px-3 py-2 text-right" id="lc-col-penalty">Penalty</th>
+              <th class="px-3 py-2 text-right" id="lc-col-unique">Unique sigs</th>
+              <th class="px-3 py-2 text-left" id="lc-col-domains">Domain spread</th>
+              <th class="px-3 py-2 text-left" id="lc-col-runs">Artifacts</th>
+            </tr>
+          </thead>
+          <tbody id="lc-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="bg-white border rounded-lg shadow-sm p-4">
+      <h2 id="lc-notes-title" class="font-semibold text-lg mb-2">Observations</h2>
+      <ul id="lc-notes" class="list-disc ml-5 text-sm text-slate-700 space-y-1"></ul>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "id": "fe41f596-a71b-4c2f-9b2f-9dcd40b568c3",
+  "snapshot": "os",
+  "instruction": "I want to see the battery percentage. Can you help me display it on my screen?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/power-percentage.html.en",
+  "trajectory": "trajectories/",
+  "config": [],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

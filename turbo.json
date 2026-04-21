@@ -6,6 +6,16 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/agent#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/app-core#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/agent#build", "@elizaos/shared#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/core#build": {
       "dependsOn": [],
       "env": ["LOG_LEVEL"],
@@ -33,290 +43,50 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
-    "@elizaos/plugin-knowledge-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    "@elizaos/plugin-cli-root#build": {
+      "outputs": []
     },
-    "@elizaos/plugin-s3-storage-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    "@elizaos/plugin-commands-root#build": {
+      "outputs": []
     },
-    "@elizaos/plugin-code-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/target/release/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-anthropic-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-bluesky-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-github-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-goals-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-google-genai-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-linear-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-local-ai-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-n8n-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-ollama-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-openrouter-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-roblox-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-solana-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-todo-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-vision-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-xai-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    "@elizaos/plugin-cron-root#build": {
+      "outputs": []
     },
     "@elizaos/plugin-discord-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+      "outputs": []
     },
-    "@elizaos/plugin-mcp-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-forms-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-telegram-root#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-evm-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-eliza-classic-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-shell-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-vercel-ai-gateway-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-browser-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-pdf-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-sql-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-tee-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-instagram-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-rss-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-simple-voice-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-localdb-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-openai-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-inmemorydb-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    "@elizaos/plugin-elizacloud-root#build": {
+      "outputs": []
     },
     "@elizaos/plugin-groq-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-farcaster-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-bluesky#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
       "outputs": []
     },
-    "@elizaos/plugin-n8n#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-imessage-root#build": {
       "outputs": []
     },
-    "@elizaos/plugin-ollama#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-local-ai-root#build": {
       "outputs": []
     },
-    "@elizaos/plugin-openrouter#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-ollama-root#build": {
       "outputs": []
     },
-    "@elizaos/plugin-roblox#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-openai-root#build": {
       "outputs": []
     },
-    "@elizaos/plugin-solana#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-openrouter-root#build": {
       "outputs": []
     },
-    "@elizaos/plugin-forms#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
+    "@elizaos/plugin-shell-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-solana-root#build": {
+      "outputs": []
+    },
+    "@elizaos/plugin-sql-root#build": {
       "outputs": []
     },
     "@elizaos/schemas#build": {
-      "dependsOn": [],
       "outputs": []
-    },
-    "@elizaos/plugin-auto-trader-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-elevenlabs-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-experience-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-trajectory-logger-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-elizacloud-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "eliza-next-example#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": [".next/**", "!.next/cache/**"],
-      "cache": false
-    },
-    "@elizaos/vercel-edge-examples#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["rust/target/release/**"]
-    },
-    "ai-town#build": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-tlon-root#build": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-secrets-manager-root#build": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/computeruse#build": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-signal-root#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["typescript/dist/**"]
     },
     "lint": {
       "outputs": []
@@ -331,10 +101,7 @@
       "outputs": []
     },
     "typecheck": {
-      "outputs": []
-    },
-    "@elizaokbsc/elizaokbsc#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-moltbook#build"],
+      "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },
     "typecheck:rust": {
@@ -362,7 +129,7 @@
       "persistent": true
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [],
       "outputs": ["coverage/**"],
       "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*", "package.json", "tests/**/*", "python/tests/**/*"],
       "cache": false

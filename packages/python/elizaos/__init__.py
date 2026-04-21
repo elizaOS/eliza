@@ -43,6 +43,13 @@ from elizaos.generated.spec_helpers import (
 )
 from elizaos.logger import Logger, create_logger
 from elizaos.plugin import load_plugin, register_plugin
+from elizaos.prompt_compression import (
+    compress_prompt_description,
+    get_prompt_action_description,
+    get_prompt_parameter_description,
+    get_prompt_provider_description,
+    is_prompt_compression_enabled,
+)
 from elizaos.prompts import (
     BOOLEAN_FOOTER,
     CHOOSE_OPTION_TEMPLATE,
@@ -51,6 +58,7 @@ from elizaos.prompts import (
     REFLECTION_TEMPLATE,
     REPLY_TEMPLATE,
     SHOULD_RESPOND_TEMPLATE,
+    THINK_TEMPLATE,
     UPDATE_ENTITY_TEMPLATE,
     UPDATE_SETTINGS_TEMPLATE,
 )
@@ -235,6 +243,12 @@ __all__ = [
     # Logger
     "create_logger",
     "Logger",
+    # Prompt compression helpers
+    "compress_prompt_description",
+    "get_prompt_action_description",
+    "get_prompt_parameter_description",
+    "get_prompt_provider_description",
+    "is_prompt_compression_enabled",
     # Plugin utilities
     "load_plugin",
     "register_plugin",
@@ -253,6 +267,7 @@ __all__ = [
     "REFLECTION_TEMPLATE",
     "REPLY_TEMPLATE",
     "SHOULD_RESPOND_TEMPLATE",
+    "THINK_TEMPLATE",
     "UPDATE_ENTITY_TEMPLATE",
     "UPDATE_SETTINGS_TEMPLATE",
     # Settings / secrets helpers

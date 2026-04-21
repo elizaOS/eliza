@@ -1,0 +1,102 @@
+type canister_id = principal;
+
+type ecdsa_curve = variant {
+  secp256k1;
+};
+type schnorr_algorithm = variant {
+  bip340secp256k1;
+  ed25519;
+};
+
+type vetkd_curve = variant { bls12_381_g2 };
+
+type ecdsa_public_key_args = record {
+  canister_id : opt canister_id;
+  derivation_path : vec blob;
+  key_id : record { curve : ecdsa_curve; name : text };
+};
+
+type ecdsa_public_key_result = record {
+  public_key : blob;
+  chain_code : blob;
+};
+
+type sign_with_ecdsa_args = record {
+  message_hash : blob;
+  derivation_path : vec blob;
+  key_id : record { curve : ecdsa_curve; name : text };
+};
+
+type sign_with_ecdsa_result = record {
+  signature : blob;
+};
+
+type schnorr_public_key_args = record {
+  canister_id : opt canister_id;
+  derivation_path : vec blob;
+  key_id : record { algorithm : schnorr_algorithm; name : text };
+};
+
+type schnorr_public_key_result = record {
+  public_key : blob;
+  chain_code : blob;
+};
+
+type sign_with_schnorr_args = record {
+  message : blob;
+  derivation_path : vec blob;
+  key_id : record { algorithm : schnorr_algorithm; name : text };
+  aux: opt schnorr_aux;
+};
+
+type schnorr_aux = variant {
+    bip341: record {
+      merkle_root_hash: blob;
+   }
+};
+
+type sign_with_schnorr_result = record {
+  signature : blob;
+};
+
+type vetkd_public_key_args = record {
+  canister_id : opt canister_id;
+  derivation_path : vec blob;
+  key_id : record { curve : vetkd_curve; name : text };
+};
+
+type vetkd_public_key_result = record {
+  public_key : blob;
+};
+
+type vetkd_derive_encrypted_key_args = record {
+  derivation_id : blob;
+  encryption_public_key : blob;
+  derivation_path : vec blob;
+  key_id : record { curve : vetkd_curve; name : text };
+};
+
+type vetkd_derive_encrypted_key_result = record {
+  encrypted_key : blob;
+};
+
+type call_counts_result = record {
+  call_counts : vec record { method_name : text; call_count : nat64 };
+};
+
+service : {
+  // Threshold ECDSA signature
+  ecdsa_public_key : (ecdsa_public_key_args) -> (ecdsa_public_key_result);
+  sign_with_ecdsa : (sign_with_ecdsa_args) -> (sign_with_ecdsa_result);
+
+  // Threshold Schnorr signature
+  schnorr_public_key : (schnorr_public_key_args) -> (schnorr_public_key_result);
+  sign_with_schnorr : (sign_with_schnorr_args) -> (sign_with_schnorr_result);
+
+  // Threshold key derivation
+  vetkd_public_key : (vetkd_public_key_args) -> (vetkd_public_key_result);
+  vetkd_derive_encrypted_key : (vetkd_derive_encrypted_key_args) -> (vetkd_derive_encrypted_key_result);
+
+  // Statistics: call counts
+  call_counts : () -> (call_counts_result);
+};

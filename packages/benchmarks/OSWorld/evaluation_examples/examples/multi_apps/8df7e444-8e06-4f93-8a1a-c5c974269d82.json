@@ -1,0 +1,50 @@
+{
+  "id": "8df7e444-8e06-4f93-8a1a-c5c974269d82",
+  "snapshot": "libreoffice_writer",
+  "instruction": "The guidelines for submitting our essay work are provided in the \"reminder.docx\" on the Desktop. My essay is stored as a docx file in /home/user. Please assist me in organizing the files for submission according to the specified requirements.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/8df7e444-8e06-4f93-8a1a-c5c974269d82/Recruitment_and_retention_of_health_professionals_across_Europe.docx",
+            "path": "/home/user/Recruitment_and_retention_of_health_professionals_across_Europe.docx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/8df7e444-8e06-4f93-8a1a-c5c974269d82/reminder.docx",
+            "path": "/home/user/Desktop/reminder.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/reminder.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/8df7e444-8e06-4f93-8a1a-c5c974269d82",
+  "related_apps": [
+    "libreoffice_writer",
+    "os"
+  ],
+  "evaluator": {
+    "func": "compare_zip_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/8df7e444-8e06-4f93-8a1a-c5c974269d82/Recruitment_and_retention_of_health_professionals_across_Europe.zip",
+      "dest": "Recruitment_and_retention_of_health_professionals_across_Europe_Gold.zip"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/essay_submission.zip",
+      "dest": "essay_submission.zip"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

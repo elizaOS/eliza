@@ -1,0 +1,171 @@
+{
+  "id": "869de13e-bef9-4b91-ba51-f6708c40b096",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Can you organize my desktop by identifying academic papers, coding projects, and other documents, ensuring no file is misplaced? Specifically, place academic papers in the 'Paper_reading' folder, coding projects in 'Projects', and categorize everything else under 'Miscellaneous'. For files lacking clear extensions or names, apply content analysis to determine their appropriate classification.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/Paper_reading"
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/Projects"
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/Miscellaneous"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/2-if-for-array.zip",
+            "path": "/home/user/Desktop/2-if-for-array.zip"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/07-cluster-kMean%20%281%29.ppt",
+            "path": "/home/user/Desktop/07-cluster-kMean (1).ppt"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/2023_validation_7bd855d8-463d-4ed5-93ca-5fe35145f733.xlsx",
+            "path": "/home/user/Desktop/2023_validation_7bd855d8-463d-4ed5-93ca-5fe35145f733.xlsx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/assign1-data3.zip",
+            "path": "/home/user/Desktop/assign1-data3.zip"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/assignment_mark_frontpage.docx",
+            "path": "/home/user/Desktop/assignment_mark_frontpage.docx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/cco-return-to-school-survey-underlying-data-tables.xlsx",
+            "path": "/home/user/Desktop/cco-return-to-school-survey-underlying-data-tables.xlsx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/DOC_2480903712718068684.pdf",
+            "path": "/home/user/Desktop/DOC_2480903712718068684.pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/Family%20Status%20Equality-Eng%20%28Aug%202021%29.pdf",
+            "path": "/home/user/Desktop/Family Status Equality-Eng (Aug 2021).pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/IA_Format.docx",
+            "path": "/home/user/Desktop/IA_Format.docx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/paper01.pdf",
+            "path": "/home/user/Desktop/paper01.pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/GLUE%3A%20A%20MULTI-TASK%20BENCHMARK%20AND%20ANALYSIS.pdf",
+            "path": "/home/user/Desktop/GLUE: A MULTI-TASK BENCHMARK AND ANALYSIS.pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/1909.10351.pdf",
+            "path": "/home/user/Desktop/1909.10351.pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/1802.05365.pdf",
+            "path": "/home/user/Desktop/1802.05365.pdf"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/869de13e-bef9-4b91-ba51-f6708c40b096/1706.03762.pdf",
+            "path": "/home/user/Desktop/1706.03762.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "cd /home/user/Desktop && unzip -q assign1-data3.zip && rm -rf assign1-data3.zip && unzip -q 2-if-for-array.zip && rm -rf 2-if-for-array.zip && rm -rf __MACOSX"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/869de13e-bef9-4b91-ba51-f6708c40b096",
+  "related_apps": [
+    "libreoffice_writer",
+    "libreoffice_calc",
+    "os",
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "func": [
+      "exact_match",
+      "exact_match",
+      "exact_match"
+    ],
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "ls",
+          "/home/user/Desktop/Paper_reading"
+        ]
+      },
+      {
+        "type": "vm_command_line",
+        "command": [
+          "ls",
+          "/home/user/Desktop/Projects"
+        ]
+      },
+      {
+        "type": "vm_command_line",
+        "command": [
+          "ls",
+          "/home/user/Desktop/Miscellaneous"
+        ]
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "1706.03762.pdf\n1802.05365.pdf\n1909.10351.pdf\nGLUE: A MULTI-TASK BENCHMARK AND ANALYSIS.pdf\npaper01.pdf\n"
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "2-if-for-array\nassign1-data_python3\n"
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "expected": "07-cluster-kMean (1).ppt\n2023_validation_7bd855d8-463d-4ed5-93ca-5fe35145f733.xlsx\nassignment_mark_frontpage.docx\ncco-return-to-school-survey-underlying-data-tables.xlsx\nDOC_2480903712718068684.pdf\nFamily Status Equality-Eng (Aug 2021).pdf\nIA_Format.docx\n"
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

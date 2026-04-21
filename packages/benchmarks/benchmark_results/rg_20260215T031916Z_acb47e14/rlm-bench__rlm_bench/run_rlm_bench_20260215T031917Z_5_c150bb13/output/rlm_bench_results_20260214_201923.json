@@ -1,0 +1,305 @@
+{
+  "config": {
+    "output_dir": "/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031916Z_acb47e14/rlm-bench__rlm_bench/run_rlm_bench_20260215T031917Z_5_c150bb13/output",
+    "context_lengths": [
+      1000,
+      10000
+    ],
+    "rlm_backend": "gemini",
+    "use_dual_model": false
+  },
+  "metrics": {
+    "total_tasks": 18,
+    "passed_tasks": 0,
+    "overall_accuracy": 0.0,
+    "avg_semantic_similarity": 0.0,
+    "type_accuracies": {
+      "s_niah": 0.0,
+      "s_niah_multi": 0.0,
+      "oolong": 0.0,
+      "oolong_pairs": 0.0
+    },
+    "length_accuracies": {
+      "1000": 0.0,
+      "10000": 0.0
+    },
+    "s_niah_by_length": {
+      "1K": 0.0,
+      "10K": 0.0
+    },
+    "oolong_accuracy": 0.0,
+    "oolong_pairs_accuracy": 0.0,
+    "total_cost_usd": 0.0,
+    "avg_latency_ms": 57.57326549953885,
+    "avg_iterations": 0.0
+  },
+  "results": [
+    {
+      "task_id": "s_niah_fef73efb",
+      "bench_type": "s_niah",
+      "context_length": 1057,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 352.66828536987305,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_cc9a28c5",
+      "bench_type": "s_niah",
+      "context_length": 1067,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 19.958019256591797,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_38254159",
+      "bench_type": "s_niah",
+      "context_length": 1065,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 7.689952850341797,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_a49f07f7",
+      "bench_type": "s_niah",
+      "context_length": 1050,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 3.6759376525878906,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_7a00a797",
+      "bench_type": "s_niah",
+      "context_length": 1100,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 203.56392860412598,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_5bb53a88",
+      "bench_type": "s_niah_multi",
+      "context_length": 1078,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 3.6292076110839844,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_c285105a",
+      "bench_type": "s_niah_multi",
+      "context_length": 1089,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 63.14396858215332,
+      "error": null
+    },
+    {
+      "task_id": "oolong_d3531e38",
+      "bench_type": "oolong",
+      "context_length": 1223,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 3.7240982055664062,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_7d9882ed",
+      "bench_type": "oolong_pairs",
+      "context_length": 1195,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 5.259990692138672,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_6cefbd40",
+      "bench_type": "s_niah",
+      "context_length": 10052,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 5.161046981811523,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_e6662224",
+      "bench_type": "s_niah",
+      "context_length": 10062,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 163.74683380126953,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_284afe5d",
+      "bench_type": "s_niah",
+      "context_length": 10079,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 21.763086318969727,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_fb511449",
+      "bench_type": "s_niah",
+      "context_length": 10018,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 7.673978805541992,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_1c32c2a8",
+      "bench_type": "s_niah",
+      "context_length": 10039,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 6.294965744018555,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_7192ecb9",
+      "bench_type": "s_niah_multi",
+      "context_length": 10061,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 3.731966018676758,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_813888a5",
+      "bench_type": "s_niah_multi",
+      "context_length": 10114,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 145.65086364746094,
+      "error": null
+    },
+    {
+      "task_id": "oolong_e01ff6ef",
+      "bench_type": "oolong",
+      "context_length": 10229,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 9.476900100708008,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_8862f219",
+      "bench_type": "oolong_pairs",
+      "context_length": 10165,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 0,
+      "strategies_used": [],
+      "cost_usd": 0.0,
+      "latency_ms": 9.505748748779297,
+      "error": null
+    }
+  ],
+  "paper_comparison": {
+    "S-NIAH": {
+      "this_run": {
+        "1K": 0.0,
+        "10K": 0.0
+      },
+      "RLM (Gemini 2.0 Flash)": {
+        "1k": 1.0,
+        "10k": 1.0,
+        "100k": 0.98,
+        "1M": 0.95,
+        "10M": 0.92,
+        "100M": 0.88
+      },
+      "Gemini 2.0 Flash (direct)": {
+        "1k": 1.0,
+        "10k": 0.98,
+        "100k": 0.85,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      },
+      "GPT-5 (direct)": {
+        "1k": 1.0,
+        "10k": 0.99,
+        "100k": 0.92,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      }
+    }
+  },
+  "cost_analysis": {
+    "total_cost_usd": 0.0,
+    "avg_cost_per_task_usd": 0.0,
+    "cost_per_1k_tokens_usd": 0.0,
+    "accuracy_per_dollar": 0.0
+  },
+  "summary": {
+    "title": "RLM Benchmark Results",
+    "accuracy": "0.0%",
+    "findings": [
+      "Overall accuracy: 0.0% (0/18 tasks)",
+      "S-NIAH by length: 10K: 0.0%, 1K: 0.0%",
+      "Total cost: $0.0000, Avg: $0.000000/task"
+    ]
+  },
+  "metadata": {
+    "mode": "eliza",
+    "total_tasks": 18
+  }
+}

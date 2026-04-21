@@ -1,0 +1,19 @@
+🌊 Solana Gauntlet vv1.0
+📁 Agent: /Users/shawwalters/eliza-workspace/benchmarks/gauntlet/agents/eliza_agent.py
+🎲 Seed: 42
+
+📦 Loading agent...
+    [ElizaOS Agent] Created (runtime will initialize on first scenario)
+   ✅ Agent loaded: Agent
+📋 Loading scenarios...
+🚀 Starting Surfpool...
+       (running in mock mode - Surfpool simulated)
+   ✅ Surfpool ready at http://localhost:8899
+
+============================================================
+🏃 Running benchmark...
+============================================================
+    [ElizaOS Agent] Initializing ElizaOS runtime...
+    [ElizaOS] OpenAI plugin loaded
+
+❌ Error: AgentRuntime.__init__() got an unexpected keyword argument 'enable_extended_capabilities'

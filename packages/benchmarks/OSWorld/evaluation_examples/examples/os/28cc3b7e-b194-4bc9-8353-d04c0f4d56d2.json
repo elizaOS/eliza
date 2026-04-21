@@ -1,0 +1,39 @@
+{
+  "id": "28cc3b7e-b194-4bc9-8353-d04c0f4d56d2",
+  "snapshot": "os",
+  "instruction": "The volume of my system is too small. Can you help me turn up to the max volume?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/sound-volume.html.en",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "pulseaudio --start\npactl list sinks | grep '^[[:space:]]Volume:' | head -n 1 | awk '{print $5}' | sed 's/%//g'",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "100\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

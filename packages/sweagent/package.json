@@ -1,9 +1,0 @@
-{
-  "name": "@elizaos/sweagent-root",
-  "version": "2.0.0-alpha.93",
-  "private": true,
-  "scripts": {
-    "build": "echo 'sweagent build skipped'",
-    "typecheck": "echo 'No TypeScript source files to check'"
-  }
-}

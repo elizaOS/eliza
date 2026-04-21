@@ -1,0 +1,19 @@
+{
+  "scenario_id": "pause_then_resume_with_updates",
+  "title": "Pause Then Resume With Updates",
+  "category": "interrupt",
+  "required_capabilities": ["orchestration.pause_resume"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Pause this task.",
+      "expected_behaviors": ["pause_task"]
+    },
+    {
+      "actor": "user",
+      "message": "Resume with this scope change: prioritize tests first.",
+      "expected_behaviors": ["resume_task", "ack_scope_change"]
+    }
+  ]
+}
+

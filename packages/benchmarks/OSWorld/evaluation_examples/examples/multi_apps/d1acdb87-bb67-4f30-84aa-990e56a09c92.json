@@ -1,0 +1,145 @@
+{
+  "id": "d1acdb87-bb67-4f30-84aa-990e56a09c92",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Hello! I'm eagerly planning a culinary adventure to Hong Kong and have curated a list of must-visit restaurants that I've been longing to explore. However, I could use some assistance in compiling a few essential details about these establishments. Would you be so kind as to help me out? It would be fantastic if you could search for these restaurants on Google Maps. I'm particularly interested in obtaining their addresses, any available websites, and contact phone numbers. If you could gather this information and input it into my form file, I would be immensely grateful. Many thanks in advance!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/restaurants.txt",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/d1acdb87-bb67-4f30-84aa-990e56a09c92/restaurants.txt"
+          },
+          {
+            "path": "/home/user/Desktop/MUST_VISIT.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/d1acdb87-bb67-4f30-84aa-990e56a09c92/MUST_VISIT.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/MUST_VISIT.xlsx"
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/restaurants.txt"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 5
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "restaurants.txt (~/Desktop) - gedit",
+        "strict": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/d1acdb87-bb67-4f30-84aa-990e56a09c92",
+  "related_apps": [
+    "os",
+    "chrome",
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "MUST_VISIT.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 1.0
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/MUST_VISIT.xlsx",
+      "dest": "MUST_VISIT.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/d1acdb87-bb67-4f30-84aa-990e56a09c92/MUST_VISIT_gold.xlsx",
+      "dest": "MUST_VISIT-gt.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_fuzzy",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1",
+          "rules": [
+            {
+              "range": [
+                "A1:A6",
+                "D1:D6"
+              ],
+              "type": "exact_match"
+            },
+            {
+              "range": [
+                "B1:B6"
+              ],
+              "type": "fuzzy_match",
+              "threshold": 85,
+              "normalization": [
+                [
+                  "Rd",
+                  "Road"
+                ],
+                [
+                  "St",
+                  "Street"
+                ]
+              ],
+              "ignore_case": true
+            },
+            {
+              "range": [
+                "C1:C6"
+              ],
+              "type": "includes",
+              "trim_leadings": "+ ",
+              "ignore_chars": " ()-"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

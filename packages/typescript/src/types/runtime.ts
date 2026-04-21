@@ -7,6 +7,7 @@ import type {
 	Evaluator,
 	HandlerCallback,
 	Provider,
+	StreamChunkCallback,
 } from "./components";
 import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
 import type {
@@ -37,6 +38,7 @@ import type {
 import type { PairingAllowlistEntry, PairingRequest } from "./pairing";
 import type {
 	Plugin,
+	PluginOwnership,
 	Route,
 	RuntimeEventStorage,
 	ServiceClass,
@@ -81,6 +83,23 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	// Methods
 	registerPlugin(plugin: Plugin): Promise<void>;
+	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
+	reloadPlugin(plugin: Plugin): Promise<void>;
+	applyPluginConfig(
+		pluginName: string,
+		config: Record<string, string>,
+	): Promise<boolean>;
+	getPluginOwnership(pluginName: string): PluginOwnership | null;
+	getAllPluginOwnership(): PluginOwnership[];
+	enableKnowledge(): Promise<void>;
+	disableKnowledge(): Promise<void>;
+	isKnowledgeEnabled(): boolean;
+	enableRelationships(): Promise<void>;
+	disableRelationships(): Promise<void>;
+	isRelationshipsEnabled(): boolean;
+	enableTrajectories(): Promise<void>;
+	disableTrajectories(): Promise<void>;
+	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
@@ -95,7 +114,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerService(service: ServiceClass): Promise<void>;
 
-	getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
+	getServiceLoadPromise(
+		serviceType: ServiceTypeName | string,
+	): Promise<Service>;
 
 	getRegisteredServiceTypes(): ServiceTypeName[];
 
@@ -162,7 +183,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		state?: State,
 		callback?: HandlerCallback,
 		options?: {
-			onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 		},
 	): Promise<void>;
 
@@ -232,6 +253,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	ensureConnection({
 		entityId,
 		roomId,
+		roomName,
 		metadata,
 		userName,
 		worldName,
@@ -245,6 +267,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	}: {
 		entityId: UUID;
 		roomId: UUID;
+		roomName?: string;
 		userName?: string;
 		name?: string;
 		worldName?: string;
@@ -273,7 +296,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/**
 	 * Use a model for inference with proper type inference based on parameters.
 	 *
-	 * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
+	 * For text generation models (nano/small/medium/large/mega, handler/planner,
+	 * TEXT_REASONING_*, and TEXT_COMPLETION):
 	 * - Always returns `string`
 	 * - If streaming context is active, chunks are sent to callback automatically
 	 *
@@ -344,6 +368,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		handler: (params: P) => Promise<void>,
 	): void;
 
+	unregisterEvent<T extends keyof EventPayloadMap>(
+		event: T,
+		handler: EventHandler<T>,
+	): void;
+	unregisterEvent<P extends EventPayload = EventPayload>(
+		event: string,
+		handler: (params: P) => Promise<void>,
+	): void;
+
 	getEvent<T extends keyof EventPayloadMap>(
 		event: T,
 	): EventHandler<T>[] | undefined;
@@ -360,6 +393,16 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	// In-memory task definition methods
 	registerTaskWorker(taskHandler: TaskWorker): void;
 	getTaskWorker(name: string): TaskWorker | undefined;
+	/**
+	 * Remove a previously registered task worker by name. Returns true if
+	 * a worker was removed, false if no worker with that name existed.
+	 *
+	 * Use this from plugin.dispose() to tear down task workers when the
+	 * plugin is unloaded. Note: this only removes the in-memory worker
+	 * function — any persisted `Task` rows in the adapter that reference
+	 * this worker name must be deleted separately via `deleteTask()`.
+	 */
+	unregisterTaskWorker(name: string): boolean;
 
 	/**
 	 * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
@@ -379,37 +422,45 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * VALIDATION LEVELS:
 	 * - Level 0 (Trusted): No codes. Maximum speed. Use for reliable models.
 	 * - Level 1 (Progressive): Per-field codes. Balance of safety + speed.
-	 * - Level 2 (First Checkpoint): Codes at start. Default. Catches ignored prompts.
-	 * - Level 3 (Full): Codes at start AND end. Maximum correctness.
+	 * - Level 2: Buffered validation. Optional checkpoint codes can validate the prompt envelope.
+	 * - Level 3: Strict buffered validation. Optional checkpoint codes validate both ends.
 	 *
 	 * @param state - State object to inject into the prompt template
 	 * @param params - LLM parameters with a prompt template
 	 * @param schema - Array of field definitions for structured output
-	 * @param options - Configuration (modelSize, validation level, streaming callbacks, etc.)
+	 * @param options - Configuration (modelSize/modelType, validation level, streaming callbacks, etc.)
 	 * @returns Parsed structured response object, or null on failure
 	 */
 	dynamicPromptExecFromState(args: {
-		state: State;
+		state?: State;
 		params: Omit<GenerateTextParams, "prompt"> & {
 			prompt: string | ((ctx: { state: State }) => string);
 		};
 		schema: import("./state").SchemaRow[];
 		options?: {
 			key?: string;
-			modelSize?: "small" | "large";
+			/**
+			 * Human-readable name for this prompt task, used as the optimization
+			 * artifact lookup key. When provided, artifacts are stored/retrieved
+			 * under this name (e.g. "shouldRespond"). When absent, the system
+			 * uses an MD5 hash of the serialized schema instead.
+			 *
+			 * This is separate from `key` (which is used for response caching).
+			 */
+			promptName?: string;
+			modelSize?: "nano" | "small" | "medium" | "large" | "mega";
+			modelType?: TextGenerationModelType;
 			model?: string;
-			preferredEncapsulation?: "json" | "xml";
-			forceFormat?: "json" | "xml";
+			preferredEncapsulation?: "json" | "xml" | "toon";
+			forceFormat?: "json" | "xml" | "toon";
 			requiredFields?: string[];
 			contextCheckLevel?: 0 | 1 | 2 | 3;
+			checkpointCodes?: boolean;
 			maxRetries?: number;
 			retryBackoff?: number | import("./state").RetryBackoffConfig;
 			disableCache?: boolean;
 			cacheTTL?: number;
-			onStreamChunk?: (
-				chunk: string,
-				messageId?: string,
-			) => void | Promise<void>;
+			onStreamChunk?: StreamChunkCallback;
 			onStreamEvent?: (
 				event: import("./state").StreamEvent,
 				messageId?: string,
@@ -417,6 +468,50 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 			abortSignal?: AbortSignal;
 		};
 	}): Promise<Record<string, unknown> | null>;
+
+	/**
+	 * Enrich an in-flight execution trace with an additional score signal.
+	 *
+	 * Traces are keyed by runId and held in memory until finalization (e.g. RUN_ENDED
+	 * in prompt-optimization plugins). Evaluators and actions can attach signals after DPE.
+	 */
+	enrichTrace(
+		runId: string,
+		signal: import("./prompt-optimization-trace").ScoreSignal,
+	): void;
+
+	/** Retrieve the most recent in-flight optimization trace for a runId. */
+	getActiveTrace(
+		runId: string,
+	): import("./prompt-optimization-trace").ExecutionTrace | undefined;
+
+	/** Retrieve all in-flight optimization traces for a runId (multiple DPE calls per run). */
+	getActiveTracesForRun?(
+		runId: string,
+	): import("./prompt-optimization-trace").ExecutionTrace[];
+
+	/** Remove all in-flight optimization traces for a runId after finalization. */
+	deleteActiveTrace(runId: string): void;
+
+	/** Remove a single in-flight trace by its unique trace id. */
+	deleteActiveTraceById?(traceId: string): void;
+
+	/**
+	 * Register disk-backed or custom prompt optimization hooks (merge, registry, traces).
+	 * When `null`, DPE performs no optimization I/O.
+	 */
+	registerPromptOptimizationHooks(
+		hooks:
+			| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+			| null,
+	): void;
+
+	getPromptOptimizationHooks():
+		| import("./prompt-optimization-hooks").PromptOptimizationRuntimeHooks
+		| null;
+
+	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
+	getOptimizationDir(): string;
 
 	stop(): Promise<void>;
 
@@ -446,6 +541,18 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerSendHandler(source: string, handler: SendHandlerFunction): void;
 	sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+
+	/**
+	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.
+	 * Same `id` replaces any prior registration (any phase). Outgoing phase always finishes with `redactSecrets` on `content.text`.
+	 */
+	registerPipelineHook(spec: import("./pipeline-hooks").PipelineHookSpec): void;
+	unregisterPipelineHook(id: string): void;
+	applyPipelineHooks(
+		phase: import("./pipeline-hooks").PipelineHookPhase,
+		ctx: import("./pipeline-hooks").PipelineHookContext,
+		pipelineHookTelemetry?: boolean,
+	): Promise<void>;
 
 	/**
 	 * Redact secrets from a text string.

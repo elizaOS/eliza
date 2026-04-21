@@ -1,4 +1,3 @@
-import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
@@ -9,6 +8,18 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "./utils/deterministic";
+import {
+	encodeToonValue,
+	parseToonActionParams,
+	tryParseToonValue,
+} from "./utils/toon";
+import { parseJSONObjectFromText } from "./utils.ts";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -23,6 +34,7 @@ const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
 export const composeActionExamples = (
 	actionsData: Action[],
 	count: number,
+	seed = "actions",
 ): string => {
 	if (!actionsData.length || count <= 0) {
 		return "";
@@ -44,19 +56,20 @@ export const composeActionExamples = (
 	);
 
 	const selectedExamples: ActionExample[][] = [];
+	const random = createDeterministicRandom(
+		buildDeterministicSeed(seed, "examples"),
+	);
 
 	const availableActionIndices = examplesCopy
 		.map((examples, index) => (examples.length > 0 ? index : -1))
 		.filter((index) => index !== -1);
 
 	while (selectedExamples.length < count && availableActionIndices.length > 0) {
-		const randomIndex = Math.floor(
-			Math.random() * availableActionIndices.length,
-		);
+		const randomIndex = Math.floor(random() * availableActionIndices.length);
 		const actionIndex = availableActionIndices[randomIndex];
 		const examples = examplesCopy[actionIndex];
 
-		const exampleIndex = Math.floor(Math.random() * examples.length);
+		const exampleIndex = Math.floor(random() * examples.length);
 		selectedExamples.push(examples.splice(exampleIndex, 1)[0]);
 
 		if (examples.length === 0) {
@@ -64,15 +77,11 @@ export const composeActionExamples = (
 		}
 	}
 
-	return formatSelectedExamples(selectedExamples);
+	return formatSelectedExamples(
+		selectedExamples,
+		buildDeterministicSeed(seed, "names"),
+	);
 };
-
-function escapeXmlText(text: string): string {
-	return text
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
-}
 
 function formatActionCallExample(example: {
 	user: string;
@@ -80,29 +89,15 @@ function formatActionCallExample(example: {
 	params?: Record<string, Record<string, string | number | boolean | null>>;
 }): string {
 	const paramsByAction = example.params ?? {};
+	const assistantPayload: Record<string, unknown> = {
+		actions: [...example.actions],
+	};
 
-	const actionElements = example.actions
-		.map((actionName) => {
-			const actionParams = paramsByAction[actionName];
-			if (actionParams && Object.keys(actionParams).length > 0) {
-				const paramsInner = Object.entries(actionParams)
-					.map(([k, v]) => {
-						const raw =
-							typeof v === "string"
-								? v
-								: v === null
-									? "null"
-									: JSON.stringify(v);
-						return `      <${k}>${escapeXmlText(raw)}</${k}>`;
-					})
-					.join("\n");
-				return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n    <params>\n${paramsInner}\n    </params>\n  </action>`;
-			}
-			return `  <action>\n    <name>${escapeXmlText(actionName)}</name>\n  </action>`;
-		})
-		.join("\n");
+	if (Object.keys(paramsByAction).length > 0) {
+		assistantPayload.params = paramsByAction;
+	}
 
-	return `User: ${example.user}\nAssistant:\n<actions>\n${actionElements}\n</actions>`;
+	return `User: ${example.user}\nAssistant:\n${encodeToonValue(assistantPayload)}`;
 }
 
 /**
@@ -131,13 +126,17 @@ export function composeActionCallExamples(
 	return blocks.join("\n\n");
 }
 
-const formatSelectedExamples = (examples: ActionExample[][]): string => {
+const formatSelectedExamples = (
+	examples: ActionExample[][],
+	seed = "actions",
+): string => {
 	const MAX_NAME_PLACEHOLDERS = 5;
 
 	return examples
-		.map((example) => {
-			const randomNames = Array.from({ length: MAX_NAME_PLACEHOLDERS }, () =>
-				uniqueNamesGenerator({ dictionaries: [names] }),
+		.map((example, index) => {
+			const randomNames = getDeterministicNames(
+				MAX_NAME_PLACEHOLDERS,
+				buildDeterministicSeed(seed, index),
 			);
 
 			const conversation = example
@@ -160,68 +159,156 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
 		.join("\n");
 };
 
-function shuffleActions<T>(items: T[]): T[] {
-	const shuffled = [...items];
-	for (let i = shuffled.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+function getExampleActionHints(example: ActionExample[]): string[] {
+	const hints = new Set<string>();
+	for (const message of example) {
+		const content = message.content as {
+			action?: unknown;
+			actions?: unknown;
+		};
+		if (typeof content.action === "string" && content.action.trim()) {
+			hints.add(content.action.trim());
+		}
+		if (Array.isArray(content.actions)) {
+			for (const action of content.actions) {
+				if (typeof action === "string" && action.trim()) {
+					hints.add(action.trim());
+				}
+			}
+		}
 	}
-	return shuffled;
+	return [...hints];
 }
 
-export function formatActionNames(actions: Action[]): string {
-	if (!actions || !actions.length) return "";
+function formatActionExampleSummary(action: Action): string | null {
+	const examples = action.examples ?? [];
+	if (!Array.isArray(examples) || examples.length === 0) {
+		return null;
+	}
 
-	return shuffleActions(actions)
+	for (const example of examples) {
+		if (!Array.isArray(example) || example.length === 0) {
+			continue;
+		}
+
+		const userMessage = example[0]?.content?.text?.trim();
+		const actionHints = getExampleActionHints(example);
+		if (!userMessage) {
+			continue;
+		}
+		if (actionHints.length === 0) {
+			return `User: ${JSON.stringify(userMessage)} -> actions: ${action.name}`;
+		}
+
+		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;
+	}
+
+	return null;
+}
+
+function shuffleActions<T>(items: T[], seed = "actions"): T[] {
+	return deterministicShuffle(items, seed);
+}
+
+function formatActionSimiles(action: Action): string | null {
+	const similes = [...new Set((action.similes ?? []).map((simile) => simile.trim()))]
+		.filter((simile) => simile.length > 0);
+
+	if (similes.length === 0) {
+		return null;
+	}
+
+	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
+}
+
+function formatActionTags(action: Action): string | null {
+	const tags = [...new Set((action.tags ?? []).map((tag) => tag.trim()))].filter(
+		(tag) => tag.length > 0 && tag !== "always-include",
+	);
+
+	if (tags.length === 0) {
+		return null;
+	}
+
+	return `  tags[${tags.length}]: ${tags.join(", ")}`;
+}
+
+export function formatActionNames(actions: Action[], seed = "actions"): string {
+	if (!actions?.length) return "";
+
+	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
 		.join(", ");
 }
 
-export function formatActions(actions: Action[]): string {
-	if (!actions || !actions.length) return "";
+export function formatActions(actions: Action[], seed = "actions"): string {
+	if (!actions?.length) return "";
 
-	const actionElements = shuffleActions(actions)
+	const actionLines = shuffleActions(
+		actions,
+		buildDeterministicSeed(seed, "descriptions"),
+	)
 		.map((action) => {
-			const descLine = `    <description>${escapeXmlText(action.description || "No description available")}</description>`;
+			const lines = [
+				`- ${action.name}: ${action.description || "No description available"}`,
+			];
+			const exampleSummary = formatActionExampleSummary(action);
+			const similes = formatActionSimiles(action);
+			const tags = formatActionTags(action);
 
-			if (action.parameters && action.parameters.length > 0) {
-				const paramsXml = formatActionParameters(action.parameters);
-				return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n    <params>\n${paramsXml}\n    </params>\n  </action>`;
+			if (similes) {
+				lines.push(similes);
 			}
 
-			return `  <action>\n    <name>${escapeXmlText(action.name)}</name>\n${descLine}\n  </action>`;
+			if (tags) {
+				lines.push(tags);
+			}
+
+			if (action.parameters && action.parameters.length > 0) {
+				lines.push(
+					`  params[${action.parameters.length}]: ${formatActionParameters(
+						action.parameters,
+					)}`,
+				);
+			}
+
+			if (exampleSummary) {
+				lines.push(`  example: ${exampleSummary}`);
+			}
+
+			return lines.join("\n");
 		})
 		.join("\n");
 
-	return `<actions>\n${actionElements}\n</actions>`;
+	return `actions[${actions.length}]:\n${actionLines}`;
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
-	if (!parameters || !parameters.length) return "";
+	if (!parameters?.length) return "";
 
 	return parameters
 		.map((param) => {
-			const requiredStr = param.required ? "true" : "false";
 			const typeStr = formatParameterType(param.schema);
+			const modifiers: string[] = [];
 
-			let paramXml = `      <param>\n        <name>${escapeXmlText(param.name)}</name>\n        <description>${escapeXmlText(param.description)}</description>\n        <type>${escapeXmlText(typeStr)}</type>\n        <required>${requiredStr}</required>`;
-
-			if (param.schema.enum) {
-				paramXml += `\n        <values>${escapeXmlText(param.schema.enum.join(", "))}</values>`;
+			if (param.schema.enum?.length) {
+				modifiers.push(`values=${param.schema.enum.join("|")}`);
 			}
 
 			if (param.schema.default !== undefined) {
-				paramXml += `\n        <default>${escapeXmlText(JSON.stringify(param.schema.default))}</default>`;
+				modifiers.push(`default=${JSON.stringify(param.schema.default)}`);
 			}
 
 			if (param.examples && param.examples.length > 0) {
-				paramXml += `\n        <examples>${escapeXmlText(param.examples.map((v) => JSON.stringify(v)).join(", "))}</examples>`;
+				modifiers.push(
+					`examples=${param.examples.map((v) => JSON.stringify(v)).join("|")}`,
+				);
 			}
 
-			paramXml += `\n      </param>`;
-			return paramXml;
+			const suffix = modifiers.length > 0 ? ` [${modifiers.join("; ")}]` : "";
+			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${param.description}`;
 		})
-		.join("\n");
+		.join("; ");
 }
 
 function formatParameterType(schema: ActionParameterSchema): string {
@@ -257,13 +344,19 @@ function formatParameterType(schema: ActionParameterSchema): string {
  *   <ACTION1><p1>v1</p1></ACTION1>
  */
 export function parseActionParams(
-	paramsXml: string | undefined | null,
+	paramsInput: unknown,
 ): Map<string, ActionParameters> {
-	const result = new Map<string, ActionParameters>();
+	const toonParams = parseToonActionParams(paramsInput);
+	if (toonParams.size > 0) {
+		return toonParams;
+	}
 
-	if (!paramsXml || typeof paramsXml !== "string") {
+	const result = new Map<string, ActionParameters>();
+	if (!paramsInput || typeof paramsInput !== "string") {
 		return result;
 	}
+
+	const paramsXml = paramsInput;
 
 	// ---- New nested format: look for <action> children ----
 	const actionChildren = extractXmlChildren(paramsXml);
@@ -300,6 +393,23 @@ export function parseActionParams(
 
 		for (const { key: paramName, value: paramValue } of params) {
 			actionParams[paramName] = parseParamValue(paramValue);
+		}
+
+		if (Object.keys(actionParams).length === 0) {
+			const structuredParams =
+				parseJSONObjectFromText(actionParamsXml) ??
+				tryParseToonValue(actionParamsXml);
+			if (
+				structuredParams &&
+				typeof structuredParams === "object" &&
+				!Array.isArray(structuredParams)
+			) {
+				for (const [paramName, paramValue] of Object.entries(
+					structuredParams,
+				)) {
+					actionParams[paramName] = toActionParameterValue(paramValue);
+				}
+			}
 		}
 
 		if (Object.keys(actionParams).length > 0) {
@@ -392,6 +502,33 @@ function extractXmlChildren(
 	return pairs;
 }
 
+function toActionParameterValue(value: unknown): ActionParameters[string] {
+	if (value === null || value === undefined) {
+		return null;
+	}
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value as ActionParameterValue;
+	}
+
+	if (Array.isArray(value)) {
+		return value.map((entry) => toActionParameterValue(entry));
+	}
+
+	if (value && typeof value === "object") {
+		const normalized: ActionParameters = {};
+		for (const [key, entry] of Object.entries(value)) {
+			normalized[key] = toActionParameterValue(entry);
+		}
+		return normalized;
+	}
+
+	return value === undefined ? null : String(value);
+}
+
 function parseParamValue(value: string): string | number | boolean | null {
 	if (!value || value === "") return null;
 
@@ -435,7 +572,11 @@ export function validateActionParams(
 		} else {
 			const typeError = validateParamType(paramDef, extractedValue);
 			if (typeError) {
-				errors.push(typeError);
+				if (paramDef.required) {
+					errors.push(typeError);
+				} else if (paramDef.schema.default !== undefined) {
+					params[paramDef.name] = paramDef.schema.default;
+				}
 			} else {
 				params[paramDef.name] = extractedValue;
 			}

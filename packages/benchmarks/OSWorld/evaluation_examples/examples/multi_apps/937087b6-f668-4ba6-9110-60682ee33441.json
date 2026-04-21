@@ -1,0 +1,29 @@
+{
+  "id": "937087b6-f668-4ba6-9110-60682ee33441",
+  "snapshot": "vlc",
+  "instruction": "I am currently using a ubuntu system. Could you help me set the default video player as VLC?",
+  "source": "https://superuser.com/questions/187440/set-default-ubuntu-video-player-as-vlc",
+  "config": [],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc",
+    "os"
+  ],
+  "evaluator": {
+    "func": "check_include_exclude",
+    "result": {
+      "type": "default_video_player"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "vlc.desktop"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,22 @@
+Running quick test (3 questions) with groq/qwen/qwen3-32b...
+Leaderboard comparison skipped (dataset_source is not 'gaia'). Run with --dataset gaia for official GAIA/leaderboard comparison.
+
+============================================================
+GAIA Benchmark - Final Results
+============================================================
+
+Overall Accuracy: 66.7%
+Total Questions: 3
+Correct: 2
+Errors: 0
+
+By Level:
+  Level 1: 100.0% (2 questions)
+  Level 2: 0.0% (1 questions)
+  Level 3: 0.0% (0 questions)
+
+============================================================
+
+=== Results: groq/qwen/qwen3-32b ===
+Overall Accuracy: 66.7%
+Correct: 2/3

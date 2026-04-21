@@ -1,0 +1,103 @@
+2026-02-12 00:33:23,048  INFO     Model: qwen/qwen3-32b  Messages: 50  Chain: general  External: False  Agent: eliza
+2026-02-12 00:33:23,049  INFO     Starting Anvil: /Users/shawwalters/.foundry/bin/anvil --port 8545 --chain-id 31337 --accounts 1 --balance 10000 --silent
+2026-02-12 00:33:23,584  INFO     Anvil ready on port 8545 (attempt 2)
+2026-02-12 00:33:23,670  INFO     AnvilEnv reset: agent=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266  chain=general  balance=10000.0000 ETH
+2026-02-12 00:33:23,670  INFO     Agent: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+2026-02-12 00:33:23,670  INFO     EVMExplorerAgent  model=qwen/qwen3-32b  chain=general  max=50  id=evm_26-02-12_003323_d04acc1c  agent_type=eliza
+2026-02-12 00:33:23,670  INFO     
+============================================================
+Step 1/50 [deterministic]: Native ETH transfers
+============================================================
+2026-02-12 00:33:27,796  INFO     Template eth_transfer: reward=2  total=2  txs=2
+2026-02-12 00:33:27,796  INFO     Step 1: eth_transfer  reward=2  total=2  discovered=2
+2026-02-12 00:33:27,796  INFO     
+============================================================
+Step 2/50 [deterministic]: Deploy ERC20 + mint, transfer, approve, balanceOf
+============================================================
+2026-02-12 00:33:27,899  INFO     Template deploy_erc20: reward=6  total=8  txs=5
+2026-02-12 00:33:27,899  INFO     Step 2: deploy_erc20  reward=6  total=8  discovered=8
+2026-02-12 00:33:27,899  INFO     
+============================================================
+Step 3/50 [deterministic]: ERC20: name, symbol, decimals, totalSupply, allowance, increaseAllowance, decreaseAllowance, burn, transferFrom
+============================================================
+2026-02-12 00:33:28,010  INFO     Template erc20_advanced: reward=12  total=20  txs=12
+2026-02-12 00:33:28,010  INFO     Step 3: erc20_advanced  reward=12  total=20  discovered=20
+2026-02-12 00:33:28,010  INFO     
+============================================================
+Step 4/50 [deterministic]: Deploy ERC721 + safeMint, approve, ownerOf, transferFrom, safeTransferFrom, setApprovalForAll, supportsInterface
+============================================================
+2026-02-12 00:33:28,120  INFO     Template deploy_nft: reward=8  total=28  txs=9
+2026-02-12 00:33:28,120  INFO     Step 4: deploy_nft  reward=8  total=28  discovered=28
+2026-02-12 00:33:28,121  INFO     
+============================================================
+Step 5/50 [deterministic]: Deploy ERC1155 + mint, safeTransferFrom, setApprovalForAll, balanceOf, uri, supportsInterface, isApprovedForAll
+============================================================
+2026-02-12 00:33:28,229  INFO     Template deploy_erc1155: reward=9  total=37  txs=8
+2026-02-12 00:33:28,229  INFO     Step 5: deploy_erc1155  reward=9  total=37  discovered=37
+2026-02-12 00:33:28,230  INFO     
+============================================================
+Step 6/50 [deterministic]: Precompiles: identity, SHA-256, RIPEMD-160
+============================================================
+2026-02-12 00:33:28,325  INFO     Template precompile_batch1: reward=3  total=40  txs=3
+2026-02-12 00:33:28,325  INFO     Step 6: precompile_batch1  reward=3  total=40  discovered=40
+2026-02-12 00:33:28,325  INFO     
+============================================================
+Step 7/50 [deterministic]: Precompiles: ecRecover, ecAdd, ecMul
+============================================================
+2026-02-12 00:33:28,421  INFO     Template precompile_batch2: reward=3  total=43  txs=3
+2026-02-12 00:33:28,421  INFO     Step 7: precompile_batch2  reward=3  total=43  discovered=43
+2026-02-12 00:33:28,421  INFO     
+============================================================
+Step 8/50 [deterministic]: Precompiles: modexp, blake2f
+============================================================
+2026-02-12 00:33:28,513  INFO     Template precompile_batch3: reward=2  total=45  txs=2
+2026-02-12 00:33:28,513  INFO     Step 8: precompile_batch3  reward=2  total=45  discovered=45
+2026-02-12 00:33:28,514  INFO     
+============================================================
+Step 9/50 [deterministic]: Deploy WETH9 + deposit, withdraw, transfer, approve
+============================================================
+2026-02-12 00:33:28,615  INFO     Template deploy_weth: reward=6  total=51  txs=5
+2026-02-12 00:33:28,615  INFO     Step 9: deploy_weth  reward=6  total=51  discovered=51
+2026-02-12 00:33:28,615  INFO     
+============================================================
+Step 10/50 [deterministic]: Precompile: ecPairing
+============================================================
+2026-02-12 00:33:28,708  INFO     Template precompile_ecpairing: reward=1  total=52  txs=1
+2026-02-12 00:33:28,708  INFO     Step 10: precompile_ecpairing  reward=1  total=52  discovered=52
+2026-02-12 00:33:28,709  INFO     
+============================================================
+Step 11/50 [llm_assisted]: LLM exploration: 14 remaining
+============================================================
+2026-02-12 00:33:28,709  INFO     Model plugin: provider=openai  model=qwen/qwen3-32b
+2026-02-12 00:33:28,743  INFO     [2m2026-02-12T08:33:28.743548Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mEVMExplorer[0m][0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758535Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758652Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mEVMExplorer[0m][0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758703Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mEVMExplorer[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758821Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mEVMExplorer[0m][0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36msrc[0m=[35mservice:task[0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758862Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mEVMExplorer[0m][0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758895Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758922Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: openai    [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758968Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: openai[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,758  INFO     [2m2026-02-12T08:33:28.758990Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: evm-bench [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,759  INFO     [2m2026-02-12T08:33:28.759014Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: evm-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 00:33:28,759  INFO     [2m2026-02-12T08:33:28.759036Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mEVMExplorer[0m][0m
+2026-02-12 00:33:28,759  INFO     ElizaOS runtime initialised — 5 actions, 15 providers
+2026-02-12 00:33:28,761  ERROR    [2m2026-02-12T08:33:28.761252Z[0m [[31m[1merror    [0m] [1mError processing message: 'str' object has no attribute 'state'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/evm/plugin/providers/evm_context.py", line 41, in _get_evm_context
+    state = strategy.state
+            ^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'state'
+[0m [[0m[1m[34mEVMExplorer[0m][0m
+2026-02-12 00:33:28,761  INFO     [2m2026-02-12T08:33:28.761487Z[0m [[32m[1minfo     [0m] [1mStopping AgentRuntime...      [0m [[0m[1m[34mEVMExplorer[0m][0m
+2026-02-12 00:33:28,761  INFO     [2m2026-02-12T08:33:28.761537Z[0m [[32m[1minfo     [0m] [1mTask service stopped          [0m [[0m[1m[34mEVMExplorer[0m][0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36msrc[0m=[35mservice:task[0m
+2026-02-12 00:33:28,761  INFO     [2m2026-02-12T08:33:28.761579Z[0m [[32m[1minfo     [0m] [1mEmbedding service stopped     [0m [[0m[1m[34mEVMExplorer[0m][0m [36magentId[0m=[35mfab97bc4-4946-0157-a9e9-9e7c2f922850[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-12 00:33:28,761  INFO     [2m2026-02-12T08:33:28.761611Z[0m [[32m[1minfo     [0m] [1mAgentRuntime stopped          [0m [[0m[1m[34mEVMExplorer[0m][0m
+2026-02-12 00:33:28,761  INFO     AnvilEnv closing: total_reward=52  discovered=52  deployed=5
+2026-02-12 00:33:28,763  INFO     Anvil stopped

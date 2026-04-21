@@ -2,6 +2,10 @@
 # Test timeout in milliseconds
 timeout = 60000
 
+# Keep Playwright end-to-end specs out of Bun's direct test discovery.
+# They are exercised separately via `bun run test:e2e`.
+path-ignore-patterns = ["e2e/**"]
+
 # Test setup files - removed preload due to path resolution conflicts in CI
 # preload = ["packages/typescript/src/test_resources/testSetup.ts"]
 

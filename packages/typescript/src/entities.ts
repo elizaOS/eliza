@@ -10,6 +10,18 @@ import {
 	type World,
 } from "./types";
 import * as utils from "./utils";
+import { stableStringify } from "./utils/deterministic";
+
+type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
+	name?: string;
+	data: string;
+};
+
+const ENTITY_DETAILS_CACHE_TTL_MS = 1_000;
+const entityDetailsCache = new WeakMap<
+	IAgentRuntime,
+	Map<string, { expiresAt: number; promise: Promise<EntityDetailsRecord[]> }>
+>();
 
 interface EntityMatch {
 	name?: string;
@@ -24,94 +36,88 @@ interface ParsedResolution {
 	};
 }
 
-function parseEntityResolutionXml(
-	xml: string,
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeEntityMatch(value: unknown): EntityMatch | null {
+	if (!isRecord(value)) return null;
+
+	const name = typeof value.name === "string" ? value.name : undefined;
+	const reason = typeof value.reason === "string" ? value.reason : undefined;
+
+	if (!name) return null;
+	return { name, reason };
+}
+
+function normalizeEntityMatches(value: unknown): EntityMatch[] {
+	if (Array.isArray(value)) {
+		return value
+			.map((entry) => normalizeEntityMatch(entry))
+			.filter((entry): entry is EntityMatch => entry !== null);
+	}
+
+	if (isRecord(value) && "match" in value) {
+		return normalizeEntityMatches(value.match);
+	}
+
+	const directMatch = normalizeEntityMatch(value);
+	return directMatch ? [directMatch] : [];
+}
+
+function parseEntityResolutionResponse(
+	text: string,
 ): (ParsedResolution & { type?: string; entityId?: string }) | null {
-	if (!xml) return null;
+	if (!text) return null;
 
-	const trimmed = xml.trim();
+	const parsed = utils.parseKeyValueXml<Record<string, unknown>>(text);
+	const trimmed = text.trim();
 
-	const responseStart = xml.indexOf("<response>");
-	const responseEnd = xml.indexOf("</response>");
-	const block =
-		responseStart !== -1 && responseEnd !== -1
-			? xml.slice(responseStart + "<response>".length, responseEnd)
-			: xml;
+	if (parsed) {
+		const type = typeof parsed.type === "string" ? parsed.type : undefined;
+		const entityId =
+			typeof parsed.entityId === "string"
+				? parsed.entityId
+				: typeof parsed.resolvedId === "string"
+					? parsed.resolvedId
+					: undefined;
+		const matches = normalizeEntityMatches(parsed.matches);
 
-	const getTag = (tag: string): string | undefined => {
-		const open = `<${tag}>`;
-		const close = `</${tag}>`;
-		const s = block.indexOf(open);
-		if (s === -1) return undefined;
-		const e = block.indexOf(close, s + open.length);
-		if (e === -1) return undefined;
-		return block.slice(s + open.length, e).trim();
-	};
-
-	const type = getTag("type");
-	const entityId = getTag("entityId");
-
-	const matchRegex =
-		/<match>[\s\S]*?<name>(.*?)<\/name>[\s\S]*?(?:<reason>(.*?)<\/reason>)?[\s\S]*?<\/match>/g;
-	const matches: EntityMatch[] = [];
-	for (const m of block.matchAll(matchRegex)) {
-		const name = m[1]?.trim();
-		const reason = m[2]?.trim();
-		if (name) {
-			matches.push({ name, reason });
-		}
-	}
-	if (matches.length === 0) {
-		const name = getTag("name");
-		const reason = getTag("reason");
-		if (name) {
-			matches.push({ name, reason });
+		if (type || entityId || matches.length > 0) {
+			return {
+				type,
+				entityId: entityId && entityId !== "null" ? entityId : undefined,
+				matches: matches.length > 0 ? { match: matches } : undefined,
+			};
 		}
 	}
 
-	if (!type && !entityId && matches.length === 0) {
-		// Fallback: tolerate JSON outputs (some models may return JSON even when asked for XML).
-		try {
-			const parsed = JSON.parse(trimmed) as unknown;
-			if (parsed && typeof parsed === "object") {
-				const obj = parsed as Record<string, unknown>;
-				const jType = typeof obj.type === "string" ? obj.type : undefined;
-				const jEntityId =
-					typeof obj.entityId === "string"
-						? obj.entityId
-						: typeof obj.resolvedId === "string"
-							? obj.resolvedId
-							: undefined;
-				const jMatchesRaw = obj.matches;
-				const jMatches: EntityMatch[] = [];
-				if (Array.isArray(jMatchesRaw)) {
-					for (const m of jMatchesRaw) {
-						if (!m || typeof m !== "object") continue;
-						const mo = m as Record<string, unknown>;
-						const name = typeof mo.name === "string" ? mo.name : undefined;
-						const reason =
-							typeof mo.reason === "string" ? mo.reason : undefined;
-						if (name) jMatches.push({ name, reason });
-					}
-				}
-				if (!jType && !jEntityId && jMatches.length === 0) return null;
+	try {
+		const parsedJson = JSON.parse(trimmed) as unknown;
+		if (parsedJson && typeof parsedJson === "object") {
+			const obj = parsedJson as Record<string, unknown>;
+			const type = typeof obj.type === "string" ? obj.type : undefined;
+			const entityId =
+				typeof obj.entityId === "string"
+					? obj.entityId
+					: typeof obj.resolvedId === "string"
+						? obj.resolvedId
+						: undefined;
+			const matches = normalizeEntityMatches(obj.matches);
+
+			if (type || entityId || matches.length > 0) {
 				return {
-					type: jType,
-					entityId: jEntityId && jEntityId !== "null" ? jEntityId : undefined,
-					matches: jMatches.length > 0 ? { match: jMatches } : undefined,
+					type,
+					entityId: entityId && entityId !== "null" ? entityId : undefined,
+					matches: matches.length > 0 ? { match: matches } : undefined,
 				};
 			}
-		} catch {
-			// ignore
 		}
-		return null;
+	} catch {
+		// ignore
 	}
 
-	return {
-		type,
-		entityId: entityId && entityId !== "null" ? entityId : undefined,
-		matches: matches.length > 0 ? { match: matches } : undefined,
-	};
+	return null;
 }
 
 const entityResolutionTemplate = `# Task: Resolve Entity Name
@@ -133,20 +139,14 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
+Return a TOON document with:
+entityId: exact-id-if-known-otherwise-null
+type: EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN
+matches[0]:
+  name: matched-name
+  reason: why this entity matches
 
-Return an XML response with:
-<response>
-  <entityId>exact-id-if-known-otherwise-null</entityId>
-  <type>EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN</type>
-  <matches>
-    <match>
-      <name>matched-name</name>
-      <reason>why this entity matches</reason>
-    </match>
-  </matches>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 async function getRecentInteractions(
 	runtime: IAgentRuntime,
@@ -164,20 +164,29 @@ async function getRecentInteractions(
 	const recentMessages = await runtime.getMemories({
 		tableName: "messages",
 		roomId,
-		count: 20,
+		limit: 20,
 	});
+	const messageEntityById = new Map<UUID, UUID>();
+	for (const recentMessage of recentMessages) {
+		if (recentMessage.id && recentMessage.entityId) {
+			messageEntityById.set(recentMessage.id, recentMessage.entityId);
+		}
+	}
 
 	for (const entity of candidateEntities) {
 		const interactions: Memory[] = [];
 		let interactionScore = 0;
 
-		const directReplies = recentMessages.filter(
-			(msg) =>
-				(msg.entityId === sourceEntityId &&
-					msg.content.inReplyTo === entity.id) ||
-				(msg.entityId === entity.id &&
-					msg.content.inReplyTo === sourceEntityId),
-		);
+		const directReplies = recentMessages.filter((msg) => {
+			if (!msg.entityId || !msg.content.inReplyTo) {
+				return false;
+			}
+			const repliedToEntityId = messageEntityById.get(msg.content.inReplyTo);
+			return (
+				(msg.entityId === sourceEntityId && repliedToEntityId === entity.id) ||
+				(msg.entityId === entity.id && repliedToEntityId === sourceEntityId)
+			);
+		});
 
 		interactions.push(...directReplies);
 
@@ -294,7 +303,7 @@ export async function findEntityByName(
 		stopSequences: [],
 	});
 
-	const resolution = parseEntityResolutionXml(result);
+	const resolution = parseEntityResolutionResponse(result);
 	if (!resolution) {
 		// If the model output is malformed, fall back to a conservative heuristic:
 		// when there's only one candidate entity in context, return it.
@@ -472,69 +481,115 @@ export async function getEntityDetails({
 	runtime: IAgentRuntime;
 	roomId: UUID;
 }) {
-	const [room, roomEntities] = await Promise.all([
-		runtime.getRoom(roomId),
-		runtime.getEntitiesForRoom(roomId, true),
-	]);
+	const runtimeCache = entityDetailsCache.get(runtime) ?? new Map();
+	entityDetailsCache.set(runtime, runtimeCache);
 
-	const uniqueEntities = new Map();
-
-	for (const entity of roomEntities) {
-		if (uniqueEntities.has(entity.id)) continue;
-
-		const allData = {};
-		for (const component of entity.components || []) {
-			Object.assign(allData, component.data);
-		}
-
-		const mergedData: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(allData)) {
-			if (!mergedData[key]) {
-				mergedData[key] = value;
-				continue;
-			}
-
-			if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-				mergedData[key] = [...new Set([...mergedData[key], ...value])];
-			} else if (
-				typeof mergedData[key] === "object" &&
-				typeof value === "object"
-			) {
-				mergedData[key] = { ...mergedData[key], ...value };
-			}
-		}
-
-		const getEntityNameFromMetadata = (source: string): string | undefined => {
-			const sourceMetadata = entity.metadata?.[source];
-			if (
-				sourceMetadata &&
-				typeof sourceMetadata === "object" &&
-				sourceMetadata !== null
-			) {
-				const metadataObj = sourceMetadata as Record<string, unknown>;
-				if ("name" in metadataObj && typeof metadataObj.name === "string") {
-					return metadataObj.name;
-				}
-			}
-			return undefined;
-		};
-
-		uniqueEntities.set(entity.id, {
-			id: entity.id,
-			name: room?.source
-				? getEntityNameFromMetadata(room.source) || entity.names[0]
-				: entity.names[0],
-			names: entity.names,
-			data: JSON.stringify({ ...mergedData, ...entity.metadata }),
-		});
+	const cacheKey = String(roomId);
+	const cachedEntry = runtimeCache.get(cacheKey);
+	if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+		return cachedEntry.promise;
 	}
 
-	return Array.from(uniqueEntities.values());
+	const pendingPromise = (async () => {
+		const [room, roomEntities] = await Promise.all([
+			runtime.getRoom(roomId),
+			runtime.getEntitiesForRoom(roomId, true),
+		]);
+
+		const uniqueEntities = new Map<string, EntityDetailsRecord>();
+
+		for (const entity of roomEntities) {
+			const entityId = entity.id;
+			if (!entityId || uniqueEntities.has(entityId)) continue;
+
+			const allData = {};
+			for (const component of entity.components || []) {
+				Object.assign(allData, component.data);
+			}
+
+			const mergedData: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(allData)) {
+				if (!mergedData[key]) {
+					mergedData[key] = value;
+					continue;
+				}
+
+				if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
+					mergedData[key] = [...new Set([...mergedData[key], ...value])];
+				} else if (
+					typeof mergedData[key] === "object" &&
+					typeof value === "object"
+				) {
+					mergedData[key] = { ...mergedData[key], ...value };
+				}
+			}
+
+			const getEntityNameFromMetadata = (
+				source: string,
+			): string | undefined => {
+				const sourceMetadata = entity.metadata?.[source];
+				if (
+					sourceMetadata &&
+					typeof sourceMetadata === "object" &&
+					sourceMetadata !== null
+				) {
+					const metadataObj = sourceMetadata as Record<string, unknown>;
+					if ("name" in metadataObj && typeof metadataObj.name === "string") {
+						return metadataObj.name;
+					}
+				}
+				return undefined;
+			};
+
+			uniqueEntities.set(entityId, {
+				id: entityId,
+				name: room?.source
+					? getEntityNameFromMetadata(String(room.source)) || entity.names[0]
+					: entity.names[0],
+				names: entity.names,
+				data: stableStringify({ ...mergedData, ...entity.metadata }),
+			});
+		}
+
+		return Array.from(uniqueEntities.values()).sort((left, right) => {
+			const leftName = left.name ?? left.names[0] ?? "";
+			const rightName = right.name ?? right.names[0] ?? "";
+			return (
+				leftName.localeCompare(rightName) ||
+				String(left.id ?? "").localeCompare(String(right.id ?? ""))
+			);
+		});
+	})();
+
+	runtimeCache.set(cacheKey, {
+		expiresAt: Date.now() + ENTITY_DETAILS_CACHE_TTL_MS,
+		promise: pendingPromise,
+	});
+
+	try {
+		return await pendingPromise;
+	} catch (error) {
+		runtimeCache.delete(cacheKey);
+		throw error;
+	}
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {
-	const entityStrings = entities.map((entity: Entity) => {
-		const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${entity.metadata && Object.keys(entity.metadata).length > 0 ? `\nData: ${JSON.stringify(entity.metadata)}\n` : "\n"}`;
+	const sortedEntities = [...entities].sort((left, right) => {
+		const leftName = left.names[0] ?? "";
+		const rightName = right.names[0] ?? "";
+		return (
+			leftName.localeCompare(rightName) ||
+			String(left.id ?? "").localeCompare(String(right.id ?? ""))
+		);
+	});
+
+	const entityStrings = sortedEntities.map((entity: Entity) => {
+		const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${
+			entity.metadata && Object.keys(entity.metadata).length > 0
+				? `\nData: ${stableStringify(entity.metadata)}\n`
+				: "\n"
+		}`;
 		return header;
 	});
 	return entityStrings.join("\n");

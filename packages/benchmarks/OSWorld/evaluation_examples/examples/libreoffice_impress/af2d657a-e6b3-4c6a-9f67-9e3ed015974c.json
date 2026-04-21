@@ -1,0 +1,86 @@
+{
+  "id": "af2d657a-e6b3-4c6a-9f67-9e3ed015974c",
+  "snapshot": "libreoffice_impress",
+  "instruction": "In the first slide, insert the title \"Happy Family\" and make the font style \"Microsoft JhengHei\".",
+  "source": "https://arxiv.org/pdf/2311.01767.pdf",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/af2d657a-e6b3-4c6a-9f67-9e3ed015974c/9_1.pptx",
+            "path": "/home/user/Desktop/9_1.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/9_1.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "9_1.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/af2d657a-e6b3-4c6a-9f67-9e3ed015974c/9_1_Gold.pptx",
+      "dest": "9_1_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/9_1.pptx",
+      "dest": "9_1.pptx"
+    },
+    "options": {
+      "examine_alignment": false,
+      "examine_font_underline": false,
+      "examine_font_size": false,
+      "examine_font_bold": false,
+      "examine_font_italic": false,
+      "examine_color_rgb": false,
+      "examine_strike_through": false,
+      "examine_bullets": false
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

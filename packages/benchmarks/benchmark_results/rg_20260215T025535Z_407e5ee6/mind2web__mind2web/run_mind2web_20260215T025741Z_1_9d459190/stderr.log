@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python -m benchmarks.mind2web --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/mind2web__mind2web/run_mind2web_20260215T025741Z_1_9d459190/output --provider groq --max-tasks 2 --sample
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_mind2web_20260215T025741Z_1_9d459190

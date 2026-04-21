@@ -1,0 +1,3 @@
+# command: python -m benchmark.harness --data-dir trenches-chat-dataset/data --system eliza --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T111823Z_7d6ded1e/social-alpha__social_alpha/run_social_alpha_20260212T111823Z_3_7da050be/output --suite detect
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/social-alpha
+# run_id: run_social_alpha_20260212T111823Z_3_7da050be

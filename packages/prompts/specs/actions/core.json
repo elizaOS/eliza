@@ -14,7 +14,12 @@
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Hello there!" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hello there!"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
@@ -26,7 +31,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "What's your favorite color?" }
+            "content": {
+              "text": "What's your favorite color?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -39,7 +46,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Can you explain how neural networks work?" }
+            "content": {
+              "text": "Can you explain how neural networks work?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -52,7 +61,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Could you help me solve this math problem?" }
+            "content": {
+              "text": "Could you help me solve this math problem?"
+            }
           },
           {
             "name": "{{name2}}",
@@ -62,7 +73,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Reply with generated msg. Default when responding with no other action. Use first as ack, last as final response."
     },
     {
       "name": "IGNORE",
@@ -71,47 +83,100 @@
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Go screw yourself" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "Shut up, bot" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "Gotta go" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "Okay, talk to you later" }
-          },
-          { "name": "{{name1}}", "content": { "text": "Cya" } },
-          {
-            "name": "{{name2}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
-          }
-        ],
-        [
-          { "name": "{{name1}}", "content": { "text": "bye" } },
-          { "name": "{{name2}}", "content": { "text": "cya" } },
           {
             "name": "{{name1}}",
-            "content": { "text": "", "actions": ["IGNORE"] }
+            "content": {
+              "text": "Go screw yourself"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
           }
         ],
         [
-          { "name": "{{name1}}", "content": { "text": "wanna cyber" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Shut up, bot"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "thats inappropriate", "actions": ["IGNORE"] }
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Gotta go"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, talk to you later"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Cya"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "bye"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "cya"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "wanna cyber"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "thats inappropriate",
+              "actions": ["IGNORE"]
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -120,16 +185,26 @@
       "parameters": [],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Hey whats up" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hey whats up"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "oh hey", "actions": ["NONE"] }
+            "content": {
+              "text": "oh hey",
+              "actions": ["NONE"]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "did u see some faster whisper just came out" }
+            "content": {
+              "text": "did u see some faster whisper just came out"
+            }
           },
           {
             "name": "{{name2}}",
@@ -149,13 +224,19 @@
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "ya obviously", "actions": ["NONE"] }
+            "content": {
+              "text": "ya obviously",
+              "actions": ["NONE"]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "drop a joke on me", "actions": ["NONE"] }
+            "content": {
+              "text": "drop a joke on me",
+              "actions": ["NONE"]
+            }
           },
           {
             "name": "{{name2}}",
@@ -165,7 +246,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Respond without additional action. Default when speaking only."
     },
     {
       "name": "SEND_MESSAGE",
@@ -183,29 +265,42 @@
           "name": "targetType",
           "description": "Whether the message target is a user or a room.",
           "required": true,
-          "schema": { "type": "string", "enum": ["user", "room"] },
-          "examples": ["user", "room"]
+          "schema": {
+            "type": "string",
+            "enum": ["user", "room"]
+          },
+          "examples": ["user", "room"],
+          "descriptionCompressed": "user or room target."
         },
         {
           "name": "source",
           "description": "The platform/source to send the message on (e.g. telegram, discord, x).",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["telegram", "discord"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["telegram", "discord"],
+          "descriptionCompressed": "Platform (telegram, discord, x)."
         },
         {
           "name": "target",
           "description": "Identifier of the target. For user targets, a name/handle/id; for room targets, a room name/id.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["dev_guru", "announcements"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["dev_guru", "announcements"],
+          "descriptionCompressed": "Target name/handle/id."
         },
         {
           "name": "text",
           "description": "The message content to send.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Hello!", "Important announcement!"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Hello!", "Important announcement!"],
+          "descriptionCompressed": "Message content."
         }
       ],
       "examples": [
@@ -242,7 +337,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "DM Jimmy and tell him 'Meeting at 3pm'" }
+            "content": {
+              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
+            }
           },
           {
             "name": "{{name2}}",
@@ -266,11 +363,12 @@
             }
           }
         }
-      ]
+      ],
+      "descriptionCompressed": "Send msg to another user or room (not current)."
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with categorization and preferences",
+      "description": "Add a new contact to the relationships with categorization and preferences",
       "similes": [
         "SAVE_CONTACT",
         "REMEMBER_PERSON",
@@ -281,7 +379,7 @@
         "add contact",
         "save contact",
         "add to contacts",
-        "add to rolodex",
+        "add to relationships",
         "remember this person",
         "save their info",
         "add them to my list",
@@ -294,15 +392,21 @@
           "name": "name",
           "description": "The contact's primary name.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen", "John Smith"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Sarah Chen", "John Smith"],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "notes",
           "description": "Optional notes about the contact (short summary, context, or preferences).",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["Met at the AI meetup; interested in agents"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Met at the AI meetup; interested in agents"],
+          "descriptionCompressed": "Optional notes/context."
         }
       ],
       "examples": [
@@ -323,45 +427,58 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Save this person as a friend in my rolodex" }
+            "content": {
+              "text": "Save this person as a friend in my relationships"
+            }
           },
           {
             "name": "{{name2}}",
             "content": {
-              "text": "I've saved them as a friend in your rolodex."
+              "text": "I've saved them as a friend in your relationships."
             }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Remember Alice as a VIP contact" }
+            "content": {
+              "text": "Remember Alice as a VIP contact"
+            }
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "I've added Alice to your contacts as a VIP." }
+            "content": {
+              "text": "I've added Alice to your contacts as a VIP."
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Add contact to relationships with category/preferences."
     },
     {
       "name": "UPDATE_CONTACT",
-      "description": "Update an existing contact's details in the rolodex.",
+      "description": "Update an existing contact's details in the relationships.",
       "similes": ["EDIT_CONTACT", "MODIFY_CONTACT", "CHANGE_CONTACT_INFO"],
       "parameters": [
         {
           "name": "name",
           "description": "The contact name to update (must match an existing contact).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Sarah Chen"],
+          "descriptionCompressed": "Contact name (must match existing)."
         },
         {
           "name": "updates",
           "description": "A JSON object of fields to update (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["{\"notes\":\"prefers email\",\"tags\":[\"friend\"]}"],
+          "descriptionCompressed": "Fields to update (JSON)."
         }
       ],
       "examples": [
@@ -379,11 +496,12 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update existing contact details."
     },
     {
       "name": "REMOVE_CONTACT",
-      "description": "Remove a contact from the rolodex.",
+      "description": "Remove a contact from the relationships.",
       "similes": [
         "DELETE_CONTACT",
         "REMOVE_FROM_ROLODEX",
@@ -396,15 +514,20 @@
           "name": "name",
           "description": "The contact name to remove.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Sarah Chen"],
+          "descriptionCompressed": "Contact name."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Remove John from my contacts" }
+            "content": {
+              "text": "Remove John from my contacts"
+            }
           },
           {
             "name": "{{name2}}",
@@ -412,17 +535,25 @@
               "text": "Are you sure you want to remove John from your contacts?"
             }
           },
-          { "name": "{{name1}}", "content": { "text": "Yes" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Yes"
+            }
+          },
           {
             "name": "{{name2}}",
-            "content": { "text": "I've removed John from your contacts." }
+            "content": {
+              "text": "I've removed John from your contacts."
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Remove contact from relationships."
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search and list contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the relationships by name or query.",
       "similes": [
         "FIND_CONTACTS",
         "LOOKUP_CONTACTS",
@@ -439,13 +570,21 @@
           "name": "query",
           "description": "Search query (name, handle, or free-text).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["sarah", "AI meetup"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["sarah", "AI meetup"],
+          "descriptionCompressed": "Search query (name/handle/free-text)."
         }
       ],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Show me my friends" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Show me my friends"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
@@ -453,7 +592,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Search/list contacts by name or query."
     },
     {
       "name": "SCHEDULE_FOLLOW_UP",
@@ -475,22 +615,31 @@
           "name": "name",
           "description": "Contact name to follow up with.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["Sarah Chen"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Sarah Chen"],
+          "descriptionCompressed": "Contact name."
         },
         {
           "name": "when",
           "description": "When to follow up. Use an ISO-8601 datetime string.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["2026-02-01T09:00:00Z"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["2026-02-01T09:00:00Z"],
+          "descriptionCompressed": "ISO-8601 datetime."
         },
         {
           "name": "reason",
           "description": "Optional reason/context for the follow-up.",
           "required": false,
-          "schema": { "type": "string" },
-          "examples": ["Check in about the agent framework demo"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Check in about the agent framework demo"],
+          "descriptionCompressed": "Optional reason/context."
         }
       ],
       "examples": [
@@ -508,7 +657,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Schedule follow-up reminder for contact."
     },
     {
       "name": "CHOOSE_OPTION",
@@ -527,22 +677,30 @@
           "name": "taskId",
           "description": "The pending task id.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["c0a8012e"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["c0a8012e"],
+          "descriptionCompressed": "Pending task id."
         },
         {
           "name": "option",
           "description": "The selected option name exactly as listed.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["APPROVE", "ABORT"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["APPROVE", "ABORT"],
+          "descriptionCompressed": "Option name exactly as listed."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Select the first option" }
+            "content": {
+              "text": "Select the first option"
+            }
           },
           {
             "name": "{{name2}}",
@@ -552,7 +710,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Select option for pending multi-choice task."
     },
     {
       "name": "FOLLOW_ROOM",
@@ -572,15 +731,20 @@
           "name": "roomId",
           "description": "The target room id to follow.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Room id to follow."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "hey {{name2}} follow this channel" }
+            "content": {
+              "text": "hey {{name2}} follow this channel"
+            }
           },
           {
             "name": "{{name2}}",
@@ -593,7 +757,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} stay in this chat pls" }
+            "content": {
+              "text": "{{name2}} stay in this chat pls"
+            }
           },
           {
             "name": "{{name2}}",
@@ -603,7 +769,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Start following channel, chiming in without @mention. Only when explicitly asked."
     },
     {
       "name": "UNFOLLOW_ROOM",
@@ -623,15 +790,20 @@
           "name": "roomId",
           "description": "The target room id to unfollow.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Room id to unfollow."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} stop following this channel" }
+            "content": {
+              "text": "{{name2}} stop following this channel"
+            }
           },
           {
             "name": "{{name2}}",
@@ -641,7 +813,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Stop following room, cease updates."
     },
     {
       "name": "MUTE_ROOM",
@@ -661,8 +834,11 @@
           "name": "roomId",
           "description": "The room id to mute.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Room id to mute."
         }
       ],
       "examples": [
@@ -675,20 +851,29 @@
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "Got it", "actions": ["MUTE_ROOM"] }
+            "content": {
+              "text": "Got it",
+              "actions": ["MUTE_ROOM"]
+            }
           }
         ],
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} plz mute this room" }
+            "content": {
+              "text": "{{name2}} plz mute this room"
+            }
           },
           {
             "name": "{{name2}}",
-            "content": { "text": "np going silent", "actions": ["MUTE_ROOM"] }
+            "content": {
+              "text": "np going silent",
+              "actions": ["MUTE_ROOM"]
+            }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Mute room, ignore msgs unless @mentioned. Only when asked or annoying."
     },
     {
       "name": "UNMUTE_ROOM",
@@ -708,15 +893,20 @@
           "name": "roomId",
           "description": "The room id to unmute.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Room id to unmute."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "{{name2}} unmute this room please" }
+            "content": {
+              "text": "{{name2}} unmute this room please"
+            }
           },
           {
             "name": "{{name2}}",
@@ -726,7 +916,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Unmute room, resume responding."
     },
     {
       "name": "UPDATE_SETTINGS",
@@ -747,15 +938,20 @@
           "name": "updates",
           "description": "A JSON array of {\"key\": string, \"value\": string} updates (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["[{\"key\":\"model\",\"value\":\"gpt-5\"}]"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["[{\"key\":\"model\",\"value\":\"gpt-5\"}]"],
+          "descriptionCompressed": "JSON array of {key, value} updates."
         }
       ],
       "examples": [
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Change my language setting to French" }
+            "content": {
+              "text": "Change my language setting to French"
+            }
           },
           {
             "name": "{{name2}}",
@@ -765,7 +961,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Update agent settings via key/value pairs."
     },
     {
       "name": "UPDATE_ROLE",
@@ -784,20 +981,31 @@
           "name": "entityId",
           "description": "The entity id to update.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "role",
           "description": "The new role to assign.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["admin", "member"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["admin", "member"],
+          "descriptionCompressed": "Role to assign."
         }
       ],
       "examples": [
         [
-          { "name": "{{name1}}", "content": { "text": "Make Sarah an admin" } },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Make Sarah an admin"
+            }
+          },
           {
             "name": "{{name2}}",
             "content": {
@@ -806,7 +1014,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
       "name": "UPDATE_ENTITY",
@@ -823,15 +1032,21 @@
           "name": "entityId",
           "description": "The entity id to update.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["00000000-0000-0000-0000-000000000000"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["00000000-0000-0000-0000-000000000000"],
+          "descriptionCompressed": "Entity id."
         },
         {
           "name": "updates",
           "description": "A JSON array of {\"name\": string, \"value\": string} field updates (stringified JSON).",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["[{\"name\":\"bio\",\"value\":\"Loves Rust\"}]"],
+          "descriptionCompressed": "JSON array of {name, value} updates."
         }
       ],
       "examples": [
@@ -850,7 +1065,86 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Edit contact details for person in conversation."
+    },
+    {
+      "name": "THINK",
+      "description": "Pause and think deeply about a complex question, ambiguous request, or multi-faceted problem before responding. Use THINK when the question requires careful reasoning, when you are not confident in your initial assessment, when the user asks something nuanced that benefits from structured analysis, or when multiple valid approaches exist and you need to evaluate trade-offs. Do NOT use THINK for simple greetings, factual lookups, or straightforward requests where the answer is obvious. THINK re-processes the full conversation context through a larger, more capable model to produce a thorough, well-reasoned response.",
+      "similes": [
+        "PLAN",
+        "REASON",
+        "ANALYZE",
+        "REFLECT",
+        "CONSIDER",
+        "DELIBERATE",
+        "DEEP_THINK",
+        "PONDER"
+      ],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's the best architecture for a real-time multiplayer game with 10k concurrent users?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "That's a great question with several important trade-offs to consider. Let me think through this carefully...",
+              "actions": ["THINK"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Should I use a monorepo or polyrepo for my team of 15 engineers working on 3 microservices?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me think about the trade-offs for your specific situation...",
+              "actions": ["THINK"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "We're seeing intermittent 502 errors in production but only during peak hours. Our setup is nginx -> node -> postgres. What could cause this?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "There are several possible causes here. Let me reason through the full request path systematically...",
+              "actions": ["THINK"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "How should we handle authentication across our mobile app, web app, and API given we need SSO with both Google and enterprise SAML providers?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Cross-platform auth with multiple identity providers has some nuance. Let me plan this out...",
+              "actions": ["THINK"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Deep reasoning for complex/ambiguous questions. Re-processes full context through larger model. Use when careful reasoning needed, not for simple lookups."
     },
     {
       "name": "GENERATE_IMAGE",
@@ -869,8 +1163,11 @@
           "name": "prompt",
           "description": "Image generation prompt.",
           "required": true,
-          "schema": { "type": "string" },
-          "examples": ["A futuristic cityscape at sunset, cinematic lighting"]
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
+          "descriptionCompressed": "Image prompt."
         }
       ],
       "examples": [
@@ -919,7 +1216,8 @@
             }
           }
         ]
-      ]
+      ],
+      "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     }
   ]
 }

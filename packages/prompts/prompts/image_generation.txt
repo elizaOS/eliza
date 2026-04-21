@@ -9,14 +9,11 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 # Recent conversation:
 {{recentMessages}}
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the image prompt</thought>
-    <prompt>Detailed image generation prompt</prompt>
-</response>
+Respond using TOON like this:
+thought: Your reasoning for the image prompt
+prompt: Detailed image generation prompt
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
-
+IMPORTANT: Your response must ONLY contain the TOON document above.
 
 
 

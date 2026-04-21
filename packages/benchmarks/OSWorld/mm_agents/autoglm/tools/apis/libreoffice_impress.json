@@ -1,0 +1,569 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.save",
+      "description": "Save the current presentation to its current location",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.go_to_slide",
+      "description": "Navigates to a specific slide in the presentation based on its index.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to navigate to (1-based indexing)"
+          }
+        },
+        "required": ["slide_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.get_slide_count",
+      "description": "Gets the total number of slides in the current presentation.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.duplicate_slide",
+      "description": "Creates a duplicate of a specific slide and places it at the end of the presentation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to duplicate (1-based indexing)"
+          }
+        },
+        "required": ["slide_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_font",
+      "description": "Sets the font style for all text elements in a specific slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing)"
+          },
+          "font_name": {
+            "type": "string",
+            "description": "The name of the font to apply (e.g., 'Arial', 'Times New Roman', 'Calibri')"
+          }
+        },
+        "required": ["slide_index", "font_name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.write_text",
+      "description": "writes text to a specific textbox on a slide",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The text content of the note to add"
+          },
+          "page_index": {
+            "type": "integer",
+            "description": "The index of the slide to add a note to (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Whether to make the text bold, default is false"
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Whether to make the text italic, default is false"
+          },
+          "size": {
+            "type": "integer",
+            "description": "The size of the text. If None, uses the box's current font size."
+          },
+          "append": {
+            "type": "boolean",
+            "description": "Whether to append the text, default is False. If you want to observe some formats(like a bullet at the beginning) or keep the original text, you should set up it."
+          }
+        },
+        "required": ["content", "page_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_style",
+      "description": "Sets the style properties for the specified textbox on a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          },
+          "bold": {
+            "type": "boolean",
+            "description": "Whether to make the title text bold"
+          },
+          "italic": {
+            "type": "boolean",
+            "description": "Whether to make the title text italic"
+          },
+          "underline": {
+            "type": "boolean",
+            "description": "Whether to underline the title text"
+          }
+        },
+        "required": ["slide_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.configure_auto_save",
+      "description": "Enables or disables auto-save functionality for the current document and sets the auto-save interval.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether to enable (true) or disable (false) auto-save"
+          },
+          "interval_minutes": {
+            "type": "number",
+            "description": "The interval in minutes between auto-saves (minimum 1 minute)"
+          }
+        },
+        "required": ["enabled", "interval_minutes"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_background_color",
+      "description": "Sets the background color for the specified textbox on a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide containing the textbox (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          },
+          "color": {
+            "type": "string",
+            "description": "The color to apply to the textbox (e.g., 'red', 'green', 'blue', 'yellow', or hex color code)"
+          }
+        },
+        "required": ["slide_index", "box_index", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_text_color",
+      "description": "Sets the text color for the specified textbox on a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          },
+          "color": {
+            "type": "string",
+            "description": "The color to apply to the title text (e.g., 'red', 'green', 'blue', 'black', or hex color code)"
+          }
+        },
+        "required": ["slide_index", "box_index", "color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.delete_content",
+      "description": "Deletes the specified textbox from a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          }
+        },
+        "required": ["slide_index", "box_index"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_orientation",
+      "description": "Changes the orientation of slides in the presentation between portrait (upright) and landscape (sideways).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orientation": {
+            "type": "string",
+            "description": "The desired orientation for the slides",
+            "enum": ["portrait", "landscape"]
+          }
+        },
+        "required": ["orientation"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.position_box",
+      "description": "Positions a textbox or image on a slide at a specific location or predefined position.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide containing the box (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the box to position (0-based indexing)"
+          },
+          "position": {
+            "type": "string",
+            "description": "Predefined position on the slide (left, right, center, top, bottom)",
+            "enum": [
+              "left",
+              "right",
+              "center",
+              "top",
+              "bottom",
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right"
+            ]
+          }
+        },
+        "required": ["slide_index", "box_index", "position"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.insert_file",
+      "description": "Inserts a video or audio file into the current or specified slide in the presentation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The full path to the file to be inserted"
+          },
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to insert the file into (1-based indexing). If not provided, inserts into the current slide."
+          },
+          "position": {
+            "type": "object",
+            "description": "The position coordinates for the file",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The x-coordinate (horizontal position) as a percentage of slide width"
+              },
+              "y": {
+                "type": "number",
+                "description": "The y-coordinate (vertical position) as a percentage of slide height"
+              }
+            }
+          },
+          "size": {
+            "type": "object",
+            "description": "The size dimensions for the file",
+            "properties": {
+              "width": {
+                "type": "number",
+                "description": "The width as a percentage of slide width"
+              },
+              "height": {
+                "type": "number",
+                "description": "The height as a percentage of slide height"
+              }
+            }
+          },
+          "autoplay": {
+            "type": "boolean",
+            "description": "Whether the video or audio should automatically play when the slide is shown"
+          }
+        },
+        "required": ["file_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_background",
+      "description": "Sets the background color or image for a specific slide or all slides.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing). If not provided, applies to all slides."
+          },
+          "color": {
+            "type": "string",
+            "description": "The background color to apply (e.g., 'red', 'green', 'blue', or hex color code)"
+          },
+          "image_path": {
+            "type": "string",
+            "description": "Path to an image file to use as background. If provided, overrides color."
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.save_as",
+      "description": "Saves the current document to a specified location with a given filename.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The full path where the file should be saved, including the filename and extension"
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Whether to overwrite the file if it already exists (default: false)"
+          }
+        },
+        "required": ["file_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.insert_image",
+      "description": "Inserts an image to a specific slide in the presentation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to add the image to (1-based indexing)"
+          },
+          "image_path": {
+            "type": "string",
+            "description": "The full path to the image file to be added"
+          },
+          "width": {
+            "type": "number",
+            "description": "The width of the image in centimeters"
+          },
+          "height": {
+            "type": "number",
+            "description": "The height of the image in centimeters"
+          },
+          "position": {
+            "type": "object",
+            "description": "The position coordinates for the image",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The x-coordinate (horizontal position) as a percentage of slide width"
+              },
+              "y": {
+                "type": "number",
+                "description": "The y-coordinate (vertical position) as a percentage of slide height"
+              }
+            }
+          }
+        },
+        "required": ["slide_index", "image_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.configure_display_settings",
+      "description": "Configures the display settings for LibreOffice Impress presentations, including monitor usage and presenter view options.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "use_presenter_view": {
+            "type": "boolean",
+            "description": "Whether to use presenter view (showing current and next slide on one screen). Set to false to disable presenter view."
+          },
+          "primary_monitor_only": {
+            "type": "boolean",
+            "description": "Whether to use only the primary monitor for the presentation. Set to true to use only one screen."
+          },
+          "monitor_for_presentation": {
+            "type": "integer",
+            "description": "Specify which monitor to use for the presentation (1 for primary monitor, 2 for secondary monitor, etc.)"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_slide_number_color",
+      "description": "Sets the color of the slide number in the presentation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "color": {
+            "type": "string",
+            "description": "The color to apply to slide numbers (e.g., 'red', 'green', 'blue', 'black', or hex color code)"
+          }
+        },
+        "required": ["color"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_text_strikethrough",
+      "description": "Applies or removes strike-through formatting to specific text content in a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide containing the text (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox containing the text (0-based indexing)"
+          },
+          "line_numbers": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "The line numbers to apply strike-through formatting to (1-based indexing)"
+          },
+          "apply": {
+            "type": "boolean",
+            "description": "Whether to apply (true) or remove (false) strike-through formatting"
+          }
+        },
+        "required": ["slide_index", "box_index", "line_numbers", "apply"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.set_textbox_alignment",
+      "description": "Sets the text alignment for the specified textbox on a slide.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the slide to modify (1-based indexing)"
+          },
+          "box_index": {
+            "type": "integer",
+            "description": "The index of the textbox to modify (0-based indexing)"
+          },
+          "alignment": {
+            "type": "string",
+            "description": "The text alignment to apply to the title",
+            "enum": ["left", "center", "right", "justify"]
+          }
+        },
+        "required": ["slide_index", "box_index", "alignment"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "ImpressTools.export_to_image",
+      "description": "Exports the current presentation or a specific slide to an image file format (PNG, JPEG, etc.).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "The full path where the image file should be saved, including the filename and extension"
+          },
+          "format": {
+            "type": "string",
+            "description": "The image format to export to (e.g., 'png', 'jpeg', 'gif')",
+            "enum": ["png", "jpeg", "jpg", "gif", "bmp", "tiff"]
+          },
+          "slide_index": {
+            "type": "integer",
+            "description": "The index of the specific slide to export (1-based indexing). If not provided, exports the entire presentation as a series of images."
+          }
+        },
+        "required": ["file_path", "format"]
+      }
+    }
+  }
+]

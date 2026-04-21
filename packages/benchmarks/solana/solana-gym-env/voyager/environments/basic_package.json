@@ -1,0 +1,13 @@
+{
+  "name": "solana-basic-environment",
+  "version": "1.0.0",
+  "description": "Basic benchmark environment for Solana interactions",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.2",
+    "@solana/spl-token": "^0.4.13",
+    "@coral-xyz/anchor": "^0.30.1",
+    "bs58": "^5.0.0",
+    "decimal.js": "^10.4.3",
+    "bn.js": "^5.2.1"
+  }
+}

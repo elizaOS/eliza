@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elizaos-context-bench"
+version = "2.0.0"
+description = "Context retrieval benchmark for ElizaOS - evaluating LLM context handling capabilities"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = [
+    "elizaos",
+    "benchmark",
+    "context",
+    "niah",
+    "needle-in-haystack",
+    "llm",
+    "evaluation",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+embeddings = [
+    "sentence-transformers>=2.2.0",
+]
+all = [
+    "elizaos-context-bench[dev,embeddings]",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Repository = "https://github.com/elizaos/eliza"
+Documentation = "https://docs.elizaos.org"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["elizaos_context_bench*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "A", "C4", "SIM"]
+ignore = ["D100", "D104", "D107", "D203", "D213"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true

@@ -33,6 +33,20 @@ pub struct CapabilityConfig {
     pub skip_character_provider: bool,
     /// Enable autonomy capabilities (reserved for future parity).
     pub enable_autonomy: bool,
+    /// Enable experience tracking (learn from successes/failures).
+    pub enable_experience: bool,
+    /// Enable form-based user journeys.
+    pub enable_forms: bool,
+    /// Enable task clipboard / working memory.
+    pub enable_clipboard: bool,
+    /// Enable personality evolution and per-user preferences.
+    pub enable_personality: bool,
+    /// Enable trust scoring and security monitoring.
+    pub enable_trust: bool,
+    /// Enable secrets management.
+    pub enable_secrets: bool,
+    /// Enable plugin manager.
+    pub enable_plugin_manager: bool,
 }
 
 /// Create the built-in basic_capabilities plugin for the core runtime.
@@ -72,6 +86,20 @@ pub fn create_basic_capabilities_plugin(
     // This pass focuses on closing the biggest missing behavior: basic_capabilities auto-registration
     // with flag precedence + minimum viable actions/providers.
     let _ = (config.enable_extended, config.enable_autonomy);
+
+    // New built-in capability flags — wired into CapabilityConfig for parity with
+    // TypeScript/Python. The actual component registration happens via
+    // get_advanced_capabilities() (experience, form, clipboard, personality) and
+    // core_capabilities (trust, secrets, plugin_manager) modules.
+    let _ = (
+        config.enable_experience,
+        config.enable_forms,
+        config.enable_clipboard,
+        config.enable_personality,
+        config.enable_trust,
+        config.enable_secrets,
+        config.enable_plugin_manager,
+    );
 
     plugin
 }

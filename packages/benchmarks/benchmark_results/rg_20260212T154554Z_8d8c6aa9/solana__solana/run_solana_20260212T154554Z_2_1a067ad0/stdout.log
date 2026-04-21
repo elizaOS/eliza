@@ -1,0 +1,188 @@
+2026-02-12 07:45:55,330  INFO     Model: qwen/qwen3-32b  Messages: 2  Env: voyager/environments/basic_env.json  External: False
+2026-02-12 07:45:55,501  INFO     surfpool [53853] launched
+2026-02-12 07:45:56,234  INFO     Airdropping SOL to 96r1GYiNN1R9mz5WGJ6oHvvjXwgw72YyNtAEaRdZqxW2...
+2026-02-12 07:45:56,245  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:45:56,249  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:26,255  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:26,257  INFO     Airdrop successful.
+2026-02-12 07:46:26,259  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:26,261  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:26,261  INFO     Agent: 96r1GYiNN1R9mz5WGJ6oHvvjXwgw72YyNtAEaRdZqxW2
+2026-02-12 07:46:26,269  INFO     elizaos_plugin_anthropic not found, falling back to OpenAI plugin
+2026-02-12 07:46:26,269  INFO     Model plugin: OpenAI (qwen/qwen3-32b)
+2026-02-12 07:46:26,296  INFO     [2m2026-02-12T15:46:26.296452Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328382Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328718Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328780Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mSolanaExplorer[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328912Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:task[0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328953Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-12 07:46:26,328  INFO     [2m2026-02-12T15:46:26.328986Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,329  INFO     [2m2026-02-12T15:46:26.329013Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: openai    [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,329  INFO     [2m2026-02-12T15:46:26.329058Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: openai[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,329  INFO     [2m2026-02-12T15:46:26.329082Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: solana-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,329  INFO     [2m2026-02-12T15:46:26.329107Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: solana-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 07:46:26,329  INFO     [2m2026-02-12T15:46:26.329130Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 07:46:26,329  INFO     ElizaOS runtime initialised: 5 actions, 15 providers
+2026-02-12 07:46:26,329  INFO     Solana Agent  model=qwen/qwen3-32b  max=2  id=eliza_26-02-12_074555_318651f5
+2026-02-12 07:46:26,329  INFO     
+============================================================
+Step 1/2 [deterministic]: Memo bytes 0-59
+============================================================
+2026-02-12 07:46:26,331  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:30,540  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:46:30,541  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:00,545  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:00,547  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 0)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 1)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 2)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 3)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 4)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 5)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 6)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 7)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 8)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 9)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 10)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 11)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 12)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 13)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 14)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 15)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 16)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 17)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 18)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 19)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 20)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 21)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 22)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 23)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 24)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 25)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 26)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 27)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 28)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 29)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 30)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 31)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 32)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 33)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 34)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 35)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 36)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 37)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 38)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 39)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 40)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 41)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 42)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 43)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 44)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 45)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 46)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 47)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 48)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 49)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 50)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 51)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 52)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 53)
+2026-02-12 07:47:00,550  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 54)
+2026-02-12 07:47:00,551  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 55)
+2026-02-12 07:47:00,551  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 56)
+2026-02-12 07:47:00,551  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 57)
+2026-02-12 07:47:00,551  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 58)
+2026-02-12 07:47:00,551  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 59)
+2026-02-12 07:47:00,551  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:00,552  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:00,552  INFO     Skill result: reward=60  total=60  programs=['MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr']
+2026-02-12 07:47:00,552  INFO     Template memo_ascii_0_60: reward=60  total=60
+2026-02-12 07:47:00,552  INFO     Step 1: memo_ascii_0_60  reward=60  total=60  discovered=60
+2026-02-12 07:47:00,553  INFO     
+============================================================
+Step 2/2 [deterministic]: Memo bytes 60-119
+============================================================
+2026-02-12 07:47:00,554  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:04,719  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:04,721  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:34,725  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:34,725  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 60)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 61)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 62)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 63)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 64)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 65)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 66)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 67)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 68)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 69)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 70)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 71)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 72)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 73)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 74)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 75)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 76)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 77)
+2026-02-12 07:47:34,726  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 78)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 79)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 80)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 81)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 82)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 83)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 84)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 85)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 86)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 87)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 88)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 89)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 90)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 91)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 92)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 93)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 94)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 95)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 96)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 97)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 98)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 99)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 100)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 101)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 102)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 103)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 104)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 105)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 106)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 107)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 108)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 109)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 110)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 111)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 112)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 113)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 114)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 115)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 116)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 117)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 118)
+2026-02-12 07:47:34,727  INFO     Discovered new program instruction (MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr, 119)
+2026-02-12 07:47:34,728  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:34,729  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 07:47:34,729  INFO     Skill result: reward=60  total=120  programs=['MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr']
+2026-02-12 07:47:34,729  INFO     Template memo_ascii_60_120: reward=60  total=120
+2026-02-12 07:47:34,729  INFO     Step 2: memo_ascii_60_120  reward=60  total=120  discovered=120
+2026-02-12 07:47:34,730  INFO     
+Messages: 2/2  Reward: 120  Discovered: 120  Phase: deterministic
+
+    0. [OK] memo_ascii_0_60: +60
+    1. [OK] memo_ascii_60_120: +60
+2026-02-12 07:47:34,730  INFO     === FINAL ===  reward=120  programs=1
+2026-02-12 07:47:34,730  INFO     SurfpoolEnv closed.
+2026-02-12 07:47:34,730  INFO     [2m2026-02-12T15:47:34.730405Z[0m [[32m[1minfo     [0m] [1mStopping AgentRuntime...      [0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 07:47:34,730  INFO     [2m2026-02-12T15:47:34.730492Z[0m [[32m[1minfo     [0m] [1mTask service stopped          [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:task[0m
+2026-02-12 07:47:34,730  INFO     [2m2026-02-12T15:47:34.730539Z[0m [[32m[1minfo     [0m] [1mEmbedding service stopped     [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-12 07:47:34,730  INFO     [2m2026-02-12T15:47:34.730569Z[0m [[32m[1minfo     [0m] [1mAgentRuntime stopped          [0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 07:47:34,730  INFO     Stopping surfpool [53853] …
+2026-02-12 07:47:42,732  WARNING  surfpool unresponsive; killing
+2026-02-12 07:47:42,735  INFO     surfpool shut down

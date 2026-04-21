@@ -8,8 +8,6 @@
 
 // Export all core modules
 export * from "./actions";
-// Export capabilities and plugin creation
-export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -32,6 +30,17 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+// Keep evaluator runtime symbols explicit in the node entrypoint. Bun has
+// dropped some of these when they were only re-exported transitively through
+// the basic-capabilities barrel, which leaves dangling exports in dist.
+export {
+	factRefinementEvaluator,
+	skillExtractionEvaluator,
+	skillRefinementEvaluator,
+} from "./features/advanced-capabilities/evaluators/index";
+export * from "./features/advanced-memory";
+// Export capabilities and plugin creation
+export * from "./features/basic-capabilities/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -43,7 +52,9 @@ export * from "./media";
 export * from "./memory";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
+export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
+export * from "./plugins";
 
 export * from "./prompts";
 // Export onboarding providers
@@ -87,12 +98,14 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/trajectoryLogger";
+export * from "./services/optimized-prompt";
+export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
 export * from "./settings";
 export * from "./trajectory-context";
+export * from "./trajectory-utils";
 // Export everything from types
 export * from "./types";
 export * from "./types/agentEvent";
@@ -100,8 +113,19 @@ export * from "./types/message-service";
 // Export onboarding types and utilities
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
+// Bun can drop these runtime exports when they are only surfaced through the
+// ./types barrel, which breaks plugin imports of @elizaos/core.
+export * as proto from "./types/proto";
+export {
+	fromJson,
+	type JsonObject,
+	type JsonValue,
+	toJson,
+} from "./types/proto";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+/** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
@@ -109,6 +133,8 @@ export * from "./utils/channel-utils";
 export * from "./utils/environment";
 // Export Node-specific utilities
 export * from "./utils/server-health";
+// Milady state-dir resolution (MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.milady)
+export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
 // Export validation utilities

@@ -1,0 +1,98 @@
+{
+  "id": "df67aebb-fb3a-44fd-b75b-51b6012df509",
+  "snapshot": "vscode",
+  "instruction": "I am writing my paper thesis. I have listed all referenced papers in the opened docx. But my mentor asked me to use latex instead of word writer. So could you help me export the dblp bibtex of these papers into 'references.bib'. By the way, if the paper is published, do not use the arxiv version. Separate each bibtex dict with a blank line for clarity.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://dblp.org/"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "touch",
+          "/home/user/Desktop/references.bib"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code",
+          "/home/user/Desktop/references.bib"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/df67aebb-fb3a-44fd-b75b-51b6012df509/references.docx",
+            "path": "/home/user/Desktop/references.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "libreoffice",
+          "--writer",
+          "/home/user/Desktop/references.docx"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome",
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "func": "compare_text_file",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/references.bib",
+      "dest": "references.bib"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/df67aebb-fb3a-44fd-b75b-51b6012df509/references.bib",
+      "dest": "gold_references.bib"
+    },
+    "options": {
+      "ignore_blanks": true
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

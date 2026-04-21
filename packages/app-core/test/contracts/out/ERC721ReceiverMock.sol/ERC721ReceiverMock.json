@@ -1,0 +1,209 @@
+{
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [
+        { "name": "retval", "type": "bytes4", "internalType": "bytes4" },
+        {
+          "name": "error",
+          "type": "uint8",
+          "internalType": "enum ERC721ReceiverMock.Error"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "onERC721Received",
+      "inputs": [
+        { "name": "operator", "type": "address", "internalType": "address" },
+        { "name": "from", "type": "address", "internalType": "address" },
+        { "name": "tokenId", "type": "uint256", "internalType": "uint256" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "bytes4", "internalType": "bytes4" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "Received",
+      "inputs": [
+        {
+          "name": "operator",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "from",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "tokenId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "data",
+          "type": "bytes",
+          "indexed": false,
+          "internalType": "bytes"
+        },
+        {
+          "name": "gas",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x60c060405234801561000f575f80fd5b506040516104a73803806104a783398101604081905261002e9161006d565b6001600160e01b0319821660805280600381111561004e5761004e6100b4565b60a0816003811115610062576100626100b4565b8152505050506100c8565b5f806040838503121561007e575f80fd5b82516001600160e01b031981168114610095575f80fd5b6020840151909250600481106100a9575f80fd5b809150509250929050565b634e487b7160e01b5f52602160045260245ffd5b60805160a0516103b26100f55f395f818160620152818160e7015261012401525f6101a901526103b25ff3fe608060405234801561000f575f80fd5b5060043610610029575f3560e01c8063150b7a021461002d575b5f80fd5b61004061003b3660046101ff565b61005d565b6040516001600160e01b0319909116815260200160405180910390f35b5f60017f00000000000000000000000000000000000000000000000000000000000000006003811115610092576100926102d4565b036100e35760405162461bcd60e51b815260206004820152601d60248201527f45524337323152656365697665724d6f636b3a20726576657274696e67000000604482015260640160405180910390fd5b60027f00000000000000000000000000000000000000000000000000000000000000006003811115610117576101176102d4565b03610120575f80fd5b60037f00000000000000000000000000000000000000000000000000000000000000006003811115610154576101546102d4565b03610167575f61016481806102e8565b50505b7f28fa6e16458f9c24aa59ddd4085264573006dbe30304837873c7deafc702b038858585855a60405161019e959493929190610307565b60405180910390a1507f0000000000000000000000000000000000000000000000000000000000000000949350505050565b80356001600160a01b03811681146101e6575f80fd5b919050565b634e487b7160e01b5f52604160045260245ffd5b5f805f8060808587031215610212575f80fd5b61021b856101d0565b9350610229602086016101d0565b925060408501359150606085013567ffffffffffffffff8082111561024c575f80fd5b818701915087601f83011261025f575f80fd5b813581811115610271576102716101eb565b604051601f8201601f19908116603f01168101908382118183101715610299576102996101eb565b816040528281528a60208487010111156102b1575f80fd5b826020860160208301375f60208483010152809550505050505092959194509250565b634e487b7160e01b5f52602160045260245ffd5b5f8261030257634e487b7160e01b5f52601260045260245ffd5b500490565b5f60018060a01b03808816835260208188168185015286604085015260a06060850152855191508160a08501525f5b828110156103525786810182015185820160c001528101610336565b50505f60c0828501015260c0601f19601f830116840101915050826080830152969550505050505056fea2646970667358221220150159ae0c32aacea7023891002004c4de328da7301f7e622d461aeb7295269664736f6c63430008140033",
+    "sourceMap": "108:999:145:-:0;;;440:97;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;-1:-1:-1;;;;;;490:16:145;;;;525:5;516:14;;;;;;;;:::i;:::-;;;;;;;;;;;:::i;:::-;;;;;440:97;;108:999;;14:444:310;103:6;111;164:2;152:9;143:7;139:23;135:32;132:52;;;180:1;177;170:12;132:52;206:16;;-1:-1:-1;;;;;;251:32:310;;241:43;;231:71;;298:1;295;288:12;231:71;371:2;356:18;;350:25;321:5;;-1:-1:-1;406:1:310;394:14;;384:42;;422:1;419;412:12;384:42;445:7;435:17;;;14:444;;;;;:::o;463:127::-;524:10;519:3;515:20;512:1;505:31;555:4;552:1;545:15;579:4;576:1;569:15;463:127;108:999:145;;;;;;;;;;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b5060043610610029575f3560e01c8063150b7a021461002d575b5f80fd5b61004061003b3660046101ff565b61005d565b6040516001600160e01b0319909116815260200160405180910390f35b5f60017f00000000000000000000000000000000000000000000000000000000000000006003811115610092576100926102d4565b036100e35760405162461bcd60e51b815260206004820152601d60248201527f45524337323152656365697665724d6f636b3a20726576657274696e67000000604482015260640160405180910390fd5b60027f00000000000000000000000000000000000000000000000000000000000000006003811115610117576101176102d4565b03610120575f80fd5b60037f00000000000000000000000000000000000000000000000000000000000000006003811115610154576101546102d4565b03610167575f61016481806102e8565b50505b7f28fa6e16458f9c24aa59ddd4085264573006dbe30304837873c7deafc702b038858585855a60405161019e959493929190610307565b60405180910390a1507f0000000000000000000000000000000000000000000000000000000000000000949350505050565b80356001600160a01b03811681146101e6575f80fd5b919050565b634e487b7160e01b5f52604160045260245ffd5b5f805f8060808587031215610212575f80fd5b61021b856101d0565b9350610229602086016101d0565b925060408501359150606085013567ffffffffffffffff8082111561024c575f80fd5b818701915087601f83011261025f575f80fd5b813581811115610271576102716101eb565b604051601f8201601f19908116603f01168101908382118183101715610299576102996101eb565b816040528281528a60208487010111156102b1575f80fd5b826020860160208301375f60208483010152809550505050505092959194509250565b634e487b7160e01b5f52602160045260245ffd5b5f8261030257634e487b7160e01b5f52601260045260245ffd5b500490565b5f60018060a01b03808816835260208188168185015286604085015260a06060850152855191508160a08501525f5b828110156103525786810182015185820160c001528101610336565b50505f60c0828501015260c0601f19601f830116840101915050826080830152969550505050505056fea2646970667358221220150159ae0c32aacea7023891002004c4de328da7301f7e622d461aeb7295269664736f6c63430008140033",
+    "sourceMap": "108:999:145:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;543:562;;;;;;:::i;:::-;;:::i;:::-;;;-1:-1:-1;;;;;;1629:33:310;;;1611:52;;1599:2;1584:18;543:562:145;;;;;;;;700:6;732:23;722:6;:33;;;;;;;;:::i;:::-;;718:292;;771:39;;-1:-1:-1;;;771:39:145;;2008:2:310;771:39:145;;;1990:21:310;2047:2;2027:18;;;2020:30;2086:31;2066:18;;;2059:59;2135:18;;771:39:145;;;;;;;718:292;841:26;831:6;:36;;;;;;;;:::i;:::-;;827:183;;883:8;;;827:183;922:11;912:6;:21;;;;;;;;:::i;:::-;;908:102;;949:9;961:23;949:9;;961:23;:::i;:::-;-1:-1:-1;;908:102:145;1024:50;1033:8;1043:4;1049:7;1058:4;1064:9;1024:50;;;;;;;;;;:::i;:::-;;;;;;;;-1:-1:-1;1091:7:145;543:562;;;;;;:::o;14:173:310:-;82:20;;-1:-1:-1;;;;;131:31:310;;121:42;;111:70;;177:1;174;167:12;111:70;14:173;;;:::o;192:127::-;253:10;248:3;244:20;241:1;234:31;284:4;281:1;274:15;308:4;305:1;298:15;324:1138;419:6;427;435;443;496:3;484:9;475:7;471:23;467:33;464:53;;;513:1;510;503:12;464:53;536:29;555:9;536:29;:::i;:::-;526:39;;584:38;618:2;607:9;603:18;584:38;:::i;:::-;574:48;;669:2;658:9;654:18;641:32;631:42;;724:2;713:9;709:18;696:32;747:18;788:2;780:6;777:14;774:34;;;804:1;801;794:12;774:34;842:6;831:9;827:22;817:32;;887:7;880:4;876:2;872:13;868:27;858:55;;909:1;906;899:12;858:55;945:2;932:16;967:2;963;960:10;957:36;;;973:18;;:::i;:::-;1048:2;1042:9;1016:2;1102:13;;-1:-1:-1;;1098:22:310;;;1122:2;1094:31;1090:40;1078:53;;;1146:18;;;1166:22;;;1143:46;1140:72;;;1192:18;;:::i;:::-;1232:10;1228:2;1221:22;1267:2;1259:6;1252:18;1307:7;1302:2;1297;1293;1289:11;1285:20;1282:33;1279:53;;;1328:1;1325;1318:12;1279:53;1384:2;1379;1375;1371:11;1366:2;1358:6;1354:15;1341:46;1429:1;1424:2;1419;1411:6;1407:15;1403:24;1396:35;1450:6;1440:16;;;;;;;324:1138;;;;;;;:::o;1674:127::-;1735:10;1730:3;1726:20;1723:1;1716:31;1766:4;1763:1;1756:15;1790:4;1787:1;1780:15;2164:217;2204:1;2230;2220:132;;2274:10;2269:3;2265:20;2262:1;2255:31;2309:4;2306:1;2299:15;2337:4;2334:1;2327:15;2220:132;-1:-1:-1;2366:9:310;;2164:217::o;2386:892::-;2608:4;2654:1;2650;2645:3;2641:11;2637:19;2695:2;2687:6;2683:15;2672:9;2665:34;2718:2;2768;2760:6;2756:15;2751:2;2740:9;2736:18;2729:43;2808:6;2803:2;2792:9;2788:18;2781:34;2851:3;2846:2;2835:9;2831:18;2824:31;2884:6;2878:13;2864:27;;2928:6;2922:3;2911:9;2907:19;2900:35;2953:1;2963:141;2977:6;2974:1;2971:13;2963:141;;;3073:14;;;3069:23;;3063:30;3038:17;;;3057:3;3034:27;3027:67;2992:10;;2963:141;;;2967:3;;3154:1;3148:3;3139:6;3128:9;3124:22;3120:32;3113:43;3224:3;3217:2;3213:7;3208:2;3200:6;3196:15;3192:29;3181:9;3177:45;3173:55;3165:63;;;3265:6;3259:3;3248:9;3244:19;3237:35;2386:892;;;;;;;;:::o",
+    "linkReferences": {},
+    "immutableReferences": {
+      "18598": [{ "start": 425, "length": 32 }],
+      "18601": [
+        { "start": 98, "length": 32 },
+        { "start": 231, "length": 32 },
+        { "start": 292, "length": 32 }
+      ]
+    }
+  },
+  "methodIdentifiers": {
+    "onERC721Received(address,address,uint256,bytes)": "150b7a02"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"retval\",\"type\":\"bytes4\"},{\"internalType\":\"enum ERC721ReceiverMock.Error\",\"name\":\"error\",\"type\":\"uint8\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"tokenId\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"gas\",\"type\":\"uint256\"}],\"name\":\"Received\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"from\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"tokenId\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"onERC721Received\",\"outputs\":[{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{\"onERC721Received(address,address,uint256,bytes)\":{\"details\":\"Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721-safeTransferFrom} by `operator` from `from`, this function is called. It must return its Solidity selector to confirm the token transfer. If any other value is returned or the interface is not implemented by the recipient, the transfer will be reverted. The selector can be obtained in Solidity with `IERC721Receiver.onERC721Received.selector`.\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/token/ERC721ReceiverMock.sol\":\"ERC721ReceiverMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/token/ERC721ReceiverMock.sol\":{\"keccak256\":\"0x8916bf557c1816ec883a67053f656db4c732eba826fb5960dbdc830ed1cfce53\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bc8029015860d098d79973597ddba9e26ef219f294171bc30ff81e2736197b52\",\"dweb:/ipfs/QmRXnsR2sr7JR3wrtziWRYkqwwbXSGf9EjGdxYecZakcZi\"]},\"lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol\":{\"keccak256\":\"0xa82b58eca1ee256be466e536706850163d2ec7821945abd6b4778cfb3bee37da\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://6e75cf83beb757b8855791088546b8337e9d4684e169400c20d44a515353b708\",\"dweb:/ipfs/QmYvPafLfoquiDMEj7CKHtvbgHu7TJNPSVPSCjrtjV8HjV\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            { "internalType": "bytes4", "name": "retval", "type": "bytes4" },
+            {
+              "internalType": "enum ERC721ReceiverMock.Error",
+              "name": "error",
+              "type": "uint8"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address",
+              "indexed": false
+            },
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address",
+              "indexed": false
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256",
+              "indexed": false
+            },
+            {
+              "internalType": "bytes",
+              "name": "data",
+              "type": "bytes",
+              "indexed": false
+            },
+            {
+              "internalType": "uint256",
+              "name": "gas",
+              "type": "uint256",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "Received",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            },
+            { "internalType": "address", "name": "from", "type": "address" },
+            { "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "onERC721Received",
+          "outputs": [
+            { "internalType": "bytes4", "name": "", "type": "bytes4" }
+          ]
+        }
+      ],
+      "devdoc": {
+        "kind": "dev",
+        "methods": {
+          "onERC721Received(address,address,uint256,bytes)": {
+            "details": "Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721-safeTransferFrom} by `operator` from `from`, this function is called. It must return its Solidity selector to confirm the token transfer. If any other value is returned or the interface is not implemented by the recipient, the transfer will be reverted. The selector can be obtained in Solidity with `IERC721Receiver.onERC721Received.selector`."
+          }
+        },
+        "version": 1
+      },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/token/ERC721ReceiverMock.sol": "ERC721ReceiverMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/token/ERC721ReceiverMock.sol": {
+        "keccak256": "0x8916bf557c1816ec883a67053f656db4c732eba826fb5960dbdc830ed1cfce53",
+        "urls": [
+          "bzz-raw://bc8029015860d098d79973597ddba9e26ef219f294171bc30ff81e2736197b52",
+          "dweb:/ipfs/QmRXnsR2sr7JR3wrtziWRYkqwwbXSGf9EjGdxYecZakcZi"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721Receiver.sol": {
+        "keccak256": "0xa82b58eca1ee256be466e536706850163d2ec7821945abd6b4778cfb3bee37da",
+        "urls": [
+          "bzz-raw://6e75cf83beb757b8855791088546b8337e9d4684e169400c20d44a515353b708",
+          "dweb:/ipfs/QmYvPafLfoquiDMEj7CKHtvbgHu7TJNPSVPSCjrtjV8HjV"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 145
+}

@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "rootDir": "../..",
+    "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node", "bun-types", "react", "react-dom"],
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
+    ]
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "include": ["src", "vite-env.d.ts"]
+}

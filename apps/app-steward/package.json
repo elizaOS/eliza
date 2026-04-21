@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/app-steward",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./types": "./src/types/index.ts",
+    "./types/*": "./src/types/*.ts",
+    "./api/*": "./src/api/*.ts",
+    "./services/*": "./src/services/*.ts",
+    "./security/*": "./src/security/*.ts",
+    "./routes/*": "./src/routes/*.ts",
+    "./actions/*": "./src/actions/*.ts",
+    "./browser-workspace-wallet": "./src/browser-workspace-wallet.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@stwd/sdk": "^0.3.0",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "ethers": "^6.16.0",
+    "lucide-react": "^1.0.0",
+    "viem": "^2.21.0"
+  }
+}

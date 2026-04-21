@@ -1,0 +1,15 @@
+<!-- Based on Pixel Art GUI Elements by Mounir Tohami (https://mounirtohami.itch.io/pixel-art-gui-elements) -->
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_15_858)">
+<rect x="1" width="14" height="16" fill="#181425"/>
+<rect y="1" width="16" height="14" fill="#181425"/>
+<rect x="1" y="1" width="14" height="14" fill="#743F39"/>
+<rect x="1" y="14" width="14" height="1" fill="#3F2832"/>
+<rect x="1" y="1" width="14" height="1" fill="#B86F50"/>
+</g>
+<defs>
+<clipPath id="clip0_15_858">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
+</svg>

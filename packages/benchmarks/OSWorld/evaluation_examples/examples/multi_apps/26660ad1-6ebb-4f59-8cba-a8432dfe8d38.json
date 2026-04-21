@@ -1,0 +1,77 @@
+{
+  "id": "26660ad1-6ebb-4f59-8cba-a8432dfe8d38",
+  "snapshot": "multiapps",
+  "instruction": "I want to test the quality of the network environment my laptop is currently in. Please measure my network situation through speedtest.net, copy the results in speedtest.net/results, and save them to ~/Test/Speed/results.txt (if the dir does not exist, create it). Each metric occupies one line, with the metric name and its value separated by a single space.",
+  "source": "https://www.speedtest.net/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://www.speedtest.net/"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Google Chrome"
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os",
+    "browser"
+  ],
+  "evaluator": {
+    "func": "file_contains",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Test/Speed/results.txt",
+      "dest": "results.txt"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": [
+          "Ping",
+          "Download",
+          "Upload"
+        ]
+      }
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

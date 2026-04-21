@@ -1,0 +1,126 @@
+[submodule "plugins/plugin-agent-skills"]
+	path = plugins/plugin-agent-skills
+	url = https://github.com/elizaos-plugins/plugin-agent-skills.git
+	branch = alpha
+[submodule "plugins/plugin-anthropic"]
+	path = plugins/plugin-anthropic
+	url = https://github.com/elizaos-plugins/plugin-anthropic.git
+	branch = alpha
+[submodule "plugins/plugin-cli"]
+	path = plugins/plugin-cli
+	url = https://github.com/elizaos-plugins/plugin-cli.git
+[submodule "plugins/plugin-commands"]
+	path = plugins/plugin-commands
+	url = https://github.com/elizaos-plugins/plugin-commands.git
+	branch = alpha
+[submodule "plugins/plugin-cron"]
+	path = plugins/plugin-cron
+	url = https://github.com/elizaos-plugins/plugin-cron.git
+	branch = alpha
+[submodule "plugins/plugin-discord"]
+	path = plugins/plugin-discord
+	url = https://github.com/elizaos-plugins/plugin-discord.git
+	branch = alpha
+[submodule "plugins/plugin-edge-tts"]
+	path = plugins/plugin-edge-tts
+	url = https://github.com/elizaos-plugins/plugin-edge-tts.git
+	branch = alpha
+[submodule "plugins/plugin-evm"]
+	path = plugins/plugin-evm
+	url = https://github.com/elizaos-plugins/plugin-evm.git
+	branch = alpha
+[submodule "plugins/plugin-google-genai"]
+	path = plugins/plugin-google-genai
+	url = https://github.com/elizaos-plugins/plugin-google-genai.git
+	branch = alpha
+[submodule "plugins/plugin-groq"]
+	path = plugins/plugin-groq
+	url = https://github.com/elizaos-plugins/plugin-groq.git
+	branch = alpha
+[submodule "plugins/plugin-imessage"]
+	path = plugins/plugin-imessage
+	url = https://github.com/elizaOS-plugins/plugin-imessage.git
+[submodule "plugins/plugin-local-ai"]
+	path = plugins/plugin-local-ai
+	url = https://github.com/elizaos-plugins/plugin-local-ai.git
+	branch = alpha
+[submodule "plugins/plugin-local-embedding"]
+	path = plugins/plugin-local-embedding
+	url = https://github.com/elizaos-plugins/plugin-local-embedding.git
+	branch = alpha
+[submodule "plugins/plugin-music-library"]
+	path = plugins/plugin-music-library
+	url = https://github.com/elizaos-plugins/plugin-music-library.git
+	branch = alpha
+[submodule "plugins/plugin-music-player"]
+	path = plugins/plugin-music-player
+	url = https://github.com/elizaos-plugins/plugin-music-player.git
+	branch = alpha
+[submodule "plugins/plugin-ollama"]
+	path = plugins/plugin-ollama
+	url = https://github.com/elizaos-plugins/plugin-ollama.git
+	branch = alpha
+[submodule "plugins/plugin-openai"]
+	path = plugins/plugin-openai
+	url = https://github.com/elizaos-plugins/plugin-openai.git
+	branch = alpha
+[submodule "plugins/plugin-openrouter"]
+	path = plugins/plugin-openrouter
+	url = https://github.com/elizaos-plugins/plugin-openrouter.git
+	branch = alpha
+[submodule "plugins/plugin-pdf"]
+	path = plugins/plugin-pdf
+	url = https://github.com/elizaos-plugins/plugin-pdf.git
+	branch = alpha
+[submodule "plugins/plugin-selfcontrol"]
+	path = plugins/plugin-selfcontrol
+	url = https://github.com/elizaos-plugins/plugin-selfcontrol.git
+	branch = alpha
+[submodule "plugins/plugin-shell"]
+	path = plugins/plugin-shell
+	url = https://github.com/elizaos-plugins/plugin-shell.git
+	branch = alpha
+[submodule "plugins/plugin-shopify"]
+	path = plugins/plugin-shopify
+	url = https://github.com/elizaOS-plugins/plugin-shopify.git
+	branch = alpha
+[submodule "plugins/plugin-solana"]
+	path = plugins/plugin-solana
+	url = https://github.com/elizaos-plugins/plugin-solana.git
+	branch = alpha
+[submodule "plugins/plugin-sql"]
+	path = plugins/plugin-sql
+	url = https://github.com/elizaos-plugins/plugin-sql.git
+	branch = alpha
+[submodule "plugins/plugin-telegram"]
+	path = plugins/plugin-telegram
+	url = https://github.com/elizaos-plugins/plugin-telegram.git
+	branch = alpha
+[submodule "plugins/plugin-whatsapp"]
+	path = plugins/plugin-whatsapp
+	url = https://github.com/elizaos-plugins/plugin-whatsapp.git
+	branch = alpha
+[submodule "cloud"]
+	path = cloud
+	url = https://github.com/elizaOS/cloud.git
+	branch = dev
+[submodule "steward-fi"]
+	path = steward-fi
+	url = https://github.com/steward-fi/steward.git
+	branch = cleanup/silent-catches-20260417
+[submodule "plugins/plugin-elizacloud"]
+	path = plugins/plugin-elizacloud
+	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
+	branch = alpha
+[submodule "plugins/plugin-twitter"]
+	path = plugins/plugin-twitter
+	url = https://github.com/elizaos-plugins/plugin-twitter.git
+	branch = alpha
+[submodule "plugins/plugin-wechat"]
+	path = plugins/plugin-wechat
+	url = https://github.com/elizaos-plugins/plugin-wechat.git
+	branch = alpha
+[submodule "plugins/plugin-agent-orchestrator"]
+	path = plugins/plugin-agent-orchestrator
+	url = https://github.com/elizaos-plugins/plugin-agent-orchestrator.git
+	branch = alpha

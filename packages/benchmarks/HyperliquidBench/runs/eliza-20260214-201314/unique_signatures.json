@@ -1,0 +1,6 @@
+[
+  "account.usdClassTransfer.toPerp",
+  "perp.order.ALO:false:none",
+  "perp.order.GTC:true:none",
+  "risk.setLeverage.ETH"
+]

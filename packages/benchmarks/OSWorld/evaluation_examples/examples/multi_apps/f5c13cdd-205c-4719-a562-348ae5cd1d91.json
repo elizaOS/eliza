@@ -1,0 +1,115 @@
+{
+  "id": "f5c13cdd-205c-4719-a562-348ae5cd1d91",
+  "snapshot": "thunderbird",
+  "instruction": "I've drafted an e-mail reminder for those who haven't paid tuition. Please help me to check out their e-mails from the payment record and add to the receiver field.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Departments/finance"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f5c13cdd-205c-4719-a562-348ae5cd1d91/thunderbird-profile.tar.gz",
+            "path": "/home/user/thunderbird-profile.tar.gz"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f5c13cdd-205c-4719-a562-348ae5cd1d91/Payment%20Reminder.html",
+            "path": "/home/user/.payment-reminder-mail-body.html"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f5c13cdd-205c-4719-a562-348ae5cd1d91/tuition.xlsx",
+            "path": "/home/user/Documents/Departments/finance/tuition_payment.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "/usr/bin/thunderbird -compose \"from='Anonym Tester <anonym-x2024@outlook.com>',subject='Reminder of Payment',body='$(cat /home/user/.payment-reminder-mail-body.html)'\"",
+        "shell": true
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Documents/Departments/finance"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/f5c13cdd-205c-4719-a562-348ae5cd1d91",
+  "related_apps": [
+    "thunderbird",
+    "os",
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 10
+        }
+      }
+    ],
+    "func": "check_accessibility_tree",
+    "result": {
+      "type": "accessibility_tree"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": [
+        {
+          "selectors": [
+            "tool-bar[attr|id=MsgHeadersToolbar] label[name=To]~[attr|class=\"address-pill\"]>label[attr|class=\"pill-label\"][name*=\"fox@someuniversity.edu\"]"
+          ]
+        },
+        {
+          "selectors": [
+            "tool-bar[attr|id=MsgHeadersToolbar] label[name=To]~[attr|class=\"address-pill\"]>label[attr|class=\"pill-label\"][name*=\"iron@someuniversity.edu\"]"
+          ]
+        },
+        {
+          "selectors": [
+            "tool-bar[attr|id=MsgHeadersToolbar] label[name=To]~[attr|class=\"address-pill\"]>label[attr|class=\"pill-label\"][name*=\"nancy@someuniversity.edu\"]"
+          ]
+        },
+        {
+          "selectors": [
+            "tool-bar[attr|id=MsgHeadersToolbar] label[name=To]~[attr|class=\"address-pill\"]>label[attr|class=\"pill-label\"][name*=\"stella@someuniversity.edu\"]"
+          ]
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,943 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-12T00:33:19.829565",
+    "duration_seconds": 0.317227840423584,
+    "total_tasks": 18,
+    "categories": [
+      "reasoning",
+      "coding",
+      "decision_making",
+      "information_seeking"
+    ],
+    "config": {
+      "enable_tools": true,
+      "enable_feedback": true,
+      "run_ablation": true,
+      "max_turns": 5,
+      "use_docker": true,
+      "use_llm_feedback": false
+    }
+  },
+  "baseline_results": {
+    "config_name": "baseline",
+    "enable_tools": false,
+    "enable_feedback": false,
+    "metrics": {
+      "overall_success_rate": 0.9444444444444444,
+      "total_tasks": 18,
+      "passed_tasks": 17,
+      "failed_tasks": 1,
+      "category_success_rates": {
+        "reasoning": 0.8,
+        "coding": 1.0,
+        "decision_making": 1.0,
+        "information_seeking": 1.0
+      },
+      "avg_turns_to_success": 1.0,
+      "tool_usage_rate": 0.0,
+      "tool_effectiveness": -0.9444444444444444,
+      "feedback_usage_rate": 0.0,
+      "feedback_effectiveness": -0.9444444444444444,
+      "multi_turn_gain": 0.0,
+      "avg_latency_ms": 1.0497368706597223
+    },
+    "task_results": [
+      {
+        "task_id": "reasoning-001",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 3.072021484375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-002",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.031005859375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-003",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.029411764705882353,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.072998046875,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-004",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.9130859375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-005",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.908203125,
+        "error": null
+      },
+      {
+        "task_id": "coding-001",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.06787109375,
+        "error": null
+      },
+      {
+        "task_id": "coding-002",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.971923828125,
+        "error": null
+      },
+      {
+        "task_id": "coding-003",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.887939453125,
+        "error": null
+      },
+      {
+        "task_id": "coding-004",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.85595703125,
+        "error": null
+      },
+      {
+        "task_id": "coding-005",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.857177734375,
+        "error": null
+      },
+      {
+        "task_id": "decision-001",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.850830078125,
+        "error": null
+      },
+      {
+        "task_id": "decision-002",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.998046875,
+        "error": null
+      },
+      {
+        "task_id": "decision-003",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.82666015625,
+        "error": null
+      },
+      {
+        "task_id": "decision-004",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.819091796875,
+        "error": null
+      },
+      {
+        "task_id": "info-001",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.8310546875,
+        "error": null
+      },
+      {
+        "task_id": "info-002",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.838134765625,
+        "error": null
+      },
+      {
+        "task_id": "info-003",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.090087890625,
+        "error": null
+      },
+      {
+        "task_id": "info-004",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.003173828125,
+        "error": null
+      }
+    ]
+  },
+  "tools_only_results": {
+    "config_name": "tools_only",
+    "enable_tools": true,
+    "enable_feedback": false,
+    "metrics": {
+      "overall_success_rate": 0.7222222222222222,
+      "total_tasks": 18,
+      "passed_tasks": 13,
+      "failed_tasks": 5,
+      "category_success_rates": {
+        "reasoning": 0.0,
+        "coding": 1.0,
+        "decision_making": 1.0,
+        "information_seeking": 1.0
+      },
+      "avg_turns_to_success": 1.0,
+      "tool_usage_rate": 0.2777777777777778,
+      "tool_effectiveness": -1.0,
+      "feedback_usage_rate": 0.0,
+      "feedback_effectiveness": -0.7222222222222222,
+      "multi_turn_gain": 0.0,
+      "avg_latency_ms": 13.5321044921875
+    },
+    "task_results": [
+      {
+        "task_id": "reasoning-001",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 212.632080078125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-002",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.8798828125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-003",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.769775390625,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-004",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.523193359375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-005",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.255126953125,
+        "error": null
+      },
+      {
+        "task_id": "coding-001",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.2587890625,
+        "error": null
+      },
+      {
+        "task_id": "coding-002",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.99365234375,
+        "error": null
+      },
+      {
+        "task_id": "coding-003",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.925048828125,
+        "error": null
+      },
+      {
+        "task_id": "coding-004",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.89111328125,
+        "error": null
+      },
+      {
+        "task_id": "coding-005",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.876220703125,
+        "error": null
+      },
+      {
+        "task_id": "decision-001",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.865966796875,
+        "error": null
+      },
+      {
+        "task_id": "decision-002",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.2529296875,
+        "error": null
+      },
+      {
+        "task_id": "decision-003",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.990966796875,
+        "error": null
+      },
+      {
+        "task_id": "decision-004",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.890869140625,
+        "error": null
+      },
+      {
+        "task_id": "info-001",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.84814453125,
+        "error": null
+      },
+      {
+        "task_id": "info-002",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.97802734375,
+        "error": null
+      },
+      {
+        "task_id": "info-003",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.89208984375,
+        "error": null
+      },
+      {
+        "task_id": "info-004",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.85400390625,
+        "error": null
+      }
+    ]
+  },
+  "feedback_only_results": {
+    "config_name": "feedback_only",
+    "enable_tools": false,
+    "enable_feedback": true,
+    "metrics": {
+      "overall_success_rate": 0.9444444444444444,
+      "total_tasks": 18,
+      "passed_tasks": 17,
+      "failed_tasks": 1,
+      "category_success_rates": {
+        "reasoning": 0.8,
+        "coding": 1.0,
+        "decision_making": 1.0,
+        "information_seeking": 1.0
+      },
+      "avg_turns_to_success": 1.0,
+      "tool_usage_rate": 0.0,
+      "tool_effectiveness": -0.9444444444444444,
+      "feedback_usage_rate": 0.05555555555555555,
+      "feedback_effectiveness": -1.0,
+      "multi_turn_gain": 0.0,
+      "avg_latency_ms": 1.1071099175347223
+    },
+    "task_results": [
+      {
+        "task_id": "reasoning-001",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.867919921875,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-002",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.8740234375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-003",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.029411764705882353,
+        "turns_used": 5,
+        "tool_uses": 0,
+        "feedback_turns": 4,
+        "latency_ms": 4.718017578125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-004",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.934814453125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-005",
+        "category": "reasoning",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.162109375,
+        "error": null
+      },
+      {
+        "task_id": "coding-001",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.939453125,
+        "error": null
+      },
+      {
+        "task_id": "coding-002",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.89794921875,
+        "error": null
+      },
+      {
+        "task_id": "coding-003",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.89013671875,
+        "error": null
+      },
+      {
+        "task_id": "coding-004",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.85986328125,
+        "error": null
+      },
+      {
+        "task_id": "coding-005",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.857177734375,
+        "error": null
+      },
+      {
+        "task_id": "decision-001",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.846923828125,
+        "error": null
+      },
+      {
+        "task_id": "decision-002",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.85791015625,
+        "error": null
+      },
+      {
+        "task_id": "decision-003",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.850830078125,
+        "error": null
+      },
+      {
+        "task_id": "decision-004",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.864990234375,
+        "error": null
+      },
+      {
+        "task_id": "info-001",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.849853515625,
+        "error": null
+      },
+      {
+        "task_id": "info-002",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.84912109375,
+        "error": null
+      },
+      {
+        "task_id": "info-003",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.919677734375,
+        "error": null
+      },
+      {
+        "task_id": "info-004",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.88720703125,
+        "error": null
+      }
+    ]
+  },
+  "full_results": {
+    "config_name": "full",
+    "enable_tools": true,
+    "enable_feedback": true,
+    "metrics": {
+      "overall_success_rate": 0.7222222222222222,
+      "total_tasks": 18,
+      "passed_tasks": 13,
+      "failed_tasks": 5,
+      "category_success_rates": {
+        "reasoning": 0.0,
+        "coding": 1.0,
+        "decision_making": 1.0,
+        "information_seeking": 1.0
+      },
+      "avg_turns_to_success": 1.0,
+      "tool_usage_rate": 0.2777777777777778,
+      "tool_effectiveness": -1.0,
+      "feedback_usage_rate": 0.0,
+      "feedback_effectiveness": -0.7222222222222222,
+      "multi_turn_gain": 0.0,
+      "avg_latency_ms": 1.8682996961805556
+    },
+    "task_results": [
+      {
+        "task_id": "reasoning-001",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.23193359375,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-002",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.1259765625,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-003",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.658203125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-004",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.682861328125,
+        "error": null
+      },
+      {
+        "task_id": "reasoning-005",
+        "category": "reasoning",
+        "success": false,
+        "score": 0.0,
+        "turns_used": 5,
+        "tool_uses": 5,
+        "feedback_turns": 0,
+        "latency_ms": 4.358642578125,
+        "error": null
+      },
+      {
+        "task_id": "coding-001",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.87109375,
+        "error": null
+      },
+      {
+        "task_id": "coding-002",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.866943359375,
+        "error": null
+      },
+      {
+        "task_id": "coding-003",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.955810546875,
+        "error": null
+      },
+      {
+        "task_id": "coding-004",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.88330078125,
+        "error": null
+      },
+      {
+        "task_id": "coding-005",
+        "category": "coding",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.83984375,
+        "error": null
+      },
+      {
+        "task_id": "decision-001",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.843017578125,
+        "error": null
+      },
+      {
+        "task_id": "decision-002",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.85009765625,
+        "error": null
+      },
+      {
+        "task_id": "decision-003",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.8330078125,
+        "error": null
+      },
+      {
+        "task_id": "decision-004",
+        "category": "decision_making",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.839111328125,
+        "error": null
+      },
+      {
+        "task_id": "info-001",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.83984375,
+        "error": null
+      },
+      {
+        "task_id": "info-002",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 0.84716796875,
+        "error": null
+      },
+      {
+        "task_id": "info-003",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.083251953125,
+        "error": null
+      },
+      {
+        "task_id": "info-004",
+        "category": "information_seeking",
+        "success": true,
+        "score": 1.0,
+        "turns_used": 1,
+        "tool_uses": 0,
+        "feedback_turns": 0,
+        "latency_ms": 1.019287109375,
+        "error": null
+      }
+    ]
+  },
+  "comparison": {
+    "baseline_success_rate": 0.9444444444444444,
+    "tools_success_rate": 0.7222222222222222,
+    "tool_improvement": -0.2222222222222222,
+    "feedback_success_rate": 0.9444444444444444,
+    "feedback_improvement": 0.0,
+    "full_success_rate": 0.7222222222222222,
+    "combined_improvement": -0.2222222222222222,
+    "synergy": 0.0
+  },
+  "summary": {
+    "status": "excellent",
+    "best_configuration": "baseline",
+    "best_success_rate": "94.4%",
+    "key_findings": [
+      "Excellent performance with 94.4% success rate",
+      "Tool use may be hindering performance",
+      "Strong performance in coding tasks (100.0%)",
+      "Strong performance in decision_making tasks (100.0%)",
+      "Strong performance in information_seeking tasks (100.0%)"
+    ],
+    "recommendations": [
+      "Review tool integration and code execution accuracy",
+      "Improve reasoning task handling"
+    ]
+  }
+}

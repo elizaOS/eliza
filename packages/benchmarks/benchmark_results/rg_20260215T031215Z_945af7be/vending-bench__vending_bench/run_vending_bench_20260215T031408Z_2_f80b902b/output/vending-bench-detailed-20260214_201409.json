@@ -1,0 +1,3414 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-14T20:14:09.145313",
+    "duration_seconds": 0.006545066833496094,
+    "total_runs": 1,
+    "successful_runs": 1,
+    "model_name": "qwen/qwen3-32b",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 1,
+    "max_days_per_run": 30,
+    "initial_cash": "500.0",
+    "random_seed": null,
+    "daily_base_fee": "5.00",
+    "slot_fee": "0.50",
+    "machine_rows": 4,
+    "machine_columns": 3,
+    "location": "Office Building Lobby",
+    "max_actions_per_day": 10,
+    "context_window_tokens": 30000,
+    "temperature": 0.0,
+    "model_name": "qwen/qwen3-32b",
+    "output_dir": "/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031215Z_945af7be/vending-bench__vending_bench/run_vending_bench_20260215T031408Z_2_f80b902b/output",
+    "save_detailed_logs": true,
+    "save_trajectories": true,
+    "generate_report": true,
+    "compare_leaderboard": true
+  },
+  "metrics": {
+    "avg_net_worth": "522.1",
+    "max_net_worth": "522.1",
+    "min_net_worth": "522.1",
+    "std_net_worth": "0",
+    "median_net_worth": "522.1",
+    "success_rate": 1.0,
+    "avg_profit": "22.1",
+    "profitability_rate": 1.0,
+    "avg_items_sold": 366,
+    "avg_orders_placed": 19,
+    "avg_stockout_days": 20,
+    "avg_simulation_days": 30,
+    "coherence_score": 0.137,
+    "avg_coherence_errors": 108.0,
+    "avg_tokens_per_run": 0.0,
+    "avg_tokens_per_day": 0.0,
+    "avg_latency_per_action_ms": 0.004992525801699386,
+    "error_breakdown": {
+      "CoherenceErrorType.DUPLICATE_ORDER": 91,
+      "CoherenceErrorType.FORGOTTEN_ORDER": 13,
+      "CoherenceErrorType.INVENTORY_TRACKING": 4
+    }
+  },
+  "leaderboard_comparison": {
+    "our_score": "522.1",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      [
+        "Grok 4",
+        "4694.15",
+        "-$4172.05 (worse)"
+      ],
+      [
+        "Claude 3.5 Sonnet",
+        "2217.93",
+        "-$1695.83 (worse)"
+      ],
+      [
+        "Claude Opus 4",
+        "2077.41",
+        "-$1555.31 (worse)"
+      ],
+      [
+        "GPT-4o",
+        "1850.00",
+        "-$1327.90 (worse)"
+      ],
+      [
+        "GPT-4",
+        "1500.00",
+        "-$977.90 (worse)"
+      ]
+    ]
+  },
+  "summary": {
+    "status": "excellent",
+    "best_net_worth": "$522.10",
+    "avg_net_worth": "$522.10",
+    "profitability_rate": "100%",
+    "coherence_score": "13.7%",
+    "key_findings": [
+      "Excellent performance: 100% of runs profitable",
+      "Average net worth: $522.10 (range: $522.10 - $522.10)",
+      "Coherence issues detected: 13.7% score",
+      "Common error: duplicate_order (91 occurrences)",
+      "Common error: forgotten_order (13 occurrences)",
+      "Common error: inventory_tracking (4 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Review and improve long-term decision consistency",
+      "Reduce stockouts - consider more frequent/larger orders"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "522.10",
+      "initial_cash": "500.0",
+      "profit": "22.10",
+      "total_revenue": "582.50",
+      "total_costs": "231.70",
+      "total_operational_fees": "330.00",
+      "items_sold": 366,
+      "orders_placed": 19,
+      "successful_deliveries": 18,
+      "stockout_days": 20,
+      "coherence_errors": [
+        {
+          "error_type": "duplicate_order",
+          "day": 2,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 2,
+          "description": "Received deliveries (ORD-0001) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 7,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 7,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 7,
+          "description": "Received deliveries (ORD-0007) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 9,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 9,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 9,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 9,
+          "description": "Received deliveries (ORD-0008) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 11,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 11,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 11,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 11,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 11,
+          "description": "Received deliveries (ORD-0009) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 13,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 13,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 13,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 13,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 13,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 13,
+          "description": "Received deliveries (ORD-0010) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 15,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 15,
+          "description": "Received deliveries (ORD-0011) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 17,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 17,
+          "description": "Received deliveries (ORD-0012) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 19,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 19,
+          "description": "Received deliveries (ORD-0013) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 21,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 19",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 21,
+          "description": "Received deliveries (ORD-0014) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 19",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 23,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 21",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 23,
+          "description": "Received deliveries (ORD-0015) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 19",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 21",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 25,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 23",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 25,
+          "description": "Received deliveries (ORD-0016) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 19",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 21",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 23",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 27,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 25",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 27,
+          "description": "Received deliveries (ORD-0017) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 1",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 2",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 7",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 9",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 11",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 13",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 15",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 17",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 19",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 21",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 23",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 25",
+          "severity": 0.7
+        },
+        {
+          "error_type": "duplicate_order",
+          "day": 29,
+          "description": "Ordered {'cookies', 'chips_regular'} while same products still pending from day 27",
+          "severity": 0.7
+        },
+        {
+          "error_type": "forgotten_order",
+          "day": 29,
+          "description": "Received deliveries (ORD-0018) but did not attempt to restock",
+          "severity": 0.8
+        },
+        {
+          "error_type": "inventory_tracking",
+          "day": 5,
+          "description": "Stockouts for 3 consecutive days without ordering affected products: ['cookies', 'chips_regular']",
+          "severity": 0.9
+        },
+        {
+          "error_type": "inventory_tracking",
+          "day": 6,
+          "description": "Stockouts for 4 consecutive days without ordering affected products: ['cookies', 'chips_regular']",
+          "severity": 0.9
+        },
+        {
+          "error_type": "inventory_tracking",
+          "day": 8,
+          "description": "Stockouts for 5 consecutive days without ordering affected products: ['soda_cola', 'water']",
+          "severity": 0.9
+        },
+        {
+          "error_type": "inventory_tracking",
+          "day": 9,
+          "description": "Stockouts for 6 consecutive days without ordering affected products: ['soda_cola']",
+          "severity": 0.9
+        }
+      ],
+      "daily_summaries": [
+        {
+          "day_number": 1,
+          "sim_date": "2026-02-14",
+          "weather": "cold",
+          "season": "winter",
+          "sales": [],
+          "total_revenue": "0",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "429.40",
+          "ending_cash_in_machine": "0",
+          "ending_inventory_value": "0",
+          "net_worth": "429.40",
+          "stockout_products": [],
+          "agent_actions": [
+            "VIEW_BUSINESS_STATE",
+            "PLACE_ORDER",
+            "VIEW_BUSINESS_STATE",
+            "PLACE_ORDER",
+            "VIEW_BUSINESS_STATE",
+            "PLACE_ORDER",
+            "VIEW_BUSINESS_STATE",
+            "PLACE_ORDER",
+            "VIEW_BUSINESS_STATE",
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 2,
+          "sim_date": "2026-02-15",
+          "weather": "cold",
+          "season": "winter",
+          "sales": [],
+          "total_revenue": "0",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0001"
+          ],
+          "ending_cash_on_hand": "405.90",
+          "ending_cash_in_machine": "0",
+          "ending_inventory_value": "0",
+          "net_worth": "405.90",
+          "stockout_products": [],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 3,
+          "sim_date": "2026-02-16",
+          "weather": "snowy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "water",
+              "quantity": 7,
+              "unit_price": "1.25",
+              "revenue": "8.75",
+              "timestamp": "2026-02-16"
+            },
+            {
+              "product_id": "water",
+              "quantity": 2,
+              "unit_price": "1.25",
+              "revenue": "2.50",
+              "timestamp": "2026-02-16"
+            },
+            {
+              "product_id": "soda_cola",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-16"
+            },
+            {
+              "product_id": "soda_cola",
+              "quantity": 2,
+              "unit_price": "1.50",
+              "revenue": "3.00",
+              "timestamp": "2026-02-16"
+            }
+          ],
+          "total_revenue": "23.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0002",
+            "ORD-0003",
+            "ORD-0004",
+            "ORD-0005"
+          ],
+          "ending_cash_on_hand": "394.90",
+          "ending_cash_in_machine": "23.25",
+          "ending_inventory_value": "2.90",
+          "net_worth": "421.05",
+          "stockout_products": [
+            "soda_cola",
+            "water"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 4,
+          "sim_date": "2026-02-17",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "water",
+              "quantity": 3,
+              "unit_price": "1.25",
+              "revenue": "3.75",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "soda_cola",
+              "quantity": 4,
+              "unit_price": "1.50",
+              "revenue": "6.00",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 8,
+              "unit_price": "1.50",
+              "revenue": "12.00",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 10,
+              "unit_price": "1.75",
+              "revenue": "17.50",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 6,
+              "unit_price": "1.75",
+              "revenue": "10.50",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 5,
+              "unit_price": "1.75",
+              "revenue": "8.75",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-17"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 2,
+              "unit_price": "1.50",
+              "revenue": "3.00",
+              "timestamp": "2026-02-17"
+            }
+          ],
+          "total_revenue": "88.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0006"
+          ],
+          "ending_cash_on_hand": "383.90",
+          "ending_cash_in_machine": "111.75",
+          "ending_inventory_value": "1.85",
+          "net_worth": "497.50",
+          "stockout_products": [
+            "cookies",
+            "chips_regular",
+            "soda_cola",
+            "water"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 5,
+          "sim_date": "2026-02-18",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 5,
+              "unit_price": "1.50",
+              "revenue": "7.50",
+              "timestamp": "2026-02-18"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 10,
+              "unit_price": "1.75",
+              "revenue": "17.50",
+              "timestamp": "2026-02-18"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-18"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 4,
+              "unit_price": "1.50",
+              "revenue": "6.00",
+              "timestamp": "2026-02-18"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 6,
+              "unit_price": "1.75",
+              "revenue": "10.50",
+              "timestamp": "2026-02-18"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 5,
+              "unit_price": "1.75",
+              "revenue": "8.75",
+              "timestamp": "2026-02-18"
+            }
+          ],
+          "total_revenue": "59.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "484.65",
+          "ending_cash_in_machine": "59.25",
+          "ending_inventory_value": "4.85",
+          "net_worth": "548.75",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 6,
+          "sim_date": "2026-02-19",
+          "weather": "snowy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 5,
+              "unit_price": "1.50",
+              "revenue": "7.50",
+              "timestamp": "2026-02-19"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 7,
+              "unit_price": "1.75",
+              "revenue": "12.25",
+              "timestamp": "2026-02-19"
+            },
+            {
+              "product_id": "chips_regular",
+              "quantity": 2,
+              "unit_price": "1.50",
+              "revenue": "3.00",
+              "timestamp": "2026-02-19"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 1,
+              "unit_price": "1.75",
+              "revenue": "1.75",
+              "timestamp": "2026-02-19"
+            }
+          ],
+          "total_revenue": "24.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "523.30",
+          "ending_cash_in_machine": "24.50",
+          "ending_inventory_value": "0",
+          "net_worth": "547.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 7,
+          "sim_date": "2026-02-20",
+          "weather": "cold",
+          "season": "winter",
+          "sales": [],
+          "total_revenue": "0",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0007"
+          ],
+          "ending_cash_on_hand": "499.80",
+          "ending_cash_in_machine": "24.50",
+          "ending_inventory_value": "0",
+          "net_worth": "524.30",
+          "stockout_products": [],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 8,
+          "sim_date": "2026-02-21",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "water",
+              "quantity": 10,
+              "unit_price": "1.25",
+              "revenue": "12.50",
+              "timestamp": "2026-02-21"
+            },
+            {
+              "product_id": "water",
+              "quantity": 2,
+              "unit_price": "1.25",
+              "revenue": "2.50",
+              "timestamp": "2026-02-21"
+            },
+            {
+              "product_id": "soda_cola",
+              "quantity": 7,
+              "unit_price": "1.50",
+              "revenue": "10.50",
+              "timestamp": "2026-02-21"
+            },
+            {
+              "product_id": "soda_cola",
+              "quantity": 2,
+              "unit_price": "1.50",
+              "revenue": "3.00",
+              "timestamp": "2026-02-21"
+            }
+          ],
+          "total_revenue": "28.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "488.80",
+          "ending_cash_in_machine": "53.00",
+          "ending_inventory_value": "1.50",
+          "net_worth": "543.30",
+          "stockout_products": [
+            "soda_cola",
+            "water"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 9,
+          "sim_date": "2026-02-22",
+          "weather": "snowy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "soda_cola",
+              "quantity": 3,
+              "unit_price": "1.50",
+              "revenue": "4.50",
+              "timestamp": "2026-02-22"
+            }
+          ],
+          "total_revenue": "4.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0008"
+          ],
+          "ending_cash_on_hand": "518.30",
+          "ending_cash_in_machine": "4.50",
+          "ending_inventory_value": "0",
+          "net_worth": "522.80",
+          "stockout_products": [
+            "soda_cola"
+          ],
+          "agent_actions": [
+            "COLLECT_CASH",
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 10,
+          "sim_date": "2026-02-23",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 8,
+              "unit_price": "1.50",
+              "revenue": "12.00",
+              "timestamp": "2026-02-23"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 7,
+              "unit_price": "1.75",
+              "revenue": "12.25",
+              "timestamp": "2026-02-23"
+            }
+          ],
+          "total_revenue": "24.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "507.30",
+          "ending_cash_in_machine": "28.75",
+          "ending_inventory_value": "3.15",
+          "net_worth": "539.20",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 11,
+          "sim_date": "2026-02-24",
+          "weather": "cold",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 2,
+              "unit_price": "1.50",
+              "revenue": "3.00",
+              "timestamp": "2026-02-24"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 3,
+              "unit_price": "1.75",
+              "revenue": "5.25",
+              "timestamp": "2026-02-24"
+            }
+          ],
+          "total_revenue": "8.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0009"
+          ],
+          "ending_cash_on_hand": "483.80",
+          "ending_cash_in_machine": "37.00",
+          "ending_inventory_value": "0",
+          "net_worth": "520.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 12,
+          "sim_date": "2026-02-25",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 7,
+              "unit_price": "1.50",
+              "revenue": "10.50",
+              "timestamp": "2026-02-25"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 10,
+              "unit_price": "1.75",
+              "revenue": "17.50",
+              "timestamp": "2026-02-25"
+            }
+          ],
+          "total_revenue": "28.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "509.80",
+          "ending_cash_in_machine": "28.00",
+          "ending_inventory_value": "1.80",
+          "net_worth": "539.60",
+          "stockout_products": [
+            "cookies"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 13,
+          "sim_date": "2026-02-26",
+          "weather": "cloudy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 3,
+              "unit_price": "1.50",
+              "revenue": "4.50",
+              "timestamp": "2026-02-26"
+            }
+          ],
+          "total_revenue": "4.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0010"
+          ],
+          "ending_cash_on_hand": "486.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "518.80",
+          "stockout_products": [
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 14,
+          "sim_date": "2026-02-27",
+          "weather": "snowy",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-02-27"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 10,
+              "unit_price": "1.75",
+              "revenue": "17.50",
+              "timestamp": "2026-02-27"
+            }
+          ],
+          "total_revenue": "26.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "507.80",
+          "ending_cash_in_machine": "26.50",
+          "ending_inventory_value": "2.40",
+          "net_worth": "536.70",
+          "stockout_products": [
+            "cookies"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 15,
+          "sim_date": "2026-02-28",
+          "weather": "cold",
+          "season": "winter",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 4,
+              "unit_price": "1.50",
+              "revenue": "6.00",
+              "timestamp": "2026-02-28"
+            }
+          ],
+          "total_revenue": "6.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0011"
+          ],
+          "ending_cash_on_hand": "484.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "516.80",
+          "stockout_products": [
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 16,
+          "sim_date": "2026-03-01",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 7,
+              "unit_price": "1.50",
+              "revenue": "10.50",
+              "timestamp": "2026-03-01"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 9,
+              "unit_price": "1.75",
+              "revenue": "15.75",
+              "timestamp": "2026-03-01"
+            }
+          ],
+          "total_revenue": "26.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "505.80",
+          "ending_cash_in_machine": "26.25",
+          "ending_inventory_value": "2.45",
+          "net_worth": "534.50",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 17,
+          "sim_date": "2026-03-02",
+          "weather": "cloudy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 3,
+              "unit_price": "1.50",
+              "revenue": "4.50",
+              "timestamp": "2026-03-02"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 1,
+              "unit_price": "1.75",
+              "revenue": "1.75",
+              "timestamp": "2026-03-02"
+            }
+          ],
+          "total_revenue": "6.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0012"
+          ],
+          "ending_cash_on_hand": "482.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "514.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 18,
+          "sim_date": "2026-03-03",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 4,
+              "unit_price": "1.50",
+              "revenue": "6.00",
+              "timestamp": "2026-03-03"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 7,
+              "unit_price": "1.75",
+              "revenue": "12.25",
+              "timestamp": "2026-03-03"
+            }
+          ],
+          "total_revenue": "18.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "503.80",
+          "ending_cash_in_machine": "18.25",
+          "ending_inventory_value": "5.55",
+          "net_worth": "527.60",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 19,
+          "sim_date": "2026-03-04",
+          "weather": "cloudy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-03-04"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 3,
+              "unit_price": "1.75",
+              "revenue": "5.25",
+              "timestamp": "2026-03-04"
+            }
+          ],
+          "total_revenue": "14.25",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0013"
+          ],
+          "ending_cash_on_hand": "480.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "512.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 20,
+          "sim_date": "2026-03-05",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 7,
+              "unit_price": "1.50",
+              "revenue": "10.50",
+              "timestamp": "2026-03-05"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 7,
+              "unit_price": "1.75",
+              "revenue": "12.25",
+              "timestamp": "2026-03-05"
+            }
+          ],
+          "total_revenue": "22.75",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "501.80",
+          "ending_cash_in_machine": "22.75",
+          "ending_inventory_value": "3.75",
+          "net_worth": "528.30",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 21,
+          "sim_date": "2026-03-06",
+          "weather": "sunny",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 3,
+              "unit_price": "1.50",
+              "revenue": "4.50",
+              "timestamp": "2026-03-06"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 3,
+              "unit_price": "1.75",
+              "revenue": "5.25",
+              "timestamp": "2026-03-06"
+            }
+          ],
+          "total_revenue": "9.75",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0014"
+          ],
+          "ending_cash_on_hand": "478.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "510.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 22,
+          "sim_date": "2026-03-07",
+          "weather": "cloudy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 9,
+              "unit_price": "1.50",
+              "revenue": "13.50",
+              "timestamp": "2026-03-07"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 6,
+              "unit_price": "1.75",
+              "revenue": "10.50",
+              "timestamp": "2026-03-07"
+            }
+          ],
+          "total_revenue": "24.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "499.80",
+          "ending_cash_in_machine": "24.00",
+          "ending_inventory_value": "3.20",
+          "net_worth": "527.00",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 23,
+          "sim_date": "2026-03-08",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 1,
+              "unit_price": "1.50",
+              "revenue": "1.50",
+              "timestamp": "2026-03-08"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 4,
+              "unit_price": "1.75",
+              "revenue": "7.00",
+              "timestamp": "2026-03-08"
+            }
+          ],
+          "total_revenue": "8.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0015"
+          ],
+          "ending_cash_on_hand": "476.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "508.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 24,
+          "sim_date": "2026-03-09",
+          "weather": "sunny",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 5,
+              "unit_price": "1.50",
+              "revenue": "7.50",
+              "timestamp": "2026-03-09"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 4,
+              "unit_price": "1.75",
+              "revenue": "7.00",
+              "timestamp": "2026-03-09"
+            }
+          ],
+          "total_revenue": "14.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "497.80",
+          "ending_cash_in_machine": "14.50",
+          "ending_inventory_value": "6.90",
+          "net_worth": "519.20",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 25,
+          "sim_date": "2026-03-10",
+          "weather": "cloudy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 5,
+              "unit_price": "1.50",
+              "revenue": "7.50",
+              "timestamp": "2026-03-10"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 6,
+              "unit_price": "1.75",
+              "revenue": "10.50",
+              "timestamp": "2026-03-10"
+            }
+          ],
+          "total_revenue": "18.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0016"
+          ],
+          "ending_cash_on_hand": "474.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "506.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 26,
+          "sim_date": "2026-03-11",
+          "weather": "sunny",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 10,
+              "unit_price": "1.50",
+              "revenue": "15.00",
+              "timestamp": "2026-03-11"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 4,
+              "unit_price": "1.75",
+              "revenue": "7.00",
+              "timestamp": "2026-03-11"
+            }
+          ],
+          "total_revenue": "22.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "495.80",
+          "ending_cash_in_machine": "22.00",
+          "ending_inventory_value": "3.90",
+          "net_worth": "521.70",
+          "stockout_products": [
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 27,
+          "sim_date": "2026-03-12",
+          "weather": "cloudy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "cookies",
+              "quantity": 6,
+              "unit_price": "1.75",
+              "revenue": "10.50",
+              "timestamp": "2026-03-12"
+            }
+          ],
+          "total_revenue": "10.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0017"
+          ],
+          "ending_cash_on_hand": "472.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "504.80",
+          "stockout_products": [
+            "cookies"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 28,
+          "sim_date": "2026-03-13",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 6,
+              "unit_price": "1.50",
+              "revenue": "9.00",
+              "timestamp": "2026-03-13"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 8,
+              "unit_price": "1.75",
+              "revenue": "14.00",
+              "timestamp": "2026-03-13"
+            }
+          ],
+          "total_revenue": "23.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "493.80",
+          "ending_cash_in_machine": "23.00",
+          "ending_inventory_value": "3.70",
+          "net_worth": "520.50",
+          "stockout_products": [],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 29,
+          "sim_date": "2026-03-14",
+          "weather": "sunny",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 4,
+              "unit_price": "1.50",
+              "revenue": "6.00",
+              "timestamp": "2026-03-14"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 2,
+              "unit_price": "1.75",
+              "revenue": "3.50",
+              "timestamp": "2026-03-14"
+            }
+          ],
+          "total_revenue": "9.50",
+          "operational_fees": "11.00",
+          "deliveries_received": [
+            "ORD-0018"
+          ],
+          "ending_cash_on_hand": "470.30",
+          "ending_cash_in_machine": "32.50",
+          "ending_inventory_value": "0",
+          "net_worth": "502.80",
+          "stockout_products": [
+            "cookies",
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "PLACE_ORDER",
+            "ADVANCE_DAY"
+          ]
+        },
+        {
+          "day_number": 30,
+          "sim_date": "2026-03-15",
+          "weather": "rainy",
+          "season": "spring",
+          "sales": [
+            {
+              "product_id": "chips_regular",
+              "quantity": 10,
+              "unit_price": "1.50",
+              "revenue": "15.00",
+              "timestamp": "2026-03-15"
+            },
+            {
+              "product_id": "cookies",
+              "quantity": 8,
+              "unit_price": "1.75",
+              "revenue": "14.00",
+              "timestamp": "2026-03-15"
+            }
+          ],
+          "total_revenue": "29.00",
+          "operational_fees": "11.00",
+          "deliveries_received": [],
+          "ending_cash_on_hand": "491.80",
+          "ending_cash_in_machine": "29.00",
+          "ending_inventory_value": "1.30",
+          "net_worth": "522.10",
+          "stockout_products": [
+            "chips_regular"
+          ],
+          "agent_actions": [
+            "RESTOCK_SLOT",
+            "RESTOCK_SLOT",
+            "COLLECT_CASH",
+            "ADVANCE_DAY"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "VIEW_BUSINESS_STATE",
+          "day": 1,
+          "parameters": {},
+          "result": "\n=== Business State (Day 1) ===\nDate: 2026-02-14\nCash on Hand: $500.00\nCash in Machine: $0.00\nNet Worth: $500.00\n\n=== Vending Machine (Office Building Lobby) ===\n  [0,0] Empty\n  [0,1] Empty\n  [0,2] Empty\n  [1,0] Empty\n  [1,1] Empty\n  [1,2] Empty\n  [2,0] Empty\n  [2,1] Empty\n  [2,2] Empty\n  [3,0] Empty\n  [3,1] Empty\n  [3,2] Empty\n\n=== Pending Orders ===\n  None\n\n=== Delivered Inventory (Ready to Restock) ===\n  None\n\n=== Notes ===\n  None\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0021457672119140625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 1,
+          "parameters": {
+            "supplier_id": "beverage_dist",
+            "items": {
+              "water": 12,
+              "soda_cola": 12
+            }
+          },
+          "result": "Order ORD-0001 placed successfully.\nItems: waterx12, soda_colax12\nTotal cost: $9.60\nExpected delivery: 2026-02-15",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.019073486328125
+        },
+        {
+          "action_type": "VIEW_BUSINESS_STATE",
+          "day": 1,
+          "parameters": {},
+          "result": "\n=== Business State (Day 1) ===\nDate: 2026-02-14\nCash on Hand: $490.40\nCash in Machine: $0.00\nNet Worth: $490.40\n\n=== Vending Machine (Office Building Lobby) ===\n  [0,0] Empty\n  [0,1] Empty\n  [0,2] Empty\n  [1,0] Empty\n  [1,1] Empty\n  [1,2] Empty\n  [2,0] Empty\n  [2,1] Empty\n  [2,2] Empty\n  [3,0] Empty\n  [3,1] Empty\n  [3,2] Empty\n\n=== Pending Orders ===\n  ORD-0001: confirmed (expected: 2026-02-15) - waterx12, soda_colax12\n\n=== Delivered Inventory (Ready to Restock) ===\n  None\n\n=== Notes ===\n  None\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0011920928955078125
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 1,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0002 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-16",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.014066696166992188
+        },
+        {
+          "action_type": "VIEW_BUSINESS_STATE",
+          "day": 1,
+          "parameters": {},
+          "result": "\n=== Business State (Day 1) ===\nDate: 2026-02-14\nCash on Hand: $477.90\nCash in Machine: $0.00\nNet Worth: $477.90\n\n=== Vending Machine (Office Building Lobby) ===\n  [0,0] Empty\n  [0,1] Empty\n  [0,2] Empty\n  [1,0] Empty\n  [1,1] Empty\n  [1,2] Empty\n  [2,0] Empty\n  [2,1] Empty\n  [2,2] Empty\n  [3,0] Empty\n  [3,1] Empty\n  [3,2] Empty\n\n=== Pending Orders ===\n  ORD-0001: confirmed (expected: 2026-02-15) - waterx12, soda_colax12\n  ORD-0002: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n\n=== Delivered Inventory (Ready to Restock) ===\n  None\n\n=== Notes ===\n  None\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 1,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0003 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-16",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.009059906005859375
+        },
+        {
+          "action_type": "VIEW_BUSINESS_STATE",
+          "day": 1,
+          "parameters": {},
+          "result": "\n=== Business State (Day 1) ===\nDate: 2026-02-14\nCash on Hand: $465.40\nCash in Machine: $0.00\nNet Worth: $465.40\n\n=== Vending Machine (Office Building Lobby) ===\n  [0,0] Empty\n  [0,1] Empty\n  [0,2] Empty\n  [1,0] Empty\n  [1,1] Empty\n  [1,2] Empty\n  [2,0] Empty\n  [2,1] Empty\n  [2,2] Empty\n  [3,0] Empty\n  [3,1] Empty\n  [3,2] Empty\n\n=== Pending Orders ===\n  ORD-0001: confirmed (expected: 2026-02-15) - waterx12, soda_colax12\n  ORD-0002: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n  ORD-0003: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n\n=== Delivered Inventory (Ready to Restock) ===\n  None\n\n=== Notes ===\n  None\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 1,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0004 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-16",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.006198883056640625
+        },
+        {
+          "action_type": "VIEW_BUSINESS_STATE",
+          "day": 1,
+          "parameters": {},
+          "result": "\n=== Business State (Day 1) ===\nDate: 2026-02-14\nCash on Hand: $452.90\nCash in Machine: $0.00\nNet Worth: $452.90\n\n=== Vending Machine (Office Building Lobby) ===\n  [0,0] Empty\n  [0,1] Empty\n  [0,2] Empty\n  [1,0] Empty\n  [1,1] Empty\n  [1,2] Empty\n  [2,0] Empty\n  [2,1] Empty\n  [2,2] Empty\n  [3,0] Empty\n  [3,1] Empty\n  [3,2] Empty\n\n=== Pending Orders ===\n  ORD-0001: confirmed (expected: 2026-02-15) - waterx12, soda_colax12\n  ORD-0002: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n  ORD-0003: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n  ORD-0004: confirmed (expected: 2026-02-16) - chips_regularx10, cookiesx10\n\n=== Delivered Inventory (Ready to Restock) ===\n  None\n\n=== Notes ===\n  None\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 1,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0005 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-16",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0057220458984375
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 1,
+          "parameters": {},
+          "result": "Auto-advanced day after reaching max_actions. \n=== Day 0 Completed ===\nDate: 2026-02-14\nWeather: cold\nSeason: winter\n\n=== Sales ===\n  No sales\n\nTotal Revenue: $0.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $429.40\nCash in Machine: $0.00\nInventory Value: $0.00\nNet Worth: $429.40\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 2,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0006 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-17",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 2,
+          "parameters": {},
+          "result": "\n=== Day 1 Completed ===\nDate: 2026-02-15\nWeather: cold\nSeason: winter\n\n=== Sales ===\n  No sales\n\nTotal Revenue: $0.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $405.90\nCash in Machine: $0.00\nInventory Value: $0.00\nNet Worth: $405.90\n\n=== Deliveries ===\nReceived: ORD-0001\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 3,
+          "parameters": {
+            "row": 0,
+            "column": 0,
+            "product_id": "water",
+            "quantity": 10
+          },
+          "result": "Restocked slot [0,0] with 10 units of 'Bottled Water'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 3,
+          "parameters": {
+            "row": 0,
+            "column": 1,
+            "product_id": "water",
+            "quantity": 2
+          },
+          "result": "Restocked slot [0,1] with 2 units of 'Bottled Water'. New quantity: 2/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 3,
+          "parameters": {
+            "row": 0,
+            "column": 2,
+            "product_id": "soda_cola",
+            "quantity": 10
+          },
+          "result": "Restocked slot [0,2] with 10 units of 'Cola'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 3,
+          "parameters": {
+            "row": 1,
+            "column": 0,
+            "product_id": "soda_cola",
+            "quantity": 2
+          },
+          "result": "Restocked slot [1,0] with 2 units of 'Cola'. New quantity: 2/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 3,
+          "parameters": {},
+          "result": "\n=== Day 2 Completed ===\nDate: 2026-02-16\nWeather: snowy\nSeason: winter\n\n=== Sales ===\n  Bottled Water: 7 sold @ $1.25 = $8.75\n  Bottled Water: 2 sold @ $1.25 = $2.50\n  Cola: 6 sold @ $1.50 = $9.00\n  Cola: 2 sold @ $1.50 = $3.00\n\nTotal Revenue: $23.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $394.90\nCash in Machine: $23.25\nInventory Value: $2.90\nNet Worth: $421.05\n\n=== Deliveries ===\nReceived: ORD-0002, ORD-0003, ORD-0004, ORD-0005\n\n=== Stockouts ===\nProducts out of stock: soda_cola, water\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.004291534423828125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 2,
+            "column": 0,
+            "product_id": "chips_regular",
+            "quantity": 6
+          },
+          "result": "Restocked slot [2,0] with 6 units of 'Potato Chips'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 2,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 4
+          },
+          "result": "Restocked slot [2,1] with 4 units of 'Potato Chips'. New quantity: 4/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 2,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 6
+          },
+          "result": "Restocked slot [2,2] with 6 units of 'Chocolate Chip Cookies'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 3,
+            "column": 0,
+            "product_id": "cookies",
+            "quantity": 4
+          },
+          "result": "Restocked slot [3,0] with 4 units of 'Chocolate Chip Cookies'. New quantity: 4/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 2,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 2
+          },
+          "result": "Restocked slot [2,1] with 2 units of 'Potato Chips'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 3,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 6
+          },
+          "result": "Restocked slot [3,1] with 6 units of 'Potato Chips'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0026226043701171875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 3,
+            "column": 2,
+            "product_id": "chips_regular",
+            "quantity": 2
+          },
+          "result": "Restocked slot [3,2] with 2 units of 'Potato Chips'. New quantity: 2/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 4,
+          "parameters": {
+            "row": 3,
+            "column": 0,
+            "product_id": "cookies",
+            "quantity": 2
+          },
+          "result": "Restocked slot [3,0] with 2 units of 'Chocolate Chip Cookies'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 4,
+          "parameters": {},
+          "result": "Auto-advanced day after reaching max_actions. \n=== Day 3 Completed ===\nDate: 2026-02-17\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Bottled Water: 3 sold @ $1.25 = $3.75\n  Cola: 4 sold @ $1.50 = $6.00\n  Potato Chips: 8 sold @ $1.50 = $12.00\n  Chocolate Chip Cookies: 10 sold @ $1.75 = $17.50\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Chocolate Chip Cookies: 6 sold @ $1.75 = $10.50\n  Chocolate Chip Cookies: 5 sold @ $1.75 = $8.75\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Potato Chips: 2 sold @ $1.50 = $3.00\n\nTotal Revenue: $88.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $383.90\nCash in Machine: $111.75\nInventory Value: $1.85\nNet Worth: $497.50\n\n=== Deliveries ===\nReceived: ORD-0006\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular, soda_cola, water\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 8
+          },
+          "result": "Restocked slot [1,2] with 8 units of 'Chocolate Chip Cookies'. New quantity: 8/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 8
+          },
+          "result": "Restocked slot [1,1] with 8 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0021457672119140625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 2,
+            "column": 0,
+            "product_id": "chips_regular",
+            "quantity": 2
+          },
+          "result": "Restocked slot [2,0] with 2 units of 'Potato Chips'. New quantity: 2/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 2
+          },
+          "result": "Restocked slot [1,2] with 2 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0019073486328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 2,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 6
+          },
+          "result": "Restocked slot [2,2] with 6 units of 'Chocolate Chip Cookies'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 3,
+            "column": 0,
+            "product_id": "cookies",
+            "quantity": 2
+          },
+          "result": "Restocked slot [3,0] with 2 units of 'Chocolate Chip Cookies'. New quantity: 3/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 2,
+            "column": 0,
+            "product_id": "chips_regular",
+            "quantity": 4
+          },
+          "result": "Restocked slot [2,0] with 4 units of 'Potato Chips'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 2,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 6
+          },
+          "result": "Restocked slot [2,1] with 6 units of 'Potato Chips'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 5,
+          "parameters": {
+            "row": 3,
+            "column": 0,
+            "product_id": "cookies",
+            "quantity": 3
+          },
+          "result": "Restocked slot [3,0] with 3 units of 'Chocolate Chip Cookies'. New quantity: 6/6",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 5,
+          "parameters": {},
+          "result": "Collected $111.75 from machine. Cash on hand: $495.65",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 5,
+          "parameters": {},
+          "result": "Auto-advanced day after reaching max_actions. \n=== Day 4 Completed ===\nDate: 2026-02-18\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 5 sold @ $1.50 = $7.50\n  Chocolate Chip Cookies: 10 sold @ $1.75 = $17.50\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Potato Chips: 4 sold @ $1.50 = $6.00\n  Chocolate Chip Cookies: 6 sold @ $1.75 = $10.50\n  Chocolate Chip Cookies: 5 sold @ $1.75 = $8.75\n\nTotal Revenue: $59.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $484.65\nCash in Machine: $59.25\nInventory Value: $4.85\nNet Worth: $548.75\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 6,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 7
+          },
+          "result": "Restocked slot [1,2] with 7 units of 'Chocolate Chip Cookies'. New quantity: 7/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 6,
+          "parameters": {},
+          "result": "Collected $59.25 from machine. Cash on hand: $543.90",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.06604194641113281
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 6,
+          "parameters": {
+            "supplier_id": "beverage_dist",
+            "items": {
+              "water": 12,
+              "soda_cola": 12
+            }
+          },
+          "result": "Order ORD-0007 placed successfully.\nItems: waterx12, soda_colax12\nTotal cost: $9.60\nExpected delivery: 2026-02-20",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0069141387939453125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 6,
+          "parameters": {},
+          "result": "\n=== Day 5 Completed ===\nDate: 2026-02-19\nWeather: snowy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 5 sold @ $1.50 = $7.50\n  Chocolate Chip Cookies: 7 sold @ $1.75 = $12.25\n  Potato Chips: 2 sold @ $1.50 = $3.00\n  Chocolate Chip Cookies: 1 sold @ $1.75 = $1.75\n\nTotal Revenue: $24.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $523.30\nCash in Machine: $24.50\nInventory Value: $0.00\nNet Worth: $547.80\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.005245208740234375
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 7,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0008 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-22",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0069141387939453125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 7,
+          "parameters": {},
+          "result": "\n=== Day 6 Completed ===\nDate: 2026-02-20\nWeather: cold\nSeason: winter\n\n=== Sales ===\n  No sales\n\nTotal Revenue: $0.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $499.80\nCash in Machine: $24.50\nInventory Value: $0.00\nNet Worth: $524.30\n\n=== Deliveries ===\nReceived: ORD-0007\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 8,
+          "parameters": {
+            "row": 0,
+            "column": 0,
+            "product_id": "water",
+            "quantity": 10
+          },
+          "result": "Restocked slot [0,0] with 10 units of 'Bottled Water'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.004291534423828125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 8,
+          "parameters": {
+            "row": 0,
+            "column": 1,
+            "product_id": "water",
+            "quantity": 2
+          },
+          "result": "Restocked slot [0,1] with 2 units of 'Bottled Water'. New quantity: 2/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 8,
+          "parameters": {
+            "row": 0,
+            "column": 2,
+            "product_id": "soda_cola",
+            "quantity": 10
+          },
+          "result": "Restocked slot [0,2] with 10 units of 'Cola'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 8,
+          "parameters": {
+            "row": 1,
+            "column": 0,
+            "product_id": "soda_cola",
+            "quantity": 2
+          },
+          "result": "Restocked slot [1,0] with 2 units of 'Cola'. New quantity: 2/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 8,
+          "parameters": {},
+          "result": "\n=== Day 7 Completed ===\nDate: 2026-02-21\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Bottled Water: 10 sold @ $1.25 = $12.50\n  Bottled Water: 2 sold @ $1.25 = $2.50\n  Cola: 7 sold @ $1.50 = $10.50\n  Cola: 2 sold @ $1.50 = $3.00\n\nTotal Revenue: $28.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $488.80\nCash in Machine: $53.00\nInventory Value: $1.50\nNet Worth: $543.30\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: soda_cola, water\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.005245208740234375
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 9,
+          "parameters": {},
+          "result": "Collected $53.00 from machine. Cash on hand: $541.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 9,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0009 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-24",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.006198883056640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 9,
+          "parameters": {},
+          "result": "\n=== Day 8 Completed ===\nDate: 2026-02-22\nWeather: snowy\nSeason: winter\n\n=== Sales ===\n  Cola: 3 sold @ $1.50 = $4.50\n\nTotal Revenue: $4.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $518.30\nCash in Machine: $4.50\nInventory Value: $0.00\nNet Worth: $522.80\n\n=== Deliveries ===\nReceived: ORD-0008\n\n=== Stockouts ===\nProducts out of stock: soda_cola\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 10,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 10,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 10,
+          "parameters": {},
+          "result": "\n=== Day 9 Completed ===\nDate: 2026-02-23\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 8 sold @ $1.50 = $12.00\n  Chocolate Chip Cookies: 7 sold @ $1.75 = $12.25\n\nTotal Revenue: $24.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $507.30\nCash in Machine: $28.75\nInventory Value: $3.15\nNet Worth: $539.20\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 11,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0010 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-26",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 11,
+          "parameters": {},
+          "result": "\n=== Day 10 Completed ===\nDate: 2026-02-24\nWeather: cold\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 2 sold @ $1.50 = $3.00\n  Chocolate Chip Cookies: 3 sold @ $1.75 = $5.25\n\nTotal Revenue: $8.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $483.80\nCash in Machine: $37.00\nInventory Value: $0.00\nNet Worth: $520.80\n\n=== Deliveries ===\nReceived: ORD-0009\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.004291534423828125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 12,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 12,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 12,
+          "parameters": {},
+          "result": "Collected $37.00 from machine. Cash on hand: $520.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0011920928955078125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 12,
+          "parameters": {},
+          "result": "\n=== Day 11 Completed ===\nDate: 2026-02-25\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 7 sold @ $1.50 = $10.50\n  Chocolate Chip Cookies: 10 sold @ $1.75 = $17.50\n\nTotal Revenue: $28.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $509.80\nCash in Machine: $28.00\nInventory Value: $1.80\nNet Worth: $539.60\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: cookies\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 13,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0011 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-02-28",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 13,
+          "parameters": {},
+          "result": "\n=== Day 12 Completed ===\nDate: 2026-02-26\nWeather: cloudy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 3 sold @ $1.50 = $4.50\n\nTotal Revenue: $4.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $486.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $518.80\n\n=== Deliveries ===\nReceived: ORD-0010\n\n=== Stockouts ===\nProducts out of stock: chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 14,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 14,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 14,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $518.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 14,
+          "parameters": {},
+          "result": "\n=== Day 13 Completed ===\nDate: 2026-02-27\nWeather: snowy\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Chocolate Chip Cookies: 10 sold @ $1.75 = $17.50\n\nTotal Revenue: $26.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $507.80\nCash in Machine: $26.50\nInventory Value: $2.40\nNet Worth: $536.70\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: cookies\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 15,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0012 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-02",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 15,
+          "parameters": {},
+          "result": "\n=== Day 14 Completed ===\nDate: 2026-02-28\nWeather: cold\nSeason: winter\n\n=== Sales ===\n  Potato Chips: 4 sold @ $1.50 = $6.00\n\nTotal Revenue: $6.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $484.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $516.80\n\n=== Deliveries ===\nReceived: ORD-0011\n\n=== Stockouts ===\nProducts out of stock: chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 16,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 16,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 16,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $516.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 16,
+          "parameters": {},
+          "result": "\n=== Day 15 Completed ===\nDate: 2026-03-01\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 7 sold @ $1.50 = $10.50\n  Chocolate Chip Cookies: 9 sold @ $1.75 = $15.75\n\nTotal Revenue: $26.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $505.80\nCash in Machine: $26.25\nInventory Value: $2.45\nNet Worth: $534.50\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 17,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0013 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-04",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 17,
+          "parameters": {},
+          "result": "\n=== Day 16 Completed ===\nDate: 2026-03-02\nWeather: cloudy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 3 sold @ $1.50 = $4.50\n  Chocolate Chip Cookies: 1 sold @ $1.75 = $1.75\n\nTotal Revenue: $6.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $482.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $514.80\n\n=== Deliveries ===\nReceived: ORD-0012\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 18,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 18,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 18,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $514.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 18,
+          "parameters": {},
+          "result": "\n=== Day 17 Completed ===\nDate: 2026-03-03\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 4 sold @ $1.50 = $6.00\n  Chocolate Chip Cookies: 7 sold @ $1.75 = $12.25\n\nTotal Revenue: $18.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $503.80\nCash in Machine: $18.25\nInventory Value: $5.55\nNet Worth: $527.60\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0040531158447265625
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 19,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0014 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-06",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.006198883056640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 19,
+          "parameters": {},
+          "result": "\n=== Day 18 Completed ===\nDate: 2026-03-04\nWeather: cloudy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Chocolate Chip Cookies: 3 sold @ $1.75 = $5.25\n\nTotal Revenue: $14.25\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $480.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $512.80\n\n=== Deliveries ===\nReceived: ORD-0013\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 20,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.004291534423828125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 20,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 20,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $512.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 20,
+          "parameters": {},
+          "result": "\n=== Day 19 Completed ===\nDate: 2026-03-05\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 7 sold @ $1.50 = $10.50\n  Chocolate Chip Cookies: 7 sold @ $1.75 = $12.25\n\nTotal Revenue: $22.75\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $501.80\nCash in Machine: $22.75\nInventory Value: $3.75\nNet Worth: $528.30\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 21,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0015 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-08",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 21,
+          "parameters": {},
+          "result": "\n=== Day 20 Completed ===\nDate: 2026-03-06\nWeather: sunny\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 3 sold @ $1.50 = $4.50\n  Chocolate Chip Cookies: 3 sold @ $1.75 = $5.25\n\nTotal Revenue: $9.75\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $478.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $510.80\n\n=== Deliveries ===\nReceived: ORD-0014\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 22,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.003814697265625
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 22,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 22,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $510.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 22,
+          "parameters": {},
+          "result": "\n=== Day 21 Completed ===\nDate: 2026-03-07\nWeather: cloudy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 9 sold @ $1.50 = $13.50\n  Chocolate Chip Cookies: 6 sold @ $1.75 = $10.50\n\nTotal Revenue: $24.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $499.80\nCash in Machine: $24.00\nInventory Value: $3.20\nNet Worth: $527.00\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00476837158203125
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 23,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0016 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 23,
+          "parameters": {},
+          "result": "\n=== Day 22 Completed ===\nDate: 2026-03-08\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 1 sold @ $1.50 = $1.50\n  Chocolate Chip Cookies: 4 sold @ $1.75 = $7.00\n\nTotal Revenue: $8.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $476.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $508.80\n\n=== Deliveries ===\nReceived: ORD-0015\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0050067901611328125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 24,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 24,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 24,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $508.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 24,
+          "parameters": {},
+          "result": "\n=== Day 23 Completed ===\nDate: 2026-03-09\nWeather: sunny\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 5 sold @ $1.50 = $7.50\n  Chocolate Chip Cookies: 4 sold @ $1.75 = $7.00\n\nTotal Revenue: $14.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $497.80\nCash in Machine: $14.50\nInventory Value: $6.90\nNet Worth: $519.20\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.005245208740234375
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 25,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0017 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-12",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.006198883056640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 25,
+          "parameters": {},
+          "result": "\n=== Day 24 Completed ===\nDate: 2026-03-10\nWeather: cloudy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 5 sold @ $1.50 = $7.50\n  Chocolate Chip Cookies: 6 sold @ $1.75 = $10.50\n\nTotal Revenue: $18.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $474.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $506.80\n\n=== Deliveries ===\nReceived: ORD-0016\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.005245208740234375
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 26,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0030994415283203125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 26,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00286102294921875
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 26,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $506.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.00095367431640625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 26,
+          "parameters": {},
+          "result": "\n=== Day 25 Completed ===\nDate: 2026-03-11\nWeather: sunny\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 10 sold @ $1.50 = $15.00\n  Chocolate Chip Cookies: 4 sold @ $1.75 = $7.00\n\nTotal Revenue: $22.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $495.80\nCash in Machine: $22.00\nInventory Value: $3.90\nNet Worth: $521.70\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.007152557373046875
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 27,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0018 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-14",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.025033950805664062
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 27,
+          "parameters": {},
+          "result": "\n=== Day 26 Completed ===\nDate: 2026-03-12\nWeather: cloudy\nSeason: spring\n\n=== Sales ===\n  Chocolate Chip Cookies: 6 sold @ $1.75 = $10.50\n\nTotal Revenue: $10.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $472.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $504.80\n\n=== Deliveries ===\nReceived: ORD-0017\n\n=== Stockouts ===\nProducts out of stock: cookies\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.013113021850585938
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 28,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.008344650268554688
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 28,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.010967254638671875
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 28,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $504.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0011920928955078125
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 28,
+          "parameters": {},
+          "result": "\n=== Day 27 Completed ===\nDate: 2026-03-13\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 6 sold @ $1.50 = $9.00\n  Chocolate Chip Cookies: 8 sold @ $1.75 = $14.00\n\nTotal Revenue: $23.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $493.80\nCash in Machine: $23.00\nInventory Value: $3.70\nNet Worth: $520.50\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nAll products in stock\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.011682510375976562
+        },
+        {
+          "action_type": "PLACE_ORDER",
+          "day": 29,
+          "parameters": {
+            "supplier_id": "snack_co",
+            "items": {
+              "chips_regular": 10,
+              "cookies": 10
+            }
+          },
+          "result": "Order ORD-0019 placed successfully.\nItems: chips_regularx10, cookiesx10\nTotal cost: $12.50\nExpected delivery: 2026-03-16",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.01621246337890625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 29,
+          "parameters": {},
+          "result": "\n=== Day 28 Completed ===\nDate: 2026-03-14\nWeather: sunny\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 4 sold @ $1.50 = $6.00\n  Chocolate Chip Cookies: 2 sold @ $1.75 = $3.50\n\nTotal Revenue: $9.50\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $470.30\nCash in Machine: $32.50\nInventory Value: $0.00\nNet Worth: $502.80\n\n=== Deliveries ===\nReceived: ORD-0018\n\n=== Stockouts ===\nProducts out of stock: cookies, chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.008106231689453125
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 30,
+          "parameters": {
+            "row": 1,
+            "column": 1,
+            "product_id": "chips_regular",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,1] with 10 units of 'Potato Chips'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.009059906005859375
+        },
+        {
+          "action_type": "RESTOCK_SLOT",
+          "day": 30,
+          "parameters": {
+            "row": 1,
+            "column": 2,
+            "product_id": "cookies",
+            "quantity": 10
+          },
+          "result": "Restocked slot [1,2] with 10 units of 'Chocolate Chip Cookies'. New quantity: 10/10",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0059604644775390625
+        },
+        {
+          "action_type": "COLLECT_CASH",
+          "day": 30,
+          "parameters": {},
+          "result": "Collected $32.50 from machine. Cash on hand: $502.80",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.0021457672119140625
+        },
+        {
+          "action_type": "ADVANCE_DAY",
+          "day": 30,
+          "parameters": {},
+          "result": "\n=== Day 29 Completed ===\nDate: 2026-03-15\nWeather: rainy\nSeason: spring\n\n=== Sales ===\n  Potato Chips: 10 sold @ $1.50 = $15.00\n  Chocolate Chip Cookies: 8 sold @ $1.75 = $14.00\n\nTotal Revenue: $29.00\nOperational Fees: $11.00\n\n=== Financial Summary ===\nCash on Hand: $491.80\nCash in Machine: $29.00\nInventory Value: $1.30\nNet Worth: $522.10\n\n=== Deliveries ===\nNo deliveries\n\n=== Stockouts ===\nProducts out of stock: chips_regular\n",
+          "success": true,
+          "tokens_used": 0,
+          "latency_ms": 0.008821487426757812
+        }
+      ],
+      "total_tokens": 0,
+      "total_latency_ms": 0.5841255187988281,
+      "error": null
+    }
+  ]
+}

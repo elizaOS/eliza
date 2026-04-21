@@ -1,0 +1,31 @@
+# command: python scripts/run_benchmark.py run --provider groq --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/adhdbench__adhdbench/run_adhdbench_20260215T025535Z_1_64c14698/output --quick
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/adhdbench
+# run_id: run_adhdbench_20260215T025535Z_1_64c14698
+2026-02-14 19:55:36,797 [adhdbench] INFO: Running config=basic scale=a10_p8_m0 (19 scenarios)
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/scripts/run_benchmark.py", line 171, in <module>
+    main()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/scripts/run_benchmark.py", line 163, in main
+    cmd_run(args)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/scripts/run_benchmark.py", line 111, in cmd_run
+    results = asyncio.run(runner.run(progress_callback=progress))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/elizaos_adhdbench/runner.py", line 77, in run
+    results = await self._run_scale_point(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/elizaos_adhdbench/runner.py", line 139, in _run_scale_point
+    runtime, capture = create_benchmark_runtime(self.config, config_name)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/adhdbench/elizaos_adhdbench/runtime_wrapper.py", line 96, in create_benchmark_runtime
+    runtime = AgentRuntime(
+              ^^^^^^^^^^^^^
+TypeError: AgentRuntime.__init__() got an unexpected keyword argument 'enable_extended_capabilities'

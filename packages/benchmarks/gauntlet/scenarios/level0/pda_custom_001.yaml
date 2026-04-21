@@ -1,0 +1,22 @@
+id: pda_custom_001
+level: 0
+name: Custom Program PDA
+description: 'Level 0 foundational test: Custom Program PDA'
+category: pda
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_pda_custom_001
+  type: query
+  parameters:
+    program: CustomProgram11111111111111111111111111111
+    seeds:
+    - user
+    - nonce
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

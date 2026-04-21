@@ -1,0 +1,53 @@
+{
+  "id": "8d9fd4e2-6fdb-46b0-b9b9-02f06495c62f",
+  "snapshot": "base_setup",
+  "instruction": "Can you enable fullscreen mode in VLC so that the video fill up the whole screen?",
+  "source": "https://www.youtube.com/watch?v=XHprwDJ0-fU&t=436s",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vlc/8d9fd4e2-6fdb-46b0-b9b9-02f06495c62f/Optimus%20-%20Gen%202.mp4",
+            "path": "/home/user/Desktop/Gen 2.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show --start-time=15 '/home/user/Desktop/Gen 2.mp4'",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "func": "is_vlc_fullscreen",
+    "expected": {
+      "type": "vm_window_size",
+      "app_class_name": "vlc"
+    },
+    "result": {
+      "type": "vm_screen_size"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

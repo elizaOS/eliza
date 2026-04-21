@@ -1,0 +1,28 @@
+# command: /opt/miniconda3/bin/python -m elizaos_vending_bench.cli run --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090255Z_046416ae/vending-bench__vending_bench/run_vending_bench_20260212T090258Z_3_b4c2d73e/output --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/vending-bench
+# run_id: run_vending_bench_20260212T090258Z_3_b4c2d73e
+2026-02-12 01:02:58 [INFO] __main__: ============================================================
+2026-02-12 01:02:58 [INFO] __main__: Starting Vending-Bench Evaluation
+2026-02-12 01:02:58 [INFO] __main__: ============================================================
+2026-02-12 01:02:58 [INFO] __main__: Runs: 5
+2026-02-12 01:02:58 [INFO] __main__: Days per run: 30
+2026-02-12 01:02:58 [INFO] __main__: Initial cash: $500.0
+2026-02-12 01:02:58 [INFO] __main__: Model: qwen/qwen3-32b
+2026-02-12 01:02:58 [INFO] __main__: ============================================================
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting Vending-Bench evaluation
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Config: 5 runs, 30 days each
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting run_001
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] run_001 completed: net_worth=$489.60, days=30, errors=109
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting run_002
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] run_002 completed: net_worth=$519.20, days=30, errors=107
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting run_003
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] run_003 completed: net_worth=$514.30, days=30, errors=106
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting run_004
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] run_004 completed: net_worth=$519.90, days=30, errors=106
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Starting run_005
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] run_005 completed: net_worth=$511.80, days=30, errors=123
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Saved JSON results to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090255Z_046416ae/vending-bench__vending_bench/run_vending_bench_20260212T090258Z_3_b4c2d73e/output/vending-bench-results-20260212_010258.json
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Saved markdown report to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090255Z_046416ae/vending-bench__vending_bench/run_vending_bench_20260212T090258Z_3_b4c2d73e/output/VENDING-BENCH-REPORT-20260212_010258.md
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Saved detailed logs to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090255Z_046416ae/vending-bench__vending_bench/run_vending_bench_20260212T090258Z_3_b4c2d73e/output/vending-bench-detailed-20260212_010258.json
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Saved trajectories to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T090255Z_046416ae/vending-bench__vending_bench/run_vending_bench_20260212T090258Z_3_b4c2d73e/output/trajectories-20260212_010258.json
+2026-02-12 01:02:58 [INFO] elizaos_vending_bench.runner: [VendingBenchRunner] Benchmark completed in 0.0s. Best net worth: $519.90

@@ -1,0 +1,130 @@
+{
+  "id": "e2392362-125e-4f76-a2ee-524b183a3412",
+  "snapshot": "chrome",
+  "instruction": "I recently started using the famous personal academic homepage template from academicpages.github.io to build my own personal homepage, and I have cloned it to my local ~/Code/Website folder. According to an online tutorial, I can configure my name and contact information in the _config.yaml file. However, I am not familiar with the YAML file format. Please help me find the sections related to the name and contact information in this file and change them to \"Test Account\" and \"Test@gmail.com\".",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Code/Website"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/.tmp.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e2392362-125e-4f76-a2ee-524b183a3412/academicpages.github.io.tar.xz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.tmp.tar.xz",
+          "-C",
+          "/home/user/Code/Website/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://academicpages.github.io/"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/e2392362-125e-4f76-a2ee-524b183a3412",
+  "related_apps": [
+    "chrome",
+    "os",
+    "vscode"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      }
+    ],
+    "func": "check_json",
+    "options": {
+      "is_yaml": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expect": [
+          {
+            "key": [
+              "name"
+            ],
+            "method": "eq",
+            "ref": "Test Account"
+          },
+          {
+            "key": [
+              "author",
+              "name"
+            ],
+            "method": "eq",
+            "ref": "Test Account"
+          },
+          {
+            "key": [
+              "author",
+              "email"
+            ],
+            "method": "eq",
+            "ref": "Test@gmail.com"
+          }
+        ]
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Code/Website/academicpages.github.io/_config.yml",
+      "dest": "_config.yaml"
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

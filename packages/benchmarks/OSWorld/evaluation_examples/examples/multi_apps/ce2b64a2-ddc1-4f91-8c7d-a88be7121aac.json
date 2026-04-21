@@ -1,0 +1,174 @@
+{
+  "id": "ce2b64a2-ddc1-4f91-8c7d-a88be7121aac",
+  "snapshot": "multiapps",
+  "instruction": "There are several pictures of mountains in my Pictures directory, but I don’t know the names of these mountains. Please help me identify these pictures and change the names of these pictures to the names of the mountains in the pictures.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ce2b64a2-ddc1-4f91-8c7d-a88be7121aac/picture1.jpg",
+            "path": "/home/user/Pictures/picture1.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ce2b64a2-ddc1-4f91-8c7d-a88be7121aac/picture2.jpg",
+            "path": "/home/user/Pictures/picture2.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ce2b64a2-ddc1-4f91-8c7d-a88be7121aac/picture3.jpg",
+            "path": "/home/user/Pictures/picture3.jpg"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome",
+    "os",
+    "image"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/ce2b64a2-ddc1-4f91-8c7d-a88be7121aac/image_script.py",
+              "path": "/home/user/Desktop/image_script.py"
+            }
+          ]
+        }
+      }
+    ],
+    "func": "check_direct_json_object",
+    "result": {
+      "type": "vm_command_line",
+      "command": "python /home/user/Desktop/image_script.py",
+      "shell": "true"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": {
+          "ec076282f61ba74642e94b5a6a1250c6988204d59d9b02936606b6b8ef1e4433": [
+            "Kili",
+            "kili",
+            "Kili.jpg",
+            "kili.jpg",
+            "Kilimanjaro",
+            "kilimanjaro",
+            "Kilimanjaro.jpg",
+            "kilimanjaro.jpg",
+            "Mount Kilimanjaro",
+            "mount kilimanjaro",
+            "Mount Kilimanjaro.jpg",
+            "mount kilimanjaro.jpg",
+            "Kilimanjaro Mountain",
+            "kilimanjaro mountain",
+            "Kilimanjaro Mountain.jpg",
+            "kilimanjaro mountain.jpg"
+          ],
+          "6ed4239ecc2be3ec15ad65a78c5c823b9004d640b8cc83a6a7af5930f354de91": [
+            "Everest",
+            "everest",
+            "Everest.jpg",
+            "everest.jpg",
+            "Mount Everest",
+            "mount everest",
+            "Mount Everest.jpg",
+            "mount everest.jpg",
+            "Everest Mountain",
+            "everest mountain",
+            "Everest Mountain.jpg",
+            "everest mountain.jpg",
+            "Sagarmatha",
+            "sagarmatha",
+            "Sagarmatha.jpg",
+            "sagarmatha.jpg",
+            "Sagarmatha Mountain",
+            "sagarmatha mountain",
+            "Sagarmatha Mountain.jpg",
+            "sagarmatha mountain.jpg",
+            "Chomolungma",
+            "chomolungma",
+            "Chomolungma.jpg",
+            "chomolungma.jpg",
+            "Qomolangma",
+            "qomolangma",
+            "Qomolangma.jpg",
+            "qomolangma.jpg",
+            "Himalayas",
+            "himalayas",
+            "Himalayas.jpg",
+            "himalayas.jpg",
+            "Himalayas Mountain",
+            "himalayas mountain",
+            "Himalayas Mountain.jpg",
+            "himalayas mountain.jpg",
+            "Himalaya",
+            "himalaya",
+            "Himalaya.jpg",
+            "himalaya.jpg",
+            "Himalaya Mountain",
+            "himalaya mountain",
+            "Himalaya Mountain.jpg",
+            "himalaya mountain.jpg"
+          ],
+          "79f45d40d8413d4e81f1b9734ea39e58622cafd79e12bab32959643fc245147c": [
+            "Hua",
+            "hua",
+            "Hua.jpg",
+            "hua.jpg",
+            "Mount Hua",
+            "mount hua",
+            "Mount Hua.jpg",
+            "mount hua.jpg",
+            "Hua Mountain",
+            "hua mountain",
+            "Hua Mountain.jpg",
+            "hua mountain.jpg",
+            "Huashan",
+            "huashan",
+            "Huashan.jpg",
+            "huashan.jpg",
+            "Hua Shan",
+            "hua shan",
+            "Hua Shan.jpg",
+            "hua shan.jpg",
+            "Huashan Mountain",
+            "huashan mountain",
+            "Huashan Mountain.jpg",
+            "huashan mountain.jpg",
+            "Hua Shan Mountain",
+            "hua shan mountain",
+            "Hua Shan Mountain.jpg",
+            "hua shan mountain.jpg"
+          ]
+        },
+        "expect_in_result": true,
+        "result_not_list": true
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

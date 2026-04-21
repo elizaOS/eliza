@@ -1,0 +1,14 @@
+{
+  "scenario_id": "research_request_requires_web",
+  "title": "Research Request Requires Web",
+  "category": "capability",
+  "required_capabilities": ["research.web_search", "research.web_browse"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Research the latest policy docs and summarize key changes.",
+      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+    }
+  ]
+}
+

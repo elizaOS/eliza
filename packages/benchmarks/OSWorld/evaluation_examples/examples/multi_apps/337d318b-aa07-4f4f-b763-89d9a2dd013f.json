@@ -1,0 +1,52 @@
+{
+  "id": "337d318b-aa07-4f4f-b763-89d9a2dd013f",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Cross-check the invoices with the bank statements and identify any discrepancies. Then pull out the invoices that don't match the statements and put them in the \"problematic\" folder.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/invoice TII-20220301-90.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/337d318b-aa07-4f4f-b763-89d9a2dd013f/invoice%20TII-20220301-90.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/Invoice # GES-20220215-82.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/337d318b-aa07-4f4f-b763-89d9a2dd013f/Invoice%20%23%20GES-20220215-82.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/Invoice # 243729.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/337d318b-aa07-4f4f-b763-89d9a2dd013f/Invoice%20%23%20243729.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/Bank-Statement.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/337d318b-aa07-4f4f-b763-89d9a2dd013f/Bank-Statement.pdf"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/337d318b-aa07-4f4f-b763-89d9a2dd013f",
+  "related_apps": [
+    "os",
+    "pdf"
+  ],
+  "evaluator": {
+    "func": "compare_pdfs",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/problematic/Invoice # 243729.pdf",
+      "dest": "Invoice # 243729.pdf"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/337d318b-aa07-4f4f-b763-89d9a2dd013f/Invoice%20%23%20243729.pdf",
+      "dest": "Invoice # 243729 Gold.pdf"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

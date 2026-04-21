@@ -1,0 +1,17 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/rlm-bench__rlm_bench/run_rlm_bench_20260215T025905Z_1_79d4aca3/output --mode stub --context-lengths 1000,10000 --tasks-per-config 1 --max-iterations 5 --max-depth 3
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench
+# run_id: run_rlm_bench_20260215T025905Z_1_79d4aca3
+2026-02-14 19:59:05,802 - rlm-bench - INFO - ============================================================
+2026-02-14 19:59:05,802 - rlm-bench - INFO - RLM Benchmark Suite
+2026-02-14 19:59:05,802 - rlm-bench - INFO - ============================================================
+2026-02-14 19:59:05,802 - rlm-bench - INFO - Mode: stub
+2026-02-14 19:59:05,802 - rlm-bench - INFO - Backend: gemini
+2026-02-14 19:59:05,802 - rlm-bench - INFO - Context lengths: [1000, 10000]
+2026-02-14 19:59:05,802 - rlm-bench - INFO - Tasks per config: 1
+2026-02-14 19:59:05,802 - rlm-bench - INFO - S-NIAH: enabled
+2026-02-14 19:59:05,802 - rlm-bench - INFO - OOLONG: enabled
+2026-02-14 19:59:05,802 - rlm-bench - INFO - ============================================================
+2026-02-14 19:59:05,805 - elizaos.rlm-bench - INFO - Running 18 benchmark tasks in stub mode
+2026-02-14 19:59:05,808 - elizaos.rlm-bench - INFO - Completed 10/18 tasks
+2026-02-14 19:59:05,818 - elizaos.rlm-bench - INFO - Results saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/rlm-bench__rlm_bench/run_rlm_bench_20260215T025905Z_1_79d4aca3/output/rlm_bench_results_20260214_195905.json
+2026-02-14 19:59:05,818 - elizaos.rlm-bench - INFO - Report saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/rlm-bench__rlm_bench/run_rlm_bench_20260215T025905Z_1_79d4aca3/output/rlm_bench_report_20260214_195905.md

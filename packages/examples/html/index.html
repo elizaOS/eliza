@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ELIZA - elizaOS Browser Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Import Map for elizaOS packages -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+          "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/typescript/dist/browser/index.browser.js",
+          "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/typescript/dist/browser/index.browser.js",
+          "uuid": "https://esm.sh/uuid@11"
+        }
+      }
+    </script>
+
+    <style>
+      :root {
+        --terminal-green: #33ff33;
+        --terminal-green-dim: #1a991a;
+        --terminal-green-glow: #00ff00;
+        --terminal-bg: #0a0a0a;
+        --terminal-bg-light: #1a1a1a;
+        --scanline-opacity: 0.05;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "VT323", "IBM Plex Mono", monospace;
+        background: var(--terminal-bg);
+      }
+
+      /* Full screen terminal */
+      .crt-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--terminal-bg);
+      }
+
+      .crt-bezel {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background: var(--terminal-bg);
+        overflow: hidden;
+      }
+
+      /* Scanlines */
+      .crt-bezel::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, var(--scanline-opacity)) 2px,
+          rgba(0, 0, 0, var(--scanline-opacity)) 4px
+        );
+        pointer-events: none;
+        z-index: 100;
+      }
+
+      /* Screen glow effect */
+      .crt-bezel::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(51, 255, 51, 0.03) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+        z-index: 99;
+      }
+
+      .terminal {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 20px 40px;
+        position: relative;
+      }
+
+      /* Header */
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--terminal-green-dim);
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        color: var(--terminal-green);
+        text-shadow:
+          0 0 10px var(--terminal-green-glow),
+          0 0 20px var(--terminal-green-glow),
+          0 0 30px var(--terminal-green-glow);
+        letter-spacing: 0.3em;
+        margin-bottom: 5px;
+        animation: flicker 8s infinite;
+      }
+
+      /* Status bar */
+      .status-bar {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: var(--terminal-green-dim);
+        padding: 8px 0;
+        border-bottom: 1px dashed var(--terminal-green-dim);
+        margin-bottom: 15px;
+      }
+
+      .status-bar .status-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--terminal-green);
+        box-shadow: 0 0 6px var(--terminal-green-glow);
+        animation: pulse 2s infinite;
+      }
+
+      .status-indicator.loading {
+        animation: blink 0.5s infinite;
+      }
+
+      /* Chat area */
+      .chat-container {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 10px;
+        scroll-behavior: smooth;
+      }
+
+      .chat-container::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .chat-container::-webkit-scrollbar-track {
+        background: var(--terminal-bg-light);
+      }
+
+      .chat-container::-webkit-scrollbar-thumb {
+        background: var(--terminal-green-dim);
+        border-radius: 3px;
+      }
+
+      .message {
+        margin-bottom: 15px;
+        line-height: 1.6;
+      }
+
+      .message .label {
+        color: var(--terminal-green);
+        font-weight: 500;
+      }
+
+      .message .text {
+        color: var(--terminal-green);
+        opacity: 0.9;
+      }
+
+      .message.user .label {
+        color: #88ff88;
+      }
+
+      .message.eliza .text {
+        text-shadow: 0 0 5px rgba(51, 255, 51, 0.3);
+      }
+
+      .message.system {
+        color: var(--terminal-green-dim);
+        font-style: italic;
+        text-align: center;
+        padding: 10px;
+        border: 1px dashed var(--terminal-green-dim);
+        margin: 20px 0;
+      }
+
+      /* Typing indicator */
+      .typing-indicator {
+        display: none;
+        color: var(--terminal-green-dim);
+        margin-bottom: 15px;
+      }
+
+      .typing-indicator.visible {
+        display: block;
+      }
+
+      .typing-indicator .dots::after {
+        content: "";
+        animation: dots 1.5s steps(4, end) infinite;
+      }
+
+      /* Input area */
+      .input-area {
+        display: flex;
+        gap: 10px;
+        padding-top: 15px;
+        border-top: 1px solid var(--terminal-green-dim);
+      }
+
+      .prompt-symbol {
+        color: var(--terminal-green);
+        font-size: 1.2rem;
+        line-height: 38px;
+        text-shadow: 0 0 5px var(--terminal-green-glow);
+      }
+
+      .input-wrapper {
+        flex: 1;
+        position: relative;
+      }
+
+      #user-input {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--terminal-green-dim);
+        color: var(--terminal-green);
+        font-family: inherit;
+        font-size: 1.1rem;
+        padding: 8px 12px;
+        outline: none;
+        caret-color: var(--terminal-green);
+      }
+
+      #user-input:focus {
+        border-color: var(--terminal-green);
+        box-shadow: 0 0 10px rgba(51, 255, 51, 0.2);
+      }
+
+      #user-input::placeholder {
+        color: var(--terminal-green-dim);
+        opacity: 0.5;
+      }
+
+      #user-input:disabled {
+        opacity: 0.5;
+      }
+
+      #send-btn {
+        background: transparent;
+        border: 1px solid var(--terminal-green);
+        color: var(--terminal-green);
+        font-family: inherit;
+        font-size: 1rem;
+        padding: 8px 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      #send-btn:hover:not(:disabled) {
+        background: var(--terminal-green);
+        color: var(--terminal-bg);
+        box-shadow: 0 0 15px var(--terminal-green-glow);
+      }
+
+      #send-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Animations */
+      @keyframes flicker {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        92% {
+          opacity: 1;
+        }
+        93% {
+          opacity: 0.8;
+        }
+        94% {
+          opacity: 1;
+        }
+        97% {
+          opacity: 0.9;
+        }
+        98% {
+          opacity: 1;
+        }
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          box-shadow: 0 0 6px var(--terminal-green-glow);
+        }
+        50% {
+          opacity: 0.6;
+          box-shadow: 0 0 3px var(--terminal-green-glow);
+        }
+      }
+
+      @keyframes blink {
+        0%,
+        50% {
+          opacity: 1;
+        }
+        51%,
+        100% {
+          opacity: 0;
+        }
+      }
+
+      @keyframes dots {
+        0% {
+          content: "";
+        }
+        25% {
+          content: ".";
+        }
+        50% {
+          content: "..";
+        }
+        75% {
+          content: "...";
+        }
+        100% {
+          content: "";
+        }
+      }
+
+      /* Mobile adjustments */
+      @media (max-width: 600px) {
+        .terminal {
+          padding: 15px;
+        }
+
+        .header h1 {
+          font-size: 1.8rem;
+          letter-spacing: 0.15em;
+        }
+
+        .status-bar {
+          font-size: 0.75rem;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .input-area {
+          flex-direction: column;
+        }
+
+        .prompt-symbol {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="crt-container">
+      <div class="crt-bezel">
+        <div class="terminal">
+          <header class="header">
+            <h1>ELIZA</h1>
+          </header>
+
+          <div class="status-bar">
+            <div class="status-item">
+              <span class="status-indicator" id="db-status"></span>
+              <span id="db-status-text">Ready</span>
+            </div>
+          </div>
+
+          <div class="chat-container" id="chat">
+            <div class="message system" id="init-message">
+              <span class="text">Initializing elizaOS AgentRuntime...</span>
+            </div>
+          </div>
+
+          <div class="typing-indicator" id="typing">
+            <span class="label">ELIZA:</span> <span class="dots"></span>
+          </div>
+
+          <div class="input-area">
+            <span class="prompt-symbol">></span>
+            <div class="input-wrapper">
+              <input
+                type="text"
+                id="user-input"
+                placeholder="Tell me what's troubling you..."
+                autocomplete="off"
+                disabled
+              />
+            </div>
+            <button id="send-btn" disabled>Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- elizaOS Browser Runtime - mirrors examples/chat/typescript/chat.ts -->
+    <script type="module">
+      /**
+       * elizaOS Browser Demo
+       *
+       * This is the browser equivalent of examples/chat/typescript/chat.ts
+       * Uses:
+       * - @elizaos/core (AgentRuntime)
+       * - @elizaos/plugin-localdb (localStorage persistence)
+       * - @elizaos/plugin-eliza-classic (pattern matching, no API keys)
+       */
+
+      import {
+        AgentRuntime,
+        ChannelType,
+        createMessageMemory,
+        stringToUuid,
+      } from "@elizaos/core";
+      import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+      import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
+      import { v4 as uuidv4 } from "uuid";
+
+      // ============================================================================
+      // Character (same as chat.ts)
+      // ============================================================================
+
+      const character = {
+        name: "Eliza",
+        bio: "I am ELIZA, a Rogerian psychotherapist simulation created at MIT in 1966.",
+      };
+
+      // ============================================================================
+      // DOM Helpers
+      // ============================================================================
+
+      function getElements() {
+        return {
+          chat: document.getElementById("chat"),
+          userInput: document.getElementById("user-input"),
+          sendBtn: document.getElementById("send-btn"),
+          typing: document.getElementById("typing"),
+          dbStatus: document.getElementById("db-status"),
+          dbStatusText: document.getElementById("db-status-text"),
+          initMessage: document.getElementById("init-message"),
+        };
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function addMessage(text, isUser = false) {
+        const { chat } = getElements();
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${isUser ? "user" : "eliza"}`;
+        messageDiv.innerHTML = `
+        <span class="label">${isUser ? "YOU" : "ELIZA"}:</span>
+        <span class="text">${escapeHtml(text)}</span>
+      `;
+        chat.appendChild(messageDiv);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      function showTyping() {
+        const { typing } = getElements();
+        typing.classList.add("visible");
+      }
+
+      function hideTyping() {
+        const { typing } = getElements();
+        typing.classList.remove("visible");
+      }
+
+      function updateStatus(text, isLoading = false) {
+        const { dbStatus, dbStatusText } = getElements();
+        dbStatusText.textContent = text;
+        if (isLoading) {
+          dbStatus.classList.add("loading");
+        } else {
+          dbStatus.classList.remove("loading");
+        }
+      }
+
+      function setInputEnabled(enabled) {
+        const { userInput, sendBtn } = getElements();
+        userInput.disabled = !enabled;
+        sendBtn.disabled = !enabled;
+        if (enabled) {
+          userInput.focus();
+        }
+      }
+
+      // ============================================================================
+      // Runtime State
+      // ============================================================================
+
+      let runtime = null;
+      let isProcessing = false;
+
+      // Connection IDs (same pattern as chat.ts)
+      const userId = uuidv4();
+      const roomId = stringToUuid("chat-room");
+      const worldId = stringToUuid("chat-world");
+
+      // ============================================================================
+      // Initialize Runtime (mirrors chat.ts)
+      // ============================================================================
+
+      async function initializeRuntime() {
+        console.log("🚀 Starting Eliza (Browser)...\n");
+        updateStatus("Initializing runtime...", true);
+
+        // Create runtime with plugins (browser version)
+        // - localdbPlugin instead of sqlPlugin (localStorage for browser)
+        // - elizaClassicPlugin instead of openaiPlugin (no API keys needed)
+        runtime = new AgentRuntime({
+          character,
+          plugins: [localdbPlugin, elizaClassicPlugin],
+        });
+
+        updateStatus("Initializing AgentRuntime...", true);
+        await runtime.initialize();
+
+        updateStatus("Setting up connection...", true);
+
+        // Setup connection (same as chat.ts)
+        await runtime.ensureConnection({
+          entityId: userId,
+          roomId,
+          worldId,
+          userName: "User",
+          source: "browser",
+          channelId: "chat",
+          serverId: "browser-server",
+          type: ChannelType.DM,
+        });
+
+        updateStatus("System Ready");
+
+        // Remove init message
+        const { initMessage } = getElements();
+        initMessage.remove();
+
+        // Enable input
+        setInputEnabled(true);
+
+        console.log("💬 Chat with Eliza (browser runtime)\n");
+
+        // Welcome message with typing animation
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        showTyping();
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        hideTyping();
+        addMessage(
+          "Hello. I am ELIZA, running on elizaOS. How are you feeling today?",
+        );
+      }
+
+      // ============================================================================
+      // Send Message (mirrors chat.ts)
+      // ============================================================================
+
+      async function sendMessage() {
+        const { userInput } = getElements();
+        const text = userInput.value.trim();
+
+        if (!text || isProcessing || !runtime) return;
+        if (!runtime.messageService) {
+          throw new Error("Runtime messageService not available");
+        }
+
+        isProcessing = true;
+        setInputEnabled(false);
+
+        // Display user message
+        addMessage(text, true);
+        userInput.value = "";
+
+        showTyping();
+
+        // Create an output bubble now so we can stream into it.
+        const { chat } = getElements();
+        const responseDiv = document.createElement("div");
+        responseDiv.className = "message eliza";
+        responseDiv.innerHTML = `
+        <span class="label">ELIZA:</span>
+        <span class="text"></span>
+      `;
+        chat.appendChild(responseDiv);
+        chat.scrollTop = chat.scrollHeight;
+
+        const responseTextEl = responseDiv.querySelector(".text");
+        let responseText = "";
+
+        const messageMemory = createMessageMemory({
+          id: uuidv4(),
+          entityId: userId,
+          roomId,
+          content: {
+            text,
+            source: "client_chat",
+            channelType: ChannelType.DM,
+          },
+        });
+
+        await runtime.messageService.handleMessage(
+          runtime,
+          messageMemory,
+          async (content) => {
+            // Non-stream fallback: if we didn't get chunks, use the final text.
+            if (!responseText && content && typeof content.text === "string") {
+              responseText = content.text;
+              if (responseTextEl) responseTextEl.textContent = responseText;
+            }
+            return [];
+          },
+          {
+            onStreamChunk: async (chunk) => {
+              // Hide typing as soon as we start receiving output.
+              if (responseText.length === 0) hideTyping();
+              responseText += chunk;
+              if (responseTextEl) responseTextEl.textContent = responseText;
+              chat.scrollTop = chat.scrollHeight;
+            },
+          },
+        );
+
+        hideTyping();
+
+        isProcessing = false;
+        setInputEnabled(true);
+      }
+
+      // ============================================================================
+      // Event Listeners
+      // ============================================================================
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const { sendBtn, userInput } = getElements();
+
+        sendBtn.addEventListener("click", sendMessage);
+        userInput.addEventListener("keypress", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+
+        // Start initialization
+        initializeRuntime();
+      });
+
+      // Export runtime for debugging
+      window.elizaRuntime = runtime;
+    </script>
+  </body>
+</html>

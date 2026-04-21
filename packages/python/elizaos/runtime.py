@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
@@ -19,14 +20,15 @@ from elizaos.types.components import (
     HandlerCallback,
     HandlerOptions,
     Provider,
+    ProviderResult,
 )
 from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
-from elizaos.types.environment import Entity, Room, World
+from elizaos.types.environment import Component, Entity, Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.model import GenerateTextOptions, GenerateTextResult, LLMMode, ModelType
 from elizaos.types.plugin import Plugin, Route
-from elizaos.types.primitives import UUID, Content, as_uuid, string_to_uuid
+from elizaos.types.primitives import DEFAULT_UUID, UUID, Content, as_uuid, string_to_uuid
 from elizaos.types.runtime import (
     IAgentRuntime,
     RuntimeSettings,
@@ -42,6 +44,7 @@ from elizaos.utils import get_current_time_ms as _get_current_time_ms
 from elizaos.utils.streaming import ValidationStreamExtractor, ValidationStreamExtractorConfig
 
 _message_service_class: type | None = None
+_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS = 30
 
 
 def _get_message_service_class() -> type:
@@ -82,6 +85,94 @@ class StreamingModelHandlerWrapper:
 _anonymous_agent_counter = 0
 
 
+@dataclass
+class PluginRuntimeComponents:
+    actions: list[Action] = field(default_factory=list)
+    providers: list[Provider] = field(default_factory=list)
+    evaluators: list[Evaluator] = field(default_factory=list)
+    services: dict[str, list[Service]] = field(default_factory=dict)
+
+
+def _setting_key_to_proto_field_name(key: str) -> str:
+    return key.strip().lower()
+
+
+def _character_settings_to_dict(settings: object | None) -> dict[str, object]:
+    if settings is None:
+        return {}
+    if isinstance(settings, dict):
+        return settings
+    if hasattr(settings, "DESCRIPTOR"):
+        from google.protobuf.json_format import MessageToDict
+
+        return MessageToDict(settings, preserving_proto_field_name=True)
+    return {}
+
+
+def _parse_bool_setting(value: object | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+    return None
+
+
+def _looks_like_uuid(value: str) -> bool:
+    try:
+        as_uuid(value)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalize_provider_result(
+    result: ProviderResult | dict[str, Any] | None,
+) -> ProviderResult:
+    if isinstance(result, ProviderResult):
+        return result
+    if isinstance(result, dict):
+        text = result.get("text", "")
+        values = result.get("values", {})
+        data = result.get("data", {})
+        return ProviderResult(
+            text=str(text) if text is not None else "",
+            values=values if isinstance(values, dict) else {},
+            data=data if isinstance(data, dict) else {},
+        )
+    return ProviderResult(text="", values={}, data={})
+
+
+async def _invoke_evaluator_handler(
+    handler: Callable[..., Awaitable[Any]],
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | None,
+    options: HandlerOptions,
+    callback: HandlerCallback | None,
+    responses: list[Memory] | None,
+) -> Any:
+    try:
+        parameter_names = list(inspect.signature(handler).parameters.keys())
+    except (TypeError, ValueError):
+        parameter_names = []
+
+    if len(parameter_names) >= 6:
+        if parameter_names[4] == "callback":
+            return await handler(runtime, message, state, options, callback, responses)
+        return await handler(runtime, message, state, options, responses, None)
+    if len(parameter_names) == 5:
+        if parameter_names[4] == "callback":
+            return await handler(runtime, message, state, options, callback)
+        return await handler(runtime, message, state, options, responses)
+    if len(parameter_names) == 4:
+        return await handler(runtime, message, state, options)
+    return await handler(runtime, message, state)
+
+
 class AgentRuntime(IAgentRuntime):
     def __init__(
         self,
@@ -98,6 +189,9 @@ class AgentRuntime(IAgentRuntime):
         llm_mode: LLMMode | None = None,
         check_should_respond: bool | None = None,
         enable_autonomy: bool = False,
+        enable_knowledge: bool | None = None,
+        enable_relationships: bool | None = None,
+        enable_trajectories: bool | None = None,
     ) -> None:
         global _anonymous_agent_counter
         if character is not None:
@@ -118,6 +212,12 @@ class AgentRuntime(IAgentRuntime):
         self._action_planning_option = action_planning
         self._llm_mode_option = llm_mode
         self._check_should_respond_option = check_should_respond
+        self._native_feature_options: dict[str, bool | None] = {
+            "knowledge": enable_knowledge,
+            "relationships": enable_relationships,
+            "trajectories": enable_trajectories,
+        }
+        self._native_feature_states: dict[str, bool] = {}
         self._agent_id = (
             agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
         )
@@ -133,7 +233,9 @@ class AgentRuntime(IAgentRuntime):
         self._actions: list[Action] = []
         self._evaluators: list[Evaluator] = []
         self._plugins: list[Plugin] = []
+        self._plugin_components: dict[str, PluginRuntimeComponents] = {}
         self._services: dict[str, list[Service]] = {}
+        self._service_aliases: dict[str, str] = {}
         self._routes: list[Route] = []
         self._events: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
         self._models: dict[str, list[ModelHandler]] = {}
@@ -219,6 +321,138 @@ class AgentRuntime(IAgentRuntime):
             raise RuntimeError("Database adapter not set")
         return self._adapter.db
 
+    def _resolve_service_type_alias(self, service_type: str) -> str:
+        return self._service_aliases.get(service_type, service_type)
+
+    def _resolve_native_feature_enabled(self, feature: str) -> bool:
+        explicit = self._native_feature_options.get(feature)
+        if explicit is not None:
+            return explicit
+
+        setting_value = _parse_bool_setting(self.get_setting(f"ENABLE_{feature.upper()}"))
+        if setting_value is not None:
+            return setting_value
+
+        from elizaos.native_features import (
+            native_runtime_feature_defaults,
+        )
+
+        return native_runtime_feature_defaults[feature]  # type: ignore[index]
+
+    def _has_native_runtime_feature(self, feature: str) -> bool:
+        from elizaos.native_features import native_runtime_feature_plugin_names
+
+        plugin_name = native_runtime_feature_plugin_names[feature]  # type: ignore[index]
+        return any(plugin.name == plugin_name for plugin in self._plugins)
+
+    def _resolve_native_feature_for_service_type(self, service_type: str) -> str | None:
+        resolved_service_type = self._resolve_service_type_alias(service_type)
+        if resolved_service_type == "knowledge":
+            return "knowledge"
+        if resolved_service_type in {"relationships", "follow_up"}:
+            return "relationships"
+        if resolved_service_type == "trajectories":
+            return "trajectories"
+        return None
+
+    def _is_native_feature_service_enabled(self, service_type: str) -> bool:
+        feature = self._resolve_native_feature_for_service_type(service_type)
+        if feature is None:
+            return True
+        return self._native_feature_states.get(feature, False)
+
+    def _is_plugin_managed_as_native_feature(self, plugin: Plugin | None) -> bool:
+        from elizaos.native_features import resolve_native_runtime_feature_from_plugin_name
+
+        return (
+            resolve_native_runtime_feature_from_plugin_name(plugin.name if plugin else None)
+            is not None
+        )
+
+    async def _unregister_plugin(self, plugin_name: str) -> None:
+        components = self._plugin_components.pop(plugin_name, None)
+        if components is not None:
+            self._actions = [
+                action
+                for action in self._actions
+                if all(action is not owned for owned in components.actions)
+            ]
+            self._providers = [
+                provider
+                for provider in self._providers
+                if all(provider is not owned for owned in components.providers)
+            ]
+            self._evaluators = [
+                evaluator
+                for evaluator in self._evaluators
+                if all(evaluator is not owned for owned in components.evaluators)
+            ]
+
+            for service_type, owned_services in components.services.items():
+                existing_services = self._services.get(service_type, [])
+                remaining_services = [
+                    service
+                    for service in existing_services
+                    if all(service is not owned for owned in owned_services)
+                ]
+                for service in owned_services:
+                    await service.stop()
+                if remaining_services:
+                    self._services[service_type] = remaining_services
+                else:
+                    self._services.pop(service_type, None)
+
+        self._plugins = [plugin for plugin in self._plugins if plugin.name != plugin_name]
+
+    async def _set_native_runtime_feature_enabled(self, feature: str, enabled: bool) -> None:
+        current = self._native_feature_states.get(feature)
+        if current == enabled:
+            return
+
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            native_runtime_feature_plugin_names,
+        )
+
+        if enabled:
+            self._native_feature_states[feature] = True
+            if not self._has_native_runtime_feature(feature):
+                await self.register_plugin(get_native_runtime_feature_plugin(feature))  # type: ignore[arg-type]
+        else:
+            plugin_name = native_runtime_feature_plugin_names[feature]  # type: ignore[index]
+            if any(plugin.name == plugin_name for plugin in self._plugins):
+                await self._unregister_plugin(plugin_name)
+            self._native_feature_states[feature] = False
+
+        self.set_setting(f"ENABLE_{feature.upper()}", enabled)
+
+    async def enable_knowledge(self) -> None:
+        await self._set_native_runtime_feature_enabled("knowledge", True)
+
+    async def disable_knowledge(self) -> None:
+        await self._set_native_runtime_feature_enabled("knowledge", False)
+
+    def is_knowledge_enabled(self) -> bool:
+        return self._native_feature_states.get("knowledge", False)
+
+    async def enable_relationships(self) -> None:
+        await self._set_native_runtime_feature_enabled("relationships", True)
+
+    async def disable_relationships(self) -> None:
+        await self._set_native_runtime_feature_enabled("relationships", False)
+
+    def is_relationships_enabled(self) -> bool:
+        return self._native_feature_states.get("relationships", False)
+
+    async def enable_trajectories(self) -> None:
+        await self._set_native_runtime_feature_enabled("trajectories", True)
+
+    async def disable_trajectories(self) -> None:
+        await self._set_native_runtime_feature_enabled("trajectories", False)
+
+    def is_trajectories_enabled(self) -> bool:
+        return self._native_feature_states.get("trajectories", False)
+
     async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
         _ = config
         self.logger.info("Initializing AgentRuntime...")
@@ -227,42 +461,47 @@ class AgentRuntime(IAgentRuntime):
             await self._adapter.initialize()
             self.logger.debug("Database adapter initialized")
 
-        has_basic_capabilities = any(p.name == "basic_capabilities" for p in self._initial_plugins)
-        if not has_basic_capabilities:
-            from elizaos.basic_capabilities_compat import basic_capabilities_plugin
+        basic_capabilities_plugin = next(
+            (plugin for plugin in self._initial_plugins if plugin.name == "basic_capabilities"),
+            None,
+        )
+        if basic_capabilities_plugin is None:
+            from elizaos.features.basic_capabilities_compat import (  # type: ignore[import-not-found]
+                basic_capabilities_plugin as default_basic_capabilities_plugin,
+            )
 
-            self._initial_plugins.insert(0, basic_capabilities_plugin)
+            basic_capabilities_plugin = default_basic_capabilities_plugin
+
+        await self.register_plugin(basic_capabilities_plugin)
+
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            native_runtime_feature_defaults,
+        )
+
+        for feature in native_runtime_feature_defaults:
+            enabled = self._resolve_native_feature_enabled(feature)
+            self._native_feature_states[feature] = enabled
+            if enabled:
+                await self.register_plugin(get_native_runtime_feature_plugin(feature))
 
         # Advanced planning is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_planning", None) is True:
-            has_adv = any(p.name == "advanced-planning" for p in self._initial_plugins)
-            if not has_adv:
-                from elizaos.advanced_planning import advanced_planning_plugin
+            from elizaos.features.advanced_planning import advanced_planning_plugin
 
-                # Register after basic_capabilities so core providers/actions are available.
-                insert_at = (
-                    1
-                    if self._initial_plugins
-                    and self._initial_plugins[0].name == "basic_capabilities"
-                    else 0
-                )
-                self._initial_plugins.insert(insert_at, advanced_planning_plugin)
+            await self.register_plugin(advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
         if getattr(self._character, "advanced_memory", None) is True:
-            has_adv = any(p.name == "memory" for p in self._initial_plugins)
-            if not has_adv:
-                from elizaos.advanced_memory import advanced_memory_plugin
+            from elizaos.features.advanced_memory import advanced_memory_plugin
 
-                insert_at = (
-                    1
-                    if self._initial_plugins
-                    and self._initial_plugins[0].name == "basic_capabilities"
-                    else 0
-                )
-                self._initial_plugins.insert(insert_at, advanced_memory_plugin)
+            await self.register_plugin(advanced_memory_plugin)
 
         for plugin in self._initial_plugins:
+            if plugin.name == "basic_capabilities":
+                continue
+            if self._is_plugin_managed_as_native_feature(plugin):
+                continue
             await self.register_plugin(plugin)
 
         self._init_complete = True
@@ -270,34 +509,41 @@ class AgentRuntime(IAgentRuntime):
         self.logger.info("AgentRuntime initialized successfully")
 
     async def register_plugin(self, plugin: Plugin) -> None:
+        from elizaos.native_features import (
+            get_native_runtime_feature_plugin,
+            resolve_native_runtime_feature_from_plugin_name,
+        )
         from elizaos.plugin import register_plugin
 
         plugin_to_register = plugin
+        native_feature = resolve_native_runtime_feature_from_plugin_name(plugin.name)
+        if native_feature is not None:
+            if self._native_feature_states.get(native_feature, True) is False:
+                return
+            plugin_to_register = get_native_runtime_feature_plugin(native_feature)
+
+        if any(
+            existing_plugin.name == plugin_to_register.name for existing_plugin in self._plugins
+        ):
+            return
 
         if plugin.name == "basic_capabilities":
-            char_settings_obj = self._character.settings
-            char_settings: dict[str, object] = {}
-            if hasattr(char_settings_obj, "DESCRIPTOR"):
-                from google.protobuf.json_format import MessageToDict
-
-                char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
-            elif isinstance(char_settings_obj, dict):
-                char_settings = char_settings_obj
+            char_settings = _character_settings_to_dict(self._character.settings)
 
             disable_basic = self._capability_disable_basic or (
-                char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
+                char_settings.get("disable_basic_capabilities") in (True, "true")
             )
             enable_extended = self._capability_enable_extended or (
-                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+                char_settings.get("enable_extended_capabilities") in (True, "true")
             )
             skip_character_provider = self._is_anonymous_character
 
             enable_autonomy = self._capability_enable_autonomy or (
-                char_settings.get("ENABLE_AUTONOMY") in (True, "true")
+                self.get_setting("ENABLE_AUTONOMY") in (True, "true")
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
-                from elizaos.basic_capabilities_compat import (
+                from elizaos.features.basic_capabilities_compat import (
                     CapabilityConfig,
                     create_basic_capabilities_plugin,
                 )
@@ -310,21 +556,54 @@ class AgentRuntime(IAgentRuntime):
                 )
                 plugin_to_register = create_basic_capabilities_plugin(config)
 
+        before_action_count = len(self._actions)
+        before_provider_count = len(self._providers)
+        before_evaluator_count = len(self._evaluators)
+        before_services = {
+            service_type: list(services) for service_type, services in self._services.items()
+        }
+
         await register_plugin(self, plugin_to_register)
         self._plugins.append(plugin_to_register)
+        recorded_services: dict[str, list[Service]] = {}
+        for service_type, services in self._services.items():
+            prior_services = before_services.get(service_type, [])
+            new_services = [
+                service
+                for service in services
+                if all(service is not prior_service for prior_service in prior_services)
+            ]
+            if new_services:
+                recorded_services[service_type] = new_services
+        self._plugin_components[plugin_to_register.name] = PluginRuntimeComponents(
+            actions=self._actions[before_action_count:],
+            providers=self._providers[before_provider_count:],
+            evaluators=self._evaluators[before_evaluator_count:],
+            services=recorded_services,
+        )
 
     def get_service(self, service: str) -> Service | None:
-        services = self._services.get(service)
+        resolved_service = self._resolve_service_type_alias(service)
+        if not self._is_native_feature_service_enabled(resolved_service):
+            return None
+        services = self._services.get(resolved_service)
         return services[0] if services else None
 
     def get_services_by_type(self, service: str) -> list[Service]:
-        return self._services.get(service, [])
+        resolved_service = self._resolve_service_type_alias(service)
+        if not self._is_native_feature_service_enabled(resolved_service):
+            return []
+        return list(self._services.get(resolved_service, []))
 
     def get_all_services(self) -> dict[str, list[Service]]:
-        return self._services
+        return {
+            service_type: list(services)
+            for service_type, services in self._services.items()
+            if self._is_native_feature_service_enabled(service_type)
+        }
 
     async def register_service(self, service_class: type[Service]) -> None:
-        service_type = service_class.service_type
+        service_type = self._resolve_service_type_alias(service_class.service_type)
         service = await service_class.start(self)
 
         if service_type not in self._services:
@@ -343,10 +622,20 @@ class AgentRuntime(IAgentRuntime):
         return service
 
     def get_registered_service_types(self) -> list[str]:
-        return list(self._services.keys())
+        return [
+            service_type
+            for service_type in self._services
+            if self._is_native_feature_service_enabled(service_type)
+        ]
 
     def has_service(self, service_type: str) -> bool:
-        return service_type in self._services and len(self._services[service_type]) > 0
+        resolved_service_type = self._resolve_service_type_alias(service_type)
+        if not self._is_native_feature_service_enabled(resolved_service_type):
+            return False
+        return (
+            resolved_service_type in self._services
+            and len(self._services[resolved_service_type]) > 0
+        )
 
     def set_setting(self, key: str, value: object | None, secret: bool = False) -> None:
         if value is None:
@@ -365,6 +654,12 @@ class AgentRuntime(IAgentRuntime):
         # Try to set on character.settings if it's a dict
         if isinstance(self._character.settings, dict):
             self._character.settings[key] = value  # type: ignore[assignment]
+        elif self._character.settings is not None:
+            proto_field_name = _setting_key_to_proto_field_name(key)
+            if hasattr(self._character.settings, proto_field_name):
+                setattr(self._character.settings, proto_field_name, value)
+            else:
+                self._settings[key] = value  # type: ignore[assignment]
         else:
             # Fall back to internal settings dict for protobuf objects
             self._settings[key] = value  # type: ignore[assignment]
@@ -372,20 +667,26 @@ class AgentRuntime(IAgentRuntime):
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
         secrets = self._character.secrets
+        settings_dict = _character_settings_to_dict(settings)
+        proto_field_name = _setting_key_to_proto_field_name(key)
 
         nested_secrets: dict[str, object] | None = None
-        if isinstance(settings, dict):
-            nested = settings.get("secrets")
+        if settings_dict:
+            nested = settings_dict.get("secrets")
             if isinstance(nested, dict):
                 nested_secrets = nested
 
         value: object | None
         if isinstance(secrets, dict) and key in secrets:
             value = secrets.get(key)
-        elif isinstance(settings, dict) and key in settings:
-            value = settings.get(key)
+        elif key in settings_dict:
+            value = settings_dict.get(key)
+        elif proto_field_name in settings_dict:
+            value = settings_dict.get(proto_field_name)
         elif isinstance(nested_secrets, dict) and key in nested_secrets:
             value = nested_secrets.get(key)
+        elif isinstance(nested_secrets, dict) and proto_field_name in nested_secrets:
+            value = nested_secrets.get(proto_field_name)
         else:
             value = self._settings.get(key)
 
@@ -410,9 +711,10 @@ class AgentRuntime(IAgentRuntime):
 
     def get_all_settings(self) -> dict[str, object | None]:
         keys: set[str] = set(self._settings.keys())
-        if isinstance(self._character.settings, dict):
-            keys.update(self._character.settings.keys())
-            nested = self._character.settings.get("secrets")
+        settings_dict = _character_settings_to_dict(self._character.settings)
+        if settings_dict:
+            keys.update(settings_dict.keys())
+            nested = settings_dict.get("secrets")
             if isinstance(nested, dict):
                 keys.update(nested.keys())
         if isinstance(self._character.secrets, dict):
@@ -731,6 +1033,11 @@ class AgentRuntime(IAgentRuntime):
         if not actions_to_process:
             return
 
+        # Dedupe identical action+params invocations within the same turn.
+        # The LLM sometimes emits the same action twice; the second run would
+        # produce identical output. Collapse them instead.
+        executed_action_keys: set[str] = set()
+
         for response in responses:
             if not response.content.actions:
                 continue
@@ -840,6 +1147,25 @@ class AgentRuntime(IAgentRuntime):
                     except Exception:
                         pass
 
+                # Build dedupe key from action name + serialised params.
+                import json as _json
+
+                _params_for_key = (
+                    getattr(options_obj, "parameters", None) if validated_params else None
+                )
+                _dedupe_key = (
+                    f"{action.name.strip().upper()}::"
+                    f"{_json.dumps(_params_for_key, sort_keys=True) if _params_for_key else '<no-params>'}"
+                )
+                if _dedupe_key in executed_action_keys:
+                    self.logger.debug(
+                        "Skipping duplicate action invocation in same turn",
+                        action=action.name,
+                        dedupeKey=_dedupe_key,
+                    )
+                    continue
+                executed_action_keys.add(_dedupe_key)
+
                 result = await action.handler(
                     self,
                     message,
@@ -888,7 +1214,8 @@ class AgentRuntime(IAgentRuntime):
                 try:
                     is_valid = await evaluator.validate(self, message, state)
                     if is_valid:
-                        await evaluator.handler(
+                        await _invoke_evaluator_handler(
+                            evaluator.handler,
                             self,
                             message,
                             state,
@@ -974,7 +1301,7 @@ class AgentRuntime(IAgentRuntime):
         traj_step_id: str | None = None
         if message.metadata is not None:
             maybe_step = getattr(message.metadata, "trajectoryStepId", None)
-            if isinstance(maybe_step, str) and maybe_step:
+            if isinstance(maybe_step, str) and maybe_step and self.is_trajectories_enabled():
                 traj_step_id = maybe_step
                 skip_cache = True
 
@@ -1017,7 +1344,7 @@ class AgentRuntime(IAgentRuntime):
                 query: dict[str, str | int | float | bool | None] | None = None,
             ) -> None: ...
 
-        traj_svc = self.get_service("trajectory_logger")
+        traj_svc = self.get_service("trajectories")
         traj_logger = traj_svc if isinstance(traj_svc, _TrajectoryLogger) else None
 
         def _as_json_scalar(value: object) -> str | int | float | bool | None:
@@ -1043,7 +1370,23 @@ class AgentRuntime(IAgentRuntime):
             if provider.private:
                 continue
 
-            result = await provider.get(self, message, state)
+            try:
+                provider_result = await asyncio.wait_for(
+                    provider.get(self, message, state),
+                    timeout=_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                self.logger.warning(
+                    f"Provider {provider.name} timed out after "
+                    f"{_COMPOSE_STATE_PROVIDER_TIMEOUT_SECONDS}s during compose_state"
+                )
+                provider_result = ProviderResult(text="", values={}, data={})
+            except Exception as e:
+                self.logger.warning(f"Provider {provider.name} failed during compose_state: {e}")
+                provider_result = ProviderResult(text="", values={}, data={})
+
+            result = _normalize_provider_result(provider_result)
+
             if result.text:
                 text_parts.append(result.text)
             if result.values:
@@ -1110,8 +1453,6 @@ class AgentRuntime(IAgentRuntime):
             text_generation_models = [
                 ModelType.TEXT_SMALL,
                 ModelType.TEXT_LARGE,
-                ModelType.TEXT_REASONING_SMALL,
-                ModelType.TEXT_REASONING_LARGE,
                 ModelType.TEXT_COMPLETION,
             ]
             if effective_model_type in text_generation_models:
@@ -1148,7 +1489,7 @@ class AgentRuntime(IAgentRuntime):
             from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
 
             step_id = CURRENT_TRAJECTORY_STEP_ID.get()
-            traj_svc = self.get_service("trajectory_logger")
+            traj_svc = self.get_service("trajectories")
             if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
                 prompt = str(params.get("prompt", "")) if isinstance(params, dict) else ""
                 system_prompt = str(params.get("system", "")) if isinstance(params, dict) else ""
@@ -1515,7 +1856,7 @@ class AgentRuntime(IAgentRuntime):
         self,
         entity_id: UUID,
         component_type: str,
-        world_id: UUID | None = None,
+        world_id: UUID | str | None = None,
         source_entity_id: UUID | None = None,
     ) -> Any | None:
         if not self._adapter:
@@ -1527,25 +1868,83 @@ class AgentRuntime(IAgentRuntime):
     async def get_components(
         self,
         entity_id: UUID,
-        world_id: UUID | None = None,
+        world_id: UUID | str | None = None,
         source_entity_id: UUID | None = None,
     ) -> list[Any]:
         if not self._adapter:
             return []
-        return await self._adapter.get_components(entity_id, world_id, source_entity_id)
+        component_type: str | None = None
+        resolved_world_id: UUID | None = None
+        if isinstance(world_id, str):
+            if _looks_like_uuid(world_id):
+                resolved_world_id = world_id
+            else:
+                component_type = world_id
+        else:
+            resolved_world_id = world_id
+
+        components = await self._adapter.get_components(
+            entity_id, resolved_world_id, source_entity_id
+        )
+        if component_type is None:
+            return components
+        return [
+            component
+            for component in components
+            if getattr(component, "type", None) == component_type
+        ]
 
     async def create_component(self, component: Any) -> bool:
         if not self._adapter:
             return False
         return await self._adapter.create_component(component)
 
+    async def set_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        data: dict[str, Any],
+        room_id: UUID | None = None,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> bool:
+        existing_components = await self.get_components(entity_id, component_type, source_entity_id)
+        existing = existing_components[0] if existing_components else None
+        component = Component(
+            id=(
+                str(getattr(existing, "id", "")) or string_to_uuid(f"{entity_id}:{component_type}")
+            ),
+            entity_id=str(entity_id),
+            agent_id=str(self.agent_id),
+            room_id=str(getattr(existing, "room_id", "") or room_id or DEFAULT_UUID),
+            world_id=str(getattr(existing, "world_id", "") or world_id or DEFAULT_UUID),
+            source_entity_id=str(
+                getattr(existing, "source_entity_id", "") or source_entity_id or entity_id
+            ),
+            type=component_type,
+            data=data,
+            created_at=int(getattr(existing, "created_at", 0) or self.get_current_time_ms()),
+        )
+        if existing is not None:
+            await self.update_component(component)
+            return True
+        return await self.create_component(component)
+
     async def update_component(self, component: Any) -> None:
         if self._adapter:
             await self._adapter.update_component(component)
 
-    async def delete_component(self, component_id: UUID) -> None:
+    async def delete_component(self, component_id: UUID, component_type: str | None = None) -> None:
         if self._adapter:
-            await self._adapter.delete_component(component_id)
+            if component_type is None:
+                await self._adapter.delete_component(component_id)
+                return
+
+            components = await self.get_components(component_id, component_type)
+            for component in components:
+                component_entry_id = getattr(component, "id", None)
+                if isinstance(component_entry_id, str) and component_entry_id:
+                    await self._adapter.delete_component(component_entry_id)
 
     async def get_memories(
         self,
@@ -1780,6 +2179,60 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.get_relationships(params)
 
+    async def get_relationships_by_pairs(self, pairs: list[dict[str, str]]) -> list[Any | None]:
+        if not self._adapter:
+            return [None] * len(pairs)
+        if hasattr(self._adapter, "get_relationships_by_pairs"):
+            return await self._adapter.get_relationships_by_pairs(pairs)
+        # Fallback: look up each pair individually
+        results: list[Any | None] = []
+        for pair in pairs:
+            result = await self._adapter.get_relationship(pair)
+            results.append(result)
+        return results
+
+    async def create_relationships(self, relationships: list[dict[str, Any]]) -> list[str]:
+        if not self._adapter:
+            return []
+        if hasattr(self._adapter, "create_relationships"):
+            return await self._adapter.create_relationships(relationships)
+        # Fallback: create each relationship individually
+        ids: list[str] = []
+        for rel in relationships:
+            result = await self._adapter.create_relationship(rel)
+            if isinstance(result, str):
+                ids.append(result)
+            elif isinstance(result, bool) and result:
+                ids.append(rel.get("id", ""))
+        return ids
+
+    async def get_relationships_by_ids(self, relationship_ids: list[str]) -> list[Any]:
+        if not self._adapter:
+            return []
+        if hasattr(self._adapter, "get_relationships_by_ids"):
+            return await self._adapter.get_relationships_by_ids(relationship_ids)
+        # No single-item fallback available for ID lookup
+        return []
+
+    async def update_relationships(self, relationships: list[Any]) -> None:
+        if not self._adapter:
+            return
+        if hasattr(self._adapter, "update_relationships"):
+            await self._adapter.update_relationships(relationships)
+            return
+        # Fallback: update each relationship individually
+        for rel in relationships:
+            await self._adapter.update_relationship(rel)
+
+    async def delete_relationships(self, relationship_ids: list[str]) -> None:
+        if not self._adapter:
+            return
+        if hasattr(self._adapter, "delete_relationships"):
+            await self._adapter.delete_relationships(relationship_ids)
+            return
+        # No single-item delete available on the adapter; skip silently
+        self.logger.warn("delete_relationships called but adapter has no delete support")
+
     async def get_cache(self, key: str) -> Any | None:
         if not self._adapter:
             return None
@@ -1853,6 +2306,9 @@ class AgentRuntime(IAgentRuntime):
         3. Structured parsing: XML/JSON response parsing with nested support
         4. Streaming support: ValidationStreamExtractor for incremental output with validation
 
+        Checkpoint prompt wrappers are optional and disabled by default. Set
+        options.checkpoint_codes or PROMPT_CHECKPOINT_CODES=true to enable them.
+
         For streaming, provide `on_stream_chunk` in options. Streaming uses
         ValidationStreamExtractor which streams validated content in real-time
         while detecting truncation via validation codes.
@@ -1908,8 +2364,16 @@ class AgentRuntime(IAgentRuntime):
             if options.context_check_level is not None
             else default_context_level
         )
+        checkpoint_codes_enabled = (
+            options.checkpoint_codes
+            if options.checkpoint_codes is not None
+            else _is_truthy_setting(self.get_setting("PROMPT_CHECKPOINT_CODES"))
+        )
         max_retries = options.max_retries if options.max_retries is not None else default_retries
         current_retry = 0
+
+        def prompt_code() -> str:
+            return uuid.uuid4().hex[:8]
 
         # Generate per-field validation codes for levels 0-1
         per_field_codes: dict[str, str] = {}
@@ -1920,7 +2384,7 @@ class AgentRuntime(IAgentRuntime):
                     row.validate_field if row.validate_field is not None else default_validate
                 )
                 if needs_validation:
-                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
+                    per_field_codes[row.field] = prompt_code()
 
         # Streaming extractor (created on first iteration if streaming enabled)
         extractor: ValidationStreamExtractor | None = None
@@ -1988,12 +2452,16 @@ class AgentRuntime(IAgentRuntime):
 
             # Add smart retry context if present
             if "_smartRetryContext" in context:
-                rendered += str(context.pop("_smartRetryContext"))
+                retry_context = str(context.pop("_smartRetryContext")).strip()
+                if retry_context:
+                    rendered = f"{rendered.rstrip()}\n\n{retry_context}"
 
             # Perform substitution
             for key, value in context.items():
                 placeholder = f"{{{{{key}}}}}"
                 rendered = rendered.replace(placeholder, str(value))
+
+            rendered = rendered.replace("\r\n", "\n").replace("\r", "\n").rstrip()
 
             # Build format
             format_type = (options.force_format or "xml").upper()
@@ -2002,16 +2470,16 @@ class AgentRuntime(IAgentRuntime):
             container_end = "</response>" if is_xml else "}"
 
             # Build extended schema with validation codes
-            first = validation_level >= 2
-            last = validation_level >= 3
+            first = checkpoint_codes_enabled and validation_level >= 2
+            last = checkpoint_codes_enabled and validation_level >= 3
 
             ext_schema: list[tuple[str, str]] = []
 
             def codes_schema(prefix: str) -> list[tuple[str, str]]:
                 return [
-                    (f"{prefix}initial_code", "echo the initial UUID code from prompt"),
-                    (f"{prefix}middle_code", "echo the middle UUID code from prompt"),
-                    (f"{prefix}end_code", "echo the end UUID code from prompt"),
+                    (f"{prefix}initial_code", "echo the initial prompt code"),
+                    (f"{prefix}middle_code", "echo the middle prompt code"),
+                    (f"{prefix}end_code", "echo the end prompt code"),
                 ]
 
             if first:
@@ -2033,38 +2501,44 @@ class AgentRuntime(IAgentRuntime):
 
             # Build example
             example_lines = [container_start]
-            for i, (field, desc) in enumerate(ext_schema):
+            for i, (fname, desc) in enumerate(ext_schema):
                 is_last = i == len(ext_schema) - 1
                 if is_xml:
-                    example_lines.append(f"  <{field}>{desc}</{field}>")
+                    example_lines.append(f"  <{fname}>{desc}</{fname}>")
                 else:
                     # No trailing comma on last field for valid JSON
                     comma = "" if is_last else ","
-                    example_lines.append(f'  "{field}": "{desc}"{comma}')
+                    example_lines.append(f'  "{fname}": "{desc}"{comma}')
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 
-            init_code = str(uuid.uuid4())
-            mid_code = str(uuid.uuid4())
-            final_code = str(uuid.uuid4())
+            init_code = prompt_code() if checkpoint_codes_enabled else ""
+            mid_code = prompt_code() if checkpoint_codes_enabled else ""
+            final_code = prompt_code() if checkpoint_codes_enabled else ""
 
             section_start = "<output>" if is_xml else "# Strict Output instructions"
             section_end = "</output>" if is_xml else ""
 
-            full_prompt = f"""initial code: {init_code}
-{rendered}
-middle code: {mid_code}
-{section_start}
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the {format_type} response format without any preamble or explanation.
+            prompt_parts = []
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"initial code: {init_code}")
+            prompt_parts.append(rendered)
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"middle code: {mid_code}")
+            prompt_parts.append(
+                f"""{section_start}
+Return only {format_type}. No prose before or after it. No <think>.
 
-Respond using {format_type} format like this:
+Use this shape:
 {example}
 
-IMPORTANT: Your response must ONLY contain the {container_start}{container_end} {format_type} block above. Do not include any text, thinking, or reasoning before or after this {format_type} block. Start your response immediately with {container_start} and end with {container_end}.
-{section_end}
-end code: {final_code}
-"""
+Return exactly one {"<response>...</response>" if is_xml else "JSON object"}.
+{section_end}"""
+            )
+            if checkpoint_codes_enabled:
+                prompt_parts.append(f"end code: {final_code}")
+
+            full_prompt = "\n".join(part for part in prompt_parts if part) + "\n"
 
             self.logger.debug(f"dynamic_prompt_exec_from_state: using format {format_type}")
 
@@ -2098,23 +2572,30 @@ end code: {final_code}
 
                 stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
 
-                # Capture stream_message_id in default parameter to avoid late binding
+                def emit_stream_chunk(
+                    chunk: str,
+                    _field: str | None,
+                    _stream_message_id: str = stream_message_id,
+                ) -> None:
+                    if options.on_stream_chunk is not None:
+                        options.on_stream_chunk(chunk, _stream_message_id)
+
+                def emit_stream_event(
+                    event: StreamEvent,
+                    _stream_message_id: str = stream_message_id,
+                ) -> None:
+                    if options.on_stream_event is not None:
+                        options.on_stream_event(event, _stream_message_id)
+
+                # Capture stream_message_id in dedicated helpers to avoid late binding
                 extractor = ValidationStreamExtractor(
                     ValidationStreamExtractorConfig(
                         level=validation_level,
                         schema=schema,
                         stream_fields=stream_fields,
                         expected_codes=per_field_codes,
-                        on_chunk=lambda chunk,  # type: ignore[misc]
-                        _field,
-                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
-                        if options.on_stream_chunk is not None  # type: ignore[truthy-function]
-                        else None,
-                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(  # type: ignore[misc]
-                            event, msg_id
-                        )
-                        if options.on_stream_event is not None
-                        else None,
+                        on_chunk=emit_stream_chunk,
+                        on_event=emit_stream_event,
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,
                     )
@@ -2425,7 +2906,10 @@ class DynamicPromptOptions:
     """Required fields that must be present and non-empty"""
 
     context_check_level: int | None = None
-    """Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)"""
+    """Validation level (0=trusted, 1=progressive, 2=buffered, 3=strict buffered)"""
+
+    checkpoint_codes: bool | None = None
+    """Enable prompt checkpoint wrappers and echo validation. Default: False."""
 
     max_retries: int | None = None
     """Maximum retry attempts"""
@@ -2443,3 +2927,14 @@ class DynamicPromptOptions:
 
     abort_signal: Callable[[], bool] | None = None
     """Callable returning True if the operation should be aborted."""
+
+
+def _is_truthy_setting(value: Any) -> bool:
+    """Parse runtime settings booleans consistently."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "on"}
+    return False

@@ -1,0 +1,276 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "rust",
+  "profile": "groq",
+  "timestamp": "1771194858418",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 959.686,
+      "responseTtftMs": 1407.969,
+      "responseTotalMs": 1407.978,
+      "speechToResponseStartMs": 2367.655,
+      "speechToVoiceStartUncachedMs": 2940.798,
+      "speechToVoiceStartCachedMs": 2694.257,
+      "voiceGenerationMs": 1346.407,
+      "voiceFirstTokenUncachedMs": 573.134,
+      "voiceFirstTokenCachedMs": 326.592,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 1384.808,
+      "ttsCachedPipelineMs": 1387.304,
+      "endToEndMs": 5681.919,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Hello! I’m ready to help generate dialog and actions for your character. Please let me know any details or preferences you have in mind.",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [],
+        "modelInput": "initial code: c0f52a13-223a-7d7e-e874-8e69d2255a57\n<task>Generate dialog and actions for the character {{agentName}}.</task>\n\n<providers>\n{{providers}}\n</providers>\n\n<instructions>\nWrite a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.\n\nIMPORTANT ACTION ORDERING RULES:\n- Actions are executed in the ORDER you list them - the order MATTERS!\n- REPLY should come FIRST to acknowledge the user's request before executing other actions\n- Common patterns:\n  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)\n  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge first, then do the task)\n  - For multi-step operations: REPLY,ACTION1,ACTION2 (acknowledge first, then complete all steps)\n- REPLY is...",
+        "modelOutputRaw": "<response>\n  <thought>Prepare a generic reply acknowledging the request to generate dialog and actions for the character.</thought>\n  <providers></providers>\n  <actions>REPLY</actions>\n  <text>Hello! I’m ready to help generate dialog and actions for your character. Please let me know any details or preferences you have in mind.</text>\n  <simple>true</simple>\n</response>",
+        "modelOutputClean": "Prepare a generic reply acknowledging the request to generate dialog and actions for the character. REPLY Hello! I’m ready to help generate dialog and actions for your character. Please let me know any details or preferences you have in mind. true",
+        "modelOutputHasThinkingTag": true,
+        "modelOutputHasXml": true,
+        "modelOutputThoughtTagCount": 2,
+        "modelOutputXmlTagCount": 12
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "purpose": "action",
+            "latencyMs": 1399,
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "CHARACTER"
+          },
+          {
+            "providerName": "ACTIONS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "providerName": "EVALUATORS",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "RECENT_MESSAGES"
+          }
+        ]
+      },
+      "ttsOutputBytes": 353350,
+      "ttsFirstSentenceUncachedBytes": 46150,
+      "ttsFirstSentenceCachedBytes": 46150,
+      "ttsRemainderBytes": 311110,
+      "ttsCachedPipelineBytes": 357260,
+      "responseCharCount": 136,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "I’m ready to help generate dialog and actions for your character. Please let me know any details or preferences you have in mind."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 536.274,
+      "responseTtftMs": 1487.088,
+      "responseTotalMs": 1487.095,
+      "speechToResponseStartMs": 2023.362,
+      "speechToVoiceStartUncachedMs": 2305.136,
+      "speechToVoiceStartCachedMs": 2332.909,
+      "voiceGenerationMs": 976.406,
+      "voiceFirstTokenUncachedMs": 281.768,
+      "voiceFirstTokenCachedMs": 309.54,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 914.749,
+      "ttsCachedPipelineMs": 916.868,
+      "endToEndMs": 4200.723,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Sure! Could you let me know the name of the character you'd like me to generate dialog and actions for?",
+        "stateExcerpt": "[CHARACTER]\nname: VoicebenchAgent\nbio: A benchmark agent used for voice latency benchmarking.\n[/CHARACTER]\n[ACTIONS]\n- REPLY: Reply to the user\n- IGNORE: Do not respond\n- NONE: No-op action\n[/ACTIONS]\n[PROVIDERS]\n- CHARACTER: Character definition and identity\n- ACTIONS: List a...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [],
+        "modelInput": "initial code: c0f52a13-223a-7d7e-e874-8e69d2255a57\n<task>Generate dialog and actions for the character {{agentName}}.</task>\n\n<providers>\n{{providers}}\n</providers>\n\n<instructions>\nWrite a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.\n\nIMPORTANT ACTION ORDERING RULES:\n- Actions are executed in the ORDER you list them - the order MATTERS!\n- REPLY should come FIRST to acknowledge the user's request before executing other actions\n- Common patterns:\n  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)\n  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge first, then do the task)\n  - For multi-step operations: REPLY,ACTION1,ACTION2 (acknowledge first, then complete all steps)\n- REPLY is...",
+        "modelOutputRaw": "<response>\n    <thought>Need the character name (agentName) to generate dialog and actions.</thought>\n    <providers></providers>\n    <actions>REPLY</actions>\n    <text>Sure! Could you let me know the name of the character you'd like me to generate dialog and actions for?</text>\n    <simple>true</simple>\n</response>",
+        "modelOutputClean": "Need the character name (agentName) to generate dialog and actions. REPLY Sure! Could you let me know the name of the character you'd like me to generate dialog and actions for? true",
+        "modelOutputHasThinkingTag": true,
+        "modelOutputHasXml": true,
+        "modelOutputThoughtTagCount": 2,
+        "modelOutputXmlTagCount": 12
+      },
+      "trajectory": {
+        "llmCallCount": 1,
+        "providerAccessCount": 5,
+        "llmCalls": [
+          {
+            "latencyMs": 1486,
+            "purpose": "action",
+            "model": "TEXT_LARGE"
+          }
+        ],
+        "providerAccesses": [
+          {
+            "providerName": "CHARACTER",
+            "purpose": "compose_state:generate"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "ACTIONS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "PROVIDERS"
+          },
+          {
+            "purpose": "compose_state:generate",
+            "providerName": "EVALUATORS"
+          },
+          {
+            "providerName": "RECENT_MESSAGES",
+            "purpose": "compose_state:generate"
+          }
+        ]
+      },
+      "ttsOutputBytes": 241990,
+      "ttsFirstSentenceUncachedBytes": 38470,
+      "ttsFirstSentenceCachedBytes": 38470,
+      "ttsRemainderBytes": 241990,
+      "ttsCachedPipelineBytes": 280460,
+      "responseCharCount": 103,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Sure!",
+        "remainder": "Could you let me know the name of the character you'd like me to generate dialog and actions for?"
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 959.686,
+      "avgResponseTtftMs": 1407.969,
+      "avgResponseTotalMs": 1407.978,
+      "avgSpeechToResponseStartMs": 2367.655,
+      "avgSpeechToVoiceStartUncachedMs": 2940.798,
+      "avgSpeechToVoiceStartCachedMs": 2694.257,
+      "avgVoiceGenerationMs": 1346.407,
+      "avgVoiceFirstTokenUncachedMs": 573.134,
+      "avgVoiceFirstTokenCachedMs": 326.592,
+      "avgTtsCachedPipelineMs": 1387.304,
+      "p95TranscriptionMs": 959.686,
+      "p99TranscriptionMs": 959.686,
+      "p95ResponseTtftMs": 1407.969,
+      "p99ResponseTtftMs": 1407.969,
+      "p95ResponseTotalMs": 1407.978,
+      "p99ResponseTotalMs": 1407.978,
+      "p95SpeechToResponseStartMs": 2367.655,
+      "p99SpeechToResponseStartMs": 2367.655,
+      "p95SpeechToVoiceStartUncachedMs": 2940.798,
+      "p99SpeechToVoiceStartUncachedMs": 2940.798,
+      "p95SpeechToVoiceStartCachedMs": 2694.257,
+      "p99SpeechToVoiceStartCachedMs": 2694.257,
+      "p95VoiceGenerationMs": 1346.407,
+      "p99VoiceGenerationMs": 1346.407,
+      "p95VoiceFirstTokenUncachedMs": 573.134,
+      "p99VoiceFirstTokenUncachedMs": 573.134,
+      "p95VoiceFirstTokenCachedMs": 326.592,
+      "p99VoiceFirstTokenCachedMs": 326.592,
+      "p95TtsCachedPipelineMs": 1387.304,
+      "p99TtsCachedPipelineMs": 1387.304,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0,
+      "avgEndToEndMs": 5681.919,
+      "p95EndToEndMs": 5681.919,
+      "p99EndToEndMs": 5681.919
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 536.274,
+      "avgResponseTtftMs": 1487.088,
+      "avgResponseTotalMs": 1487.095,
+      "avgSpeechToResponseStartMs": 2023.362,
+      "avgSpeechToVoiceStartUncachedMs": 2305.136,
+      "avgSpeechToVoiceStartCachedMs": 2332.909,
+      "avgVoiceGenerationMs": 976.406,
+      "avgVoiceFirstTokenUncachedMs": 281.768,
+      "avgVoiceFirstTokenCachedMs": 309.54,
+      "avgTtsCachedPipelineMs": 916.868,
+      "p95TranscriptionMs": 536.274,
+      "p99TranscriptionMs": 536.274,
+      "p95ResponseTtftMs": 1487.088,
+      "p99ResponseTtftMs": 1487.088,
+      "p95ResponseTotalMs": 1487.095,
+      "p99ResponseTotalMs": 1487.095,
+      "p95SpeechToResponseStartMs": 2023.362,
+      "p99SpeechToResponseStartMs": 2023.362,
+      "p95SpeechToVoiceStartUncachedMs": 2305.136,
+      "p99SpeechToVoiceStartUncachedMs": 2305.136,
+      "p95SpeechToVoiceStartCachedMs": 2332.909,
+      "p99SpeechToVoiceStartCachedMs": 2332.909,
+      "p95VoiceGenerationMs": 976.406,
+      "p99VoiceGenerationMs": 976.406,
+      "p95VoiceFirstTokenUncachedMs": 281.768,
+      "p99VoiceFirstTokenUncachedMs": 281.768,
+      "p95VoiceFirstTokenCachedMs": 309.54,
+      "p99VoiceFirstTokenCachedMs": 309.54,
+      "p95TtsCachedPipelineMs": 916.868,
+      "p99TtsCachedPipelineMs": 916.868,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0,
+      "avgEndToEndMs": 4200.723,
+      "p95EndToEndMs": 4200.723,
+      "p99EndToEndMs": 4200.723
+    }
+  }
+}

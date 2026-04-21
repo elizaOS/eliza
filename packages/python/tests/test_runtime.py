@@ -7,6 +7,7 @@ from elizaos.types import (
     Action,
     ActionResult,
     Character,
+    Content,
     Evaluator,
     HandlerOptions,
     IAgentRuntime,
@@ -97,6 +98,50 @@ class TestAgentRuntimeProviders:
         runtime.register_provider(provider)
         assert len(runtime.providers) == 1
         assert runtime.providers[0].name == "test-provider"
+
+    @pytest.mark.asyncio
+    async def test_compose_state_continues_when_provider_throws(
+        self, runtime: AgentRuntime
+    ) -> None:
+        healthy_provider_calls = 0
+
+        async def exploding_provider(
+            rt: IAgentRuntime, msg: Memory, state: State
+        ) -> ProviderResult:
+            raise RuntimeError("rolodex provider exploded")
+
+        async def healthy_provider(rt: IAgentRuntime, msg: Memory, state: State) -> ProviderResult:
+            nonlocal healthy_provider_calls
+            healthy_provider_calls += 1
+            return ProviderResult(text="Healthy provider context")
+
+        runtime.register_provider(
+            Provider(
+                name="broken-provider",
+                description="A provider that fails",
+                get=exploding_provider,
+            )
+        )
+        runtime.register_provider(
+            Provider(
+                name="healthy-provider",
+                description="A provider that succeeds",
+                get=healthy_provider,
+            )
+        )
+
+        message = Memory(
+            id=as_uuid("30000000-0000-0000-0000-000000000001"),
+            room_id=as_uuid("30000000-0000-0000-0000-000000000002"),
+            entity_id=as_uuid("30000000-0000-0000-0000-000000000003"),
+            content=Content(text="hello"),
+        )
+
+        state = await runtime.compose_state(message, skip_cache=True)
+
+        assert healthy_provider_calls == 1
+        assert "Healthy provider context" in state.text
+        assert "rolodex provider exploded" not in state.text
 
 
 class TestAgentRuntimeActions:

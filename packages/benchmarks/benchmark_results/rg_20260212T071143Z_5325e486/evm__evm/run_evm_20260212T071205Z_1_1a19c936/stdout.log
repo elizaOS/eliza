@@ -1,0 +1,9 @@
+2026-02-11 23:12:05,516  INFO     Model: qwen/qwen3-32b  Messages: 50  Chain: general  External: False  Agent: eliza
+2026-02-11 23:12:05,516  INFO     Starting Anvil: /Users/shawwalters/.foundry/bin/anvil --port 8545 --chain-id 31337 --accounts 1 --balance 10000 --silent
+2026-02-11 23:12:06,058  INFO     Anvil ready on port 8545 (attempt 2)
+2026-02-11 23:12:06,139  INFO     Anvil stopped
+2026-02-11 23:12:06,154  ERROR    Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x1060f5160>
+2026-02-11 23:12:06,154  ERROR    Unclosed connector
+connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x105579370>, 393585.980632)])']
+connector: <aiohttp.connector.TCPConnector object at 0x1060f52b0>

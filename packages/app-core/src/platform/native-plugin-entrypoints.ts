@@ -1,0 +1,10 @@
+import "@elizaos/capacitor-camera";
+import "@elizaos/capacitor-canvas";
+import "@elizaos/capacitor-gateway";
+import "@elizaos/capacitor-llama";
+import "@elizaos/capacitor-location";
+import "@elizaos/capacitor-mobile-signals";
+import "@elizaos/capacitor-screencapture";
+import "@elizaos/capacitor-swabble";
+import "@elizaos/capacitor-talkmode";
+import "@elizaos/capacitor-websiteblocker";

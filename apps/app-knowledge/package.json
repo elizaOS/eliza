@@ -1,0 +1,20 @@
+{
+  "name": "@elizaos/app-knowledge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts",
+    "./service-loader": "./src/service-loader.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

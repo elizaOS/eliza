@@ -36,6 +36,62 @@ function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
 }
 
+function componentNaturalKey(params: {
+	entityId: UUID;
+	type: string;
+	worldId?: UUID;
+	sourceEntityId?: UUID;
+}): string {
+	return [
+		String(params.entityId),
+		params.type,
+		String(params.worldId ?? ""),
+		String(params.sourceEntityId ?? ""),
+	].join("::");
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function dataContainsFilter(
+	value: unknown,
+	filter: Record<string, unknown> | undefined,
+): boolean {
+	if (!filter) return true;
+	if (!isPlainObject(value)) return false;
+
+	for (const [key, expected] of Object.entries(filter)) {
+		const actual = value[key];
+		if (isPlainObject(expected)) {
+			if (!dataContainsFilter(actual, expected)) {
+				return false;
+			}
+			continue;
+		}
+
+		if (Array.isArray(expected)) {
+			if (!Array.isArray(actual)) return false;
+			for (const expectedItem of expected) {
+				const found = actual.some((actualItem) => {
+					if (isPlainObject(expectedItem)) {
+						return dataContainsFilter(actualItem, expectedItem);
+					}
+					return actualItem === expectedItem;
+				});
+				if (!found) return false;
+			}
+			continue;
+		}
+
+		if (actual !== expected) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /**
  * In-memory database adapter.
  *
@@ -65,6 +121,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	private agents = new Map<string, Partial<Agent>>();
 	private entities = new Map<string, Entity>();
+	private components = new Map<string, Component>();
+	private componentIdsByEntity = new Map<string, Set<string>>();
+	private componentIdsByNaturalKey = new Map<string, string>();
 	private rooms = new Map<string, Room>();
 	private worlds = new Map<string, World>();
 	private tasks = new Map<string, Task>();
@@ -81,6 +140,90 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// Pairing storage
 	private pairingRequests = new Map<string, PairingRequest>();
 	private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
+
+	private cloneComponent(component: Component): Component {
+		return {
+			...component,
+			data: component.data
+				? ({ ...component.data } as Metadata)
+				: component.data,
+		};
+	}
+
+	private attachComponents(entity: Entity, components?: Component[]): Entity {
+		const attachedComponents =
+			components ?? this.getStoredComponentsForEntity(entity.id);
+		if (!attachedComponents.length) {
+			return { ...entity };
+		}
+		return {
+			...entity,
+			components: attachedComponents.map((component) =>
+				this.cloneComponent(component),
+			),
+		};
+	}
+
+	private getStoredComponentsForEntity(
+		entityId: UUID | undefined,
+		options?: { worldId?: UUID; sourceEntityId?: UUID },
+	): Component[] {
+		if (!entityId) return [];
+		const componentIds = this.componentIdsByEntity.get(String(entityId));
+		if (!componentIds) return [];
+
+		const components: Component[] = [];
+		for (const componentId of componentIds) {
+			const component = this.components.get(componentId);
+			if (!component) continue;
+			if (
+				options?.worldId !== undefined &&
+				component.worldId !== options.worldId
+			) {
+				continue;
+			}
+			if (
+				options?.sourceEntityId !== undefined &&
+				component.sourceEntityId !== options.sourceEntityId
+			) {
+				continue;
+			}
+			components.push(component);
+		}
+		return components;
+	}
+
+	private indexComponent(component: Component): void {
+		const componentId = String(component.id);
+		this.components.set(componentId, this.cloneComponent(component));
+
+		const entityKey = String(component.entityId);
+		const entityComponents =
+			this.componentIdsByEntity.get(entityKey) ?? new Set<string>();
+		entityComponents.add(componentId);
+		this.componentIdsByEntity.set(entityKey, entityComponents);
+
+		this.componentIdsByNaturalKey.set(
+			componentNaturalKey(component),
+			componentId,
+		);
+	}
+
+	private removeComponentIndexes(component: Component | undefined): void {
+		if (!component) return;
+
+		const componentId = String(component.id);
+		const entityKey = String(component.entityId);
+		const entityComponents = this.componentIdsByEntity.get(entityKey);
+		if (entityComponents) {
+			entityComponents.delete(componentId);
+			if (entityComponents.size === 0) {
+				this.componentIdsByEntity.delete(entityKey);
+			}
+		}
+
+		this.componentIdsByNaturalKey.delete(componentNaturalKey(component));
+	}
 
 	async initialize(_config?: Record<string, string | number | boolean | null>) {
 		this.ready = true;
@@ -195,10 +338,81 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		includeAllComponents?: boolean;
 		entityContext?: UUID;
 	}): Promise<Entity[]> {
-		if (_params.entityIds?.length) {
-			return this.getEntitiesByIds(_params.entityIds);
+		const matchedComponentsByEntity = new Map<string, Component[]>();
+		const hasComponentQuery =
+			_params.componentType !== undefined ||
+			_params.componentDataFilter !== undefined ||
+			_params.worldId !== undefined;
+
+		if (hasComponentQuery) {
+			for (const component of this.components.values()) {
+				if (_params.agentId && component.agentId !== _params.agentId) continue;
+				if (
+					_params.entityIds?.length &&
+					!_params.entityIds.includes(component.entityId)
+				) {
+					continue;
+				}
+				if (
+					_params.worldId !== undefined &&
+					component.worldId !== _params.worldId
+				) {
+					continue;
+				}
+				if (
+					_params.componentType !== undefined &&
+					component.type !== _params.componentType
+				) {
+					continue;
+				}
+				if (
+					_params.componentDataFilter !== undefined &&
+					!dataContainsFilter(component.data, _params.componentDataFilter)
+				) {
+					continue;
+				}
+
+				const entityKey = String(component.entityId);
+				const bucket = matchedComponentsByEntity.get(entityKey) ?? [];
+				bucket.push(this.cloneComponent(component));
+				matchedComponentsByEntity.set(entityKey, bucket);
+			}
 		}
-		return [];
+
+		let entityIds: UUID[] = [];
+		if (matchedComponentsByEntity.size > 0) {
+			entityIds = Array.from(matchedComponentsByEntity.keys()).map(asUuid);
+		} else if (_params.entityIds?.length) {
+			entityIds = [..._params.entityIds];
+		} else {
+			return [];
+		}
+
+		const offset = _params.offset ?? 0;
+		const limit = _params.limit ?? entityIds.length;
+		entityIds = entityIds.slice(offset, offset + limit);
+
+		const entities: Entity[] = [];
+		for (const entityId of entityIds) {
+			const entity = this.entities.get(String(entityId));
+			if (!entity) continue;
+			if (
+				_params.agentId &&
+				entity.agentId &&
+				entity.agentId !== _params.agentId
+			) {
+				continue;
+			}
+
+			const matchedComponents =
+				matchedComponentsByEntity.get(String(entityId)) ?? [];
+			const components = _params.includeAllComponents
+				? this.getStoredComponentsForEntity(entity.id)
+				: matchedComponents;
+			entities.push(this.attachComponents(entity, components));
+		}
+
+		return entities;
 	}
 
 	async getEntitiesForRooms(
@@ -212,7 +426,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (participantSet) {
 				for (const entityIdStr of participantSet) {
 					const entity = this.entities.get(entityIdStr);
-					if (entity) entities.push(entity);
+					if (entity) {
+						entities.push(
+							_includeComponents
+								? this.attachComponents(entity)
+								: { ...entity },
+						);
+					}
 				}
 			}
 			result.push({ roomId, entities });
@@ -294,7 +514,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			sourceEntityId?: UUID;
 		}>,
 	): Promise<(Component | null)[]> {
-		return keys.map(() => null);
+		return keys.map((key) => {
+			const componentId = this.componentIdsByNaturalKey.get(
+				componentNaturalKey(key),
+			);
+			const component = componentId
+				? this.components.get(componentId)
+				: undefined;
+			return component ? this.cloneComponent(component) : null;
+		});
 	}
 
 	async getComponentsForEntities(
@@ -302,7 +530,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		_worldId?: UUID,
 		_sourceEntityId?: UUID,
 	): Promise<Component[]> {
-		return [];
+		const components: Component[] = [];
+		for (const entityId of _entityIds) {
+			components.push(
+				...this.getStoredComponentsForEntity(entityId, {
+					worldId: _worldId,
+					sourceEntityId: _sourceEntityId,
+				}).map((component) => this.cloneComponent(component)),
+			);
+		}
+		return components;
 	}
 
 	// Batch entity methods
@@ -310,7 +547,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const entities: Entity[] = [];
 		for (const entityId of entityIds) {
 			const entity = this.entities.get(String(entityId));
-			if (entity) entities.push(entity);
+			if (entity) entities.push({ ...entity });
 		}
 		return entities;
 	}
@@ -329,26 +566,64 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	// Batch component methods
 	async createComponents(components: Component[]): Promise<UUID[]> {
+		for (const component of components) {
+			this.indexComponent(component);
+		}
 		return components.map((c) => c.id);
 	}
 
 	async getComponentsByIds(_componentIds: UUID[]): Promise<Component[]> {
-		return [];
+		return _componentIds
+			.map((componentId) => this.components.get(String(componentId)))
+			.filter((component): component is Component => component !== undefined)
+			.map((component) => this.cloneComponent(component));
 	}
 
 	async updateComponents(_components: Component[]): Promise<void> {
-		// no-op
+		for (const component of _components) {
+			const existing = this.components.get(String(component.id));
+			if (existing) {
+				this.removeComponentIndexes(existing);
+			}
+			this.indexComponent(component);
+		}
 	}
 
 	async deleteComponents(_componentIds: UUID[]): Promise<void> {
-		// no-op
+		for (const componentId of _componentIds) {
+			const existing = this.components.get(String(componentId));
+			this.removeComponentIndexes(existing);
+			this.components.delete(String(componentId));
+		}
 	}
 
 	async upsertComponents(
 		_components: Component[],
 		_options?: { entityContext?: UUID },
 	): Promise<void> {
-		// InMemory does not persist components; no-op for compatibility.
+		for (const component of _components) {
+			const existingId = this.componentIdsByNaturalKey.get(
+				componentNaturalKey(component),
+			);
+			if (!existingId) {
+				this.indexComponent(component);
+				continue;
+			}
+
+			const existing = this.components.get(existingId);
+			if (!existing) {
+				this.indexComponent(component);
+				continue;
+			}
+
+			this.removeComponentIndexes(existing);
+			this.indexComponent({
+				...existing,
+				agentId: component.agentId,
+				roomId: component.roomId,
+				data: component.data,
+			});
+		}
 	}
 
 	async patchComponents(
@@ -361,9 +636,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async getMemories(params: {
 		entityId?: UUID;
 		agentId?: UUID;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
+		count?: number;
 		offset?: number;
 		unique?: boolean;
 		tableName: string;
@@ -375,8 +649,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const roomId = params.roomId ?? DEFAULT_UUID;
-		let all =
-			this.memoriesByRoom.get(roomTableKey(params.tableName, roomId)) ?? [];
+		const tableName = params.tableName ?? "messages";
+		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
 
 		// Filter by timestamp range (start/end are timestamps in milliseconds)
 		// This supports history compaction - only return messages after the compaction point
@@ -457,12 +731,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		entityId?: UUID;
 		roomId?: UUID;
 		type?: string;
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		offset?: number;
 	}): Promise<Log[]> {
-		const effectiveLimit = params.limit ?? params.count ?? 10;
+		const effectiveLimit = params.limit ?? 10;
 		let filtered = this.logs;
 
 		// Filter by entityId if provided
@@ -580,10 +852,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const merged: Memory = { ...existing, ...memory };
 			this.memoriesById.set(String(memory.id), merged);
 			// Update reference in memoriesByRoom to keep consistency
-			for (const [, list] of this.memoriesByRoom) {
+			const oldRoomId = existing.roomId ?? DEFAULT_UUID;
+			const newRoomId = merged.roomId ?? DEFAULT_UUID;
+			for (const [key, list] of this.memoriesByRoom) {
 				const idx = list.findIndex((m) => String(m.id) === String(memory.id));
 				if (idx !== -1) {
-					list[idx] = merged;
+					if (String(oldRoomId) !== String(newRoomId)) {
+						const tableName = key.split(":")[0];
+						list.splice(idx, 1);
+						const newKey = roomTableKey(tableName, newRoomId);
+						const newList = this.memoriesByRoom.get(newKey) ?? [];
+						newList.push(merged);
+						this.memoriesByRoom.set(newKey, newList);
+					} else {
+						list[idx] = merged;
+					}
 					break;
 				}
 			}
@@ -1062,8 +1345,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemoriesByWorldId(params: {
 		worldIds?: UUID[];
-		/** @deprecated use limit */
-		count?: number;
 		limit?: number;
 		tableName?: string;
 	}): Promise<Memory[]> {
@@ -1071,7 +1352,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (worldIds.length === 0) return [];
 		const rooms = await this.getRoomsByWorlds(worldIds);
 		const roomIds = rooms.map((r) => r.id);
-		const effectiveLimit = params.limit ?? params.count ?? 50;
+		const effectiveLimit = params.limit ?? 50;
 		const out: Memory[] = [];
 		for (const rid of roomIds) {
 			if (params.tableName) {

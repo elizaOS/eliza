@@ -1,0 +1,26 @@
+{
+  "id": "fullstack-app",
+  "name": "fullstack-app",
+  "description": "Create a Milady-style fullstack app workspace backed by a local eliza checkout",
+  "kind": "fullstack-app",
+  "version": 1,
+  "languages": ["typescript"],
+  "upstream": {
+    "path": "eliza",
+    "repo": "https://github.com/elizaos/eliza.git",
+    "branch": "develop",
+    "mode": "git-submodule",
+    "requiredSubmodules": [
+      "plugins/plugin-local-ai",
+      "plugins/plugin-ollama",
+      "plugins/plugin-sql",
+      "plugins/plugin-elizacloud"
+    ],
+    "requiredWorkspaces": [
+      "plugins/plugin-local-ai/typescript",
+      "plugins/plugin-ollama/typescript",
+      "plugins/plugin-sql/typescript",
+      "plugins/plugin-elizacloud/typescript"
+    ]
+  }
+}

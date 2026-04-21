@@ -1,0 +1,174 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "initialize",
+      "inputs": [
+        { "name": "value", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "migrate",
+      "inputs": [
+        { "name": "value", "type": "uint256", "internalType": "uint256" },
+        { "name": "anotherValue", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "x",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "y",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "event",
+      "name": "Initialized",
+      "inputs": [
+        {
+          "name": "version",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506102468061001d5f395ff3fe60806040526004361061003e575f3560e01c80630c55699c146100425780633e54bacb14610069578063a56dfe4a1461007e578063fe4b84df14610093575b5f80fd5b34801561004d575f80fd5b5061005760015481565b60405190815260200160405180910390f35b61007c6100773660046101d9565b6100a6565b005b348015610089575f80fd5b5061005760035481565b61007c6100a13660046101f9565b6100cc565b60025460ff16156100b5575f80fd5b60019182556003556002805460ff19169091179055565b5f54610100900460ff16158080156100ea57505f54600160ff909116105b806101035750303b15801561010357505f5460ff166001145b61016a5760405162461bcd60e51b815260206004820152602e60248201527f496e697469616c697a61626c653a20636f6e747261637420697320616c72656160448201526d191e481a5b9a5d1a585b1a5e995960921b606482015260840160405180910390fd5b5f805460ff19166001179055801561018b575f805461ff0019166101001790555b600182905580156101d5575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b5050565b5f80604083850312156101ea575f80fd5b50508035926020909101359150565b5f60208284031215610209575f80fd5b503591905056fea2646970667358221220aa5fc3929b2b8afdb6a25bb58936d654595d9692590c87666996124890b25b3964736f6c63430008140033",
+    "sourceMap": "500:288:105:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x60806040526004361061003e575f3560e01c80630c55699c146100425780633e54bacb14610069578063a56dfe4a1461007e578063fe4b84df14610093575b5f80fd5b34801561004d575f80fd5b5061005760015481565b60405190815260200160405180910390f35b61007c6100773660046101d9565b6100a6565b005b348015610089575f80fd5b5061005760035481565b61007c6100a13660046101f9565b6100cc565b60025460ff16156100b5575f80fd5b60019182556003556002805460ff19169091179055565b5f54610100900460ff16158080156100ea57505f54600160ff909116105b806101035750303b15801561010357505f5460ff166001145b61016a5760405162461bcd60e51b815260206004820152602e60248201527f496e697469616c697a61626c653a20636f6e747261637420697320616c72656160448201526d191e481a5b9a5d1a585b1a5e995960921b606482015260840160405180910390fd5b5f805460ff19166001179055801561018b575f805461ff0019166101001790555b600182905580156101d5575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b5050565b5f80604083850312156101ea575f80fd5b50508035926020909101359150565b5f60208284031215610209575f80fd5b503591905056fea2646970667358221220aa5fc3929b2b8afdb6a25bb58936d654595d9692590c87666996124890b25b3964736f6c63430008140033",
+    "sourceMap": "500:288:105:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;273:16;;;;;;;;;;;;;;;;;;;160:25:310;;;148:2;133:18;273:16:105;;;;;;;606:180;;;;;;:::i;:::-;;:::i;:::-;;583:16;;;;;;;;;;;;;;;;296:88;;;;;;:::i;:::-;;:::i;606:180::-;694:11;;;;693:12;685:21;;;;;;716:1;:9;;;735:1;:16;761:11;:18;;-1:-1:-1;;761:18:105;;;;;;606:180::o;296:88::-;3268:19:162;3291:13;;;;;;3290:14;;3336:34;;;;-1:-1:-1;3354:12:162;;3369:1;3354:12;;;;:16;3336:34;3335:97;;;-1:-1:-1;3404:4:162;1702:19:220;:23;;;3376:55:162;;-1:-1:-1;3414:12:162;;;;;:17;3376:55;3314:190;;;;-1:-1:-1;;;3314:190:162;;836:2:310;3314:190:162;;;818:21:310;875:2;855:18;;;848:30;914:34;894:18;;;887:62;-1:-1:-1;;;965:18:310;;;958:44;1019:19;;3314:190:162;;;;;;;;3514:12;:16;;-1:-1:-1;;3514:16:162;3529:1;3514:16;;;3540:65;;;;3574:13;:20;;-1:-1:-1;;3574:20:162;;;;;3540:65;368:1:105::1;:9:::0;;;3625:99:162;;;;3675:5;3659:21;;-1:-1:-1;;3659:21:162;;;3699:14;;-1:-1:-1;1201:36:310;;3699:14:162;;1189:2:310;1174:18;3699:14:162;;;;;;;3625:99;3258:472;296:88:105;:::o;196:248:310:-;264:6;272;325:2;313:9;304:7;300:23;296:32;293:52;;;341:1;338;331:12;293:52;-1:-1:-1;;364:23:310;;;434:2;419:18;;;406:32;;-1:-1:-1;196:248:310:o;449:180::-;508:6;561:2;549:9;540:7;536:23;532:32;529:52;;;577:1;574;567:12;529:52;-1:-1:-1;600:23:310;;449:180;-1:-1:-1;449:180:310:o",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {
+    "initialize(uint256)": "fe4b84df",
+    "migrate(uint256,uint256)": "3e54bacb",
+    "x()": "0c55699c",
+    "y()": "a56dfe4a"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint8\",\"name\":\"version\",\"type\":\"uint8\"}],\"name\":\"Initialized\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"anotherValue\",\"type\":\"uint256\"}],\"name\":\"migrate\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"x\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"y\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"This contract is a mock to test migratable functionality with params\",\"events\":{\"Initialized(uint8)\":{\"details\":\"Triggered when the contract has been initialized or reinitialized.\"}},\"kind\":\"dev\",\"methods\":{},\"title\":\"MigratableMockV2\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/SingleInheritanceInitializableMocks.sol\":\"MigratableMockV2\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/SingleInheritanceInitializableMocks.sol\":{\"keccak256\":\"0x0fec11c92b57554ba8d1378a8034577f3d27772b97d1e2537f4ac2f8853d6de3\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://95f0cabe9a9651b003ce6eb9806faf12ed53c07611807eaf0847b49b1133861a\",\"dweb:/ipfs/QmSK25VFuBWjyhGByqJCfz1VXLstiiYNR5Q67qyz7TPrPf\"]},\"lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol\":{\"keccak256\":\"0x3d6069be9b4c01fb81840fb9c2c4dc58dd6a6a4aafaa2c6837de8699574d84c6\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://720d6bb56ea0c4ef781c0bd65c5bd0541f5a46100163b2587170f97658d2deed\",\"dweb:/ipfs/QmTS2biLVPrv8CeeXCaKmkFxonMiRvc1LxiYBRYDAJHQUS\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "uint8",
+              "name": "version",
+              "type": "uint8",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "Initialized",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            { "internalType": "uint256", "name": "value", "type": "uint256" }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "initialize"
+        },
+        {
+          "inputs": [
+            { "internalType": "uint256", "name": "value", "type": "uint256" },
+            {
+              "internalType": "uint256",
+              "name": "anotherValue",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "payable",
+          "type": "function",
+          "name": "migrate"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "x",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "y",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/SingleInheritanceInitializableMocks.sol": "MigratableMockV2"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/SingleInheritanceInitializableMocks.sol": {
+        "keccak256": "0x0fec11c92b57554ba8d1378a8034577f3d27772b97d1e2537f4ac2f8853d6de3",
+        "urls": [
+          "bzz-raw://95f0cabe9a9651b003ce6eb9806faf12ed53c07611807eaf0847b49b1133861a",
+          "dweb:/ipfs/QmSK25VFuBWjyhGByqJCfz1VXLstiiYNR5Q67qyz7TPrPf"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol": {
+        "keccak256": "0x3d6069be9b4c01fb81840fb9c2c4dc58dd6a6a4aafaa2c6837de8699574d84c6",
+        "urls": [
+          "bzz-raw://720d6bb56ea0c4ef781c0bd65c5bd0541f5a46100163b2587170f97658d2deed",
+          "dweb:/ipfs/QmTS2biLVPrv8CeeXCaKmkFxonMiRvc1LxiYBRYDAJHQUS"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 105
+}

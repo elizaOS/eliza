@@ -1,0 +1,5 @@
+git_url(ENV["MATCH_GIT_URL"] || "https://github.com/elizaOS/certificates.git")
+storage_mode("git")
+type("appstore")
+app_identifier("ai.elizaos.app")
+team_id(ENV["APPLE_TEAM_ID"] || "25877RY2EH")

@@ -1,0 +1,363 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Header */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+}
+
+.headerContent {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoIcon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Geist Mono", monospace;
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: white;
+}
+
+.logoText h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.logoText span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background 0.3s;
+}
+
+.statusDot.online {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.statusDot.offline {
+  background: var(--text-muted);
+  animation: pulse 1.5s infinite;
+}
+
+.statusText {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Main chat area */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.messagesContainer {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Messages */
+.message {
+  display: flex;
+  gap: 12px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message.user {
+  flex-direction: row-reverse;
+}
+
+.messageAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.messageContent {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message.user .messageContent {
+  align-items: flex-end;
+}
+
+.messageMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.messageRole {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.messageTime {
+  color: var(--text-muted);
+}
+
+.messageText {
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message.assistant .messageText {
+  background: var(--eliza-bubble);
+  border: 1px solid var(--border-color);
+  border-radius: 16px 16px 16px 4px;
+}
+
+.message.user .messageText {
+  background: var(--accent);
+  color: white;
+  border-radius: 16px 16px 4px 16px;
+}
+
+/* Typing indicator */
+.typingIndicator {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typingIndicator span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  animation: dotBounce 1.4s infinite;
+}
+
+.typingIndicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typingIndicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Error banner */
+.errorBanner {
+  position: sticky;
+  bottom: 80px;
+  margin: 0 24px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: var(--error);
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.errorBanner button {
+  background: none;
+  border: none;
+  color: var(--error);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.errorBanner button:hover {
+  opacity: 1;
+}
+
+/* Footer / Input area */
+.footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  padding: 16px 24px;
+}
+
+.inputForm {
+  display: flex;
+  gap: 12px;
+}
+
+.input {
+  flex: 1;
+  padding: 14px 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sendButton {
+  width: 48px;
+  height: 48px;
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.2s,
+    transform 0.1s;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendButton:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.footerMeta {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .headerContent {
+    padding: 12px 16px;
+  }
+
+  .logoIcon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .logoText h1 {
+    font-size: 1.1rem;
+  }
+
+  .messagesContainer {
+    padding: 16px;
+  }
+
+  .messageContent {
+    max-width: 85%;
+  }
+
+  .messageText {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
+  .footer {
+    padding: 12px 16px;
+  }
+
+  .input {
+    padding: 12px 14px;
+  }
+
+  .sendButton {
+    width: 44px;
+    height: 44px;
+  }
+}
+

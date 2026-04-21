@@ -1,0 +1,186 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "typescript",
+  "profile": "groq",
+  "timestamp": "1771147340530",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 951.513,
+      "responseTtftMs": 1297.975,
+      "responseTotalMs": 1298.489,
+      "voiceGenerationMs": 671.679,
+      "voiceFirstTokenUncachedMs": 471.232,
+      "voiceFirstTokenCachedMs": 367.332,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 555.675,
+      "ttsCachedPipelineMs": 555.688,
+      "endToEndMs": 3948.944,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Hello! Ready to benchmark your voice latency.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconversation...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 165190,
+      "ttsFirstSentenceUncachedBytes": 46150,
+      "ttsFirstSentenceCachedBytes": 46150,
+      "ttsRemainderBytes": 142150,
+      "ttsCachedPipelineBytes": 188300,
+      "responseCharCount": 45,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Hello!",
+        "remainder": "Ready to benchmark your voice latency."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 423.636,
+      "responseTtftMs": 1792.014,
+      "responseTotalMs": 1792.252,
+      "voiceGenerationMs": 564.347,
+      "voiceFirstTokenUncachedMs": 584.655,
+      "voiceFirstTokenCachedMs": 594.811,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 594.823,
+      "endToEndMs": 3959.778,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample.\n\nYou are running in voicebench. Respond in one brief conversational sentence under 140 characters."
+      },
+      "outContext": {
+        "response": "Ready for the benchmark, let's get started!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconversation...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 138310,
+      "ttsFirstSentenceUncachedBytes": 138310,
+      "ttsFirstSentenceCachedBytes": 138310,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 138310,
+      "responseCharCount": 43,
+      "responseWasCapped": false,
+      "responseSegmentation": {
+        "firstSentence": "Ready for the benchmark, let's get started!",
+        "remainder": ""
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 951.513,
+      "avgResponseTtftMs": 1297.975,
+      "avgResponseTotalMs": 1298.489,
+      "avgVoiceGenerationMs": 671.679,
+      "avgVoiceFirstTokenUncachedMs": 471.232,
+      "avgVoiceFirstTokenCachedMs": 367.332,
+      "avgTtsCachedPipelineMs": 555.688,
+      "p95TranscriptionMs": 951.513,
+      "p99TranscriptionMs": 951.513,
+      "p95ResponseTtftMs": 1297.975,
+      "p99ResponseTtftMs": 1297.975,
+      "p95ResponseTotalMs": 1298.489,
+      "p99ResponseTotalMs": 1298.489,
+      "p95VoiceGenerationMs": 671.679,
+      "p99VoiceGenerationMs": 671.679,
+      "p95VoiceFirstTokenUncachedMs": 471.232,
+      "p99VoiceFirstTokenUncachedMs": 471.232,
+      "p95VoiceFirstTokenCachedMs": 367.332,
+      "p99VoiceFirstTokenCachedMs": 367.332,
+      "p95TtsCachedPipelineMs": 555.688,
+      "p99TtsCachedPipelineMs": 555.688,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 3948.944,
+      "p95EndToEndMs": 3948.944,
+      "p99EndToEndMs": 3948.944
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 423.636,
+      "avgResponseTtftMs": 1792.014,
+      "avgResponseTotalMs": 1792.252,
+      "avgVoiceGenerationMs": 564.347,
+      "avgVoiceFirstTokenUncachedMs": 584.655,
+      "avgVoiceFirstTokenCachedMs": 594.811,
+      "avgTtsCachedPipelineMs": 594.823,
+      "p95TranscriptionMs": 423.636,
+      "p99TranscriptionMs": 423.636,
+      "p95ResponseTtftMs": 1792.014,
+      "p99ResponseTtftMs": 1792.014,
+      "p95ResponseTotalMs": 1792.252,
+      "p99ResponseTotalMs": 1792.252,
+      "p95VoiceGenerationMs": 564.347,
+      "p99VoiceGenerationMs": 564.347,
+      "p95VoiceFirstTokenUncachedMs": 584.655,
+      "p99VoiceFirstTokenUncachedMs": 584.655,
+      "p95VoiceFirstTokenCachedMs": 594.811,
+      "p99VoiceFirstTokenCachedMs": 594.811,
+      "p95TtsCachedPipelineMs": 594.823,
+      "p99TtsCachedPipelineMs": 594.823,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0,
+      "avgEndToEndMs": 3959.778,
+      "p95EndToEndMs": 3959.778,
+      "p99EndToEndMs": 3959.778
+    }
+  }
+}

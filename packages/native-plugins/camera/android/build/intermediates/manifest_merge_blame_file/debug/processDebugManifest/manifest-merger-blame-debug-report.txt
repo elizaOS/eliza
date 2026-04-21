@@ -1,0 +1,33 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="ai.eliza.plugins.camera" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+6
+7    <uses-permission android:name="android.permission.CAMERA" />
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:3:5-65
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:3:22-62
+8    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:4:5-71
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:4:22-68
+9    <uses-permission
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:5:5-108
+10        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:5:22-78
+11        android:maxSdkVersion="28" />
+11-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:5:79-105
+12
+13    <uses-feature
+13-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:7:5-85
+14        android:name="android.hardware.camera"
+14-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:7:19-57
+15        android:required="false" />
+15-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:7:58-82
+16    <uses-feature
+16-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:8:5-95
+17        android:name="android.hardware.camera.autofocus"
+17-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:8:19-67
+18        android:required="false" />
+18-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/AndroidManifest.xml:8:68-92
+19
+20</manifest>

@@ -1,0 +1,241 @@
+{
+  "id": "8e116af7-7db7-4e35-a68b-b0939c066c78",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Please update my bookkeeping sheet with the recent transactions from the provided folder, detailing my expenses over the past few days.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "C:\\Users\\User\\Desktop\\my_bookkeeping.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/my_bookkeeping.xlsx"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\receipt_0.jpeg",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/receipt_0.jpeg"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\receipt_1.jpg",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/receipt_1.jpg"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\receipt_2.jpg",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/receipt_2.jpg"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\receipt_3.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/receipt_3.pdf"
+          },
+          {
+            "path": "C:\\Users\\User\\Desktop\\receipt_4.jpg",
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/receipt_4.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\my_bookkeeping.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/8e116af7-7db7-4e35-a68b-b0939c066c78",
+  "related_apps": [
+    "excel",
+    "os",
+    "image",
+    "pdf"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "my_bookkeeping - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 1.0
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Desktop\\my_bookkeeping.xlsx",
+      "dest": "my_bookkeeping.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/8e116af7-7db7-4e35-a68b-b0939c066c78/my_bookkeeping%20Gold.xlsx",
+      "dest": "my_bookkeeping_gold.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_fuzzy",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1",
+          "rules": [
+            {
+              "range": [
+                "A1:A8",
+                "B1:B8",
+                "C1:C8",
+                "D1:D8",
+                "E1:E8"
+              ],
+              "type": "exact_match"
+            }
+          ]
+        },
+        {
+          "type": "sheet_fuzzy",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1",
+          "rules": [
+            {
+              "range": [
+                "C9:C13"
+              ],
+              "type": "exact_match",
+              "ignore_case": true
+            }
+          ]
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "D9",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -186.93
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "D10",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -3670
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "D11",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -5.7
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "D12",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -154.06
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "D13",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -8.1
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "E9",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": 603.07
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "E10",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -3066.93
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "E11",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -3072.63
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "E12",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -3226.69
+            }
+          }
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": 0,
+          "coordinate": "E13",
+          "props": {
+            "value": {
+              "method": "approx:0.1",
+              "ref": -3234.79
+            }
+          }
+        }
+      ]
+    }
+  }
+}

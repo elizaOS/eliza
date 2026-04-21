@@ -1,0 +1,169 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-14T19:55:51.170513",
+    "seed": 42,
+    "total_duration_ms": 40.99678993225098
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "overall_accuracy": "0.0%",
+    "findings": [
+      "Low retrieval accuracy (<70%)",
+      "Performance below Claude-3-Opus (-95.0%)"
+    ],
+    "recommendations": [
+      "Consider using a model with better context handling"
+    ]
+  },
+  "metrics": {
+    "overall_accuracy": 0.0,
+    "total_tasks": 12,
+    "lost_in_middle_score": 0.0
+  },
+  "results": [
+    {
+      "task_id": "niah_sweep_1",
+      "bench_type": "niah_basic",
+      "context_length": 1029,
+      "needle_position": "start",
+      "expected_answer": "MF8MDD4V",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.2980232238769531,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_2",
+      "bench_type": "niah_basic",
+      "context_length": 1018,
+      "needle_position": "start",
+      "expected_answer": "Benjamin Jackson",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.0457763671875,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_3",
+      "bench_type": "niah_basic",
+      "context_length": 1022,
+      "needle_position": "middle",
+      "expected_answer": "https://resource",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.027894973754882812,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_4",
+      "bench_type": "niah_basic",
+      "context_length": 1028,
+      "needle_position": "middle",
+      "expected_answer": "api/v2/handler",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.02193450927734375,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_5",
+      "bench_type": "niah_basic",
+      "context_length": 1021,
+      "needle_position": "end",
+      "expected_answer": "39TEX8FS",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.03600120544433594,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_6",
+      "bench_type": "niah_basic",
+      "context_length": 1025,
+      "needle_position": "end",
+      "expected_answer": "Eleanor Harrison",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.017881393432617188,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_7",
+      "bench_type": "niah_basic",
+      "context_length": 4086,
+      "needle_position": "start",
+      "expected_answer": "api/v2/processor",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.01811981201171875,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_8",
+      "bench_type": "niah_basic",
+      "context_length": 4088,
+      "needle_position": "start",
+      "expected_answer": "cmd:handler",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.019073486328125,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_9",
+      "bench_type": "niah_basic",
+      "context_length": 4088,
+      "needle_position": "middle",
+      "expected_answer": "G8SBI4Q2",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.016927719116210938,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_10",
+      "bench_type": "niah_basic",
+      "context_length": 4093,
+      "needle_position": "middle",
+      "expected_answer": "func_endpoint",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.019073486328125,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_11",
+      "bench_type": "niah_basic",
+      "context_length": 4092,
+      "needle_position": "end",
+      "expected_answer": "KOIXNTM9",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.0171661376953125,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    },
+    {
+      "task_id": "niah_sweep_12",
+      "bench_type": "niah_basic",
+      "context_length": 4100,
+      "needle_position": "end",
+      "expected_answer": "May 26, 2025",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 0.017881393432617188,
+      "error": "1 validation error for OpenAIConfig\napi_key\n  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error"
+    }
+  ]
+}

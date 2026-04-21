@@ -1,0 +1,53 @@
+{
+  "abi": [],
+  "bytecode": {
+    "object": "0x60556032600b8282823980515f1a607314602657634e487b7160e01b5f525f60045260245ffd5b305f52607381538281f3fe730000000000000000000000000000000000000000301460806040525f80fdfea264697066735822122046f407d82e7004527d82ccdc5241aafb8540dc4ff44c4fb55de93506182510c564736f6c63430008140033",
+    "sourceMap": "405:1154:252:-:0;;;;;;;;;;;;;;;-1:-1:-1;;;405:1154:252;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x730000000000000000000000000000000000000000301460806040525f80fdfea264697066735822122046f407d82e7004527d82ccdc5241aafb8540dc4ff44c4fb55de93506182510c564736f6c63430008140033",
+    "sourceMap": "405:1154:252:-:0;;;;;;;;",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {},
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[],\"devdoc\":{\"details\":\"Library for managing uint256 to bool mapping in a compact and efficient way, providing the keys are sequential. Largely inspired by Uniswap's https://github.com/Uniswap/merkle-distributor/blob/master/contracts/MerkleDistributor.sol[merkle-distributor].\",\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/utils/structs/BitMaps.sol\":\"BitMaps\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/utils/structs/BitMaps.sol\":{\"keccak256\":\"0xac946730f979a447732a5bed58aa30c995ae666c3e1663b312ab5fd11dbe3eb6\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://4f6d9467f83ad116296f5d3f16734fa997cf333a6bc57b494b9d4771e7618fa6\",\"dweb:/ipfs/QmS5T3j2ijQQXv9QtQGMngekqdSRJSad4VEyeszRwDurMS\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/utils/structs/BitMaps.sol": "BitMaps"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/utils/structs/BitMaps.sol": {
+        "keccak256": "0xac946730f979a447732a5bed58aa30c995ae666c3e1663b312ab5fd11dbe3eb6",
+        "urls": [
+          "bzz-raw://4f6d9467f83ad116296f5d3f16734fa997cf333a6bc57b494b9d4771e7618fa6",
+          "dweb:/ipfs/QmS5T3j2ijQQXv9QtQGMngekqdSRJSad4VEyeszRwDurMS"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 252
+}

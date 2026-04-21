@@ -1,0 +1,5 @@
+# command: bun run src/index.ts --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/configbench__configbench/run_configbench_20260212T083316Z_5_5a499a9b/output --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/configbench
+# run_id: run_configbench_20260212T083316Z_5_5a499a9b
+[ElizaHandler] Failed to import dependencies: BuildMessage: ENOENT reading "/Users/shawwalters/eliza-workspace/plugins/plugin-plugin-manager/typescript/node_modules/@elizaos/core"
+[ElizaHandler] Dependencies not available. Eliza handler will skip all scenarios.

@@ -1,0 +1,8 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -r requirements.txt
+
+-e ../../../packages/python
+-e ../../../plugins/plugin-local-ai/python
+-e ../../../plugins/plugin-shell/python
+-e ../../../plugins/plugin-inmemorydb/python
+

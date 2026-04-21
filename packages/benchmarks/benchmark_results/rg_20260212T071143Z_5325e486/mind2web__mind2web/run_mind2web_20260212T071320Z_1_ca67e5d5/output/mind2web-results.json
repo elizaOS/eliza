@@ -1,0 +1,34 @@
+{
+  "total_tasks": 1,
+  "total_trials": 1,
+  "overall_element_accuracy": 0.0,
+  "overall_operation_accuracy": 0.0,
+  "overall_step_accuracy": 0.0,
+  "overall_task_success_rate": 0.0,
+  "average_latency_ms": 0.27298927307128906,
+  "by_domain": {
+    "shopping": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 0.27298927307128906
+    }
+  },
+  "by_website": {
+    "amazon.com": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 0.27298927307128906
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "timestamp": "2026-02-11T23:13:20.388284",
+    "mode": "real-llm",
+    "split": "test_task",
+    "model_provider": "groq"
+  }
+}

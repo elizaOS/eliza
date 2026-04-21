@@ -1,0 +1,116 @@
+.app {
+  min-height: 100vh;
+  background: #f7fafc;
+}
+
+.app-header {
+  background: white;
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.logo {
+  text-decoration: none;
+  color: #2d3748;
+}
+
+.logo h1 {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+}
+
+.app-header nav a {
+  color: #4a5568;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.app-header nav a:hover {
+  color: #2d3748;
+}
+
+.benchmark-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.benchmark-select {
+  padding: 8px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #4a5568;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  font-weight: 500;
+}
+
+.benchmark-select:hover {
+  border-color: #667eea;
+}
+
+.benchmark-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.app-main {
+  padding: 0;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: white;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error {
+  background: white;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.error p {
+  color: #e53e3e;
+  font-size: 18px;
+  margin-bottom: 20px;
+}
+
+.error a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+}

@@ -1,0 +1,628 @@
+[
+  {
+    "task_id": "os-001",
+    "environment": "operating_system",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE"
+    ],
+    "final_state": {
+      "command": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+      "output": "TASK_COMPLETE",
+      "exit_code": 0,
+      "working_dir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user"
+    },
+    "duration_ms": 13.031005859375,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 13.031005859375,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+        "observation": "{'command': \"mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE\", 'output': 'TASK_COMPLETE', 'exit_code': 0, 'working_dir': '/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user'}",
+        "reward": 0.1,
+        "timestamp_ms": 7.863044738769531,
+        "metadata": {
+          "command": "mkdir -p test_dir && echo 'Hello, World!' > test_dir/hello.txt && echo TASK_COMPLETE",
+          "exit_code": 0
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "os-002",
+    "environment": "operating_system",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "find . -maxdepth 1 -name \"*.txt\" | wc -l && echo TASK_COMPLETE"
+    ],
+    "final_state": {
+      "command": "find . -maxdepth 1 -name \"*.txt\" | wc -l && echo TASK_COMPLETE",
+      "output": "2\nTASK_COMPLETE",
+      "exit_code": 0,
+      "working_dir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user"
+    },
+    "duration_ms": 11.820077896118164,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 11.820077896118164,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "find . -maxdepth 1 -name \"*.txt\" | wc -l && echo TASK_COMPLETE",
+        "observation": "{'command': 'find . -maxdepth 1 -name \"*.txt\" | wc -l && echo TASK_COMPLETE', 'output': '2\\nTASK_COMPLETE', 'exit_code': 0, 'working_dir': '/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user'}",
+        "reward": 0.1,
+        "timestamp_ms": 5.790233612060547,
+        "metadata": {
+          "command": "find . -maxdepth 1 -name \"*.txt\" | wc -l && echo TASK_COMPLETE",
+          "exit_code": 0
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "os-003",
+    "environment": "operating_system",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "ls -S logs | head -1 && echo TASK_COMPLETE"
+    ],
+    "final_state": {
+      "command": "ls -S logs | head -1 && echo TASK_COMPLETE",
+      "output": "large.log\nTASK_COMPLETE",
+      "exit_code": 0,
+      "working_dir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user"
+    },
+    "duration_ms": 11.695146560668945,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 11.695146560668945,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "ls -S logs | head -1 && echo TASK_COMPLETE",
+        "observation": "{'command': 'ls -S logs | head -1 && echo TASK_COMPLETE', 'output': 'large.log\\nTASK_COMPLETE', 'exit_code': 0, 'working_dir': '/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/agentbench_os_m8_4macn/home/user'}",
+        "reward": 0.1,
+        "timestamp_ms": 5.194902420043945,
+        "metadata": {
+          "command": "ls -S logs | head -1 && echo TASK_COMPLETE",
+          "exit_code": 0
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "db-001",
+    "environment": "database",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "SELECT * FROM employees WHERE salary > 50000"
+    ],
+    "final_state": {
+      "query": "SELECT * FROM employees WHERE salary > 50000",
+      "results": [
+        {
+          "id": 1,
+          "name": "Alice",
+          "salary": 60000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 3,
+          "name": "Charlie",
+          "salary": 75000.0,
+          "department": "Engineering"
+        },
+        {
+          "id": 4,
+          "name": "Diana",
+          "salary": 52000.0,
+          "department": "HR"
+        }
+      ],
+      "row_count": 3,
+      "columns": [
+        "id",
+        "name",
+        "salary",
+        "department"
+      ],
+      "success": true
+    },
+    "duration_ms": 2.4623870849609375,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 2.4623870849609375,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "SELECT * FROM employees WHERE salary > 50000",
+        "observation": "{'query': 'SELECT * FROM employees WHERE salary > 50000', 'results': [{'id': 1, 'name': 'Alice', 'salary': 60000.0, 'department': 'Engineering'}, {'id': 3, 'name': 'Charlie', 'salary': 75000.0, 'department': 'Engineering'}, {'id': 4, 'name': 'Diana', 'salary': 52000.0, 'department': 'HR'}], 'row_count': 3, 'columns': ['id', 'name', 'salary', 'department'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 0.5381107330322266,
+        "metadata": {
+          "query": "SELECT * FROM employees WHERE salary > 50000",
+          "row_count": 3
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "db-002",
+    "environment": "database",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department"
+    ],
+    "final_state": {
+      "query": "SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department",
+      "results": [
+        {
+          "department": "Engineering",
+          "avg_salary": 67500.0
+        },
+        {
+          "department": "HR",
+          "avg_salary": 52000.0
+        },
+        {
+          "department": "Sales",
+          "avg_salary": 46500.0
+        }
+      ],
+      "row_count": 3,
+      "columns": [
+        "department",
+        "avg_salary"
+      ],
+      "success": true
+    },
+    "duration_ms": 1.2879371643066406,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 1.2879371643066406,
+      "tokens_used": 0.0,
+      "reward": 0.1,
+      "efficiency": 0.1
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department",
+        "observation": "{'query': 'SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department', 'results': [{'department': 'Engineering', 'avg_salary': 67500.0}, {'department': 'HR', 'avg_salary': 52000.0}, {'department': 'Sales', 'avg_salary': 46500.0}], 'row_count': 3, 'columns': ['department', 'avg_salary'], 'success': True}",
+        "reward": 0.1,
+        "timestamp_ms": 0.1678466796875,
+        "metadata": {
+          "query": "SELECT department, AVG(salary) as avg_salary FROM employees GROUP BY department",
+          "row_count": 3
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-001",
+    "environment": "knowledge_graph",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "answer[Germany]"
+    ],
+    "final_state": {
+      "query_type": "answer",
+      "answer": "Germany",
+      "message": "Answer submitted: Germany"
+    },
+    "duration_ms": 1.683950424194336,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 1.683950424194336,
+      "tokens_used": 0.0,
+      "reward": 0.0,
+      "efficiency": 0.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "answer[Germany]",
+        "observation": "{'query_type': 'answer', 'answer': 'Germany', 'message': 'Answer submitted: Germany'}",
+        "reward": 0.0,
+        "timestamp_ms": 1.6160011291503906,
+        "metadata": {
+          "query_type": "answer",
+          "params": "{'answer': 'Germany'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-002",
+    "environment": "knowledge_graph",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "answer[Albert Einstein, Marie Curie]"
+    ],
+    "final_state": {
+      "query_type": "answer",
+      "answer": "Albert Einstein, Marie Curie",
+      "message": "Answer submitted: Albert Einstein, Marie Curie"
+    },
+    "duration_ms": 0.1556873321533203,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 0.1556873321533203,
+      "tokens_used": 0.0,
+      "reward": 0.0,
+      "efficiency": 0.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "answer[Albert Einstein, Marie Curie]",
+        "observation": "{'query_type': 'answer', 'answer': 'Albert Einstein, Marie Curie', 'message': 'Answer submitted: Albert Einstein, Marie Curie'}",
+        "reward": 0.0,
+        "timestamp_ms": 0.10418891906738281,
+        "metadata": {
+          "query_type": "answer",
+          "params": "{'answer': 'Albert Einstein, Marie Curie'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "kg-003",
+    "environment": "knowledge_graph",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "answer[Europe]"
+    ],
+    "final_state": {
+      "query_type": "answer",
+      "answer": "Europe",
+      "message": "Answer submitted: Europe"
+    },
+    "duration_ms": 0.13327598571777344,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 0.13327598571777344,
+      "tokens_used": 0.0,
+      "reward": 0.0,
+      "efficiency": 0.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "answer[Europe]",
+        "observation": "{'query_type': 'answer', 'answer': 'Europe', 'message': 'Answer submitted: Europe'}",
+        "reward": 0.0,
+        "timestamp_ms": 0.09226799011230469,
+        "metadata": {
+          "query_type": "answer",
+          "params": "{'answer': 'Europe'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "lt-001",
+    "environment": "lateral_thinking",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "guess[hiccups]"
+    ],
+    "final_state": {
+      "correct": true,
+      "answer": "hiccups",
+      "guesses_made": 1,
+      "hints_used": 0,
+      "message": "Correct! The answer was: hiccups"
+    },
+    "duration_ms": 0.9598731994628906,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 0.9598731994628906,
+      "tokens_used": 0.0,
+      "reward": 1.0,
+      "efficiency": 1.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "guess[hiccups]",
+        "observation": "{'correct': True, 'answer': 'hiccups', 'guesses_made': 1, 'hints_used': 0, 'message': 'Correct! The answer was: hiccups'}",
+        "reward": 1.0,
+        "timestamp_ms": 0.9152889251708984,
+        "metadata": {
+          "action_type": "guess",
+          "params": "{'answer': 'hiccups'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "lt-002",
+    "environment": "lateral_thinking",
+    "success": true,
+    "steps_taken": 1,
+    "actions": [
+      "guess[parachute]"
+    ],
+    "final_state": {
+      "correct": true,
+      "answer": "parachute",
+      "guesses_made": 1,
+      "hints_used": 0,
+      "message": "Correct! The answer was: parachute"
+    },
+    "duration_ms": 0.125885009765625,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 0.125885009765625,
+      "tokens_used": 0.0,
+      "reward": 1.0,
+      "efficiency": 1.0
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "guess[parachute]",
+        "observation": "{'correct': True, 'answer': 'parachute', 'guesses_made': 1, 'hints_used': 0, 'message': 'Correct! The answer was: parachute'}",
+        "reward": 1.0,
+        "timestamp_ms": 0.08797645568847656,
+        "metadata": {
+          "action_type": "guess",
+          "params": "{'answer': 'parachute'}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-001",
+    "environment": "web_shopping",
+    "success": true,
+    "steps_taken": 5,
+    "actions": [
+      "search[headphones]",
+      "click[P001]",
+      "select_option[color, black]",
+      "add_to_cart",
+      "checkout"
+    ],
+    "final_state": {
+      "page": "checkout_complete",
+      "cart": [
+        {
+          "name": "Wireless Bluetooth Headphones",
+          "price": "$79.99",
+          "options": {
+            "color": "black"
+          }
+        }
+      ],
+      "total": 79.99,
+      "message": "Order placed successfully! Total: $79.99",
+      "cart_count": 1,
+      "cart_total": 79.99
+    },
+    "duration_ms": 2.4261474609375,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 2.4261474609375,
+      "tokens_used": 0.0,
+      "reward": 0.8500000000000001,
+      "efficiency": 0.17
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[headphones]",
+        "observation": "{'page': 'search_results', 'query': 'headphones', 'results': [{'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics'}], 'total_results': 1, 'message': \"Found 1 products matching 'headphones'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.7870197296142578,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'headphones'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "click[P001]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'message': 'Viewing product: Wireless Bluetooth Headphones', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.41866302490234375,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p001'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "select_option[color, black]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P001', 'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'rating': 4.5, 'category': 'Electronics', 'features': ['noise cancelling', '40h battery', 'comfortable'], 'options': {'color': ['black', 'white', 'blue']}}, 'selected_options': {'color': 'black'}, 'message': 'Selected color: black', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.5338191986083984,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'black'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'message': 'Added Wireless Bluetooth Headphones to cart! Use checkout to complete purchase.', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.2,
+        "timestamp_ms": 0.30303001403808594,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "checkout",
+        "observation": "{'page': 'checkout_complete', 'cart': [{'name': 'Wireless Bluetooth Headphones', 'price': '$79.99', 'options': {'color': 'black'}}], 'total': 79.99, 'message': 'Order placed successfully! Total: $79.99', 'cart_count': 1, 'cart_total': 79.99}",
+        "reward": 0.5,
+        "timestamp_ms": 0.3299713134765625,
+        "metadata": {
+          "action_type": "checkout",
+          "params": "{}"
+        }
+      }
+    ]
+  },
+  {
+    "task_id": "ws-002",
+    "environment": "web_shopping",
+    "success": true,
+    "steps_taken": 6,
+    "actions": [
+      "search[sports]",
+      "click[P004]",
+      "select_option[size, 500ml]",
+      "select_option[color, blue]",
+      "add_to_cart",
+      "checkout"
+    ],
+    "final_state": {
+      "page": "checkout_complete",
+      "cart": [
+        {
+          "name": "Stainless Steel Water Bottle",
+          "price": "$24.99",
+          "options": {
+            "size": "500ml",
+            "color": "blue"
+          }
+        }
+      ],
+      "total": 24.99,
+      "message": "Order placed successfully! Total: $24.99",
+      "cart_count": 1,
+      "cart_total": 24.99
+    },
+    "duration_ms": 1.085042953491211,
+    "error": null,
+    "metrics": {
+      "planning_time_ms": 0.0,
+      "execution_time_ms": 1.085042953491211,
+      "tokens_used": 0.0,
+      "reward": 0.9,
+      "efficiency": 0.15
+    },
+    "details": {},
+    "step_records": [
+      {
+        "step_number": 0,
+        "action": "search[sports]",
+        "observation": "{'page': 'search_results', 'query': 'sports', 'results': [{'id': 'P002', 'name': 'Running Shoes - Lightweight', 'price': '$129.99', 'rating': 4.3, 'category': 'Sports'}, {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports'}], 'total_results': 2, 'message': \"Found 2 products matching 'sports'\", 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.19502639770507812,
+        "metadata": {
+          "action_type": "search",
+          "params": "{'query': 'sports'}"
+        }
+      },
+      {
+        "step_number": 1,
+        "action": "click[P004]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'message': 'Viewing product: Stainless Steel Water Bottle', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.1461505889892578,
+        "metadata": {
+          "action_type": "click",
+          "params": "{'product_id': 'p004'}"
+        }
+      },
+      {
+        "step_number": 2,
+        "action": "select_option[size, 500ml]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'selected_options': {'size': '500ml'}, 'message': 'Selected size: 500ml', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.19097328186035156,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'size', 'value': '500ml'}"
+        }
+      },
+      {
+        "step_number": 3,
+        "action": "select_option[color, blue]",
+        "observation": "{'page': 'product_detail', 'product': {'id': 'P004', 'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'rating': 4.6, 'category': 'Sports', 'features': ['insulated', 'leak-proof', 'eco-friendly'], 'options': {'size': ['500ml', '750ml', '1L'], 'color': ['silver', 'blue', 'green']}}, 'selected_options': {'size': '500ml', 'color': 'blue'}, 'message': 'Selected color: blue', 'cart_count': 0, 'cart_total': 0}",
+        "reward": 0.05,
+        "timestamp_ms": 0.1881122589111328,
+        "metadata": {
+          "action_type": "select_option",
+          "params": "{'option': 'color', 'value': 'blue'}"
+        }
+      },
+      {
+        "step_number": 4,
+        "action": "add_to_cart",
+        "observation": "{'page': 'product_detail', 'cart': [{'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'options': {'size': '500ml', 'color': 'blue'}}], 'message': 'Added Stainless Steel Water Bottle to cart! Use checkout to complete purchase.', 'cart_count': 1, 'cart_total': 24.99}",
+        "reward": 0.2,
+        "timestamp_ms": 0.15425682067871094,
+        "metadata": {
+          "action_type": "add_to_cart",
+          "params": "{}"
+        }
+      },
+      {
+        "step_number": 5,
+        "action": "checkout",
+        "observation": "{'page': 'checkout_complete', 'cart': [{'name': 'Stainless Steel Water Bottle', 'price': '$24.99', 'options': {'size': '500ml', 'color': 'blue'}}], 'total': 24.99, 'message': 'Order placed successfully! Total: $24.99', 'cart_count': 1, 'cart_total': 24.99}",
+        "reward": 0.5,
+        "timestamp_ms": 0.1327991485595703,
+        "metadata": {
+          "action_type": "checkout",
+          "params": "{}"
+        }
+      }
+    ]
+  }
+]

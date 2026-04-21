@@ -1,0 +1,14 @@
+{
+  "name": "swap_benchmark",
+  "description": "Benchmark environment for DEX swap capabilities",
+  "system_prompt_template": "voyager/prompts/swap_system_prompt.txt",
+  "package_json": "voyager/environments/swap_package.json",
+  "timeout": 30000,
+  "reward_config": {
+  },
+  "metrics": {
+    "track_swap_programs": true,
+    "track_instruction_types": true,
+    "track_failed_swaps": true
+  }
+}

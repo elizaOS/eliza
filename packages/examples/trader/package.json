@@ -1,0 +1,11 @@
+{
+  "name": "@elizaos/example-trader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Auto-trading bot example with UI",
+  "scripts": {
+    "dev": "cd typescript && bun run dev",
+    "build": "cd typescript && bun run build",
+    "preview": "cd typescript && bun run preview"
+  }
+}

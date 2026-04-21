@@ -1,0 +1,80 @@
+{
+  "id": "5df7b33a-9f77-4101-823e-02f863e1c1ae",
+  "snapshot": "libreoffice_writer",
+  "instruction": "I enjoy reading during my spare time, but this book is too bulky. Each time I open it, I have to find where I left off, which is a hassle. I'd like to divide the book into several PDFs, each containing a different chapter, and name them following the example I set with chapter one.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/5df7b33a-9f77-4101-823e-02f863e1c1ae/raw_book.zip",
+            "path": "/home/user/Desktop/book.zip"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "unzip -q /home/user/Desktop/book.zip -d /home/user/Desktop && rm /home/user/Desktop/book.zip"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Desktop/book"
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/book/Spectral Graph Theory.pdf"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os",
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "/bin/bash",
+            "-c",
+            "cd /home/user/Desktop/book && zip -qr book.zip *.pdf"
+          ]
+        }
+      }
+    ],
+    "func": "compare_archive",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/book/book.zip",
+      "dest": "book.zip"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/5df7b33a-9f77-4101-823e-02f863e1c1ae/book.zip",
+      "dest": "gold_book.zip"
+    },
+    "options": {
+      "file_type": "pdf"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

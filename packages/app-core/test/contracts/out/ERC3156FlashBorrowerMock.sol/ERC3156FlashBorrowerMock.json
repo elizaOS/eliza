@@ -1,0 +1,233 @@
+{
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [
+        { "name": "enableReturn", "type": "bool", "internalType": "bool" },
+        { "name": "enableApprove", "type": "bool", "internalType": "bool" }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "onFlashLoan",
+      "inputs": [
+        { "name": "", "type": "address", "internalType": "address" },
+        { "name": "token", "type": "address", "internalType": "address" },
+        { "name": "amount", "type": "uint256", "internalType": "uint256" },
+        { "name": "fee", "type": "uint256", "internalType": "uint256" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "bytes32", "internalType": "bytes32" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "BalanceOf",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "value",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "TotalSupply",
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "value",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x60c060405234801561000f575f80fd5b5060405161073238038061073283398101604081905261002e91610051565b1515608052151560a052610082565b8051801515811461004c575f80fd5b919050565b5f8060408385031215610062575f80fd5b61006b8361003d565b91506100796020840161003d565b90509250929050565b60805160a05161068f6100a35f395f6102b801525f61020a015261068f5ff3fe608060405234801561000f575f80fd5b5060043610610029575f3560e01c806323e30c8b1461002d575b5f80fd5b61004061003b3660046104f0565b610052565b60405190815260200160405180910390f35b5f336001600160a01b03871614610067575f80fd5b6040516370a0823160e01b815230600482018190527f6ff2acfcb07917b1e80e53f0fe390b467b1151d15b38730a6e08397799c05a8b918891906001600160a01b038316906370a0823190602401602060405180830381865afa1580156100d0573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100f4919061058e565b604080516001600160a01b0394851681529390921660208401529082015260600160405180910390a17f7249fd4c03cce09b30a13d77804b198e2647c0ccd59eadf4de4e7c16099badc586876001600160a01b03166318160ddd6040518163ffffffff1660e01b8152600401602060405180830381865afa15801561017b573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061019f919061058e565b604080516001600160a01b03909316835260208301919091520160405180910390a18115610208576102068684848080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061030e92505050565b505b7f0000000000000000000000000000000000000000000000000000000000000000156102b6576001600160a01b03861663095ea7b38761024887896105a5565b6040516001600160e01b031960e085901b1681526001600160a01b03909216600483015260248201526044016020604051808303815f875af1158015610290573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906102b491906105c4565b505b7f00000000000000000000000000000000000000000000000000000000000000006102e1575f610303565b7f439148f0bbc682ca079e46d6e2c2f0c1e3b820f1a291b069d8882abf8cf18dd95b979650505050505050565b606061035183835f6040518060400160405280601e81526020017f416464726573733a206c6f772d6c6576656c2063616c6c206661696c6564000081525061035a565b90505b92915050565b6060824710156103c05760405162461bcd60e51b815260206004820152602660248201527f416464726573733a20696e73756666696369656e742062616c616e636520666f6044820152651c8818d85b1b60d21b60648201526084015b60405180910390fd5b5f80866001600160a01b031685876040516103db919061060c565b5f6040518083038185875af1925050503d805f8114610415576040519150601f19603f3d011682016040523d82523d5f602084013e61041a565b606091505b509150915061042b87838387610438565b925050505b949350505050565b606083156104a65782515f0361049f576001600160a01b0385163b61049f5760405162461bcd60e51b815260206004820152601d60248201527f416464726573733a2063616c6c20746f206e6f6e2d636f6e747261637400000060448201526064016103b7565b5081610430565b61043083838151156104bb5781518083602001fd5b8060405162461bcd60e51b81526004016103b79190610627565b80356001600160a01b03811681146104eb575f80fd5b919050565b5f805f805f8060a08789031215610505575f80fd5b61050e876104d5565b955061051c602088016104d5565b94506040870135935060608701359250608087013567ffffffffffffffff80821115610546575f80fd5b818901915089601f830112610559575f80fd5b813581811115610567575f80fd5b8a6020828501011115610578575f80fd5b6020830194508093505050509295509295509295565b5f6020828403121561059e575f80fd5b5051919050565b8082018082111561035457634e487b7160e01b5f52601160045260245ffd5b5f602082840312156105d4575f80fd5b815180151581146105e3575f80fd5b9392505050565b5f5b838110156106045781810151838201526020016105ec565b50505f910152565b5f825161061d8184602087016105ea565b9190910192915050565b602081525f82518060208401526106458160408501602087016105ea565b601f01601f1916919091016040019291505056fea26469706673582212201591b277c78a256ab2c6fbb57b68076eb412c338817ecad4f8aace7843af4ab564736f6c63430008140033",
+    "sourceMap": "625:1200:93:-:0;;;976:136;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;1037:30;;;;1077:28;;;;625:1200;;14:164:310;90:13;;139;;132:21;122:32;;112:60;;168:1;165;158:12;112:60;14:164;;;:::o;183:281::-;256:6;264;317:2;305:9;296:7;292:23;288:32;285:52;;;333:1;330;323:12;285:52;356:37;383:9;356:37;:::i;:::-;346:47;;412:46;454:2;443:9;439:18;412:46;:::i;:::-;402:56;;183:281;;;;;:::o;:::-;625:1200:93;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b5060043610610029575f3560e01c806323e30c8b1461002d575b5f80fd5b61004061003b3660046104f0565b610052565b60405190815260200160405180910390f35b5f336001600160a01b03871614610067575f80fd5b6040516370a0823160e01b815230600482018190527f6ff2acfcb07917b1e80e53f0fe390b467b1151d15b38730a6e08397799c05a8b918891906001600160a01b038316906370a0823190602401602060405180830381865afa1580156100d0573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100f4919061058e565b604080516001600160a01b0394851681529390921660208401529082015260600160405180910390a17f7249fd4c03cce09b30a13d77804b198e2647c0ccd59eadf4de4e7c16099badc586876001600160a01b03166318160ddd6040518163ffffffff1660e01b8152600401602060405180830381865afa15801561017b573d5f803e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061019f919061058e565b604080516001600160a01b03909316835260208301919091520160405180910390a18115610208576102068684848080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525061030e92505050565b505b7f0000000000000000000000000000000000000000000000000000000000000000156102b6576001600160a01b03861663095ea7b38761024887896105a5565b6040516001600160e01b031960e085901b1681526001600160a01b03909216600483015260248201526044016020604051808303815f875af1158015610290573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906102b491906105c4565b505b7f00000000000000000000000000000000000000000000000000000000000000006102e1575f610303565b7f439148f0bbc682ca079e46d6e2c2f0c1e3b820f1a291b069d8882abf8cf18dd95b979650505050505050565b606061035183835f6040518060400160405280601e81526020017f416464726573733a206c6f772d6c6576656c2063616c6c206661696c6564000081525061035a565b90505b92915050565b6060824710156103c05760405162461bcd60e51b815260206004820152602660248201527f416464726573733a20696e73756666696369656e742062616c616e636520666f6044820152651c8818d85b1b60d21b60648201526084015b60405180910390fd5b5f80866001600160a01b031685876040516103db919061060c565b5f6040518083038185875af1925050503d805f8114610415576040519150601f19603f3d011682016040523d82523d5f602084013e61041a565b606091505b509150915061042b87838387610438565b925050505b949350505050565b606083156104a65782515f0361049f576001600160a01b0385163b61049f5760405162461bcd60e51b815260206004820152601d60248201527f416464726573733a2063616c6c20746f206e6f6e2d636f6e747261637400000060448201526064016103b7565b5081610430565b61043083838151156104bb5781518083602001fd5b8060405162461bcd60e51b81526004016103b79190610627565b80356001600160a01b03811681146104eb575f80fd5b919050565b5f805f805f8060a08789031215610505575f80fd5b61050e876104d5565b955061051c602088016104d5565b94506040870135935060608701359250608087013567ffffffffffffffff80821115610546575f80fd5b818901915089601f830112610559575f80fd5b813581811115610567575f80fd5b8a6020828501011115610578575f80fd5b6020830194508093505050509295509295509295565b5f6020828403121561059e575f80fd5b5051919050565b8082018082111561035457634e487b7160e01b5f52601160045260245ffd5b5f602082840312156105d4575f80fd5b815180151581146105e3575f80fd5b9392505050565b5f5b838110156106045781810151838201526020016105ec565b50505f910152565b5f825161061d8184602087016105ea565b9190910192915050565b602081525f82518060208401526106458160408501602087016105ea565b601f01601f1916919091016040019291505056fea26469706673582212201591b277c78a256ab2c6fbb57b68076eb412c338817ecad4f8aace7843af4ab564736f6c63430008140033",
+    "sourceMap": "625:1200:93:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1118:705;;;;;;:::i;:::-;;:::i;:::-;;;1220:25:310;;;1208:2;1193:18;1118:705:93;;;;;;;;1298:7;1325:10;-1:-1:-1;;;;;1325:19:93;;;1317:28;;;;;;1393:38;;-1:-1:-1;;;1393:38:93;;1386:4;1393:38;;;1402:51:310;;;1361:71:93;;1371:5;;1386:4;-1:-1:-1;;;;;1393:23:93;;;;;1375:18:310;;1393:38:93;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;1361:71;;;-1:-1:-1;;;;;1911:15:310;;;1893:34;;1963:15;;;;1958:2;1943:18;;1936:43;1995:18;;;1988:34;1843:2;1828:18;1361:71:93;;;;;;;1447:47;1459:5;1473;-1:-1:-1;;;;;1466:25:93;;:27;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;1447:47;;;-1:-1:-1;;;;;2225:32:310;;;2207:51;;2289:2;2274:18;;2267:34;;;;2180:18;1447:47:93;;;;;;;1509:15;;1505:155;;1616:33;1637:5;1644:4;;1616:33;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;-1:-1:-1;1616:20:93;;-1:-1:-1;;;1616:33:93:i;:::-;;1505:155;1674:14;1670:87;;;-1:-1:-1;;;;;1704:21:93;;;1711:5;1733:12;1742:3;1733:6;:12;:::i;:::-;1704:42;;-1:-1:-1;;;;;;1704:42:93;;;;;;;-1:-1:-1;;;;;2225:32:310;;;1704:42:93;;;2207:51:310;2274:18;;;2267:34;2180:18;;1704:42:93;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;;1670:87;1774:13;:42;;1814:1;1774:42;;;732:45;1774:42;1767:49;1118:705;-1:-1:-1;;;;;;;1118:705:93:o;3701:185:220:-;3776:12;3807:72;3829:6;3837:4;3843:1;3807:72;;;;;;;;;;;;;;;;;:21;:72::i;:::-;3800:79;;3701:185;;;;;:::o;5165:446::-;5330:12;5387:5;5362:21;:30;;5354:81;;;;-1:-1:-1;;;5354:81:220;;3023:2:310;5354:81:220;;;3005:21:310;3062:2;3042:18;;;3035:30;3101:34;3081:18;;;3074:62;-1:-1:-1;;;3152:18:310;;;3145:36;3198:19;;5354:81:220;;;;;;;;;5446:12;5460:23;5487:6;-1:-1:-1;;;;;5487:11:220;5506:5;5513:4;5487:31;;;;;;:::i;:::-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;5445:73;;;;5535:69;5562:6;5570:7;5579:10;5591:12;5535:26;:69::i;:::-;5528:76;;;;5165:446;;;;;;;:::o;7671:628::-;7851:12;7879:7;7875:418;;;7906:10;:17;7927:1;7906:22;7902:286;;-1:-1:-1;;;;;1702:19:220;;;8113:60;;;;-1:-1:-1;;;8113:60:220;;3977:2:310;8113:60:220;;;3959:21:310;4016:2;3996:18;;;3989:30;4055:31;4035:18;;;4028:59;4104:18;;8113:60:220;3775:353:310;8113:60:220;-1:-1:-1;8208:10:220;8201:17;;7875:418;8249:33;8257:10;8269:12;8980:17;;:21;8976:379;;9208:10;9202:17;9264:15;9251:10;9247:2;9243:19;9236:44;8976:379;9331:12;9324:20;;-1:-1:-1;;;9324:20:220;;;;;;;;:::i;14:173:310:-;82:20;;-1:-1:-1;;;;;131:31:310;;121:42;;111:70;;177:1;174;167:12;111:70;14:173;;;:::o;192:877::-;298:6;306;314;322;330;338;391:3;379:9;370:7;366:23;362:33;359:53;;;408:1;405;398:12;359:53;431:29;450:9;431:29;:::i;:::-;421:39;;479:38;513:2;502:9;498:18;479:38;:::i;:::-;469:48;;564:2;553:9;549:18;536:32;526:42;;615:2;604:9;600:18;587:32;577:42;;670:3;659:9;655:19;642:33;694:18;735:2;727:6;724:14;721:34;;;751:1;748;741:12;721:34;789:6;778:9;774:22;764:32;;834:7;827:4;823:2;819:13;815:27;805:55;;856:1;853;846:12;805:55;896:2;883:16;922:2;914:6;911:14;908:34;;;938:1;935;928:12;908:34;983:7;978:2;969:6;965:2;961:15;957:24;954:37;951:57;;;1004:1;1001;994:12;951:57;1035:2;1031;1027:11;1017:21;;1057:6;1047:16;;;;;192:877;;;;;;;;:::o;1464:184::-;1534:6;1587:2;1575:9;1566:7;1562:23;1558:32;1555:52;;;1603:1;1600;1593:12;1555:52;-1:-1:-1;1626:16:310;;1464:184;-1:-1:-1;1464:184:310:o;2312:222::-;2377:9;;;2398:10;;;2395:133;;;2450:10;2445:3;2441:20;2438:1;2431:31;2485:4;2482:1;2475:15;2513:4;2510:1;2503:15;2539:277;2606:6;2659:2;2647:9;2638:7;2634:23;2630:32;2627:52;;;2675:1;2672;2665:12;2627:52;2707:9;2701:16;2760:5;2753:13;2746:21;2739:5;2736:32;2726:60;;2782:1;2779;2772:12;2726:60;2805:5;2539:277;-1:-1:-1;;;2539:277:310:o;3228:250::-;3313:1;3323:113;3337:6;3334:1;3331:13;3323:113;;;3413:11;;;3407:18;3394:11;;;3387:39;3359:2;3352:10;3323:113;;;-1:-1:-1;;3470:1:310;3452:16;;3445:27;3228:250::o;3483:287::-;3612:3;3650:6;3644:13;3666:66;3725:6;3720:3;3713:4;3705:6;3701:17;3666:66;:::i;:::-;3748:16;;;;;3483:287;-1:-1:-1;;3483:287:310:o;4133:396::-;4282:2;4271:9;4264:21;4245:4;4314:6;4308:13;4357:6;4352:2;4341:9;4337:18;4330:34;4373:79;4445:6;4440:2;4429:9;4425:18;4420:2;4412:6;4408:15;4373:79;:::i;:::-;4513:2;4492:15;-1:-1:-1;;4488:29:310;4473:45;;;;4520:2;4469:54;;4133:396;-1:-1:-1;;4133:396:310:o",
+    "linkReferences": {},
+    "immutableReferences": {
+      "12175": [{ "start": 522, "length": 32 }],
+      "12177": [{ "start": 696, "length": 32 }]
+    }
+  },
+  "methodIdentifiers": {
+    "onFlashLoan(address,address,uint256,uint256,bytes)": "23e30c8b"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"bool\",\"name\":\"enableReturn\",\"type\":\"bool\"},{\"internalType\":\"bool\",\"name\":\"enableApprove\",\"type\":\"bool\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"BalanceOf\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"TotalSupply\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"amount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"fee\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"onFlashLoan\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"WARNING: this IERC3156FlashBorrower mock implementation is for testing purposes ONLY. Writing a secure flash lock borrower is not an easy task, and should be done with the utmost care. This is not an example of how it should be done, and no pattern present in this mock should be considered secure. Following best practices, always have your contract properly audited before using them to manipulate important funds on live networks.\",\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/ERC3156FlashBorrowerMock.sol\":\"ERC3156FlashBorrowerMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/interfaces/IERC3156.sol\":{\"keccak256\":\"0x37da077051cf4b6f30ec15adeca851a7db85dc34173a4cfd033a01f9af0d00c5\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://e28e0496b2b1c043f24be284126f0809a35da7b086f658bd7d476c3f310c0226\",\"dweb:/ipfs/QmeZhGDHV7UmzGwWTWD3dguVCE3XcJj6XJoa6jQRUyexUW\"]},\"lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashBorrower.sol\":{\"keccak256\":\"0x1224de3b68ef525ed94328c7c0f6aef24f79bf2170591c4214def4f1fd40bca5\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://4d44fa0c2407ce0c793adb36bc021e7e6493078f5d061e5c4636ef08933e70ba\",\"dweb:/ipfs/QmfDtRWtbw9ZaK2w1cc5orUbbfwCfGZmFukThQ4Yq3fEuE\"]},\"lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashLender.sol\":{\"keccak256\":\"0x0d9159aa6c1a0d8006fb152b0aee46a0f9b8938575ede1a0d7e186b3bc79c8d7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ccbfca0b4091d2f0caa762a3da47b56613d3ad06d1ce2a78dc2660be4febe49a\",\"dweb:/ipfs/QmeV9wZXFgdeUptik1GBzGn9NQfQQdXqRZF1m52jz9tdCY\"]},\"lib/openzeppelin-contracts/contracts/mocks/ERC3156FlashBorrowerMock.sol\":{\"keccak256\":\"0xdac57b452362e6d4e3ee268ba6dafb5a60144c318a3555c129502338eab7c05b\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://402f0f8176f7bf4a734d9b975ab090d60d41f58791f5028829225347c69f808f\",\"dweb:/ipfs/QmbTzqNumUHnBo7BZFhAZTPvkx4PYrPxWQsJSBqQc5K4jU\"]},\"lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol\":{\"keccak256\":\"0x287b55befed2961a7eabd7d7b1b2839cbca8a5b80ef8dcbb25ed3d4c2002c305\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bd39944e8fc06be6dbe2dd1d8449b5336e23c6a7ba3e8e9ae5ae0f37f35283f5\",\"dweb:/ipfs/QmPV3FGYjVwvKSgAXKUN3r9T9GwniZz83CxBpM7vyj2G53\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            { "internalType": "bool", "name": "enableReturn", "type": "bool" },
+            { "internalType": "bool", "name": "enableApprove", "type": "bool" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address",
+              "indexed": false
+            },
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address",
+              "indexed": false
+            },
+            {
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "BalanceOf",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address",
+              "indexed": false
+            },
+            {
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "TotalSupply",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            { "internalType": "address", "name": "", "type": "address" },
+            { "internalType": "address", "name": "token", "type": "address" },
+            { "internalType": "uint256", "name": "amount", "type": "uint256" },
+            { "internalType": "uint256", "name": "fee", "type": "uint256" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "onFlashLoan",
+          "outputs": [
+            { "internalType": "bytes32", "name": "", "type": "bytes32" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/ERC3156FlashBorrowerMock.sol": "ERC3156FlashBorrowerMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/interfaces/IERC3156.sol": {
+        "keccak256": "0x37da077051cf4b6f30ec15adeca851a7db85dc34173a4cfd033a01f9af0d00c5",
+        "urls": [
+          "bzz-raw://e28e0496b2b1c043f24be284126f0809a35da7b086f658bd7d476c3f310c0226",
+          "dweb:/ipfs/QmeZhGDHV7UmzGwWTWD3dguVCE3XcJj6XJoa6jQRUyexUW"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashBorrower.sol": {
+        "keccak256": "0x1224de3b68ef525ed94328c7c0f6aef24f79bf2170591c4214def4f1fd40bca5",
+        "urls": [
+          "bzz-raw://4d44fa0c2407ce0c793adb36bc021e7e6493078f5d061e5c4636ef08933e70ba",
+          "dweb:/ipfs/QmfDtRWtbw9ZaK2w1cc5orUbbfwCfGZmFukThQ4Yq3fEuE"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/interfaces/IERC3156FlashLender.sol": {
+        "keccak256": "0x0d9159aa6c1a0d8006fb152b0aee46a0f9b8938575ede1a0d7e186b3bc79c8d7",
+        "urls": [
+          "bzz-raw://ccbfca0b4091d2f0caa762a3da47b56613d3ad06d1ce2a78dc2660be4febe49a",
+          "dweb:/ipfs/QmeV9wZXFgdeUptik1GBzGn9NQfQQdXqRZF1m52jz9tdCY"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/mocks/ERC3156FlashBorrowerMock.sol": {
+        "keccak256": "0xdac57b452362e6d4e3ee268ba6dafb5a60144c318a3555c129502338eab7c05b",
+        "urls": [
+          "bzz-raw://402f0f8176f7bf4a734d9b975ab090d60d41f58791f5028829225347c69f808f",
+          "dweb:/ipfs/QmbTzqNumUHnBo7BZFhAZTPvkx4PYrPxWQsJSBqQc5K4jU"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol": {
+        "keccak256": "0x287b55befed2961a7eabd7d7b1b2839cbca8a5b80ef8dcbb25ed3d4c2002c305",
+        "urls": [
+          "bzz-raw://bd39944e8fc06be6dbe2dd1d8449b5336e23c6a7ba3e8e9ae5ae0f37f35283f5",
+          "dweb:/ipfs/QmPV3FGYjVwvKSgAXKUN3r9T9GwniZz83CxBpM7vyj2G53"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 93
+}

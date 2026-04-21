@@ -1,40 +1,40 @@
-<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
+task: Decide whether {{agentName}} should respond, ignore, or stop.
 
-<providers>
+context:
 {{providers}}
-</providers>
 
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
-IMPORTANT RULES FOR RESPONDING:
-- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
-- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
-- If you're actively participating in a conversation and the message continues that thread → RESPOND
-- If someone tells you to stop or be quiet → STOP
-- Otherwise → IGNORE
+available_contexts:
+{{availableContexts}}
 
-The key distinction is:
-- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
-- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
-</instructions>
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
 
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
 
-Respond using XML format like this:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-</response>
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>
-
-
-
-
-
-
-
+Example:
+name: {{agentName}}
+reasoning: Direct mention and clear follow-up.
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:

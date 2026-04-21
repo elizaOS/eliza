@@ -1,0 +1,55 @@
+╔══════════════════════════════════════════════════════════╗
+║          Eliza Framework Benchmark — Python             ║
+╚══════════════════════════════════════════════════════════╝
+
+System: Darwin 25.2.0 arm64 | 16 CPUs | 128.0GB RAM
+Runtime: Python 3.13.2
+LLM Mode: mock (deterministic)
+Scenarios: 12 selected
+
+Running: Single Message Processing... done (110.27ms)
+
+  single-message
+    Iterations: 50 (warmup: 5)
+    Latency:  avg=1.35ms  median=1.32ms  p95=1.51ms  p99=1.65ms
+    Range:    min=1.25ms  max=1.70ms  stddev=90us
+    Throughput: 738.0 msg/s (50 messages in 67.75ms)
+    Memory:   start=62.8MB  peak=65.9MB  delta=3.1MB
+    Pipeline: state=0us  model=1.35ms  actions=0us  memory=0us
+Running: 10-Message Conversation... done (163.86ms)
+
+  conversation-10
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=6.67ms  median=6.67ms  p95=6.99ms  p99=7.05ms
+    Range:    min=6.30ms  max=7.06ms  stddev=190us
+    Throughput: 1499.7 msg/s (200 messages in 133.36ms)
+    Memory:   start=66.1MB  peak=67.4MB  delta=1.2MB
+    Pipeline: state=0us  model=664us  actions=0us  memory=0us
+Running: 100-Message Burst... done (422.10ms)
+
+  burst-100
+    Iterations: 5 (warmup: 2)
+    Latency:  avg=59.47ms  median=58.34ms  p95=63.17ms  p99=64.01ms
+    Range:    min=57.65ms  max=64.22ms  stddev=2.41ms
+    Throughput: 1681.5 msg/s (500 messages in 297.36ms)
+    Memory:   start=68.0MB  peak=69.6MB  delta=1.6MB
+    Pipeline: state=0us  model=591us  actions=0us  memory=0us
+Running: With ShouldRespond Check... done (98.60ms)
+
+  with-should-respond
+    Iterations: 20 (warmup: 3)
+    Latency:  avg=3.84ms  median=3.83ms  p95=4.01ms  p99=4.09ms
+    Range:    min=3.58ms  max=4.11ms  stddev=130us
+    Throughput: 1303.1 msg/s (100 messages in 76.74ms)
+    Memory:   start=69.7MB  peak=70.0MB  delta=0.3MB
+    Pipeline: state=0us  model=764us  actions=0us  memory=0us
+Running: 10 Providers...[2m2026-02-12T09:45:41.607358Z[0m [[31m[1merror    [0m] [1mError processing message: 'dict' object has no attribute 'text'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1221, in compose_state
+    if result.text:
+       ^^^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'text'
+[0m [[0m[1m[34mBenchmarkAgent[0m][0m

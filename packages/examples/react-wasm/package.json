@@ -1,0 +1,31 @@
+{
+  "name": "eliza-react-wasm-rust",
+  "version": "2.0.0-alpha",
+  "description": "React ELIZA demo using Rust WASM runtime with classic pattern matching and LocalDB",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "copy-wasm": "mkdir -p public/wasm && cp ../../packages/rust/pkg/elizaos_bg.wasm public/wasm/",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/plugin-eliza-classic": "alpha",
+    "@elizaos/plugin-localdb": "alpha",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^11.0.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.8"
+  }
+}

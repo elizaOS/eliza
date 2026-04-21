@@ -107,7 +107,7 @@ describe("Secret Validation Patterns", () => {
 			).toBe(true);
 			expect(
 				pattern.pattern.test(
-					"ODk0NzU2NDUyMDM0NjU0OTI2.YVo0Kw.abcdefghijklmnopqrstuvwxyz1",
+					"xxxxxxxxxxxxxxxxxxxxxxxx.yyyyyy.zzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
 				),
 			).toBe(true);
 		});

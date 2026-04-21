@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from elizaos.advanced_memory.memory_service import MemoryService
-from elizaos.advanced_memory.types import LongTermMemoryCategory
+from elizaos.features.advanced_memory.memory_service import MemoryService
+from elizaos.features.advanced_memory.types import LongTermMemoryCategory
 from elizaos.runtime import AgentRuntime
 from elizaos.types.agent import Character
 from elizaos.types.components import ProviderResult

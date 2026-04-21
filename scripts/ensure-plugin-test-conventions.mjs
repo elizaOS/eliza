@@ -9,8 +9,7 @@
  * - Python tests failing when pytest is not installed
  *
  * Conventions applied:
- * 1. Vitest: any script that runs "vitest run" gets --passWithNoTests so
- *    "no test files" does not fail the task.
+ * 1. Vitest: --passWithNoTests is NOT added (every plugin must have tests).
  * 2. Rust: test:rs / test:rust runs are wrapped so failure doesn't fail the
  *    task: (cd rust && cargo test) || echo 'Rust tests skipped'
  * 3. Python: test:py / test:python runs guard on pytest when possible so
@@ -22,9 +21,9 @@
  *   bun run ensure-plugin-test-conventions --check     # exit 1 if any would change (CI)
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -34,6 +33,7 @@ const RUST_SKIP_MSG = "Rust tests skipped";
 const PYTHON_SKIP_MSG = "Python tests skipped";
 
 function findPackageJsonFiles(dir, list = []) {
+  if (!existsSync(dir)) return list;
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     const p = join(dir, e.name);
@@ -49,11 +49,10 @@ function findPackageJsonFiles(dir, list = []) {
   return list;
 }
 
-function ensureVitestPassWithNoTests(value) {
+function ensureVitestNoPassWithNoTests(value) {
   if (typeof value !== "string") return value;
-  if (value.includes("--passWithNoTests")) return value;
-  if (!value.includes("vitest run")) return value;
-  return value.replace(/\bvitest run\b/, "vitest run --passWithNoTests");
+  if (!value.includes("--passWithNoTests")) return value;
+  return value.replace(/ --passWithNoTests/g, "");
 }
 
 function ensureRustResilient(value) {
@@ -105,8 +104,8 @@ function processPackageJson(filePath) {
     const raw = scripts[name];
     let next = raw;
 
-    if (raw.includes("vitest run")) {
-      next = ensureVitestPassWithNoTests(next);
+    if (raw.includes("--passWithNoTests")) {
+      next = ensureVitestNoPassWithNoTests(next);
     }
     if (name === "test:rs" || name === "test:rust") {
       next = ensureRustResilient(next);

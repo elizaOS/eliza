@@ -1,0 +1,6 @@
+[
+  {"id": "ch_eng", "name": "#platform-engineering", "description": "Platform team engineering discussion", "members": 8},
+  {"id": "ch_general", "name": "#platform-general", "description": "Platform team general", "members": 12},
+  {"id": "ch_incidents", "name": "#incidents", "description": "Production incidents and postmortems", "members": 25},
+  {"id": "ch_random", "name": "#platform-random", "description": "Off-topic, social", "members": 8}
+]

@@ -1,0 +1,347 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "true_believer_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "skeptic_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "curious_newbie_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "time_waster_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "scammer_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "emotional_crisis_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "repeat_customer_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "antagonist_tarot_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "true_believer_iching_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "skeptic_iching_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "curious_newbie_iching_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "emotional_crisis_iching_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "true_believer_astrology_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "skeptic_astrology_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "curious_newbie_astrology_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    },
+    {
+      "scenario_id": "time_waster_astrology_01",
+      "turns": [],
+      "total_score": 0.0,
+      "max_possible_score": 100,
+      "score_by_category": {},
+      "conversation_length": 0,
+      "persona_engaged": false,
+      "payment_converted": false,
+      "crisis_handled": false,
+      "notes": "ERROR: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+      "revenue": {
+        "amount_earned": 0,
+        "payment_requested": false,
+        "payment_received": false,
+        "turns_to_payment": -1,
+        "free_reveals_given": 0,
+        "scam_resisted": true
+      }
+    }
+  ],
+  "overall_score": 20.0,
+  "score_by_system": {
+    "tarot": 0.0,
+    "iching": 0.0,
+    "astrology": 0.0
+  },
+  "score_by_archetype": {
+    "true_believer": 0.0,
+    "skeptic": 0.0,
+    "curious_newbie": 0.0,
+    "time_waster": 0.0,
+    "scammer": 0.0,
+    "emotional_crisis": 0.0,
+    "repeat_customer": 0.0,
+    "antagonist": 0.0
+  },
+  "revenue_efficiency": 0.0,
+  "engagement_depth": 0.0,
+  "resilience_score": 0.0,
+  "model_name": "qwen/qwen3-32b",
+  "timestamp": "2026-02-12T08:33:22.775748+00:00",
+  "total_revenue": 0,
+  "scam_resistance_rate": 1.0
+}

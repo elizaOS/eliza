@@ -6,18 +6,18 @@ from typing import Protocol
 
 import pytest
 
-from elizaos.advanced_capabilities.actions.schedule_follow_up import (
+from elizaos.features.advanced_capabilities.actions.schedule_follow_up import (
     schedule_follow_up_action as advanced_schedule_follow_up_action,
 )
-from elizaos.advanced_capabilities.actions.schedule_follow_up import (
+from elizaos.features.advanced_capabilities.actions.schedule_follow_up import (
     schedule_follow_up_action as basic_capabilities_schedule_follow_up_action,
 )
-from elizaos.advanced_capabilities.services.follow_up import FollowUpService
-from elizaos.advanced_capabilities.services.rolodex import RolodexService
+from elizaos.features.advanced_capabilities.services.follow_up import FollowUpService
+from elizaos.features.advanced_capabilities.services.relationships import RelationshipsService
 from elizaos.types import Content, Memory, as_uuid
 
 
-class RolodexLike(Protocol):
+class RelationshipsLike(Protocol):
     async def search_contacts(
         self,
         categories: list[str] | None = None,
@@ -68,7 +68,7 @@ class FakeFollowUpService(FollowUpService):
         )
 
 
-class FakeRolodexService(RolodexService):
+class FakeRelationshipsService(RelationshipsService):
     def __init__(self, contacts: list[SimpleNamespace]) -> None:
         self._contacts = contacts
 
@@ -96,14 +96,16 @@ class FakeRolodexService(RolodexService):
 
 
 class FakeRuntime:
-    def __init__(self, rolodex: RolodexLike, follow_up: FakeFollowUpService, response: str) -> None:
-        self._rolodex = rolodex
+    def __init__(
+        self, relationships: RelationshipsLike, follow_up: FakeFollowUpService, response: str
+    ) -> None:
+        self._relationships = relationships
         self._follow_up = follow_up
         self._response = response
 
     def get_service(self, name: str) -> object | None:
-        if name == "rolodex":
-            return self._rolodex
+        if name == "relationships":
+            return self._relationships
         if name == "follow_up":
             return self._follow_up
         return None
@@ -130,9 +132,9 @@ async def test_schedule_follow_up_fails_when_contact_unresolved(
     action_under_test: ActionLike,
 ) -> None:
     follow_up_service = FakeFollowUpService()
-    rolodex_service = FakeRolodexService(contacts=[])
+    relationships_service = FakeRelationshipsService(contacts=[])
     runtime = FakeRuntime(
-        rolodex=rolodex_service,
+        relationships=relationships_service,
         follow_up=follow_up_service,
         response=(
             "<response>"
@@ -175,11 +177,11 @@ async def test_schedule_follow_up_normalizes_priority_and_schedules(
 ) -> None:
     follow_up_service = FakeFollowUpService()
     contact_id = as_uuid("80000000-0000-0000-0000-000000000001")
-    rolodex_service = FakeRolodexService(
+    relationships_service = FakeRelationshipsService(
         contacts=[SimpleNamespace(entity_id=contact_id, name="known-contact")]
     )
     runtime = FakeRuntime(
-        rolodex=rolodex_service,
+        relationships=relationships_service,
         follow_up=follow_up_service,
         response=(
             "<response>"
@@ -223,11 +225,11 @@ async def test_schedule_follow_up_rejects_invalid_scheduled_at(
 ) -> None:
     follow_up_service = FakeFollowUpService()
     contact_id = as_uuid("90000000-0000-0000-0000-000000000001")
-    rolodex_service = FakeRolodexService(
+    relationships_service = FakeRelationshipsService(
         contacts=[SimpleNamespace(entity_id=contact_id, name="known-contact")]
     )
     runtime = FakeRuntime(
-        rolodex=rolodex_service,
+        relationships=relationships_service,
         follow_up=follow_up_service,
         response=(
             "<response>"

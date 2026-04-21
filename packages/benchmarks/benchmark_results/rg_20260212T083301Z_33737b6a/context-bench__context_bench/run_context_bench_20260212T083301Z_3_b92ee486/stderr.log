@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/context-bench/run_benchmark.py --provider eliza-openai --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/context-bench__context_bench/run_context_bench_20260212T083301Z_3_b92ee486/output
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_context_bench_20260212T083301Z_3_b92ee486

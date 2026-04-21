@@ -285,7 +285,7 @@ describe("RECENT_MESSAGES provider compaction integration", () => {
 	it("should pass lastCompactionAt as start parameter", async () => {
 		// This test verifies the code structure by checking the provider implementation
 		const { recentMessagesProvider } = await import(
-			"../basic-capabilities/providers/recentMessages.ts"
+			"../features/basic-capabilities/providers/recentMessages.ts"
 		);
 
 		expect(recentMessagesProvider.name).toBe("RECENT_MESSAGES");

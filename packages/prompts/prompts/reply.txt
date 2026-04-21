@@ -13,16 +13,13 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - This ensures the user sees clearly formatted and copyable code when relevant.
 
 Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
+Go directly to the TOON response format without any preamble or explanation.
 
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <text>Your message here</text>
-</response>
+Respond using TOON like this:
+thought: Your thought here
+text: Your message here
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

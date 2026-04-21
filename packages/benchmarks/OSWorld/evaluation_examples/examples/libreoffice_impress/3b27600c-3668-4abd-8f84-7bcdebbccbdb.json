@@ -1,0 +1,86 @@
+{
+  "id": "3b27600c-3668-4abd-8f84-7bcdebbccbdb",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Please make the background blue on all my slides. I was stuck by finding the entrance to do that for a while...",
+  "source": "https://www.libreofficehelp.com/change-slide-background-impress/#All_Slides",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/3b27600c-3668-4abd-8f84-7bcdebbccbdb/lec17-gui-events.pptx",
+            "path": "/home/user/Desktop/lec17-gui-events.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/lec17-gui-events.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "lec17-gui-events.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "evaluate_presentation_fill_to_rgb_distance",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "rgb": [
+          0,
+          0,
+          255
+        ],
+        "original_rgb": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/lec17-gui-events.pptx",
+      "dest": "lec17-gui-events.pptx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

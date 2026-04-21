@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/example-code",
+  "version": "2.0.0-alpha",
+  "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "eliza-code": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun --external @elizaos/core --external @elizaos/plugin-* --external @elizaos/sweagent-root",
+    "build:deps": "bunx turbo run build --filter=@elizaos/sweagent-root --filter=@elizaos/plugin-mcp --filter=@elizaos/plugin-goals --filter=@elizaos/plugin-todo --filter=@elizaos/plugin-trajectory-logger",
+    "test": "bun run build:deps && vitest run",
+    "e2e:subagents": "bun src/e2e/subagents.ts",
+    "e2e:games": "bun src/e2e/game-generation.ts",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "cli": "bun src/index.tsx",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . || true",
+    "typecheck": "tsc --noEmit || true"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.5",
+    "@elizaos/plugin-agent-orchestrator": "file:../../plugins/plugin-agent-orchestrator",
+    "@elizaos/core": "file:../../eliza/packages/typescript",
+    "@elizaos/plugin-anthropic": "file:../../plugins/plugin-anthropic",
+    "@elizaos/plugin-code": "file:../../plugins/plugin-code",
+    "@elizaos/plugin-goals": "file:../../plugins/plugin-goals",
+    "@elizaos/plugin-shell": "file:../../plugins/plugin-shell",
+    "@elizaos/plugin-openai": "file:../../plugins/plugin-openai",
+    "@elizaos/plugin-mcp": "file:../../plugins/plugin-mcp",
+    "@elizaos/plugin-sql": "file:../../plugins/plugin-sql",
+    "@elizaos/plugin-todo": "file:../../plugins/plugin-todo",
+    "@elizaos/plugin-trajectory-logger": "file:../../plugins/plugin-trajectory-logger",
+    "@elizaos/sweagent-root": "file:../../eliza/packages/sweagent",
+    "@elizaos/tui": "file:../../eliza/packages/tui",
+    "@openai/codex-sdk": "^0.80.0",
+    "@types/three": "^0.182.0",
+    "chalk": "^5.3.0",
+    "dotenv": "^17.2.3",
+    "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "react": "19.2.3",
+    "three": "^0.182.0",
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/react": "19.2.3",
+    "@vitest/coverage-v8": "^4.0.0",
+    "react-devtools-core": "^7.0.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  }
+}

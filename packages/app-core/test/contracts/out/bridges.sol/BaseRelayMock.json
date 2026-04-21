@@ -1,0 +1,102 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "relayAs",
+      "inputs": [
+        { "name": "target", "type": "address", "internalType": "address" },
+        { "name": "data", "type": "bytes", "internalType": "bytes" },
+        { "name": "sender", "type": "address", "internalType": "address" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "error",
+      "name": "InvalidCrossChainSender",
+      "inputs": [
+        { "name": "sender", "type": "address", "internalType": "address" },
+        { "name": "expected", "type": "address", "internalType": "address" }
+      ]
+    },
+    { "type": "error", "name": "NotCrossChainCall", "inputs": [] }
+  ],
+  "bytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+  "deployedBytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+  "methodIdentifiers": { "relayAs(address,bytes,address)": "fb417a5b" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"expected\",\"type\":\"address\"}],\"name\":\"InvalidCrossChainSender\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NotCrossChainCall\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"},{\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"relayAs\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":\"BaseRelayMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":{\"keccak256\":\"0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2\",\"dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]},\"lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol\":{\"keccak256\":\"0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138\",\"dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            { "internalType": "address", "name": "sender", "type": "address" },
+            { "internalType": "address", "name": "expected", "type": "address" }
+          ],
+          "type": "error",
+          "name": "InvalidCrossChainSender"
+        },
+        { "inputs": [], "type": "error", "name": "NotCrossChainCall" },
+        {
+          "inputs": [
+            { "internalType": "address", "name": "target", "type": "address" },
+            { "internalType": "bytes", "name": "data", "type": "bytes" },
+            { "internalType": "address", "name": "sender", "type": "address" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "relayAs"
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": "BaseRelayMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": {
+        "keccak256": "0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511",
+        "urls": [
+          "bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2",
+          "dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol": {
+        "keccak256": "0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7",
+        "urls": [
+          "bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138",
+          "dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 112
+}

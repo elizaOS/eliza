@@ -1,0 +1,90 @@
+{
+  "id": "035f41ba-6653-43ab-aa63-c86d449d62e5",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Help me fill in the Gross profit column by subtracting all the available expenses including discounts, allowances, material and labor charges, and overhead from the actual sale, i.e., the sales after deducting the returns. Then under column A named \"Year_Profit\" in a new sheet \"Sheet2\", display the Year Column in Sheet 1 as text appended by a \"_\" with the corresponding integer digits of Gross Profit value.",
+  "source": "SheetCopilot@92",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/035f41ba-6653-43ab-aa63-c86d449d62e5/IncomeStatement2.xlsx",
+            "path": "/home/user/IncomeStatement2.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/IncomeStatement2.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/035f41ba-6653-43ab-aa63-c86d449d62e5",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "IncomeStatement2.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/035f41ba-6653-43ab-aa63-c86d449d62e5/5_IncomeStatement2_gt1.xlsx",
+      "dest": "5_IncomeStatement2_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/IncomeStatement2.xlsx",
+      "dest": "IncomeStatement2.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

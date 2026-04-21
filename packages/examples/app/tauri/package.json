@@ -1,0 +1,17 @@
+{
+  "name": "@elizaos/example-app-tauri",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "bun --cwd frontend dev",
+    "build:frontend": "bun --cwd frontend build",
+    "tauri:dev": "CI=false bunx tauri dev",
+    "tauri:build": "CI=false bunx tauri build",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.0"
+  }
+}
+

@@ -1,0 +1,15 @@
+flask>=3.0.0
+flask-cors>=5.0.0
+elizaos>=2.0.0a4
+elizaos-plugin-eliza-classic>=2.0.0a4
+elizaos-plugin-localdb>=2.0.0a4
+
+
+
+
+
+
+
+
+
+

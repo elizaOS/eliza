@@ -1,0 +1,41 @@
+{
+  "id": "a503b07f-9119-456b-b75d-f5146737d24f",
+  "snapshot": "os",
+  "instruction": "I have an image of my receipt located in /home/user. I'm looking to transform it into a PDF file. Can you assist me with this task? Save the resulting PDF as \"receipt.pdf\" on the desktop.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/a503b07f-9119-456b-b75d-f5146737d24f/OIP.jpg",
+            "path": "/home/user/OIP.jpg"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/a503b07f-9119-456b-b75d-f5146737d24f",
+  "related_apps": [
+    "os",
+    "gimp",
+    "pdf"
+  ],
+  "evaluator": {
+    "func": "compare_pdf_images",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/a503b07f-9119-456b-b75d-f5146737d24f/receipt_Gold.pdf",
+      "dest": "receipt_Gold.pdf"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/receipt.pdf",
+      "dest": "receipt.pdf"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

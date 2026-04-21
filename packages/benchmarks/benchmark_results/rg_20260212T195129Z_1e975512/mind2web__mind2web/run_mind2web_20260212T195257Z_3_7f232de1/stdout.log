@@ -1,0 +1,177 @@
+[2m2026-02-12T19:52:58.194106Z[0m [[31m[1merror    [0m] [1mError processing message: Unexpected type
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/actions.py", line 217, in get_actions
+    return ProviderResult(
+        text="\n\n".join(text_parts),
+    ...<36 lines>...
+        },
+    )
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 576, in _internal_assign
+    self.update(dictionary)
+    ~~~~~~~~~~~^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 533, in _SetStructValue
+    raise ValueError('Unexpected type')
+ValueError: Unexpected type
+[0m [[0m[1m[34mMind2WebAgent[0m][0m
+Error processing task sample_001: Unexpected type
+[2m2026-02-12T19:52:58.197298Z[0m [[31m[1merror    [0m] [1mError processing message: Unexpected type
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/actions.py", line 217, in get_actions
+    return ProviderResult(
+        text="\n\n".join(text_parts),
+    ...<36 lines>...
+        },
+    )
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 576, in _internal_assign
+    self.update(dictionary)
+    ~~~~~~~~~~~^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 533, in _SetStructValue
+    raise ValueError('Unexpected type')
+ValueError: Unexpected type
+[0m [[0m[1m[34mMind2WebAgent[0m][0m
+Error processing task sample_002: Unexpected type
+[2m2026-02-12T19:52:58.199915Z[0m [[31m[1merror    [0m] [1mError processing message: Unexpected type
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/actions.py", line 217, in get_actions
+    return ProviderResult(
+        text="\n\n".join(text_parts),
+    ...<36 lines>...
+        },
+    )
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 576, in _internal_assign
+    self.update(dictionary)
+    ~~~~~~~~~~~^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 531, in _SetStructValue
+    struct_value.list_value.extend(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 636, in extend
+    self.append(value)
+    ~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 632, in append
+    _SetStructValue(self.values.add(), value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 528, in _SetStructValue
+    struct_value.struct_value.update(value)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 617, in update
+    _SetStructValue(self.fields[key], value)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/internal/well_known_types.py", line 533, in _SetStructValue
+    raise ValueError('Unexpected type')
+ValueError: Unexpected type
+[0m [[0m[1m[34mMind2WebAgent[0m][0m
+Error processing task sample_003: Unexpected type
+
+============================================================
+Mind2Web Benchmark Results
+============================================================
+Tasks: 3, Trials: 3
+Task Success Rate: 0.0%
+Step Accuracy: 0.0%
+Element Accuracy: 0.0%
+Avg Latency: 47ms
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T195129Z_1e975512/mind2web__mind2web/run_mind2web_20260212T195257Z_3_7f232de1/output
+============================================================

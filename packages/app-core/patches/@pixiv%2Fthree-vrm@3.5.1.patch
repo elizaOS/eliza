@@ -1,0 +1,26 @@
+diff --git a/lib/nodes/index.cjs b/lib/nodes/index.cjs
+index f1fcfe33e37f0139700b51990e1b9c787203456a..74257dea925d65c043b944d535164fabbd4720c7 100644
+--- a/lib/nodes/index.cjs
++++ b/lib/nodes/index.cjs
+@@ -125,7 +125,7 @@ var FnCompat = (jsFunc) => {
+   if (threeRevision2 >= 168) {
+     return THREE_TSL.Fn(jsFunc);
+   } else {
+-    return THREE_WEBGPU.tslFn(jsFunc);
++    return THREE_TSL.Fn(jsFunc);
+   }
+ };
+ var linearstep = FnCompat(
+diff --git a/lib/nodes/index.module.js b/lib/nodes/index.module.js
+index e50f617f3b5555d8049f1578b356717f72bccc5c..bf731ccdc57f219270c4cf80b41cb09b57a2a4c8 100644
+--- a/lib/nodes/index.module.js
++++ b/lib/nodes/index.module.js
+@@ -103,7 +103,7 @@ var FnCompat = (jsFunc) => {
+   if (threeRevision2 >= 168) {
+     return THREE_TSL.Fn(jsFunc);
+   } else {
+-    return THREE_WEBGPU.tslFn(jsFunc);
++    return THREE_TSL.Fn(jsFunc);
+   }
+ };
+ var linearstep = FnCompat(

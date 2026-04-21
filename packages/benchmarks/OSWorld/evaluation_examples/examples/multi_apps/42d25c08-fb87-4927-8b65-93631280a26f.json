@@ -1,0 +1,191 @@
+{
+  "id": "42d25c08-fb87-4927-8b65-93631280a26f",
+  "snapshot": "chrome",
+  "instruction": "Hey, my friend has just sent me a web novel, but in txt files. Could you please help me to convert it to epub format for easy reading on my mobile and kindle? I have found several tools to obtain an epub file, opened in the browser. But I'm not sure which one helps. Please help me to do this and ensure to name the file with novel's title.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://github.com/potatoeggy/noveldown",
+          "https://github.com/kevinboone/txt2epub"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Finance/receipts",
+          "/home/user/Documents/Projects/OSWorld",
+          "/home/user/Documents/Novels/4th Year in Tsinghua",
+          "/home/user/Documents/Novels/Pass Through"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2308.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/invoice0123456789-2308.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2309.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/invoice0123456789-2309.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2310.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/invoice0123456789-2310.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2311.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/invoice0123456789-2311.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/invoice0123456789-2312.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/X-receipt-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/Receipt-0123-4567.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/tally_book.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/tally_book.xlsx"
+          },
+          {
+            "path": "/home/user/.projects.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/projects.tar.xz"
+          },
+          {
+            "path": "/home/user/.old-chapters.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/old-chapters.tar.xz"
+          },
+          {
+            "path": "/home/user/.pass-through.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/PassThrough.tar.xz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.projects.tar.xz",
+          "-C",
+          "/home/user/Documents/Projects/OSWorld"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.old-chapters.tar.xz",
+          "-C",
+          "/home/user/Documents/Novels/4th Year in Tsinghua"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.pass-through.tar.xz",
+          "-C",
+          "/home/user/Documents/Novels/Pass Through"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Documents/Novels/Pass Through"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/42d25c08-fb87-4927-8b65-93631280a26f",
+  "related_apps": [
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "func": [
+      "compare_epub",
+      "compare_epub",
+      "compare_epub"
+    ],
+    "conj": "or",
+    "result": [
+      {
+        "type": "vm_file",
+        "dest": "Pass Through.epub",
+        "path": "/home/user/Documents/Novels/Pass Through/Pass Through.epub"
+      },
+      {
+        "type": "vm_file",
+        "dest": "Pass Through.epub",
+        "path": "/home/user/Documents/Novels/Pass Through/Pass_Through.epub"
+      },
+      {
+        "type": "vm_file",
+        "dest": "Pass Through.epub",
+        "path": "/home/user/Documents/Novels/Pass Through/pass_through.epub"
+      }
+    ],
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/Pass%20Through.epub",
+        "dest": "Pass Through Gold.epub"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/Pass%20Through.epub",
+        "dest": "Pass Through Gold.epub"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/Pass%20Through.epub",
+        "dest": "Pass Through Gold.epub"
+      }
+    ]
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

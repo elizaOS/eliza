@@ -1,0 +1,25 @@
+{
+  "id": "cb130f0d-d36f-4302-9838-b3baf46139b6",
+  "snapshot": "base_setup",
+  "instruction": "Automatically adjust the brightness and contrast of this video to match my room's lighting.",
+  "source": "https://www.vlchelp.com/increase-brightness-contrast-videos/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,97 @@
+# === Environment & Secrets ===
+.env
+.env.*
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# === Node / TypeScript ===
+node_modules/
+*.tsbuildinfo
+package-lock.json
+
+# === Rust ===
+target/
+Cargo.lock
+
+# === OS / IDE ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# =============================================================
+# Generated Benchmark Run Outputs
+# =============================================================
+
+# Any directory starting with "benchmark_results" (everywhere)
+**/benchmark_results*/
+
+# Keep the curated top-level benchmark_results/
+!/benchmark_results/
+!/benchmark_results/**
+
+# Trajectory exports
+**/trajectories/
+**/*.art.jsonl
+**/*.grpo.groups.json
+
+# Re-allow trajectories inside curated benchmark_results
+!/benchmark_results/**/trajectories/
+!/benchmark_results/**/trajectories/**
+
+# Test output
+**/test_output/
+
+# Benchmark caches
+**/.benchmark_cache/
+
+# --- Ad-hoc run output directories (all benchmarks) ---
+**/canonical_*/
+**/smoke_*/
+**/traj_*/
+**/verified_*/
+**/post_b_*/
+**/post_delete_*/
+**/real_db/
+**/real_eliza_*/
+**/full_eliza_*/
+**/eliza_run_*/
+**/ws_test*/
+**/lateral_test*/
+**/smart_smoke/
+**/final_benchmark_results/
+
+# --- Social-alpha ---
+social-alpha/results/
+social-alpha/trust_marketplace_benchmark.egg-info/
+
+# Large dataset files (should be fetched separately or use LFS)
+social-alpha/trenches-chat-dataset/data/
+social-alpha/trenches-chat-dataset/compressed/
+social-alpha/trenches-chat-dataset/price_fetch_progress.json
+
+# --- Framework generated results (keep .gitkeep) ---
+framework/results/*.json
+
+# --- Stale refs ---
+**/refs/

@@ -1,0 +1,78 @@
+{
+  "id": "bb83cab4-e5c7-42c7-a67b-e46068032b86",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I want to convert an Impress file into a document editable in Writer. Simply place all the text from Impress into \"script.docx\" on the Desktop, and I'll handle the reformatting. Thank you!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/Unlocking-the-Power-of-ChatGPT.pptx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/bb83cab4-e5c7-42c7-a67b-e46068032b86/Unlocking-the-Power-of-ChatGPT.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Unlocking-the-Power-of-ChatGPT.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/bb83cab4-e5c7-42c7-a67b-e46068032b86",
+  "related_apps": [
+    "libreoffice_writer",
+    "libreoffice_impress",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "script.docx - LibreOffice Writer",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      }
+    ],
+    "func": "compare_docx_files",
+    "options": {
+      "ignore_blanks": true,
+      "ignore_order": true,
+      "content_only": true,
+      "delete_empty_lines": true
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/script.docx",
+      "dest": "script.docx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/bb83cab4-e5c7-42c7-a67b-e46068032b86/script.docx",
+      "dest": "script_Gold.docx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

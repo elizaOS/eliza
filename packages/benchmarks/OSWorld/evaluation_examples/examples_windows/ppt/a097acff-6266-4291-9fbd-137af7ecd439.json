@@ -1,0 +1,45 @@
+{
+  "id": "a097acff-6266-4291-9fbd-137af7ecd439",
+  "snapshot": "ppt",
+  "instruction": "Could you help me save my slides as pre.pptx on the Desktop?",
+  "source": "https://www.youtube.com/watch?v=DDmEvjs4iBw",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/a097acff-6266-4291-9fbd-137af7ecd439/Secrets-of-Monetizing-Video.pptx",
+            "path": "C:\\Users\\User\\Downloads\\Secrets-of-Monetizing-Video.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Downloads\\Secrets-of-Monetizing-Video.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/a097acff-6266-4291-9fbd-137af7ecd439/Secrets-of-Monetizing-Video.pptx",
+      "dest": "Secrets-of-Monetizing-Video.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\users\\User\\Desktop\\pre.pptx",
+      "dest": "pre.pptx"
+    },
+    "options": {
+      "examine_shape": false
+    }
+  }
+}

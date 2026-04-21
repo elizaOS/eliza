@@ -28,6 +28,7 @@ dependencies = [
     "protobuf>=5.29.0",
     "uuid6>=2024.1.12",
     "aiohttp>=3.13.3",
+    "httpx>=0.28.1",
     "cryptography>=42.0.0",
     "structlog>=25.5.0",
     "typing-extensions>=4.9.0",
@@ -92,11 +93,15 @@ module = "google.protobuf.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "aiohttp"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "pytest"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "elizaos.basic_capabilities.*"
+module = "elizaos.features.basic_capabilities.*"
 # BasicCapabilities module has many structural mismatches that need refactoring
 ignore_errors = true
 

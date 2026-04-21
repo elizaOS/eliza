@@ -1,0 +1,92 @@
+{
+  "id": "550ce7e7-747b-495f-b122-acdc4d0b8e54",
+  "snapshot": "ppt",
+  "instruction": "I am checking our soccer club's to-do list for the last semester and adding strike-through sign on the line we have already accomplished. Could you help me add a strike-through on the first and second line on Page 5?",
+  "source": "https://technical-tips.com/blog/software/text-in-libreoffice-strikethrough--6948#:~:text=To%20strikethrough%20Text%20in%20LibreOffice%201%20In%20your,effect%22%20can%20your%20additionally%2C%20for%20example%2C%20double%20underline.",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/550ce7e7-747b-495f-b122-acdc4d0b8e54/New_Club_Spring_2018_Training.pptx",
+            "path": "C:\\Users\\User\\New_Club_Spring_2018_Training.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\New_Club_Spring_2018_Training.pptx"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 0.5
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time;  time.sleep(4); pyautogui.doubleClick(x=200, y=650); time.sleep(0.5);pyautogui.mouseDown(); pyautogui.mouseUp(); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "New_Club_Spring_2018_Training - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/550ce7e7-747b-495f-b122-acdc4d0b8e54/New_Club_Spring_2018_Training_Gold.pptx",
+      "dest": "New_Club_Spring_2018_Training_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\New_Club_Spring_2018_Training.pptx",
+      "dest": "New_Club_Spring_2018_Training.pptx"
+    },
+    "options": {
+      "examine_shape": false
+    }
+  }
+}

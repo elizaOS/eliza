@@ -1,0 +1,47 @@
+[
+  {
+    "run_id": "run_001",
+    "final_net_worth": "489.60",
+    "profit": "-10.40",
+    "simulation_days": 30,
+    "actions_count": 114,
+    "coherence_errors": 109,
+    "error": null
+  },
+  {
+    "run_id": "run_002",
+    "final_net_worth": "519.20",
+    "profit": "19.20",
+    "simulation_days": 30,
+    "actions_count": 118,
+    "coherence_errors": 107,
+    "error": null
+  },
+  {
+    "run_id": "run_003",
+    "final_net_worth": "514.30",
+    "profit": "14.30",
+    "simulation_days": 30,
+    "actions_count": 118,
+    "coherence_errors": 106,
+    "error": null
+  },
+  {
+    "run_id": "run_004",
+    "final_net_worth": "519.90",
+    "profit": "19.90",
+    "simulation_days": 30,
+    "actions_count": 116,
+    "coherence_errors": 106,
+    "error": null
+  },
+  {
+    "run_id": "run_005",
+    "final_net_worth": "511.80",
+    "profit": "11.80",
+    "simulation_days": 30,
+    "actions_count": 117,
+    "coherence_errors": 123,
+    "error": null
+  }
+]

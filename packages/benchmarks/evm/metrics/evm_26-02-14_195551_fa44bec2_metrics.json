@@ -1,0 +1,124 @@
+{
+  "model": "qwen/qwen3-32b",
+  "run_index": 0,
+  "run_id": "evm_26-02-14_195551_fa44bec2",
+  "chain": "general",
+  "agent_type": "eliza",
+  "start_time": "2026-02-14T19:55:51.536686",
+  "environment_config": null,
+  "messages": [
+    {
+      "index": 1,
+      "timestamp": "2026-02-14T19:55:51.700970",
+      "duration": 12.17728,
+      "type": "deterministic",
+      "template": "eth_transfer",
+      "reward": 2,
+      "total_reward": 2,
+      "success": true
+    },
+    {
+      "index": 2,
+      "timestamp": "2026-02-14T19:56:03.879092",
+      "duration": 4.517288,
+      "type": "deterministic",
+      "template": "deploy_erc20",
+      "reward": 6,
+      "total_reward": 8,
+      "success": true
+    },
+    {
+      "index": 3,
+      "timestamp": "2026-02-14T19:56:08.397042",
+      "duration": 30.034226,
+      "type": "deterministic",
+      "template": "erc20_advanced",
+      "reward": 0,
+      "total_reward": 8,
+      "success": false
+    },
+    {
+      "index": 4,
+      "timestamp": "2026-02-14T19:56:38.431831",
+      "duration": 28.284913,
+      "type": "deterministic",
+      "template": "deploy_nft",
+      "reward": 8,
+      "total_reward": 16,
+      "success": true
+    },
+    {
+      "index": 5,
+      "timestamp": "2026-02-14T19:57:06.717226",
+      "duration": 28.201216,
+      "type": "deterministic",
+      "template": "deploy_erc1155",
+      "reward": 7,
+      "total_reward": 23,
+      "success": true
+    }
+  ],
+  "cumulative_rewards": [
+    2,
+    8,
+    8,
+    16,
+    23
+  ],
+  "contracts_discovered": {
+    "0x000000000000000000000000000000000000dead": 1,
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": 1,
+    "0x0000000000000000000000000000000000000000": 2,
+    "0xade429ba898c34722e722415d722a70a297ce3a2": 2,
+    "0x8b190573374637f144ac8d37375d97fd84cbd3a0": 4,
+    "0x8d81a3dcd17030cd5f23ac7370e4efb10d2b3ca4": 5
+  },
+  "selectors_by_contract": {
+    "0x000000000000000000000000000000000000dead": [
+      "0x"
+    ],
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": [
+      "0x"
+    ],
+    "0x0000000000000000000000000000000000000000": [
+      "0x60806040",
+      "0x60c06040"
+    ],
+    "0xade429ba898c34722e722415d722a70a297ce3a2": [
+      "0x095ea7b3",
+      "0x40c10f19",
+      "0x60c06040",
+      "0x70a08231",
+      "0xa9059cbb"
+    ],
+    "0x8b190573374637f144ac8d37375d97fd84cbd3a0": [
+      "0x01ffc9a7",
+      "0x095ea7b3",
+      "0x23b872dd",
+      "0x42842e0e",
+      "0x60c06040",
+      "0x6352211e",
+      "0xa1448194",
+      "0xa22cb465"
+    ],
+    "0x8d81a3dcd17030cd5f23ac7370e4efb10d2b3ca4": [
+      "0x0e89341c",
+      "0x3656eec2",
+      "0x60806040",
+      "0x731133e9",
+      "0xa22cb465",
+      "0xf242432a"
+    ]
+  },
+  "phase_transitions": [],
+  "errors": [
+    {
+      "step": 3,
+      "template": "erc20_advanced",
+      "error": "{'msg': ['Skill execution timed out after 30000ms']}"
+    }
+  ],
+  "end_time": "2026-02-14T19:57:34.918875",
+  "final_reward": 23,
+  "final_contracts": 6
+}

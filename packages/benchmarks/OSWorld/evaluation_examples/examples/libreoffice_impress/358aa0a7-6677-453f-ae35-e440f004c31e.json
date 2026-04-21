@@ -1,0 +1,79 @@
+{
+  "id": "358aa0a7-6677-453f-ae35-e440f004c31e",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Do you have any suggestions on how to modify the font for all text boxes in an Impress presentation? I want to standardize the font to 'Liberation Sans Narrow', but I don't want to manually select each individual text box.",
+  "source": "https://superuser.com/questions/296101/change-all-text-fonts-in-libreoffice-impress-presentation",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/358aa0a7-6677-453f-ae35-e440f004c31e/note-taking-strategies.file",
+            "path": "/home/user/Desktop/note-taking-strategies.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/note-taking-strategies.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "note-taking-strategies.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 15
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/358aa0a7-6677-453f-ae35-e440f004c31e/note-taking-strategies_Gold.pptx",
+      "dest": "note-taking-strategies_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/note-taking-strategies.pptx",
+      "dest": "note-taking-strategies.pptx"
+    },
+    "options": {
+      "examine_shape": false
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

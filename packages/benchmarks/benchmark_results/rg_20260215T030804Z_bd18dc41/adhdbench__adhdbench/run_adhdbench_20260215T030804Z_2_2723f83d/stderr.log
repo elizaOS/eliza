@@ -1,0 +1,252 @@
+# command: python scripts/run_benchmark.py run --provider groq --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/adhdbench__adhdbench/run_adhdbench_20260215T030804Z_2_2723f83d/output --quick
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/adhdbench
+# run_id: run_adhdbench_20260215T030804Z_2_2723f83d
+2026-02-14 20:08:06,455 [adhdbench] INFO: Running config=basic scale=a10_p8_m0 (19 scenarios)
+2026-02-14 20:08:06,455 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.455455Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,591 [elizaos] INFO: [2m2026-02-15T03:08:06.591394Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 20:08:06,591 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.591569Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 20:08:06,591 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.591654Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mADHDBench Agent[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 20:08:06,591 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.591838Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mservice:task[0m
+2026-02-14 20:08:06,591 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.591905Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-14 20:08:06,591 [elizaos] INFO: [2m2026-02-15T03:08:06.591959Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 20:08:06,592 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.592005Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,592 [adhdbench] INFO:   [1/19] L0-001: Simple time question
+2026-02-14 20:08:06,604 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.603970Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,605 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.604988Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,605 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.605062Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,605 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.605140Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,605 [adhdbench] INFO:     -> score=50.0%, 1 turns, 13ms
+2026-02-14 20:08:06,605 [adhdbench] INFO:   [2/19] L0-002: Send message to contact
+2026-02-14 20:08:06,607 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.607574Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,608 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.608595Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,608 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.608665Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,608 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.608724Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,608 [adhdbench] INFO:     -> score=66.7%, 1 turns, 3ms
+2026-02-14 20:08:06,608 [adhdbench] INFO:   [3/19] L0-003: Store preference via conversation
+2026-02-14 20:08:06,612 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.612599Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,613 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.613737Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,614 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.614013Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,614 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.614187Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,614 [adhdbench] INFO:     -> score=57.1%, 1 turns, 5ms
+2026-02-14 20:08:06,614 [adhdbench] INFO:   [4/19] L0-004: Mute room
+2026-02-14 20:08:06,620 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.620630Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,622 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.622697Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,622 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.622863Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,622 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.622960Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,623 [adhdbench] INFO:     -> score=66.7%, 1 turns, 8ms
+2026-02-14 20:08:06,623 [adhdbench] INFO:   [5/19] L0-006: Ignore meta-communication
+2026-02-14 20:08:06,626 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.625972Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,627 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.627724Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,628 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.628031Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,628 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.628266Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,628 [adhdbench] INFO:     -> score=50.0%, 1 turns, 5ms
+2026-02-14 20:08:06,628 [adhdbench] INFO:   [6/19] L0-007: Image generation
+2026-02-14 20:08:06,631 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.631730Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,632 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.632562Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,632 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.632617Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,632 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.632680Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,632 [adhdbench] INFO:     -> score=66.7%, 1 turns, 4ms
+2026-02-14 20:08:06,632 [adhdbench] INFO:   [7/19] L0-008: Follow room
+2026-02-14 20:08:06,634 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.634942Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,637 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.637036Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,637 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.637116Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,637 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.637177Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,637 [adhdbench] INFO:     -> score=50.0%, 1 turns, 4ms
+2026-02-14 20:08:06,637 [adhdbench] INFO:   [8/19] L0-009: Search contacts
+2026-02-14 20:08:06,643 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.643024Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,646 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.645995Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,646 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.646104Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,646 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.646175Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,646 [adhdbench] INFO:     -> score=66.7%, 1 turns, 9ms
+2026-02-14 20:08:06,646 [adhdbench] INFO:   [9/19] L0-010: Status request
+2026-02-14 20:08:06,653 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.653738Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,656 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.656239Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,656 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.656347Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,656 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.656425Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,656 [adhdbench] INFO:     -> score=66.7%, 1 turns, 10ms
+2026-02-14 20:08:06,656 [adhdbench] INFO:   [10/19] L0-011: Update role
+2026-02-14 20:08:06,663 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.663558Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,664 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.664389Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,664 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.664449Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,664 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.664512Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,664 [adhdbench] INFO:     -> score=50.0%, 1 turns, 8ms
+2026-02-14 20:08:06,664 [adhdbench] INFO:   [11/19] L0-012: Schedule follow-up
+2026-02-14 20:08:06,666 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.666776Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,667 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.667502Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,667 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.667543Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,667 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.667598Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,667 [adhdbench] INFO:     -> score=66.7%, 1 turns, 3ms
+2026-02-14 20:08:06,667 [adhdbench] INFO:   [12/19] L0-013: Unfollow room
+2026-02-14 20:08:06,671 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.671079Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,671 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.671941Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,672 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.672025Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,672 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.672101Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,672 [adhdbench] INFO:     -> score=50.0%, 1 turns, 4ms
+2026-02-14 20:08:06,672 [adhdbench] INFO:   [13/19] L0-014: Add contact
+2026-02-14 20:08:06,681 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.681619Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,683 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.683222Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,683 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.683422Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,683 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.683674Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,683 [adhdbench] INFO:     -> score=50.0%, 1 turns, 12ms
+2026-02-14 20:08:06,683 [adhdbench] INFO:   [14/19] L0-015: Remove contact
+2026-02-14 20:08:06,687 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.687201Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,688 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.688085Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,688 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.688145Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,688 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.688213Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,688 [adhdbench] INFO:     -> score=66.7%, 1 turns, 4ms
+2026-02-14 20:08:06,688 [adhdbench] INFO:   [15/19] L0-016: Update settings
+2026-02-14 20:08:06,690 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.690640Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,691 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.691444Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,691 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.691501Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,691 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.691565Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,691 [adhdbench] INFO:     -> score=50.0%, 1 turns, 3ms
+2026-02-14 20:08:06,691 [adhdbench] INFO:   [16/19] L0-017: Unmute room
+2026-02-14 20:08:06,695 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.695297Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,696 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.696244Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,696 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.696316Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,696 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.696388Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,696 [adhdbench] INFO:     -> score=50.0%, 1 turns, 5ms
+2026-02-14 20:08:06,696 [adhdbench] INFO:   [17/19] L0-018: Reset session
+2026-02-14 20:08:06,698 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.698956Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,699 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.699889Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,699 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.699938Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,700 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.700014Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,700 [adhdbench] INFO:     -> score=50.0%, 1 turns, 4ms
+2026-02-14 20:08:06,700 [adhdbench] INFO:   [18/19] L0-019: Update contact info
+2026-02-14 20:08:06,702 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.702960Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,703 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.703763Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,703 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.703822Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,703 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.703888Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,703 [adhdbench] INFO:     -> score=50.0%, 1 turns, 4ms
+2026-02-14 20:08:06,704 [adhdbench] INFO:   [19/19] L0-020: Simple greeting
+2026-02-14 20:08:06,706 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.706248Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.706985Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.707030Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.707087Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [adhdbench] INFO:     -> score=66.7%, 1 turns, 3ms
+2026-02-14 20:08:06,707 [adhdbench] INFO: Running config=basic scale=a50_p18_m30 (19 scenarios)
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707400Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [elizaos] INFO: [2m2026-02-15T03:08:06.707458Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707537Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707585Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mADHDBench Agent[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707753Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mservice:task[0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707814Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mADHDBench Agent[0m][0m [36magentId[0m=[35m62d92de7-cde6-0dbf-9bf6-e696a868c183[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-14 20:08:06,707 [elizaos] INFO: [2m2026-02-15T03:08:06.707855Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-14 20:08:06,707 [ADHDBench Agent] INFO: [2m2026-02-15T03:08:06.707890Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,707 [adhdbench] INFO:   [1/19] L0-001: Simple time question
+2026-02-14 20:08:06,722 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.722062Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,724 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.724332Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,724 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.724401Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,724 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.724491Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,724 [adhdbench] INFO:     -> score=50.0%, 1 turns, 17ms
+2026-02-14 20:08:06,724 [adhdbench] INFO:   [2/19] L0-002: Send message to contact
+2026-02-14 20:08:06,731 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.731841Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,734 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.734023Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,734 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.734093Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,734 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.734183Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,734 [adhdbench] INFO:     -> score=66.7%, 1 turns, 10ms
+2026-02-14 20:08:06,734 [adhdbench] INFO:   [3/19] L0-003: Store preference via conversation
+2026-02-14 20:08:06,776 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.776656Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,779 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.778988Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,779 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.779073Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,779 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.779156Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,779 [adhdbench] INFO:     -> score=57.1%, 1 turns, 45ms
+2026-02-14 20:08:06,779 [adhdbench] INFO:   [4/19] L0-004: Mute room
+2026-02-14 20:08:06,784 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.784475Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,787 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.787549Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,787 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.787676Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,787 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.787777Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,787 [adhdbench] INFO:     -> score=66.7%, 1 turns, 9ms
+2026-02-14 20:08:06,787 [adhdbench] INFO:   [5/19] L0-006: Ignore meta-communication
+2026-02-14 20:08:06,793 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.793696Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,796 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.796108Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,796 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.796188Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,796 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.796279Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,796 [adhdbench] INFO:     -> score=50.0%, 1 turns, 8ms
+2026-02-14 20:08:06,796 [adhdbench] INFO:   [6/19] L0-007: Image generation
+2026-02-14 20:08:06,805 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.805633Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,808 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.808778Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,808 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.808912Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,809 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.809024Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,809 [adhdbench] INFO:     -> score=66.7%, 1 turns, 13ms
+2026-02-14 20:08:06,809 [adhdbench] INFO:   [7/19] L0-008: Follow room
+2026-02-14 20:08:06,817 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.817684Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,825 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.825473Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,825 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.825580Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,825 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.825683Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,825 [adhdbench] INFO:     -> score=50.0%, 1 turns, 17ms
+2026-02-14 20:08:06,825 [adhdbench] INFO:   [8/19] L0-009: Search contacts
+2026-02-14 20:08:06,831 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.831943Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,834 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.834066Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,834 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.834123Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,834 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.834204Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,834 [adhdbench] INFO:     -> score=66.7%, 1 turns, 8ms
+2026-02-14 20:08:06,834 [adhdbench] INFO:   [9/19] L0-010: Status request
+2026-02-14 20:08:06,845 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.845637Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,852 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.852197Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,852 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.852396Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,852 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.852589Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,852 [adhdbench] INFO:     -> score=66.7%, 1 turns, 18ms
+2026-02-14 20:08:06,852 [adhdbench] INFO:   [10/19] L0-011: Update role
+2026-02-14 20:08:06,858 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.858044Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,860 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.860056Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,860 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.860107Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,860 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.860190Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,862 [adhdbench] INFO:     -> score=50.0%, 1 turns, 10ms
+2026-02-14 20:08:06,862 [adhdbench] INFO:   [11/19] L0-012: Schedule follow-up
+2026-02-14 20:08:06,874 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.874128Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,878 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.878253Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,878 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.878396Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,878 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.878521Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,878 [adhdbench] INFO:     -> score=66.7%, 1 turns, 16ms
+2026-02-14 20:08:06,878 [adhdbench] INFO:   [12/19] L0-013: Unfollow room
+2026-02-14 20:08:06,884 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.884263Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,892 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.892074Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,892 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.892235Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,892 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.892434Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,893 [adhdbench] INFO:     -> score=50.0%, 1 turns, 14ms
+2026-02-14 20:08:06,893 [adhdbench] INFO:   [13/19] L0-014: Add contact
+2026-02-14 20:08:06,899 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.899101Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,901 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.901032Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,901 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.901094Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,901 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.901179Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,901 [adhdbench] INFO:     -> score=50.0%, 1 turns, 8ms
+2026-02-14 20:08:06,901 [adhdbench] INFO:   [14/19] L0-015: Remove contact
+2026-02-14 20:08:06,907 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.907258Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,909 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.909386Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,909 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.909445Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,909 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.909533Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,910 [adhdbench] INFO:     -> score=66.7%, 1 turns, 9ms
+2026-02-14 20:08:06,910 [adhdbench] INFO:   [15/19] L0-016: Update settings
+2026-02-14 20:08:06,916 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.916281Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,922 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.922156Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,922 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.922321Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,922 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.922462Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,922 [adhdbench] INFO:     -> score=50.0%, 1 turns, 12ms
+2026-02-14 20:08:06,922 [adhdbench] INFO:   [16/19] L0-017: Unmute room
+2026-02-14 20:08:06,929 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.929937Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,932 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.932099Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,932 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.932153Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,932 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.932232Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,932 [adhdbench] INFO:     -> score=50.0%, 1 turns, 10ms
+2026-02-14 20:08:06,932 [adhdbench] INFO:   [17/19] L0-018: Reset session
+2026-02-14 20:08:06,946 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.946900Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,949 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.949079Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,949 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.949138Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,949 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.949228Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,949 [adhdbench] INFO:     -> score=50.0%, 1 turns, 17ms
+2026-02-14 20:08:06,949 [adhdbench] INFO:   [18/19] L0-019: Update contact info
+2026-02-14 20:08:06,963 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.963592Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,965 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.965513Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,965 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.965561Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,965 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.965634Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:06,965 [adhdbench] INFO:     -> score=50.0%, 1 turns, 16ms
+2026-02-14 20:08:06,965 [adhdbench] INFO:   [19/19] L0-020: Simple greeting
+2026-02-14 20:08:06,995 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:06.995753Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:07,001 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:07.001571Z[0m [[31m[1merror    [0m] [1mModel call failed: No model handler registered for: TEXT_LARGE[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:07,001 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:07.001697Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:07,009 [ADHDBench Agent] ERROR: [2m2026-02-15T03:08:07.009817Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mADHDBench Agent[0m][0m
+2026-02-14 20:08:07,016 [adhdbench] INFO:     -> score=66.7%, 1 turns, 51ms
+2026-02-14 20:08:07,072 [adhdbench] INFO: Report saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/adhdbench__adhdbench/run_adhdbench_20260215T030804Z_2_2723f83d/output/adhdbench_report_2026-02-14T20-08-07Z.md
+2026-02-14 20:08:07,072 [adhdbench] INFO: Summary saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/adhdbench__adhdbench/run_adhdbench_20260215T030804Z_2_2723f83d/output/adhdbench_summary_2026-02-14T20-08-07Z.json
+2026-02-14 20:08:07,075 [adhdbench] INFO: Traces saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T030804Z_bd18dc41/adhdbench__adhdbench/run_adhdbench_20260215T030804Z_2_2723f83d/output/adhdbench_traces_2026-02-14T20-08-07Z.json

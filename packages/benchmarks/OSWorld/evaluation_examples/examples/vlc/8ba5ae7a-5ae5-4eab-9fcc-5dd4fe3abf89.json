@@ -1,0 +1,45 @@
+{
+  "id": "8ba5ae7a-5ae5-4eab-9fcc-5dd4fe3abf89",
+  "snapshot": "base_setup",
+  "instruction": "Help me modify the folder used to store my recordings to Desktop",
+  "source": "https://docs.videolan.me/vlc-user/desktop/3.0/en/basic/recording/playing.html#choose-your-recordings-folder",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "func": "is_vlc_recordings_folder",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "recording_file_path": "/home/user/Desktop"
+      }
+    },
+    "result": {
+      "type": "vlc_config",
+      "dest": "vlcrc"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

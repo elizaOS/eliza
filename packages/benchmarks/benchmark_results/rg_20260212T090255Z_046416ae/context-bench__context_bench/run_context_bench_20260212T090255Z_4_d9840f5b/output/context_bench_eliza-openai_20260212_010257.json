@@ -1,0 +1,198 @@
+{
+  "overall_accuracy": 0.0,
+  "total_tasks": 130,
+  "passed_tasks": 0,
+  "failed_tasks": 130,
+  "avg_semantic_similarity": 0.0,
+  "lost_in_middle_score": 0.0,
+  "context_degradation_rate": 0.0,
+  "avg_latency_ms": 0.03402783320500301,
+  "total_duration_ms": 2062.5128746032715,
+  "position_heatmap": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "position_heatmap_lengths": [
+    1024,
+    2048,
+    4096,
+    8192,
+    16384
+  ],
+  "position_heatmap_positions": [
+    "start",
+    "early",
+    "middle",
+    "late",
+    "end",
+    "random"
+  ],
+  "position_accuracies": {
+    "start": {
+      "accuracy": 0.0,
+      "total_tasks": 20
+    },
+    "early": {
+      "accuracy": 0.0,
+      "total_tasks": 20
+    },
+    "middle": {
+      "accuracy": 0.0,
+      "total_tasks": 20
+    },
+    "late": {
+      "accuracy": 0.0,
+      "total_tasks": 20
+    },
+    "end": {
+      "accuracy": 0.0,
+      "total_tasks": 20
+    },
+    "random": {
+      "accuracy": 0.0,
+      "total_tasks": 30
+    }
+  },
+  "length_accuracies": {
+    "1024": {
+      "accuracy": 0.0,
+      "total_tasks": 26
+    },
+    "2048": {
+      "accuracy": 0.0,
+      "total_tasks": 26
+    },
+    "4096": {
+      "accuracy": 0.0,
+      "total_tasks": 26
+    },
+    "8192": {
+      "accuracy": 0.0,
+      "total_tasks": 26
+    },
+    "16384": {
+      "accuracy": 0.0,
+      "total_tasks": 26
+    }
+  },
+  "multi_hop_success_rates": {
+    "2": 0.0,
+    "3": 0.0
+  },
+  "comparison_to_leaderboard": {
+    "gpt-4-turbo": {
+      "overall_diff": -0.91,
+      "lost_in_middle_diff": 0.12,
+      "niah_4k_diff": -0.98,
+      "niah_8k_diff": -0.97,
+      "niah_16k_diff": -0.95,
+      "multi_hop_2_diff": -0.88,
+      "multi_hop_3_diff": -0.72
+    },
+    "gpt-5": {
+      "overall_diff": -0.94,
+      "lost_in_middle_diff": 0.08,
+      "niah_4k_diff": -0.99,
+      "niah_8k_diff": -0.98,
+      "niah_16k_diff": -0.97,
+      "multi_hop_2_diff": -0.91,
+      "multi_hop_3_diff": -0.78
+    },
+    "claude-3-opus": {
+      "overall_diff": -0.95,
+      "lost_in_middle_diff": 0.05,
+      "niah_4k_diff": -0.99,
+      "niah_8k_diff": -0.98,
+      "niah_16k_diff": -0.97,
+      "multi_hop_2_diff": -0.92,
+      "multi_hop_3_diff": -0.81
+    },
+    "claude-3-sonnet": {
+      "overall_diff": -0.88,
+      "lost_in_middle_diff": 0.15,
+      "niah_4k_diff": -0.98,
+      "niah_8k_diff": -0.96,
+      "niah_16k_diff": -0.94,
+      "multi_hop_2_diff": -0.85,
+      "multi_hop_3_diff": -0.68
+    },
+    "llama-3.1-70b": {
+      "overall_diff": -0.8,
+      "lost_in_middle_diff": 0.22,
+      "niah_4k_diff": -0.95,
+      "niah_8k_diff": -0.92,
+      "niah_16k_diff": -0.88,
+      "multi_hop_2_diff": -0.78,
+      "multi_hop_3_diff": -0.55
+    },
+    "mistral-large": {
+      "overall_diff": -0.76,
+      "lost_in_middle_diff": 0.25,
+      "niah_4k_diff": -0.94,
+      "niah_8k_diff": -0.9,
+      "niah_16k_diff": -0.85,
+      "multi_hop_2_diff": -0.75,
+      "multi_hop_3_diff": -0.52
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "overall_accuracy": "0.0%",
+    "findings": [
+      "Low retrieval accuracy (<70%)",
+      "Struggles with 2-hop reasoning (0.0% success)",
+      "Struggles with 3-hop reasoning (0.0% success)",
+      "Performance below Claude-3-Opus (-95.0%)"
+    ],
+    "recommendations": [
+      "Consider using a model with better context handling",
+      "Consider chain-of-thought prompting for 2+ hop questions",
+      "Consider chain-of-thought prompting for 3+ hop questions"
+    ]
+  },
+  "metadata": {
+    "timestamp": "2026-02-12T01:02:57.966323",
+    "seed": 42,
+    "total_duration_ms": 2062.5128746032715
+  }
+}

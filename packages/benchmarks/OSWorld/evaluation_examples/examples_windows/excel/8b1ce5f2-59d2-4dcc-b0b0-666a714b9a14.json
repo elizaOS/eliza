@@ -1,0 +1,90 @@
+{
+  "id": "8b1ce5f2-59d2-4dcc-b0b0-666a714b9a14",
+  "snapshot": "excel",
+  "instruction": "Given a partial calendar, please highlight all the weekends (Satureday & Sunday) by setting the cell background as red (#ff0000).",
+  "source": "https://www.youtube.com/shorts/Hbcwu6IQ1ns",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/8b1ce5f2-59d2-4dcc-b0b0-666a714b9a14/Calendar_Highlight_Weekend_Days.xlsx",
+            "path": "C:\\Users\\User\\Calendar_Highlight_Weekend_Days.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Calendar_Highlight_Weekend_Days.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/8b1ce5f2-59d2-4dcc-b0b0-666a714b9a14",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Calendar_Highlight_Weekend_Days - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/8b1ce5f2-59d2-4dcc-b0b0-666a714b9a14/Calendar_Highlight_Weekend_Days_gold.xlsx",
+      "dest": "Calendar_Highlight_Weekend_Days_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Calendar_Highlight_Weekend_Days.xlsx",
+      "dest": "Calendar_Highlight_Weekend_Days.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        },
+        {
+          "type": "style",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0",
+          "props": [
+            "bgcolor"
+          ]
+        }
+      ]
+    }
+  }
+}

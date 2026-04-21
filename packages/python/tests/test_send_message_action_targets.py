@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from elizaos.advanced_capabilities.actions.send_message import (
+from elizaos.features.advanced_capabilities.actions.send_message import (
     send_message_action as advanced_send_message_action,
 )
-from elizaos.advanced_capabilities.actions.send_message import (
+from elizaos.features.advanced_capabilities.actions.send_message import (
     send_message_action as basic_capabilities_send_message_action,
 )
 from elizaos.types.memory import Memory

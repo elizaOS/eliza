@@ -1,0 +1,114 @@
+{
+  "id": "30e3e107-1cfb-46ee-a755-2cd080d7ba6a",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Please create a new sheet. Keep its sheet name as \"Sheet2\". Merge cells A1:C1 in the new sheet and write \"Demographic Profile\" with blue (#0000ff) fill and bold white text. Then I want to create three pivot tables to show the percentage of Sex, Civil Status, and Highest Educational Attainment. They should be stacked one by one in Sheet2, each separated with a blank line.",
+  "source": "SheetCopilot@9",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/30e3e107-1cfb-46ee-a755-2cd080d7ba6a/DemographicProfile.xlsx",
+            "path": "/home/user/DemographicProfile.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/DemographicProfile.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/30e3e107-1cfb-46ee-a755-2cd080d7ba6a",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "DemographicProfile.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/30e3e107-1cfb-46ee-a755-2cd080d7ba6a/1_DemographicProfile_gt1.xlsx",
+      "dest": "1_DemographicProfile_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/DemographicProfile.xlsx",
+      "dest": "DemographicProfile.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "pivot_table",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2",
+          "pivot_props": [
+            "col_fields",
+            "filter",
+            "row_fields",
+            "data_fields"
+          ]
+        },
+        {
+          "type": "check_cell",
+          "sheet_idx": "RNSheet2",
+          "coordinate": "A1",
+          "props": {
+            "bgcolor": {
+              "method": "eq",
+              "ref": "FF0000FF"
+            },
+            "font_color": {
+              "method": "eq",
+              "ref": "FFFFFFFF"
+            },
+            "font_bold": {
+              "method": "eq",
+              "ref": true
+            },
+            "value": {
+              "method": "eq",
+              "ref": "Demographic Profile"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

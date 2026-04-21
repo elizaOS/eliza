@@ -1,0 +1,83 @@
+{
+  "total_tasks": 12,
+  "passed_tasks": 12,
+  "failed_tasks": 0,
+  "overall_success_rate": 1.0,
+  "average_duration_ms": 3.9055347442626953,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 1.75,
+    "average_reward": 0.3541666666666667,
+    "memory_usage": {
+      "peak": 30510,
+      "average": 30510
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {},
+    "gpt35_comparison": {},
+    "claude_comparison": {}
+  },
+  "summary": {
+    "status": "strong",
+    "key_findings": [
+      "ElizaOS demonstrates strong agent capabilities across tested environments",
+      "Strong performance in: operating_system, database, knowledge_graph, lateral_thinking, web_shopping"
+    ],
+    "recommendations": [],
+    "timestamp": "2026-02-13T00:37:32.873817"
+  },
+  "environment_reports": {
+    "operating_system": {
+      "environment": "operating_system",
+      "total_tasks": 3,
+      "passed_tasks": 3,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 12.182076772054037,
+      "average_reward": 0.10000000000000002
+    },
+    "database": {
+      "environment": "database",
+      "total_tasks": 2,
+      "passed_tasks": 2,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 1.875162124633789,
+      "average_reward": 0.1
+    },
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 3,
+      "passed_tasks": 3,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 0.6576379140218099,
+      "average_reward": 0.0
+    },
+    "lateral_thinking": {
+      "environment": "lateral_thinking",
+      "total_tasks": 2,
+      "passed_tasks": 2,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 0.5428791046142578,
+      "average_reward": 1.0
+    },
+    "web_shopping": {
+      "environment": "web_shopping",
+      "total_tasks": 2,
+      "passed_tasks": 2,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 5.5,
+      "average_duration_ms": 1.7555952072143555,
+      "average_reward": 0.875
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "id": "81c425f5-78f3-4771-afd6-3d2973825947",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Can you assist me in transferring the data from LibreOffice Calc in the current sheet to a LibreOffice Writer table while preserving the original format as in calc file? Save the document as \"price.docx\" on the desktop.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/OSP_Envelope_Price-List_2023_5000.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/81c425f5-78f3-4771-afd6-3d2973825947/OSP_Envelope_Price-List_2023_5000.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/OSP_Envelope_Price-List_2023_5000.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/81c425f5-78f3-4771-afd6-3d2973825947",
+  "related_apps": [
+    "libreoffice_writer",
+    "libreoffice_calc",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "price.docx - LibreOffice Writer",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      }
+    ],
+    "func": "compare_docx_tables",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/price.docx",
+      "dest": "price.docx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/81c425f5-78f3-4771-afd6-3d2973825947/price.docx",
+      "dest": "price_Gold.docx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

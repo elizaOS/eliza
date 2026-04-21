@@ -251,7 +251,7 @@ export function registerTriggerDispatchWorker(runtime: IAgentRuntime): void {
 
 	runtime.registerTaskWorker({
 		name: TRIGGER_DISPATCH_TASK_NAME,
-		validate: async () => true,
+		shouldRun: async () => true,
 		execute: async (rt, options, task) => {
 			await executeTriggerDispatch(rt, task, {
 				source: options.source === "manual" ? "manual" : "scheduler",

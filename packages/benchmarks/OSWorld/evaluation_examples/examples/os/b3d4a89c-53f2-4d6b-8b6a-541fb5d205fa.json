@@ -1,0 +1,17 @@
+{
+  "id": "b3d4a89c-53f2-4d6b-8b6a-541fb5d205fa",
+  "snapshot": "os",
+  "instruction": "I want to switch on the Bluetooth. Can you help me?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/bluetooth-turn-on-off.html.en",
+  "trajectory": "trajectories/",
+  "config": [],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Documentation: pipeline hooks.** Single guide [docs/PIPELINE_HOOKS.md](./docs/PIPELINE_HOOKS.md) (all phases including outgoing text, stream dedupe, DPE); README links to it; code comments in `pipeline-hooks.ts`, `streaming-context.ts`, and prompt optimization types.
+  - **Why:** One maintained entry point beats split “outgoing-only” vs “rest of pipeline” docs that duplicate metrics/API context.
+
+### Changed
+
+- **Documentation:** Removed `docs/OUTGOING_CONTENT_HOOKS.md` and `docs/PIPELINE_MODEL_STREAMING_AND_DPE.md` in favor of [docs/PIPELINE_HOOKS.md](./docs/PIPELINE_HOOKS.md).
+  - **Why:** One hooks guide is easier to discover and update than parallel granular files.
+
+- **Shared batch-queue subsystem (`utils/batch-queue`).** Composable building blocks: `PriorityQueue`, `BatchProcessor` (semaphore-limited concurrency + retries using `utils/retry`), `TaskDrain` (repeat `queue` tasks, optional `skipRegisterWorker` when a global worker already owns the task name), composed `BatchQueue`, and one shared `Semaphore` (re-exported from `prompt-batcher/shared.ts` for existing imports). Tests: `src/__tests__/batch-queue.test.ts`, `src/__tests__/task-drain.test.ts`.
+  - **Why (architecture, not a single hot path):** The runtime is not globally “batching-bound”; a minimal fix in one service could be a few lines. The goal here is **forward-looking consolidation** so embedding drains, action-index embedding, batcher affinity scheduling, and shared throttling do not each grow a bespoke queue + task + retry stack that drifts over time. One composable surface caps proliferation of incompatible queuing patterns. See `src/utils/batch-queue.ts` (module comment) and `docs/BATCH_QUEUE.md`.
 - **Prompt cache hints (PromptSegment, promptSegments).** The core can pass ordered segments with stability metadata so providers can use prompt-caching APIs. `GenerateTextParams` now has optional `promptSegments?: PromptSegment[]` where each segment is `{ content: string; stable: boolean }`. When set, `prompt` must equal `promptSegments.map(s => s.content).join("")`.
   - **Why:** Repeated calls often share the same instructions/format while only context changes; provider caches (Anthropic ephemeral, OpenAI/Gemini prefix) can reuse tokens for the stable part, reducing cost and latency. A single invariant lets providers opt in or ignore segments without breaking behavior.
 - **Runtime segment building in dynamicPromptExecFromState.** The runtime builds `promptSegments` from the dynamic prompt: variable block (unstable), format prefix (stable), validation/middle block (unstable), format suffix (stable), end block (unstable). Only content that is identical for the same schema/character is marked stable; validation instructions that contain per-call UUIDs are kept in an unstable segment.
@@ -42,6 +52,29 @@
 
 ### Changed
 
+- **Embedding generation service** uses `BatchQueue` for the drain pipeline (priority dequeue, bounded parallel `process`, repeat `EMBEDDING_DRAIN` task via `TaskDrain`). When no `TEXT_EMBEDDING` model is registered, start returns a **no-op** service after a warning instead of throwing.
+  - **Why:** Same drain/retry/task semantics as other batch workloads; optional embedding setups can boot without a hard failure.
+- **Action filter `buildIndex`** embeds actions via `BatchProcessor` (batch slices, retries, `onExhausted`) instead of raw `Promise.all` per slice only.
+  - **Why:** Shares backoff/concurrency policy with the rest of the batch stack; invalid vectors log and continue (BM25 still works) instead of failing the whole index on one bad response.
+- **Prompt batcher affinity tasks** are ensured/updated/disposed via shared `TaskDrain` (`skipRegisterWorker: true` for `BATCHER_DRAIN`) instead of ad-hoc `createTask` / `deleteTask` maps keyed by task id. `addSection` still syncs ideal interval after drain setup; **immediate / once** sections can drain after `runtime.initPromise` when the batcher is not yet enabled.
+  - **Why:** One implementation of repeat-task metadata (`maxFailures: -1`, intervals) and no duplicate worker registration for the same task name; early startup sections still get a drain path.
+
+### Changed (batch-queue polish)
+
+- **`TaskDrain`:** When a matching repeat task already exists, `start` now calls `updateInterval` so DB `updateInterval` / `baseInterval` match the configured drain (fixes stale metadata after restarts).
+  - **Why:** Avoids leaving an old tick interval in the store until the next explicit sync.
+- **`PriorityQueue`:** Unknown `getPriority` values log once (`logger.warn`) and enqueue as **normal** (previously fell into the low bucket silently).
+  - **Why:** Typos should not demote work to “low” without visibility.
+- **`BatchProcessor`:** Optional `maxAttemptsCap` to bound attempts per item (used by `BatchQueue` high-priority dispose flush).
+  - **Why:** Items with large per-item `maxRetries` should not retry many times during shutdown.
+- **`BatchQueue`:** Optional `onDrainBatchOutcomes`; high-priority dispose flush defaults to a serial `BatchProcessor` (`disposeHighPriorityViaProcessor`, default true); `clear()` is a no-op after `dispose`.
+  - **Why:** Observability, flush path parity with bounded concurrency, and safer lifecycle after shutdown.
+- **`Semaphore`:** Documented acquire/release pairing contract in the class header.
+  - **Why:** Future callers are less likely to leak permits.
+- **`Semaphore`:** Removed duplicate class from `runtime.ts`; package entry points (`index.node` / `index.browser` / `index.edge`) re-export `Semaphore` from `utils/batch-queue/semaphore.js` so `import { Semaphore } from "@elizaos/core"` stays valid with a single implementation.
+  - **Why:** One semaphore implementation avoids drift and conflicting behavior.
+- **Knowledge embeddings:** `document-processor` batch fallback (single vector for many texts) and `llm.generateTextEmbeddingsBatch` now use `BatchProcessor` with `maxParallel: 10` instead of unbounded `Promise.all` over texts.
+  - **Why:** Large document / batch sizes no longer open unbounded concurrent `TEXT_EMBEDDING` calls; retries on the document-processor fallback align with other batch paths (`maxRetriesAfterFailure: 2`).
 - **Prompt batcher section resolution.** Section promises now resolve with `{ fields, meta }` instead of raw `fields`. askOnce and askNow unwrap to `result?.fields ?? fallback` so their return type remains `Promise<Record<string, unknown>>`. Runtime pre-callback audit uses `addSectionResult?.fields` for audited fields.
   - **Why:** Consistent result shape across the batcher; consumers that only need fields (askOnce, askNow, audit) keep the same API.
 - **Reflection evaluator** now uses the thenable style: `const result = await onDrain<ReflectionFields>(...); if (result) { ... }` and no `onResult` callback. Processing logic is unchanged; it runs inside the `if (result)` block.

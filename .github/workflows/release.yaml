@@ -39,6 +39,13 @@ on:
           - beta
           # Note: 'latest' removed - production releases MUST be done via GitHub releases
 
+concurrency:
+  # Release runs create and push commits/tags. Serialize them per branch so
+  # later runs don't fail with non-fast-forward pushes while an earlier release
+  # is still updating the branch.
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -48,14 +55,16 @@ jobs:
     permissions:
       contents: write
       packages: write
+      issues: write
       id-token: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
 
       - name: Setup Git
         run: |
@@ -75,19 +84,59 @@ jobs:
           sudo apt-get install -y libpq-dev postgresql-client protobuf-compiler libwayland-dev libpipewire-0.3-dev libegl-dev libgbm-dev libxcb1-dev libssl-dev
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "23.3.0"
+          node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.4"
+          bun-version: "1.3.12"
 
       - name: Install dependencies
         run: |
+          restore_package_json() {
+            if [[ -n "${PACKAGE_JSON_BACKUP:-}" && -f "${PACKAGE_JSON_BACKUP}" ]]; then
+              mv "${PACKAGE_JSON_BACKUP}" package.json
+            fi
+          }
+
+          PACKAGE_JSON_BACKUP="$(mktemp)"
+          cp package.json "${PACKAGE_JSON_BACKUP}"
+          trap restore_package_json EXIT
+
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const packageJsonPath = "package.json";
+          const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+          const optionalWorkspaceEntries = [
+            "plugins/plugin-sql/typescript",
+            "plugins/plugin-ollama/typescript",
+            "plugins/plugin-local-ai/typescript",
+            "plugins/plugin-pdf/typescript",
+          ];
+
+          if (!Array.isArray(pkg.workspaces)) {
+            throw new Error("package.json is missing a workspaces array");
+          }
+
+          let changed = false;
+          for (const entry of optionalWorkspaceEntries) {
+            if (fs.existsSync(`${entry}/package.json`) && !pkg.workspaces.includes(entry)) {
+              pkg.workspaces.push(entry);
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+          }
+          NODE
+
           bun install --ignore-scripts
+          restore_package_json
+          trap - EXIT
           # --ignore-scripts prevents postinstall scripts from running, but build
           # tools like esbuild and bun need their postinstall to install platform binaries.
           # Run them explicitly so turbo and lerna prepublishOnly can spawn build processes.
@@ -375,37 +424,73 @@ jobs:
       - name: Push to git
         if: steps.commit.outputs.has_changes == 'true'
         run: |
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+
           # Determine target branch for push
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # For GitHub releases, push to main branch
             TARGET_BRANCH="main"
             echo "Pushing changes to main branch..."
-            
-            # Push the changes to main branch
-            if ! git push origin HEAD:${TARGET_BRANCH} --follow-tags; then
-              echo "❌ Error: Failed to push to git repository"
-              echo "This could be due to:"
-              echo "  - Protected branch restrictions"
-              echo "  - Network issues"
-              echo "  - Permission problems"
-              echo ""
-              echo "The version has been updated locally but not published."
-              echo "Manual intervention required to resolve the git push issue."
-              exit 1
-            fi
           else
             # For other triggers, push to current branch
-            if ! git push origin HEAD --follow-tags; then
-              echo "❌ Error: Failed to push to git repository"
-              echo "This could be due to:"
-              echo "  - Protected branch restrictions"
-              echo "  - Network issues"
-              echo "  - Permission problems"
-              echo ""
-              echo "The version has been updated locally but not published."
-              echo "Manual intervention required to resolve the git push issue."
-              exit 1
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+
+          retry_rebase_release_commit() {
+            git fetch origin "${TARGET_BRANCH}"
+
+            if ! git rebase "origin/${TARGET_BRANCH}"; then
+              echo "❌ Error: Failed to rebase release commit onto origin/${TARGET_BRANCH}"
+              return 1
             fi
+
+            if [[ -n "${TAG_NAME}" ]]; then
+              if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+                echo "❌ Error: Tag ${TAG_NAME} already exists on origin after retry fetch"
+                return 1
+              fi
+
+              if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+                git tag -d "${TAG_NAME}"
+              fi
+
+              git tag "${TAG_NAME}"
+            fi
+          }
+
+          push_release_state() {
+            git push origin HEAD:${TARGET_BRANCH} --follow-tags
+          }
+
+          PUSHED=false
+          MAX_PUSH_ATTEMPTS=3
+          for ATTEMPT in $(seq 1 "${MAX_PUSH_ATTEMPTS}"); do
+            if push_release_state; then
+              PUSHED=true
+              break
+            fi
+
+            if [[ "${ATTEMPT}" -eq "${MAX_PUSH_ATTEMPTS}" ]]; then
+              break
+            fi
+
+            echo "⚠️ Push attempt ${ATTEMPT}/${MAX_PUSH_ATTEMPTS} failed — rebasing onto origin/${TARGET_BRANCH} and retrying..."
+            if ! retry_rebase_release_commit; then
+              break
+            fi
+          done
+
+          if [[ "${PUSHED}" != "true" ]]; then
+            echo "❌ Error: Failed to push to git repository"
+            echo "This could be due to:"
+            echo "  - Protected branch restrictions"
+            echo "  - Network issues"
+            echo "  - Permission problems"
+            echo "  - The target branch changing too quickly to rebase cleanly"
+            echo ""
+            echo "The version has been updated locally but not published."
+            echo "Manual intervention required to resolve the git push issue."
+            exit 1
           fi
 
           echo "✅ Successfully pushed version changes and tags to git"
@@ -418,10 +503,10 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: cargo install wasm-pack --locked
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -459,19 +544,39 @@ jobs:
           SKIP_PYTHON_BUILD: "1"
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
-          # Use --continue so platform-specific build failures (Rust/Python) don't block the release.
-          # But verify critical packages built successfully afterward.
-          bunx turbo run build --continue || echo "Some packages had build errors — checking critical packages..."
+          # Build only the publish-critical package graph so unrelated plugin cycles
+          # do not block alpha/beta releases.
+          RELEASE_BUILD_FILTERS=(
+            --filter=@elizaos/agent
+            --filter=@elizaos/app-core
+            --filter=elizaos
+            --filter=@elizaos/interop
+            --filter=@elizaos/prompts
+            --filter=@elizaos/shared
+            --filter=@elizaos/skills
+            --filter=@elizaos/core
+            --filter=@elizaos/ui
+          )
+          bunx turbo run build --continue "${RELEASE_BUILD_FILTERS[@]}" || \
+            echo "Some packages had build errors — checking critical packages..."
 
-          # Fail if critical packages didn't produce dist/
-          # packages/typescript is published as @elizaos/core
-          for pkg in packages/typescript; do
-            if [ ! -d "${pkg}/dist" ]; then
-              echo "❌ Critical package ${pkg} failed to build (no dist/ directory)"
+          # Fail fast if any publish-critical package is missing its release artifacts.
+          for artifact in \
+            packages/agent/dist/package.json \
+            packages/app-core/dist/package.json \
+            packages/elizaos/dist/index.js \
+            packages/interop/dist/index.d.ts \
+            packages/prompts/dist/typescript/index.ts \
+            packages/shared/dist/package.json \
+            packages/skills/dist/index.js \
+            packages/typescript/dist/index.node.js \
+            packages/ui/dist/package.json; do
+            if [ ! -f "${artifact}" ]; then
+              echo "❌ Missing publish artifact: ${artifact}"
               exit 1
             fi
           done
-          echo "✅ All critical packages built successfully"
+          echo "✅ All publish-critical packages built successfully"
 
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
@@ -484,7 +589,14 @@ jobs:
           echo "✅ Workspace references replaced"
 
       # Publish to NPM (only after git operations succeed)
+      - name: Skip NPM publish on forks
+        if: github.repository != 'elizaOS/eliza'
+        run: |
+          echo "Skipping npm publish outside elizaOS/eliza."
+          echo "Fork workflows still validate the release build, but only the canonical upstream publishes packages."
+
       - name: Publish to NPM
+        if: github.repository == 'elizaOS/eliza'
         id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -493,6 +605,15 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+
+          # The release build rewrites files inside plugin git submodules
+          # (workspace refs, generated artifacts, versioned outputs). Those
+          # changes are intentional for the publish tarballs, but lerna's
+          # working tree check treats the parent repo as dirty unless the
+          # submodules are ignored locally for this CI checkout.
+          while read -r _ path _; do
+            git config --local "submodule.${path}.ignore" dirty
+          done < <(git submodule status --recursive)
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files
@@ -530,50 +651,81 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+          INITIAL_ATTEMPTS=6
+          FIX_ATTEMPTS=12
+          SLEEP_SECONDS=10
 
           echo "Verifying dist-tag '${DIST_TAG}' points to ${VERSION}..."
 
-          # Check a representative package (@elizaos/core)
-          ACTUAL=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
+          get_actual_tag() {
+            npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown"
+          }
 
-          if [[ "$ACTUAL" != "$VERSION" ]]; then
-            echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
-            echo "Forcing dist-tag update for all published packages..."
+          wait_for_dist_tag() {
+            local expected="$1"
+            local attempts="$2"
+            local phase="$3"
+            local actual=""
 
-            # Get list of public packages from lerna, plus @elizaos/core
-            # which is published from packages/typescript but may not appear
-            # in lerna ls if the workspace config changed.
-            PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
-              const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-              const names = new Set(pkgs.map(p => p.name));
-              names.add('@elizaos/core');
-              names.forEach(n => console.log(n));
-            ")
+            for attempt in $(seq 1 "${attempts}"); do
+              actual=$(get_actual_tag)
 
-            FIXED=0
-            FAILED=0
-            for PKG in $PACKAGES; do
-              if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
-                if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
-                  echo "  ✅ Updated dist-tag for ${PKG}"
-                  FIXED=$((FIXED + 1))
-                else
-                  echo "  ⚠️ Failed to update dist-tag for ${PKG}"
-                  FAILED=$((FAILED + 1))
-                fi
+              if [[ "$actual" == "$expected" ]]; then
+                echo "✅ dist-tag '${DIST_TAG}' points to ${expected} during ${phase} check (attempt ${attempt}/${attempts})"
+                return 0
+              fi
+
+              if [[ "$attempt" -lt "$attempts" ]]; then
+                echo "⏳ dist-tag '${DIST_TAG}' currently points to ${actual}; waiting ${SLEEP_SECONDS}s for ${phase} propagation (${attempt}/${attempts})..."
+                sleep "${SLEEP_SECONDS}"
               fi
             done
 
-            echo "✅ Updated dist-tag for ${FIXED} packages (${FAILED} failures)"
+            echo "⚠️ dist-tag '${DIST_TAG}' still points to ${actual} after ${phase} check"
+            return 1
+          }
 
-            # Re-verify
-            ACTUAL2=$(npm view "@elizaos/core@${DIST_TAG}" version 2>/dev/null || echo "unknown")
-            if [[ "$ACTUAL2" != "$VERSION" ]]; then
-              echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
-              exit 1
+          if wait_for_dist_tag "${VERSION}" "${INITIAL_ATTEMPTS}" "initial"; then
+            exit 0
+          fi
+
+          ACTUAL=$(get_actual_tag)
+          echo "⚠️ dist-tag '${DIST_TAG}' points to ${ACTUAL}, expected ${VERSION}"
+          echo "Forcing dist-tag update for all published packages..."
+
+          # Get list of public packages from lerna, plus @elizaos/core
+          # which is published from packages/typescript but may not appear
+          # in lerna ls if the workspace config changed.
+          PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
+            const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const names = new Set(pkgs.map(p => p.name));
+            names.add('@elizaos/core');
+            names.forEach(n => console.log(n));
+          ")
+
+          FIXED=0
+          FAILED=0
+          PENDING=0
+          for PKG in $PACKAGES; do
+            if npm view "${PKG}@${VERSION}" version >/dev/null 2>&1; then
+              if npm dist-tag add "${PKG}@${VERSION}" "${DIST_TAG}" 2>/dev/null; then
+                echo "  ✅ Updated dist-tag for ${PKG}"
+                FIXED=$((FIXED + 1))
+              else
+                echo "  ⚠️ Failed to update dist-tag for ${PKG}"
+                FAILED=$((FAILED + 1))
+              fi
+            else
+              echo "  ⏳ ${PKG}@${VERSION} is not visible on npm yet"
+              PENDING=$((PENDING + 1))
             fi
-          else
-            echo "✅ dist-tag '${DIST_TAG}' correctly points to ${VERSION}"
+          done
+
+          echo "✅ Dist-tag update attempts: ${FIXED} updated, ${FAILED} failed, ${PENDING} pending visibility"
+
+          if ! wait_for_dist_tag "${VERSION}" "${FIX_ATTEMPTS}" "post-fix"; then
+            echo "❌ dist-tag still not pointing to ${VERSION} after fix attempt"
+            exit 1
           fi
 
       # Always restore workspace:* references after publish (success or failure)
@@ -588,7 +740,7 @@ jobs:
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -827,45 +979,3 @@ jobs:
             echo "✅ Main base version (${MAIN_BASE}) already matches develop base (${NEW_DEVELOP_BASE})"
           fi
 
-      # Handle failure - create issue if the workflow failed
-      - name: Create issue content file
-        if: failure() && steps.version.outputs.version
-        run: |
-          cat > /tmp/issue-content.md << 'EOF'
-          The release workflow failed for version v${{ steps.version.outputs.version }}.
-
-          **Details:**
-          - Release Type: ${{ steps.release_type.outputs.type }}
-          - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          - Triggered By: ${{ github.event_name }}
-          - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
-          - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
-
-          **Recovery Steps:**
-
-          If git operations succeeded but NPM publish failed:
-          - The version is already in git
-          - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
-          - Or re-run this workflow (it will skip git operations if no changes)
-
-          If git operations failed:
-          - No packages were published to NPM (safe state)
-          - Fix the git issue (permissions, network, etc.)
-          - Re-run the workflow
-
-          **Action Required:**
-          - Check the workflow logs for the specific failure point
-          - Follow the appropriate recovery steps above
-          EOF
-
-      - name: Create failure issue
-        if: failure() && steps.version.outputs.version
-        uses: peter-evans/create-issue-from-file@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Release Failed: v${{ steps.version.outputs.version }}"
-          content-filepath: /tmp/issue-content.md
-          labels: |
-            bug
-            release
-            automated issue

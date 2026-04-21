@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Install systemd user service
+        if [ -d /usr/lib/systemd/user ]; then
+            cp /usr/lib/elizaos-app/elizaos-app.service /usr/lib/systemd/user/elizaos-app.service 2>/dev/null || true
+            systemctl --global daemon-reload 2>/dev/null || true
+        fi
+
+        echo ""
+        echo "  elizaOS App installed! Get started:"
+        echo ""
+        echo "    elizaos-app start            — Start interactively"
+        echo "    elizaos-app setup            — Initialize workspace"
+        echo "    elizaos-app --help           — Show all commands"
+        echo ""
+        echo "  To run as a background service:"
+        echo ""
+        echo "    systemctl --user enable --now elizaos-app"
+        echo ""
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

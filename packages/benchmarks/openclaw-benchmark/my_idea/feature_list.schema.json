@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Feature List Schema",
+  "type": "object",
+  "required": [
+    "meta",
+    "features"
+  ],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": [
+        "version",
+        "status"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active",
+            "deprecated",
+            "archived"
+          ]
+        },
+        "project_name": {
+          "type": "string"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date"
+        },
+        "context": {
+          "type": "string"
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "priority"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^feat-\\d+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "backlog",
+              "planned",
+              "in-progress",
+              "testing",
+              "completed",
+              "blocked"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "frontend",
+              "backend",
+              "devops",
+              "ui-ux",
+              "security",
+              "api"
+            ]
+          },
+          "complexity": {
+            "type": "string",
+            "enum": [
+              "XS",
+              "S",
+              "M",
+              "L",
+              "XL"
+            ]
+          },
+          "assigned_to": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "milestone": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

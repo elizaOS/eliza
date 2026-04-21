@@ -44,6 +44,12 @@ export type CharacterSettings = Omit<
 	DISABLE_BASIC_CAPABILITIES?: boolean | string;
 	ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
 	ADVANCED_CAPABILITIES?: boolean | string;
+	ENABLE_TRUST?: boolean | string;
+	ENABLE_SECRETS_MANAGER?: boolean | string;
+	ENABLE_PLUGIN_MANAGER?: boolean | string;
+	ENABLE_KNOWLEDGE?: boolean | string;
+	ENABLE_RELATIONSHIPS?: boolean | string;
+	ENABLE_TRAJECTORIES?: boolean | string;
 	secrets?: Record<string, string | boolean | number>;
 	[key: string]: JsonValue | undefined;
 };

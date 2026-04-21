@@ -1,0 +1,23 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/agentbench/run_benchmark.py --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/agentbench__agentbench/run_agentbench_20260215T025536Z_1_7bc4cc88/output --env os --max-tasks 1 --elizaos
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_agentbench_20260215T025536Z_1_7bc4cc88
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/agentbench/run_benchmark.py", line 375, in <module>
+    exit_code = asyncio.run(main())
+                ^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/agentbench/run_benchmark.py", line 201, in main
+    character = create_benchmark_character()
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/agentbench/elizaos_agentbench/eliza_harness.py", line 1064, in create_benchmark_character
+    return Character(
+           ^^^^^^^^^^
+ValueError: Protocol message CharacterSettings has no "checkShouldRespond" field.

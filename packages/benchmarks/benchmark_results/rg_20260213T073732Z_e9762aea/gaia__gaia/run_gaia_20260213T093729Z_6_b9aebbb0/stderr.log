@@ -1,0 +1,46 @@
+# command: /opt/miniconda3/bin/python -m elizaos_gaia.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260213T073732Z_e9762aea/gaia__gaia/run_gaia_20260213T093729Z_6_b9aebbb0/output --provider groq --model qwen/qwen3-32b --dataset sample --max-questions 3 --quick-test
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/gaia
+# run_id: run_gaia_20260213T093729Z_6_b9aebbb0
+Traceback (most recent call last):
+  File "<frozen runpy>", line 189, in _run_module_as_main
+  File "<frozen runpy>", line 112, in _get_module_details
+  File "/Users/shawwalters/eliza-workspace/benchmarks/gaia/elizaos_gaia/__init__.py", line 16, in <module>
+    from elizaos_gaia.plugin import create_gaia_plugin, gaia_plugin
+  File "/Users/shawwalters/eliza-workspace/benchmarks/gaia/elizaos_gaia/plugin.py", line 544, in <module>
+    gaia_plugin = create_gaia_plugin()
+  File "/Users/shawwalters/eliza-workspace/benchmarks/gaia/elizaos_gaia/plugin.py", line 477, in create_gaia_plugin
+    from elizaos.types.model import ModelType
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/__init__.py", line 1, in <module>
+    from elizaos.character import parse_character, validate_character_config
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/character.py", line 10, in <module>
+    from elizaos.types.agent import Character
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/__init__.py", line 3, in <module>
+    from elizaos.types.agent import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/agent.py", line 5, in <module>
+    from elizaos.types.generated.eliza.v1 import agent_pb2
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/types/generated/eliza/v1/agent_pb2.py", line 12, in <module>
+    _runtime_version.ValidateProtobufRuntimeVersion(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        _runtime_version.Domain.PUBLIC,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        'eliza/v1/agent.proto'
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 100, in ValidateProtobufRuntimeVersion
+    _ReportVersionError(
+    ~~~~~~~~~~~~~~~~~~~^
+        'Detected incompatible Protobuf Gencode/Runtime versions when loading'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' {location}: gencode {gen_version} runtime {version}. Runtime version'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        f' cannot be older than the linked gencode version. {error_prompt}'
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/google/protobuf/runtime_version.py", line 50, in _ReportVersionError
+    raise VersionError(msg)
+google.protobuf.runtime_version.VersionError: Detected incompatible Protobuf Gencode/Runtime versions when loading eliza/v1/agent.proto: gencode 6.33.5 runtime 5.29.6. Runtime version cannot be older than the linked gencode version. See Protobuf version guarantees at https://protobuf.dev/support/cross-version-runtime-guarantee.

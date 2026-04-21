@@ -1,0 +1,189 @@
+{
+  "id": "881deb30-9549-4583-a841-8270c65f2a17",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I want to find a faculty job in Hong Kong, so I am more curious about the \"Early Career Scheme\" of those schools is better to apply, please help me to count all the documents in the ecs pdf files in my hand, and organize the pass rate of each school by year into table!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Fundings/ecs",
+          "/home/user/Documents/Fundings/grf"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs15.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs15.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs16.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs16.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs17.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs17.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs23.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs23.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs22.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs22.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs21.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs21.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs20.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs20.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs19.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs19.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/ecs/ecs18.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/ecs18.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/customer-information-sheet-for-inward-payments-to-hong-kong.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/customer-information-sheet-for-inward-payments-to-hong-kong.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf15.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf15.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf16.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf16.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf17.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf17.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf18.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf18.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf19.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf19.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf20.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf20.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf21.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf21.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf22.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf22.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/grf/grf23.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/grf23.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Fundings/supported_rate.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/supported_rate.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Documents/Fundings/supported_rate.xlsx"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 5
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Documents/Fundings/grf"
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Documents/Fundings/ecs"
+      }
+    }
+  ],
+  "trajectory": "trajectories/881deb30-9549-4583-a841-8270c65f2a17",
+  "related_apps": [
+    "libreoffice_calc",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "libreoffice",
+            "--convert-to",
+            "csv:Text - txt - csv (StarCalc):44,34,UTF-8,,,,false,true,true,false,false,1",
+            "--outdir",
+            "/home/user/Documents/Fundings",
+            "/home/user/Documents/Fundings/supported_rate.xlsx"
+          ]
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Documents/Fundings/supported_rate.xlsx",
+        "/home/user/Documents/Fundings/supported_rate-Sheet1.csv"
+      ],
+      "dest": [
+        "supported_rate.xlsx",
+        "supported_rate-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": [
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/supported_rate_gt.xlsx",
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/supported_rate_gt.csv"
+      ],
+      "dest": [
+        "supported_rate-gt.xlsx",
+        "supported_rate-gt-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_print",
+          "sheet_idx0": "RNSheet1",
+          "sheet_idx1": "ENSheet1"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

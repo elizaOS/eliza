@@ -1,0 +1,34 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py --result_dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T125819Z_a6ec3fa9/osworld__osworld/run_osworld_20260212T125819Z_14_6906765e/output --model qwen/qwen3-32b --provider_name docker --observation_type screenshot_a11y_tree --max_tasks 1
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/OSWorld
+# run_id: run_osworld_20260212T125819Z_14_6906765e
+2026-02-12 04:58:21,959 [osworld.eliza.runner] INFO: Loaded 1 tasks
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 327, in <module>
+    main()
+    ~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 323, in main
+    run_benchmark(args)
+    ~~~~~~~~~~~~~^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 199, in run_benchmark
+    agent = create_eliza_agent(args)
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/scripts/python/run_multienv_eliza.py", line 188, in create_eliza_agent
+    asyncio.run(agent.async_init())
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/miniconda3/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/mm_agents/eliza_agent.py", line 192, in async_init
+    groq_handler = _create_groq_model_handler(
+        model=self.model,
+    ...<2 lines>...
+        temperature=self.temperature,
+    )
+  File "/Users/shawwalters/eliza-workspace/benchmarks/OSWorld/mm_agents/eliza_agent.py", line 463, in _create_groq_model_handler
+    from groq import AsyncGroq
+ModuleNotFoundError: No module named 'groq'

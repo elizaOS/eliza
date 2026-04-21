@@ -1,0 +1,82 @@
+{
+  "name": "@elizaos/capacitor-location",
+  "version": "1.0.0",
+  "description": "Reads current location, watches movement, and manages geolocation permissions.",
+  "keywords": [
+    "location",
+    "geolocation",
+    "device",
+    "permissions"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "build:docs": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "apps/app/plugins/location"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaCapacitorLocation"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/docgen": "^0.3.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Full support via Geolocation API (current position, watch position, permissions)",
+      "node": "Full support via Electrobun with native geolocation services",
+      "ios": true,
+      "android": true
+    }
+  }
+}

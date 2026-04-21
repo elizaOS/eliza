@@ -1,0 +1,48 @@
+{
+  "id": "77b8ab4d-994f-43ac-8930-8ca087d7c4b4",
+  "snapshot": "gimp",
+  "instruction": "Could you assist me in placing my photo on the desktop and renaming it to export.jpg?",
+  "source": "https://superuser.com/questions/1636113/how-to-get-gimp-to-recognize-images-or-pictures-folder-as-the-default-folder-for",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/77b8ab4d-994f-43ac-8930-8ca087d7c4b4/The_Lost_River_Of_Dreams.jpg",
+            "path": "/home/user/Desktop/The_Lost_River_Of_Dreams.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/The_Lost_River_Of_Dreams.jpg"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "func": "check_file_exists_and_structure_sim",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/77b8ab4d-994f-43ac-8930-8ca087d7c4b4/The_Lost_River_Of_Dreams.jpg",
+      "dest": "The_Lost_River_Of_Dreams.jpg"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/export.jpg",
+      "dest": "export.jpg"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

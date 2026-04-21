@@ -1,0 +1,241 @@
+{
+  "abi": [
+    { "type": "constructor", "inputs": [], "stateMutability": "nonpayable" },
+    {
+      "type": "function",
+      "name": "count",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "drasticMeasure",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "drasticMeasureTaken",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "normalProcess",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "pause",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "paused",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "unpause",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "Paused",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Unpaused",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b505f805461ffff191681556001556102a48061002a5f395ff3fe608060405234801561000f575f80fd5b506004361061007a575f3560e01c806376657b8e1161005857806376657b8e146100ba5780638456cb59146100cb5780639958f045146100d3578063e7651d7a146100db575f80fd5b806306661abd1461007e5780633f4ba83a1461009a5780635c975abb146100a4575b5f80fd5b61008760015481565b6040519081526020015b60405180910390f35b6100a26100e3565b005b5f5460ff165b6040519015158152602001610091565b5f546100aa90610100900460ff1681565b6100a26100ed565b6100a26100f5565b6100a261010d565b6100eb61012b565b565b6100eb61017c565b6100fd6101b8565b5f805461ff001916610100179055565b610115610205565b60018054905f6101248361024a565b9190505550565b6101336101b8565b5f805460ff191690557f5db9ee0a495bf2e6ff9c91a7834c1ba4fdd244a5e8aa4e537bd38aeae4b073aa335b6040516001600160a01b03909116815260200160405180910390a1565b610184610205565b5f805460ff191660011790557f62e78cea01bee320cd4e420270b5ea74000d11b0c9f74754ebdbfc544b05a25861015f3390565b5f5460ff166100eb5760405162461bcd60e51b815260206004820152601460248201527314185d5cd8589b194e881b9bdd081c185d5cd95960621b60448201526064015b60405180910390fd5b5f5460ff16156100eb5760405162461bcd60e51b815260206004820152601060248201526f14185d5cd8589b194e881c185d5cd95960821b60448201526064016101fc565b5f6001820161026757634e487b7160e01b5f52601160045260245ffd5b506001019056fea264697066735822122083e1641476c1ca79678da99bc2930eb8f718d3d7c6d61910efdd8484675b84bd64736f6c63430008140033",
+    "sourceMap": "94:474:99:-:0;;;198:77;;;;;;;;;-1:-1:-1;1006:5:164;996:15;;-1:-1:-1;;222:27:99;;;996:15:164;259:9:99;94:474;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506004361061007a575f3560e01c806376657b8e1161005857806376657b8e146100ba5780638456cb59146100cb5780639958f045146100d3578063e7651d7a146100db575f80fd5b806306661abd1461007e5780633f4ba83a1461009a5780635c975abb146100a4575b5f80fd5b61008760015481565b6040519081526020015b60405180910390f35b6100a26100e3565b005b5f5460ff165b6040519015158152602001610091565b5f546100aa90610100900460ff1681565b6100a26100ed565b6100a26100f5565b6100a261010d565b6100eb61012b565b565b6100eb61017c565b6100fd6101b8565b5f805461ff001916610100179055565b610115610205565b60018054905f6101248361024a565b9190505550565b6101336101b8565b5f805460ff191690557f5db9ee0a495bf2e6ff9c91a7834c1ba4fdd244a5e8aa4e537bd38aeae4b073aa335b6040516001600160a01b03909116815260200160405180910390a1565b610184610205565b5f805460ff191660011790557f62e78cea01bee320cd4e420270b5ea74000d11b0c9f74754ebdbfc544b05a25861015f3390565b5f5460ff166100eb5760405162461bcd60e51b815260206004820152601460248201527314185d5cd8589b194e881b9bdd081c185d5cd95960621b60448201526064015b60405180910390fd5b5f5460ff16156100eb5760405162461bcd60e51b815260206004820152601060248201526f14185d5cd8589b194e881c185d5cd95960821b60448201526064016101fc565b5f6001820161026757634e487b7160e01b5f52601160045260245ffd5b506001019056fea264697066735822122083e1641476c1ca79678da99bc2930eb8f718d3d7c6d61910efdd8484675b84bd64736f6c63430008140033",
+    "sourceMap": "94:474:99:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;171:20;;;;;;;;;160:25:310;;;148:2;133:18;171:20:99;;;;;;;;511:55;;;:::i;:::-;;1615:84:164;1662:4;1685:7;;;1615:84;;;361:14:310;;354:22;336:41;;324:2;309:18;1615:84:164;196:187:310;134:31:99;;;;;;;;;;;;454:51;;;:::i;359:89::-;;;:::i;281:72::-;;;:::i;511:55::-;549:10;:8;:10::i;:::-;511:55::o;454:51::-;490:8;:6;:8::i;359:89::-;1486:16:164;:14;:16::i;:::-;415:19:99::1;:26:::0;;-1:-1:-1;;415:26:99::1;;;::::0;;359:89::o;281:72::-;1239:19:164;:17;:19::i;:::-;339:5:99::1;:7:::0;;;:5:::1;:7;::::0;::::1;:::i;:::-;;;;;;281:72::o:0;2433:117:164:-;1486:16;:14;:16::i;:::-;2501:5:::1;2491:15:::0;;-1:-1:-1;;2491:15:164::1;::::0;;2521:22:::1;734:10:224::0;2530:12:164::1;2521:22;::::0;-1:-1:-1;;;;;789:32:310;;;771:51;;759:2;744:18;2521:22:164::1;;;;;;;2433:117::o:0;2186:115::-;1239:19;:17;:19::i;:::-;2245:7:::1;:14:::0;;-1:-1:-1;;2245:14:164::1;2255:4;2245:14;::::0;;2274:20:::1;2281:12;734:10:224::0;;655:96;1945:106:164;1662:4;1685:7;;;2003:41;;;;-1:-1:-1;;;2003:41:164;;1035:2:310;2003:41:164;;;1017:21:310;1074:2;1054:18;;;1047:30;-1:-1:-1;;;1093:18:310;;;1086:50;1153:18;;2003:41:164;;;;;;;;1767:106;1662:4;1685:7;;;1836:9;1828:38;;;;-1:-1:-1;;;1828:38:164;;1384:2:310;1828:38:164;;;1366:21:310;1423:2;1403:18;;;1396:30;-1:-1:-1;;;1442:18:310;;;1435:46;1498:18;;1828:38:164;1182:340:310;388:232;427:3;448:17;;;445:140;;507:10;502:3;498:20;495:1;488:31;542:4;539:1;532:15;570:4;567:1;560:15;445:140;-1:-1:-1;612:1:310;601:13;;388:232::o",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {
+    "count()": "06661abd",
+    "drasticMeasure()": "9958f045",
+    "drasticMeasureTaken()": "76657b8e",
+    "normalProcess()": "e7651d7a",
+    "pause()": "8456cb59",
+    "paused()": "5c975abb",
+    "unpause()": "3f4ba83a"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"Paused\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"Unpaused\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"count\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"drasticMeasure\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"drasticMeasureTaken\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"normalProcess\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"paused\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"unpause\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"events\":{\"Paused(address)\":{\"details\":\"Emitted when the pause is triggered by `account`.\"},\"Unpaused(address)\":{\"details\":\"Emitted when the pause is lifted by `account`.\"}},\"kind\":\"dev\",\"methods\":{\"paused()\":{\"details\":\"Returns true if the contract is paused, and false otherwise.\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/PausableMock.sol\":\"PausableMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/PausableMock.sol\":{\"keccak256\":\"0x224cab4e891f492d06038e4174270db1859100072d0ba5127c3575701d8a6bf8\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://328f7af4b237db34ef2ce00319dcf000563d82fc087c5986cf52d97aa323b34d\",\"dweb:/ipfs/QmUboVezup2FyzNz6zRd2ndm9n3PjsTab87vewxGvrQKpJ\"]},\"lib/openzeppelin-contracts/contracts/security/Pausable.sol\":{\"keccak256\":\"0x0849d93b16c9940beb286a7864ed02724b248b93e0d80ef6355af5ef15c64773\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://4ddabb16009cd17eaca3143feadf450ac13e72919ebe2ca50e00f61cb78bc004\",\"dweb:/ipfs/QmSPwPxX7d6TTWakN5jy5wsaGkS1y9TW8fuhGSraMkLk2B\"]},\"lib/openzeppelin-contracts/contracts/utils/Context.sol\":{\"keccak256\":\"0xa92e4fa126feb6907daa0513ddd816b2eb91f30a808de54f63c17d0e162c3439\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://a367861093b74443b137564d3f3c472f70bcf114739e62059c939f25e315706c\",\"dweb:/ipfs/Qmd7JMpcxD9RuQjK3uM3EzJUgSqdN8vzp8eytEiuwxQJ6h\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "Paused",
+          "anonymous": false
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "Unpaused",
+          "anonymous": false
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "count",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "drasticMeasure"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "drasticMeasureTaken",
+          "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "normalProcess"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "pause"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "paused",
+          "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "unpause"
+        }
+      ],
+      "devdoc": {
+        "kind": "dev",
+        "methods": {
+          "paused()": {
+            "details": "Returns true if the contract is paused, and false otherwise."
+          }
+        },
+        "version": 1
+      },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/PausableMock.sol": "PausableMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/PausableMock.sol": {
+        "keccak256": "0x224cab4e891f492d06038e4174270db1859100072d0ba5127c3575701d8a6bf8",
+        "urls": [
+          "bzz-raw://328f7af4b237db34ef2ce00319dcf000563d82fc087c5986cf52d97aa323b34d",
+          "dweb:/ipfs/QmUboVezup2FyzNz6zRd2ndm9n3PjsTab87vewxGvrQKpJ"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/security/Pausable.sol": {
+        "keccak256": "0x0849d93b16c9940beb286a7864ed02724b248b93e0d80ef6355af5ef15c64773",
+        "urls": [
+          "bzz-raw://4ddabb16009cd17eaca3143feadf450ac13e72919ebe2ca50e00f61cb78bc004",
+          "dweb:/ipfs/QmSPwPxX7d6TTWakN5jy5wsaGkS1y9TW8fuhGSraMkLk2B"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Context.sol": {
+        "keccak256": "0xa92e4fa126feb6907daa0513ddd816b2eb91f30a808de54f63c17d0e162c3439",
+        "urls": [
+          "bzz-raw://a367861093b74443b137564d3f3c472f70bcf114739e62059c939f25e315706c",
+          "dweb:/ipfs/Qmd7JMpcxD9RuQjK3uM3EzJUgSqdN8vzp8eytEiuwxQJ6h"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 99
+}

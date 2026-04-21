@@ -1,0 +1,85 @@
+{
+  "id": "1273e544-688f-496b-8d89-3e0f40aa0606",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Copy the \"Revenue\" column along with the header to a new sheet named \"Sheet2\".",
+  "source": "SheetCopilot@123",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1273e544-688f-496b-8d89-3e0f40aa0606/NetIncome.xlsx",
+            "path": "/home/user/NetIncome.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/NetIncome.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/1273e544-688f-496b-8d89-3e0f40aa0606",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "NetIncome.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/1273e544-688f-496b-8d89-3e0f40aa0606/3_NetIncome_gt1.xlsx",
+      "dest": "3_NetIncome_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/NetIncome.xlsx",
+      "dest": "NetIncome.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

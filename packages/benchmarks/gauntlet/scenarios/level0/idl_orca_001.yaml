@@ -1,0 +1,20 @@
+id: idl_orca_001
+level: 0
+name: Orca Whirlpool IDL
+description: 'Level 0 foundational test: Orca Whirlpool IDL'
+category: idl
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_idl_orca_001
+  type: query
+  parameters:
+    program: whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc
+    action: parse_idl
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

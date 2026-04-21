@@ -10,8 +10,11 @@ import "eliza/v1/state.proto";
 // Model type configuration for shouldRespond evaluation.
 enum ShouldRespondModelType {
   SHOULD_RESPOND_MODEL_TYPE_UNSPECIFIED = 0;
-  SHOULD_RESPOND_MODEL_TYPE_SMALL = 1;
-  SHOULD_RESPOND_MODEL_TYPE_LARGE = 2;
+  SHOULD_RESPOND_MODEL_TYPE_NANO = 1;
+  SHOULD_RESPOND_MODEL_TYPE_SMALL = 2;
+  SHOULD_RESPOND_MODEL_TYPE_LARGE = 3;
+  SHOULD_RESPOND_MODEL_TYPE_MEGA = 4;
+  SHOULD_RESPOND_MODEL_TYPE_RESPONSE_HANDLER = 5;
 }
 
 // Configuration options for message processing.

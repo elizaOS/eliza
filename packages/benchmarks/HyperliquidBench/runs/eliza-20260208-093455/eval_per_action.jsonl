@@ -1,0 +1,9 @@
+{"stepIdx":0,"action":"perp_orders","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["perp.order.ALO:false:none"],"ignored":false,"reason":null}
+{"stepIdx":1,"action":"perp_orders","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["perp.order.GTC:true:none"],"ignored":false,"reason":null}
+{"stepIdx":2,"action":"perp_orders","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["perp.order.IOC:false:none"],"ignored":false,"reason":null}
+{"stepIdx":3,"action":"cancel_last","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["perp.cancel.last"],"ignored":false,"reason":null}
+{"stepIdx":4,"action":"cancel_all","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["perp.cancel.all"],"ignored":false,"reason":null}
+{"stepIdx":5,"action":"usd_class_transfer","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["account.usdClassTransfer.toPerp"],"ignored":false,"reason":null}
+{"stepIdx":6,"action":"set_leverage","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["risk.setLeverage.ETH"],"ignored":false,"reason":null}
+{"stepIdx":7,"action":"set_leverage","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["risk.setLeverage.BTC"],"ignored":false,"reason":null}
+{"stepIdx":9,"action":"usd_class_transfer","submitTsMs":1770572095056,"windowKeyMs":1770572095000,"signatures":["account.usdClassTransfer.fromPerp"],"ignored":false,"reason":null}

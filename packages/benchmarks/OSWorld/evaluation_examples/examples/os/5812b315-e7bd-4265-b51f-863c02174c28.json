@@ -1,0 +1,66 @@
+{
+  "id": "5812b315-e7bd-4265-b51f-863c02174c28",
+  "snapshot": "os",
+  "instruction": "Please create an SSH user named \"charles\" with password \"Ex@mpleP@55w0rd!\" on Ubuntu who is only allowed to access the folder \"/home/test1\".",
+  "source": "https://superuser.com/questions/149404/create-an-ssh-user-who-only-has-permission-to-access-specific-folders",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir /home/test1",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": "echo {CLIENT_PASSWORD} | sudo -S apt-get install -y expect",
+          "shell": true
+        }
+      },
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/5812b315-e7bd-4265-b51f-863c02174c28/check_password.sh",
+              "path": "check_password.sh"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": "chmod +x check_password.sh",
+          "shell": true
+        }
+      }
+    ],
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_line",
+      "command": "USERNAME=\"charles\"; HOMEDIR=\"/home/test1\"; PASSWORD=\"Ex@mpleP@55w0rd!\"; ./check_password.sh \"$USERNAME\" \"$PASSWORD\" && [ \"$(getent passwd \"$USERNAME\" | cut -d: -f6)\" = \"$HOMEDIR\" ] && [ $(stat -c \"%A\" \"$HOMEDIR\" | cut -b 3) = \"w\" ] && echo \"Password, home directory, and write permission check passed\" || echo \"Check failed\"",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "Password, home directory, and write permission check passed"
+        ],
+        "exclude": []
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,56 @@
+============================================================
+ElizaOS Experience Benchmark - Agent Mode
+============================================================
+This tests the full Eliza canonical flow:
+  EXPERIENCE_CONTEXT Provider -> Model -> RECORD/QUERY Actions -> Evaluator
+
+
+[ExperienceBench] Running ELIZA AGENT benchmark...
+  This tests the full Eliza canonical flow:
+  Provider -> MESSAGE_HANDLER_TEMPLATE -> Actions -> Evaluators
+[ElizaAgent] Loading background experiences...
+[ElizaAgent] Loaded 10 background experiences
+
+[ElizaAgent] Phase 1: Learning (1 scenarios)...
+  Learning: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/1 (0.0%)[2m2026-02-15T02:57:36.792369Z[0m [[33m[1mwarning  [0m] [1mMissing required field: thought[0m [[0m[1m[34mExperienceAgent[0m][0m
+  Learning: [██████████████████████████████] 1/1 (100.0%)
+[ElizaAgent] Learning phase: 0/1 experiences recorded (0.0%)
+
+[ElizaAgent] Phase 2: Retrieval (1 queries)...
+  Retrieval: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0/1 (0.0%)  Retrieval: [██████████████████████████████] 1/1 (100.0%)
+
+[ElizaAgent] Phase 3: Computing metrics...
+
+============================================================
+ELIZA AGENT EXPERIENCE BENCHMARK RESULTS
+============================================================
+
+  Learning Phase:
+    Experience recording rate: 0.0%
+    Total experiences recorded: 0
+    Total in service: 10
+    Avg latency: 1758ms
+
+  Retrieval Phase (Agent-Mediated):
+    Recall rate: 0.0%
+    Keyword incorporation: 0.0%
+    Avg latency: 1317ms
+
+  Retrieval Phase (Direct Service):
+    Recall rate: 0.0%
+    MRR: 0.000
+    Hit@1: 0.000
+    Hit@3: 0.000
+    Hit@5: 0.000
+    Hit@10: 0.000
+
+  Learning Failures (1):
+    - coding: how to handle merge conflicts in lock files...
+
+  Retrieval Failures (1):
+    - coding: how to handle merge conflicts in lock files...
+
+  Total Duration: 3.1s
+============================================================
+
+[ExperienceBench] Report written to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/experience__experience/run_experience_20260215T025734Z_1_da7cedc5/output/experience-results.json

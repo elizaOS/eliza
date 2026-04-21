@@ -1,0 +1,70 @@
+{
+  "id": "3ce045a0-877b-42aa-8d2c-b4a863336ab8",
+  "snapshot": "os",
+  "instruction": "My glasses are broken, and I'm having trouble seeing small things clearly. Could you help me enlarge the text on my screen so it's easier to read?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/a11y-font-size.html.en",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": [
+      "check_include_exclude",
+      "check_include_exclude"
+    ],
+    "conj": "or",
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": "TEXT_SCALE=$(timeout 10 gsettings get org.gnome.desktop.interface text-scaling-factor 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+' | head -1); if [ -n \"$TEXT_SCALE\" ] && [ \"$(echo \"$TEXT_SCALE >= 1.2\" | bc -l 2>/dev/null || echo 0)\" = \"1\" ]; then echo \"Large text enabled (factor: $TEXT_SCALE)\"; else echo \"No text scaling enabled\"; fi",
+        "shell": true
+      },
+      {
+        "type": "vm_command_line",
+        "command": "ZOOM_ENABLED=$(timeout 10 gsettings get org.gnome.desktop.a11y.applications screen-magnifier-enabled 2>/dev/null | grep -c true); ZOOM_FACTOR=$(timeout 10 gsettings get org.gnome.desktop.a11y.magnifier mag-factor 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+' | head -1); if [ \"$ZOOM_ENABLED\" -gt 0 ] && [ -n \"$ZOOM_FACTOR\" ] && [ \"$(echo \"$ZOOM_FACTOR > 1.1\" | bc -l 2>/dev/null || echo 0)\" = \"1\" ]; then echo \"Zoom enabled with magnification (factor: $ZOOM_FACTOR)\"; else echo \"No zoom magnification enabled\"; fi",
+        "shell": true
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "Large text enabled"
+          ],
+          "exclude": [
+            "No text scaling enabled",
+            "error"
+          ]
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "Zoom enabled with magnification"
+          ],
+          "exclude": [
+            "No zoom magnification enabled",
+            "error"
+          ]
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

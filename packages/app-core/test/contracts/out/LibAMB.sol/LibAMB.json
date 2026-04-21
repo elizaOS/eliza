@@ -1,0 +1,69 @@
+{
+  "abi": [],
+  "bytecode": {
+    "object": "0x60556032600b8282823980515f1a607314602657634e487b7160e01b5f525f60045260245ffd5b305f52607381538281f3fe730000000000000000000000000000000000000000301460806040525f80fdfea2646970667358221220d63e492dfa05b1b582ae1224f6f4a5f66884496d0991f72edb6f66221b67dd9f64736f6c63430008140033",
+    "sourceMap": "377:826:13:-:0;;;;;;;;;;;;;;;-1:-1:-1;;;377:826:13;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x730000000000000000000000000000000000000000301460806040525f80fdfea2646970667358221220d63e492dfa05b1b582ae1224f6f4a5f66884496d0991f72edb6f66221b67dd9f64736f6c63430008140033",
+    "sourceMap": "377:826:13:-:0;;;;;;;;",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {},
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[],\"devdoc\":{\"details\":\"Primitives for cross-chain aware contracts using the https://docs.tokenbridge.net/amb-bridge/about-amb-bridge[AMB] family of bridges.\",\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/crosschain/amb/LibAMB.sol\":\"LibAMB\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/crosschain/amb/LibAMB.sol\":{\"keccak256\":\"0xb4759c7bd140f662508f815635b403c45e281141e5f197d940e5e1abe5954bde\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2108f273dbc32516100f41bea8bc24e0d02a4ea8455b46a6b3814b4cf83161a5\",\"dweb:/ipfs/QmPY2SqejkAsF8G6PahKniUFTjLbG2YiTrgebVE3LXZZBd\"]},\"lib/openzeppelin-contracts/contracts/crosschain/errors.sol\":{\"keccak256\":\"0xa1e9b651a2427925598b49ef35da5930abc07859cfac5b9dfb1912f063a024b3\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://c514518c36a3fb1c5f1a99d88857e93160c72ea1fd728c443406ad1acb43ae9a\",\"dweb:/ipfs/Qmc3oXjBNhdeM5cfWpsvewXZAhH34Scgna2W3MvLaiiapQ\"]},\"lib/openzeppelin-contracts/contracts/vendor/amb/IAMB.sol\":{\"keccak256\":\"0x1bc9e780fcb06b00cb7739b60be8a6e59a09ceb7277dc05b3e376653e4f2869e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://03872cb8df80be4604bc21323935525387b7fb0876842c873c54f777e5dc7027\",\"dweb:/ipfs/QmdLVajyUxcVaJpv7RK25bMwWPadCo6Rw87emP1eyxbTEb\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/crosschain/amb/LibAMB.sol": "LibAMB"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/crosschain/amb/LibAMB.sol": {
+        "keccak256": "0xb4759c7bd140f662508f815635b403c45e281141e5f197d940e5e1abe5954bde",
+        "urls": [
+          "bzz-raw://2108f273dbc32516100f41bea8bc24e0d02a4ea8455b46a6b3814b4cf83161a5",
+          "dweb:/ipfs/QmPY2SqejkAsF8G6PahKniUFTjLbG2YiTrgebVE3LXZZBd"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/crosschain/errors.sol": {
+        "keccak256": "0xa1e9b651a2427925598b49ef35da5930abc07859cfac5b9dfb1912f063a024b3",
+        "urls": [
+          "bzz-raw://c514518c36a3fb1c5f1a99d88857e93160c72ea1fd728c443406ad1acb43ae9a",
+          "dweb:/ipfs/Qmc3oXjBNhdeM5cfWpsvewXZAhH34Scgna2W3MvLaiiapQ"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/amb/IAMB.sol": {
+        "keccak256": "0x1bc9e780fcb06b00cb7739b60be8a6e59a09ceb7277dc05b3e376653e4f2869e",
+        "urls": [
+          "bzz-raw://03872cb8df80be4604bc21323935525387b7fb0876842c873c54f777e5dc7027",
+          "dweb:/ipfs/QmdLVajyUxcVaJpv7RK25bMwWPadCo6Rw87emP1eyxbTEb"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 13
+}

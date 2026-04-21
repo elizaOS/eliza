@@ -1,0 +1,3 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/mint/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/mint__mint/run_mint_20260215T025741Z_1_e49885b8/output --max-tasks 1
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_mint_20260215T025741Z_1_e49885b8

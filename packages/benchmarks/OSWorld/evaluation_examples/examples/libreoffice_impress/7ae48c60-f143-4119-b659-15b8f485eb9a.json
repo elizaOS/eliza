@@ -1,0 +1,108 @@
+{
+  "id": "7ae48c60-f143-4119-b659-15b8f485eb9a",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Change picture's height to 20, 30, 25cm on slide 3, 4, 6 respectively.",
+  "hint": "The input unit is cm",
+  "source": "https://arxiv.org/pdf/2311.01767.pdf",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/7ae48c60-f143-4119-b659-15b8f485eb9a/30_1.pptx",
+            "path": "/home/user/Desktop/30_1.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/30_1.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "_config_note": "CRITICAL: examine_shape must be False for examine_modify_height to work. Due to execution order, examine_shape check happens before examine_modify_height, so any shape dimension mismatch will cause immediate failure before examine_modify_height logic is reached.",
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "30_1.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": [
+      "compare_pptx_files",
+      "compare_pptx_files"
+    ],
+    "conj": "or",
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/7ae48c60-f143-4119-b659-15b8f485eb9a/30_1_Gold.pptx",
+        "dest": "30_1_Gold.pptx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/7ae48c60-f143-4119-b659-15b8f485eb9a/30_1_Gold_all_fonts.pptx",
+        "dest": "30_1_Gold_all_fonts.pptx"
+      }
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/30_1.pptx",
+        "dest": "30_1.pptx"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/30_1.pptx",
+        "dest": "30_1.pptx"
+      }
+    ],
+    "options": [
+      {
+        "_note": "examine_shape=False is REQUIRED for examine_modify_height to work - see slides.py for execution order details",
+        "examine_modify_height": true,
+        "examine_shape": false
+      },
+      {
+        "_note": "examine_shape=False is REQUIRED for examine_modify_height to work - see slides.py for execution order details",
+        "examine_modify_height": true,
+        "examine_shape": false
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

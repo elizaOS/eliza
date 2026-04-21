@@ -1,0 +1,94 @@
+{
+  "id": "e4ef0baf-4b52-4590-a47e-d4d464cca2d7",
+  "snapshot": "libreoffice_impress",
+  "instruction": "The height of picture should be 20cm on slide 3 while the font size of all textboxes should be 40pt on slide 6.",
+  "source": "https://arxiv.org/pdf/2311.01767.pdf",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/e4ef0baf-4b52-4590-a47e-d4d464cca2d7/42_2.pptx",
+            "path": "/home/user/Desktop/42_2.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/42_2.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "42_2.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": [
+      "compare_pptx_files",
+      "compare_pptx_files"
+    ],
+    "conj": "or",
+    "expected": [
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/e4ef0baf-4b52-4590-a47e-d4d464cca2d7/42_2_Gold.pptx",
+        "dest": "42_2_Gold.pptx"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/e4ef0baf-4b52-4590-a47e-d4d464cca2d7/42_2_Gold_all_fonts.pptx",
+        "dest": "42_2_Gold_all_fonts.pptx"
+      }
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/42_2.pptx",
+        "dest": "42_2.pptx"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/42_2.pptx",
+        "dest": "42_2.pptx"
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

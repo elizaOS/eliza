@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "task_id": "sample_001",
+      "instruction": "Search for 'wireless headphones' on Amazon and filter by price under $50",
+      "website": "amazon.com",
+      "domain": "shopping",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 3,
+      "latency_ms": 0.27298927307128906,
+      "error": "No model provider plugin available. Set GROQ_API_KEY or OPENAI_API_KEY.",
+      "agent_trajectory": []
+    }
+  ]
+}

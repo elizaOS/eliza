@@ -1,0 +1,16 @@
+# Rust
+target/
+Cargo.lock
+
+# WASM build outputs
+pkg/
+
+
+
+
+
+
+
+
+
+

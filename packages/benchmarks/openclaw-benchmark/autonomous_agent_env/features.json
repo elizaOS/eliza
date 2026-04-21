@@ -1,0 +1,69 @@
+[
+    {
+        "id": "feat-001",
+        "title": "Ralphy Integration",
+        "description": "Integration of Ralphy agent into the environment.",
+        "status": "planned",
+        "priority": "high",
+        "tags": [
+            "agent",
+            "integration"
+        ]
+    },
+    {
+        "id": "feat-002",
+        "title": "Replace Default Web Tools with Firecrawl",
+        "description": "Ensure OpenCode uses Firecrawl for web fetching and searching instead of default Exa/WebFetch tools.",
+        "status": "completed",
+        "priority": "medium",
+        "tags": [
+            "config",
+            "tools"
+        ]
+    },
+    {
+        "id": "feat-004",
+        "title": "Ralphy Integration: Wrapper Script",
+        "description": "Create a 'ralphy' wrapper script in the environment that orchestrates OpenCode using the 'opencode --approval-mode full-auto' command pattern found in ralphy.sh.",
+        "status": "completed",
+        "priority": "high",
+        "tags": [
+            "agent",
+            "orchestration"
+        ]
+    },
+    {
+        "id": "feat-005",
+        "title": "Ralphy Integration: PRD Standard",
+        "description": "Establish PRD.md (Markdown task list) as the standard input format for the agent loop, supporting the [ ] checklist syntax.",
+        "status": "completed",
+        "priority": "high",
+        "tags": [
+            "process",
+            "documentation"
+        ]
+    },
+    {
+        "id": "feat-006",
+        "title": "Ralphy as a Meta-Skill",
+        "description": "Implement a custom OpenCode Skill ('ralphy_skill') that allows the agent to spawn recursive sub-agents via the Ralphy wrapper. This enables the 'Manager Agent' to delegate sub-tasks (e.g., 'ralphy-wrapper.sh subtask-prd.md') to isolated worker instances, leveraging the parallel worktree architecture from the original Ralphy submodule.",
+        "status": "planned",
+        "priority": "high",
+        "tags": [
+            "architecture",
+            "meta-agent",
+            "skill"
+        ]
+    },
+    {
+        "id": "feat-007",
+        "title": "Firecrawl Advanced Configuration",
+        "description": "Optimize the Firecrawl Docker setup for production-grade scraping. Current setup is basic. Future work should investigate passing advanced flags (page options, wait_for) via the MCP tool arguments in 'opencode.json' or ensuring the Docker container has persistent caching enabled for efficiency.",
+        "status": "planned",
+        "priority": "medium",
+        "tags": [
+            "infrastructure",
+            "optimization"
+        ]
+    }
+]

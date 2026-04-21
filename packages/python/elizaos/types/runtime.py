@@ -168,6 +168,33 @@ class IAgentRuntime(ABC):
     @abstractmethod
     def has_service(self, service_type: str) -> bool: ...
 
+    @abstractmethod
+    async def enable_knowledge(self) -> None: ...
+
+    @abstractmethod
+    async def disable_knowledge(self) -> None: ...
+
+    @abstractmethod
+    def is_knowledge_enabled(self) -> bool: ...
+
+    @abstractmethod
+    async def enable_relationships(self) -> None: ...
+
+    @abstractmethod
+    async def disable_relationships(self) -> None: ...
+
+    @abstractmethod
+    def is_relationships_enabled(self) -> bool: ...
+
+    @abstractmethod
+    async def enable_trajectories(self) -> None: ...
+
+    @abstractmethod
+    async def disable_trajectories(self) -> None: ...
+
+    @abstractmethod
+    def is_trajectories_enabled(self) -> bool: ...
+
     # Settings
     @abstractmethod
     def set_setting(self, key: str, value: object | None, secret: bool = False) -> None: ...
@@ -395,6 +422,9 @@ class IAgentRuntime(ABC):
     @abstractmethod
     async def update_memory(self, memory: Memory | dict[str, Any]) -> bool: ...
 
+    @abstractmethod
+    async def delete_memory(self, memory_id: UUID) -> None: ...
+
     # Run tracking
     @abstractmethod
     def create_run_id(self) -> UUID: ...
@@ -425,6 +455,45 @@ class IAgentRuntime(ABC):
     async def create_entity(self, entity: Entity) -> bool: ...
 
     @abstractmethod
+    async def get_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        world_id: UUID | str | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> Any | None: ...
+
+    @abstractmethod
+    async def get_components(
+        self,
+        entity_id: UUID,
+        world_id: UUID | str | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> list[Any]: ...
+
+    @abstractmethod
+    async def create_component(self, component: Any) -> bool: ...
+
+    @abstractmethod
+    async def set_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        data: dict[str, Any],
+        room_id: UUID | None = None,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> bool: ...
+
+    @abstractmethod
+    async def update_component(self, component: Any) -> None: ...
+
+    @abstractmethod
+    async def delete_component(
+        self, component_id: UUID, component_type: str | None = None
+    ) -> None: ...
+
+    @abstractmethod
     async def create_room(self, room: Room) -> UUID: ...
 
     @abstractmethod
@@ -447,6 +516,23 @@ class IAgentRuntime(ABC):
 
     @abstractmethod
     async def get_relationships(self, params: dict[str, object]) -> list[object]: ...
+
+    @abstractmethod
+    async def get_relationships_by_pairs(
+        self, pairs: list[dict[str, str]]
+    ) -> list[object | None]: ...
+
+    @abstractmethod
+    async def create_relationships(self, relationships: list[dict[str, Any]]) -> list[str]: ...
+
+    @abstractmethod
+    async def get_relationships_by_ids(self, relationship_ids: list[str]) -> list[object]: ...
+
+    @abstractmethod
+    async def update_relationships(self, relationships: list[object]) -> None: ...
+
+    @abstractmethod
+    async def delete_relationships(self, relationship_ids: list[str]) -> None: ...
 
     @abstractmethod
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...

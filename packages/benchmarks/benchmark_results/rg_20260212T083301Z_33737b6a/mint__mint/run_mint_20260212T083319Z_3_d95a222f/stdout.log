@@ -1,0 +1,2242 @@
+============================================================
+MINT BENCHMARK - ElizaOS Python Runtime Evaluation
+============================================================
+
+Configuration:
+  Provider: openai
+  Categories: ['reasoning', 'coding', 'decision_making', 'information_seeking']
+  Max tasks per category: all
+  Max turns: 5
+  Tools enabled: True
+  Feedback enabled: True
+  LLM feedback: False
+  Ablation study: True
+  Docker: True
+
+[2m2026-02-12T08:33:19.515133Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.516502Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.517476Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.518566Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.519483Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.520532Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.521557Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.522459Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.523336Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.524205Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.525061Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.526073Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.526910Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.527741Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.528581Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.529427Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.530471Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.531526Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.532502Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[PythonExecutor] Docker not available, falling back to local execution
+[2m2026-02-12T08:33:19.741366Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.742380Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.743314Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.744200Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.745317Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.746387Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.747315Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.748221Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.749107Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.750029Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.750928Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.751809Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.752682Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.753829Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.754902Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.755828Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.756718Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.757586Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.758444Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.759314Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.760159Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.760997Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.761859Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.762714Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.763876Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.764995Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.765948Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.766852Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.767746Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.768621Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.769837Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.770888Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.771795Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.772661Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.773629Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.774551Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.775421Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.776340Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.777221Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.778196Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.779302Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.780225Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.781092Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.781943Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.782839Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.784056Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.785052Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.785968Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.786861Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.787742Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.788610Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.789462Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.790334Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.791191Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.792071Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.792930Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.793787Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.794700Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.795613Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.796495Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.797358Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.798203Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.799040Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.799865Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.800704Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.801524Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.802340Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.803169Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.804002Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.805005Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.806008Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.806901Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.807782Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.808660Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.809569Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.810444Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.811329Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.812251Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.813361Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.814260Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.815137Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.816001Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.816865Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.817743Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.818652Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.819524Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.820483Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.821383Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.822242Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.823094Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.823951Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.824799Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.825644Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.826494Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.827352Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.828390Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[2m2026-02-12T08:33:19.829461Z[0m [[31m[1merror    [0m] [1mError processing message: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 55, in get_character_context
+    resolved_adjectives = _resolve_name_list(adjectives, agent_name)
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 27, in _resolve_name_list
+    return [_resolve_name(s, name) for s in items]
+            ~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/basic_capabilities/providers/character.py", line 22, in _resolve_name
+    return text.replace("{{name}}", name)
+           ^^^^^^^^^^^^
+AttributeError: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+[0m [[0m[1m[34mMINT-Benchmark[0m][0m
+[MINTAgent] Pipeline error: 'google._upb._message.RepeatedScalarContainer' object has no attribute 'replace'
+
+============================================================
+MINT BENCHMARK RESULTS
+============================================================
+
+Status: EXCELLENT
+Best Configuration: baseline
+Best Success Rate: 94.4%
+
+Key Findings:
+  • Excellent performance with 94.4% success rate
+  • Tool use may be hindering performance
+  • Strong performance in coding tasks (100.0%)
+  • Strong performance in decision_making tasks (100.0%)
+  • Strong performance in information_seeking tasks (100.0%)
+
+Recommendations:
+  • Review tool integration and code execution accuracy
+  • Improve reasoning task handling
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/mint__mint/run_mint_20260212T083319Z_3_d95a222f/output
+============================================================

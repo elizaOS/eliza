@@ -1,0 +1,76 @@
+{
+  "id": "9ec204e4-f0a3-42f8-8458-b772a6797cab",
+  "snapshot": "ppt",
+  "instruction": "Make a duplicate of the last two slides for me, please.",
+  "source": "https://www.tiktok.com/@lil.d1rt_/video/7247574148887629083",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/9ec204e4-f0a3-42f8-8458-b772a6797cab/MLA_Workshop_061X_Works_Cited.pptx",
+            "path": "C:\\Users\\User\\MLA_Workshop_061X_Works_Cited.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\MLA_Workshop_061X_Works_Cited.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/9ec204e4-f0a3-42f8-8458-b772a6797cab",
+  "related_apps": [
+    "ppt"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "MLA_Workshop_061X_Works_Cited - PowerPoint",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_pptx_files",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/ppt/9ec204e4-f0a3-42f8-8458-b772a6797cab/MLA_Workshop_061X_Works_Cited_Gold.pptx",
+      "dest": "MLA_Workshop_061X_Works_Cited_Gold.pptx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\MLA_Workshop_061X_Works_Cited.pptx",
+      "dest": "MLA_Workshop_061X_Works_Cited.pptx"
+    },
+    "options": {
+      "examine_shape": false
+    }
+  }
+}

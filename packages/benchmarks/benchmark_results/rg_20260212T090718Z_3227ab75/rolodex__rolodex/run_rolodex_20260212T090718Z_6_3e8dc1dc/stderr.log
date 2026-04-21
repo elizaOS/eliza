@@ -1,0 +1,3 @@
+# command: python -m benchmarks.rolodex.python_bench.run --eliza
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/rolodex
+# run_id: run_rolodex_20260212T090718Z_6_3e8dc1dc

@@ -1,0 +1,14 @@
+{
+  "scenario_id": "scope_change_midflight",
+  "title": "Scope Change Midflight",
+  "category": "scope",
+  "required_capabilities": [],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Change scope: skip the UI and only ship API updates.",
+      "expected_behaviors": ["ack_scope_change", "apply_scope_change_to_task"]
+    }
+  ]
+}
+

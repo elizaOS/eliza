@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Public assets required by @elizaos/app-companion at runtime. Consuming apps must serve these from their public/ root.",
+  "publicAssets": {
+    "vrm-decoders/draco/": {
+      "source": "vendored",
+      "required": true,
+      "note": "Draco WASM decompressor for glTF/VRM geometry. Shipped with the plugin."
+    },
+    "animations/idle.glb.gz": {
+      "source": "ensure-avatars",
+      "required": true,
+      "note": "Default idle animation loaded on engine init."
+    },
+    "animations/emotes/": {
+      "source": "ensure-avatars",
+      "required": true,
+      "note": "Emote animations (GLB). Referenced by EmotePicker."
+    },
+    "animations/greetings/": {
+      "source": "ensure-avatars",
+      "required": false,
+      "note": "Greeting animations (FBX). Used in companion mode."
+    },
+    "animations/mixamo/": {
+      "source": "ensure-avatars",
+      "required": false,
+      "note": "Mixamo base animations (FBX). Retargeted to VRM at runtime."
+    },
+    "vrms/": {
+      "source": "ensure-avatars",
+      "required": true,
+      "note": "Bundled VRM avatar models (.vrm.gz). Roster configured via boot config."
+    },
+    "vrms/previews/": {
+      "source": "ensure-avatars",
+      "required": true,
+      "note": "PNG thumbnail previews for avatar selector."
+    },
+    "vrms/backgrounds/": {
+      "source": "ensure-avatars",
+      "required": true,
+      "note": "PNG background images per avatar."
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "@elizaos/app-defense-of-the-agents",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Eliza app integration for Defense of the Agents.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "homepage": "https://www.defenseoftheagents.com/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "keywords": [
+    "game",
+    "moba",
+    "agents",
+    "strategy"
+  ],
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "elizaos": {
+    "kind": "app",
+    "app": {
+      "displayName": "Defense of the Agents",
+      "category": "game",
+    "heroImage": "assets/hero.png",
+      "launchType": "connect",
+      "launchUrl": "https://www.defenseoftheagents.com/",
+      "capabilities": [
+        "strategy",
+        "telemetry",
+        "lane-control"
+      ],
+      "runtimePlugin": "@elizaos/app-defense-of-the-agents",
+      "viewer": {
+        "url": "/api/apps/defense-of-the-agents/viewer",
+        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      }
+    }
+  }
+}

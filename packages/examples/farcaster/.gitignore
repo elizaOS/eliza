@@ -1,0 +1,31 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Rust
+rust/farcaster-agent/target/
+
+# Node
+node_modules/
+*.log
+
+# State files
+.farcaster_last_seen_id
+.farcaster_cursor
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

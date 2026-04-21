@@ -1,0 +1,34 @@
+{
+  "groq_qwen_qwen3-32b": {
+    "provider": "groq",
+    "model": "qwen/qwen3-32b",
+    "best": {
+      "provider": "groq",
+      "model": "qwen/qwen3-32b",
+      "timestamp": "2026-02-11T23:13:08.243106",
+      "overall_accuracy": 1.0,
+      "level_1_accuracy": 1.0,
+      "level_2_accuracy": 1.0,
+      "level_3_accuracy": 1.0,
+      "total_questions": 5,
+      "correct_answers": 5,
+      "errors": 0,
+      "avg_latency_ms": 3178.7435054779053,
+      "total_tokens": 53158
+    },
+    "latest": {
+      "provider": "groq",
+      "model": "qwen/qwen3-32b",
+      "timestamp": "2026-02-11T23:13:08.243106",
+      "overall_accuracy": 1.0,
+      "level_1_accuracy": 1.0,
+      "level_2_accuracy": 1.0,
+      "level_3_accuracy": 1.0,
+      "total_questions": 5,
+      "correct_answers": 5,
+      "errors": 0,
+      "avg_latency_ms": 3178.7435054779053,
+      "total_tokens": 53158
+    }
+  }
+}

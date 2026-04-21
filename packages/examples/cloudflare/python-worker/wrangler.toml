@@ -1,0 +1,27 @@
+# elizaOS Cloudflare Worker Configuration (Python)
+# See https://developers.cloudflare.com/workers/languages/python/
+
+name = "elizaos-worker-python"
+main = "src/entry.py"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["python_workers"]
+
+[dev]
+port = 8789
+local_protocol = "http"
+
+[vars]
+CHARACTER_NAME = "Eliza"
+CHARACTER_BIO = "A helpful AI assistant powered by elizaOS, running on Cloudflare Workers (Python)."
+CHARACTER_SYSTEM = "You are Eliza, a helpful AI assistant. You are friendly, knowledgeable, and always eager to help users with their questions."
+OPENAI_MODEL = "gpt-5-mini"
+
+
+
+
+
+
+
+
+
+

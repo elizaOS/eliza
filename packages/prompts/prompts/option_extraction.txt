@@ -13,14 +13,11 @@
 4. If no clear selection is made, return null for both fields
 
 
-Return in XML format:
-<response>
-  <taskId>string_or_null</taskId>
-  <selectedOption>OPTION_NAME_or_null</selectedOption>
-</response>
+Return in TOON format:
+taskId: string_or_null
+selectedOption: OPTION_NAME_or_null
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.
 
 
 

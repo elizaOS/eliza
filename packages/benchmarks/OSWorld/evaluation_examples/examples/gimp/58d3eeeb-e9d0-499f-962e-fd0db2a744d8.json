@@ -1,0 +1,38 @@
+{
+  "id": "58d3eeeb-e9d0-499f-962e-fd0db2a744d8",
+  "snapshot": "gimp",
+  "instruction": "Based on the image above, translate the hidden audio conversation into French.",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/58d3eeeb-e9d0-499f-962e-fd0db2a744d8/heron.jpeg",
+            "path": "/home/user/Desktop/heron.jpeg"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/heron.jpeg"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

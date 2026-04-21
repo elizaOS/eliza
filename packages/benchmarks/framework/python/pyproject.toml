@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-benchmark-framework"
+version = "1.0.0"
+description = "Eliza Framework Benchmark — Python Runtime"
+requires-python = ">=3.11"
+dependencies = [
+    "elizaos>=2.0.0",
+    "psutil>=6.0.0",
+]
+
+[project.scripts]
+bench = "src.bench:main_sync"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

@@ -1,0 +1,67 @@
+{
+  "id": "847a96b6-df94-4927-97e6-8cc9ea66ced7",
+  "snapshot": "vscode",
+  "instruction": "Please help me open two workspaces \"/home/user/workspace1.code-workspace\" and \"/home/user/workspace2.code-workspace\" simultaneously in the same window.",
+  "source": "",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/project1"
+        ]
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/project2"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vs_code/847a96b6-df94-4927-97e6-8cc9ea66ced7/workspace1.code-workspace",
+            "path": "/home/user/workspace1.code-workspace"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/vs_code/847a96b6-df94-4927-97e6-8cc9ea66ced7/workspace2.code-workspace",
+            "path": "/home/user/workspace2.code-workspace"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Visual Studio Code"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vscode"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

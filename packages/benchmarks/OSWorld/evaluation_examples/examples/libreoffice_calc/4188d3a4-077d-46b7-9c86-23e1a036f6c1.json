@@ -1,0 +1,90 @@
+{
+  "id": "4188d3a4-077d-46b7-9c86-23e1a036f6c1",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Help me freeze the range A1:B1 on this sheet to keep the headers always visible",
+  "source": "https://www.libreofficehelp.com/freeze-unfreeze-rows-columns-ranges-calc/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/4188d3a4-077d-46b7-9c86-23e1a036f6c1/Freeze_row_column2.xlsx",
+            "path": "/home/user/Freeze_row_column.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Freeze_row_column.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/4188d3a4-077d-46b7-9c86-23e1a036f6c1",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Freeze_row_column.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Freeze_row_column.xlsx",
+      "dest": "Freeze_row_column.xlsx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/4188d3a4-077d-46b7-9c86-23e1a036f6c1/Freeze_row_column2_gold.xlsx",
+      "dest": "Freeze_row_column_gold.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "freeze",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        },
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

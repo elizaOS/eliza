@@ -4,21 +4,25 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "ignoreDeprecations": "5.0",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "rootDir": "../..",
-    "types": ["node", "bun"],
-    "noEmit": true,
+    "rootDir": "./typescript",
+    "types": ["node", "bun-types"],
+    "noEmit": false,
     "declaration": true,
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "composite": false,
-    "baseUrl": "../..",
     "paths": {
-      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"]
+      "@elizaos/core": ["../typescript/dist/index.node.d.ts"]
     }
   },
   "include": ["typescript/**/*.ts"],
-  "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]
+  "exclude": [
+    "typescript/**/*.test.ts",
+    "typescript/**/__tests__/**",
+    "node_modules",
+    "dist"
+  ]
 }

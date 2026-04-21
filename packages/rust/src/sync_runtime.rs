@@ -47,9 +47,10 @@ use crate::types::components::{
     ActionDefinition, ActionResult, EvaluatorDefinition, HandlerOptions, ProviderDefinition,
 };
 use crate::types::database::{
-    CreateMemoryItem, GetMemoriesParams, SearchMemoriesParams, UpdateMemoryItem,
+    CreateMemoryItem, CreateRelationshipParams, GetMemoriesParams, GetRelationshipsParams,
+    SearchMemoriesParams, UpdateMemoryItem,
 };
-use crate::types::environment::{Entity, Room, World};
+use crate::types::environment::{Entity, Relationship, Room, World};
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
 use crate::types::primitives::{string_to_uuid, Content, UUID};
@@ -320,13 +321,87 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
         Ok(false)
     }
 
-    /// Get relationships for an entity
-    async fn get_relationships(
+    /// Get a single relationship by source and target entity IDs.
+    async fn get_relationship(
         &self,
-        entity_id: &UUID,
-    ) -> Result<Vec<crate::types::environment::Relationship>> {
+        source_entity_id: &UUID,
+        target_entity_id: &UUID,
+    ) -> Result<Option<Relationship>> {
+        let _ = (source_entity_id, target_entity_id);
+        Ok(None)
+    }
+
+    /// Get relationships for an entity (simple, unfiltered).
+    async fn get_relationships(&self, entity_id: &UUID) -> Result<Vec<Relationship>> {
         let _ = entity_id;
         Ok(Vec::new())
+    }
+
+    /// Get relationships with filtering (tags, limit, offset).
+    /// Mirrors the TypeScript `getRelationships(params)` overload.
+    async fn get_relationships_filtered(
+        &self,
+        params: &GetRelationshipsParams,
+    ) -> Result<Vec<Relationship>> {
+        let _ = params;
+        Ok(Vec::new())
+    }
+
+    /// Batch lookup of relationships by (source, target) pairs.
+    /// Returns one `Option<Relationship>` per input pair, in the same order.
+    async fn get_relationships_by_pairs(
+        &self,
+        pairs: &[(UUID, UUID)],
+    ) -> Result<Vec<Option<Relationship>>> {
+        let mut out = Vec::with_capacity(pairs.len());
+        for (src, tgt) in pairs {
+            out.push(self.get_relationship(src, tgt).await?);
+        }
+        Ok(out)
+    }
+
+    /// Batch create relationships. Returns the new relationship IDs.
+    async fn create_relationships(
+        &self,
+        relationships: &[CreateRelationshipParams],
+    ) -> Result<Vec<UUID>> {
+        let mut ids = Vec::with_capacity(relationships.len());
+        for rel in relationships {
+            // Delegate to the existing single-create (uses empty type string).
+            self.create_relationship(&rel.source_entity_id, &rel.target_entity_id, "")
+                .await?;
+            ids.push(string_to_uuid(uuid::Uuid::new_v4().to_string()));
+        }
+        Ok(ids)
+    }
+
+    /// Get relationships by their IDs (batch).
+    async fn get_relationships_by_ids(
+        &self,
+        relationship_ids: &[UUID],
+    ) -> Result<Vec<Relationship>> {
+        let _ = relationship_ids;
+        Ok(Vec::new())
+    }
+
+    /// Update a single relationship.
+    async fn update_relationship(&self, relationship: &Relationship) -> Result<()> {
+        let _ = relationship;
+        Ok(())
+    }
+
+    /// Batch update relationships.
+    async fn update_relationships(&self, relationships: &[Relationship]) -> Result<()> {
+        for rel in relationships {
+            self.update_relationship(rel).await?;
+        }
+        Ok(())
+    }
+
+    /// Batch delete relationships by IDs.
+    async fn delete_relationships(&self, relationship_ids: &[UUID]) -> Result<()> {
+        let _ = relationship_ids;
+        Ok(())
     }
 }
 

@@ -1,0 +1,260 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.launch_vscode",
+            "description": "Launches Visual Studio Code with the specified file path or directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The file path or directory to open in VS Code"
+                    }
+                },
+                "required": [
+                    "path"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.compare_files",
+            "description": "Compares two files in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file1": {
+                        "type": "string",
+                        "description": "The path to the first file"
+                    },
+                    "file2": {
+                        "type": "string",
+                        "description": "The path to the second file"
+                    }
+                },
+                "required": [
+                    "file1",
+                    "file2"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.add_folder",
+            "description": "Adds a folder to the last active window in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "string",
+                        "description": "The folder path to add"
+                    }
+                },
+                "required": [
+                    "folder"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.goto_file",
+            "description": "Opens a file at a specific line and character position",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The file path to open"
+                    },
+                    "line": {
+                        "type": "integer",
+                        "description": "The line number to navigate to",
+                        "default": 1
+                    },
+                    "character": {
+                        "type": "integer",
+                        "description": "The character position to navigate to",
+                        "default": 1
+                    }
+                },
+                "required": [
+                    "file_path"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.perform_merge",
+            "description": "Perform a three-way merge",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path1": {
+                        "type": "string",
+                        "description": "The path to the first version file"
+                    },
+                    "path2": {
+                        "type": "string",
+                        "description": "The path to the second version file"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "The path to the base version file"
+                    },
+                    "result": {
+                        "type": "string",
+                        "description": "The path to save the merged result"
+                    }
+                },
+                "required": [
+                    "path1",
+                    "path2",
+                    "base",
+                    "result"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.remove_folder",
+            "description": "Removes a folder from the last active window in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "string",
+                        "description": "The folder path to remove"
+                    }
+                },
+                "required": [
+                    "folder"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.install_extension",
+            "description": "Installs an extension or updates it in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "The identifier of the extension"
+                    },
+                    "pre_release": {
+                        "type": "boolean",
+                        "description": "Whether to install the pre-release version",
+                        "default": false
+                    }
+                },
+                "required": [
+                    "extension_id"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.uninstall_extension",
+            "description": "Uninstalls an extension from VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "The identifier of the extension"
+                    }
+                },
+                "required": [
+                    "extension_id"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.list_extensions",
+            "description": "Lists installed extensions in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "show_versions": {
+                        "type": "boolean",
+                        "description": "Whether to show extension versions",
+                        "default": false
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "The category to filter extensions by"
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.update_extensions",
+            "description": "Updates all installed extensions in VSCode to the latest version",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.disable_extension",
+            "description": "Disables a specific extension for the next instance of VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "extension_id": {
+                        "type": "string",
+                        "description": "The identifier of the extension"
+                    }
+                },
+                "required": [
+                    "extension_id"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CodeTools.toggle_sync",
+            "description": "Toggles synchronization on or off in VSCode",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "state": {
+                        "type": "string",
+                        "description": "The state to set ('on' or 'off')",
+                        "enum": ["on", "off"]
+                    }
+                },
+                "required": [
+                    "state"
+                ]
+            }
+        }
+    }
+]

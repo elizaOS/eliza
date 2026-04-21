@@ -1,0 +1,121 @@
+{
+  "id": "f7dfbef3-7697-431c-883a-db8583a4e4f9",
+  "snapshot": "libreoffice_writer",
+  "instruction": "Could you convert all `.doc` files in current directory to PDF all at once in the command line?",
+  "source": "https://www.thegeekdiary.com/libreoffice-command-examples-in-linux/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f7dfbef3-7697-431c-883a-db8583a4e4f9/doc.tar.gz",
+            "path": "/home/user/Desktop/doc.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "tar -zxf /home/user/Desktop/doc.tar.gz -C /home/user/Desktop/ && rm /home/user/Desktop/doc.tar.gz"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "/bin/bash",
+          "-c",
+          "history -c && echo > ~/.bash_history && sleep 3"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "export DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus'\ngnome-terminal --maximize --working-directory=/home/user/Desktop",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_writer",
+    "terminal"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "/bin/bash",
+            "-c",
+            "cd /home/user/Desktop && tar -zcf pdf.tar.gz *.pdf"
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "/bin/bash",
+            "-c",
+            "killall gnome-terminal-server"
+          ]
+        }
+      }
+    ],
+    "func": [
+      "check_include_exclude",
+      "compare_archive"
+    ],
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "/bin/bash",
+          "-c",
+          "output=$(cat ~/.bash_history | grep -E \"(soffice|libreoffice).+--convert-to\\s+pdf.+\\*\\.doc\"); if [ -z \"$output\" ]; then echo \"failed to complete this task\"; else echo \"catch the desired command\"; fi"
+        ]
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/pdf.tar.gz",
+        "dest": "pdf.tar.gz"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "include": [
+            "catch the desired command"
+          ],
+          "exclude": [
+            "failed to complete this task"
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/f7dfbef3-7697-431c-883a-db8583a4e4f9/pdf.tar.gz",
+        "dest": "pdf_gold.tar.gz"
+      }
+    ],
+    "options": [
+      {},
+      {
+        "file_type": "pdf"
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

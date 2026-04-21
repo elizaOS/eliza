@@ -1,0 +1,564 @@
+# command: python -m benchmarks.woobench --model qwen/qwen3-32b --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/woobench__woobench/run_woobench_20260212T083321Z_2_72824fc2/output
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/woobench
+# run_id: run_woobench_20260212T083321Z_2_72824fc2
+2026-02-12 00:33:21,876 [INFO] benchmarks.woobench.runner: Running scenario: Luna's Studio Dream (true_believer_tarot_01)
+2026-02-12 00:33:21,978 [INFO] benchmarks.woobench.runner: Running scenario: The Skeptic's Challenge (skeptic_tarot_01)
+2026-02-12 00:33:21,990 [INFO] benchmarks.woobench.runner: Running scenario: First Tarot Experience (curious_newbie_tarot_01)
+2026-02-12 00:33:22,002 [INFO] benchmarks.woobench.runner: Running scenario: The Endless Chatter (time_waster_tarot_01)
+2026-02-12 00:33:22,164 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,164 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,164 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,167 [INFO] benchmarks.woobench.runner: Running scenario: The Influencer Hustle (scammer_tarot_01)
+2026-02-12 00:33:22,180 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,180 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,180 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.runner: Scenario time_waster_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.runner: Scenario true_believer_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,181 [ERROR] benchmarks.woobench.runner: Scenario skeptic_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,182 [INFO] benchmarks.woobench.runner: Running scenario: A Mother's Grief (emotional_crisis_tarot_01)
+2026-02-12 00:33:22,194 [INFO] benchmarks.woobench.runner: Running scenario: Mei's Follow-Up (repeat_customer_tarot_01)
+2026-02-12 00:33:22,206 [INFO] benchmarks.woobench.runner: Running scenario: Chad Busts Psychics (antagonist_tarot_01)
+2026-02-12 00:33:22,373 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,374 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,374 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,374 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,374 [ERROR] benchmarks.woobench.runner: Scenario antagonist_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,375 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,375 [INFO] benchmarks.woobench.runner: Running scenario: Grandfather's Wisdom (true_believer_iching_01)
+2026-02-12 00:33:22,386 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,386 [ERROR] benchmarks.woobench.runner: Scenario emotional_crisis_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,387 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,387 [ERROR] benchmarks.woobench.runner: Scenario scammer_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,387 [INFO] benchmarks.woobench.runner: Running scenario: The Professor's Dare (skeptic_iching_01)
+2026-02-12 00:33:22,399 [INFO] benchmarks.woobench.runner: Running scenario: The Algorithm of the Ancients (curious_newbie_iching_01)
+2026-02-12 00:33:22,411 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,411 [ERROR] benchmarks.woobench.runner: Scenario repeat_customer_tarot_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,411 [INFO] benchmarks.woobench.runner: Running scenario: The Warrior's Rest (emotional_crisis_iching_01)
+2026-02-12 00:33:22,587 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,587 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,587 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,587 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,587 [ERROR] benchmarks.woobench.runner: Scenario skeptic_iching_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,588 [INFO] benchmarks.woobench.runner: Running scenario: Saturn Return Crucible (true_believer_astrology_01)
+2026-02-12 00:33:22,600 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,600 [ERROR] benchmarks.woobench.runner: Scenario emotional_crisis_iching_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,600 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,600 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_iching_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,601 [INFO] benchmarks.woobench.runner: Running scenario: The Astrophysicist's Gag Gift (skeptic_astrology_01)
+2026-02-12 00:33:22,612 [INFO] benchmarks.woobench.runner: Running scenario: More Than a Sun Sign (curious_newbie_astrology_01)
+2026-02-12 00:33:22,624 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,624 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,624 [ERROR] benchmarks.woobench.runner: Scenario true_believer_iching_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,625 [INFO] benchmarks.woobench.runner: Running scenario: The Reading Addict (time_waster_astrology_01)
+2026-02-12 00:33:22,766 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,766 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,766 [ERROR] benchmarks.woobench.runner: Scenario skeptic_astrology_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,773 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,774 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,774 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,774 [ERROR] benchmarks.woobench.runner: Scenario curious_newbie_astrology_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,774 [INFO] httpx: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-02-12 00:33:22,774 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,774 [ERROR] benchmarks.woobench.runner: Scenario true_believer_astrology_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,775 [ERROR] benchmarks.woobench.evaluator: LLM call failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,775 [ERROR] benchmarks.woobench.runner: Scenario time_waster_astrology_01 failed: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/runner.py", line 127, in _run_one
+    result = await self.evaluator.run_scenario(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 312, in run_scenario
+    evaluation = await self.evaluate_turn(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 151, in evaluate_turn
+    match_result = await self.evaluate_condition(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 86, in evaluate_condition
+    result = await self._call_llm(prompt)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/woobench/evaluator.py", line 496, in _call_llm
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.groq.com/openai/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-12 00:33:22,776 [INFO] benchmarks.woobench.runner: Results saved to /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/woobench__woobench/run_woobench_20260212T083321Z_2_72824fc2/output/woobench_qwen-qwen3-32b_20260212_003322.json

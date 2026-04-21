@@ -1,4 +1,4 @@
-import { z } from "zod";
+import z from "zod";
 import type { Character } from "../types/agent";
 import { ChannelType, ContentType } from "../types/primitives";
 import type { JsonValue } from "../types/proto";
@@ -29,7 +29,7 @@ export const mediaSchema = z
 			.optional()
 			.describe("Type of media content"),
 	})
-	.loose()
+	.passthrough()
 	.describe("Media attachment with URL and metadata");
 
 const jsonPrimitiveSchema = z.union([

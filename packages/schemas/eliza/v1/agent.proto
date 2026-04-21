@@ -63,8 +63,16 @@ message CharacterSettings {
   optional double default_presence_penalty = 13;
   // Disable basic capabilities
   optional bool disable_basic_capabilities = 14;
+  // Enable extended capabilities
+  optional bool enable_extended_capabilities = 15;
   // Additional dynamic settings
   google.protobuf.Struct extra = 16;
+  // Enable native knowledge runtime feature
+  optional bool enable_knowledge = 17;
+  // Enable native relationships runtime feature
+  optional bool enable_relationships = 18;
+  // Enable native trajectories runtime feature
+  optional bool enable_trajectories = 19;
 }
 
 // Writing style guides

@@ -1,0 +1,77 @@
+{
+  "id": "9bc3cc16-074a-45ac-9bdc-b2a362e1daf3",
+  "snapshot": "thunderbird",
+  "instruction": "Could you help me back up all the email files in my inbox to ~/emails.bak? Please save them separately in eml format.",
+  "source": "https://www.quora.com/How-do-I-backup-email-files-in-Mozilla-Thunderbird",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/thunderbird/dd84e895-72fd-4023-a336-97689ded257c/thunderbird-profile.tar.gz",
+            "path": "/home/user/thunderbird-profile.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "/usr/bin/thunderbird"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "thunderbird"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "command",
+        "parameters": {
+          "command": [
+            "ls",
+            "-R",
+            "/home/user/emails.bak"
+          ],
+          "stdout": "emails.bak.ls"
+        }
+      }
+    ],
+    "func": "check_list",
+    "result": {
+      "type": "cache_file",
+      "path": "emails.bak.ls"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expect": [
+          "歡迎使用新的 Outlook.com 帳戶.*\\.eml",
+          "A Test E-mail.*\\.eml"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

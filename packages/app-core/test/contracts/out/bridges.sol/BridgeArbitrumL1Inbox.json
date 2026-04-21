@@ -1,0 +1,88 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "bridge",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    }
+  ],
+  "bytecode": {
+    "object": "0x60a0604052336080523480156012575f80fd5b5060805160a26100285f395f602e015260a25ff3fe6080604052348015600e575f80fd5b50600436106026575f3560e01c8063e78cea9214602a575b5f80fd5b60507f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f3fea26469706673582212206694bedc8c573ab5cfef67f46a3616a4963219746ce3bef5f260ba002be8047c64736f6c63430008140033",
+    "sourceMap": "1510:176:112:-:0;;;1673:10;1639:44;;1510:176;;;;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x6080604052348015600e575f80fd5b50600436106026575f3560e01c8063e78cea9214602a575b5f80fd5b60507f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f3fea26469706673582212206694bedc8c573ab5cfef67f46a3616a4963219746ce3bef5f260ba002be8047c64736f6c63430008140033",
+    "sourceMap": "1510:176:112:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1639:44;;;;;;;;-1:-1:-1;;;;;178:32:310;;;160:51;;148:2;133:18;1639:44:112;;;;;;",
+    "linkReferences": {},
+    "immutableReferences": { "14766": [{ "start": 46, "length": 32 }] }
+  },
+  "methodIdentifiers": { "bridge()": "e78cea92" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"name\":\"bridge\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"stateVariables\":{\"bridge\":{\"custom:oz-upgrades-unsafe-allow\":\"state-variable-immutable state-variable-assignment\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":\"BridgeArbitrumL1Inbox\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol\":{\"keccak256\":\"0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2\",\"dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]},\"lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol\":{\"keccak256\":\"0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138\",\"dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "bridge",
+          "outputs": [
+            { "internalType": "address", "name": "", "type": "address" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": "BridgeArbitrumL1Inbox"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/crosschain/bridges.sol": {
+        "keccak256": "0x472d35e2c8c705d51ab8fde69348e98bcea9f1c520cd03594548003cc2266511",
+        "urls": [
+          "bzz-raw://0d3982432c85497f4ae3fe912d19c5c743fff8da085266360ff56a16a50b5cb2",
+          "dweb:/ipfs/QmfVhU7fJPLbxtHM7nePhzKEuJDhSwPEhDTi4AFJ6D8Eji"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/vendor/polygon/IFxMessageProcessor.sol": {
+        "keccak256": "0xf42990016fa82e96d72c3cc69bd9156c164c616bf53608db9ec9e06c82601ee7",
+        "urls": [
+          "bzz-raw://ca9cd87c48f489988240b15e5f701f2085402c04b3c30ade90ce012e4884c138",
+          "dweb:/ipfs/QmZfgQRuyNghfNjPQvDBWratax3RKZjLPvTXfiEiRmp5fU"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 112
+}

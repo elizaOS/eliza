@@ -1,0 +1,4 @@
+Running GAIA benchmark with groq/qwen/qwen3-32b...
+GAIA dataset access denied (gated). Request access at https://huggingface.co/datasets/gaia-benchmark/GAIA and provide a token via HF_TOKEN or --hf-token.
+
+Benchmark failed: GAIA dataset access denied (gated). Request access at https://huggingface.co/datasets/gaia-benchmark/GAIA and provide a token via HF_TOKEN or --hf-token.

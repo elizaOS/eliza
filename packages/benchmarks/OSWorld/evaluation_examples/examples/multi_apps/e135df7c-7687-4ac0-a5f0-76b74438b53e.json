@@ -1,0 +1,103 @@
+{
+  "id": "e135df7c-7687-4ac0-a5f0-76b74438b53e",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Please convert a .xlsx file opened in LibreOffice Calc to a .html file and view it in Chrome.",
+  "source": "https://www.ilovefreesoftware.com/23/featured/free-csv-to-html-converter-software-windows.html",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://aclanthology.org/",
+          "https://openai.com/",
+          "https://www.linkedin.com/home/"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e135df7c-7687-4ac0-a5f0-76b74438b53e/annual-enterprise-survey-2021-financial-year-provisional.xlsx",
+            "path": "/home/user/Desktop/annual-enterprise-survey-2021-financial-year-provisional.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/annual-enterprise-survey-2021-financial-year-provisional.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "thunderbird",
+    "chrome"
+  ],
+  "evaluator": {
+    "func": [
+      "is_expected_tabs",
+      "compare_htmls"
+    ],
+    "result": [
+      {
+        "type": "open_tabs_info"
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/annual-enterprise-survey-2021-financial-year-provisional.html",
+        "dest": "annual-enterprise-survey-2021-financial-year-provisional.html"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "type": "url",
+          "urls": [
+            "https://aclanthology.org/",
+            "https://openai.com/",
+            "https://www.linkedin.com/home/",
+            "file:///home/user/Desktop/annual-enterprise-survey-2021-financial-year-provisional.html"
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/e135df7c-7687-4ac0-a5f0-76b74438b53e/annual-enterprise-survey-2021-financial-year-provisional.html",
+        "dest": "annual-enterprise-survey-2021-financial-year-provisional_gold.html"
+      }
+    ],
+    "options": [
+      {},
+      {
+        "ignore_sdnum": true
+      }
+    ]
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

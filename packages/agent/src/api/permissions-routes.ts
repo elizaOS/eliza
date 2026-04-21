@@ -1,0 +1,257 @@
+import {
+  getSelfControlPermissionState,
+  openSelfControlPermissionLocation,
+  requestSelfControlPermission,
+} from "@elizaos/app-lifeops/public";
+import type { AgentRuntime } from "@elizaos/core";
+import type { PermissionState } from "@elizaos/shared/contracts/permissions";
+import type { AutonomousConfigLike } from "../types/config-like.js";
+import type { RouteRequestContext } from "./route-helpers.js";
+
+interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
+  features?: {
+    shellEnabled?: boolean;
+  };
+  plugins?: {
+    entries?: Record<string, { enabled?: boolean }>;
+  };
+}
+
+const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking";
+
+async function getWebsiteBlockingPermissionState(): Promise<PermissionState> {
+  return await getSelfControlPermissionState();
+}
+
+export interface PermissionRouteState {
+  runtime: AgentRuntime | null;
+  config: PermissionAutonomousConfigLike;
+  permissionStates?: Record<string, PermissionState>;
+  shellEnabled?: boolean;
+}
+
+export interface PermissionRouteContext extends RouteRequestContext {
+  state: PermissionRouteState;
+  saveConfig: (config: PermissionAutonomousConfigLike) => void;
+  scheduleRuntimeRestart: (reason: string) => void;
+}
+
+export async function handlePermissionRoutes(
+  ctx: PermissionRouteContext,
+): Promise<boolean> {
+  const {
+    req,
+    res,
+    method,
+    pathname,
+    state,
+    readJsonBody,
+    json,
+    error,
+    saveConfig,
+    scheduleRuntimeRestart,
+  } = ctx;
+
+  if (!pathname.startsWith("/api/permissions")) return false;
+
+  if (method === "GET" && pathname === "/api/permissions") {
+    const permStates = state.permissionStates ?? {};
+    const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
+    json(res, {
+      ...permStates,
+      [WEBSITE_BLOCKING_PERMISSION_ID]: websiteBlockingPermission,
+      _platform: process.platform,
+      _shellEnabled: state.shellEnabled ?? true,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/permissions/shell") {
+    const enabled = state.shellEnabled ?? true;
+    if (!state.permissionStates) {
+      state.permissionStates = {};
+    }
+    const shellState = state.permissionStates.shell;
+    const permission: PermissionState = {
+      id: "shell",
+      status: enabled ? "granted" : "denied",
+      lastChecked: shellState?.lastChecked ?? Date.now(),
+      canRequest: false,
+    };
+    state.permissionStates.shell = permission;
+
+    json(res, {
+      enabled,
+      ...permission,
+      permission,
+    });
+    return true;
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/permissions/")) {
+    const permId = pathname.slice("/api/permissions/".length);
+    if (!permId || permId.includes("/")) {
+      error(res, "Invalid permission ID", 400);
+      return true;
+    }
+    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
+      json(res, await getWebsiteBlockingPermissionState());
+      return true;
+    }
+    const permStates = state.permissionStates ?? {};
+    const permState = permStates[permId];
+    if (!permState) {
+      json(res, {
+        id: permId,
+        status: "not-applicable",
+        lastChecked: Date.now(),
+        canRequest: false,
+      });
+      return true;
+    }
+    json(res, permState);
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/permissions/refresh") {
+    json(res, {
+      message: "Permission refresh requested",
+      action: "ipc:permissions:refresh",
+    });
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    pathname.match(/^\/api\/permissions\/[^/]+\/request$/)
+  ) {
+    const permId = pathname.split("/")[3];
+    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
+      json(res, await requestSelfControlPermission());
+      return true;
+    }
+    json(res, {
+      message: `Permission request for ${permId}`,
+      action: `ipc:permissions:request:${permId}`,
+    });
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    pathname.match(/^\/api\/permissions\/[^/]+\/open-settings$/)
+  ) {
+    const permId = pathname.split("/")[3];
+    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
+      try {
+        const opened = await openSelfControlPermissionLocation();
+        json(res, {
+          opened,
+          id: WEBSITE_BLOCKING_PERMISSION_ID,
+          permission: await getWebsiteBlockingPermissionState(),
+        });
+      } catch (openError) {
+        error(
+          res,
+          openError instanceof Error
+            ? openError.message
+            : "Failed to open the hosts file location.",
+          500,
+        );
+      }
+      return true;
+    }
+    json(res, {
+      message: `Opening settings for ${permId}`,
+      action: `ipc:permissions:openSettings:${permId}`,
+    });
+    return true;
+  }
+
+  if (method === "PUT" && pathname === "/api/permissions/shell") {
+    const body = await readJsonBody<{ enabled?: boolean }>(req, res);
+    if (!body) return true;
+    const enabled = body.enabled === true;
+    state.shellEnabled = enabled;
+
+    if (!state.permissionStates) {
+      state.permissionStates = {};
+    }
+    state.permissionStates.shell = {
+      id: "shell",
+      status: enabled ? "granted" : "denied",
+      lastChecked: Date.now(),
+      canRequest: false,
+    };
+
+    if (!state.config.features) {
+      state.config.features = {};
+    }
+    state.config.features.shellEnabled = enabled;
+    saveConfig(state.config);
+
+    if (state.runtime) {
+      scheduleRuntimeRestart(
+        `Shell access ${enabled ? "enabled" : "disabled"}`,
+      );
+    }
+
+    json(res, {
+      shellEnabled: enabled,
+      permission: state.permissionStates.shell,
+    });
+    return true;
+  }
+
+  if (method === "PUT" && pathname === "/api/permissions/state") {
+    const body = await readJsonBody<{
+      permissions?: Record<string, PermissionState>;
+      startup?: boolean;
+    }>(req, res);
+    if (!body) return true;
+
+    if (body.permissions && typeof body.permissions === "object") {
+      state.permissionStates = body.permissions;
+
+      let configChanged = false;
+      state.config.plugins = state.config.plugins || {};
+      state.config.plugins.entries = state.config.plugins.entries || {};
+
+      const capabilities = [
+        { id: "browser", required: ["accessibility"] },
+        { id: "computeruse", required: ["accessibility", "screen-recording"] },
+        { id: "vision", required: ["screen-recording"] },
+        { id: "coding-agent", required: [] },
+      ];
+
+      for (const cap of capabilities) {
+        if (state.config.plugins.entries[cap.id]?.enabled === undefined) {
+          const allGranted = cap.required.every((permId) => {
+            const pStatus = state.permissionStates?.[permId]?.status;
+            return pStatus === "granted" || pStatus === "not-applicable";
+          });
+
+          if (allGranted) {
+            state.config.plugins.entries[cap.id] = {
+              ...(state.config.plugins.entries[cap.id] || {}),
+              enabled: true,
+            };
+            configChanged = true;
+          }
+        }
+      }
+
+      if (configChanged) {
+        saveConfig(state.config);
+        if (state.runtime && !body.startup) {
+          scheduleRuntimeRestart("Auto-enabled newly permitted capabilities");
+        }
+      }
+    }
+
+    json(res, { updated: true, permissions: state.permissionStates });
+    return true;
+  }
+
+  return false;
+}

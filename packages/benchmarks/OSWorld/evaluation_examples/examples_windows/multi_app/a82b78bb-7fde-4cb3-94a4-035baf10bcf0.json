@@ -1,0 +1,110 @@
+{
+  "id": "a82b78bb-7fde-4cb3-94a4-035baf10bcf0",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I'm really enjoying this paper. Could you please locate the personal webpages of the initial author and the last three authors? Please include them in a browser bookmark folder titled 'Liked Authors.'",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "ncat.exe",
+          "-k",
+          "-l",
+          "0.0.0.0",
+          "9222",
+          "--sh-exec",
+          "ncat.exe 127.0.0.1 1337"
+        ]
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 2
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/a82b78bb-7fde-4cb3-94a4-035baf10bcf0/2206.08853.pdf",
+            "path": "C:\\Users\\User\\Desktop\\2206.08853.pdf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\2206.08853.pdf"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 5
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click(500, 500); pyautogui.hotkey('f11'); time.sleep(0.5); pyautogui.click(960, 540); time.sleep(0.5); pyautogui.scroll(-20)"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/a82b78bb-7fde-4cb3-94a4-035baf10bcf0",
+  "related_apps": [
+    "chrome",
+    "pdf"
+  ],
+  "evaluator": {
+    "func": "is_expected_bookmarks",
+    "result": {
+      "type": "bookmarks"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "type": "liked_authors_websites_urls",
+        "names": [
+          "Liked Authors"
+        ],
+        "urls": [
+          [
+            "https://jimfan.me/",
+            "https://research.nvidia.com/person/linxi-jim-fan"
+          ],
+          [
+            "https://research.nvidia.com/person/de-an-huang",
+            "https://ai.stanford.edu/~dahuang/"
+          ],
+          [
+            "https://yukezhu.me/",
+            "https://www.cs.utexas.edu/people/faculty-researchers/yuke-zhu",
+            "https://experts.utexas.edu/yuke_zhu",
+            "https://research.nvidia.com/person/yuke-zhu"
+          ],
+          [
+            "http://tensorlab.cms.caltech.edu/users/anima/",
+            "https://www.eas.caltech.edu/people/anima"
+          ]
+        ]
+      }
+    }
+  }
+}

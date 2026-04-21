@@ -1,0 +1,36 @@
+{
+  "results": [
+    {
+      "task_id": "sample_001",
+      "instruction": "Search for 'wireless headphones' on Amazon and filter by price under $50",
+      "website": "amazon.com",
+      "domain": "shopping",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 3,
+      "latency_ms": 69.20480728149414,
+      "error": null,
+      "agent_trajectory": []
+    },
+    {
+      "task_id": "sample_002",
+      "instruction": "Book a one-way flight from New York to Los Angeles for next Monday",
+      "website": "google.com/flights",
+      "domain": "travel",
+      "trial_number": 1,
+      "success": false,
+      "element_accuracy": 0.0,
+      "operation_accuracy": 0.0,
+      "step_accuracy": 0.0,
+      "steps_completed": 0,
+      "total_steps": 2,
+      "latency_ms": 1.64794921875,
+      "error": null,
+      "agent_trajectory": []
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/app-core": ["src/type-stubs/app-core/index.d.ts"],
+      "@elizaos/app-core/App": ["src/type-stubs/app-core/App.d.ts"],
+      "@elizaos/app-core/api": ["src/type-stubs/app-core/api.d.ts"],
+      "@elizaos/app-core/bridge": ["src/type-stubs/app-core/bridge.d.ts"],
+      "@elizaos/app-core/components/character/CharacterEditor": [
+        "src/type-stubs/app-core/CharacterEditor.d.ts"
+      ],
+      "@elizaos/app-core/config": ["src/type-stubs/app-core/config.d.ts"],
+      "@elizaos/app-core/events": ["src/type-stubs/app-core/events.d.ts"],
+      "@elizaos/app-core/platform": ["src/type-stubs/app-core/platform.d.ts"],
+      "@elizaos/app-core/platform/native-plugin-entrypoints": [
+        "src/type-stubs/app-core/native-plugin-entrypoints.d.ts"
+      ],
+      "@elizaos/app-core/shell": ["src/type-stubs/app-core/shell.d.ts"],
+      "@elizaos/app-core/state": ["src/type-stubs/app-core/state.d.ts"],
+      "@elizaos/shared/onboarding-presets": [
+        "src/type-stubs/shared/onboarding-presets.d.ts"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "useUnknownInCatchVariables": true,
+    "types": ["vite/client"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../../eliza/packages/app-core/src/ambient-modules.d.ts",
+    "../../eliza/packages/agent/src/external-modules.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
+}

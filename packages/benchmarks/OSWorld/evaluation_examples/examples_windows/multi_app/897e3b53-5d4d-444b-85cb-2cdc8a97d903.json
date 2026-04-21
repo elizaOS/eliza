@@ -1,0 +1,96 @@
+{
+  "id": "897e3b53-5d4d-444b-85cb-2cdc8a97d903",
+  "snapshot": "chrome",
+  "instruction": "I have a LibreOffice Writer file form.docx on the desktop. Help me convert it to PDF format and store the PDF in the forms/ folder in my Google Drive.",
+  "source": "https://marketplace.uipath.com/listings/convert-word-file-to-pdf-and-store-in-onedrive",
+  "config": [
+    {
+      "type": "googledrive",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+        "operation": [
+          "delete"
+        ],
+        "args": [
+          {
+            "query": "title = 'form.pdf' or title = 'form.docx' or title = 'form.docx.pdf' or title = 'forms'",
+            "trash": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "ncat.exe -k -l 0.0.0.0 9222 --sh-exec \"ncat.exe 127.0.0.1 1337\"",
+        "shell": true
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://www.zhihu.com/",
+          "https://www.coursera.org/",
+          "https://www.deepl.com",
+          "https://www.wikidata.org/wiki/Wikidata:Main_Page"
+        ]
+      }
+    },
+    {
+      "type": "login",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/google/settings.json",
+        "platform": "googledrive"
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/897e3b53-5d4d-444b-85cb-2cdc8a97d903/form.docx",
+            "path": "C:\\Users\\User\\Desktop\\form.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Desktop\\form.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "word",
+    "chrome"
+  ],
+  "evaluator": {
+    "func": "compare_pdfs",
+    "result": {
+      "type": "googledrive_file",
+      "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+      "query": [
+        "title = 'forms' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "( title = 'form.pdf' or title = 'form.docx.pdf' ) and trashed = false"
+      ],
+      "dest": "form.pdf"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/897e3b53-5d4d-444b-85cb-2cdc8a97d903/form_gold.pdf",
+      "dest": "form_gold.pdf"
+    }
+  }
+}

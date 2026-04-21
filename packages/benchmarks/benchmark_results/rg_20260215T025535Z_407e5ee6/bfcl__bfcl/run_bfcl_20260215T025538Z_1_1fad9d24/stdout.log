@@ -1,0 +1,56 @@
+Unknown model: qwen/qwen3-32b
+
+🤖 Model: llama-3.1-8b-instant (groq)
+   Provider: groq
+
+🚀 Running BFCL sample (10 tests)...
+
+Unknown model: qwen/qwen3-32b
+[2m2026-02-15T02:55:45.261637Z[0m [[33m[1mwarning  [0m] [1mMissing required action params for: BFCL_CALL. Attempting param repair.[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:55:47.806918Z[0m [[33m[1mwarning  [0m] [1mParam repair failed to parse. Repair model output (truncated): '<think>\nOkay, let me try to figure this out. The user wants to update the atomic weight of Hydrogen in their Elements table. The new weight is 1.008. They mentioned using the condition where ElementName is "Hydrogen". \n\nFirst, I need to construct the correct SQL query. The table name is Elements, and the columns include ElementName, AtomicWeight, etc. The operation should be an UPDATE statement. The SET clause would set AtomicWeight to 1.008, and the WHERE clause is ElementName = \'Hydrogen\'. \n\nL'[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m
+[2m2026-02-15T02:55:47.807408Z[0m [[33m[1mwarning  [0m] [1mAction parameter validation incomplete[0m [[0m[1m[34mBFCLBenchmarkAgent[0m][0m [36mactionName[0m=[35mBFCL_CALL[0m [36merrors[0m=[35m["Required parameter 'calls' was not provided for action BFCL_CALL"][0m [36msrc[0m=[35mruntime:actions[0m
+Failed to parse BFCL_CALL calls JSON: [{\"name\": \"library.search_book\", \"arguments\": {\"book_name\": \"The Great Gatsby\", \"city\": \"San Francisco\"}}]
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: groq/llama-3.1-8b-instant
+Provider: groq
+
+Overall Score: 0.00%
+AST Accuracy:  0.00%
+Exec Accuracy: 0.00%
+Relevance:     11.11%
+
+Tests: 0/9 passed
+Avg Latency: 1094.7ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -68.50%
+  vs mistral-large: -69.80%
+  vs qwen-2.5-72b: -71.20%
+============================================================
+
+
+============================================================
+BFCL BENCHMARK RESULTS
+============================================================
+
+Model: groq/llama-3.1-8b-instant
+Provider: groq
+
+Overall Score: 0.00%
+AST Accuracy:  0.00%
+Exec Accuracy: 0.00%
+Relevance:     11.11%
+
+Tests: 0/9 passed
+Avg Latency: 1094.7ms
+
+Baseline Comparison:
+  vs llama-3.1-70b: -68.50%
+  vs mistral-large: -69.80%
+  vs qwen-2.5-72b: -71.20%
+============================================================
+

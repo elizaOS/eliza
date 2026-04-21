@@ -43,10 +43,10 @@ The `@elizaos/core` package features a dual build system that provides optimized
 - **Node.js Build**: Full API surface with all features including server utilities
 - **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
 
-The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure you have the necessary polyfills installed:
+The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
 
 ```bash
-npm install buffer crypto-browserify stream-browserify events
+npm install buffer
 ```
 
 The dual build system uses conditional exports in package.json to automatically select the appropriate build based on the runtime environment.
@@ -95,9 +95,11 @@ SENTRY_SEND_DEFAULT_PII=true
 
 Key behaviors and APIs are documented with their **reasons** so future changes stay consistent with intent:
 
-- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, and what we don’t do.
+- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, batch-queue consolidation, and what we don’t do.
+- **[docs/BATCH_QUEUE.md](docs/BATCH_QUEUE.md)** — Why `utils/batch-queue` exists (forward-looking consolidation vs one-line fixes), layer breakdown (`PriorityQueue` / `BatchProcessor` / `TaskDrain` / `BatchQueue`), and where each is used. Published copy: [docs.elizaos.ai/runtime/batch-queue](https://docs.elizaos.ai/runtime/batch-queue).
+- **[docs/PIPELINE_HOOKS.md](docs/PIPELINE_HOOKS.md)** — Unified pipeline hooks: phases, `outgoing_before_deliver` (sources, streaming, secrets), Node stream dedupe (`useModel` vs message service), DPE traces/score hooks, observability, contributor checklist.
 - **[CHANGELOG.md](CHANGELOG.md)** — Per-change notes with WHY for each addition or fix.
-- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance).
+- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance). Shipped items remain documented in CHANGELOG and design docs.
 
 When adding or changing behavior, update these docs so the WHY stays accurate.
 
@@ -251,7 +253,7 @@ Relevant runtime knobs:
 - `PROMPT_MAX_PARALLEL_CALLS`
 - `PROMPT_MODEL_SEPARATION`
 
-For the deeper design rationale and rollout details, see `DESIGN.md`, `ROADMAP.md`, and `CHANGELOG.md` in this package.
+For the deeper design rationale and rollout details, see `DESIGN.md`, `docs/BATCH_QUEUE.md`, `ROADMAP.md`, and `CHANGELOG.md` in this package.
 
 ### Task system
 
@@ -264,6 +266,8 @@ The **task system** is the single place for *when* scheduled work runs. Only tas
 **Why queue + repeat:**
 
 - Tasks with `tags: ["queue"]` are fetched every tick. Non-repeat tasks run when `now >= dueAt` (or `metadata.scheduledAt`) then are deleted; repeat tasks use `updateInterval`/`baseInterval` and `metadata.updatedAt` as last-run time. **Why:** One-shot "run at time X" (e.g. follow-up) uses `dueAt`; interval-based scheduling covers batcher drains and recurring use.
+
+**Why `utils/batch-queue`’s `TaskDrain`:** several services create the same style of repeat drain task (`queue` + `repeat`, `maxFailures: -1`, interval metadata). Centralizing find/create/update/delete avoids each caller re-implementing JSON/metadata edge cases and keeps worker registration rules explicit (`skipRegisterWorker` when TaskService already owns the worker name). See `docs/BATCH_QUEUE.md`.
 
 **Cross-runtime scheduling (three modes):**
 

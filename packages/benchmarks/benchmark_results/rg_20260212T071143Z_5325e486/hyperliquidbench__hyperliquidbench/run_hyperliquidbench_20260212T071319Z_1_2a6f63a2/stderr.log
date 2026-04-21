@@ -1,0 +1,67 @@
+# command: python -m benchmarks.HyperliquidBench --coverage --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench
+# run_id: run_hyperliquidbench_20260212T071319Z_1_2a6f63a2
+23:13:20 [INFO] benchmarks.HyperliquidBench.eliza_agent: ━━━ Running scenario: coverage_20260211_231320 ━━━
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.059860Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.075842Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.075956Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mplugin:bootstrap[0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.076026Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.076219Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.076307Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.076351Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.076387Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: openai    [0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.076434Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: openai[0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.076462Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] elizaos: [2m2026-02-12T07:13:20.076490Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.076514Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [INFO] benchmarks.HyperliquidBench.eliza_agent: ElizaOS runtime initialised with 6 actions, 15 providers
+23:13:20 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260211_231320 – iteration 1/3
+23:13:20 [ERROR] HyperliquidTrader: [2m2026-02-12T07:13:20.080803Z[0m [[31m[1merror    [0m] [1mError processing message: 'str' object has no attribute 'description'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/plugin/providers/hl_context.py", line 87, in _get_hl_context
+    parts.append(f"**Scenario:** {scenario.description}")
+                                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'description'
+[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [ERROR] benchmarks.HyperliquidBench.eliza_agent: Error in iteration 1: 'str' object has no attribute 'description'
+23:13:20 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260211_231320 – iteration 2/3
+23:13:20 [ERROR] HyperliquidTrader: [2m2026-02-12T07:13:20.082091Z[0m [[31m[1merror    [0m] [1mError processing message: 'str' object has no attribute 'description'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/plugin/providers/hl_context.py", line 87, in _get_hl_context
+    parts.append(f"**Scenario:** {scenario.description}")
+                                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'description'
+[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [ERROR] benchmarks.HyperliquidBench.eliza_agent: Error in iteration 2: 'str' object has no attribute 'description'
+23:13:20 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260211_231320 – iteration 3/3
+23:13:20 [ERROR] HyperliquidTrader: [2m2026-02-12T07:13:20.083251Z[0m [[31m[1merror    [0m] [1mError processing message: 'str' object has no attribute 'description'
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/services/message_service.py", line 460, in handle_message
+    state = await runtime.compose_state(message)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/eliza/packages/python/elizaos/runtime.py", line 1220, in compose_state
+    result = await provider.get(self, message, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/plugin/providers/hl_context.py", line 87, in _get_hl_context
+    parts.append(f"**Scenario:** {scenario.description}")
+                                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'description'
+[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [ERROR] benchmarks.HyperliquidBench.eliza_agent: Error in iteration 3: 'str' object has no attribute 'description'
+23:13:20 [WARNING] benchmarks.HyperliquidBench.eliza_agent:   Error: No plan was successfully executed
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.083373Z[0m [[32m[1minfo     [0m] [1mStopping AgentRuntime...      [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.083408Z[0m [[32m[1minfo     [0m] [1mTask service stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.083443Z[0m [[32m[1minfo     [0m] [1mEmbedding service stopped     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+23:13:20 [INFO] HyperliquidTrader: [2m2026-02-12T07:13:20.083470Z[0m [[32m[1minfo     [0m] [1mAgentRuntime stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m

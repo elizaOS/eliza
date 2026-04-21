@@ -1,0 +1,105 @@
+{
+  "id": "7ff48d5b-2df2-49da-b500-a5150ffc7f18",
+  "snapshot": "multiapps",
+  "instruction": "I am a Chinese citizen and I want to go to Macau to watch a concert recently, but I have not yet applied for a visa for Macau. I live in Futian District, Shenzhen City. I heard that Shenzhen currently has 24-hour self-service check-in machines. Please help me find the addresses of 5 24-hour self-service check-in machines in Futian District and save them in Chinese in this open word document.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7ff48d5b-2df2-49da-b500-a5150ffc7f18/All%20Locations.docx",
+            "path": "/home/user/Desktop/AllLocations.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/AllLocations.docx"
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "AllLocations.docx - LibreOffice Writer"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome",
+    "os",
+    "writer"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "AllLocations.docx - LibreOffice Writer"
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5); pyautogui.press(\"enter\");"
+          ]
+        }
+      }
+    ],
+    "func": "fuzzy_place_math",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/AllLocations.docx",
+      "dest": "AllLocations.docx"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": [
+          "深圳市福田区益田路5055号信息枢纽大厦西门一楼",
+          "深圳市福田区福华三路111号北三门会展中心警务室",
+          "深圳市福田区正义街1号",
+          "福田区莲科路18号莲花一村警务室",
+          "深圳市福田区彩云路2-8长城盛世家园一期C座一楼一期管理处旁边",
+          "深圳市福田区香梅路2002-4号",
+          "福田区水围村龙景楼一楼",
+          "深圳市福田区梅林路与梅康路交汇处卓悦汇4号、5号门对面",
+          "深圳市福田区福强路3028号金沙嘴大厦",
+          "深圳市福田区天安数码城昌泰公寓一楼",
+          "福田区泰然五路5号天安数码城9栋",
+          "深圳市福田区振兴路108号",
+          "深圳市福田区滨河大道2033号",
+          "深圳市福田区上沙四十八栋一巷11",
+          "深圳市福田区北环大道与香蜜湖路交汇处香蜜原著警务室",
+          "深圳市福田区八卦路38号八卦岭派出所",
+          "深圳市福田区宝能城市公馆B栋一楼竹园警务室",
+          "深圳市福田区竹子林五路12号",
+          "福田区福强路3028号金沙嘴大厦",
+          "福田区彩云路2-8长城盛世家园一期C座一楼一期管理处旁边",
+          "福田区益田路5055号信息枢纽大厦西门一楼",
+          "福田区正义街1号",
+          "福田区香梅路2002-4号",
+          "福田区梅林路与梅康路交汇处卓悦汇4号、5号门对面",
+          "福田区天安数码城昌泰公寓一楼",
+          "福田区振兴路108号",
+          "福田区滨河大道2033号",
+          "福田区上沙四十八栋一巷11",
+          "福田区北环大道与香蜜湖路交汇处香蜜原著警务室",
+          "福田区八卦路38号八卦岭派出所",
+          "福田区宝能城市公馆B栋一楼竹园警务室",
+          "福田区竹子林五路12号"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,5 +1,5 @@
 import type { Character } from "./agent";
-import type { Action, Evaluator, Provider } from "./components";
+import type { Action, AgentContext, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
@@ -76,6 +76,11 @@ interface BaseRoute {
 		runtime: IAgentRuntime,
 	) => Promise<void>;
 	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
+	/**
+	 * When true, the route path is used as-is without the plugin-name prefix.
+	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
+	 */
+	rawPath?: boolean;
 }
 
 interface PublicRoute extends BaseRoute {
@@ -131,6 +136,192 @@ export type AdapterFactory = (
 	settings: Record<string, string>,
 ) => IDatabaseAdapter | Promise<IDatabaseAdapter>;
 
+export type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external";
+
+export type PluginAppSessionFeature =
+	| "commands"
+	| "telemetry"
+	| "pause"
+	| "resume"
+	| "suggestions";
+
+export type PluginAppControlAction = "pause" | "resume";
+
+export type PluginAppTelemetryValue =
+	| JsonValue
+	| PluginAppTelemetryValue[]
+	| { [key: string]: PluginAppTelemetryValue };
+
+export interface PluginAppViewer {
+	url: string;
+	embedParams?: Record<string, string>;
+	postMessageAuth?: boolean;
+	sandbox?: string;
+}
+
+export interface PluginAppViewerAuthMessage {
+	type: string;
+	authToken?: string;
+	characterId?: string;
+	sessionToken?: string;
+	agentId?: string;
+	followEntity?: string;
+}
+
+export interface PluginAppSession {
+	mode: PluginAppSessionMode;
+	features?: PluginAppSessionFeature[];
+}
+
+export interface PluginAppRecommendation {
+	id: string;
+	label: string;
+	type?: string;
+	reason?: string | null;
+	priority?: number | null;
+	command?: string | null;
+}
+
+export interface PluginAppActivityItem {
+	id: string;
+	type: string;
+	message: string;
+	timestamp?: number | null;
+	severity?: "info" | "warning" | "error";
+}
+
+export interface PluginAppSessionState {
+	sessionId: string;
+	appName: string;
+	mode: PluginAppSessionMode;
+	status: string;
+	displayName?: string;
+	agentId?: string;
+	characterId?: string;
+	followEntity?: string;
+	canSendCommands?: boolean;
+	controls?: PluginAppControlAction[];
+	summary?: string | null;
+	goalLabel?: string | null;
+	suggestedPrompts?: string[];
+	recommendations?: PluginAppRecommendation[];
+	activity?: PluginAppActivityItem[];
+	telemetry?: Record<string, PluginAppTelemetryValue> | null;
+}
+
+export interface PluginAppLaunchDiagnostic {
+	code: string;
+	severity: "info" | "warning" | "error";
+	message: string;
+}
+
+export interface PluginAppBridgeLaunchContext {
+	appName?: string;
+	launchUrl?: string | null;
+	runtime?: IAgentRuntime | null;
+	app?: PluginApp | null;
+	viewer?:
+		| (PluginAppViewer & {
+				authMessage?: PluginAppViewerAuthMessage;
+		  })
+		| null;
+}
+
+export interface PluginAppBridgeRunContext
+	extends PluginAppBridgeLaunchContext {
+	runId?: string;
+	session?: PluginAppSessionState | null;
+}
+
+export interface PluginAppLaunchPreparation {
+	diagnostics?: PluginAppLaunchDiagnostic[];
+	launchUrl?: string | null;
+	viewer?: PluginAppViewer | null;
+}
+
+export interface PluginAppBridge {
+	handleAppRoutes?: (ctx: unknown) => Promise<boolean>;
+	prepareLaunch?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppLaunchPreparation | null>;
+	resolveViewerAuthMessage?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppViewerAuthMessage | null>;
+	ensureRuntimeReady?: (ctx: PluginAppBridgeLaunchContext) => Promise<void>;
+	collectLaunchDiagnostics?: (
+		ctx: PluginAppBridgeRunContext,
+	) => Promise<PluginAppLaunchDiagnostic[]>;
+	resolveLaunchSession?: (
+		ctx: PluginAppBridgeLaunchContext,
+	) => Promise<PluginAppSessionState | null>;
+	refreshRunSession?: (
+		ctx: PluginAppBridgeRunContext,
+	) => Promise<PluginAppSessionState | null>;
+	/**
+	 * Called when a specific app run is stopped (via the Stop button or
+	 * `POST /api/apps/runs/:runId/stop`). Plugins should tear down any
+	 * runId-scoped resources here: open WebSocket connections, game-loop
+	 * timers, bot sessions, child processes, embedded servers, etc.
+	 *
+	 * Implementations should be idempotent — if the resource is already
+	 * gone the hook should return quietly. Errors are logged but do not
+	 * block the run removal from the app-manager registry.
+	 */
+	stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>;
+}
+
+export interface PluginApp {
+	displayName?: string;
+	category?: string;
+	launchType?: string;
+	launchUrl?: string | null;
+	icon?: string | null;
+	capabilities?: string[];
+	minPlayers?: number | null;
+	maxPlayers?: number | null;
+	runtimePlugin?: string;
+	viewer?: PluginAppViewer;
+	session?: PluginAppSession;
+	bridgeExport?: string;
+}
+
+export interface PluginEventRegistration {
+	eventName: string;
+	handler: (
+		params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
+	) => Promise<void> | void;
+}
+
+export interface PluginModelRegistration {
+	modelType: string;
+	handler: (
+		runtime: IAgentRuntime,
+		params: Record<string, JsonValue | object>,
+	) => Promise<JsonValue | object>;
+	provider: string;
+}
+
+export interface PluginServiceRegistration {
+	serviceType: string;
+	serviceClass: ServiceClass;
+}
+
+export interface PluginOwnership {
+	pluginName: string;
+	plugin: Plugin;
+	registeredPlugin: Plugin | null;
+	actions: Action[];
+	providers: Provider[];
+	evaluators: Evaluator[];
+	routes: Route[];
+	events: PluginEventRegistration[];
+	models: PluginModelRegistration[];
+	services: PluginServiceRegistration[];
+	sendHandlerSources: string[];
+	hasAdapter: boolean;
+	registeredAt: number;
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
@@ -139,7 +330,22 @@ export interface Plugin {
 	init?: (
 		config: Record<string, string>,
 		runtime: IAgentRuntime,
-	) => Promise<void>;
+	) => Promise<void> | void;
+
+	/**
+	 * Optional lifecycle hook invoked before a plugin is unloaded from a running runtime.
+	 * Use this to clean up timers, sockets, or other plugin-owned resources.
+	 */
+	dispose?: (runtime: IAgentRuntime) => Promise<void> | void;
+
+	/**
+	 * Optional lifecycle hook invoked for config-only updates that do not require
+	 * a full plugin reload.
+	 */
+	applyConfig?: (
+		config: Record<string, string>,
+		runtime: IAgentRuntime,
+	) => Promise<void> | void;
 
 	/** Plugin configuration - string keys to primitive values */
 	config?: Record<string, string | number | boolean | null>;
@@ -183,6 +389,43 @@ export interface Plugin {
 	priority?: number;
 
 	schema?: Record<string, JsonValue | object>;
+
+	app?: PluginApp;
+	appBridge?: PluginAppBridge;
+
+	/**
+	 * Domain contexts this plugin's components belong to.
+	 * Acts as a default for all actions/providers/evaluators in the plugin
+	 * unless they declare their own contexts.
+	 */
+	contexts?: AgentContext[];
+
+	/**
+	 * Declarative auto-enable conditions. When present, the plugin self-describes
+	 * when it should be activated — replacing (or supplementing) the hardcoded
+	 * maps in `plugin-auto-enable.ts`.
+	 *
+	 * The runtime evaluates these after initial plugin resolution:
+	 * - `envKeys`: enable when ANY of these env vars are set and non-empty.
+	 * - `connectorKeys`: enable when ANY of these connector names appear and
+	 *   are configured in `config.connectors`.
+	 * - `shouldEnable`: custom predicate for complex enable logic.
+	 *
+	 * All three are OR'd — if any condition is met the plugin is auto-enabled.
+	 * The hardcoded map in `plugin-auto-enable.ts` still serves as a fallback
+	 * for plugins that have not yet adopted `autoEnable`.
+	 */
+	autoEnable?: {
+		/** Enable when any of these env vars are set and non-empty. */
+		envKeys?: string[];
+		/** Enable when any of these connector names appear in config.connectors. */
+		connectorKeys?: string[];
+		/** Custom predicate for complex enable logic. */
+		shouldEnable?: (
+			env: Record<string, string | undefined>,
+			config: Record<string, unknown>,
+		) => boolean;
+	};
 }
 
 export interface ProjectAgent {

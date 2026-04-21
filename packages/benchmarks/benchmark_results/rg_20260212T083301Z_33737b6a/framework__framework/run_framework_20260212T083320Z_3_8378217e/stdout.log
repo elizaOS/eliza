@@ -1,0 +1,55 @@
+[0;34m[INFO][0m ═══ Python Benchmark ═══
+[0;34m[INFO][0m Installing Python dependencies...
+[0;34m[INFO][0m Running Python benchmark...
+[1;33m[WARN][0m Python benchmark failed (see errors above)
+
+[0;34m[INFO][0m ═══ Comparison Report ═══
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    Eliza Framework Benchmark Comparison                 ║
+╠══════════════════════════════════════════════════════════════════════════╣
+║  Date: 2026-02-07                                                        ║
+║  System: darwin 25.2.0 arm64                                       ║║
+║  CPUs: 16 | RAM: 128GB                                              ║║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+Runtime Versions:
+  typescript: Bun 1.3.8
+
+━━━ db-write-throughput ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Metric                    typescript
+────────────────────────────────────
+Avg Latency           615.65ms (1.0x)
+P95 Latency           833.91ms (1.0x)
+P99 Latency           844.04ms (1.0x)
+Throughput (msg/s)      16.2K (1.0x)
+Peak RSS              192.5MB (1.0x)
+
+━━━ single-message ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Metric                    typescript
+────────────────────────────────────
+Avg Latency           305.73ms (1.0x)
+P95 Latency           873.29ms (1.0x)
+P99 Latency             1.19s (1.0x)
+Throughput (msg/s)        3.3 (1.0x)
+Peak RSS              167.5MB (1.0x)
+  Pipeline:
+  compose_state              59.63ms
+  model_call                 20.19ms
+  memory_ops                    16us
+
+━━━ startup-cold ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Metric                    typescript
+────────────────────────────────────
+Avg Latency           13.04ms (1.0x)
+P95 Latency           18.50ms (1.0x)
+P99 Latency           199.55ms (1.0x)
+Throughput (msg/s)       76.7 (1.0x)
+Peak RSS              192.6MB (1.0x)
+
+═══ Category Winners ═══════════════════════════════════════════════════
+  Lowest Latency:          typescript
+  Lowest Memory:           typescript
+  Fastest Startup:         typescript
+
+
+[0;32m[OK][0m Benchmark session complete. Results in: /Users/shawwalters/eliza-workspace/benchmarks/framework/results/

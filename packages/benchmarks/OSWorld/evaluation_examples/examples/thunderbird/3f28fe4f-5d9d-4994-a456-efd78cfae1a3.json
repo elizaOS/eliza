@@ -1,0 +1,83 @@
+{
+  "id": "3f28fe4f-5d9d-4994-a456-efd78cfae1a3",
+  "snapshot": "thunderbird",
+  "instruction": "Set up a plain text signature for my email account in Thunderbird. The first line is my name \"Anonym\" and the second line is my affiliation \"XYZ Lab\".",
+  "source": "https://www.adsigner.com/user-manual/signatures/setup-email-client-thunderbird/#:~:text=is%20probably%20hidden.-,Right%20click%20on%20the%20empty%20space%20at%20the%20top%20of,signature%20from%20a%20file%20instead.",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/thunderbird/dd84e895-72fd-4023-a336-97689ded257c/thunderbird-profile.tar.gz",
+            "path": "/home/user/thunderbird-profile.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "--recursive-unlink",
+          "-f",
+          "/home/user/thunderbird-profile.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "/usr/bin/thunderbird"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/6766f2b8-8a72-417f-a9e5-56fcaa735837",
+  "related_apps": [
+    "thunderbird"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "close_window",
+        "parameters": {
+          "window_name": "Mail.thunderbird",
+          "strict": true,
+          "by_class": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.thunderbird/t5q2a5hp.default-release/prefs.js",
+      "dest": "thunder-prefs.js"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expect": {
+          "mail.identity.id1.htmlSigText": {
+            "method": "re.S",
+            "ref": "Anonym\\nXYZ Lab"
+          }
+        }
+      }
+    },
+    "func": "check_thunderbird_prefs"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

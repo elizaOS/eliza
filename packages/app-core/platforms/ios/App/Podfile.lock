@@ -1,0 +1,106 @@
+PODS:
+  - Capacitor (8.3.0):
+    - CapacitorCordova
+  - CapacitorApp (8.1.0):
+    - Capacitor
+  - CapacitorCordova (8.3.0)
+  - CapacitorKeyboard (8.0.0):
+    - Capacitor
+  - CapacitorPreferences (8.0.1):
+    - Capacitor
+  - CapacitorStatusBar (8.0.2):
+    - Capacitor
+  - ElizaosCapacitorAgent (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorCamera (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorCanvas (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorGateway (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorLocation (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorMobileSignals (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorScreencapture (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorSwabble (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorTalkmode (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorWebsiteblocker (1.0.0):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../../../node_modules/.bun/@capacitor+app@8.1.0+db0c1b46371b240c/node_modules/@capacitor/app`)"
+  - "CapacitorCordova (from `../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios`)"
+  - "CapacitorKeyboard (from `../../../../node_modules/.bun/@capacitor+keyboard@8.0.0+db0c1b46371b240c/node_modules/@capacitor/keyboard`)"
+  - "CapacitorPreferences (from `../../../../node_modules/.bun/@capacitor+preferences@8.0.1+db0c1b46371b240c/node_modules/@capacitor/preferences`)"
+  - "CapacitorStatusBar (from `../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar`)"
+  - ElizaosCapacitorAgent (from `../../../../eliza/packages/native-plugins/agent`)
+  - ElizaosCapacitorCamera (from `../../../../eliza/packages/native-plugins/camera`)
+  - ElizaosCapacitorCanvas (from `../../../../eliza/packages/native-plugins/canvas`)
+  - ElizaosCapacitorGateway (from `../../../../eliza/packages/native-plugins/gateway`)
+  - ElizaosCapacitorLocation (from `../../../../eliza/packages/native-plugins/location`)
+  - ElizaosCapacitorMobileSignals (from `../../../../eliza/packages/native-plugins/mobile-signals`)
+  - ElizaosCapacitorScreencapture (from `../../../../eliza/packages/native-plugins/screencapture`)
+  - ElizaosCapacitorSwabble (from `../../../../eliza/packages/native-plugins/swabble`)
+  - ElizaosCapacitorTalkmode (from `../../../../eliza/packages/native-plugins/talkmode`)
+  - ElizaosCapacitorWebsiteblocker (from `../../../../eliza/packages/native-plugins/websiteblocker`)
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../../../node_modules/.bun/@capacitor+app@8.1.0+db0c1b46371b240c/node_modules/@capacitor/app"
+  CapacitorCordova:
+    :path: "../../../../node_modules/.bun/@capacitor+ios@8.3.0+db0c1b46371b240c/node_modules/@capacitor/ios"
+  CapacitorKeyboard:
+    :path: "../../../../node_modules/.bun/@capacitor+keyboard@8.0.0+db0c1b46371b240c/node_modules/@capacitor/keyboard"
+  CapacitorPreferences:
+    :path: "../../../../node_modules/.bun/@capacitor+preferences@8.0.1+db0c1b46371b240c/node_modules/@capacitor/preferences"
+  CapacitorStatusBar:
+    :path: "../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar"
+  ElizaosCapacitorAgent:
+    :path: "../../../../eliza/packages/native-plugins/agent"
+  ElizaosCapacitorCamera:
+    :path: "../../../../eliza/packages/native-plugins/camera"
+  ElizaosCapacitorCanvas:
+    :path: "../../../../eliza/packages/native-plugins/canvas"
+  ElizaosCapacitorGateway:
+    :path: "../../../../eliza/packages/native-plugins/gateway"
+  ElizaosCapacitorLocation:
+    :path: "../../../../eliza/packages/native-plugins/location"
+  ElizaosCapacitorMobileSignals:
+    :path: "../../../../eliza/packages/native-plugins/mobile-signals"
+  ElizaosCapacitorScreencapture:
+    :path: "../../../../eliza/packages/native-plugins/screencapture"
+  ElizaosCapacitorSwabble:
+    :path: "../../../../eliza/packages/native-plugins/swabble"
+  ElizaosCapacitorTalkmode:
+    :path: "../../../../eliza/packages/native-plugins/talkmode"
+  ElizaosCapacitorWebsiteblocker:
+    :path: "../../../../eliza/packages/native-plugins/websiteblocker"
+
+SPEC CHECKSUMS:
+  Capacitor: 22e541237135648c9aa736232bb4d2eec35fddcb
+  CapacitorApp: 449ffe26375e96f8aaaee625ac6e01e5c57c8650
+  CapacitorCordova: 2e1e2bb93b2f365309dc4ff18b72b9a69a7814a9
+  CapacitorKeyboard: d7868c079a4d5277a3deca27a10a488fcbbb8b69
+  CapacitorPreferences: cca2021f386efb75947c850334447d9ff22b14f1
+  CapacitorStatusBar: 01d5763b4ed720de5ce2edbc938de6a98f4c8f32
+  ElizaosCapacitorAgent: d1a76bd65d1fdb5384966ddf6d0e652e278ea25d
+  ElizaosCapacitorCamera: ba4e573db05084fc02c976fe57866ea29aec0e63
+  ElizaosCapacitorCanvas: d57a4b5340d25e7b6d462532e35d27c0ecea69d1
+  ElizaosCapacitorGateway: 65743f10dd4696b39d6b3142f27a87ecc996fd1f
+  ElizaosCapacitorLocation: 99ccc716f788d741c0a5425cde9b7008a3616c7d
+  ElizaosCapacitorMobileSignals: eb15ad15197cadc82c0df25f64ca03dd1cade99d
+  ElizaosCapacitorScreencapture: 3df3d7e94ac6ba7f69c63152ae18a46bf909c0d7
+  ElizaosCapacitorSwabble: 793036783c59e69a84866dca0841195dbb2c8d83
+  ElizaosCapacitorTalkmode: fe375718c8defd943b1ce3ff7dfd8af9864325c9
+  ElizaosCapacitorWebsiteblocker: 5ed6309dacf6ff341dccdbe6c140baeae50e65a4
+
+PODFILE CHECKSUM: f6dbc7503f24e745882e02a877aa99ebe327853a
+
+COCOAPODS: 1.16.2

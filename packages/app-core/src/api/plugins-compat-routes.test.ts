@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+
+import { analyzePluginStateDrift } from "./plugins-compat-routes";
+
+describe("analyzePluginStateDrift", () => {
+  it("reports no drift when entries, compat, allow-list, and runtime agree", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "discord",
+          npmName: "@elizaos/plugin-discord",
+          category: "connector",
+          enabled: true,
+          isActive: true,
+        },
+      ] as any[],
+      {
+        connectors: {
+          discord: { enabled: true },
+        },
+      },
+      {
+        discord: { enabled: true },
+      },
+      new Set(["@elizaos/plugin-discord", "discord"]),
+    );
+
+    expect(report.summary.withDrift).toBe(0);
+    expect(report.summary.byFlag.entries_vs_compat).toBe(0);
+    expect(report.summary.byFlag.entries_vs_allowlist).toBe(0);
+    expect(report.summary.byFlag.inactive_but_enabled).toBe(0);
+    expect(report.summary.byFlag.active_but_disabled).toBe(0);
+    expect(report.plugins[0]?.drift_flags).toEqual([]);
+  });
+
+  it("flags entries_vs_compat when connector section diverges from entries", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "discord",
+          npmName: "@elizaos/plugin-discord",
+          category: "connector",
+          enabled: true,
+          isActive: true,
+        },
+      ] as any[],
+      {
+        connectors: {
+          discord: { enabled: false },
+        },
+      },
+      {
+        discord: { enabled: true },
+      },
+      new Set(["@elizaos/plugin-discord", "discord"]),
+    );
+
+    expect(report.summary.withDrift).toBe(1);
+    expect(report.summary.byFlag.entries_vs_compat).toBe(1);
+    expect(report.plugins[0]?.drift_flags).toContain("entries_vs_compat");
+  });
+
+  it("flags entries_vs_allowlist for optional core plugin drift", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "pdf",
+          npmName: "@elizaos/plugin-pdf",
+          category: "other",
+          enabled: false,
+          isActive: false,
+        },
+      ] as any[],
+      {},
+      {
+        pdf: { enabled: true },
+      },
+      new Set<string>(),
+    );
+
+    expect(report.summary.withDrift).toBe(1);
+    expect(report.summary.byFlag.entries_vs_allowlist).toBe(1);
+    expect(report.plugins[0]?.drift_flags).toContain("entries_vs_allowlist");
+  });
+
+  it("skips entries_vs_allowlist for connector plugins (they load from config.connectors)", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "discord",
+          npmName: "@elizaos/plugin-discord",
+          category: "connector",
+          enabled: false,
+          isActive: false,
+        },
+      ] as any[],
+      {
+        connectors: {
+          discord: { enabled: true },
+        },
+      },
+      {
+        discord: { enabled: true },
+      },
+      new Set<string>(),
+    );
+
+    expect(report.summary.byFlag.entries_vs_allowlist).toBe(0);
+    expect(report.plugins[0]?.drift_flags).not.toContain(
+      "entries_vs_allowlist",
+    );
+  });
+
+  it("flags active_but_disabled when runtime is active but UI model disabled", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "discord",
+          npmName: "@elizaos/plugin-discord",
+          category: "connector",
+          enabled: false,
+          isActive: true,
+        },
+      ] as any[],
+      {
+        connectors: {
+          discord: { enabled: false },
+        },
+      },
+      {
+        discord: { enabled: false },
+      },
+      new Set<string>(),
+    );
+
+    expect(report.summary.withDrift).toBe(1);
+    expect(report.summary.byFlag.active_but_disabled).toBe(1);
+    expect(report.plugins[0]?.drift_flags).toContain("active_but_disabled");
+  });
+});

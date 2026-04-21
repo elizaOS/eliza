@@ -1,0 +1,73 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "skipLibCheck": true,
+    "types": ["node", "bun", "react", "react-dom"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../app-core/node_modules/@types",
+      "../ui/node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types"
+    ],
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/core": ["../typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../typescript/src/*"],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
+      "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
+      "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
+      "@elizaos/app-elizamaker": ["../../apps/app-elizamaker/src/index.ts"],
+      "@elizaos/app-elizamaker/*": ["../../apps/app-elizamaker/src/*"],
+      "@elizaos/app-form": ["../../apps/app-form/src/index.ts"],
+      "@elizaos/app-form/*": ["../../apps/app-form/src/*"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/app-steward": ["../../apps/app-steward/src/index.ts"],
+      "@elizaos/app-steward/*": ["../../apps/app-steward/src/*"],
+      "@elizaos/app-shopify": ["../../apps/app-shopify/src/index.ts"],
+      "@elizaos/app-shopify/*": ["../../apps/app-shopify/src/*"],
+      "@elizaos/app-vincent": ["../../apps/app-vincent/src/index.ts"],
+      "@elizaos/app-vincent/*": ["../../apps/app-vincent/src/*"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/app-companion": ["../../apps/app-companion/src/index.ts"],
+      "@elizaos/app-companion/*": ["../../apps/app-companion/src/*"],
+      "@elizaos/app-knowledge": ["../../apps/app-knowledge/src/index.ts"],
+      "@elizaos/app-knowledge/*": ["../../apps/app-knowledge/src/*"],
+      "@elizaos/app-training": ["../../apps/app-training/src/index.ts"],
+      "@elizaos/app-training/*": ["../../apps/app-training/src/*"],
+      "@elizaos/agent": ["./src/index.ts"],
+      "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"],
+      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/__tests__/**"
+  ]
+}

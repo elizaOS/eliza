@@ -215,7 +215,7 @@ function formatExtraValue(value: unknown): string {
  * Format: [src] message (key=val, key=val)
  *
  * agentId/agentName are NOT displayed in pretty mode because:
- * - Loggers with namespace already show #agentName prefix (via Adze)
+ * - Loggers with namespace already show an agent-prefixed tag (via Adze)
  * - These fields ARE still included in JSON mode for filtering/monitoring
  */
 function formatPrettyLog(
@@ -234,7 +234,7 @@ function formatPrettyLog(
 	const srcPart = src ? `[${src.toUpperCase()}] ` : "";
 
 	// Build extras: (key=val, key=val)
-	// Exclude: src (already in prefix), agentId/agentName (shown via Adze namespace #agent)
+	// Exclude: src (already in prefix), agentId/agentName (shown via Adze namespace tag)
 	const excludeKeys = ["src", "agentId", "agentName"];
 	const extraPairs: string[] = [];
 
@@ -560,6 +560,7 @@ export function logResponse(
 ): string {
 	if (!ensureFileLog()) return "";
 	const _agentName = metadata?.agentName ?? "unknown";
+	void _agentName;
 	// Use the same slug that was stored in the prompt's metadata for correlation
 	const slug = metadata?.promptSlug;
 	if (!slug) {
@@ -616,7 +617,7 @@ export function logChatIn(params: {
 	const roomShort = params.roomId.slice(0, 8);
 	const msgShort = params.messageId.slice(0, 8);
 	const source = params.source ?? "unknown";
-	const line = `[CHAT:IN]  #${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
+	const line = `[CHAT:IN]  #agent:${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
 	writeChatLine(line);
 	return line;
 }
@@ -636,7 +637,7 @@ export function logChatOut(params: {
 	actions?: string[];
 }): string {
 	const roomShort = params.roomId.slice(0, 8);
-	let part = `[CHAT:OUT] #${params.agentName} room=${roomShort} action=${params.action}`;
+	let part = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`;
 	if (params.actions && params.actions.length > 0) {
 		part += ` actions=${params.actions.join(",")}`;
 	}

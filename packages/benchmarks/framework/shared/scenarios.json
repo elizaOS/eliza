@@ -1,0 +1,311 @@
+{
+  "scenarios": [
+    {
+      "id": "single-message",
+      "name": "Single Message Processing",
+      "description": "Process one message end-to-end (baseline latency)",
+      "messages": [
+        { "content": "Hello BenchmarkAgent, how are you?", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 5,
+        "iterations": 50
+      }
+    },
+    {
+      "id": "conversation-10",
+      "name": "10-Message Conversation",
+      "description": "10-message back-and-forth conversation measuring state growth",
+      "messages": [
+        { "content": "Hello BenchmarkAgent, let's talk.", "role": "user" },
+        { "content": "BenchmarkAgent, what do you think about performance?", "role": "user" },
+        { "content": "BenchmarkAgent, can you explain latency?", "role": "user" },
+        { "content": "BenchmarkAgent, how about throughput?", "role": "user" },
+        { "content": "BenchmarkAgent, what about memory usage?", "role": "user" },
+        { "content": "BenchmarkAgent, tell me about concurrency.", "role": "user" },
+        { "content": "BenchmarkAgent, how does state composition work?", "role": "user" },
+        { "content": "BenchmarkAgent, what are providers?", "role": "user" },
+        { "content": "BenchmarkAgent, explain action dispatch.", "role": "user" },
+        { "content": "BenchmarkAgent, summarize everything.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 3,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "conversation-100",
+      "name": "100-Message Conversation",
+      "description": "100-message conversation measuring state growth impact at scale",
+      "messages": "_generate:100",
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 2,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "burst-100",
+      "name": "100-Message Burst",
+      "description": "100 messages sent as fast as possible (sequential throughput)",
+      "messages": "_generate:100",
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 2,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "burst-1000",
+      "name": "1000-Message Burst",
+      "description": "1000 messages sent sequentially for throughput measurement",
+      "messages": "_generate:1000",
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 1,
+        "iterations": 3
+      }
+    },
+    {
+      "id": "with-should-respond",
+      "name": "With ShouldRespond Check",
+      "description": "Messages with shouldRespond enabled (agent name in message = always respond)",
+      "messages": [
+        { "content": "Hey BenchmarkAgent, respond to this.", "role": "user" },
+        { "content": "BenchmarkAgent, another message.", "role": "user" },
+        { "content": "BenchmarkAgent, third test.", "role": "user" },
+        { "content": "BenchmarkAgent, fourth test.", "role": "user" },
+        { "content": "BenchmarkAgent, fifth test.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": true,
+        "multiStep": false,
+        "warmup": 3,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "with-should-respond-no-name",
+      "name": "ShouldRespond Without Agent Name",
+      "description": "Messages without agent name — shouldRespond must evaluate via mock LLM",
+      "messages": [
+        { "content": "Hello there, how are you?", "role": "user" },
+        { "content": "Tell me about performance testing.", "role": "user" },
+        { "content": "What's the weather like?", "role": "user" },
+        { "content": "Can you help me with something?", "role": "user" },
+        { "content": "Thanks for the help.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": true,
+        "multiStep": false,
+        "warmup": 3,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "with-actions",
+      "name": "With Action Execution",
+      "description": "Messages that trigger REPLY action execution",
+      "messages": [
+        { "content": "BenchmarkAgent, please reply to this message.", "role": "user" },
+        { "content": "BenchmarkAgent, send another reply.", "role": "user" },
+        { "content": "BenchmarkAgent, one more reply please.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "warmup": 3,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "provider-scaling-10",
+      "name": "10 Providers",
+      "description": "Message processing with 10 registered dummy providers",
+      "messages": [
+        { "content": "BenchmarkAgent, test with 10 providers.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "dummyProviders": 10,
+        "warmup": 3,
+        "iterations": 30
+      }
+    },
+    {
+      "id": "provider-scaling-50",
+      "name": "50 Providers",
+      "description": "Message processing with 50 registered dummy providers",
+      "messages": [
+        { "content": "BenchmarkAgent, test with 50 providers.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "dummyProviders": 50,
+        "warmup": 3,
+        "iterations": 30
+      }
+    },
+    {
+      "id": "provider-scaling-100",
+      "name": "100 Providers",
+      "description": "Message processing with 100 registered dummy providers",
+      "messages": [
+        { "content": "BenchmarkAgent, test with 100 providers.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "dummyProviders": 100,
+        "warmup": 3,
+        "iterations": 30
+      }
+    },
+    {
+      "id": "history-scaling-100",
+      "name": "100 History Messages",
+      "description": "Process message with 100 pre-populated memory entries",
+      "messages": [
+        { "content": "BenchmarkAgent, process with 100 history.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "prePopulateHistory": 100,
+        "warmup": 3,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "history-scaling-1000",
+      "name": "1000 History Messages",
+      "description": "Process message with 1000 pre-populated memory entries",
+      "messages": [
+        { "content": "BenchmarkAgent, process with 1000 history.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "prePopulateHistory": 1000,
+        "warmup": 2,
+        "iterations": 10
+      }
+    },
+    {
+      "id": "history-scaling-10000",
+      "name": "10000 History Messages",
+      "description": "Process message with 10000 pre-populated memory entries",
+      "messages": [
+        { "content": "BenchmarkAgent, process with 10000 history.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "prePopulateHistory": 10000,
+        "warmup": 1,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "concurrent-10",
+      "name": "10 Concurrent Messages",
+      "description": "10 simultaneous message submissions",
+      "messages": "_generate:10",
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "concurrent": true,
+        "warmup": 2,
+        "iterations": 10
+      }
+    },
+    {
+      "id": "concurrent-50",
+      "name": "50 Concurrent Messages",
+      "description": "50 simultaneous message submissions",
+      "messages": "_generate:50",
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "concurrent": true,
+        "warmup": 1,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "db-write-throughput",
+      "name": "DB Write Throughput",
+      "description": "Bulk memory creation (10000 writes)",
+      "messages": [],
+      "config": {
+        "dbOnly": true,
+        "dbOperation": "write",
+        "dbCount": 10000,
+        "warmup": 1,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "db-read-throughput",
+      "name": "DB Read Throughput",
+      "description": "Bulk memory retrieval (10000 reads)",
+      "messages": [],
+      "config": {
+        "dbOnly": true,
+        "dbOperation": "read",
+        "dbCount": 10000,
+        "warmup": 1,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "startup-cold",
+      "name": "Cold Startup",
+      "description": "Agent creation + initialization time (no warm-up, measured fresh)",
+      "messages": [],
+      "config": {
+        "startupOnly": true,
+        "warmup": 0,
+        "iterations": 20
+      }
+    },
+    {
+      "id": "multi-step",
+      "name": "Multi-Step Processing",
+      "description": "Multi-step mode with mock LLM (no real LLM calls)",
+      "messages": [
+        { "content": "BenchmarkAgent, run a multi-step task for me.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": true,
+        "warmup": 3,
+        "iterations": 15
+      }
+    },
+    {
+      "id": "minimal-bootstrap",
+      "name": "Minimal Bootstrap (CHARACTER only)",
+      "description": "Single message with minimal bootstrap — only CHARACTER provider",
+      "messages": [
+        { "content": "BenchmarkAgent, minimal test.", "role": "user" }
+      ],
+      "config": {
+        "checkShouldRespond": false,
+        "multiStep": false,
+        "minimalBootstrap": true,
+        "warmup": 5,
+        "iterations": 50
+      }
+    }
+  ]
+}

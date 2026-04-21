@@ -1,0 +1,106 @@
+//! PROVIDERS provider implementation.
+
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+
+use crate::error::PluginResult;
+use crate::generated::spec_helpers::require_provider_spec;
+use crate::runtime::IAgentRuntime;
+use crate::types::{Memory, ProviderResult, State};
+
+use super::prompt_compression::{compress_prompt_description, is_prompt_compression_enabled};
+use super::Provider;
+
+static SPEC: Lazy<&'static crate::generated::spec_helpers::ProviderDoc> =
+    Lazy::new(|| require_provider_spec("PROVIDERS"));
+
+/// Provider for listing available providers.
+pub struct ProvidersListProvider;
+
+#[async_trait]
+impl Provider for ProvidersListProvider {
+    fn name(&self) -> &'static str {
+        &SPEC.name
+    }
+
+    fn description(&self) -> &'static str {
+        &SPEC.description
+    }
+
+    fn is_dynamic(&self) -> bool {
+        SPEC.dynamic.unwrap_or(false)
+    }
+
+    async fn get(
+        &self,
+        _runtime: &dyn IAgentRuntime,
+        _message: &Memory,
+        _state: Option<&State>,
+    ) -> PluginResult<ProviderResult> {
+        let selection_hints = [
+            "images, attachments, or visual content -> ATTACHMENTS",
+            "specific people or agents -> ENTITIES",
+            "connections between people -> RELATIONSHIPS",
+            "factual lookup -> FACTS",
+            "world or environment context -> WORLD",
+        ];
+        // Get providers from the basic_capabilities plugin itself
+        let providers = super::all_providers();
+
+        if providers.is_empty() {
+            return Ok(
+                ProviderResult::new("# Available Providers\nproviders[0]:\n- none")
+                    .with_value("providerCount", 0i64)
+            );
+        }
+
+        let provider_info: Vec<serde_json::Value> = providers
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "name": p.name(),
+                    "description": p.description(),
+                    "dynamic": p.is_dynamic()
+                })
+            })
+            .collect();
+
+        let use_compression = is_prompt_compression_enabled(runtime);
+        let formatted: Vec<String> = providers
+            .iter()
+            .map(|p| {
+                let desc = if use_compression {
+                    compress_prompt_description(p.description())
+                } else {
+                    p.description().to_string()
+                };
+                format!("- {}: {}", p.name(), desc)
+            })
+            .collect();
+
+        let text = format!(
+            "# Available Providers\nproviders[{}]:\n{}\nprovider_hints[{}]:\n{}",
+            providers.len(),
+            formatted.join("\n"),
+            selection_hints.len(),
+            selection_hints
+                .iter()
+                .map(|hint| format!("- {}", hint))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
+
+        let names: Vec<&str> = providers.iter().map(|p| p.name()).collect();
+
+        Ok(ProviderResult::new(text)
+            .with_value("providerCount", providers.len() as i64)
+            .with_data(
+                "providerNames",
+                serde_json::to_value(&names).unwrap_or_default(),
+            )
+            .with_data(
+                "providers",
+                serde_json::to_value(&provider_info).unwrap_or_default(),
+            ))
+    }
+}

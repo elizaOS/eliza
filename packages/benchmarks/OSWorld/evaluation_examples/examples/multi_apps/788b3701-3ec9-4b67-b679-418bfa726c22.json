@@ -1,0 +1,117 @@
+{
+  "id": "788b3701-3ec9-4b67-b679-418bfa726c22",
+  "snapshot": "chrome",
+  "instruction": "I'm tracking updates for a short tale set on https://github.com/liangjs333/4th-year-in-tsinghua-eng. I have already downloaded several chapters for reading and archiving. Please assist me in downloading the next chapter I haven't obtained yet and save it to my novel collection folder.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Documents/Finance/receipts",
+          "/home/user/Documents/Projects/OSWorld",
+          "/home/user/Documents/Novels/4th Year in Tsinghua"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2308.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/invoice0123456789-2308.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2309.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/invoice0123456789-2309.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2310.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/invoice0123456789-2310.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2311.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/invoice0123456789-2311.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/aws-invoice-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/invoice0123456789-2312.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/receipts/X-receipt-2312.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/Receipt-0123-4567.pdf"
+          },
+          {
+            "path": "/home/user/Documents/Finance/tally_book.xlsx",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/tally_book.xlsx"
+          },
+          {
+            "path": "/home/user/.projects.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/projects.tar.xz"
+          },
+          {
+            "path": "/home/user/.old-chapters.tar.xz",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/old-chapters.tar.xz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.projects.tar.xz",
+          "-C",
+          "/home/user/Documents/Projects/OSWorld"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xJvf",
+          "/home/user/.old-chapters.tar.xz",
+          "-C",
+          "/home/user/Documents/Novels/4th Year in Tsinghua"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "nautilus",
+          "/home/user/Documents/Novels/4th Year in Tsinghua"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/788b3701-3ec9-4b67-b679-418bfa726c22",
+  "related_apps": [
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "func": "diff_text_file",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Documents/Novels/4th Year in Tsinghua/Early Buildings.tex",
+      "dest": "download.tex"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/788b3701-3ec9-4b67-b679-418bfa726c22/æ©æå»ºç­ç¾¤.tex",
+      "dest": "real.tex"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@elizaos/example-lp-manager-root",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "scripts": {
+    "start": "npm run start --workspace=typescript",
+    "dev": "npm run dev --workspace=typescript"
+  },
+  "workspaces": [
+    "typescript"
+  ]
+}

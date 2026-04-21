@@ -16,12 +16,98 @@
  * const hash = await createHashAsync('sha256', 'data');
  * ```
  */
+import { cbc, gcm } from "@noble/ciphers/aes.js";
+import { md5, sha1 } from "@noble/hashes/legacy";
+import { ripemd160 } from "@noble/hashes/ripemd160";
+import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2";
+import * as BufferUtils from "./buffer";
+
+type SyncHashFactory = typeof sha256;
+type BufferEncodingName = "utf8" | "utf-8" | "base64" | "hex";
+type OwnedUint8Array = Uint8Array<ArrayBuffer>;
+
+const HASH_ALGORITHMS: Record<string, SyncHashFactory> = {
+	md5,
+	ripemd160,
+	sha1,
+	sha224,
+	sha256,
+	sha384,
+	sha512,
+};
+
+const AES_BLOCK_SIZE = 16;
 
 /**
- * Check if we're in Node.js or Bun with native crypto module available
+ * Normalize supported encodings to the names expected by buffer utils.
  */
-function hasNodeCrypto(): boolean {
-	return false;
+function normalizeEncoding(encoding: string): BufferEncodingName {
+	switch (encoding.toLowerCase()) {
+		case "base64":
+			return "base64";
+		case "hex":
+			return "hex";
+		case "utf8":
+		case "utf-8":
+			return "utf8";
+		default:
+			throw new Error(
+				`Unsupported encoding: ${encoding}. Supported: utf8, utf-8, base64, hex.`,
+			);
+	}
+}
+
+/**
+ * Copy arbitrary byte-like input into an owned Uint8Array with an ArrayBuffer backing store.
+ */
+function toOwnedUint8Array(data: ArrayLike<number>): OwnedUint8Array {
+	const output = new Uint8Array(data.length);
+	output.set(data);
+	return output;
+}
+
+/**
+ * Convert string or bytes into a Uint8Array.
+ */
+function toUint8Array(
+	data: string | Uint8Array,
+	encoding: BufferEncodingName = "utf8",
+): OwnedUint8Array {
+	if (typeof data === "string") {
+		const normalized = normalizeEncoding(encoding);
+		return normalized === "hex"
+			? toOwnedUint8Array(BufferUtils.fromHex(data))
+			: toOwnedUint8Array(BufferUtils.fromString(data, normalized));
+	}
+	return toOwnedUint8Array(data);
+}
+
+/**
+ * Convert bytes into a string using the requested encoding.
+ */
+function toEncodedString(
+	bytes: Uint8Array,
+	encoding: BufferEncodingName = "utf8",
+): string {
+	return BufferUtils.bufferToString(bytes, normalizeEncoding(encoding));
+}
+
+/**
+ * Concatenate two byte arrays into a fresh Uint8Array.
+ */
+function concatBytes(a: Uint8Array, b: Uint8Array): OwnedUint8Array {
+	return toOwnedUint8Array(BufferUtils.concat([a, b]));
+}
+
+/**
+ * Slice bytes into a fresh Uint8Array.
+ */
+function sliceBytes(
+	bytes: Uint8Array,
+	start: number,
+	end?: number,
+): OwnedUint8Array {
+	return toOwnedUint8Array(BufferUtils.slice(bytes, start, end));
 }
 
 /**
@@ -32,13 +118,6 @@ const WEB_CRYPTO_ALGO_MAP: Record<string, string> = {
 	sha1: "SHA-1",
 	sha512: "SHA-512",
 };
-
-/**
- * Get the appropriate crypto module for the current environment
- */
-function getNodeCrypto(): typeof import("node:crypto") {
-	throw new Error("Node.js crypto module not available in this environment");
-}
 
 /**
  * Get Web Crypto SubtleCrypto interface, throwing if unavailable
@@ -52,6 +131,20 @@ function getWebCryptoSubtle(): SubtleCrypto {
 		);
 	}
 	return subtle;
+}
+
+/**
+ * Resolve a synchronous hash implementation.
+ */
+function getSyncHashFactory(algorithm: string): SyncHashFactory {
+	const normalized = algorithm.toLowerCase();
+	const hashFactory = HASH_ALGORITHMS[normalized];
+	if (!hashFactory) {
+		throw new Error(
+			`Unsupported algorithm: ${algorithm}. Supported: ${Object.keys(HASH_ALGORITHMS).join(", ")}`,
+		);
+	}
+	return hashFactory;
 }
 
 /**
@@ -70,9 +163,7 @@ async function webCryptoHash(
 		);
 	}
 
-	// Create a copy to ensure we have a proper ArrayBuffer (not SharedArrayBuffer)
-	const dataBuffer = new Uint8Array(data).buffer;
-	const hashBuffer = await subtle.digest(webAlgo, dataBuffer);
+	const hashBuffer = await subtle.digest(webAlgo, Uint8Array.from(data));
 	return new Uint8Array(hashBuffer);
 }
 
@@ -87,23 +178,18 @@ async function webCryptoEncrypt(
 	validateKeyAndIv(key, iv);
 	const subtle = getWebCryptoSubtle();
 
-	// Create copies to ensure we have proper ArrayBuffers (not SharedArrayBuffers)
-	const keyBuffer = new Uint8Array(key).buffer;
-	const ivCopy = new Uint8Array(iv);
-	const dataCopy = new Uint8Array(data);
-
 	const cryptoKey = await subtle.importKey(
 		"raw",
-		keyBuffer,
+		Uint8Array.from(key),
 		{ name: "AES-CBC", length: 256 },
 		false,
 		["encrypt"],
 	);
 
 	const encrypted = await subtle.encrypt(
-		{ name: "AES-CBC", iv: ivCopy },
+		{ name: "AES-CBC", iv: Uint8Array.from(iv) },
 		cryptoKey,
-		dataCopy,
+		Uint8Array.from(data),
 	);
 	return new Uint8Array(encrypted);
 }
@@ -119,25 +205,49 @@ async function webCryptoDecrypt(
 	validateKeyAndIv(key, iv);
 	const subtle = getWebCryptoSubtle();
 
-	// Create copies to ensure we have proper ArrayBuffers (not SharedArrayBuffers)
-	const keyBuffer = new Uint8Array(key).buffer;
-	const ivCopy = new Uint8Array(iv);
-	const dataCopy = new Uint8Array(data);
-
 	const cryptoKey = await subtle.importKey(
 		"raw",
-		keyBuffer,
+		Uint8Array.from(key),
 		{ name: "AES-CBC", length: 256 },
 		false,
 		["decrypt"],
 	);
 
 	const decrypted = await subtle.decrypt(
-		{ name: "AES-CBC", iv: ivCopy },
+		{ name: "AES-CBC", iv: Uint8Array.from(iv) },
 		cryptoKey,
-		dataCopy,
+		Uint8Array.from(data),
 	);
 	return new Uint8Array(decrypted);
+}
+
+/**
+ * Add PKCS#7 padding to a CBC plaintext tail.
+ */
+function applyPkcs7Padding(data: Uint8Array): Uint8Array {
+	const padLength = AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || 0);
+	const padding = new Uint8Array(padLength === 0 ? AES_BLOCK_SIZE : padLength);
+	padding.fill(padding.length);
+	return concatBytes(data, padding);
+}
+
+/**
+ * Remove PKCS#7 padding from a decrypted CBC plaintext tail.
+ */
+function removePkcs7Padding(data: Uint8Array): Uint8Array {
+	if (data.length === 0 || data.length % AES_BLOCK_SIZE !== 0) {
+		throw new Error("Invalid ciphertext length for AES-CBC payload.");
+	}
+	const padLength = data[data.length - 1];
+	if (padLength < 1 || padLength > AES_BLOCK_SIZE) {
+		throw new Error("Invalid PKCS#7 padding.");
+	}
+	for (let i = data.length - padLength; i < data.length; i++) {
+		if (data[i] !== padLength) {
+			throw new Error("Invalid PKCS#7 padding.");
+		}
+	}
+	return sliceBytes(data, 0, data.length - padLength);
 }
 
 /**
@@ -177,8 +287,8 @@ function validateKeyAndGcmIv(key: Uint8Array, iv: Uint8Array): void {
 /**
  * Create a hash object for incremental hashing (cross-platform - synchronous)
  *
- * This function works in both Node.js and browser environments. In browsers, it uses
- * crypto-browserify to provide synchronous hashing compatible with Node.js crypto API.
+ * This function works in both Node.js and browser environments using
+ * synchronous noble hash implementations.
  *
  * @param algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
  * @returns Hash object with update() and digest() methods
@@ -187,30 +297,14 @@ export function createHash(algorithm: string): {
 	update(data: string | Uint8Array): ReturnType<typeof createHash>;
 	digest(): Uint8Array;
 } {
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const hash = crypto.createHash(algorithm);
-		return {
-			update(data: string | Uint8Array) {
-				hash.update(data);
-				return this;
-			},
-			digest() {
-				return new Uint8Array(hash.digest());
-			},
-		};
-	}
-
-	// Use crypto-browserify in browser
-	const cryptoBrowserify = require("crypto-browserify");
-	const hash = cryptoBrowserify.createHash(algorithm);
+	const hash = getSyncHashFactory(algorithm).create();
 	return {
 		update(data: string | Uint8Array) {
-			hash.update(data);
+			hash.update(toUint8Array(data));
 			return this;
 		},
 		digest() {
-			return new Uint8Array(hash.digest());
+			return Uint8Array.from(hash.digest());
 		},
 	};
 }
@@ -256,50 +350,44 @@ export function createCipheriv(
 		);
 	}
 
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const cipher = crypto.createCipheriv(algorithm, key, iv);
-		return {
-			update(
-				data: string,
-				inputEncoding: string,
-				outputEncoding: string,
-			): string {
-				return cipher.update(
-					data,
-					inputEncoding as BufferEncoding,
-					outputEncoding as BufferEncoding,
-				);
-			},
-			final(encoding: string): string {
-				return cipher.final(encoding as BufferEncoding);
-			},
-		};
-	}
-
-	// Use crypto-browserify in browser
-	const cryptoBrowserify = require("crypto-browserify");
-	const cipher = cryptoBrowserify.createCipheriv(algorithm, key, iv);
+	validateKeyAndIv(key, iv);
+	const normalizedKey = Uint8Array.from(key);
+	let currentIv = Uint8Array.from(iv);
+	let pending = new Uint8Array(0);
 	return {
 		update(
 			data: string,
 			inputEncoding: string,
 			outputEncoding: string,
 		): string {
-			const result = cipher.update(
-				Buffer.from(data, inputEncoding as BufferEncoding),
-				undefined,
-				outputEncoding as BufferEncoding,
+			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
+			pending = concatBytes(pending, incoming);
+			const fullBlockLength =
+				pending.length - (pending.length % AES_BLOCK_SIZE);
+			if (fullBlockLength === 0) {
+				return "";
+			}
+			const plaintextChunk = sliceBytes(pending, 0, fullBlockLength);
+			pending = sliceBytes(pending, fullBlockLength);
+			const encryptedChunk = Uint8Array.from(
+				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
+					plaintextChunk,
+				),
 			);
-			return typeof result === "string"
-				? result
-				: result.toString(outputEncoding as BufferEncoding);
+			currentIv = sliceBytes(
+				encryptedChunk,
+				encryptedChunk.length - AES_BLOCK_SIZE,
+			);
+			return toEncodedString(encryptedChunk, normalizeEncoding(outputEncoding));
 		},
 		final(encoding: string): string {
-			const result = cipher.final(encoding as BufferEncoding);
-			return typeof result === "string"
-				? result
-				: result.toString(encoding as BufferEncoding);
+			const encryptedTail = Uint8Array.from(
+				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
+					applyPkcs7Padding(pending),
+				),
+			);
+			pending = new Uint8Array(0);
+			return toEncodedString(encryptedTail, normalizeEncoding(encoding));
 		},
 	};
 }
@@ -326,50 +414,54 @@ export function createDecipheriv(
 		);
 	}
 
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const decipher = crypto.createDecipheriv(algorithm, key, iv);
-		return {
-			update(
-				data: string,
-				inputEncoding: string,
-				outputEncoding: string,
-			): string {
-				return decipher.update(
-					data,
-					inputEncoding as BufferEncoding,
-					outputEncoding as BufferEncoding,
-				);
-			},
-			final(encoding: string): string {
-				return decipher.final(encoding as BufferEncoding);
-			},
-		};
-	}
-
-	// Use crypto-browserify in browser
-	const cryptoBrowserify = require("crypto-browserify");
-	const decipher = cryptoBrowserify.createDecipheriv(algorithm, key, iv);
+	validateKeyAndIv(key, iv);
+	const normalizedKey = Uint8Array.from(key);
+	let currentIv = Uint8Array.from(iv);
+	let pending = new Uint8Array(0);
 	return {
 		update(
 			data: string,
 			inputEncoding: string,
 			outputEncoding: string,
 		): string {
-			const result = decipher.update(
-				Buffer.from(data, inputEncoding as BufferEncoding),
-				undefined,
-				outputEncoding as BufferEncoding,
+			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
+			pending = concatBytes(pending, incoming);
+			const decryptableLength =
+				pending.length > AES_BLOCK_SIZE
+					? pending.length -
+						AES_BLOCK_SIZE -
+						((pending.length - AES_BLOCK_SIZE) % AES_BLOCK_SIZE)
+					: 0;
+			if (decryptableLength === 0) {
+				return "";
+			}
+			const ciphertextChunk = sliceBytes(pending, 0, decryptableLength);
+			pending = sliceBytes(pending, decryptableLength);
+			const plaintextChunk = Uint8Array.from(
+				cbc(normalizedKey, currentIv, { disablePadding: true }).decrypt(
+					ciphertextChunk,
+				),
 			);
-			return typeof result === "string"
-				? result
-				: result.toString(outputEncoding as BufferEncoding);
+			currentIv = sliceBytes(
+				ciphertextChunk,
+				ciphertextChunk.length - AES_BLOCK_SIZE,
+			);
+			return toEncodedString(plaintextChunk, normalizeEncoding(outputEncoding));
 		},
 		final(encoding: string): string {
-			const result = decipher.final(encoding as BufferEncoding);
-			return typeof result === "string"
-				? result
-				: result.toString(encoding as BufferEncoding);
+			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
+				throw new Error("Invalid ciphertext length for AES-CBC payload.");
+			}
+			const decryptedTail = Uint8Array.from(
+				cbc(normalizedKey, currentIv, { disablePadding: true }).decrypt(
+					pending,
+				),
+			);
+			pending = new Uint8Array(0);
+			return toEncodedString(
+				removePkcs7Padding(decryptedTail),
+				normalizeEncoding(encoding),
+			);
 		},
 	};
 }
@@ -415,7 +507,7 @@ export async function decryptAsync(
 }
 
 /**
- * Encrypt using AES-256-GCM (synchronous; Node.js or crypto-browserify).
+ * Encrypt using AES-256-GCM (synchronous).
  *
  * This is used for cross-language secret encryption with integrity protection.
  */
@@ -426,36 +518,22 @@ export function encryptAes256Gcm(
 	aad?: Uint8Array,
 ): { ciphertext: Uint8Array; tag: Uint8Array } {
 	validateKeyAndGcmIv(key, iv);
-
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-		if (aad && aad.length > 0) {
-			cipher.setAAD(aad);
-		}
-		const ciphertext = Buffer.concat([
-			cipher.update(plaintext),
-			cipher.final(),
-		]);
-		const tag = cipher.getAuthTag();
-		return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
-	}
-
-	const cryptoBrowserify = require("crypto-browserify");
-	const cipher = cryptoBrowserify.createCipheriv("aes-256-gcm", key, iv);
-	if (aad && aad.length > 0) {
-		cipher.setAAD(Buffer.from(aad));
-	}
-	const ciphertext = Buffer.concat([
-		cipher.update(Buffer.from(plaintext)),
-		cipher.final(),
-	]);
-	const tag = cipher.getAuthTag();
-	return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
+	const encrypted = Uint8Array.from(
+		gcm(
+			Uint8Array.from(key),
+			Uint8Array.from(iv),
+			aad ? Uint8Array.from(aad) : undefined,
+		).encrypt(Uint8Array.from(plaintext)),
+	);
+	const tagStart = encrypted.length - 16;
+	return {
+		ciphertext: sliceBytes(encrypted, 0, tagStart),
+		tag: sliceBytes(encrypted, tagStart),
+	};
 }
 
 /**
- * Decrypt using AES-256-GCM (synchronous; Node.js or crypto-browserify).
+ * Decrypt using AES-256-GCM (synchronous).
  */
 export function decryptAes256Gcm(
 	key: Uint8Array,
@@ -471,29 +549,15 @@ export function decryptAes256Gcm(
 		);
 	}
 
-	if (hasNodeCrypto()) {
-		const crypto = getNodeCrypto();
-		const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-		if (aad && aad.length > 0) {
-			decipher.setAAD(aad);
-		}
-		decipher.setAuthTag(Buffer.from(tag));
-		const plaintext = Buffer.concat([
-			decipher.update(Buffer.from(ciphertext)),
-			decipher.final(),
-		]);
-		return new Uint8Array(plaintext);
-	}
-
-	const cryptoBrowserify = require("crypto-browserify");
-	const decipher = cryptoBrowserify.createDecipheriv("aes-256-gcm", key, iv);
-	if (aad && aad.length > 0) {
-		decipher.setAAD(Buffer.from(aad));
-	}
-	decipher.setAuthTag(Buffer.from(tag));
-	const plaintext = Buffer.concat([
-		decipher.update(Buffer.from(ciphertext)),
-		decipher.final(),
-	]);
-	return new Uint8Array(plaintext);
+	const combined = concatBytes(
+		Uint8Array.from(ciphertext),
+		Uint8Array.from(tag),
+	);
+	return Uint8Array.from(
+		gcm(
+			Uint8Array.from(key),
+			Uint8Array.from(iv),
+			aad ? Uint8Array.from(aad) : undefined,
+		).decrypt(combined),
+	);
 }

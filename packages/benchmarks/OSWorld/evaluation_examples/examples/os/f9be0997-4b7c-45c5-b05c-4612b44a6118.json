@@ -1,0 +1,46 @@
+{
+  "id": "f9be0997-4b7c-45c5-b05c-4612b44a6118",
+  "snapshot": "os",
+  "instruction": "I am currently working on a ubuntu system but I do not want the notifications to bother me. Can you help me to switch to 'Do not disturb mode'?",
+  "source": "https://help.ubuntu.com/lts/ubuntu-help/shell-notifications.html.en",
+  "config": [
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "gsettings set org.gnome.desktop.notifications show-banners true",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5);"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "func": "exact_match",
+    "result": {
+      "type": "vm_command_line",
+      "command": "gsettings get org.gnome.desktop.notifications show-banners",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": "false\n"
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

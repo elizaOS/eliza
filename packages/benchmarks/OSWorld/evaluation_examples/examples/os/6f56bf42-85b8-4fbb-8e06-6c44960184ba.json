@@ -1,0 +1,93 @@
+{
+  "id": "6f56bf42-85b8-4fbb-8e06-6c44960184ba",
+  "snapshot": "os",
+  "instruction": "Copies file 'file1' to each of directories 'dir1', 'dir2', 'dir3'.",
+  "source": "NL2Bash",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/6f56bf42-85b8-4fbb-8e06-6c44960184ba/setup.sh",
+            "path": "setup.sh"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "chmod +x setup.sh",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "./setup.sh",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5); pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5); pyautogui.hotkey('ctrl', 'alt', 't'); time.sleep(0.5)"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Terminal"
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/6f56bf42-85b8-4fbb-8e06-6c44960184ba/eval.sh",
+              "path": "eval.sh"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": "chmod +x eval.sh",
+          "shell": true
+        }
+      }
+    ],
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_line",
+      "command": "bash eval.sh",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "Success: file1 exists in dir1.\nSuccess: file1 exists in dir2.\nSuccess: file1 exists in dir3.\n"
+        ],
+        "exclude": []
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

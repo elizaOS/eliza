@@ -20,6 +20,12 @@ Blocking the main thread kills responsiveness. Polling wastes resources.
   scheduling.
 </Tip>
 
+## Core utilities: batch queue (WHY)
+
+`@elizaos/core` includes **`utils/batch-queue`**: composable **`PriorityQueue`**, **`BatchProcessor`** (bounded concurrency + retries), **`TaskDrain`** (repeat tasks with `tags: ["queue", "repeat"]`, optional `skipRegisterWorker` when a global worker already owns the name), and **`BatchQueue`** when a service needs all three. Embedding generation, action-filter index embedding, and prompt-batcher affinity drains build on this stack.
+
+**Why not only ad-hoc `createTask` per feature?** The goal is **consistency and fewer parallel “mini queues”** as the codebase grows—not because the whole runtime is batching-bound, but so drain metadata, retries, and worker registration do not diverge copy-paste by copy-paste. See [Batch queue subsystem](/runtime/batch-queue) (mirrors `packages/typescript/docs/BATCH_QUEUE.md` in the monorepo).
+
 ## Quick Start
 
 ### 1. Define a Task Worker

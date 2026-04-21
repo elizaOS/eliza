@@ -1,0 +1,1032 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "typescript",
+  "profile": "elevenlabs",
+  "timestamp": "1771144248907",
+  "iterations": 1,
+  "datasetName": "voicebench-ground-truth-elevenlabs",
+  "datasetPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/manifest-elevenlabs.json",
+  "sampleCount": 10,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 791.7,
+      "responseTtftMs": 1189.89,
+      "responseTotalMs": 1190.435,
+      "voiceGenerationMs": 723.382,
+      "voiceFirstTokenUncachedMs": 691.361,
+      "voiceFirstTokenCachedMs": 742.593,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 742.593,
+      "endToEndMs": 4139.713,
+      "inContext": {
+        "transcript": "Hello there, this is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there, this is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Hello, ready for the voice benchmark.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 36407,
+      "ttsFirstSentenceUncachedBytes": 33481,
+      "ttsFirstSentenceCachedBytes": 32645,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 32645,
+      "responseSegmentation": {
+        "firstSentence": "Hello, ready for the voice benchmark.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/weather_city.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 409.182,
+      "responseTtftMs": 763.048,
+      "responseTotalMs": 763.17,
+      "voiceGenerationMs": 684.366,
+      "voiceFirstTokenUncachedMs": 722.919,
+      "voiceFirstTokenCachedMs": 682.547,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 682.547,
+      "endToEndMs": 3262.792,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sounds like a pleasant day in Austin!",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 29720,
+      "ttsFirstSentenceUncachedBytes": 32645,
+      "ttsFirstSentenceCachedBytes": 33481,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 33481,
+      "responseSegmentation": {
+        "firstSentence": "Sounds like a pleasant day in Austin!",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/finance_brief.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 554.32,
+      "responseTtftMs": 1788.105,
+      "responseTotalMs": 1788.211,
+      "voiceGenerationMs": 722.089,
+      "voiceFirstTokenUncachedMs": 747.934,
+      "voiceFirstTokenCachedMs": 793.492,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 793.492,
+      "endToEndMs": 4606.097,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Noted the revenue growth and improving margins.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 43930,
+      "ttsFirstSentenceUncachedBytes": 45184,
+      "ttsFirstSentenceCachedBytes": 44348,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 44348,
+      "responseSegmentation": {
+        "firstSentence": "Noted the revenue growth and improving margins.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/support_reset.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 521.408,
+      "responseTtftMs": 1670.186,
+      "responseTotalMs": 1670.331,
+      "voiceGenerationMs": 833.878,
+      "voiceFirstTokenUncachedMs": 880.418,
+      "voiceFirstTokenCachedMs": 886.769,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 886.769,
+      "endToEndMs": 4792.896,
+      "inContext": {
+        "transcript": "To reset your password, open settings, choose security, then tap reset.",
+        "benchmarkContext": "",
+        "prompt": "To reset your password, open settings, choose security, then tap reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Understood, the password can be reset via Settings → Security → Reset.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 66918,
+      "ttsFirstSentenceUncachedBytes": 72769,
+      "ttsFirstSentenceCachedBytes": 77367,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 77367,
+      "responseSegmentation": {
+        "firstSentence": "Understood, the password can be reset via Settings → Security → Reset.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/calendar_note.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 494.128,
+      "responseTtftMs": 1563.291,
+      "responseTotalMs": 1564.24,
+      "voiceGenerationMs": 833.576,
+      "voiceFirstTokenUncachedMs": 752.625,
+      "voiceFirstTokenCachedMs": 781.324,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 704.898,
+      "ttsCachedPipelineMs": 1486.221,
+      "endToEndMs": 5130.885,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3:15 p.m. and lasts forty-five minutes.",
+        "benchmarkContext": "",
+        "prompt": "Your next meeting starts at 3:15 p.m. and lasts forty-five minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Got it, your meeting is at 3:15 p.m. and will run for 45 minutes.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 61485,
+      "ttsFirstSentenceUncachedBytes": 40587,
+      "ttsFirstSentenceCachedBytes": 40587,
+      "ttsRemainderBytes": 30556,
+      "ttsCachedPipelineBytes": 71143,
+      "responseSegmentation": {
+        "firstSentence": "Got it, your meeting is at 3:15 p.m.",
+        "remainder": "and will run for 45 minutes."
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/navigation_turn.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 428.167,
+      "responseTtftMs": 1114.931,
+      "responseTotalMs": 1115.062,
+      "voiceGenerationMs": 815.811,
+      "voiceFirstTokenUncachedMs": 818.635,
+      "voiceFirstTokenCachedMs": 838.106,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 838.106,
+      "endToEndMs": 4015.834,
+      "inContext": {
+        "transcript": "In five hundred feet, turn right and continue for two miles.",
+        "benchmarkContext": "",
+        "prompt": "In five hundred feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged: turn right in five hundred feet and continue for two miles.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 66082,
+      "ttsFirstSentenceUncachedBytes": 62320,
+      "ttsFirstSentenceCachedBytes": 68172,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 68172,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged: turn right in five hundred feet and continue for two miles.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/medical_disclaimer.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 430.863,
+      "responseTtftMs": 825.342,
+      "responseTotalMs": 825.441,
+      "voiceGenerationMs": 1287.499,
+      "voiceFirstTokenUncachedMs": 1164.923,
+      "voiceFirstTokenCachedMs": 1144.111,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 1144.111,
+      "endToEndMs": 4852.919,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged; note that the information provided is for educational purposes and not a substitute for professional medical advice.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 126268,
+      "ttsFirstSentenceUncachedBytes": 127104,
+      "ttsFirstSentenceCachedBytes": 126268,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 126268,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged; note that the information provided is for educational purposes and not a substitute for professional medical advice.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/multisentence_long.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 647.485,
+      "responseTtftMs": 1219.45,
+      "responseTotalMs": 1219.776,
+      "voiceGenerationMs": 1045.936,
+      "voiceFirstTokenUncachedMs": 1077.455,
+      "voiceFirstTokenCachedMs": 1067.223,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 1067.223,
+      "endToEndMs": 5057.973,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "",
+        "prompt": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Caching the first sentence audio is a practical way to mask latency caused by model size, distance, and jitter.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 113729,
+      "ttsFirstSentenceUncachedBytes": 109968,
+      "ttsFirstSentenceCachedBytes": 110804,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 110804,
+      "responseSegmentation": {
+        "firstSentence": "Caching the first sentence audio is a practical way to mask latency caused by model size, distance, and jitter.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/list_format.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 590.387,
+      "responseTtftMs": 1133.101,
+      "responseTotalMs": 1133.255,
+      "voiceGenerationMs": 1013.677,
+      "voiceFirstTokenUncachedMs": 932.323,
+      "voiceFirstTokenCachedMs": 955.072,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 955.072,
+      "endToEndMs": 4624.788,
+      "inContext": {
+        "transcript": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.",
+        "benchmarkContext": "",
+        "prompt": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged: I’ll capture audio, transcribe, generate a response, and synthesize speech.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 97847,
+      "ttsFirstSentenceUncachedBytes": 86980,
+      "ttsFirstSentenceCachedBytes": 93667,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 93667,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged: I’ll capture audio, transcribe, generate a response, and synthesize speech.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/numbers_dates.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 535.626,
+      "responseTtftMs": 910.449,
+      "responseTotalMs": 910.566,
+      "voiceGenerationMs": 945.865,
+      "voiceFirstTokenUncachedMs": 904.742,
+      "voiceFirstTokenCachedMs": 922.254,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 922.254,
+      "endToEndMs": 4219.1,
+      "inContext": {
+        "transcript": "On January 15th, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "",
+        "prompt": "On January 15th, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Noted, the average response time on Jan 15 2026 was 1.4 seconds.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 90742,
+      "ttsFirstSentenceUncachedBytes": 80293,
+      "ttsFirstSentenceCachedBytes": 89906,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 89906,
+      "responseSegmentation": {
+        "firstSentence": "Noted, the average response time on Jan 15 2026 was 1.4 seconds.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "greeting_short",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Hello there. This is a short voice benchmark sample.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 470.071,
+      "responseTtftMs": 1100.342,
+      "responseTotalMs": 1100.648,
+      "voiceGenerationMs": 801.359,
+      "voiceFirstTokenUncachedMs": 803.006,
+      "voiceFirstTokenCachedMs": 754.701,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 754.701,
+      "endToEndMs": 3929.874,
+      "inContext": {
+        "transcript": "Hello there, this is a short voice benchmark sample.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there, this is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged, processing your voice benchmark sample.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 47274,
+      "ttsFirstSentenceUncachedBytes": 50618,
+      "ttsFirstSentenceCachedBytes": 50618,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 50618,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged, processing your voice benchmark sample.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "weather_city",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/weather_city.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Today in Austin, skies are clear and temperatures are mild.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 425.078,
+      "responseTtftMs": 1382.294,
+      "responseTotalMs": 1382.519,
+      "voiceGenerationMs": 806.562,
+      "voiceFirstTokenUncachedMs": 877.12,
+      "voiceFirstTokenCachedMs": 849.131,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 849.131,
+      "endToEndMs": 4340.476,
+      "inContext": {
+        "transcript": "Today in Austin, skies are clear and temperatures are mild.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Today in Austin, skies are clear and temperatures are mild.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Sounds like perfect weather for a voice latency benchmark outdoors.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 57723,
+      "ttsFirstSentenceUncachedBytes": 60649,
+      "ttsFirstSentenceCachedBytes": 57305,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 57305,
+      "responseSegmentation": {
+        "firstSentence": "Sounds like perfect weather for a voice latency benchmark outdoors.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "finance_brief",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/finance_brief.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "The quarterly report shows revenue growth and improving margins.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 370.573,
+      "responseTtftMs": 3166.433,
+      "responseTotalMs": 3166.587,
+      "voiceGenerationMs": 1004.954,
+      "voiceFirstTokenUncachedMs": 1043.65,
+      "voiceFirstTokenCachedMs": 1002.749,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 1002.749,
+      "endToEndMs": 6588.596,
+      "inContext": {
+        "transcript": "The quarterly report shows revenue growth and improving margins.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "The quarterly report shows revenue growth and improving margins.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Let me know if you’d like a deeper dive into the drivers behind the revenue growth and margin improvements.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 92831,
+      "ttsFirstSentenceUncachedBytes": 84472,
+      "ttsFirstSentenceCachedBytes": 88234,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 88234,
+      "responseSegmentation": {
+        "firstSentence": "Let me know if you’d like a deeper dive into the drivers behind the revenue growth and margin improvements.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "support_reset",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/support_reset.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "To reset your password, open settings, choose security, then tap reset.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 505.565,
+      "responseTtftMs": 1541.477,
+      "responseTotalMs": 1541.669,
+      "voiceGenerationMs": 797.7,
+      "voiceFirstTokenUncachedMs": 865.261,
+      "voiceFirstTokenCachedMs": 811.818,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 811.818,
+      "endToEndMs": 4522.132,
+      "inContext": {
+        "transcript": "To reset your password, open settings, choose security, then tap reset.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "To reset your password, open settings, choose security, then tap reset.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Password reset steps noted; let me know if you need further assistance.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 60231,
+      "ttsFirstSentenceUncachedBytes": 69844,
+      "ttsFirstSentenceCachedBytes": 63156,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 63156,
+      "responseSegmentation": {
+        "firstSentence": "Password reset steps noted; let me know if you need further assistance.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "calendar_note",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/calendar_note.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 524.046,
+      "responseTtftMs": 1503.891,
+      "responseTotalMs": 1504.099,
+      "voiceGenerationMs": 915.634,
+      "voiceFirstTokenUncachedMs": 882.192,
+      "voiceFirstTokenCachedMs": 986.89,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 986.89,
+      "endToEndMs": 4812.916,
+      "inContext": {
+        "transcript": "Your next meeting starts at 3:15 PM and lasts 45 minutes.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Your next meeting starts at 3:15 PM and lasts 45 minutes.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Got it, your next meeting is at 3:15 PM and will run for 45 minutes.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 72769,
+      "ttsFirstSentenceUncachedBytes": 72769,
+      "ttsFirstSentenceCachedBytes": 70680,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 70680,
+      "responseSegmentation": {
+        "firstSentence": "Got it, your next meeting is at 3:15 PM and will run for 45 minutes.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "navigation_turn",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/navigation_turn.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "In five hundred feet, turn right and continue for two miles.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 507.901,
+      "responseTtftMs": 1613.138,
+      "responseTotalMs": 1613.323,
+      "voiceGenerationMs": 942.428,
+      "voiceFirstTokenUncachedMs": 858.731,
+      "voiceFirstTokenCachedMs": 876.33,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 876.33,
+      "endToEndMs": 4798.762,
+      "inContext": {
+        "transcript": "In five hundred feet, turn right and continue for two miles.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "In five hundred feet, turn right and continue for two miles.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged: turn right in 500 feet and continue for two miles.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 68172,
+      "ttsFirstSentenceUncachedBytes": 66082,
+      "ttsFirstSentenceCachedBytes": 67336,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 67336,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged: turn right in 500 feet and continue for two miles.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "medical_disclaimer",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/medical_disclaimer.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "This information is educational and does not replace medical advice from a clinician.",
+      "transcriptionExactMatch": true,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 473.905,
+      "responseTtftMs": 1467.173,
+      "responseTotalMs": 1467.42,
+      "voiceGenerationMs": 1046.972,
+      "voiceFirstTokenUncachedMs": 1020.563,
+      "voiceFirstTokenCachedMs": 1034.64,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 1034.64,
+      "endToEndMs": 5043.796,
+      "inContext": {
+        "transcript": "This information is educational and does not replace medical advice from a clinician.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "This information is educational and does not replace medical advice from a clinician.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Understood, I’ll ensure all provided information remains educational and not a substitute for clinical advice.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 104534,
+      "ttsFirstSentenceUncachedBytes": 100355,
+      "ttsFirstSentenceCachedBytes": 110804,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 110804,
+      "responseSegmentation": {
+        "firstSentence": "Understood, I’ll ensure all provided information remains educational and not a substitute for clinical advice.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "multisentence_long",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/multisentence_long.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 645.935,
+      "responseTtftMs": 1426.638,
+      "responseTotalMs": 1426.924,
+      "voiceGenerationMs": 1377.57,
+      "voiceFirstTokenUncachedMs": 1302.099,
+      "voiceFirstTokenCachedMs": 1279.269,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 1279.269,
+      "endToEndMs": 6031.9,
+      "inContext": {
+        "transcript": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Latency depends on model size, region distance and network jitter. Caching first sentence audio can reduce perceived delay.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Acknowledged; we’ll factor model size, geographic latency, jitter, and implement first‑sentence audio caching to minimize perceived delay.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 167646,
+      "ttsFirstSentenceUncachedBytes": 145494,
+      "ttsFirstSentenceCachedBytes": 144240,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 144240,
+      "responseSegmentation": {
+        "firstSentence": "Acknowledged; we’ll factor model size, geographic latency, jitter, and implement first‑sentence audio caching to minimize perceived delay.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "list_format",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/list_format.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": true,
+      "transcriptionMs": 571.408,
+      "responseTtftMs": 1878.215,
+      "responseTotalMs": 1878.382,
+      "voiceGenerationMs": 908.423,
+      "voiceFirstTokenUncachedMs": 986.937,
+      "voiceFirstTokenCachedMs": 900.515,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 900.515,
+      "endToEndMs": 5245.705,
+      "inContext": {
+        "transcript": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Checklist. One, capture audio. Two, transcribe. Three, generate response. Four, synthesize speech.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Ready to capture audio, transcribe, generate a response, and synthesize speech.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 75695,
+      "ttsFirstSentenceUncachedBytes": 83218,
+      "ttsFirstSentenceCachedBytes": 77367,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 77367,
+      "responseSegmentation": {
+        "firstSentence": "Ready to capture audio, transcribe, generate a response, and synthesize speech.",
+        "remainder": ""
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "numbers_dates",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/numbers_dates.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "transcriptionExactMatch": false,
+      "transcriptionNormalizedMatch": false,
+      "transcriptionMs": 659.06,
+      "responseTtftMs": 1637.224,
+      "responseTotalMs": 1639.997,
+      "voiceGenerationMs": 1085.237,
+      "voiceFirstTokenUncachedMs": 951.034,
+      "voiceFirstTokenCachedMs": 989.194,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 0,
+      "ttsCachedPipelineMs": 989.194,
+      "endToEndMs": 5324.614,
+      "inContext": {
+        "transcript": "On January 15th, 2026, the average response time was 1.4 seconds.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "On January 15th, 2026, the average response time was 1.4 seconds.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Noted, the average response time on January 15, 2026 was 1.4 seconds.",
+        "stateExcerpt": "# About VoicebenchAgent\nA benchmark agent used for voice latency benchmarking.\n\n\nVoicebenchAgent is fast\n\nVoicebenchAgent is currently interested in voice benchmarking\n\nVoicebenchAgent is also interested in \n\n# Message Directions for VoicebenchAgent\nconcise\ndirect\nconcise\n\n\nYo...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": [
+          "CONTEXT_BENCH"
+        ]
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 92831,
+      "ttsFirstSentenceUncachedBytes": 93667,
+      "ttsFirstSentenceCachedBytes": 100773,
+      "ttsRemainderBytes": 0,
+      "ttsCachedPipelineBytes": 100773,
+      "responseSegmentation": {
+        "firstSentence": "Noted, the average response time on January 15, 2026 was 1.4 seconds.",
+        "remainder": ""
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 540.327,
+      "avgResponseTtftMs": 1217.779,
+      "avgResponseTotalMs": 1218.049,
+      "avgVoiceGenerationMs": 890.608,
+      "avgVoiceFirstTokenUncachedMs": 869.333,
+      "avgVoiceFirstTokenCachedMs": 881.349,
+      "avgTtsCachedPipelineMs": 951.839,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0.8,
+      "avgEndToEndMs": 4470.3
+    },
+    "non-simple": {
+      "runs": 10,
+      "avgTranscriptionMs": 515.354,
+      "avgResponseTtftMs": 1671.683,
+      "avgResponseTotalMs": 1672.157,
+      "avgVoiceGenerationMs": 968.684,
+      "avgVoiceFirstTokenUncachedMs": 959.059,
+      "avgVoiceFirstTokenCachedMs": 948.524,
+      "avgTtsCachedPipelineMs": 948.524,
+      "firstSentenceCacheHitRate": 0,
+      "transcriptionNormalizedAccuracy": 0.8,
+      "avgEndToEndMs": 5063.877
+    }
+  }
+}

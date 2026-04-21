@@ -1,0 +1,37 @@
+name: Run PRR
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to run PRR on'
+        required: true
+        type: string
+  pull_request:
+    types: [labeled, review_requested]
+
+concurrency:
+  group: prr-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prr:
+    permissions:
+      contents: write      # required by reusable workflow (checkout + PRR push)
+      pull-requests: write # required by reusable workflow (submit PR review)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'labeled' && github.event.label.name == 'run-prr') ||
+        (github.event.action == 'review_requested' && vars.PRR_REVIEWER_LOGIN && github.event.requested_reviewer && github.event.requested_reviewer.login == vars.PRR_REVIEWER_LOGIN)
+      ))
+    # prr_ref must match uses: ref so checkout and npm ci stay in sync. On exit 1, download prr-logs-<PR#> artifact for output.log and prompts.log.
+    uses: elizaOS/prr/.github/workflows/run-prr-server.yml@babylon
+    with:
+      pr_number: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
+      prr_repo: 'elizaOS/prr'
+      prr_ref: 'babylon'
+      submit_review: ${{ github.event_name == 'workflow_dispatch' }}
+    secrets:
+      PRR_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}

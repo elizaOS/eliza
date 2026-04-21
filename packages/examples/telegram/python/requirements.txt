@@ -1,0 +1,11 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -e packages/python -e plugins/plugin-openai/python -e plugins/plugin-sql/python -e plugins/plugin-telegram/python
+
+# Editable installs - paths are relative to repo root
+-e ../../../packages/python
+-e ../../../plugins/plugin-openai/python
+-e ../../../plugins/plugin-sql/python
+-e ../../../plugins/plugin-telegram/python
+
+# Additional dependencies
+python-dotenv>=1.0.0

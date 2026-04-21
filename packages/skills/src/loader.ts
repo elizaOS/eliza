@@ -11,8 +11,9 @@ import {
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
+  resolveSkillProvenance,
 } from "./frontmatter.js";
-import { getSkillsDir } from "./resolver.js";
+import { getCuratedActiveDir, getSkillsDir } from "./resolver.js";
 import type {
   LoadSkillsFromDirOptions,
   LoadSkillsOptions,
@@ -131,6 +132,8 @@ function loadSkillFromFile(
     return { skill: null, diagnostics };
   }
 
+  const provenance = resolveSkillProvenance(frontmatter);
+
   return {
     skill: {
       name,
@@ -139,6 +142,7 @@ function loadSkillFromFile(
       baseDir: skillDir,
       source,
       disableModelInvocation: frontmatter["disable-model-invocation"] === true,
+      ...(provenance ? { provenance } : {}),
     },
     diagnostics,
   };
@@ -357,11 +361,18 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   }
 
   if (includeDefaults) {
-    // Load in precedence order: bundled < managed < project
+    // Load in precedence order: bundled < managed < curated < project.
+    // The curated namespace holds agent-derived skills that were promoted to
+    // "active" by the closed learning loop or the user. Skills under the
+    // sibling "proposed" directory are intentionally NOT scanned here — they
+    // are pending human review and only surfaced via the curated-skills API.
     if (resolvedBundledDir) {
       addSkills(loadSkillsFromDirInternal(resolvedBundledDir, "bundled", true));
     }
     addSkills(loadSkillsFromDirInternal(resolvedManagedDir, "managed", true));
+    addSkills(
+      loadSkillsFromDirInternal(getCuratedActiveDir(), "curated", true),
+    );
     addSkills(loadSkillsFromDirInternal(projectSkillsDir, "project", true));
   }
 

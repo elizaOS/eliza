@@ -1,0 +1,97 @@
+{
+  "id": "f4aec372-4fb0-4df5-a52b-79e0e2a5d6ce",
+  "snapshot": "gimp",
+  "instruction": "Help me choose the yellow triangle and positioning it at the center of my picture.",
+  "source": "https://superuser.com/questions/612338/how-do-i-select-and-move-an-object-in-gimp",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/f4aec372-4fb0-4df5-a52b-79e0e2a5d6ce/Triangle_On_The_Side.png",
+            "path": "/home/user/Desktop/Triangle_On_The_Side.png"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/gimp/f4aec372-4fb0-4df5-a52b-79e0e2a5d6ce/Triangle_On_The_Side.xcf",
+            "path": "/home/user/Desktop/Triangle_On_The_Side.xcf"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "gimp",
+          "/home/user/Desktop/Triangle_On_The_Side.xcf"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import pyautogui; pyautogui.hotkey([\"shift\", \"ctrl\", \"e\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; time.sleep(1);pyautogui.write(\"Triangle_In_The_Middle\");time.sleep(1);pyautogui.press([\"enter\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 2
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python3",
+            "-c",
+            "import time; import pyautogui; time.sleep(1);pyautogui.press([\"enter\"]);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 5
+        }
+      }
+    ],
+    "func": "check_triangle_position",
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/Triangle_In_The_Middle.png",
+      "dest": "Triangle_In_The_Middle.png"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

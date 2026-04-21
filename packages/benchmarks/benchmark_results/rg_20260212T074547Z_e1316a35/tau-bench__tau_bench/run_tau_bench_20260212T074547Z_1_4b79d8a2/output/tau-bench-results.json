@@ -1,0 +1,76 @@
+{
+  "total_tasks": 18,
+  "total_trials": 18,
+  "passed_tasks": 7,
+  "failed_tasks": 11,
+  "overall_success_rate": 0.3888888888888889,
+  "overall_tool_accuracy": 0.3768518518518518,
+  "overall_policy_compliance": 0.9444444444444444,
+  "overall_response_quality": 0.3435013557683203,
+  "average_duration_ms": 5112.362384796143,
+  "pass_k_metrics": {
+    "1": {
+      "k": 1,
+      "pass_rate": 0.3888888888888889,
+      "trials_passed": 7
+    },
+    "2": {
+      "k": 2,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "4": {
+      "k": 4,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "8": {
+      "k": 8,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    }
+  },
+  "overall_metrics": {
+    "total_tokens": 0,
+    "average_tokens_per_task": 0.0,
+    "average_turns_per_task": 7.166666666666667,
+    "average_tool_calls_per_task": 6.166666666666667,
+    "total_duration_seconds": 92.02798104286194,
+    "memory_peak_mb": 9.571393013000488,
+    "memory_average_mb": 9.22269058227539
+  },
+  "comparison_to_leaderboard": {
+    "best_comparable_model": "gpt-4-turbo",
+    "difference_from_best": -0.009500000000000008,
+    "comparison_details": {
+      "gemini-3-pro": -0.49950000000000006,
+      "claude-3.7-sonnet": -0.405,
+      "kimi-k2": -0.33199999999999996,
+      "o3": -0.32699999999999996,
+      "o4-mini": -0.3065,
+      "gpt-5": -0.07350000000000001,
+      "gpt-4-turbo": -0.009500000000000008,
+      "claude-3-opus": -0.1005,
+      "llama-3.1-70b": 0.031
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Significant improvement needed in task completion"
+    ],
+    "strengths": [
+      "Strong policy compliance"
+    ],
+    "weaknesses": [
+      "Low overall success rate",
+      "Tool selection needs improvement",
+      "Weak performance in airline domain"
+    ],
+    "recommendations": [
+      "Focus on improving tool selection accuracy",
+      "Improve parameter extraction from context"
+    ],
+    "timestamp": "2026-02-11T23:47:19.761389"
+  }
+}

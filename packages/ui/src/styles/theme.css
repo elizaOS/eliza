@@ -1,0 +1,7 @@
+/*
+ * Theme tokens for Storybook previews.
+ * Imports the canonical theme system from app-core so stories
+ * render with the same design tokens as the real app.
+ */
+@import "../../../../packages/app-core/src/styles/base.css";
+@import "../../../../packages/app-core/src/styles/styles.css";

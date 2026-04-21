@@ -1,0 +1,11 @@
+Error running task sample_001 with Eliza agent: Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+Error running task sample_002 with Eliza agent: Failed to connect to Docker: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+
+============================================================
+TERMINAL-BENCH RESULTS
+============================================================
+Accuracy: 0.0%
+Passed: 0/2
+Total Time: 0.0s
+
+Results saved to: /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/terminal-bench__terminal_bench/run_terminal_bench_20260215T030258Z_1_27c0aaf3/output

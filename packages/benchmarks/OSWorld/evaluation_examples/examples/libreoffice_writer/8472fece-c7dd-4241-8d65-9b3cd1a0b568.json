@@ -1,0 +1,70 @@
+{
+  "id": "8472fece-c7dd-4241-8d65-9b3cd1a0b568",
+  "snapshot": "libreoffice_writer",
+  "instruction": "I am writing a word list for a dyslexic kid. To ease things for him, I want to use red for words start with vowels and blue for those start with non-vowels. Can you do this for me? I'm doing it manually, and it is a pain.",
+  "source": "https://stackoverflow.com/questions/37259827/libreoffice-writer-how-to-set-different-colors-to-each-letter",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_writer/8472fece-c7dd-4241-8d65-9b3cd1a0b568/Dolch_Sight_Words_Primer.docx",
+            "path": "/home/user/Desktop/Dolch_Sight_Words_Primer.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Dolch_Sight_Words_Primer.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_writer"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Dolch_Sight_Words_Primer.docx - LibreOffice Writer",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5); "
+          ]
+        }
+      }
+    ],
+    "func": "evaluate_colored_words_in_tables",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_writer/8472fece-c7dd-4241-8d65-9b3cd1a0b568/Dolch_Sight_Words_Primer_Gold.docx",
+      "dest": "Dolch_Sight_Words_Primer_Gold.docx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/Dolch_Sight_Words_Primer.docx",
+      "dest": "Dolch_Sight_Words_Primer.docx"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

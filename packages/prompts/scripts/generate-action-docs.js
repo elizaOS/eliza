@@ -11,6 +11,7 @@
  * This is intentionally dependency-free (no zod/yup) to keep builds lightweight.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -525,6 +526,7 @@ export type ActionDocParameterSchema = {
 export type ActionDocParameter = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   required?: boolean;
   schema: ActionDocParameterSchema;
   examples?: readonly ActionDocParameterExampleValue[];
@@ -547,6 +549,7 @@ export type ActionDocExampleMessage = {
 export type ActionDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   similes?: readonly string[];
   parameters?: readonly ActionDocParameter[];
   examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -556,6 +559,7 @@ export type ActionDoc = {
 export type ProviderDoc = {
   name: string;
   description: string;
+  descriptionCompressed?: string;
   position?: number;
   dynamic?: boolean;
 };
@@ -612,7 +616,17 @@ export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.eva
 export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
 
-  fs.writeFileSync(path.join(outDir, "action-docs.ts"), content);
+  const actionDocsPath = path.join(outDir, "action-docs.ts");
+  fs.writeFileSync(actionDocsPath, content);
+  try {
+    execFileSync(
+      "bunx",
+      ["@biomejs/biome", "check", "--write", actionDocsPath],
+      { cwd: REPO_ROOT, stdio: "pipe" },
+    );
+  } catch {
+    // Biome may be unavailable in stripped-down environments.
+  }
 }
 
 function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
@@ -701,6 +715,7 @@ class ActionDocParameterSchema(TypedDict, total=False):
 class ActionDocParameter(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     required: bool
     schema: ActionDocParameterSchema
     examples: list[ActionDocParameterExampleValue]
@@ -720,6 +735,7 @@ class ActionDocExampleMessage(TypedDict, total=False):
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     similes: list[str]
     parameters: list[ActionDocParameter]
     examples: list[list[ActionDocExampleMessage]]
@@ -729,6 +745,7 @@ class ActionDoc(TypedDict, total=False):
 class ProviderDoc(TypedDict, total=False):
     name: str
     description: str
+    descriptionCompressed: str
     position: int
     dynamic: bool
 

@@ -1,0 +1,4 @@
+Running FULL Eliza Agent Loop benchmark...
+This tests the complete canonical flow:
+  RLM_CONTEXT Provider -> MESSAGE_HANDLER -> REPLY Action -> Evaluator
+

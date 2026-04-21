@@ -1,0 +1,82 @@
+{
+  "id": "abed40dc-063f-4598-8ba5-9fe749c0615d",
+  "snapshot": "excel",
+  "instruction": "Check the names in column \"Names with duplicates\" and put the unique ones in column \"Unique Names\". Keep the original order.",
+  "source": "https://help.libreoffice.org/7.6/ro/text/scalc/guide/remove_duplicates.html?&DbPAR=SHARED&System=UNIX",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/abed40dc-063f-4598-8ba5-9fe749c0615d/Names_Duplicate_Unique.xlsx",
+            "path": "C:\\Users\\User\\Names_Duplicate_Unique.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Names_Duplicate_Unique.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/abed40dc-063f-4598-8ba5-9fe749c0615d",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Names_Duplicate_Unique - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/abed40dc-063f-4598-8ba5-9fe749c0615d/Names_Duplicate_Unique_gold.xlsx",
+      "dest": "Names_Duplicate_Unique_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Names_Duplicate_Unique.xlsx",
+      "dest": "Names_Duplicate_Unique.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "i18n Keyword File",
+  "description": "Multilingual keyword terms for action validation, context signals, and provider relevance matching.",
+  "type": "object",
+  "required": ["locales", "entries"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "locales": {
+      "type": "array",
+      "description": "List of non-English locale codes used in this file.",
+      "items": {
+        "type": "string",
+        "examples": ["zh-CN", "ko", "es", "pt", "vi", "tl"]
+      }
+    },
+    "entries": {
+      "type": "object",
+      "description": "Keyword entries keyed by dotted path (e.g., 'action.createTask.request', 'contextSignal.gmail.strong').",
+      "additionalProperties": {
+        "type": "object",
+        "description": "A keyword entry with base (English) terms and optional locale-specific terms.",
+        "properties": {
+          "base": {
+            "type": "array",
+            "description": "English keyword terms.",
+            "items": { "type": "string" }
+          }
+        },
+        "patternProperties": {
+          "^[a-z]{2}(-[A-Z]{2})?$": {
+            "type": "array",
+            "description": "Locale-specific keyword terms.",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, test } from "vitest";
-import type { PlanningService } from "../advanced-planning";
+import type { PlanningService } from "../features/advanced-planning";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, State, UUID } from "../types";
 import { ModelType } from "../types";

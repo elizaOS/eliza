@@ -53,7 +53,8 @@ pub struct SchemaRow {
     /// Behavior by level:
     /// - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
     /// - Level 1 (Progressive): default true. Set to false to opt-out of codes.
-    /// - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+    /// - Levels 2-3: ignored for per-field wrapping. Those levels can use optional
+    ///   checkpoint codes instead.
     #[serde(default)]
     pub validate_field: Option<bool>,
     /// Control whether this field's content is streamed to the consumer.

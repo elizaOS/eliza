@@ -1,0 +1,55 @@
+# command: python -m benchmarks.HyperliquidBench --coverage --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench
+# run_id: run_hyperliquidbench_20260212T090300Z_4_caf139f5
+01:03:01 [INFO] benchmarks.HyperliquidBench.eliza_agent: ━━━ Running scenario: coverage_20260212_010301 ━━━
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.280847Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.304299Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.304734Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mplugin:bootstrap[0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.305804Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.305997Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.306048Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.306085Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.306116Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: openai    [0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.306162Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: openai[0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.306184Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] elizaos: [2m2026-02-12T09:03:01.306210Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: hyperliquid-bench[0m [[0m[1m[34melizaos[0m][0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.306235Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [INFO] benchmarks.HyperliquidBench.eliza_agent: ElizaOS runtime initialised with 6 actions, 15 providers
+01:03:01 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010301 – iteration 1/3
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.318849Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.319549Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.319593Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.319656Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010301 – iteration 2/3
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.320891Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.321871Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.321939Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.322041Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [INFO] benchmarks.HyperliquidBench.eliza_agent: Scenario coverage_20260212_010301 – iteration 3/3
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.322981Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.323709Z[0m [[31m[1merror    [0m] [1mModel call failed: 1 validation error for OpenAIConfig
+api_key
+  Value error, API key must start with 'sk-' [type=value_error, input_value='gsk_H8NmXNp8I5KZnUEoQOPb...wft93pm1g7i1dDWQsi6velP', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.12/v/value_error[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.323758Z[0m [[31m[1merror    [0m] [1mdynamic_prompt_exec_from_state failed after 1 retries [ModelType.TEXT_LARGE:thought,providers,actions,params,text,simple][0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [ERROR] HyperliquidTrader: [2m2026-02-12T09:03:01.323815Z[0m [[31m[1merror    [0m] [1mGeneration failed completely - returning did_respond=False[0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [WARNING] benchmarks.HyperliquidBench.eliza_agent:   Error: No plan was successfully executed
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.323897Z[0m [[32m[1minfo     [0m] [1mStopping AgentRuntime...      [0m [[0m[1m[34mHyperliquidTrader[0m][0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.323985Z[0m [[32m[1minfo     [0m] [1mTask service stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:task[0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.324092Z[0m [[32m[1minfo     [0m] [1mEmbedding service stopped     [0m [[0m[1m[34mHyperliquidTrader[0m][0m [36magentId[0m=[35md9828f83-a34c-04ef-ad34-3f4e20bc4eb6[0m [36msrc[0m=[35mservice:embedding[0m
+01:03:01 [INFO] HyperliquidTrader: [2m2026-02-12T09:03:01.324150Z[0m [[32m[1minfo     [0m] [1mAgentRuntime stopped          [0m [[0m[1m[34mHyperliquidTrader[0m][0m

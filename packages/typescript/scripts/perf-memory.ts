@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
 	AUTONOMY_TASK_NAME,
 	AutonomyService,
-} from "../src/autonomy/service.ts";
+} from "../src/features/autonomy/service.ts";
 import { AgentRuntime } from "../src/runtime.ts";
 import {
 	ChannelType,

@@ -1,0 +1,90 @@
+{
+  "id": "6054afcb-5bab-4702-90a0-b259b5d3217c",
+  "snapshot": "excel",
+  "instruction": "Some data are missed by now and are filled by 'N/A' temporarily. Please hide them in the table for now. Do not delete them and filter is no needed.",
+  "source": "https://www.youtube.com/shorts/JTbZ8sRxkdU",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/6054afcb-5bab-4702-90a0-b259b5d3217c/Date_Budget_Variance_HideNA.xlsx",
+            "path": "C:\\Users\\User\\Date_Budget_Variance_HideNA.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\Date_Budget_Variance_HideNA.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/6054afcb-5bab-4702-90a0-b259b5d3217c",
+  "related_apps": [
+    "excel"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Date_Budget_Variance_HideNA - Excel",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey(\"ctrl\", \"s\"); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/excel/6054afcb-5bab-4702-90a0-b259b5d3217c/Date_Budget_Variance_HideNA_gold.xlsx",
+      "dest": "Date_Budget_Variance_HideNA_gold.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\Date_Budget_Variance_HideNA.xlsx",
+      "dest": "Date_Budget_Variance_HideNA.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        },
+        {
+          "type": "row_props",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0",
+          "props": [
+            "hidden"
+          ]
+        }
+      ]
+    }
+  }
+}

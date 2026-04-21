@@ -1,0 +1,74 @@
+{
+  "steps": [
+    {
+      "perp_orders": {
+        "builderCode": "COV123",
+        "orders": [
+          {
+            "coin": "ETH",
+            "px": {
+              "MidPercent": {
+                "offset_pct": -1.0
+              }
+            },
+            "reduceOnly": false,
+            "side": "buy",
+            "sz": 0.01,
+            "tif": "ALO",
+            "trigger": null
+          },
+          {
+            "coin": "ETH",
+            "px": {
+              "MidPercent": {
+                "offset_pct": 0.5
+              }
+            },
+            "reduceOnly": true,
+            "side": "sell",
+            "sz": 0.01,
+            "tif": "GTC",
+            "trigger": null
+          }
+        ]
+      }
+    },
+    {
+      "perp_orders": {
+        "orders": [
+          {
+            "coin": "BTC",
+            "px": {
+              "MidPercent": {
+                "offset_pct": 0.8
+              }
+            },
+            "reduceOnly": false,
+            "side": "sell",
+            "sz": 0.005,
+            "tif": "IOC",
+            "trigger": null
+          }
+        ]
+      }
+    },
+    {
+      "cancel_last": {
+        "coin": "ETH"
+      }
+    },
+    {
+      "usd_class_transfer": {
+        "toPerp": true,
+        "usdc": 500.0
+      }
+    },
+    {
+      "set_leverage": {
+        "coin": "BTC",
+        "cross": false,
+        "leverage": 15
+      }
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "onERC1155BatchReceived",
+      "inputs": [
+        { "name": "", "type": "address", "internalType": "address" },
+        { "name": "", "type": "address", "internalType": "address" },
+        { "name": "", "type": "uint256[]", "internalType": "uint256[]" },
+        { "name": "", "type": "uint256[]", "internalType": "uint256[]" },
+        { "name": "", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "bytes4", "internalType": "bytes4" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "onERC1155Received",
+      "inputs": [
+        { "name": "", "type": "address", "internalType": "address" },
+        { "name": "", "type": "address", "internalType": "address" },
+        { "name": "", "type": "uint256", "internalType": "uint256" },
+        { "name": "", "type": "uint256", "internalType": "uint256" },
+        { "name": "", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [{ "name": "", "type": "bytes4", "internalType": "bytes4" }],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "inputs": [
+        { "name": "interfaceId", "type": "bytes4", "internalType": "bytes4" }
+      ],
+      "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+      "stateMutability": "view"
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506103a88061001d5f395ff3fe608060405234801561000f575f80fd5b506004361061003f575f3560e01c806301ffc9a714610043578063bc197c811461006b578063f23a6e61146100a3575b5f80fd5b6100566100513660046100f8565b6100c2565b60405190151581526020015b60405180910390f35b61008a61007936600461026f565b63bc197c8160e01b95945050505050565b6040516001600160e01b03199091168152602001610062565b61008a6100b1366004610312565b63f23a6e6160e01b95945050505050565b5f6001600160e01b03198216630271189760e51b14806100f257506301ffc9a760e01b6001600160e01b03198316145b92915050565b5f60208284031215610108575f80fd5b81356001600160e01b03198116811461011f575f80fd5b9392505050565b80356001600160a01b038116811461013c575f80fd5b919050565b634e487b7160e01b5f52604160045260245ffd5b604051601f8201601f1916810167ffffffffffffffff8111828210171561017e5761017e610141565b604052919050565b5f82601f830112610195575f80fd5b8135602067ffffffffffffffff8211156101b1576101b1610141565b8160051b6101c0828201610155565b92835284810182019282810190878511156101d9575f80fd5b83870192505b848310156101f8578235825291830191908301906101df565b979650505050505050565b5f82601f830112610212575f80fd5b813567ffffffffffffffff81111561022c5761022c610141565b61023f601f8201601f1916602001610155565b818152846020838601011115610253575f80fd5b816020850160208301375f918101602001919091529392505050565b5f805f805f60a08688031215610283575f80fd5b61028c86610126565b945061029a60208701610126565b9350604086013567ffffffffffffffff808211156102b6575f80fd5b6102c289838a01610186565b945060608801359150808211156102d7575f80fd5b6102e389838a01610186565b935060808801359150808211156102f8575f80fd5b5061030588828901610203565b9150509295509295909350565b5f805f805f60a08688031215610326575f80fd5b61032f86610126565b945061033d60208701610126565b93506040860135925060608601359150608086013567ffffffffffffffff811115610366575f80fd5b6103058882890161020356fea26469706673582212205f18587ec6039f359fcdf275062bece3280e3a2ee92e892d1f460d2cc7db680764736f6c63430008140033",
+    "sourceMap": "451:522:176:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506004361061003f575f3560e01c806301ffc9a714610043578063bc197c811461006b578063f23a6e61146100a3575b5f80fd5b6100566100513660046100f8565b6100c2565b60405190151581526020015b60405180910390f35b61008a61007936600461026f565b63bc197c8160e01b95945050505050565b6040516001600160e01b03199091168152602001610062565b61008a6100b1366004610312565b63f23a6e6160e01b95945050505050565b5f6001600160e01b03198216630271189760e51b14806100f257506301ffc9a760e01b6001600160e01b03198316145b92915050565b5f60208284031215610108575f80fd5b81356001600160e01b03198116811461011f575f80fd5b9392505050565b80356001600160a01b038116811461013c575f80fd5b919050565b634e487b7160e01b5f52604160045260245ffd5b604051601f8201601f1916810167ffffffffffffffff8111828210171561017e5761017e610141565b604052919050565b5f82601f830112610195575f80fd5b8135602067ffffffffffffffff8211156101b1576101b1610141565b8160051b6101c0828201610155565b92835284810182019282810190878511156101d9575f80fd5b83870192505b848310156101f8578235825291830191908301906101df565b979650505050505050565b5f82601f830112610212575f80fd5b813567ffffffffffffffff81111561022c5761022c610141565b61023f601f8201601f1916602001610155565b818152846020838601011115610253575f80fd5b816020850160208301375f918101602001919091529392505050565b5f805f805f60a08688031215610283575f80fd5b61028c86610126565b945061029a60208701610126565b9350604086013567ffffffffffffffff808211156102b6575f80fd5b6102c289838a01610186565b945060608801359150808211156102d7575f80fd5b6102e389838a01610186565b935060808801359150808211156102f8575f80fd5b5061030588828901610203565b9150509295509295909350565b5f805f805f60a08688031215610326575f80fd5b61032f86610126565b945061033d60208701610126565b93506040860135925060608601359150608086013567ffffffffffffffff811115610366575f80fd5b6103058882890161020356fea26469706673582212205f18587ec6039f359fcdf275062bece3280e3a2ee92e892d1f460d2cc7db680764736f6c63430008140033",
+    "sourceMap": "451:522:176:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;387:221:177;;;;;;:::i;:::-;;:::i;:::-;;;470:14:310;;463:22;445:41;;433:2;418:18;387:221:177;;;;;;;;724:247:176;;;;;;:::i;:::-;-1:-1:-1;;;724:247:176;;;;;;;;;;;-1:-1:-1;;;;;;3449:33:310;;;3431:52;;3419:2;3404:18;724:247:176;3287:202:310;499:219:176;;;;;;:::i;:::-;-1:-1:-1;;;499:219:176;;;;;;;;387:221:177;489:4;-1:-1:-1;;;;;;512:49:177;;-1:-1:-1;;;512:49:177;;:89;;-1:-1:-1;;;;;;;;;;937:40:240;;;565:36:177;505:96;387:221;-1:-1:-1;;387:221:177:o;14:286:310:-;72:6;125:2;113:9;104:7;100:23;96:32;93:52;;;141:1;138;131:12;93:52;167:23;;-1:-1:-1;;;;;;219:32:310;;209:43;;199:71;;266:1;263;256:12;199:71;289:5;14:286;-1:-1:-1;;;14:286:310:o;497:173::-;565:20;;-1:-1:-1;;;;;614:31:310;;604:42;;594:70;;660:1;657;650:12;594:70;497:173;;;:::o;675:127::-;736:10;731:3;727:20;724:1;717:31;767:4;764:1;757:15;791:4;788:1;781:15;807:275;878:2;872:9;943:2;924:13;;-1:-1:-1;;920:27:310;908:40;;978:18;963:34;;999:22;;;960:62;957:88;;;1025:18;;:::i;:::-;1061:2;1054:22;807:275;;-1:-1:-1;807:275:310:o;1087:712::-;1141:5;1194:3;1187:4;1179:6;1175:17;1171:27;1161:55;;1212:1;1209;1202:12;1161:55;1248:6;1235:20;1274:4;1297:18;1293:2;1290:26;1287:52;;;1319:18;;:::i;:::-;1365:2;1362:1;1358:10;1388:28;1412:2;1408;1404:11;1388:28;:::i;:::-;1450:15;;;1520;;;1516:24;;;1481:12;;;;1552:15;;;1549:35;;;1580:1;1577;1570:12;1549:35;1616:2;1608:6;1604:15;1593:26;;1628:142;1644:6;1639:3;1636:15;1628:142;;;1710:17;;1698:30;;1661:12;;;;1748;;;;1628:142;;;1788:5;1087:712;-1:-1:-1;;;;;;;1087:712:310:o;1804:530::-;1846:5;1899:3;1892:4;1884:6;1880:17;1876:27;1866:55;;1917:1;1914;1907:12;1866:55;1953:6;1940:20;1979:18;1975:2;1972:26;1969:52;;;2001:18;;:::i;:::-;2045:55;2088:2;2069:13;;-1:-1:-1;;2065:27:310;2094:4;2061:38;2045:55;:::i;:::-;2125:2;2116:7;2109:19;2171:3;2164:4;2159:2;2151:6;2147:15;2143:26;2140:35;2137:55;;;2188:1;2185;2178:12;2137:55;2253:2;2246:4;2238:6;2234:17;2227:4;2218:7;2214:18;2201:55;2301:1;2276:16;;;2294:4;2272:27;2265:38;;;;2280:7;1804:530;-1:-1:-1;;;1804:530:310:o;2339:943::-;2493:6;2501;2509;2517;2525;2578:3;2566:9;2557:7;2553:23;2549:33;2546:53;;;2595:1;2592;2585:12;2546:53;2618:29;2637:9;2618:29;:::i;:::-;2608:39;;2666:38;2700:2;2689:9;2685:18;2666:38;:::i;:::-;2656:48;;2755:2;2744:9;2740:18;2727:32;2778:18;2819:2;2811:6;2808:14;2805:34;;;2835:1;2832;2825:12;2805:34;2858:61;2911:7;2902:6;2891:9;2887:22;2858:61;:::i;:::-;2848:71;;2972:2;2961:9;2957:18;2944:32;2928:48;;3001:2;2991:8;2988:16;2985:36;;;3017:1;3014;3007:12;2985:36;3040:63;3095:7;3084:8;3073:9;3069:24;3040:63;:::i;:::-;3030:73;;3156:3;3145:9;3141:19;3128:33;3112:49;;3186:2;3176:8;3173:16;3170:36;;;3202:1;3199;3192:12;3170:36;;3225:51;3268:7;3257:8;3246:9;3242:24;3225:51;:::i;:::-;3215:61;;;2339:943;;;;;;;;:::o;3494:606::-;3598:6;3606;3614;3622;3630;3683:3;3671:9;3662:7;3658:23;3654:33;3651:53;;;3700:1;3697;3690:12;3651:53;3723:29;3742:9;3723:29;:::i;:::-;3713:39;;3771:38;3805:2;3794:9;3790:18;3771:38;:::i;:::-;3761:48;;3856:2;3845:9;3841:18;3828:32;3818:42;;3907:2;3896:9;3892:18;3879:32;3869:42;;3962:3;3951:9;3947:19;3934:33;3990:18;3982:6;3979:30;3976:50;;;4022:1;4019;4012:12;3976:50;4045:49;4086:7;4077:6;4066:9;4062:22;4045:49;:::i",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {
+    "onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)": "bc197c81",
+    "onERC1155Received(address,address,uint256,uint256,bytes)": "f23a6e61",
+    "supportsInterface(bytes4)": "01ffc9a7"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256[]\",\"name\":\"\",\"type\":\"uint256[]\"},{\"internalType\":\"uint256[]\",\"name\":\"\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"name\":\"onERC1155BatchReceived\",\"outputs\":[{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"\",\"type\":\"bytes\"}],\"name\":\"onERC1155Received\",\"outputs\":[{\"internalType\":\"bytes4\",\"name\":\"\",\"type\":\"bytes4\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"details\":\"_Available since v3.1._\",\"kind\":\"dev\",\"methods\":{\"supportsInterface(bytes4)\":{\"details\":\"See {IERC165-supportsInterface}.\"}},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"notice\":\"Simple implementation of `ERC1155Receiver` that will allow a contract to hold ERC1155 tokens. IMPORTANT: When inheriting this contract, you must include a way to use the received tokens, otherwise they will be stuck.\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol\":\"ERC1155Holder\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/token/ERC1155/IERC1155Receiver.sol\":{\"keccak256\":\"0xeb373f1fdc7b755c6a750123a9b9e3a8a02c1470042fd6505d875000a80bde0b\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0e28648f994abf1d6bc345644a361cc0b7efa544f8bc0c8ec26011fed85a91ec\",\"dweb:/ipfs/QmVVE7AiRjKaQYYji7TkjmTeVzGpNmms5eoxqTCfvvpj6D\"]},\"lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol\":{\"keccak256\":\"0x2e024ca51ce5abe16c0d34e6992a1104f356e2244eb4ccbec970435e8b3405e3\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://a74009db3c6fc8db851ba69ddb6795b5c1ef1120c5a00fd1a8dc3a717dd9d519\",\"dweb:/ipfs/QmZMk8Yh2X3gPS51ckUVLEXjZUhMSEeGApnA53WtjvLb9h\"]},\"lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Receiver.sol\":{\"keccak256\":\"0x3dd5e1a66a56f30302108a1da97d677a42b1daa60e503696b2bcbbf3e4c95bcb\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://0808de0ae4918c664643c885ca7fa6503e8ef2bd75609dfc85152c0128a3422d\",\"dweb:/ipfs/QmNrhFC1XgBKuuxfahFeiwi1MCdu3FLNpHj2uStgmf4iJj\"]},\"lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol\":{\"keccak256\":\"0xd10975de010d89fd1c78dc5e8a9a7e7f496198085c151648f20cba166b32582b\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://fb0048dee081f6fffa5f74afc3fb328483c2a30504e94a0ddd2a5114d731ec4d\",\"dweb:/ipfs/QmZptt1nmYoA5SgjwnSgWqgUSDgm4q52Yos3xhnMv3MV43\"]},\"lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol\":{\"keccak256\":\"0x447a5f3ddc18419d41ff92b3773fb86471b1db25773e07f877f548918a185bf1\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://be161e54f24e5c6fae81a12db1a8ae87bc5ae1b0ddc805d82a1440a68455088f\",\"dweb:/ipfs/QmP7C3CHdY9urF4dEMb9wmsp1wMxHF6nhA2yQE5SKiPAdy\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            { "internalType": "address", "name": "", "type": "address" },
+            { "internalType": "address", "name": "", "type": "address" },
+            { "internalType": "uint256[]", "name": "", "type": "uint256[]" },
+            { "internalType": "uint256[]", "name": "", "type": "uint256[]" },
+            { "internalType": "bytes", "name": "", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "onERC1155BatchReceived",
+          "outputs": [
+            { "internalType": "bytes4", "name": "", "type": "bytes4" }
+          ]
+        },
+        {
+          "inputs": [
+            { "internalType": "address", "name": "", "type": "address" },
+            { "internalType": "address", "name": "", "type": "address" },
+            { "internalType": "uint256", "name": "", "type": "uint256" },
+            { "internalType": "uint256", "name": "", "type": "uint256" },
+            { "internalType": "bytes", "name": "", "type": "bytes" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "onERC1155Received",
+          "outputs": [
+            { "internalType": "bytes4", "name": "", "type": "bytes4" }
+          ]
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes4",
+              "name": "interfaceId",
+              "type": "bytes4"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "supportsInterface",
+          "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }]
+        }
+      ],
+      "devdoc": {
+        "kind": "dev",
+        "methods": {
+          "supportsInterface(bytes4)": {
+            "details": "See {IERC165-supportsInterface}."
+          }
+        },
+        "version": 1
+      },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol": "ERC1155Holder"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/token/ERC1155/IERC1155Receiver.sol": {
+        "keccak256": "0xeb373f1fdc7b755c6a750123a9b9e3a8a02c1470042fd6505d875000a80bde0b",
+        "urls": [
+          "bzz-raw://0e28648f994abf1d6bc345644a361cc0b7efa544f8bc0c8ec26011fed85a91ec",
+          "dweb:/ipfs/QmVVE7AiRjKaQYYji7TkjmTeVzGpNmms5eoxqTCfvvpj6D"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol": {
+        "keccak256": "0x2e024ca51ce5abe16c0d34e6992a1104f356e2244eb4ccbec970435e8b3405e3",
+        "urls": [
+          "bzz-raw://a74009db3c6fc8db851ba69ddb6795b5c1ef1120c5a00fd1a8dc3a717dd9d519",
+          "dweb:/ipfs/QmZMk8Yh2X3gPS51ckUVLEXjZUhMSEeGApnA53WtjvLb9h"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Receiver.sol": {
+        "keccak256": "0x3dd5e1a66a56f30302108a1da97d677a42b1daa60e503696b2bcbbf3e4c95bcb",
+        "urls": [
+          "bzz-raw://0808de0ae4918c664643c885ca7fa6503e8ef2bd75609dfc85152c0128a3422d",
+          "dweb:/ipfs/QmNrhFC1XgBKuuxfahFeiwi1MCdu3FLNpHj2uStgmf4iJj"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/introspection/ERC165.sol": {
+        "keccak256": "0xd10975de010d89fd1c78dc5e8a9a7e7f496198085c151648f20cba166b32582b",
+        "urls": [
+          "bzz-raw://fb0048dee081f6fffa5f74afc3fb328483c2a30504e94a0ddd2a5114d731ec4d",
+          "dweb:/ipfs/QmZptt1nmYoA5SgjwnSgWqgUSDgm4q52Yos3xhnMv3MV43"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol": {
+        "keccak256": "0x447a5f3ddc18419d41ff92b3773fb86471b1db25773e07f877f548918a185bf1",
+        "urls": [
+          "bzz-raw://be161e54f24e5c6fae81a12db1a8ae87bc5ae1b0ddc805d82a1440a68455088f",
+          "dweb:/ipfs/QmP7C3CHdY9urF4dEMb9wmsp1wMxHF6nhA2yQE5SKiPAdy"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 176
+}

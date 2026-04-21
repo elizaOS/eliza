@@ -1,0 +1,11 @@
+# command: /opt/miniconda3/bin/python -m benchmarks.bfcl run --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T071143Z_5325e486/bfcl__bfcl/run_bfcl_20260212T071204Z_1_127d151d/output --provider groq --model qwen/qwen3-32b --sample True
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_bfcl_20260212T071204Z_1_127d151d
+usage: __main__.py run [-h]
+                       [--provider {groq,openai,anthropic,google-genai,openrouter,xai,ollama,local-ai}]
+                       [--model MODEL] [--sample SAMPLE] [--full]
+                       [--categories CATEGORIES]
+                       [--max-per-category MAX_PER_CATEGORY] [--output OUTPUT]
+                       [--timeout TIMEOUT] [--mock] [--no-exec] [--no-report]
+                       [--verbose] [--local-data LOCAL_DATA]
+__main__.py run: error: argument --sample: invalid int value: 'True'

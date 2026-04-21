@@ -1,0 +1,48 @@
+{
+  "total_tasks": 2,
+  "total_trials": 2,
+  "overall_element_accuracy": 0.0,
+  "overall_operation_accuracy": 0.0,
+  "overall_step_accuracy": 0.0,
+  "overall_task_success_rate": 0.0,
+  "average_latency_ms": 35.42637825012207,
+  "by_domain": {
+    "travel": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 1.64794921875
+    },
+    "shopping": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 69.20480728149414
+    }
+  },
+  "by_website": {
+    "amazon.com": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 69.20480728149414
+    },
+    "google.com/flights": {
+      "overall_element_accuracy": 0.0,
+      "overall_operation_accuracy": 0.0,
+      "overall_step_accuracy": 0.0,
+      "overall_task_success_rate": 0.0,
+      "average_latency_ms": 1.64794921875
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "timestamp": "2026-02-14T19:57:41.563232",
+    "mode": "real-llm",
+    "split": "test_task",
+    "model_provider": "groq"
+  }
+}

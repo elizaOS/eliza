@@ -1,0 +1,50 @@
+{
+  "builderCode": null,
+  "demoMode": true,
+  "effectTimeoutMs": 2000,
+  "llmDryRun": false,
+  "network": "demo",
+  "outDir": "runs/demo",
+  "plan": {
+    "steps": [
+      {
+        "perp_orders": {
+          "orders": [
+            {
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -1.0
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.01,
+              "tif": "ALO",
+              "trigger": null
+            },
+            {
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": 1.0
+                }
+              },
+              "reduceOnly": false,
+              "side": "sell",
+              "sz": 0.01,
+              "tif": "GTC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "cancel_last": {}
+      }
+    ]
+  },
+  "timestamp": "20250922-034732",
+  "wallet": null,
+  "windowMs": 200
+}

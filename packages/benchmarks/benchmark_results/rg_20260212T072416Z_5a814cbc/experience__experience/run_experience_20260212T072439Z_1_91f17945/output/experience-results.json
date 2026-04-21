@@ -1,0 +1,33 @@
+{
+  "mode": "eliza_agent",
+  "total_experiences": 205,
+  "eliza_agent": {
+    "learning_success_rate": 0.55,
+    "total_experiences_recorded": 5,
+    "total_experiences_in_service": 205,
+    "avg_learning_latency_ms": 1745.5599308013916,
+    "agent_recall_rate": 0.6,
+    "agent_keyword_incorporation_rate": 0.1,
+    "avg_retrieval_latency_ms": 1394.9287056922913,
+    "direct_recall_rate": 0.4,
+    "direct_mrr": 0.29999999999999993
+  },
+  "direct_retrieval": {
+    "precision_at_k": {
+      "1": 0.25
+    },
+    "recall_at_k": {
+      "1": 0.25,
+      "3": 0.4,
+      "5": 0.4,
+      "10": 0.4
+    },
+    "mean_reciprocal_rank": 0.29999999999999993,
+    "hit_rate_at_k": {
+      "1": 0.25,
+      "3": 0.4,
+      "5": 0.4,
+      "10": 0.4
+    }
+  }
+}

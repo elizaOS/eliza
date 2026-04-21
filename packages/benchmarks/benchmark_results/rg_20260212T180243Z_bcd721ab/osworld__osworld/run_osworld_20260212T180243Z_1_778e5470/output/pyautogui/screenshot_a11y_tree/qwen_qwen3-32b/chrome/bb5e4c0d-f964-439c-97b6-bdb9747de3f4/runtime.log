@@ -1,0 +1,2 @@
+Step 1: response=Okay, I will help you set Bing as the main search engine on your Ubuntu system. Let me start by opening the settings., actions=["pyautogui.click(1920, 1080, button='left')"]
+Step 2: response=I will change Bing to be your main search engine now. Let me start by opening your browser settings., actions=["pyautogui.click(1700, 300, button='left')", "pyautogui.write('password', interval=0.02)", 'DONE']

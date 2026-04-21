@@ -1,0 +1,118 @@
+2026-02-12 05:40:43,388  INFO     Model: qwen/qwen3-32b  Messages: 2  Env: voyager/environments/basic_env.json  External: True
+2026-02-12 05:40:43,615  INFO     Airdropping SOL to F5xo19wnWP7ZrGi432s9GDgYTuYq8bFMgYy1Sh4FY6k2...
+2026-02-12 05:40:43,624  INFO     HTTP Request: POST http://127.0.0.1:8899 "HTTP/1.1 200 OK"
+2026-02-12 05:40:43,630  ERROR    Airdrop failed: 
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        pool_request.request
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/connection.py", line 103, in handle_async_request
+    return await self._connection.handle_async_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/http11.py", line 136, in handle_async_request
+    raise exc
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/http11.py", line 106, in handle_async_request
+    ) = await self._receive_response_headers(**kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/http11.py", line 177, in _receive_response_headers
+    event = await self._receive_event(timeout=timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpcore/_async/http11.py", line 231, in _receive_event
+    raise RemoteProtocolError(msg)
+httpcore.RemoteProtocolError: Server disconnected without sending a response.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/exceptions.py", line 60, in argument_decorator
+    return await func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/rpc/providers/async_http.py", line 61, in make_request
+    raw = await self.make_request_unparsed(body)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/rpc/providers/async_http.py", line 67, in make_request_unparsed
+    raw_response = await self.session.post(**request_kwargs)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1859, in post
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<13 lines>...
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/miniconda3/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.RemoteProtocolError: Server disconnected without sending a response.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/solana/solana-gym-env/voyager/surfpool_env.py", line 233, in reset
+    await self.client.confirm_transaction(airdrop_sig.value, "confirmed", 30.0)
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/rpc/async_api.py", line 1110, in confirm_transaction
+    resp = await self.get_signature_statuses([tx_sig])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/rpc/async_api.py", line 745, in get_signature_statuses
+    return await self._provider.make_request(body, GetSignatureStatusesResp)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/lib/python3.13/site-packages/solana/exceptions.py", line 62, in argument_decorator
+    raise internal_exception_cls(exc, func, *args, **kwargs) from exc
+solana.exceptions.SolanaRpcException
+2026-02-12 05:40:43,635  INFO     Agent: F5xo19wnWP7ZrGi432s9GDgYTuYq8bFMgYy1Sh4FY6k2
+2026-02-12 05:40:43,645  INFO     elizaos_plugin_anthropic not found, falling back to OpenAI plugin
+2026-02-12 05:40:43,646  INFO     Model plugin: OpenAI (qwen/qwen3-32b)
+2026-02-12 05:40:43,670  INFO     [2m2026-02-12T13:40:43.670697Z[0m [[32m[1minfo     [0m] [1mInitializing AgentRuntime...  [0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697529Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: bootstrap [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697644Z[0m [[32m[1minfo     [0m] [1mInitializing Bootstrap plugin [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697693Z[0m [[32m[1minfo     [0m] [1mBootstrap plugin initialized  [0m [[0m[1m[34mSolanaExplorer[0m][0m [36mactionCount[0m=[35m4[0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36mevaluatorCount[0m=[35m0[0m [36mproviderCount[0m=[35m14[0m [36mserviceCount[0m=[35m2[0m [36msrc[0m=[35mplugin:bootstrap[0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697805Z[0m [[32m[1minfo     [0m] [1mTask service started          [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:task[0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697845Z[0m [[32m[1minfo     [0m] [1mEmbedding service started     [0m [[0m[1m[34mSolanaExplorer[0m][0m [36magentId[0m=[35m4fb955c6-4191-0f9d-b98d-435b207a963c[0m [36msrc[0m=[35mservice:embedding[0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697877Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: bootstrap[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697904Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: openai    [0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697947Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: openai[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,697  INFO     [2m2026-02-12T13:40:43.697978Z[0m [[32m[1minfo     [0m] [1mRegistering plugin: solana-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,698  INFO     [2m2026-02-12T13:40:43.698003Z[0m [[32m[1minfo     [0m] [1mPlugin registered successfully: solana-bench[0m [[0m[1m[34melizaos[0m][0m
+2026-02-12 05:40:43,698  INFO     [2m2026-02-12T13:40:43.698025Z[0m [[32m[1minfo     [0m] [1mAgentRuntime initialized successfully[0m [[0m[1m[34mSolanaExplorer[0m][0m
+2026-02-12 05:40:43,698  INFO     ElizaOS runtime initialised: 5 actions, 15 providers
+2026-02-12 05:40:43,698  INFO     Solana Agent  model=qwen/qwen3-32b  max=2  id=eliza_26-02-12_054043_b2be1ba4
+2026-02-12 05:40:43,698  INFO     
+============================================================
+Step 1/2 [deterministic]: Memo bytes 0-59
+============================================================

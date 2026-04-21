@@ -1,0 +1,14 @@
+{
+  "name": "eliza-cloud-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx entrypoint.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-alpha.215",
+    "@elizaos/plugin-sql": "2.0.0-alpha.19",
+    "@elizaos/plugin-elizacloud": "2.0.0-alpha.8",
+    "tsx": "4.21.0"
+  }
+}

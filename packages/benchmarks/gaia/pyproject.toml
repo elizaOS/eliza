@@ -1,0 +1,128 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-gaia"
+version = "2.0.0"
+description = "GAIA Benchmark Implementation for ElizaOS - Evaluating AI assistants on real-world tasks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "benchmark", "gaia", "agents", "llm", "elizaos", "evaluation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    # Core dependencies
+    "aiohttp>=3.9.0",
+    "beautifulsoup4>=4.12.0",
+    "huggingface_hub>=0.20.0",
+    
+    # File processing
+    "pdfplumber>=0.10.0",
+    "pandas>=2.1.0",
+    "openpyxl>=3.1.0",  # For Excel support
+    "pillow>=10.0.0",
+    
+    # Optional but recommended
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+# Full feature set
+full = [
+    "playwright>=1.40.0",
+    "pytesseract>=0.3.10",
+    "sympy>=1.12",
+    "mutagen>=1.47.0",
+    "PyPDF2>=3.0.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.0",
+    "black>=24.1.0",
+]
+
+# ElizaOS integration
+elizaos = [
+    "elizaos>=1.0.0",
+]
+
+[project.scripts]
+gaia-benchmark = "elizaos_gaia.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs/benchmarks/gaia"
+Repository = "https://github.com/elizaos/eliza"
+"Bug Tracker" = "https://github.com/elizaos/eliza/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_gaia"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos_gaia",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = false
+warn_unused_ignores = false
+disallow_untyped_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long
+    "B008",  # function calls in defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_gaia"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

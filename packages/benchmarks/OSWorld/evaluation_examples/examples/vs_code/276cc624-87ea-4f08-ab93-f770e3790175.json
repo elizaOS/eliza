@@ -1,0 +1,45 @@
+{
+  "id": "276cc624-87ea-4f08-ab93-f770e3790175",
+  "snapshot": "vscode",
+  "instruction": "Please help me set the current user's line length for code wrapping to 50 characters in VS Code.",
+  "source": "https://www.quora.com/unanswered/How-do-you-set-the-line-length-in-Visual-Studio-Code",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Visual Studio Code"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vscode"
+  ],
+  "evaluator": {
+    "func": "check_json_settings",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": {
+          "editor.wordWrapColumn": 50
+        }
+      }
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/.config/Code/User/settings.json",
+      "dest": "settings.json"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

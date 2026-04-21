@@ -489,6 +489,42 @@ pub struct MemorySearchOptions {
     pub metadata: Option<MemoryMetadata>,
 }
 
+/// Parameters for creating a relationship (batch create).
+/// Mirrors the TypeScript `createRelationships` input shape.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateRelationshipParams {
+    /// Source entity ID
+    pub source_entity_id: UUID,
+    /// Target entity ID
+    pub target_entity_id: UUID,
+    /// Optional tags describing the relationship
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// Optional metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// Parameters for filtered relationship queries.
+/// Mirrors the TypeScript `getRelationships` params signature.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetRelationshipsParams {
+    /// Filter by entity IDs (matches source or target)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_ids: Option<Vec<UUID>>,
+    /// Filter by tags
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// Maximum number of results
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i32>,
+    /// Offset for pagination
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<i32>,
+}
+
 /// Allowed vector dimensions
 pub mod vector_dims {
     /// 384 dimensions

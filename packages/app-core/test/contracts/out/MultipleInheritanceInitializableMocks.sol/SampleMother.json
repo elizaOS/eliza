@@ -1,0 +1,162 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "initialize",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "inputs": [
+        { "name": "value", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "isHuman",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "mother",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "event",
+      "name": "Initialized",
+      "inputs": [
+        {
+          "name": "version",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        }
+      ],
+      "anonymous": false
+    }
+  ],
+  "bytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506103ec8061001d5f395ff3fe608060405234801561000f575f80fd5b506004361061004a575f3560e01c80634a6c9db61461004e5780638129fc1c14610075578063ed7dfee31461007f578063fe4b84df14610096575b5f80fd5b5f546100609062010000900460ff1681565b60405190151581526020015b60405180910390f35b61007d6100a9565b005b61008860015481565b60405190815260200161006c565b61007d6100a4366004610306565b610176565b5f54610100900460ff16158080156100c757505f54600160ff909116105b806100e05750303b1580156100e057505f5460ff166001145b6101055760405162461bcd60e51b81526004016100fc9061031d565b60405180910390fd5b5f805460ff191660011790558015610126575f805461ff0019166101001790555b61012e61023c565b8015610173575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b50565b5f54610100900460ff161580801561019457505f54600160ff909116105b806101ad5750303b1580156101ad57505f5460ff166001145b6101c95760405162461bcd60e51b81526004016100fc9061031d565b5f805460ff1916600117905580156101ea575f805461ff0019166101001790555b6101f38261026c565b8015610238575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b5050565b5f54610100900460ff166102625760405162461bcd60e51b81526004016100fc9061036b565b61026a6102a3565b565b5f54610100900460ff166102925760405162461bcd60e51b81526004016100fc9061036b565b61029a61023c565b610173816102db565b5f54610100900460ff166102c95760405162461bcd60e51b81526004016100fc9061036b565b5f805462ff0000191662010000179055565b5f54610100900460ff166103015760405162461bcd60e51b81526004016100fc9061036b565b600155565b5f60208284031215610316575f80fd5b5035919050565b6020808252602e908201527f496e697469616c697a61626c653a20636f6e747261637420697320616c72656160408201526d191e481a5b9a5d1a585b1a5e995960921b606082015260800190565b6020808252602b908201527f496e697469616c697a61626c653a20636f6e7472616374206973206e6f74206960408201526a6e697469616c697a696e6760a81b60608201526080019056fea26469706673582212202fefd931fc3f900058310eb8ddad7f5cbe3b02529fa855b1cdbab0af2b7249ef64736f6c63430008140033",
+    "sourceMap": "1017:567:98:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x608060405234801561000f575f80fd5b506004361061004a575f3560e01c80634a6c9db61461004e5780638129fc1c14610075578063ed7dfee31461007f578063fe4b84df14610096575b5f80fd5b5f546100609062010000900460ff1681565b60405190151581526020015b60405180910390f35b61007d6100a9565b005b61008860015481565b60405190815260200161006c565b61007d6100a4366004610306565b610176565b5f54610100900460ff16158080156100c757505f54600160ff909116105b806100e05750303b1580156100e057505f5460ff166001145b6101055760405162461bcd60e51b81526004016100fc9061031d565b60405180910390fd5b5f805460ff191660011790558015610126575f805461ff0019166101001790555b61012e61023c565b8015610173575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b50565b5f54610100900460ff161580801561019457505f54600160ff909116105b806101ad5750303b1580156101ad57505f5460ff166001145b6101c95760405162461bcd60e51b81526004016100fc9061031d565b5f805460ff1916600117905580156101ea575f805461ff0019166101001790555b6101f38261026c565b8015610238575f805461ff0019169055604051600181527f7f26b83ff96e1f2b6a682f133852f6798a09c465da95921460cefb38474024989060200160405180910390a15b5050565b5f54610100900460ff166102625760405162461bcd60e51b81526004016100fc9061036b565b61026a6102a3565b565b5f54610100900460ff166102925760405162461bcd60e51b81526004016100fc9061036b565b61029a61023c565b610173816102db565b5f54610100900460ff166102c95760405162461bcd60e51b81526004016100fc9061036b565b5f805462ff0000191662010000179055565b5f54610100900460ff166103015760405162461bcd60e51b81526004016100fc9061036b565b600155565b5f60208284031215610316575f80fd5b5035919050565b6020808252602e908201527f496e697469616c697a61626c653a20636f6e747261637420697320616c72656160408201526d191e481a5b9a5d1a585b1a5e995960921b606082015260800190565b6020808252602b908201527f496e697469616c697a61626c653a20636f6e7472616374206973206e6f74206960408201526a6e697469616c697a696e6760a81b60608201526080019056fea26469706673582212202fefd931fc3f900058310eb8ddad7f5cbe3b02529fa855b1cdbab0af2b7249ef64736f6c63430008140033",
+    "sourceMap": "1017:567:98:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;517:19;;;;;;;;;;;;;;;179:14:310;;172:22;154:41;;142:2;127:18;517:19:98;;;;;;;;543:78;;;:::i;:::-;;1075:21;;;;;;;;;352:25:310;;;340:2;325:18;1075:21:98;206:177:310;1103:97:98;;;;;;:::i;:::-;;:::i;543:78::-;3268:19:162;3291:13;;;;;;3290:14;;3336:34;;;;-1:-1:-1;3354:12:162;;3369:1;3354:12;;;;:16;3336:34;3335:97;;;-1:-1:-1;3404:4:162;1702:19:220;:23;;;3376:55:162;;-1:-1:-1;3414:12:162;;;;;:17;3376:55;3314:190;;;;-1:-1:-1;;;3314:190:162;;;;;;;:::i;:::-;;;;;;;;;3514:12;:16;;-1:-1:-1;;3514:16:162;3529:1;3514:16;;;3540:65;;;;3574:13;:20;;-1:-1:-1;;3574:20:162;;;;;3540:65;594:20:98::1;:18;:20::i;:::-;3629:14:162::0;3625:99;;;3675:5;3659:21;;-1:-1:-1;;3659:21:162;;;3699:14;;-1:-1:-1;1140:36:310;;3699:14:162;;1128:2:310;1113:18;3699:14:162;;;;;;;3625:99;3258:472;543:78:98:o;1103:97::-;3268:19:162;3291:13;;;;;;3290:14;;3336:34;;;;-1:-1:-1;3354:12:162;;3369:1;3354:12;;;;:16;3336:34;3335:97;;;-1:-1:-1;3404:4:162;1702:19:220;:23;;;3376:55:162;;-1:-1:-1;3414:12:162;;;;;:17;3376:55;3314:190;;;;-1:-1:-1;;;3314:190:162;;;;;;;:::i;:::-;3514:12;:16;;-1:-1:-1;;3514:16:162;3529:1;3514:16;;;3540:65;;;;3574:13;:20;;-1:-1:-1;;3574:20:162;;;;;3540:65;1167:26:98::1;1187:5;1167:19;:26::i;:::-;3629:14:162::0;3625:99;;;3675:5;3659:21;;-1:-1:-1;;3659:21:162;;;3699:14;;-1:-1:-1;1140:36:310;;3699:14:162;;1128:2:310;1113:18;3699:14:162;;;;;;;3625:99;3258:472;1103:97:98;:::o;680:103::-;5352:13:162;;;;;;;5344:69;;;;-1:-1:-1;;;5344:69:162;;;;;;;:::i;:::-;746:30:98::1;:28;:30::i;:::-;680:103::o:0;1259:153::-;5352:13:162;;;;;;;5344:69;;;;-1:-1:-1;;;5344:69:162;;;;;;;:::i;:::-;1339:20:98::1;:18;:20::i;:::-;1369:36;1399:5;1369:29;:36::i;842:97::-:0;5352:13:162;;;;;;;5344:69;;;;-1:-1:-1;;;5344:69:162;;;;;;;:::i;:::-;918:7:98::1;:14:::0;;-1:-1:-1;;918:14:98::1;::::0;::::1;::::0;;842:97::o;1471:111::-;5352:13:162;;;;;;;5344:69;;;;-1:-1:-1;;;5344:69:162;;;;;;;:::i;:::-;1561:6:98::1;:14:::0;1471:111::o;388:180:310:-;447:6;500:2;488:9;479:7;475:23;471:32;468:52;;;516:1;513;506:12;468:52;-1:-1:-1;539:23:310;;388:180;-1:-1:-1;388:180:310:o;573:410::-;775:2;757:21;;;814:2;794:18;;;787:30;853:34;848:2;833:18;;826:62;-1:-1:-1;;;919:2:310;904:18;;897:44;973:3;958:19;;573:410::o;1187:407::-;1389:2;1371:21;;;1428:2;1408:18;;;1401:30;1467:34;1462:2;1447:18;;1440:62;-1:-1:-1;;;1533:2:310;1518:18;;1511:41;1584:3;1569:19;;1187:407::o",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": {
+    "initialize()": "8129fc1c",
+    "initialize(uint256)": "fe4b84df",
+    "isHuman()": "4a6c9db6",
+    "mother()": "ed7dfee3"
+  },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint8\",\"name\":\"version\",\"type\":\"uint8\"}],\"name\":\"Initialized\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"isHuman\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"mother\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"events\":{\"Initialized(uint8)\":{\"details\":\"Triggered when the contract has been initialized or reinitialized.\"}},\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"notice\":\"Sample base initializable contract that defines a field mother\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/MultipleInheritanceInitializableMocks.sol\":\"SampleMother\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/MultipleInheritanceInitializableMocks.sol\":{\"keccak256\":\"0xfe9da4e00eebee28800dd7ff4a61bf98b92fe75e4a9f722b40f3363089d3d6eb\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://188cefda58754e76e9262f8d491cbf77aadc8be49e55364281e7be1becaea2a2\",\"dweb:/ipfs/QmdsGPtrRGgG4p9NtJRJboaN9X1tzHwQCXS4rVcRJZaX3w\"]},\"lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol\":{\"keccak256\":\"0x3d6069be9b4c01fb81840fb9c2c4dc58dd6a6a4aafaa2c6837de8699574d84c6\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://720d6bb56ea0c4ef781c0bd65c5bd0541f5a46100163b2587170f97658d2deed\",\"dweb:/ipfs/QmTS2biLVPrv8CeeXCaKmkFxonMiRvc1LxiYBRYDAJHQUS\"]},\"lib/openzeppelin-contracts/contracts/utils/Address.sol\":{\"keccak256\":\"0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931\",\"dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "uint8",
+              "name": "version",
+              "type": "uint8",
+              "indexed": false
+            }
+          ],
+          "type": "event",
+          "name": "Initialized",
+          "anonymous": false
+        },
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "initialize"
+        },
+        {
+          "inputs": [
+            { "internalType": "uint256", "name": "value", "type": "uint256" }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function",
+          "name": "initialize"
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "isHuman",
+          "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }]
+        },
+        {
+          "inputs": [],
+          "stateMutability": "view",
+          "type": "function",
+          "name": "mother",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/MultipleInheritanceInitializableMocks.sol": "SampleMother"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/MultipleInheritanceInitializableMocks.sol": {
+        "keccak256": "0xfe9da4e00eebee28800dd7ff4a61bf98b92fe75e4a9f722b40f3363089d3d6eb",
+        "urls": [
+          "bzz-raw://188cefda58754e76e9262f8d491cbf77aadc8be49e55364281e7be1becaea2a2",
+          "dweb:/ipfs/QmdsGPtrRGgG4p9NtJRJboaN9X1tzHwQCXS4rVcRJZaX3w"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol": {
+        "keccak256": "0x3d6069be9b4c01fb81840fb9c2c4dc58dd6a6a4aafaa2c6837de8699574d84c6",
+        "urls": [
+          "bzz-raw://720d6bb56ea0c4ef781c0bd65c5bd0541f5a46100163b2587170f97658d2deed",
+          "dweb:/ipfs/QmTS2biLVPrv8CeeXCaKmkFxonMiRvc1LxiYBRYDAJHQUS"
+        ],
+        "license": "MIT"
+      },
+      "lib/openzeppelin-contracts/contracts/utils/Address.sol": {
+        "keccak256": "0x006dd67219697fe68d7fbfdea512e7c4cb64a43565ed86171d67e844982da6fa",
+        "urls": [
+          "bzz-raw://2455248c8ddd9cc6a7af76a13973cddf222072427e7b0e2a7d1aff345145e931",
+          "dweb:/ipfs/QmfYjnjRbWqYpuxurqveE6HtzsY1Xx323J428AKQgtBJZm"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 98
+}

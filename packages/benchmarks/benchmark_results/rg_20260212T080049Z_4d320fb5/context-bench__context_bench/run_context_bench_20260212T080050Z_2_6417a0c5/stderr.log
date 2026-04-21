@@ -1,0 +1,7 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/context-bench/run_benchmark.py --provider groq --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T080049Z_4d320fb5/context-bench__context_bench/run_context_bench_20260212T080050Z_2_6417a0c5/output
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_context_bench_20260212T080050Z_2_6417a0c5
+usage: run_benchmark.py [-h]
+                        [--provider {mock,openai,anthropic,eliza-mock,eliza-openai,eliza-agent,milady}]
+                        [--quick] [--output-dir OUTPUT_DIR]
+run_benchmark.py: error: argument --provider: invalid choice: 'groq' (choose from mock, openai, anthropic, eliza-mock, eliza-openai, eliza-agent, milady)

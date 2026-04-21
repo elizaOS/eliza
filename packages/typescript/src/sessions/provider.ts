@@ -182,7 +182,7 @@ export function createSessionSkillsProvider(options?: {
 			const entry = context.entry;
 
 			const snapshot = entry?.skillsSnapshot;
-			if (!snapshot || !snapshot.skills.length) {
+			if (!snapshot?.skills.length) {
 				return {
 					text: "No skills configured for this session.",
 					data: { hasSkills: false, skills: [] },

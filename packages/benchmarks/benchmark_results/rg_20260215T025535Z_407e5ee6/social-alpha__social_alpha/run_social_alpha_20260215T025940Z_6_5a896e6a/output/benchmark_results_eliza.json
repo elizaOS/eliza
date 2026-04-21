@@ -1,0 +1,48 @@
+{
+  "DETECT": {
+    "rug_precision": 0.0,
+    "rug_recall": 0.0,
+    "rug_f1": 0.0,
+    "rug_total": 0,
+    "promoter_precision": 0.0,
+    "promoter_recall": 0.0,
+    "promoter_f1": 0.0,
+    "promoter_total": 0,
+    "archetype_macro_f1": 0.0987,
+    "archetype_accuracy": 0.0853,
+    "archetype_confusion": [
+      [
+        1,
+        2,
+        0,
+        0
+      ],
+      [
+        52,
+        31,
+        0,
+        3
+      ],
+      [
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        366,
+        68,
+        0,
+        14
+      ]
+    ],
+    "archetype_labels": [
+      "alpha_caller",
+      "low_info",
+      "noise_maker",
+      "solid_trader"
+    ],
+    "suite_score": 9.87,
+    "elapsed_seconds": 76.48
+  }
+}

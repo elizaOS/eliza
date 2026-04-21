@@ -1,0 +1,7 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="ai.eliza.plugins.mobilesignals" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+6
+7</manifest>

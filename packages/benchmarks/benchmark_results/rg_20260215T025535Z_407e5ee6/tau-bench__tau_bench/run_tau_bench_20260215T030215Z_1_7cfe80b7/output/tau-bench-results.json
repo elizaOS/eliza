@@ -1,0 +1,76 @@
+{
+  "total_tasks": 4,
+  "total_trials": 4,
+  "passed_tasks": 1,
+  "failed_tasks": 3,
+  "overall_success_rate": 0.25,
+  "overall_tool_accuracy": 0.14583333333333331,
+  "overall_policy_compliance": 1.0,
+  "overall_response_quality": 0.3224216959511077,
+  "average_duration_ms": 10689.280450344086,
+  "pass_k_metrics": {
+    "1": {
+      "k": 1,
+      "pass_rate": 0.25,
+      "trials_passed": 1
+    },
+    "2": {
+      "k": 2,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "4": {
+      "k": 4,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "8": {
+      "k": 8,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    }
+  },
+  "overall_metrics": {
+    "total_tokens": 0,
+    "average_tokens_per_task": 0.0,
+    "average_turns_per_task": 9.0,
+    "average_tool_calls_per_task": 8.0,
+    "total_duration_seconds": 42.76784873008728,
+    "memory_peak_mb": 6.992684364318848,
+    "memory_average_mb": 6.86958122253418
+  },
+  "comparison_to_leaderboard": {
+    "best_comparable_model": "llama-3.1-70b",
+    "difference_from_best": -0.119,
+    "comparison_details": {
+      "gemini-3-pro": -0.6495,
+      "claude-3.7-sonnet": -0.555,
+      "kimi-k2": -0.482,
+      "o3": -0.477,
+      "o4-mini": -0.45649999999999996,
+      "gpt-5": -0.2235,
+      "gpt-4-turbo": -0.1595,
+      "claude-3-opus": -0.2505,
+      "llama-3.1-70b": -0.119
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Significant improvement needed in task completion"
+    ],
+    "strengths": [
+      "Strong policy compliance"
+    ],
+    "weaknesses": [
+      "Low overall success rate",
+      "Tool selection needs improvement",
+      "Weak performance in airline domain"
+    ],
+    "recommendations": [
+      "Focus on improving tool selection accuracy",
+      "Improve parameter extraction from context"
+    ],
+    "timestamp": "2026-02-14T20:02:58.886834"
+  }
+}

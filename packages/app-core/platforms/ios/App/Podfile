@@ -1,0 +1,36 @@
+require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+
+platform :ios, '15.0'
+use_frameworks!
+
+# workaround to avoid Xcode caching of Pods that requires
+# Product -> Clean Build Folder after new Cordova plugins installed
+# Requires CocoaPods 1.6 or newer
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
+  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'
+  pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
+  pod 'ElizaosCapacitorAgent', :path => '../../../../eliza/packages/native-plugins/agent'
+  pod 'ElizaosCapacitorCamera', :path => '../../../../eliza/packages/native-plugins/camera'
+  pod 'ElizaosCapacitorCanvas', :path => '../../../../eliza/packages/native-plugins/canvas'
+  pod 'ElizaosCapacitorGateway', :path => '../../../../eliza/packages/native-plugins/gateway'
+  pod 'ElizaosCapacitorLocation', :path => '../../../../eliza/packages/native-plugins/location'
+  pod 'ElizaosCapacitorMobileSignals', :path => '../../../../eliza/packages/native-plugins/mobile-signals'
+  pod 'ElizaosCapacitorScreencapture', :path => '../../../../eliza/packages/native-plugins/screencapture'
+  pod 'ElizaosCapacitorSwabble', :path => '../../../../eliza/packages/native-plugins/swabble'
+  pod 'ElizaosCapacitorTalkmode', :path => '../../../../eliza/packages/native-plugins/talkmode'
+  pod 'ElizaosCapacitorWebsiteblocker', :path => '../../../../eliza/packages/native-plugins/websiteblocker'
+end
+
+target 'App' do
+  capacitor_pods
+  # Add your Pods here
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+end

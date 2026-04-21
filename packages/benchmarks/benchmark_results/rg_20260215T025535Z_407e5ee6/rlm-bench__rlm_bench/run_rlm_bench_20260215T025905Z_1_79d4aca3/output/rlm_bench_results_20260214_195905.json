@@ -1,0 +1,377 @@
+{
+  "config": {
+    "output_dir": "/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T025535Z_407e5ee6/rlm-bench__rlm_bench/run_rlm_bench_20260215T025905Z_1_79d4aca3/output",
+    "context_lengths": [
+      1000,
+      10000
+    ],
+    "rlm_backend": "gemini",
+    "use_dual_model": false
+  },
+  "metrics": {
+    "total_tasks": 18,
+    "passed_tasks": 5,
+    "overall_accuracy": 0.2777777777777778,
+    "avg_semantic_similarity": 0.2962962962962963,
+    "type_accuracies": {
+      "s_niah": 0.3,
+      "s_niah_multi": 0.0,
+      "oolong": 1.0,
+      "oolong_pairs": 0.0
+    },
+    "length_accuracies": {
+      "1000": 0.3333333333333333,
+      "10000": 0.2222222222222222
+    },
+    "s_niah_by_length": {
+      "1K": 0.4,
+      "10K": 0.2
+    },
+    "oolong_accuracy": 1.0,
+    "oolong_pairs_accuracy": 0.0,
+    "total_cost_usd": 0.10069299999999999,
+    "avg_latency_ms": 0.5659924613104926,
+    "avg_iterations": 1.0
+  },
+  "results": [
+    {
+      "task_id": "s_niah_85ad9759",
+      "bench_type": "s_niah",
+      "context_length": 1014,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001014,
+      "latency_ms": 0.2968311309814453,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_740f94af",
+      "bench_type": "s_niah",
+      "context_length": 1045,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001045,
+      "latency_ms": 0.09202957153320312,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_be276354",
+      "bench_type": "s_niah",
+      "context_length": 1037,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001037,
+      "latency_ms": 0.026702880859375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_e716e664",
+      "bench_type": "s_niah",
+      "context_length": 1061,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.0010609999999999999,
+      "latency_ms": 0.1850128173828125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_71303ed8",
+      "bench_type": "s_niah",
+      "context_length": 1075,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001075,
+      "latency_ms": 0.14495849609375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_469ebeee",
+      "bench_type": "s_niah_multi",
+      "context_length": 1084,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001084,
+      "latency_ms": 0.052928924560546875,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_230515aa",
+      "bench_type": "s_niah_multi",
+      "context_length": 1103,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001103,
+      "latency_ms": 0.027894973754882812,
+      "error": null
+    },
+    {
+      "task_id": "oolong_e6606d02",
+      "bench_type": "oolong",
+      "context_length": 1238,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001238,
+      "latency_ms": 0.23484230041503906,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_4a937322",
+      "bench_type": "oolong_pairs",
+      "context_length": 1166,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.001166,
+      "latency_ms": 0.2460479736328125,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_440c70c3",
+      "bench_type": "s_niah",
+      "context_length": 10022,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010022,
+      "latency_ms": 1.4920234680175781,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_bda61370",
+      "bench_type": "s_niah",
+      "context_length": 10070,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010069999999999999,
+      "latency_ms": 0.4940032958984375,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_22c4ed4c",
+      "bench_type": "s_niah",
+      "context_length": 10021,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010021,
+      "latency_ms": 0.8387565612792969,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_f4c3ee10",
+      "bench_type": "s_niah",
+      "context_length": 10097,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010097,
+      "latency_ms": 1.0900497436523438,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_85334eff",
+      "bench_type": "s_niah",
+      "context_length": 10081,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010081,
+      "latency_ms": 0.4851818084716797,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_392d7937",
+      "bench_type": "s_niah_multi",
+      "context_length": 10098,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010098,
+      "latency_ms": 0.2491474151611328,
+      "error": null
+    },
+    {
+      "task_id": "s_niah_83953a80",
+      "bench_type": "s_niah_multi",
+      "context_length": 10104,
+      "is_correct": false,
+      "semantic_similarity": 0.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010104,
+      "latency_ms": 0.7376670837402344,
+      "error": null
+    },
+    {
+      "task_id": "oolong_56122731",
+      "bench_type": "oolong",
+      "context_length": 10275,
+      "is_correct": true,
+      "semantic_similarity": 1.0,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010275,
+      "latency_ms": 1.641988754272461,
+      "error": null
+    },
+    {
+      "task_id": "oolong_pairs_0b9a4a8c",
+      "bench_type": "oolong_pairs",
+      "context_length": 10102,
+      "is_correct": false,
+      "semantic_similarity": 0.16666666666666666,
+      "iterations": 1,
+      "strategies_used": [
+        "peek",
+        "grep"
+      ],
+      "cost_usd": 0.010102,
+      "latency_ms": 1.851797103881836,
+      "error": null
+    }
+  ],
+  "paper_comparison": {
+    "S-NIAH": {
+      "this_run": {
+        "1K": 0.4,
+        "10K": 0.2
+      },
+      "RLM (Gemini 2.0 Flash)": {
+        "1k": 1.0,
+        "10k": 1.0,
+        "100k": 0.98,
+        "1M": 0.95,
+        "10M": 0.92,
+        "100M": 0.88
+      },
+      "Gemini 2.0 Flash (direct)": {
+        "1k": 1.0,
+        "10k": 0.98,
+        "100k": 0.85,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      },
+      "GPT-5 (direct)": {
+        "1k": 1.0,
+        "10k": 0.99,
+        "100k": 0.92,
+        "1M": 0.0,
+        "10M": 0.0,
+        "100M": 0.0
+      }
+    },
+    "OOLONG": {
+      "this_run": {
+        "oolong_retrieval": 1.0,
+        "oolong_pairs": 0.0
+      },
+      "RLM (Gemini 2.0 Flash)": {
+        "oolong_retrieval": 0.85,
+        "oolong_qa": 0.78,
+        "oolong_pairs": 0.72
+      },
+      "Gemini 2.0 Flash (direct)": {
+        "oolong_retrieval": 0.65,
+        "oolong_qa": 0.58,
+        "oolong_pairs": 0.52
+      }
+    }
+  },
+  "cost_analysis": {
+    "total_cost_usd": 0.10069299999999999,
+    "avg_cost_per_task_usd": 0.005594055555555555,
+    "cost_per_1k_tokens_usd": 0.0009911411219276918,
+    "accuracy_per_dollar": 2.7586602621610026
+  },
+  "summary": {
+    "title": "RLM Benchmark Results",
+    "accuracy": "27.8%",
+    "findings": [
+      "Overall accuracy: 27.8% (5/18 tasks)",
+      "S-NIAH by length: 10K: 20.0%, 1K: 40.0%",
+      "OOLONG accuracy: 100.0%, OOLONG-Pairs: 0.0%",
+      "Most used strategies: peek, grep",
+      "Total cost: $0.1007, Avg: $0.005594/task"
+    ]
+  },
+  "metadata": {
+    "mode": "stub",
+    "total_tasks": 18
+  }
+}

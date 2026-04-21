@@ -25,6 +25,7 @@ import type {
 import { ModelType } from "../types/model.ts";
 import { Service } from "../types/service.ts";
 import type { State } from "../types/state.ts";
+import { BatchProcessor } from "../utils/batch-queue.ts";
 import { BM25Index } from "./bm25.ts";
 import { cosineSimilarity } from "./cosine-similarity.ts";
 
@@ -273,12 +274,15 @@ export class ActionFilterService extends Service {
 		service.embeddingAvailable = !!embeddingModel;
 
 		if (!service.embeddingAvailable) {
-			logger.warn(
+			logger.error(
 				{
 					src: "service:action-filter",
 					agentId: runtime.agentId,
 				},
-				"No TEXT_EMBEDDING model registered — ActionFilterService will use BM25-only mode",
+				"No TEXT_EMBEDDING model registered — ActionFilterService cannot start",
+			);
+			throw new Error(
+				"ActionFilterService requires a registered TEXT_EMBEDDING model",
 			);
 		}
 
@@ -328,42 +332,46 @@ export class ActionFilterService extends Service {
 			}
 
 			if (this.embeddingAvailable) {
-				// Embed in batches to avoid flooding the model
+				// `utils/batch-queue` BatchProcessor only (no TaskDrain): index build is synchronous;
+				// shares retry/concurrency primitives with embedding + batcher drains (see `batch-queue.ts`).
 				const batchSize = 10;
-				for (let i = 0; i < actions.length; i += batchSize) {
-					const batch = actions.slice(i, i + batchSize);
-					const embedPromises = batch.map(async (action) => {
-						try {
-							const text = getActionEmbeddingText(action);
-							const embedding: number[] = await runtime.useModel(
-								ModelType.TEXT_EMBEDDING,
-								{ text },
-							);
-							if (isValidEmbedding(embedding)) {
-								this.actionEmbeddings.set(action.name, embedding);
-							} else {
-								logger.warn(
-									{
-										src: "service:action-filter",
-										action: action.name,
-									},
-									"Embedding model returned invalid vector (NaN/empty) — action available via BM25 only",
-								);
-								this.metrics.embedFailureCount++;
-							}
-						} catch (err) {
+				const processor = new BatchProcessor<Action>({
+					maxParallel: 10,
+					maxRetriesAfterFailure: 2,
+					process: async (action) => {
+						const text = getActionEmbeddingText(action);
+						const embedding: number[] = await runtime.useModel(
+							ModelType.TEXT_EMBEDDING,
+							{ text },
+						);
+						if (isValidEmbedding(embedding)) {
+							this.actionEmbeddings.set(action.name, embedding);
+						} else {
 							logger.warn(
 								{
 									src: "service:action-filter",
 									action: action.name,
-									error: err instanceof Error ? err.message : String(err),
 								},
-								"Failed to embed action — it will still be available via BM25",
+								"Embedding model returned invalid vector (NaN/empty) — action available via BM25 only",
 							);
 							this.metrics.embedFailureCount++;
 						}
-					});
-					await Promise.all(embedPromises);
+					},
+					onExhausted: (action, err) => {
+						logger.warn(
+							{
+								src: "service:action-filter",
+								action: action.name,
+								error: err.message,
+							},
+							"Failed to embed action after retries — it will still be available via BM25",
+						);
+						this.metrics.embedFailureCount++;
+					},
+				});
+				for (let i = 0; i < actions.length; i += batchSize) {
+					const batch = actions.slice(i, i + batchSize);
+					await processor.processBatch(batch);
 				}
 			}
 		}
@@ -412,9 +420,14 @@ export class ActionFilterService extends Service {
 				);
 				if (isValidEmbedding(embedding)) {
 					this.actionEmbeddings.set(action.name, embedding);
+				} else {
+					this.metrics.embedFailureCount++;
+					throw new Error(
+						`Embedding model returned an invalid vector for action ${action.name}`,
+					);
 				}
 			} catch (err) {
-				logger.warn(
+				logger.error(
 					{
 						src: "service:action-filter",
 						action: action.name,
@@ -423,6 +436,7 @@ export class ActionFilterService extends Service {
 					"Failed to embed new action",
 				);
 				this.metrics.embedFailureCount++;
+				throw err;
 			}
 		}
 
@@ -534,16 +548,15 @@ export class ActionFilterService extends Service {
 
 			return result;
 		} catch (err) {
-			// Complete failure → return all actions (graceful degradation)
 			logger.error(
 				{
 					src: "service:action-filter",
 					error: err instanceof Error ? err.message : String(err),
 				},
-				"Action filtering failed — returning all actions",
+				"Action filtering failed",
 			);
 			this.metrics.fullFallbacks++;
-			return allActions;
+			throw err;
 		}
 	}
 

@@ -1,0 +1,21 @@
+{
+  "name": "@elizaos/app-form",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Eliza app-form: conversational forms as guardrails for guided user journeys (lazy-loaded native app plugin).",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "uuid": "^13.0.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {},
+    "description": "Conversational forms for structured data collection."
+  }
+}

@@ -1,0 +1,147 @@
+:root {
+  --bg: #f8faf8;
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #d9e2d8;
+  --panel: #ffffff;
+  --accent: #0f766e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 5% 10%, rgba(15, 118, 110, 0.12), transparent 45%),
+    radial-gradient(circle at 95% 0%, rgba(22, 101, 52, 0.12), transparent 40%),
+    var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.hero p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.cards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 18px 0;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.card .k {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card .v {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+select,
+input {
+  min-width: 140px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 7px;
+  vertical-align: top;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: #f0f7f0;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+tr:hover td {
+  background: #f9fcf9;
+}
+
+.status-succeeded {
+  color: #166534;
+  font-weight: 600;
+}
+
+.status-failed {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.status-skipped,
+.status-incompatible {
+  color: #92400e;
+  font-weight: 600;
+}

@@ -1,0 +1,148 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "python",
+  "profile": "elevenlabs",
+  "timestamp": "1771143567658",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 737.732,
+      "responseTtftMs": 2793.019,
+      "responseTotalMs": 2793.05,
+      "voiceGenerationMs": 5017.971,
+      "endToEndMs": 14357.862,
+      "voiceFirstTokenUncachedMs": 1610.739,
+      "voiceFirstTokenCachedMs": 1506.198,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 2691.893,
+      "ttsCachedPipelineMs": 4198.092,
+      "inContext": {
+        "transcript": "Hello there, this is a short voice benchmark sample.",
+        "benchmarkContext": "",
+        "prompt": "Hello there, this is a short voice benchmark sample.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a sample interaction for the VoicebenchAgent:\\nUser: What\u2019s the average latency for my current voice model?\\nVoicebenchAgent: The current average latency is 45\u202fms. Would you like a detailed breakdown?\\nUser: Yes, please.\\nVoicebenchAgent: Sure. Breakdown:\\n- Network RTT...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 603996,
+      "ttsFirstSentenceUncachedBytes": 187290,
+      "ttsFirstSentenceCachedBytes": 180603,
+      "ttsRemainderBytes": 379551,
+      "ttsCachedPipelineBytes": 560154,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a sample interaction for the VoicebenchAgent:\\nUser: What\u2019s the average latency for my current voice model?\\nVoicebenchAgent: The current average latency is 45\u202fms.",
+        "remainder": "Would you like a detailed breakdown?\\nUser: Yes, please.\\nVoicebenchAgent: Sure. Breakdown:\\n- Network RTT: 12\u202fms\\n- Processing time: 33\u202fms\\nTotal: 45\u202fms. Let me know if you\u2019d like to tweak any parameters.\\n\\nIn this exchange the agent uses the REPLY action to respond directly..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/elevenlabs/greeting_short.mp3",
+      "iteration": 1,
+      "profile": "elevenlabs",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 736.96,
+      "responseTtftMs": 1667.327,
+      "responseTotalMs": 1667.382,
+      "voiceGenerationMs": 7250.156,
+      "endToEndMs": 18581.87,
+      "voiceFirstTokenUncachedMs": 1525.572,
+      "voiceFirstTokenCachedMs": 1556.508,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5845.182,
+      "ttsCachedPipelineMs": 7401.69,
+      "inContext": {
+        "transcript": "Hello there. This is a short voice benchmark sample. (background music)",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Hello there. This is a short voice benchmark sample. (background music)\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here\u2019s a short example of a conversation with VoicebenchAgent (fast, precise) and the actions it would take:\n\n**User:** Hi, I need to benchmark the latency of my new voice model.  \n**VoicebenchAgent:** Sure, I can help with that. Please provide the audio sample URL and the tar...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 899075,
+      "ttsFirstSentenceUncachedBytes": 181857,
+      "ttsFirstSentenceCachedBytes": 210278,
+      "ttsRemainderBytes": 760730,
+      "ttsCachedPipelineBytes": 971008,
+      "responseSegmentation": {
+        "firstSentence": "Here\u2019s a short example of a conversation with VoicebenchAgent (fast, precise) and the actions it would take:\n\n**User:** Hi, I need to benchmark the latency of my new voice model.",
+        "remainder": "**VoicebenchAgent:** Sure, I can help with that. Please provide the audio sample URL and the target device. (REPLY)\n\n**User:** The sample is https://example.com/audio.wav and I\u2019m testing on an iPhone 15.  \n**VoicebenchAgent:** Got it. I\u2019ll run the benchmark now and report the ..."
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 737.732,
+      "avgResponseTtftMs": 2793.019,
+      "avgResponseTotalMs": 2793.05,
+      "avgVoiceGenerationMs": 5017.971,
+      "avgEndToEndMs": 14357.862,
+      "avgVoiceFirstTokenUncachedMs": 1610.739,
+      "avgVoiceFirstTokenCachedMs": 1506.198,
+      "avgTtsCachedPipelineMs": 4198.092,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 736.96,
+      "avgResponseTtftMs": 1667.327,
+      "avgResponseTotalMs": 1667.382,
+      "avgVoiceGenerationMs": 7250.156,
+      "avgEndToEndMs": 18581.87,
+      "avgVoiceFirstTokenUncachedMs": 1525.572,
+      "avgVoiceFirstTokenCachedMs": 1556.508,
+      "avgTtsCachedPipelineMs": 7401.69,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    }
+  }
+}

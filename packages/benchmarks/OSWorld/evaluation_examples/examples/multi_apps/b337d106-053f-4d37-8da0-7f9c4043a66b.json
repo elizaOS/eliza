@@ -1,0 +1,88 @@
+{
+  "id": "b337d106-053f-4d37-8da0-7f9c4043a66b",
+  "snapshot": "os",
+  "instruction": "Recently, I've been exploring the use of the Vim editor for code editing. However, the default settings don't display line numbers in Vim editor. Please search the Internet for a tutorial on adding absolute line numbers in Vim and setting it as default for my local Vim.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5); pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5); pyautogui.hotkey('ctrl', 'alt', 't'); time.sleep(0.5)"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Terminal"
+      }
+    }
+  ],
+  "trajectory": "trajectories/b337d106-053f-4d37-8da0-7f9c4043a66b",
+  "related_apps": [
+    "os",
+    "chrome"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/b337d106-053f-4d37-8da0-7f9c4043a66b/eval.sh",
+              "path": "eval.sh"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": "chmod +x eval.sh",
+          "shell": true
+        }
+      }
+    ],
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_line",
+      "command": "bash eval.sh",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "The File Has Set Number!"
+        ],
+        "exclude": []
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

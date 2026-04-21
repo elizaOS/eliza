@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/app-babylon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Eliza app integration for Babylon prediction market game.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "keywords": [
+    "game",
+    "prediction-market",
+    "babylon",
+    "elizaos",
+    "eliza"
+  ],
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

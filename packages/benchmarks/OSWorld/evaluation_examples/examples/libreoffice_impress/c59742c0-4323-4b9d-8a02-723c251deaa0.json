@@ -1,0 +1,88 @@
+{
+  "id": "c59742c0-4323-4b9d-8a02-723c251deaa0",
+  "snapshot": "libreoffice_impress",
+  "instruction": "I am making PPT about the history of baseball. I want to add an introduction audio named \"Baseball.mp3\" on the Desktop into my PPT, but I do not know how. Could you help me add audio into my presentation file?",
+  "source": "https://www.reddit.com/r/libreoffice/comments/17lcdrp/audio_not_supported_in_libreoffice_impress/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/c59742c0-4323-4b9d-8a02-723c251deaa0/Mady_and_Mia_Baseball.pptx",
+            "path": "/home/user/Desktop/Mady_and_Mia_Baseball.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/c59742c0-4323-4b9d-8a02-723c251deaa0/Baseball.mp3",
+            "path": "/home/user/Desktop/Baseball.mp3"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Mady_and_Mia_Baseball.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Mady_and_Mia_Baseball.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_audios",
+    "result": {
+      "type": "audio_in_slide",
+      "ppt_file_path": "/home/user/Desktop/Mady_and_Mia_Baseball.pptx",
+      "slide_index": 0,
+      "dest": "Baseball.mp3"
+    },
+    "expected": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/Baseball.mp3",
+      "dest": "Baseball_to_be_placed.mp3"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

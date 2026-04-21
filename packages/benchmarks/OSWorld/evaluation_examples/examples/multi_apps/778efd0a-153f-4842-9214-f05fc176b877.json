@@ -1,0 +1,89 @@
+{
+  "id": "778efd0a-153f-4842-9214-f05fc176b877",
+  "snapshot": "vlc",
+  "instruction": "I'm using libreoffice impress to write slideshows. I found that the video being played by VLC media player had a good soundtrack. Please extract the audio to planet.wav and use it as background music for this slideshow.",
+  "source": "https://researchguides.case.edu/c.php?g=1286426",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/778efd0a-153f-4842-9214-f05fc176b877/Minimalist_Business_Slides.pptx",
+            "path": "/home/user/Desktop/Minimalist_Business_Slides.pptx"
+          },
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/778efd0a-153f-4842-9214-f05fc176b877/planet.mp4",
+            "path": "/home/user/Desktop/planet.mp4"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Minimalist_Business_Slides.pptx"
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show /home/user/Desktop/planet.mp4",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress",
+    "vlc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Minimalist_Business_Slides.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_audios",
+    "result": {
+      "type": "audio_in_slide",
+      "ppt_file_path": "/home/user/Desktop/Minimalist_Business_Slides.pptx",
+      "slide_index": 0,
+      "dest": "planet.wav"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/778efd0a-153f-4842-9214-f05fc176b877/planet.wav",
+      "dest": "gold_planet.wav"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

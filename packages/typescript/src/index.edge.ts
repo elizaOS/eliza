@@ -9,7 +9,6 @@
  */
 
 export * from "./actions";
-export * from "./basic-capabilities/index";
 export * from "./character";
 export * from "./character-utils";
 export * from "./connection";
@@ -28,6 +27,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./logger";
@@ -57,7 +57,7 @@ export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/tool-policy";
-export * from "./services/trajectoryLogger";
+export * from "./services/trajectories";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
@@ -66,7 +66,17 @@ export * from "./types/agentEvent";
 export * from "./types/message-service";
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
+// Keep proto JSON helpers as explicit runtime exports so edge/plugin bundles
+// don't depend on Bun preserving the ./types barrel namespace export.
+export * as proto from "./types/proto";
+export {
+	fromJson,
+	type JsonObject,
+	type JsonValue,
+	toJson,
+} from "./types/proto";
 export * from "./utils";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/channel-utils";
 export * from "./utils/environment";

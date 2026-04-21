@@ -1,0 +1,103 @@
+{
+  "id": "4d117223-a354-47fb-8b45-62ab1390a95f",
+  "snapshot": "os",
+  "instruction": "Change the permission of all regular files under current directory tree to 644",
+  "source": "NL2Bash",
+  "trajectory": "trajectories/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/4d117223-a354-47fb-8b45-62ab1390a95f/setup.sh",
+            "path": "setup.sh"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "chmod +x setup.sh",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "./setup.sh",
+        "shell": true
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5); pyautogui.click({SCREEN_WIDTH_HALF}, {SCREEN_HEIGHT_HALF}); time.sleep(0.5); pyautogui.hotkey('ctrl', 'alt', 't'); time.sleep(0.5)"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Terminal"
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; time.sleep(0.5); pyautogui.write('cd testDir'); time.sleep(0.5); pyautogui.press('enter'); time.sleep(0.5); pyautogui.write('clear'); time.sleep(0.5); pyautogui.press('enter')"
+        ]
+      }
+    }
+  ],
+  "related_apps": [
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "download",
+        "parameters": {
+          "files": [
+            {
+              "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/os/4d117223-a354-47fb-8b45-62ab1390a95f/eval.sh",
+              "path": "eval.sh"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": "chmod +x eval.sh",
+          "shell": true
+        }
+      }
+    ],
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_line",
+      "command": "bash eval.sh",
+      "shell": true
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [
+          "All files have the correct permissions."
+        ],
+        "exclude": []
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

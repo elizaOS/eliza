@@ -1,0 +1,77 @@
+{
+  "id": "873cafdd-a581-47f6-8b33-b9696ddb7b05",
+  "snapshot": "multiapps",
+  "instruction": "My friend is a \"plugin guru\" and he recommended some good plug-ins to me. Please go to the Chrome plug-in store and install all the listed plug-ins.",
+  "source": "author",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/873cafdd-a581-47f6-8b33-b9696ddb7b05/Recommended%20plugin%20list.docx",
+            "path": "/home/user/Desktop/Recommended_plugin_list.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/Recommended_plugin_list.docx"
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Recommended_plugin_list.docx - LibreOffice Writer"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "os",
+    "chrome",
+    "Writer"
+  ],
+  "evaluator": {
+    "func": "is_expected_installed_extensions",
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "expected": [
+          "Zoom Chrome Extension",
+          "Speechify — Voice AI Assistant",
+          "React Developer Tools",
+          "Momentum",
+          "Google Translate"
+        ]
+      }
+    },
+    "result": {
+      "type": "find_installed_extension_name"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

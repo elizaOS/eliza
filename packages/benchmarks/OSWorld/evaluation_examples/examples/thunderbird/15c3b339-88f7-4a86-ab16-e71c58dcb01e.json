@@ -1,0 +1,78 @@
+{
+  "id": "15c3b339-88f7-4a86-ab16-e71c58dcb01e",
+  "snapshot": "thunderbird",
+  "instruction": "Help me access my outlook account with address \"anonym-x2024@outlook.com\" and password 'password' (without ') in Thunderbird. Just fill in the information and stay on that page. I will check it manually later.",
+  "source": "https://www.wikihow.com/Access-Gmail-With-Mozilla-Thunderbird",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/thunderbird/15c3b339-88f7-4a86-ab16-e71c58dcb01e/thunderbird-profile-blank.tar.gz",
+            "path": "/home/user/Desktop/thunderbird-profile-blank.tar.gz"
+          }
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "tar",
+          "-xzv",
+          "-f",
+          "/home/user/Desktop/thunderbird-profile-blank.tar.gz",
+          "-C",
+          "/home/user/"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "/usr/bin/thunderbird"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "thunderbird"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 1.0
+        }
+      }
+    ],
+    "func": "check_accessibility_tree",
+    "result": {
+      "type": "accessibility_tree"
+    },
+    "expected": {
+      "type": "rule",
+      "rules": [
+        {
+          "xpath": "//application[@name='Thunderbird']//*[contains(text(), 'Anonym Tester') or contains(@name, 'Anonym Tester')]"
+        },
+        {
+          "xpath": "//application[@name='Thunderbird']//*[contains(text(), 'anonym-x2024@outlook.com') or contains(@name, 'anonym-x2024@outlook.com')]"
+        },
+        {
+          "xpath": "//application[@name='Thunderbird']//*[contains(@name, 'password') or contains(@name, 'Password')]"
+        },
+        {
+          "xpath": "//application[@name='Thunderbird']//*[contains(@name, 'IMAP') or contains(@name, 'imap') or contains(text(), 'IMAP') or contains(text(), 'imap')]"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

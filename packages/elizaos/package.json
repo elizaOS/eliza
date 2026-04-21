@@ -1,7 +1,7 @@
 {
   "name": "elizaos",
-  "version": "2.0.0-alpha.109",
-  "description": "elizaOS CLI - Create and manage elizaOS examples",
+  "version": "2.0.0-alpha.223",
+  "description": "elizaOS CLI - Create and upgrade elizaOS project templates",
   "type": "module",
   "bin": {
     "elizaos": "./dist/cli.js"
@@ -18,8 +18,8 @@
   },
   "files": [
     "dist",
-    "examples",
-    "examples-manifest.json",
+    "templates",
+    "templates-manifest.json",
     "README.md"
   ],
   "scripts": {
@@ -29,16 +29,17 @@
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:packaged": "node ./scripts/packaged-smoke.mjs",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@clack/prompts": "^0.11.0",
+    "@clack/prompts": "^1.0.0",
     "commander": "^12.1.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.17"
   },
   "keywords": [

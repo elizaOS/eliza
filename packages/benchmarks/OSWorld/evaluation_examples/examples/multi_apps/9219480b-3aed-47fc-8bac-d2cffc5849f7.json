@@ -1,0 +1,83 @@
+{
+  "id": "9219480b-3aed-47fc-8bac-d2cffc5849f7",
+  "snapshot": "vs_code",
+  "instruction": "Hi, I recently playing with developing a small python-based tetris game. While I have finished most of the part, something is wrong under some cases when I press up to rotate, the whole program will crash, please run the code for me and fix the bugs of code.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/tetris"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/tetris/block.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9219480b-3aed-47fc-8bac-d2cffc5849f7/block.py"
+          },
+          {
+            "path": "/home/user/Desktop/tetris/main.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9219480b-3aed-47fc-8bac-d2cffc5849f7/main.py"
+          },
+          {
+            "path": "/home/user/Desktop/tetris/settings.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9219480b-3aed-47fc-8bac-d2cffc5849f7/settings.py"
+          },
+          {
+            "path": "/home/user/Desktop/tetris/tetris.py",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9219480b-3aed-47fc-8bac-d2cffc5849f7/tetris.py"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code",
+          "/home/user/Desktop/tetris"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/9219480b-3aed-47fc-8bac-d2cffc5849f7",
+  "related_apps": [
+    "vs_code",
+    "os"
+  ],
+  "evaluator": {
+    "postconfig": [],
+    "func": "check_python_file_by_test_suite",
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Desktop/tetris/block.py",
+        "/home/user/Desktop/tetris/main.py",
+        "/home/user/Desktop/tetris/settings.py",
+        "/home/user/Desktop/tetris/tetris.py"
+      ],
+      "dest": [
+        "block.py",
+        "main.py",
+        "settings.py",
+        "tetris.py"
+      ],
+      "multi": true
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/9219480b-3aed-47fc-8bac-d2cffc5849f7/test.py",
+      "dest": "test_suite.py"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

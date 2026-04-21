@@ -1,0 +1,115 @@
+{
+  "id": "0c825995-5b70-4526-b663-113f4c999dd2",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I'm working on a comprehensive report for our environmental policy review meeting next week. I need to integrate key insights from an important document, which is a guidebook on the Green Economy, where I'm particularly interested in the 'Introduction' section. Could you extract this section and compile them into a new Google Doc named 'environment_policy_report (draft)' under /environment_policy folder? This will significantly aid in our discussion on aligning our environmental policies with sustainable and green economic practices. Thanks!",
+  "source": "authors",
+  "config": [
+    {
+      "type": "googledrive",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+        "operation": [
+          "delete"
+        ],
+        "args": [
+          {
+            "query": "title = 'environment_policy_report (draft).doc' or title = 'environment_policy_report (draft).docx' or title = 'environment_policy_report (draft)'",
+            "trash": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "login",
+      "parameters": {
+        "settings_file": "evaluation_examples/settings/google/settings.json",
+        "platform": "googledrive"
+      }
+    },
+    {
+      "type": "command",
+      "parameters": {
+        "command": [
+          "mkdir",
+          "-p",
+          "/home/user/Desktop/wwf"
+        ]
+      }
+    },
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "path": "/home/user/Desktop/wwf/lpr_living_planet_report_2016.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/lpr_living_planet_report_2016.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/wwf/279c656a32_ENGLISH_FULL.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/279c656a32_ENGLISH_FULL.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/wwf/7g37j96psg_WWF_AR2021_spreads.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/7g37j96psg_WWF_AR2021_spreads.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/GE Guidebook.pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/GE%20Guidebook.pdf"
+          },
+          {
+            "path": "/home/user/Desktop/assessing_and_reporting_water_quality(q&a).pdf",
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/assessing_and_reporting_water_quality%28q%26a%29.pdf"
+          }
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/0c825995-5b70-4526-b663-113f4c999dd2",
+  "related_apps": [
+    "libreoffice_calc",
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "func": "compare_docx_files",
+    "result": {
+      "type": "googledrive_file",
+      "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
+      "path": [
+        "environment_policy",
+        "environment_policy_report (draft)"
+      ],
+      "dest": "environment_policy_report (draft).docx"
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/0c825995-5b70-4526-b663-113f4c999dd2/environment_policy_report%20%28draft%29_gold.docx",
+      "dest": "environment_policy_report (draft)_gold.docx"
+    },
+    "options": {
+      "content_only": true
+    }
+  },
+  "proxy": false,
+  "fixed_ip": true,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,229 @@
+{
+  "model": "qwen/qwen3-32b",
+  "run_index": 0,
+  "run_id": "evm_26-02-08_092904_72e06a5d",
+  "chain": "general",
+  "start_time": "2026-02-08T09:29:04.025376",
+  "environment_config": null,
+  "messages": [
+    {
+      "index": 1,
+      "timestamp": "2026-02-08T09:29:05.973218",
+      "duration": 0.89903,
+      "type": "deterministic",
+      "template": "eth_transfer",
+      "reward": 2,
+      "total_reward": 2,
+      "success": true
+    },
+    {
+      "index": 2,
+      "timestamp": "2026-02-08T09:29:06.873299",
+      "duration": 0.782065,
+      "type": "deterministic",
+      "template": "deploy_erc20",
+      "reward": 5,
+      "total_reward": 7,
+      "success": true
+    },
+    {
+      "index": 3,
+      "timestamp": "2026-02-08T09:29:07.655851",
+      "duration": 2.270739,
+      "type": "deterministic",
+      "template": "erc20_advanced",
+      "reward": 11,
+      "total_reward": 18,
+      "success": true
+    },
+    {
+      "index": 4,
+      "timestamp": "2026-02-08T09:29:09.927301",
+      "duration": 1.171796,
+      "type": "deterministic",
+      "template": "deploy_nft",
+      "reward": 7,
+      "total_reward": 25,
+      "success": true
+    },
+    {
+      "index": 5,
+      "timestamp": "2026-02-08T09:29:11.099477",
+      "duration": 1.918568,
+      "type": "deterministic",
+      "template": "deploy_erc1155",
+      "reward": 8,
+      "total_reward": 33,
+      "success": true
+    },
+    {
+      "index": 6,
+      "timestamp": "2026-02-08T09:29:13.019147",
+      "duration": 2.324558,
+      "type": "deterministic",
+      "template": "precompile_batch1",
+      "reward": 3,
+      "total_reward": 36,
+      "success": true
+    },
+    {
+      "index": 7,
+      "timestamp": "2026-02-08T09:29:15.344044",
+      "duration": 2.744967,
+      "type": "deterministic",
+      "template": "precompile_batch2",
+      "reward": 3,
+      "total_reward": 39,
+      "success": true
+    },
+    {
+      "index": 8,
+      "timestamp": "2026-02-08T09:29:18.089469",
+      "duration": 1.52819,
+      "type": "deterministic",
+      "template": "precompile_batch3",
+      "reward": 2,
+      "total_reward": 41,
+      "success": true
+    },
+    {
+      "index": 9,
+      "timestamp": "2026-02-08T09:29:19.618048",
+      "duration": 1.21487,
+      "type": "deterministic",
+      "template": "deploy_weth",
+      "reward": 5,
+      "total_reward": 46,
+      "success": true
+    },
+    {
+      "index": 10,
+      "timestamp": "2026-02-08T09:29:20.838661",
+      "duration": 0.559858,
+      "type": "deterministic",
+      "template": "precompile_ecpairing",
+      "reward": 1,
+      "total_reward": 47,
+      "success": true
+    }
+  ],
+  "cumulative_rewards": [
+    2,
+    7,
+    18,
+    25,
+    33,
+    36,
+    39,
+    41,
+    46,
+    47
+  ],
+  "contracts_discovered": {
+    "0x000000000000000000000000000000000000dead": 1,
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": 1,
+    "0x0000000000000000000000000000000000000000": 2,
+    "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": 2,
+    "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853": 3,
+    "0x3aa5ebb10dc797cac828524e59a333d0a371443c": 4,
+    "0xc5a5c42992decbae36851359345fe25997f5c42d": 5,
+    "0x0000000000000000000000000000000000000004": 6,
+    "0x0000000000000000000000000000000000000002": 6,
+    "0x0000000000000000000000000000000000000003": 6,
+    "0x0000000000000000000000000000000000000001": 7,
+    "0x0000000000000000000000000000000000000006": 7,
+    "0x0000000000000000000000000000000000000007": 7,
+    "0x0000000000000000000000000000000000000005": 8,
+    "0x0000000000000000000000000000000000000009": 8,
+    "0x8f86403a4de0bb5791fa46b8e795c547942fe4cf": 9,
+    "0x0000000000000000000000000000000000000008": 10
+  },
+  "selectors_by_contract": {
+    "0x000000000000000000000000000000000000dead": [
+      "0x"
+    ],
+    "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": [
+      "0x"
+    ],
+    "0x0000000000000000000000000000000000000000": [
+      "0x60606040",
+      "0x60806040",
+      "0x60c06040"
+    ],
+    "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0": [
+      "0x095ea7b3",
+      "0x40c10f19",
+      "0x70a08231",
+      "0xa9059cbb"
+    ],
+    "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853": [
+      "0x06fdde03",
+      "0x095ea7b3",
+      "0x18160ddd",
+      "0x23b872dd",
+      "0x313ce567",
+      "0x39509351",
+      "0x40c10f19",
+      "0x42966c68",
+      "0x95d89b41",
+      "0xa457c2d7",
+      "0xdd62ed3e"
+    ],
+    "0x3aa5ebb10dc797cac828524e59a333d0a371443c": [
+      "0x01ffc9a7",
+      "0x095ea7b3",
+      "0x23b872dd",
+      "0x42842e0e",
+      "0x6352211e",
+      "0xa1448194",
+      "0xa22cb465"
+    ],
+    "0xc5a5c42992decbae36851359345fe25997f5c42d": [
+      "0x01ffc9a7",
+      "0x0e89341c",
+      "0x3656eec2",
+      "0x731133e9",
+      "0xa22cb465",
+      "0xe985e9c5",
+      "0xf242432a"
+    ],
+    "0x0000000000000000000000000000000000000004": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000002": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000003": [
+      "0x48656c6c"
+    ],
+    "0x0000000000000000000000000000000000000001": [
+      "0xea83cdcd"
+    ],
+    "0x0000000000000000000000000000000000000006": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000007": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000005": [
+      "0x00000000"
+    ],
+    "0x0000000000000000000000000000000000000009": [
+      "0x0000000c"
+    ],
+    "0x8f86403a4de0bb5791fa46b8e795c547942fe4cf": [
+      "0x095ea7b3",
+      "0x2e1a7d4d",
+      "0xa9059cbb",
+      "0xd0e30db0"
+    ],
+    "0x0000000000000000000000000000000000000008": [
+      "0x"
+    ]
+  },
+  "phase_transitions": [],
+  "errors": [],
+  "end_time": "2026-02-08T09:29:21.399096",
+  "final_reward": 47,
+  "final_contracts": 17
+}

@@ -7,7 +7,7 @@ Provides robust MIME type detection from file buffers, headers, and extensions.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlparse
 
 # Try to import python-magic for MIME sniffing, fallback to filetype
@@ -26,7 +26,7 @@ except ImportError:
     HAS_FILETYPE = False
 
 
-class MediaKind(str, Enum):
+class MediaKind(StrEnum):
     """Media kind categories."""
 
     IMAGE = "image"

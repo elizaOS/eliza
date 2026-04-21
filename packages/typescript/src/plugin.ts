@@ -5,6 +5,29 @@ import { detectEnvironment } from "./utils/environment";
 
 const attemptedInstalls = new Set<string>();
 
+type BunSpawnResult = {
+	exited: Promise<number>;
+};
+
+type BunLike = {
+	spawn(
+		command: string[],
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			stdout?: unknown;
+			stderr?: unknown;
+		},
+	): BunSpawnResult;
+};
+
+function getBunRuntime(): BunLike | null {
+	const bunRuntime = (globalThis as { Bun?: BunLike }).Bun;
+	return bunRuntime && typeof bunRuntime.spawn === "function"
+		? bunRuntime
+		: null;
+}
+
 function isAutoInstallAllowed(): boolean {
 	if (process.env.ELIZA_NO_AUTO_INSTALL === "true") return false;
 	if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === "true") return false;
@@ -33,7 +56,8 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 		}
 		attemptedInstalls.add(pluginName);
 
-		if (typeof Bun === "undefined" || typeof Bun.spawn !== "function") {
+		const bunRuntime = getBunRuntime();
+		if (!bunRuntime) {
 			logger.warn(
 				{ src: "core:plugin", pluginName },
 				"Bun runtime not available, cannot auto-install",
@@ -42,7 +66,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 		}
 
 		try {
-			const check = Bun.spawn(["bun", "--version"], {
+			const check = bunRuntime.spawn(["bun", "--version"], {
 				stdout: "pipe",
 				stderr: "pipe",
 			});
@@ -66,7 +90,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 			{ src: "core:plugin", pluginName },
 			"Auto-installing missing plugin",
 		);
-		const install = Bun.spawn(["bun", "add", pluginName], {
+		const install = bunRuntime.spawn(["bun", "add", pluginName], {
 			cwd: process.cwd(),
 			env: process.env as Record<string, string>,
 			stdout: "inherit",
@@ -181,7 +205,7 @@ export async function loadAndPreparePlugin(
 	let pluginModule: unknown;
 
 	try {
-		pluginModule = await import(pluginName);
+		pluginModule = await import(/* @vite-ignore */ pluginName);
 	} catch (error: unknown) {
 		logger.warn(
 			{ src: "core:plugin", pluginName, error },
@@ -192,7 +216,7 @@ export async function loadAndPreparePlugin(
 			return null;
 		}
 		try {
-			pluginModule = await import(pluginName);
+			pluginModule = await import(/* @vite-ignore */ pluginName);
 		} catch (secondError: unknown) {
 			logger.error(
 				{ src: "core:plugin", pluginName, error: secondError },

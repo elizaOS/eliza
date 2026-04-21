@@ -1,0 +1,42 @@
+{
+  "id": "4bcb1253-a636-4df4-8cb0-a35c04dfef31",
+  "snapshot": "word",
+  "instruction": "Export the current document into PDF, keep the file name",
+  "source": "https://www.libreofficehelp.com/save-export-writer-documents-in-pdf-epub-format/",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/word/4bcb1253-a636-4df4-8cb0-a35c04dfef31/View_Person_Organizational_Summary.docx",
+            "path": "C:\\Users\\User\\View_Person_Organizational_Summary.docx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "C:\\Users\\User\\View_Person_Organizational_Summary.docx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "word"
+  ],
+  "evaluator": {
+    "func": "compare_pdfs",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/word/4bcb1253-a636-4df4-8cb0-a35c04dfef31/View_Person_Organizational_Summary.pdf",
+      "dest": "Constitution_Template_With_Guidelines_Gold.pdf"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "C:\\Users\\User\\View_Person_Organizational_Summary.pdf",
+      "dest": "Constitution_Template_With_Guidelines.pdf"
+    }
+  }
+}

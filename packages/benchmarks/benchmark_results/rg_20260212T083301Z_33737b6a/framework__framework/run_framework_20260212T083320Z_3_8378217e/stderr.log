@@ -1,0 +1,21 @@
+# command: bash run.sh --py-only
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/framework
+# run_id: run_framework_20260212T083320Z_3_8378217e
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/shawwalters/eliza-workspace/benchmarks/framework/python/src/bench.py", line 46, in <module>
+    from elizaos.runtime import AgentRuntime
+  File "/Users/shawwalters/Library/Python/3.14/lib/python/site-packages/elizaos/__init__.py", line 1, in <module>
+    from elizaos.character import parse_character, validate_character_config
+  File "/Users/shawwalters/Library/Python/3.14/lib/python/site-packages/elizaos/character.py", line 10, in <module>
+    from elizaos.types.agent import Character
+  File "/Users/shawwalters/Library/Python/3.14/lib/python/site-packages/elizaos/types/__init__.py", line 3, in <module>
+    from elizaos.types.agent import (
+    ...<6 lines>...
+    )
+  File "/Users/shawwalters/Library/Python/3.14/lib/python/site-packages/elizaos/types/agent.py", line 5, in <module>
+    from elizaos.types.generated.eliza.v1 import agent_pb2
+  File "/Users/shawwalters/Library/Python/3.14/lib/python/site-packages/elizaos/types/generated/eliza/v1/agent_pb2.py", line 25, in <module>
+    from eliza.v1 import primitives_pb2 as eliza_dot_v1_dot_primitives__pb2
+ModuleNotFoundError: No module named 'eliza.v1'

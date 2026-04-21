@@ -1,0 +1,9 @@
+[
+  {"id": "c_001", "name": "Alex Chen", "email": "alex.chen@techcorp.com", "role": "Senior PM", "slack": "alex.chen", "team": "platform"},
+  {"id": "c_002", "name": "Sarah Kim", "email": "sarah.kim@techcorp.com", "role": "Engineering Manager", "slack": "sarah.kim", "team": "platform"},
+  {"id": "c_003", "name": "James Liu", "email": "james.liu@techcorp.com", "role": "Senior Engineer", "slack": "james.liu", "team": "platform"},
+  {"id": "c_004", "name": "Marcus Johnson", "email": "marcus.johnson@techcorp.com", "role": "Backend Engineer", "slack": "marcus.johnson", "team": "platform"},
+  {"id": "c_005", "name": "Priya Patel", "email": "priya.patel@techcorp.com", "role": "Product Designer", "slack": "priya.patel", "team": "platform"},
+  {"id": "c_006", "name": "Tom Anderson", "email": "tom.anderson@techcorp.com", "role": "DevOps Engineer", "slack": "tom.anderson", "team": "platform"},
+  {"id": "c_007", "name": "David Park", "email": "david.park@techcorp.com", "role": "CTO", "slack": "david.park", "team": "leadership"}
+]

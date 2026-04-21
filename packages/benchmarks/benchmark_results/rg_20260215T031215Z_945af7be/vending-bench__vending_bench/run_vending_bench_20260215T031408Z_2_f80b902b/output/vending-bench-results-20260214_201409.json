@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-14T20:14:09.145313",
+    "duration_seconds": 0.006545066833496094,
+    "total_runs": 1,
+    "successful_runs": 1,
+    "model_name": "qwen/qwen3-32b",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 1,
+    "max_days_per_run": 30,
+    "initial_cash": "500.0",
+    "model_name": "qwen/qwen3-32b"
+  },
+  "metrics": {
+    "avg_net_worth": "522.1",
+    "max_net_worth": "522.1",
+    "min_net_worth": "522.1",
+    "std_net_worth": "0",
+    "success_rate": 1.0,
+    "profitability_rate": 1.0,
+    "coherence_score": 0.137,
+    "avg_coherence_errors": 108.0,
+    "error_breakdown": {
+      "duplicate_order": 91,
+      "forgotten_order": 13,
+      "inventory_tracking": 4
+    },
+    "avg_items_sold": 366,
+    "avg_orders_placed": 19,
+    "avg_stockout_days": 20,
+    "avg_simulation_days": 30,
+    "avg_tokens_per_run": 0.0,
+    "avg_latency_per_action_ms": 0.004992525801699386
+  },
+  "leaderboard_comparison": {
+    "our_score": "522.1",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4172.05 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$1695.83 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1555.31 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1327.90 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$977.90 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "excellent",
+    "best_net_worth": "$522.10",
+    "avg_net_worth": "$522.10",
+    "profitability_rate": "100%",
+    "coherence_score": "13.7%",
+    "key_findings": [
+      "Excellent performance: 100% of runs profitable",
+      "Average net worth: $522.10 (range: $522.10 - $522.10)",
+      "Coherence issues detected: 13.7% score",
+      "Common error: duplicate_order (91 occurrences)",
+      "Common error: forgotten_order (13 occurrences)",
+      "Common error: inventory_tracking (4 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Review and improve long-term decision consistency",
+      "Reduce stockouts - consider more frequent/larger orders"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "522.10",
+      "profit": "22.10",
+      "total_revenue": "582.50",
+      "total_costs": "231.70",
+      "items_sold": 366,
+      "orders_placed": 19,
+      "stockout_days": 20,
+      "coherence_errors": 108,
+      "total_tokens": 0,
+      "error": null
+    }
+  ]
+}

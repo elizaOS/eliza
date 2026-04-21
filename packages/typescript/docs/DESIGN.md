@@ -151,6 +151,30 @@ Console logs use colors (ANSI codes). Writing them raw to a file makes the file 
 
 ---
 
+## Shared batch queue (`utils/batch-queue`)
+
+### Why a subsystem instead of only fixing embedding parallelism?
+
+A small **semaphore** (or capped `Promise.all`) can fix unbounded concurrency in **one** service. We still added **`PriorityQueue`**, **`BatchProcessor`**, **`TaskDrain`**, optional **`BatchQueue`**, and a single **`Semaphore`** because several core paths already needed the **same combination** of ideas: priority ordering, bounded parallel I/O, retry/backoff aligned with `utils/retry`, and repeat **queue** tasks with consistent metadata (`maxFailures: -1`, intervals, dispose).
+
+**Why consolidate:** without a shared layer, each new feature tends to copy a slightly different queue, drain loop, or `createTask` + `registerTaskWorker` pair. Those copies drift and are harder to review (“is this the same as embedding or a new pattern?”). The trade is a **small shared surface** so we do not keep growing incompatible queuing systems. The runtime as a whole is not assumed to be “batching-bound”; this is **architecture to prevent proliferation**, not a claim that every agent spends most of its time in these queues.
+
+### Where it shows up
+
+- **Embedding generation** — full `BatchQueue` (see service comments).
+- **Action filter index build** — `BatchProcessor` only (no repeat task).
+- **Knowledge** — `BatchProcessor` for document / batch embedding paths that previously used unbounded `Promise.all`.
+- **Prompt batcher** — per-affinity **`TaskDrain`** with `skipRegisterWorker` so we do not register multiple workers named `BATCHER_DRAIN`.
+
+Longer tables and FAQs: [BATCH_QUEUE.md](./BATCH_QUEUE.md).
+
+### Operational notes
+
+- **Invalid priority strings:** `PriorityQueue` expects `high` | `normal` | `low`. Anything else logs **once** per queue instance (via `logger.warn`) and is treated as **normal** so typos do not silently sink work to the back of the queue.
+- **Shutdown flush:** `BatchQueue.dispose` high-priority work runs through a dedicated `BatchProcessor` (serial, `maxAttemptsCap: 1`) by default so stop path matches bounded concurrency; `dispose` still does not cancel in-flight async work (see BATCH_QUEUE limitations).
+
+---
+
 ## What we don’t do (and why)
 
 - **No legacy generateObject API:** Structured generation is handled by the dynamic execution path and related evolution. We don’t re-add the old generateObject surface.

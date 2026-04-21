@@ -1,0 +1,634 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.get_workbook_info",
+            "description": "Get workbook information, including file path, file name, sheets and active sheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.save",
+            "description": "Save the current workbook to its current location",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.get_column_data",
+            "description": "Get all data from the specified column.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Name of the column to read (e.g. 'A', 'B', etc.)"
+                    }
+                },
+                "required": [
+                    "column_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.switch_active_sheet",
+            "description": "Switch to the specified sheet and make it active. Creates new sheet if it doesn't exist.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Name of the sheet to switch to or create"
+                    }
+                },
+                "required": [
+                    "sheet_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_column_values",
+            "description": "Set values to the specified column, cannot be used to set formulas.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "Name of the column (e.g. 'A', 'B', etc.) to write to"
+                    },
+                    "data": {
+                        "type": "array",
+                        "description": "List of values to write to the column"
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "The index of the first row to write to, default is 2 (skip the first row)"
+                    }
+                },
+                "required": [
+                    "column_name",
+                    "data"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.highlight_range",
+            "description": "Highlight the specified range with the specified color.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range to highlight, in the format of 'A1:B10'"
+                    },
+                    "color": {
+                        "type": "integer",
+                        "description": "Color to highlight with, default is 0xFF0000 (red)"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.transpose_range",
+            "description": "Transpose the specified range and paste it to the target cell.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_range": {
+                        "type": "string",
+                        "description": "Range to transpose, in the format of 'A1:B10'"
+                    },
+                    "target_cell": {
+                        "type": "string",
+                        "description": "Target cell to paste the transposed data, in the format of 'A1'"
+                    }
+                },
+                "required": [
+                    "source_range",
+                    "target_cell"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.export_to_csv",
+            "description": "Export the current document to a CSV file with the same path and name as the original file.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.sort_column",
+            "description": "Sort the data in the specified column in ascending or descending order.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "The name of the column to sort (e.g. 'A', 'B', etc.)"
+                    },
+                    "ascending": {
+                        "type": "boolean",
+                        "description": "Whether to sort in ascending order (default True)"
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "The index of the first row to sort, default is 2 (skip the first row)"
+                    }
+                },
+                "required": [
+                    "column_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_validation_list",
+            "description": "Set a validation list for the specified column.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "The name of the column (e.g. 'A', 'B', etc.) to set the validation list for"
+                    },
+                    "values": {
+                        "type": "array",
+                        "description": "The list of values to use for the validation list"
+                    }
+                },
+                "required": [
+                    "column_name",
+                    "values"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.hide_row_data",
+            "description": "Hide rows that contain the specified value.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "description": "The value to hide rows for, default is 'N/A'"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.reorder_columns",
+            "description": "Reorder the columns in the sheet according to the specified order.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_order": {
+                        "type": "array",
+                        "description": "A list of column names in the desired order (e.g. ['A', 'B', 'C'])"
+                    }
+                },
+                "required": [
+                    "column_order"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.create_pivot_table",
+            "description": "Create a pivot table in the active worksheet based on data from the source sheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_sheet": {
+                        "type": "string",
+                        "description": "Name of the source sheet containing the data"
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "description": "Name for the new pivot table"
+                    },
+                    "row_fields": {
+                        "type": "array",
+                        "description": "List of fields to use as row labels (e.g. ['A', 'B', 'C'])"
+                    },
+                    "col_fields": {
+                        "type": "array",
+                        "description": "List of fields to use as column labels (e.g. ['A', 'B', 'C'])"
+                    },
+                    "value_fields": {
+                        "type": "array",
+                        "description": "List of fields to use as values (e.g. ['A', 'B', 'C'])"
+                    },
+                    "aggregation_function": {
+                        "type": "string",
+                        "description": "Aggregation function to use (sum, count, average, min, max), default is 'sum'"
+                    },
+                    "target_cell": {
+                        "type": "string",
+                        "description": "Target cell for the pivot table, default is 'A1'"
+                    }
+                },
+                "required": [
+                    "source_sheet",
+                    "table_name",
+                    "value_fields"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.merge_cells",
+            "description": "Merge cells in the specified range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range of cells to merge, in format 'A1:B10'"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_cell_value",
+            "description": "Set a value to a specific cell in the active worksheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell": {
+                        "type": "string",
+                        "description": "Cell reference (e.g., 'A1')"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Value to set in the cell"
+                    }
+                },
+                "required": [
+                    "cell",
+                    "value"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.format_range",
+            "description": "Apply formatting to the specified range in the active worksheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range to format, in the format of 'A1:B10'"
+                    },
+                    "background_color": {
+                        "type": "string",
+                        "description": "Background color in hex format (e.g., '#0000ff')"
+                    },
+                    "font_color": {
+                        "type": "string",
+                        "description": "Font color in hex format (e.g., '#ffffff')"
+                    },
+                    "bold": {
+                        "type": "boolean",
+                        "description": "Whether to make the text bold"
+                    },
+                    "alignment": {
+                        "type": "string",
+                        "description": "Text alignment (left, center, right)"
+                    }
+                },
+                "required": [
+                    "range_str"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.create_chart",
+            "description": "Create a chart in the active worksheet based on the specified data range.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "chart_type": {
+                        "type": "string",
+                        "description": "Type of chart (bar, column, line, pie, scatter, area)"
+                    },
+                    "data_range": {
+                        "type": "string",
+                        "description": "Range containing the data for the chart, in the format of 'A1:B10'"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the chart"
+                    },
+                    "x_axis_title": {
+                        "type": "string",
+                        "description": "Title for the X axis"
+                    },
+                    "y_axis_title": {
+                        "type": "string",
+                        "description": "Title for the Y axis"
+                    }
+                },
+                "required": [
+                    "chart_type",
+                    "data_range"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.freeze_panes",
+            "description": "Freeze rows and/or columns in the active worksheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "integer",
+                        "description": "Number of rows to freeze from the top"
+                    },
+                    "columns": {
+                        "type": "integer",
+                        "description": "Number of columns to freeze from the left"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.rename_sheet",
+            "description": "Rename a worksheet in the workbook.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "old_name": {
+                        "type": "string",
+                        "description": "Current name of the worksheet"
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New name for the worksheet"
+                    }
+                },
+                "required": [
+                    "old_name",
+                    "new_name"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.copy_sheet",
+            "description": "Create a copy of an existing worksheet in the workbook.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_sheet": {
+                        "type": "string",
+                        "description": "Name of the worksheet to copy"
+                    },
+                    "new_sheet_name": {
+                        "type": "string",
+                        "description": "Name for the new worksheet copy (optional)"
+                    }
+                },
+                "required": [
+                    "source_sheet"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.reorder_sheets",
+            "description": "Change the order of worksheets in the workbook.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Name of the worksheet to move"
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "New position index (0-based) for the worksheet"
+                    }
+                },
+                "required": [
+                    "sheet_name",
+                    "position"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_chart_legend_position",
+            "description": "Set the position of the legend in a chart.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "position": {
+                        "type": "string",
+                        "description": "Position of the legend (top, bottom, left, right, none)"
+                    }
+                },
+                "required": [
+                    "position"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_number_format",
+            "description": "Apply a specific number format to a range of cells.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "range_str": {
+                        "type": "string",
+                        "description": "Range to format, in the format of 'A1:B10'"
+                    },
+                    "format_type": {
+                        "type": "string",
+                        "description": "Type of number format (general, number, currency, accounting, date, time, percentage, fraction, scientific, text)"
+                    },
+                    "decimal_places": {
+                        "type": "integer",
+                        "description": "Number of decimal places to display (optional)"
+                    }
+                },
+                "required": [
+                    "range_str",
+                    "format_type"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.adjust_column_width",
+            "description": "Adjust the width of specified columns.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "columns": {
+                        "type": "string",
+                        "description": "Column range to adjust (e.g., 'A:C')"
+                    },
+                    "width": {
+                        "type": "number",
+                        "description": "Width to set (in characters)"
+                    },
+                    "autofit": {
+                        "type": "boolean",
+                        "description": "Whether to autofit columns to content"
+                    }
+                },
+                "required": [
+                    "columns"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.adjust_row_height",
+            "description": "Adjust the height of specified rows.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "string",
+                        "description": "Row range to adjust (e.g., '1:10')"
+                    },
+                    "height": {
+                        "type": "number",
+                        "description": "Height to set (in points)"
+                    },
+                    "autofit": {
+                        "type": "boolean",
+                        "description": "Whether to autofit rows to content"
+                    }
+                },
+                "required": [
+                    "rows"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.export_to_pdf",
+            "description": "Export the current document or specified sheets to PDF.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path where to save the PDF file, default is the same path as the original file"
+                    },
+                    "sheets": {
+                        "type": "array",
+                        "description": "List of sheet names to include in PDF, default is all sheets"
+                    },
+                    "open_after_export": {
+                        "type": "boolean",
+                        "description": "Whether to open the PDF after export, default is False"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "CalcTools.set_zoom_level",
+            "description": "Adjust the zoom level of the current worksheet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "zoom_percentage": {
+                        "type": "integer",
+                        "description": "Zoom level as a percentage (e.g., 75 for 75%, 100 for normal size, 150 for zoomed in). Valid range is typically 10-400."
+                    }
+                },
+                "required": [
+                    "zoom_percentage"
+                ]
+            }
+        }
+    }
+]

@@ -1,0 +1,6 @@
+mcp>=1.0.0
+elizaos>=2.0.0a4
+elizaos-plugin-openai>=2.0.0a4
+uuid6>=2024.7.10
+python-dotenv>=1.0.0
+

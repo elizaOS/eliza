@@ -1,0 +1,76 @@
+{
+  "id": "455d3c66-7dc6-4537-a39a-36d3e9119df7",
+  "snapshot": "libreoffice_impress",
+  "instruction": "Could you help me export an Impress file to a .png image file and save it as res.png on the Desktop? Follow the default export setting is fine.",
+  "source": "https://stackoverflow.com/questions/75626383/how-export-libreoffice-impress-to-image",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/455d3c66-7dc6-4537-a39a-36d3e9119df7/wssf-project-plan-on-a-page.pptx",
+            "path": "/home/user/Desktop/wssf-project-plan-on-a-page.pptx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Desktop/wssf-project-plan-on-a-page.pptx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "libreoffice_impress"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "wssf-project-plan-on-a-page.pptx - LibreOffice Impress",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; import time; pyautogui.hotkey('ctrl', 's'); time.sleep(0.5);"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_images",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_impress/455d3c66-7dc6-4537-a39a-36d3e9119df7/wssf-project-plan-on-a-page.png",
+      "dest": "res_gold.png"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/Desktop/res.png",
+      "dest": "res.png"
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

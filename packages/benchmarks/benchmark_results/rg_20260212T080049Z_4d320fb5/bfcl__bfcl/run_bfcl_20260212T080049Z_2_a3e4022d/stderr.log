@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python -m benchmarks.bfcl run --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T080049Z_4d320fb5/bfcl__bfcl/run_bfcl_20260212T080049Z_2_a3e4022d/output --provider groq --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_bfcl_20260212T080049Z_2_a3e4022d

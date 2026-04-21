@@ -1,0 +1,5 @@
+# command: /opt/miniconda3/bin/python -m elizaos_vending_bench.cli --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/vending-bench__vending_bench/run_vending_bench_20260212T083316Z_2_4e2a235f/output --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/vending-bench
+# run_id: run_vending_bench_20260212T083316Z_2_4e2a235f
+usage: cli.py [-h] {run,report,info} ...
+cli.py: error: argument command: invalid choice: '/Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T083301Z_33737b6a/vending-bench__vending_bench/run_vending_bench_20260212T083316Z_2_4e2a235f/output' (choose from run, report, info)

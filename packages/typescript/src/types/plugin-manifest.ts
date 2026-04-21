@@ -18,7 +18,8 @@ export type PluginKind =
 	| "channel"
 	| "provider"
 	| "skill"
-	| "database";
+	| "database"
+	| "app";
 
 /**
  * Plugin origin indicates where the plugin was discovered.
@@ -84,6 +85,45 @@ export interface PluginGatewayMethod {
 	outputSchema?: Record<string, JsonValue>;
 }
 
+export type PluginManifestAppSessionMode =
+	| "viewer"
+	| "spectate-and-steer"
+	| "external";
+
+export type PluginManifestAppSessionFeature =
+	| "commands"
+	| "telemetry"
+	| "pause"
+	| "resume"
+	| "suggestions";
+
+export interface PluginManifestAppViewer {
+	url: string;
+	embedParams?: Record<string, string>;
+	postMessageAuth?: boolean;
+	sandbox?: string;
+}
+
+export interface PluginManifestAppSession {
+	mode: PluginManifestAppSessionMode;
+	features?: PluginManifestAppSessionFeature[];
+}
+
+export interface PluginManifestApp {
+	displayName?: string;
+	category?: string;
+	launchType?: string;
+	launchUrl?: string | null;
+	icon?: string | null;
+	capabilities?: string[];
+	minPlayers?: number | null;
+	maxPlayers?: number | null;
+	runtimePlugin?: string;
+	viewer?: PluginManifestAppViewer;
+	session?: PluginManifestAppSession;
+	bridgeExport?: string;
+}
+
 /**
  * Plugin manifest structure (elizaos.plugin.json).
  */
@@ -130,6 +170,8 @@ export interface PluginManifest {
 	license?: string;
 	/** Plugin keywords for search */
 	keywords?: string[];
+	/** Optional app metadata for viewer/session-capable plugins */
+	app?: PluginManifestApp;
 }
 
 /**

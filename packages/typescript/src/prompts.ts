@@ -1,302 +1,117 @@
-export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
+/**
+ * Auto-generated prompt templates for elizaOS
+ * DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
+ *
+ * These prompts use Handlebars-style template syntax:
+ * - {{variableName}} for simple substitution
+ * - {{#each items}}...{{/each}} for iteration
+ * - {{#if condition}}...{{/if}} for conditionals
+ */
 
-<providers>
-{{providers}}
-</providers>
+export const addContactTemplate = `task: Extract contact information to add to the relationships.
 
-<instructions>Decide if {{agentName}} should respond to or interact with the conversation.
-
-IMPORTANT RULES FOR RESPONDING:
-- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
-- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
-- If you're actively participating in a conversation and the message continues that thread → RESPOND
-- If someone tells you to stop or be quiet → STOP
-- Otherwise → IGNORE
-
-The key distinction is:
-- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
-- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
-</instructions>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-  <name>{{agentName}}</name>
-  <reasoning>Your reasoning here</reasoning>
-  <action>RESPOND | IGNORE | STOP</action>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>`;
-
-export const messageHandlerTemplate = `<task>Generate dialog and actions for the character {{agentName}}.</task>
-
-<providers>
-{{providers}}
-</providers>
-
-<instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
-
-IMPORTANT ACTION ORDERING RULES:
-- Actions are executed in the ORDER you list them - the order MATTERS!
-- REPLY should come FIRST to acknowledge the user's request before executing other actions
-- Common patterns:
-  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)
-  - For task execution: REPLY,MAIN_TASK_ACTION (acknowledge first, then do the task)
-  - For multi-step operations: REPLY,ACTION1,ACTION2,REPLY (acknowledge first, then complete all steps, then acknowledge all done)
-- REPLY is used to acknowledge and inform the user about what you're going to do
-- Follow-up actions execute the actual tasks after acknowledgment
-- Use IGNORE only when you should not respond at all
-- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
-
-IMPORTANT ACTION PARAMETERS:
-- When an action has parameters listed in its description, include a <params> block for that action
-- Extract parameter values from the user's message and conversation context
-- Required parameters MUST be provided; optional parameters can be omitted if not mentioned
-- If you cannot determine a required parameter value, ask the user for clarification in your <text>
-
-IMPORTANT PROVIDER SELECTION RULES:
-- Only include providers if they are needed to respond accurately.
-- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list  
-- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
-- If the message asks about facts or specific information, include "FACTS" in your providers list
-- If the message asks about the environment or world context, include "WORLD" in your providers list
-- If no additional context is needed, you may leave the providers list empty.
-
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
-</instructions>
-
-<keys>
-"thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a list of <action> elements IN THE ORDER THEY SHOULD BE EXECUTED (if none, use a single <action><name>IGNORE</name></action>, if simply responding with text, use <action><name>REPLY</name></action>). Each action that requires parameters should include a <params> child element.
-"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
-"text" should be the text of the next message for {{agentName}} which they will send to the conversation.
-</keys>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <actions>
-        <action>
-            <name>ACTION1</name>
-            <params>
-                <paramName1>value1</paramName1>
-                <paramName2>value2</paramName2>
-            </params>
-        </action>
-        <action>
-            <name>ACTION2</name>
-            <params>
-                <paramName1>value1</paramName1>
-            </params>
-        </action>
-    </actions>
-    <providers>PROVIDER1,PROVIDER2</providers>
-    <text>Your response text here</text>
-</response>
-
-The <params> block inside each <action> is optional - only include it when that action requires input parameters.
-If an action has no parameters (e.g. REPLY or IGNORE), omit the <params> child entirely.
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>`;
-
-export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
-
-Example task outputs:
-1. A post about the importance of AI in our lives
-<response>
-  <thought>I am thinking about writing a post about the importance of AI in our lives</thought>
-  <post>AI is changing the world and it is important to understand how it works</post>
-  <imagePrompt>A futuristic cityscape with flying cars and people using AI to do things</imagePrompt>
-</response>
-
-2. A post about dogs
-<response>
-  <thought>I am thinking about writing a post about dogs</thought>
-  <post>Dogs are man's best friend and they are loyal and loving</post>
-  <imagePrompt>A dog playing with a ball in a park</imagePrompt>
-</response>
-
-3. A post about finding a new job
-<response>
-  <thought>Getting a job is hard, I bet there's a good post in that</thought>
-  <post>Just keep going!</post>
-  <imagePrompt>A person looking at a computer screen with a job search website</imagePrompt>
-</response>
-
+context:
 {{providers}}
 
-Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should be 1, 2, or 3 sentences (choose the length at random).
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
-
-Your output should be formatted in XML like this:
-<response>
-  <thought>Your thought here</thought>
-  <post>Your post text here</post>
-  <imagePrompt>Optional image prompt here</imagePrompt>
-</response>
-
-The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
-The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
-The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-export const booleanFooter = "Respond with only a YES or a NO.";
-
-export const imageDescriptionTemplate = `<task>Analyze the provided image and generate a comprehensive description with multiple levels of detail.</task>
-
-<instructions>
-Carefully examine the image and provide:
-1. A concise, descriptive title that captures the main subject or scene
-2. A brief summary description (1-2 sentences) highlighting the key elements
-3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
-
-Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
-</instructions>
-
-<output>
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-  <title>A concise, descriptive title for the image</title>
-  <description>A brief 1-2 sentence summary of the key elements in the image</description>
-  <text>An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image</text>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
-</output>`;
-
-export const multiStepDecisionTemplate = `<task>
-Determine the next step the assistant should take in this conversation to help the user reach their goal.
-</task>
-
+recent_messages:
 {{recentMessages}}
 
-# Multi-Step Workflow
+current_message:
+{{message}}
 
-In each step, decide:
+instructions[5]:
+- identify the contact name being added
+- include entityId only if it is explicitly known from context
+- return categories as a comma-separated list
+- include notes, timezone, and language only when clearly present
+- include a short reason for why this contact should be saved
 
-1. **Which providers (if any)** should be called to gather necessary data.
-2. **Which action (if any)** should be executed after providers return.
-3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
-You can select **multiple providers** and at most **one action** per step.
+Example:
+contactName: Jane Doe
+entityId:
+categories: vip,colleague
+notes: Met at the design summit
+timezone: America/New_York
+language: English
+reason: Important collaborator to remember`;
 
-If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
+export const ADD_CONTACT_TEMPLATE = addContactTemplate;
 
----
+export const autonomyContinuousContinueTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
 
-{{actionsWithDescriptions}}
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
 
-{{providersWithDescriptions}}
+Your last autonomous note: "{{lastThought}}"
 
-These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
+Continue from that note. Output <thought> and take action if needed.`;
 
-{{actionResults}}
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
+	autonomyContinuousContinueTemplate;
 
-<keys>
-"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
-"action"  Name of the action to execute after providers return (can be empty if no action is needed).
-"providers" List of provider names to call in this step (can be empty if none are needed).
-"isFinish" Set to true only if the task is fully complete.
-</keys>
+export const autonomyContinuousFirstTemplate = `Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
 
-⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
 
-<output>
-<response>
-  <thought>Your thought here</thought>
-  <action>ACTION</action>
-  <providers>PROVIDER1,PROVIDER2</providers>
-  <isFinish>true | false</isFinish>
-</response>
-</output>`;
+Think briefly, then output <thought> and take action if needed.`;
 
-export const multiStepSummaryTemplate = `<task>
-Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
-</task>
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
+	autonomyContinuousFirstTemplate;
 
-# Context Information
-{{bio}}
+export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
 
----
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
 
-{{system}}
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
 
----
+Your last autonomous note: "{{lastThought}}"
 
-{{messageDirections}}
+Continue the task. Output <thought> and take action now.`;
 
-# Conversation Summary
-Below is the user's original request and conversation so far:
-{{recentMessages}}
+export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;
 
-# Execution Trace
-Here are the actions taken by the assistant to fulfill the request:
-{{actionResults}}
+export const autonomyTaskFirstTemplate = `You are running in AUTONOMOUS TASK MODE.
 
-# Assistant's Last Reasoning Step
-{{recentMessage}}
+Your job: continue helping the user and make progress toward the task.
+- Use available actions/tools to gather information or execute steps.
+- If you need UI control, use ComputerUse actions.
+- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
+- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
 
-# Instructions
+USER CHAT CONTEXT (most recent last):
+{{targetRoomContext}}
 
- - Review the execution trace and last reasoning step carefully
+Decide what to do next. Output <thought>, then take the most useful action.`;
 
- - Your final output MUST be in this XML format:
-<output>
-<response>
-  <thought>Your thought here</thought>
-  <text>Your final message to the user</text>
-</response>
-</output>
-`;
-
-// Shared action templates
-export const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
-
-{{providers}}
-
-# Instructions: Write the next message for {{agentName}}.
-"thought" should be a short description of what the agent is thinking about and planning.
-"text" should be the next message for {{agentName}} which they will send to the conversation.
-
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <text>Your message here</text>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 
 export const chooseOptionTemplate = `# Task: Choose an option from the available choices.
 
@@ -309,13 +124,96 @@ export const chooseOptionTemplate = `# Task: Choose an option from the available
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the selection</thought>
-    <selected_id>The ID of the selected option</selected_id>
-</response>
+Respond using TOON like this:
+thought: Your reasoning for the selection
+selected_id: The ID of the selected option
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+IMPORTANT: Your response must ONLY contain the TOON document above.`;
+
+export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
+
+export const extractSecretOperationTemplate = `You are helping manage secrets for an AI agent.
+
+Determine what operation the user wants to perform:
+- get: Retrieve a secret value
+- set: Store a new secret
+- delete: Remove a secret
+- list: Show all available secrets (without values)
+- check: Check if a secret exists
+
+Common patterns:
+- "What is my OpenAI key?" -> operation: get, key: OPENAI_API_KEY
+- "Do I have a Discord token set?" -> operation: check, key: DISCORD_BOT_TOKEN
+- "Show me my secrets" -> operation: list
+- "Delete my old API key" -> operation: delete
+- "Remove TWITTER_API_KEY" -> operation: delete, key: TWITTER_API_KEY
+- "Set my key to sk-..." -> operation: set, key: <infer>, value: sk-...
+
+{{recentMessages}}
+
+Extract the operation, key (if applicable), value (if applicable), and level from the user's message.`;
+
+export const EXTRACT_SECRET_OPERATION_TEMPLATE = extractSecretOperationTemplate;
+
+export const extractSecretRequestTemplate = `You are helping an AI agent request a missing secret.
+Determine what secret the agent needs and why based on the recent conversation.
+
+Common patterns:
+- "I need an API key for OpenAI" -> key: OPENAI_API_KEY
+- "Missing TWITTER_TOKEN" -> key: TWITTER_TOKEN
+- "I cannot proceed without a Discord token" -> key: DISCORD_TOKEN
+
+Recent Messages:
+{{recentMessages}}
+
+Output JSON with:
+- key: The name of the secret needed (e.g. OPENAI_API_KEY)
+- reason: Why it is needed (optional)
+
+If no specific secret is requested, return null json.`;
+
+export const EXTRACT_SECRET_REQUEST_TEMPLATE = extractSecretRequestTemplate;
+
+export const extractSecretsTemplate = `You are extracting secret/configuration values from the user's message.
+
+The user wants to set one or more secrets. Extract:
+1. The secret key (should be UPPERCASE_WITH_UNDERSCORES format)
+2. The secret value
+3. Optional description
+4. Secret type (api_key, secret, credential, url, or config)
+
+Common patterns:
+- "Set my OpenAI key to sk-..." -> key: OPENAI_API_KEY, value: sk-...
+- "My Anthropic API key is sk-ant-..." -> key: ANTHROPIC_API_KEY, value: sk-ant-...
+- "Use this Discord token: ..." -> key: DISCORD_BOT_TOKEN, value: ...
+- "Set DATABASE_URL to postgres://..." -> key: DATABASE_URL, value: postgres://...
+
+{{recentMessages}}
+
+Extract the secrets from the user's message. If the key name isn't explicitly specified, infer an appropriate UPPERCASE_WITH_UNDERSCORES name based on the context.`;
+
+export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
+
+export const imageDescriptionTemplate = `Task: Analyze the provided image and generate a comprehensive description with multiple levels of detail.
+
+Instructions:
+Carefully examine the image and provide:
+1. A concise, descriptive title that captures the main subject or scene
+2. A brief summary description (1-2 sentences) highlighting the key elements
+3. An extensive, detailed description that covers all visible elements, composition, lighting, colors, mood, and any other relevant details
+
+Be objective and descriptive. Focus on what you can actually see in the image rather than making assumptions about context or meaning.
+
+Output:
+
+Respond using TOON like this:
+title: A concise, descriptive title for the image
+description: A brief 1-2 sentence summary of the key elements in the image
+text: An extensive, detailed description covering all visible elements, composition, lighting, colors, mood, setting, objects, people, activities, and any other relevant details you can observe in the image
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+
+export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
 
 export const imageGenerationTemplate = `# Task: Generate an image prompt for {{agentName}}.
 
@@ -328,364 +226,14 @@ The prompt should be specific, descriptive, and suitable for AI image generation
 # Recent conversation:
 {{recentMessages}}
 
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the image prompt</thought>
-    <prompt>Detailed image generation prompt</prompt>
-</response>
+Respond using TOON like this:
+thought: Your reasoning for the image prompt
+prompt: Detailed image generation prompt
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
-export const reflectionTemplate = `# Task: Reflect on recent agent behavior and interactions.
-
-{{providers}}
-
-# Recent Interactions:
-{{recentInteractions}}
-
-# Instructions:
-Analyze the agent's recent behavior and interactions. Consider:
-1. Was the communication clear and helpful?
-2. Were responses appropriate for the context?
-3. Were any mistakes made?
-4. What could be improved?
-
-Respond using XML format like this:
-<response>
-    <thought>Your detailed analysis</thought>
-    <quality_score>Score 0-100 for overall quality</quality_score>
-    <strengths>What went well</strengths>
-    <improvements>What could be improved</improvements>
-    <learnings>Key takeaways for future interactions</learnings>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-export const updateSettingsTemplate = `# Task: Update settings based on the request.
-
-{{providers}}
-
-# Current Settings:
-{{settings}}
-
-# Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the settings changes</thought>
-    <updates>
-        <update>
-            <key>setting_key</key>
-            <value>new_value</value>
-        </update>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-export const updateEntityTemplate = `# Task: Update entity information.
-
-{{providers}}
-
-# Current Entity Information:
-{{entityInfo}}
-
-# Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the entity update</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <updates>
-        <field>
-            <name>field_name</name>
-            <value>new_value</value>
-        </field>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-export const optionExtractionTemplate = `# Task: Extract selected task and option from user message
-
-# Available Tasks:
-{{tasks}}
-
-# Recent Messages:
-{{recentMessages}}
-
-# Instructions:
-1. Review the user's message and identify which task and option they are selecting
-2. Match against the available tasks and their options, including ABORT
-3. Return the task ID (shortened UUID) and selected option name exactly as listed above
-4. If no clear selection is made, return null for both fields
-
-
-Return in XML format:
-<response>
-  <taskId>string_or_null</taskId>
-  <selectedOption>OPTION_NAME_or_null</selectedOption>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-// UPPERCASE aliases for backwards compatibility
-export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
-export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
-export const POST_CREATION_TEMPLATE = postCreationTemplate;
-export const BOOLEAN_FOOTER = booleanFooter;
-export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
-export const MULTI_STEP_DECISION_TEMPLATE = multiStepDecisionTemplate;
-export const MULTI_STEP_SUMMARY_TEMPLATE = multiStepSummaryTemplate;
-export const REPLY_TEMPLATE = replyTemplate;
-export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
 export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
-export const REFLECTION_TEMPLATE = reflectionTemplate;
-export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
-export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
-export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
 
-// Contact action templates
-export const scheduleFollowUpTemplate = `# Schedule Follow-up
-
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-## Instructions
-Extract the follow-up scheduling information from the message:
-1. Who to follow up with (name or entity reference)
-2. When to follow up (date/time or relative time like "tomorrow", "next week")
-3. Reason for the follow-up
-4. Priority (high, medium, low)
-5. Any specific message or notes
-
-## Current Date/Time
-{{currentDateTime}}
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
-<response>
-<contactName>Name of the contact to follow up with</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<scheduledAt>ISO datetime for the follow-up</scheduledAt>
-<reason>Reason for the follow-up</reason>
-<priority>high, medium, or low</priority>
-<message>Optional message or notes for the follow-up</message>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-export const addContactTemplate = `# Add Contact to Rolodex
-
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-## Instructions
-Extract the contact information from the message and determine:
-1. Who should be added as a contact (name or entity reference)
-2. What category they belong to (friend, family, colleague, acquaintance, vip, business)
-3. Any preferences or notes mentioned
-
-Respond with the extracted information in XML format.
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
-<response>
-<contactName>Name of the contact to add</contactName>
-<entityId>ID if known, otherwise leave empty</entityId>
-<categories>comma-separated categories</categories>
-<notes>Any additional notes or preferences</notes>
-<timezone>Timezone if mentioned</timezone>
-<language>Language preference if mentioned</language>
-<reason>Reason for adding this contact</reason>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-export const searchContactsTemplate = `# Search Contacts
-
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-## Instructions
-Extract the search criteria from the message:
-1. Categories to filter by (friend, family, colleague, acquaintance, vip, business)
-2. Search terms (names or keywords)
-3. Tags to filter by
-4. Any other filters mentioned
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
-<response>
-<categories>comma-separated list of categories to filter by</categories>
-<searchTerm>search term for names</searchTerm>
-<tags>comma-separated list of tags</tags>
-<intent>list, search, or count</intent>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-export const removeContactTemplate = `# Remove Contact from Rolodex
-
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-## Instructions
-Extract the contact removal information from the message:
-1. Who to remove (name or entity reference)
-2. Confirmation of the intent to remove
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
-<response>
-<contactName>Name of the contact to remove</contactName>
-<confirmed>yes or no</confirmed>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-export const updateContactTemplate = `# Update Contact Information
-
-Current message: {{message}}
-Sender: {{senderName}} (ID: {{senderId}})
-
-## Instructions
-Extract the contact update information from the message:
-1. Who to update (name or entity reference)
-2. What fields to update (categories, tags, preferences, notes, custom fields)
-3. Whether to add to or replace existing values
-
-## Current Date/Time
-{{currentDateTime}}
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
-<response>
-<contactName>Name of the contact to update</contactName>
-<operation>add_to or replace</operation>
-<categories>comma-separated list of categories</categories>
-<tags>comma-separated list of tags</tags>
-<preferences>key1:value1,key2:value2</preferences>
-<customFields>field1:value1,field2:value2</customFields>
-<notes>Any additional notes</notes>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
-
-// Room action templates
-export const shouldFollowRoomTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
-
-{{recentMessages}}
-
-Should {{agentName}} start following this room, eagerly participating without explicit mentions?
-Respond with YES if:
-- The user has directly asked {{agentName}} to follow the conversation or participate more actively
-- The conversation topic is highly engaging and {{agentName}}'s input would add significant value
-- {{agentName}} has unique insights to contribute and the users seem receptive
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
-
-export const shouldUnfollowRoomTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
-
-{{recentMessages}}
-
-Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
-Respond with YES if:
-- The user has suggested that {{agentName}} is over-participating or being disruptive
-- {{agentName}}'s eagerness to contribute is not well-received by the users
-- The conversation has shifted to a topic where {{agentName}} has less to add
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
-
-export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
-
-{{recentMessages}}
-
-Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
-
-Respond with YES if:
-- The user is being aggressive, rude, or inappropriate
-- The user has directly asked {{agentName}} to stop responding or be quiet
-- {{agentName}}'s responses are not well-received or are annoying the user(s)
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
-
-export const shouldUnmuteRoomTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
-
-{{recentMessages}}
-
-Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Respond with YES if:
-- The user has explicitly asked {{agentName}} to start responding again
-- The user seems to want to re-engage with {{agentName}} in a respectful manner
-- The tone of the conversation has improved and {{agentName}}'s input would be welcome
-
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
-
-// Target extraction template
-export const targetExtractionTemplate = `# Task: Extract Target and Source Information
-
-# Recent Messages:
-{{recentMessages}}
-
-# Instructions:
-Analyze the conversation to identify:
-1. The target type (user or room)
-2. The target platform/source (e.g. telegram, discord, etc)
-3. Any identifying information about the target
-4. The message text to send
-
-Return an XML response with:
-<response>
-  <targetType>user|room</targetType>
-  <source>platform-name</source>
-  <messageText>text_to_send</messageText>
-  <identifiers>
-    <username>username_if_applicable</username>
-    <roomName>room_name_if_applicable</roomName>
-  </identifiers>
-</response>`;
-
-// Update role template
-export const updateRoleTemplate = `# Task: Update entity role in the world.
-
-{{providers}}
-
-# Current Role Assignments:
-{{roles}}
-
-# Instructions:
-Based on the request, determine the role assignment to make.
-Valid roles are: OWNER, ADMIN, MEMBER, GUEST, NONE
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the role change</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <new_role>The new role to assign (OWNER, ADMIN, MEMBER, GUEST, or NONE)</new_role>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-// Memory templates
 export const initialSummarizationTemplate = `# Task: Summarize Conversation
 
 You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
@@ -707,48 +255,15 @@ Also extract:
 - **Topics**: List of main topics discussed (comma-separated)
 - **Key Points**: Important facts or decisions (bullet points)
 
-Respond in this XML format:
-<summary>
-  <text>Your comprehensive summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>`;
+Respond in TOON:
+text: Your comprehensive summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
 
-export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
-
-You are updating an existing conversation summary with new messages, while keeping the total summary concise.
-
-# Existing Summary
-{{existingSummary}}
-
-# Existing Topics
-{{existingTopics}}
-
-# New Messages Since Last Summary
-{{newMessages}}
-
-# Instructions
-Update the summary by:
-1. Merging the existing summary with insights from the new messages
-2. Removing redundant or less important details to stay under the token limit
-3. Keeping the most important context and decisions
-4. Adding new topics if they emerge
-5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
-
-The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
-
-Respond in this XML format:
-<summary>
-  <text>Your updated and condensed summary here</text>
-  <topics>topic1, topic2, topic3</topics>
-  <keyPoints>
-    <point>First key point</point>
-    <point>Second key point</point>
-  </keyPoints>
-</summary>`;
+export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
 
 export const longTermExtractionTemplate = `# Task: Extract Long-Term Memory (Strict Criteria)
 
@@ -760,20 +275,126 @@ You are analyzing a conversation to extract ONLY the most critical, persistent i
 # Current Long-Term Memories
 {{existingMemories}}
 
+# Memory Categories (Based on Cognitive Science)
+
+## 1. EPISODIC Memory
+Personal experiences and specific events with temporal/spatial context.
+**Examples:**
+- "User completed migration project from MongoDB to PostgreSQL in Q2 2024"
+- "User encountered authentication bug in production on March 15th"
+- "User had a negative experience with Docker networking in previous job"
+
+**Requirements:**
+- Must include WHO did WHAT, WHEN/WHERE
+- Must be a specific, concrete event (not a pattern)
+- Must have significant impact or relevance to future work
+
+## 2. SEMANTIC Memory
+General facts, concepts, knowledge, and established truths about the user.
+**Examples:**
+- "User is a senior backend engineer with 8 years experience"
+- "User specializes in distributed systems and microservices architecture"
+- "User's primary programming language is TypeScript"
+- "User works at Acme Corp as technical lead"
+
+**Requirements:**
+- Must be factual, timeless information
+- Must be explicitly stated or demonstrated conclusively
+- No speculation or inference from single instances
+- Core identity, expertise, or knowledge only
+
+## 3. PROCEDURAL Memory
+Skills, workflows, methodologies, and how-to knowledge.
+**Examples:**
+- "User follows strict TDD workflow: write tests first, then implementation"
+- "User prefers git rebase over merge to maintain linear history"
+- "User's debugging process: check logs → reproduce locally → binary search"
+- "User always writes JSDoc comments before implementing functions"
+
+**Requirements:**
+- Must describe HOW user does something
+- Must be a repeated, consistent pattern (seen 3+ times or explicitly stated as standard practice)
+- Must be a workflow, methodology, or skill application
+- Not one-off preferences
+
 # ULTRA-STRICT EXTRACTION CRITERIA
 
-Default to NOT extracting. Confidence must be >= 0.85.
-If there are no qualifying facts, respond with <memories></memories>
+## DO EXTRACT (Only These):
+
+**EPISODIC:**
+- Significant completed projects or milestones
+- Important bugs, incidents, or problems encountered
+- Major decisions made with lasting impact
+- Formative experiences that shape future work
+
+**SEMANTIC:**
+- Professional identity (role, title, company)
+- Core expertise and specializations (stated explicitly or demonstrated conclusively)
+- Primary languages, frameworks, or tools (not exploratory use)
+- Established facts about their work context
+
+**PROCEDURAL:**
+- Consistent workflows demonstrated 3+ times or explicitly stated
+- Standard practices user always follows
+- Methodology preferences with clear rationale
+- Debugging, testing, or development processes
+
+## NEVER EXTRACT:
+
+- **One-time requests or tasks** (e.g., "can you generate an image", "help me debug this")
+- **Casual conversations** without lasting significance
+- **Exploratory questions** (e.g., "how does X work?")
+- **Temporary context** (current bug, today's task)
+- **Preferences from single occurrence** (e.g., user asked for code once)
+- **Social pleasantries** (thank you, greetings)
+- **Testing or experimentation** (trying out a feature)
+- **Common patterns everyone has** (likes clear explanations)
+- **Situational information** (working on feature X today)
+- **Opinions without persistence** (single complaint, isolated praise)
+- **General knowledge** (not specific to user)
+
+# Quality Gates (ALL Must Pass)
+
+1. **Significance Test**: Will this matter in 3+ months?
+2. **Specificity Test**: Is this concrete and actionable?
+3. **Evidence Test**: Is there strong evidence (3+ instances OR explicit self-identification)?
+4. **Uniqueness Test**: Is this specific to THIS user (not generic)?
+5. **Confidence Test**: Confidence must be >= 0.85 (be VERY conservative)
+6. **Non-Redundancy Test**: Does this add NEW information not in existing memories?
+
+# Confidence Scoring (Be Conservative)
+
+- **0.95-1.0**: User explicitly stated as core identity/practice AND demonstrated multiple times
+- **0.85-0.94**: User explicitly stated OR consistently demonstrated 5+ times
+- **0.75-0.84**: Strong pattern (3-4 instances) with supporting context
+- **Below 0.75**: DO NOT EXTRACT (insufficient evidence)
+
+# Critical Instructions
+
+1. **Default to NOT extracting** - When in doubt, skip it
+2. **Require overwhelming evidence** - One or two mentions is NOT enough
+3. **Focus on what's PERSISTENT** - Not what's temporary or situational
+4. **Verify against existing memories** - Don't duplicate or contradict
+5. **Maximum 2-3 extractions per run** - Quality over quantity
+
+**If there are no qualifying facts (which is common), return no memories entries.**
 
 # Response Format
 
-<memories>
-  <memory>
-    <category>semantic</category>
-    <content>User is a senior TypeScript developer with 8 years of backend experience</content>
-    <confidence>0.95</confidence>
-  </memory>
-</memories>`;
+memories[0]:
+  category: semantic
+  content: User is a senior TypeScript developer with 8 years of backend experience
+  confidence: 0.95
+memories[1]:
+  category: procedural
+  content: User follows TDD workflow: writes tests before implementation, runs tests after each change
+  confidence: 0.88
+memories[2]:
+  category: episodic
+  content: User led database migration from MongoDB to PostgreSQL for payment system in Q2 2024
+  confidence: 0.92`;
+
+export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
 export const messageClassifierTemplate = `Analyze this user request and classify it for planning purposes:
 
@@ -813,27 +434,247 @@ CONSTRAINTS: [comma-separated list]
 DEPENDENCIES: [comma-separated list]
 CONFIDENCE: [0.0-1.0]`;
 
-// UPPERCASE aliases for action templates
-export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
-export const ADD_CONTACT_TEMPLATE = addContactTemplate;
-export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
-export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
-export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
-export const SHOULD_FOLLOW_ROOM_TEMPLATE = shouldFollowRoomTemplate;
-export const SHOULD_UNFOLLOW_ROOM_TEMPLATE = shouldUnfollowRoomTemplate;
-export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
-export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
-// Legacy aliases without _ROOM_ suffix for backwards compatibility
-export const shouldFollowTemplate = shouldFollowRoomTemplate;
-export const shouldUnfollowTemplate = shouldUnfollowRoomTemplate;
-export const shouldMuteTemplate = shouldMuteRoomTemplate;
-export const shouldUnmuteTemplate = shouldUnmuteRoomTemplate;
-export const TARGET_EXTRACTION_TEMPLATE = targetExtractionTemplate;
-export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
-export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
-export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
-export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
+
+export const messageHandlerTemplate = `task: Generate dialog and actions for {{agentName}}.
+
+context:
+{{providers}}
+
+rules[20]:
+- think briefly, then respond
+- always include a <thought> field, even for direct replies
+- actions execute in listed order
+- if replying without another grounded state/action query, REPLY goes first
+- REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include them inside that action's <params> block
+- if a required param is unknown, ask for clarification in text
+- for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
+- when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
+- when the user asks you to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy, choose the matching action instead of handling it in prose only
+- for standing or future-condition requests like "if/when X, do Y", still choose the action that records, queues, or routes that behavior on the first turn
+- if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
+- when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
+- do not wait for portal names, priority labels, event IDs, exact travel preferences, or the definition of "important" before selecting the owning action; let the action gather those details
+- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
+- only choose actions that directly satisfy the user's request or an explicit live-state question; do not opportunistically triage inboxes, summarize calendars, propose meetings, or call adjacent tools just because provider context makes them available
+- when the user is venting, reflecting, stating an opinion, or asking for generic advice about a domain, stay in REPLY or NONE unless they explicitly ask you to inspect state, change state, send something, schedule something, or perform a real operation
+
+control_actions:
+- STOP means the task is done and the agent should end the run without executing more actions
+- STOP is a terminal control action even if it is not listed in available actions
+
+fields[5]{name,meaning}:
+- thought | short plan
+- actions | ordered <action> entries inside <actions>
+- providers | array of provider names, or empty
+- text | next message for {{agentName}}
+- simple | true or false
+
+formatting:
+- wrap multi-line code in fenced code blocks
+- use inline backticks for short code identifiers
+
+output:
+XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
+
+Example:
+<response>
+  <thought>Reply briefly. No extra providers needed.</thought>
+  <actions>
+    <action>
+      <name>REPLY</name>
+    </action>
+  </actions>
+  <providers></providers>
+  <text>Your message here</text>
+  <simple>true</simple>
+</response>`;
+
+export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
+
+export const multiStepDecisionTemplate = `Determine the next step the assistant should take in this conversation to help the user reach their goal.
+
+{{recentMessages}}
+
+# Multi-Step Workflow
+
+In each step, decide:
+
+1. **Which providers (if any)** should be called to gather necessary data.
+2. **Which action (if any)** should be executed after providers return.
+3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
+
+You can select **multiple providers** and at most **one action** per step.
+
+If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
+
+---
+
+{{actionsWithDescriptions}}
+
+{{providersWithDescriptions}}
+
+These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
+
+{{actionResults}}
+
+keys:
+"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
+"action"  Name of the action to execute after providers return (can be empty if no action is needed).
+"providers" List of provider names to call in this step (can be empty if none are needed).
+"isFinish" Set to true only if the task is fully complete.
+
+⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
+
+output:
+thought: Your thought here
+action: ACTION
+providers[2]: PROVIDER1,PROVIDER2
+isFinish: false`;
+
+export const MULTI_STEP_DECISION_TEMPLATE = multiStepDecisionTemplate;
+
+export const multiStepSummaryTemplate = `Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
+
+# Context Information
+{{bio}}
+
+---
+
+{{system}}
+
+---
+
+{{messageDirections}}
+
+# Conversation Summary
+Below is the user's original request and conversation so far:
+{{recentMessages}}
+
+# Execution Trace
+Here are the actions taken by the assistant to fulfill the request:
+{{actionResults}}
+
+# Assistant's Last Reasoning Step
+{{recentMessage}}
+
+# Instructions
+
+ - Review the execution trace and last reasoning step carefully
+
+ - Your final output MUST be TOON in this format:
+output:
+thought: Your thought here
+text: Your final message to the user`;
+
+export const MULTI_STEP_SUMMARY_TEMPLATE = multiStepSummaryTemplate;
+
+export const optionExtractionTemplate = `# Task: Extract selected task and option from user message
+
+# Available Tasks:
+{{tasks}}
+
+# Recent Messages:
+{{recentMessages}}
+
+# Instructions:
+1. Review the user's message and identify which task and option they are selecting
+2. Match against the available tasks and their options, including ABORT
+3. Return the task ID (shortened UUID) and selected option name exactly as listed above
+4. If no clear selection is made, return null for both fields
+
+
+Return in TOON format:
+taskId: string_or_null
+selectedOption: OPTION_NAME_or_null
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+
+export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
+
+export const postActionDecisionTemplate = `Continue helping the user after reviewing the latest action results.
+
+context:
+{{providers}}
+
+recent conversation:
+{{recentMessages}}
+
+recent action results:
+{{actionResults}}
+
+latest reflection task status:
+{{taskCompletionStatus}}
+
+rules[11]:
+- think briefly, then continue the task from the latest action results
+- actions execute in listed order
+- if replying, REPLY goes first
+- use IGNORE or STOP only by themselves
+- include providers only when needed
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
+- use provider_hints from context when present instead of restating the same rules
+- if an action needs inputs, include them under params keyed by action name
+- if a required param is unknown, ask for clarification in text
+- if reflection says the task is incomplete, keep working or explain the concrete follow-up you still need
+- if the task is complete, either reply to the user or use STOP to end the run
+- STOP is a terminal control action even if it is not listed in available actions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+thought: Your thought here
+actions[1]: ACTION
+providers[0]:
+text: Your message here
+simple: true`;
+
+export const POST_ACTION_DECISION_TEMPLATE = postActionDecisionTemplate;
+
+export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
+
+Example task outputs:
+1. A post about the importance of AI in our lives
+thought: I am thinking about writing a post about the importance of AI in our lives
+post: AI is changing the world and it is important to understand how it works
+imagePrompt: A futuristic cityscape with flying cars and people using AI to do things
+
+2. A post about dogs
+thought: I am thinking about writing a post about dogs
+post: Dogs are man's best friend and they are loyal and loving
+imagePrompt: A dog playing with a ball in a park
+
+3. A post about finding a new job
+thought: Getting a job is hard, I bet there's a good post in that
+post: Just keep going!
+imagePrompt: A person looking at a computer screen with a job search website
+
+{{providers}}
+
+Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+Your response should be 1, 2, or 3 sentences (choose the length at random).
+Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
+
+Your output should be formatted as TOON like this:
+thought: Your thought here
+post: Your post text here
+imagePrompt: Optional image prompt here
+
+The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
+The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
+The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
+
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+
+export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
 export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
@@ -858,261 +699,519 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 # Known Facts:
 {{knownFacts}}
 
+# Latest Action Results:
+{{actionResults}}
+
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
+2. Extract only durable new facts from the conversation.
+  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
+  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
+  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
+  - When in doubt, omit the fact.
 3. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+  - Use exact UUIDs from the entities-in-room list only. Never invent placeholders, names, handles, or email addresses in sourceEntityId or targetEntityId.
+4. It is normal to return no facts when nothing durable was learned.
+5. Always decide whether the user's task or request is actually complete right now.
+  - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.
+  - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set \`task_completed: false\`.
+6. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
 
+Output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+Do not output JSON, XML, Markdown fences, or commentary.
+Use indexed TOON fields exactly like this:
+thought: "a self-reflective thought on the conversation"
+task_completed: false
+task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
+facts[0]:
+  claim: durable factual statement
+  type: fact
+  in_bio: false
+  already_known: false
+relationships[0]:
+  sourceEntityId: entity_initiating_interaction
+  targetEntityId: entity_being_interacted_with
+  tags[0]: dm_interaction
 
-Generate a response in the following format:
-<response>
-  <thought>a self-reflective thought on the conversation</thought>
-  <facts>
-    <fact>
-      <claim>factual statement</claim>
-      <type>fact|opinion|status</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-    <!-- Add more facts as needed -->
-  </facts>
-  <relationships>
-    <relationship>
-      <sourceEntityId>entity_initiating_interaction</sourceEntityId>
-      <targetEntityId>entity_being_interacted_with</targetEntityId>
-      <tags>group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2</tags>
-    </relationship>
-    <!-- Add more relationships as needed -->
-  </relationships>
-</response>
+For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+Always include \`task_completed\` and \`task_completion_reason\`.
+If there are no durable new facts, omit all facts[...] entries.
+If there are no relationships, omit all relationships[...] entries.
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
 
-// Entity resolution template
-export const entityResolutionTemplate = `# Task: Resolve Entity Name
-Message Sender: {{senderName}} (ID: {{senderId}})
-Agent: {{agentName}} (ID: {{agentId}})
+export const reflectionTemplate = `# Task: Reflect on recent agent behavior and interactions.
 
-# Entities in Room:
-{{#if entitiesInRoom}}
-{{entitiesInRoom}}
-{{/if}}
-
-{{recentMessages}}
-
-# Instructions:
-1. Analyze the context to identify which entity is being referenced
-2. Consider special references like "me" (the message sender) or "you" (agent the message is directed to)
-3. Look for usernames/handles in standard formats (e.g. @username, user#1234)
-4. Consider context from recent messages for pronouns and references
-5. If multiple matches exist, use context to disambiguate
-6. Consider recent interactions and relationship strength when resolving ambiguity
-
-
-Return an XML response with:
-<response>
-  <entityId>exact-id-if-known-otherwise-null</entityId>
-  <type>EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN</type>
-  <matches>
-    <match>
-      <name>matched-name</name>
-      <reason>why this entity matches</reason>
-    </match>
-  </matches>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-// Component extraction template
-export const componentTemplate = `# Task: Extract Source and Update Component Data
-
-{{recentMessages}}
-
-{{#if existingData}}
-# Existing Component Data:
-{{existingData}}
-{{/if}}
-
-# Instructions:
-1. Analyze the conversation to identify:
-   - The source/platform being referenced (e.g. telegram, x, discord)
-   - Any specific component data being shared
-
-2. Generate updated component data that:
-   - Is specific to the identified platform/source
-   - Preserves existing data when appropriate
-   - Includes the new information from the conversation
-   - Contains only valid data for this component type
-
-
-Return an XML response with the following structure:
-<response>
-  <source>platform-name</source>
-  <data>
-    <username>username_value</username>
-    <displayName>display_name_value</displayName>
-  </data>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-// Settings response templates
-export const settingsSuccessTemplate = `# Task: Generate a response for successful setting updates
 {{providers}}
 
-# Update Information:
-- Updated Settings: {{updateMessages}}
-- Next Required Setting: {{nextSetting.name}}
-- Remaining Required Settings: {{remainingRequired}}
+# Recent Interactions:
+{{recentInteractions}}
 
 # Instructions:
-1. Acknowledge the successful update of settings
-2. Maintain {{agentName}}'s personality and tone
-3. Provide clear guidance on the next setting that needs to be configured
-4. Explain what the next setting is for and how to set it
-5. If appropriate, mention how many required settings remain
+Analyze the agent's recent behavior and interactions. Consider:
+1. Was the communication clear and helpful?
+2. Were responses appropriate for the context?
+3. Were any mistakes made?
+4. What could be improved?
 
-Write a natural, conversational response that {{agentName}} would send about the successful update and next steps.
-Include the actions array ["SETTING_UPDATED"] in your response.`;
+Respond using TOON like this:
+thought: Your detailed analysis
+quality_score: Score 0-100 for overall quality
+strengths: What went well
+improvements: What could be improved
+learnings: Key takeaways for future interactions
 
-export const settingsFailureTemplate = `# Task: Generate a response for failed setting updates
+IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
-# About {{agentName}}:
-{{bio}}
+export const REFLECTION_TEMPLATE = reflectionTemplate;
 
-# Current Settings Status:
-{{settingsStatus}}
+export const removeContactTemplate = `task: Extract the contact removal request.
 
-# Next Required Setting:
-- Name: {{nextSetting.name}}
-- Description: {{nextSetting.description}}
-- Required: Yes
-- Remaining Required Settings: {{remainingRequired}}
+context:
+{{providers}}
 
-# Recent Conversation:
+current_message:
+{{message}}
+
+instructions[4]:
+- identify the contact name to remove
+- set confirmed to yes only when the user explicitly confirms removal
+- set confirmed to no when confirmation is absent or ambiguous
+- return only the requested contact
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+confirmed: yes`;
+
+export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
+
+export const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
+
+{{providers}}
+
+# Instructions: Write the next message for {{agentName}}.
+"thought" should be a short description of what the agent is thinking about and planning.
+"text" should be the next message for {{agentName}} which they will send to the conversation.
+
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the TOON response format without any preamble or explanation.
+
+Respond using TOON like this:
+thought: Your thought here
+text: Your message here
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
+
+export const REPLY_TEMPLATE = replyTemplate;
+
+export const scheduleFollowUpTemplate = `task: Extract follow-up scheduling information from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+current_datetime:
+{{currentDateTime}}
+
+instructions[5]:
+- identify who to follow up with
+- include entityId only when it is explicitly known
+- convert requested timing into an ISO datetime in scheduledAt
+- normalize priority to high, medium, or low
+- include message only when the user asked for a specific note or reminder text
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+entityId:
+scheduledAt: 2026-04-06T14:00:00.000Z
+reason: Check in on the proposal
+priority: medium
+message: Send the latest deck before the call`;
+
+export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
+
+export const searchContactsTemplate = `task: Extract contact search criteria from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[5]:
+- return categories as a comma-separated list when the user filters by category
+- return tags as a comma-separated list when the user filters by tags
+- return searchTerm for any name or free-text lookup
+- set intent to count when the user only wants a count, otherwise list
+- omit fields that are not clearly requested
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+categories: vip,colleague
+searchTerm: Jane
+tags: ai,design
+intent: list`;
+
+export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
+
+export const shouldFollowRoomTemplate = `task: Decide whether {{agentName}} should follow this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to follow, join, listen to, or stay engaged in this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true`;
+
+export const SHOULD_FOLLOW_ROOM_TEMPLATE = shouldFollowRoomTemplate;
+
+export const shouldMuteRoomTemplate = `task: Decide whether {{agentName}} should mute this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to mute, silence, or ignore this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true`;
+
+export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
+
+export const shouldRespondTemplate = `task: Decide whether {{agentName}} should respond, ignore, or stop.
+
+context:
+{{providers}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+available_contexts:
+{{availableContexts}}
+
+context_routing:
+- primaryContext: choose one context from available_contexts, or "general" if none apply
+- secondaryContexts: optional comma-separated list of additional relevant contexts
+- evidenceTurnIds: optional comma-separated list of message IDs supporting the decision
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention and clear follow-up.
+action: RESPOND
+primaryContext: general
+secondaryContexts:
+evidenceTurnIds:`;
+
+export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
+
+export const shouldRespondWithContextTemplate = `task: Decide whether {{agentName}} should respond and which domain context applies.
+
+context:
+{{providers}}
+
+available_contexts:
+{{availableContexts}}
+
+rules[6]:
+- direct mention of {{agentName}} -> RESPOND
+- different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
+- prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
+- request to stop or be quiet directed at {{agentName}} -> STOP
+- if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
+
+context_routing:
+- primaryContext: the single best-matching domain from available_contexts
+- secondaryContexts: zero or more additional domains that are relevant
+- action intent does not only come from the last message; consider the full recent conversation
+- if no specific domain applies, use "general"
+
+decision_note:
+- respond only when the latest message is talking TO {{agentName}}
+- talking TO {{agentName}} means name mention, reply chain, or a clear follow-up that still expects {{agentName}} to answer
+- mentions of other people do not cancel a direct address to {{agentName}}
+- casual conversation between other users is not enough
+- if another assistant already answered and nobody re-addressed {{agentName}}, IGNORE
+- if {{agentName}} already replied recently and nobody re-addressed {{agentName}}, IGNORE
+- talking ABOUT {{agentName}} or continuing a room conversation around them is not enough
+- context routing always applies, even for IGNORE/STOP decisions
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+name: {{agentName}}
+reasoning: Direct mention asking about token balance.
+action: RESPOND
+primaryContext: wallet
+secondaryContexts: []`;
+
+export const SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE =
+	shouldRespondWithContextTemplate;
+
+export const shouldUnfollowRoomTemplate = `task: Decide whether {{agentName}} should unfollow this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to stop following or leave this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true`;
+
+export const SHOULD_UNFOLLOW_ROOM_TEMPLATE = shouldUnfollowRoomTemplate;
+
+export const shouldUnmuteRoomTemplate = `task: Decide whether {{agentName}} should unmute this room.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[3]:
+- return true only when the user is clearly asking {{agentName}} to unmute or resume listening to this room
+- return false when the request is ambiguous or unrelated
+- prefer false when uncertain
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+decision: true`;
+
+export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
+
+export const thinkTemplate = `# Task: Think deeply and reason carefully for {{agentName}}.
+
+{{providers}}
+
+# Context
+The initial planning phase identified this question as requiring deeper analysis.
+The following is the conversation so far and all available context.
+
+# Instructions
+You are {{agentName}}. A question or request has been identified as complex, ambiguous, or requiring careful reasoning. Your job is to think through this thoroughly before responding.
+
+Approach this systematically:
+1. Identify the core question or problem being asked
+2. Consider multiple angles, approaches, or interpretations
+3. Evaluate trade-offs, risks, and constraints
+4. Draw on relevant knowledge and context from the conversation
+5. Arrive at a well-reasoned conclusion or recommendation
+
+Be thorough but concise. Prioritize depth of reasoning over length. If there are genuine unknowns, acknowledge them rather than guessing.
+
+Respond using TOON:
+thought: Your detailed internal reasoning — the full chain of thought, alternatives considered, and why you reached your conclusion
+text: Your response to the user — clear, structured, and well-reasoned. Use headings, lists, or code blocks as appropriate for the content.
+
+IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any preamble or explanation outside of it.`;
+
+export const THINK_TEMPLATE = thinkTemplate;
+
+export const updateContactTemplate = `task: Extract contact updates from the request.
+
+context:
+{{providers}}
+
+current_message:
+{{message}}
+
+instructions[6]:
+- identify the contact name to update
+- set operation to replace unless the user clearly says to add_to or remove_from
+- return categories and tags as comma-separated lists
+- return preferences and customFields as comma-separated key:value pairs
+- include notes only when explicitly requested
+- omit fields that are not being changed
+
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
+
+Example:
+contactName: Jane Doe
+operation: add_to
+categories: vip
+tags: ai,friend
+preferences: timezone:America/New_York,language:English
+customFields: company:Acme,title:Designer
+notes: Prefers async communication`;
+
+export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
+
+export const updateEntityTemplate = `# Task: Update entity information.
+
+{{providers}}
+
+# Current Entity Information:
+{{entityInfo}}
+
+# Instructions:
+Based on the request, determine what information about the entity should be updated.
+Only update fields that the user has explicitly requested to change.
+
+Respond using TOON like this:
+thought: Your reasoning for the entity update
+entity_id: The entity ID to update
+updates[1]{name,value}:
+  field_name,new_value
+
+IMPORTANT: Your response must ONLY contain the TOON document above.`;
+
+export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
+
+export const updateRoleTemplate = `task: Extract the requested role change.
+
+context:
+{{providers}}
+
+current_roles:
+{{roles}}
+
+recent_messages:
 {{recentMessages}}
 
-# Instructions:
-1. Express that you couldn't understand or process the setting update
-2. Maintain {{agentName}}'s personality and tone
-3. Provide clear guidance on what setting needs to be configured next
-4. Explain what the setting is for and how to set it properly
-5. Use a helpful, patient tone
+current_message:
+{{message}}
 
-Write a natural, conversational response that {{agentName}} would send about the failed update and how to proceed.
-Include the actions array ["SETTING_UPDATE_FAILED"] in your response.`;
+instructions[6]:
+- identify the single entity whose role should be updated
+- return entity_id only when the UUID is explicit in context
+- normalize new_role to one of OWNER, ADMIN, MEMBER, GUEST, or NONE
+- if the user is removing elevated access without naming a new role, use NONE
+- do not invent entity ids or roles
+- include a short thought describing the change
 
-export const settingsErrorTemplate = `# Task: Generate a response for an error during setting updates
+output:
+TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
 
-# About {{agentName}}:
-{{bio}}
+Example:
+thought: Sarah should become an admin.
+entity_id: 00000000-0000-0000-0000-000000000000
+new_role: ADMIN`;
 
-# Recent Conversation:
-{{recentMessages}}
+export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
 
-# Instructions:
-1. Apologize for the technical difficulty
-2. Maintain {{agentName}}'s personality and tone
-3. Suggest trying again or contacting support if the issue persists
-4. Keep the message concise and helpful
+export const updateSettingsTemplate = `# Task: Update settings based on the request.
 
-Write a natural, conversational response that {{agentName}} would send about the error.
-Include the actions array ["SETTING_UPDATE_ERROR"] in your response.`;
+{{providers}}
 
-export const settingsCompletionTemplate = `# Task: Generate a response for settings completion
-
-# About {{agentName}}:
-{{bio}}
-
-# Settings Status:
-{{settingsStatus}}
-
-# Recent Conversation:
-{{recentMessages}}
+# Current Settings:
+{{settings}}
 
 # Instructions:
-1. Congratulate the user on completing the settings process
-2. Maintain {{agentName}}'s personality and tone
-3. Summarize the key settings that have been configured
-4. Explain what functionality is now available
-5. Provide guidance on what the user can do next
-6. Express enthusiasm about working together
+Based on the request, determine which settings to update.
+Only update settings that the user has explicitly requested.
 
-Write a natural, conversational response that {{agentName}} would send about the successful completion of settings.
-Include the actions array ["ONBOARDING_COMPLETE"] in your response.`;
+Respond using TOON like this:
+thought: Your reasoning for the settings changes
+updates[1]{key,value}:
+  setting_key,new_value
 
-// UPPERCASE aliases for new templates
-export const ENTITY_RESOLUTION_TEMPLATE = entityResolutionTemplate;
-export const COMPONENT_TEMPLATE = componentTemplate;
-export const SETTINGS_SUCCESS_TEMPLATE = settingsSuccessTemplate;
-export const SETTINGS_FAILURE_TEMPLATE = settingsFailureTemplate;
-export const SETTINGS_ERROR_TEMPLATE = settingsErrorTemplate;
-export const SETTINGS_COMPLETION_TEMPLATE = settingsCompletionTemplate;
+IMPORTANT: Your response must ONLY contain the TOON document above.`;
 
-// Autonomy templates
-export const autonomyContinuousFirstTemplate = `You are running in AUTONOMOUS CONTINUOUS MODE.
+export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
 
-Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- If you cannot act, state the missing info and the safest next step to obtain it.
-- Keep the response concise, focused on the next action.
+export const updateSummarizationTemplate = `# Task: Update and Condense Conversation Summary
 
-USER CONTEXT (most recent last):
-{{targetRoomContext}}
+You are updating an existing conversation summary with new messages, while keeping the total summary concise.
 
-Think briefly, then state what you want to do next and take action if needed.`;
+# Existing Summary
+{{existingSummary}}
 
-export const autonomyContinuousContinueTemplate = `You are running in AUTONOMOUS CONTINUOUS MODE.
+# Existing Topics
+{{existingTopics}}
 
-Your job: reflect on context, decide what you want to do next, and act if appropriate.
-- Use available actions/tools when they can advance the goal.
-- If you cannot act, state the missing info and the safest next step to obtain it.
-- Keep the response concise, focused on the next action.
+# New Messages Since Last Summary
+{{newMessages}}
 
-USER CONTEXT (most recent last):
-{{targetRoomContext}}
+# Instructions
+Update the summary by:
+1. Merging the existing summary with insights from the new messages
+2. Removing redundant or less important details to stay under the token limit
+3. Keeping the most important context and decisions
+4. Adding new topics if they emerge
+5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
 
-Your last autonomous note: "{{lastThought}}"
+The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
 
-Continue from that note. Decide the next step and act if needed.`;
+Respond in TOON:
+text: Your updated and condensed summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point`;
 
-export const autonomyTaskFirstTemplate = `You are running in AUTONOMOUS TASK MODE.
+export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
 
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools to gather information or execute steps.
-- If you need UI control, use ComputerUse actions.
-- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
-- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
+export const booleanFooter = "Respond with only a YES or a NO.";
 
-USER CHAT CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Decide what to do next. Think briefly, then take the most useful action.`;
-
-export const autonomyTaskContinueTemplate = `You are running in AUTONOMOUS TASK MODE.
-
-Your job: continue helping the user and make progress toward the task.
-- Use available actions/tools to gather information or execute steps.
-- If you need UI control, use ComputerUse actions.
-- In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
-- Prefer safe, incremental steps; if unsure, gather more UI context before acting.
-
-USER CHAT CONTEXT (most recent last):
-{{targetRoomContext}}
-
-Your last autonomous note: "{{lastThought}}"
-
-Continue the task. Decide the next step and take action now.`;
-
-// UPPERCASE aliases for autonomy templates
-export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
-	autonomyContinuousFirstTemplate;
-export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
-	autonomyContinuousContinueTemplate;
-export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
-export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;
+export const BOOLEAN_FOOTER = booleanFooter;

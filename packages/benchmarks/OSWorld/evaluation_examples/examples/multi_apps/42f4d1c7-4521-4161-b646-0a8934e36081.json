@@ -1,0 +1,74 @@
+{
+  "id": "42f4d1c7-4521-4161-b646-0a8934e36081",
+  "snapshot": "gimp",
+  "instruction": "Configure VS Code to edit GIMP script-fu scripts effectively by installing lisp extension. Test by writing code to resize the image \"character.png\" to 128 * 128 as \"resized.png\".",
+  "source": "",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/42f4d1c7-4521-4161-b646-0a8934e36081/character.png",
+            "path": "/home/user/Desktop/character.png"
+          }
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "code"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp",
+    "vs_code"
+  ],
+  "evaluator": {
+    "func": [
+      "is_extension_installed",
+      "check_image_size"
+    ],
+    "result": [
+      {
+        "type": "vm_command_line",
+        "command": [
+          "code",
+          "--list-extensions",
+          "|",
+          "grep",
+          "mattn.lisp"
+        ]
+      },
+      {
+        "type": "vm_file",
+        "path": "/home/user/Desktop/resized.png",
+        "dest": "resized.png"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "type": "contain",
+          "expected": "mattn.lisp"
+        }
+      },
+      {
+        "type": "rule",
+        "rules": {
+          "height": 128,
+          "width": 128
+        }
+      }
+    ]
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

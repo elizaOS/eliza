@@ -6,11 +6,11 @@ import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
 import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
-import { DefaultMessageService } from "../../src/services/message";
 import { detectInferenceProviders } from "../../src/testing/inference-provider";
 import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
+import { loadEnvFile } from "../../src/utils/environment";
 
 const PORT = 13789;
 
@@ -37,22 +37,20 @@ async function resolveProviderPlugin(
 ): Promise<Plugin | null> {
 	switch (providerName) {
 		case "openai": {
-			const mod = await import(
-				"../../../../plugins/plugin-openai/typescript/index"
-			);
+			const mod = await import("@elizaos/plugin-openai");
 			return mod.openaiPlugin ?? mod.default ?? null;
 		}
 		case "anthropic": {
-			const mod = await import(
-				"../../../../plugins/plugin-anthropic/typescript/index"
-			);
+			const mod = await import("@elizaos/plugin-anthropic");
 			return mod.anthropicPlugin ?? mod.default ?? null;
+		}
+		case "groq": {
+			const mod = await import("@elizaos/plugin-groq");
+			return mod.groqPlugin ?? mod.default ?? null;
 		}
 		case "google": {
 			try {
-				const mod = await import(
-					"../../../../plugins/plugin-google-genai/typescript/index"
-				);
+				const mod = await import("@elizaos/plugin-google-genai");
 				return mod.default ?? null;
 			} catch {
 				return null;
@@ -73,7 +71,63 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 	});
 }
 
+async function verifyInferenceProvider(runtime: AgentRuntime): Promise<void> {
+	await runtime.generateText("Reply with OK.", {
+		modelType: "TEXT_LARGE" as "TEXT_LARGE",
+		maxTokens: 8,
+	});
+}
+
+function applyProviderSettings(
+	runtime: AgentRuntime,
+	providerName: string,
+): void {
+	switch (providerName) {
+		case "openai":
+			runtime.setSetting(
+				"OPENAI_API_KEY",
+				process.env.OPENAI_API_KEY ?? "",
+				true,
+			);
+			break;
+		case "anthropic":
+			runtime.setSetting(
+				"ANTHROPIC_API_KEY",
+				process.env.ANTHROPIC_API_KEY ?? "",
+				true,
+			);
+			break;
+		case "google":
+			runtime.setSetting(
+				"GOOGLE_GENERATIVE_AI_API_KEY",
+				process.env.GOOGLE_API_KEY ??
+					process.env.GOOGLE_AI_API_KEY ??
+					process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
+					"",
+				true,
+			);
+			break;
+		case "groq":
+			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
+			runtime.setSetting(
+				"GROQ_SMALL_MODEL",
+				process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-20b",
+			);
+			runtime.setSetting(
+				"GROQ_LARGE_MODEL",
+				process.env.GROQ_LARGE_MODEL ?? "openai/gpt-oss-120b",
+			);
+			break;
+	}
+}
+
 export default async function globalSetup(): Promise<void> {
+	process.env.ELIZA_PLAYWRIGHT_E2E = "1";
+
+	// Load repo-local credentials before provider detection so Playwright e2e
+	// behaves the same way as the rest of the workspace.
+	loadEnvFile();
+
 	// ── 1. Detect inference provider ───────────────────────────────────────
 	const detection = await detectInferenceProviders();
 	if (!detection.hasProvider || !detection.primaryProvider) {
@@ -110,6 +164,8 @@ export default async function globalSetup(): Promise<void> {
 		logLevel: "warn",
 	});
 
+	applyProviderSettings(runtime, provider.name);
+
 	// For Ollama without a plugin package, register model handlers directly.
 	if (provider.name === "ollama" && !providerPlugin) {
 		const handlers = createOllamaModelHandlers();
@@ -129,6 +185,18 @@ export default async function globalSetup(): Promise<void> {
 
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
+
+	try {
+		await verifyInferenceProvider(runtime);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(
+			`\n[e2e] Provider preflight failed. Skipping E2E tests.\n${message}\n`,
+		);
+		process.env.__E2E_SKIP__ = "1";
+		await runtime.stop();
+		return;
+	}
 
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
@@ -193,18 +261,6 @@ export default async function globalSetup(): Promise<void> {
 				}
 
 				const chatRoomId = (body.roomId as UUID) ?? roomId;
-				const chatEntityId = (body.entityId as UUID) ?? testEntityId;
-
-				const message: Memory = {
-					id: uuidv4() as UUID,
-					entityId: chatEntityId,
-					roomId: chatRoomId,
-					content: {
-						text: body.text.trim(),
-						source: "e2e",
-					},
-					createdAt: Date.now(),
-				};
 
 				// Use generateText for a reliable, simpler path than full messageService
 				const result = await runtime.generateText(body.text.trim(), {

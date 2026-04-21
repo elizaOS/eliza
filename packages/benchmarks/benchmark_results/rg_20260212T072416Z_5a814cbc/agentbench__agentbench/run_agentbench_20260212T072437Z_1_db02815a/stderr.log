@@ -1,0 +1,4 @@
+# command: /opt/miniconda3/bin/python /Users/shawwalters/eliza-workspace/benchmarks/agentbench/python/run_benchmark.py --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T072416Z_5a814cbc/agentbench__agentbench/run_agentbench_20260212T072437Z_1_db02815a/output
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_agentbench_20260212T072437Z_1_db02815a
+/opt/miniconda3/bin/python: can't open file '/Users/shawwalters/eliza-workspace/benchmarks/agentbench/python/run_benchmark.py': [Errno 2] No such file or directory

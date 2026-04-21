@@ -1,0 +1,79 @@
+# Cloud Build configuration for elizaOS GCP Cloud Run workers
+#
+# Usage:
+#   gcloud builds submit --config=cloudbuild.yaml \
+#     --substitutions=_REGION=us-central1,_RUNTIME=typescript
+#
+# Available runtimes: typescript, python, rust
+
+substitutions:
+  _REGION: us-central1
+  _RUNTIME: typescript
+  _SERVICE_NAME: eliza-worker
+  _MIN_INSTANCES: "0"
+  _MAX_INSTANCES: "100"
+  _MEMORY: "512Mi"
+  _CPU: "1"
+  _TIMEOUT: "60s"
+
+steps:
+  # Build the Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    id: "build"
+    args:
+      - "build"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}:$COMMIT_SHA"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}:latest"
+      - "-f"
+      - "${_RUNTIME}/Dockerfile"
+      - "${_RUNTIME}"
+
+  # Push to Artifact Registry
+  - name: "gcr.io/cloud-builders/docker"
+    id: "push"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}"
+
+  # Deploy to Cloud Run
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: "deploy"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "${_SERVICE_NAME}-${_RUNTIME}"
+      - "--image"
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}:$COMMIT_SHA"
+      - "--region"
+      - "${_REGION}"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--memory"
+      - "${_MEMORY}"
+      - "--cpu"
+      - "${_CPU}"
+      - "--timeout"
+      - "${_TIMEOUT}"
+      - "--min-instances"
+      - "${_MIN_INSTANCES}"
+      - "--max-instances"
+      - "${_MAX_INSTANCES}"
+      - "--set-env-vars"
+      - "LOG_LEVEL=INFO"
+
+images:
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}:$COMMIT_SHA"
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/eliza/${_SERVICE_NAME}-${_RUNTIME}:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: "1200s"
+
+
+

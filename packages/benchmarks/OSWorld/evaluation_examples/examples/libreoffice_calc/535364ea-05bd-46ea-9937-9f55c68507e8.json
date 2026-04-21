@@ -1,0 +1,91 @@
+{
+  "id": "535364ea-05bd-46ea-9937-9f55c68507e8",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Create two pivot tables in a new sheet named \"Sheet2\" showing the total revenue for each product and sales channel.",
+  "source": "SheetCopilot@180",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/535364ea-05bd-46ea-9937-9f55c68507e8/SummerSales.xlsx",
+            "path": "/home/user/SummerSales.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/SummerSales.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/535364ea-05bd-46ea-9937-9f55c68507e8",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "SummerSales.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/535364ea-05bd-46ea-9937-9f55c68507e8/5_SummerSales_gt1.xlsx",
+      "dest": "5_SummerSales_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/SummerSales.xlsx",
+      "dest": "SummerSales.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "pivot_table",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2",
+          "pivot_props": [
+            "col_fields",
+            "filter",
+            "row_fields",
+            "data_fields"
+          ]
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

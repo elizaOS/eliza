@@ -817,6 +817,8 @@ addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 - `normal` - Default priority (conversations)
 - `low` - Background processing (bulk imports)
 
+In `@elizaos/core`, the embedding-generation service drains that queue through a **shared batch-queue pipeline** (priority queue, bounded concurrency, retries, repeat `EMBEDDING_DRAIN` task) so this path does not diverge from other queue-and-drain workloads. **Why:** one composable subsystem instead of multiple bespoke queue implementations as features grow. See [Batch queue subsystem](/runtime/batch-queue) (also `packages/typescript/docs/BATCH_QUEUE.md` in the monorepo).
+
 ```typescript
 // Queue high-priority embedding for user query
 await runtime.queueEmbeddingGeneration(userMessage, "high");

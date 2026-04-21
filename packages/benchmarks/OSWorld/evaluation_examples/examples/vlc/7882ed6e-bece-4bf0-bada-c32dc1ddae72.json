@@ -1,0 +1,25 @@
+{
+  "id": "7882ed6e-bece-4bf0-bada-c32dc1ddae72",
+  "snapshot": "base_setup",
+  "instruction": "Play the latest season of 'Stranger Things' purchased from the Google Play Movies & TV store directly in VLC.",
+  "source": "https://wiki.videolan.org/Digital_Restrictions_Management/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "VLC_VERBOSE=-1 vlc --no-audio --no-video-title-show",
+        "shell": true
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "vlc"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

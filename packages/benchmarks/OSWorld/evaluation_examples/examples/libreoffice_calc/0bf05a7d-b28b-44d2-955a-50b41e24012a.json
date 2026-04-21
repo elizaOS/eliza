@@ -1,0 +1,112 @@
+{
+  "id": "0bf05a7d-b28b-44d2-955a-50b41e24012a",
+  "snapshot": "libreoffice_calc",
+  "instruction": "I would like to copy all the numbers in the 'Old ID' column to the 'New 7 Digit Id' column, and pad them with zeros in front, to fill them up to seven digits. Finish the work and don't touch irrelevant regions, even if they are blank.",
+  "source": "https://www.youtube.com/shorts/FPAQaDTS8VY",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/0bf05a7d-b28b-44d2-955a-50b41e24012a/Customers_New_7digit_Id.xlsx",
+            "path": "/home/user/Customers_New_7digit_Id.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/Customers_New_7digit_Id.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/0bf05a7d-b28b-44d2-955a-50b41e24012a",
+  "related_apps": [
+    "libreoffice calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "Customers_New_7digit_Id.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "libreoffice",
+            "--convert-to",
+            "csv:Text - txt - csv (StarCalc):44,34,UTF-8,,,,false,true,true,false,false,1",
+            "--outdir",
+            "/home/user",
+            "/home/user/Customers_New_7digit_Id.xlsx"
+          ]
+        }
+      }
+    ],
+    "func": "compare_table",
+    "result": {
+      "type": "vm_file",
+      "path": [
+        "/home/user/Customers_New_7digit_Id.xlsx",
+        "/home/user/Customers_New_7digit_Id-Sheet1.csv"
+      ],
+      "dest": [
+        "Customers_New_7digit_Id.xlsx",
+        "Customers_New_7digit_Id-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "expected": {
+      "type": "cloud_file",
+      "path": [
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/0bf05a7d-b28b-44d2-955a-50b41e24012a/Customers_New_7digit_Id_gold.xlsx",
+        "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/0bf05a7d-b28b-44d2-955a-50b41e24012a/Customers_New_7digit_Id_gold.csv"
+      ],
+      "dest": [
+        "Customers_New_7digit_Id_gold.xlsx",
+        "Customers_New_7digit_Id_gold-Sheet1.csv"
+      ],
+      "multi": true
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_print",
+          "sheet_idx0": 0,
+          "sheet_idx1": "EI0"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

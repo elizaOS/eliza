@@ -1,137 +1,105 @@
 import { describe, expect, test } from "vitest";
 import type {
   CreateOptions,
-  Example,
-  ExampleLanguage,
-  ExamplesManifest,
-  InfoOptions,
+  FullstackTemplateValues,
+  PluginTemplateValues,
+  TemplateDefinition,
+  TemplatesManifest,
+  UpgradeOptions,
 } from "../types.js";
 
-describe("ExampleLanguage type", () => {
-  test("minimal valid ExampleLanguage", () => {
-    const lang: ExampleLanguage = {
-      language: "typescript",
-      path: "examples/basic/typescript",
+describe("TemplateDefinition", () => {
+  test("supports plugin and fullstack-app templates", () => {
+    const template: TemplateDefinition = {
+      description: "Plugin starter",
+      id: "plugin",
+      kind: "plugin",
+      languages: ["typescript", "python", "rust"],
+      name: "plugin",
+      version: 1,
     };
-    expect(lang.language).toBe("typescript");
-    expect(lang.path).toBe("examples/basic/typescript");
-  });
 
-  test("ExampleLanguage with optional fields", () => {
-    const lang: ExampleLanguage = {
-      language: "typescript",
-      path: "examples/basic/typescript",
-      hasPackageJson: true,
-      hasRequirementsTxt: false,
-      hasCargoToml: false,
-      hasPyprojectToml: false,
-    };
-    expect(lang.hasPackageJson).toBe(true);
-    expect(lang.hasRequirementsTxt).toBe(false);
+    expect(template.id).toBe("plugin");
+    expect(template.languages).toContain("rust");
   });
 });
 
-describe("Example type", () => {
-  test("valid Example with all required fields", () => {
-    const example: Example = {
-      name: "basic-chat",
-      description: "A basic chat example",
-      path: "examples/basic-chat",
-      languages: [
-        { language: "typescript", path: "examples/basic-chat/typescript" },
-        { language: "python", path: "examples/basic-chat/python" },
-      ],
-      category: "getting-started",
-    };
-    expect(example.name).toBe("basic-chat");
-    expect(example.languages).toHaveLength(2);
-    expect(example.category).toBe("getting-started");
-  });
-
-  test("Example with empty languages array", () => {
-    const example: Example = {
-      name: "empty",
-      description: "No languages",
-      path: "examples/empty",
-      languages: [],
-      category: "misc",
-    };
-    expect(example.languages).toHaveLength(0);
-  });
-});
-
-describe("ExamplesManifest type", () => {
-  test("valid manifest structure", () => {
-    const manifest: ExamplesManifest = {
-      version: "1.0.0",
-      generatedAt: "2024-01-01T00:00:00Z",
+describe("TemplatesManifest", () => {
+  test("supports template collections", () => {
+    const manifest: TemplatesManifest = {
+      generatedAt: "2026-04-14T00:00:00.000Z",
       repoUrl: "https://github.com/elizaos/eliza",
-      examples: [
+      templates: [
         {
-          name: "basic",
-          description: "Basic example",
-          path: "examples/basic",
-          languages: [{ language: "typescript", path: "examples/basic/ts" }],
-          category: "getting-started",
+          description: "Fullstack workspace",
+          id: "fullstack-app",
+          kind: "fullstack-app",
+          languages: ["typescript"],
+          name: "fullstack-app",
+          version: 1,
         },
       ],
-      categories: ["getting-started"],
-      languages: ["typescript"],
+      version: "1.0.0",
     };
-    expect(manifest.version).toBe("1.0.0");
-    expect(manifest.examples).toHaveLength(1);
-    expect(manifest.categories).toHaveLength(1);
-    expect(manifest.languages).toHaveLength(1);
-  });
 
-  test("empty manifest arrays", () => {
-    const manifest: ExamplesManifest = {
-      version: "0.0.0",
-      generatedAt: "",
-      repoUrl: "",
-      examples: [],
-      categories: [],
-      languages: [],
-    };
-    expect(manifest.examples).toHaveLength(0);
-    expect(manifest.categories).toHaveLength(0);
-    expect(manifest.languages).toHaveLength(0);
+    expect(manifest.templates).toHaveLength(1);
+    expect(manifest.templates[0]?.id).toBe("fullstack-app");
   });
 });
 
-describe("CreateOptions type", () => {
-  test("empty options", () => {
-    const opts: CreateOptions = {};
-    expect(opts.language).toBeUndefined();
-    expect(opts.example).toBeUndefined();
-    expect(opts.yes).toBeUndefined();
+describe("Template value types", () => {
+  test("plugin values capture scaffold substitutions", () => {
+    const values: PluginTemplateValues = {
+      displayName: "Foo",
+      elizaVersion: "2.0.0-alpha.139",
+      githubUsername: "octocat",
+      pluginBaseName: "plugin-foo",
+      pluginDescription: "plugin-foo plugin for elizaOS",
+      pluginSnake: "plugin_foo",
+      repoUrl: "https://github.com/octocat/plugin-foo",
+    };
+
+    expect(values.pluginBaseName).toBe("plugin-foo");
   });
 
-  test("fully specified options", () => {
-    const opts: CreateOptions = {
+  test("fullstack values capture branded workspace substitutions", () => {
+    const values: FullstackTemplateValues = {
+      appName: "Foo App",
+      appUrl: "https://example.com/foo-app",
+      bugReportUrl: "https://github.com/your-org/foo-app/issues/new",
+      bundleId: "com.example.fooapp",
+      docsUrl: "https://example.com/foo-app/docs",
+      fileExtension: ".foo-app.agent",
+      hashtag: "#FooApp",
+      orgName: "your-org",
+      packageScope: "fooapp",
+      projectSlug: "foo-app",
+      releaseBaseUrl: "https://example.com/foo-app/releases/",
+      repoName: "foo-app",
+    };
+
+    expect(values.bundleId).toContain("fooapp");
+  });
+});
+
+describe("CLI option types", () => {
+  test("create options support template selection", () => {
+    const options: CreateOptions = {
       language: "typescript",
-      example: "basic",
+      template: "fullstack-app",
       yes: true,
     };
-    expect(opts.language).toBe("typescript");
-    expect(opts.example).toBe("basic");
-    expect(opts.yes).toBe(true);
-  });
-});
 
-describe("InfoOptions type", () => {
-  test("empty options", () => {
-    const opts: InfoOptions = {};
-    expect(opts.language).toBeUndefined();
-    expect(opts.json).toBeUndefined();
+    expect(options.template).toBe("fullstack-app");
   });
 
-  test("fully specified options", () => {
-    const opts: InfoOptions = {
-      language: "python",
-      json: true,
+  test("upgrade options support dry runs", () => {
+    const options: UpgradeOptions = {
+      check: true,
+      dryRun: true,
+      skipUpstream: true,
     };
-    expect(opts.language).toBe("python");
-    expect(opts.json).toBe(true);
+
+    expect(options.dryRun).toBe(true);
   });
 });

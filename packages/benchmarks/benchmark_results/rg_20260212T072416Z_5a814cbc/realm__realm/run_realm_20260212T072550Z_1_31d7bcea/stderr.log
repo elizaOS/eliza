@@ -1,0 +1,3 @@
+# command: /opt/miniconda3/bin/python -m benchmarks.realm.cli --output /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260212T072416Z_5a814cbc/realm__realm/run_realm_20260212T072550Z_1_31d7bcea/output --model qwen/qwen3-32b
+# cwd: /Users/shawwalters/eliza-workspace
+# run_id: run_realm_20260212T072550Z_1_31d7bcea

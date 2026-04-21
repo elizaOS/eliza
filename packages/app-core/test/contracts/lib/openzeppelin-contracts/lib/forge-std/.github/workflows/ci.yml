@@ -1,0 +1,125 @@
+name: CI
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: build +${{ matrix.toolchain }} ${{ matrix.flags }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, nightly]
+        flags:
+          - ""
+          - --via-ir
+          - --use solc:0.8.33 --via-ir
+          - --use solc:0.8.33
+          - --use solc:0.8.13 --via-ir
+          - --use solc:0.8.13
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ matrix.toolchain }}
+      - run: forge --version
+      - run: forge build -vvvvv --skip test --deny warnings ${{ matrix.flags }} --contracts 'test/compilation/*'
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [stable, nightly]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ matrix.toolchain }}
+      - run: forge --version
+      - run: forge test -vvv
+
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge --version
+      - run: forge fmt --check
+
+  typos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: crate-ci/typos@78bc6fb2c0d734235d57a2d6b9de923cc325ebdd # v1
+
+  codeql:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"
+
+  ci-success:
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - build
+      - test
+      - fmt
+      - typos
+      - codeql
+    timeout-minutes: 10
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}

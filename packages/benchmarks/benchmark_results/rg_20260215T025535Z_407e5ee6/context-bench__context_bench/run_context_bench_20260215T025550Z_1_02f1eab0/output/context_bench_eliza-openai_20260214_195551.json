@@ -1,0 +1,107 @@
+{
+  "overall_accuracy": 0.0,
+  "total_tasks": 12,
+  "passed_tasks": 0,
+  "failed_tasks": 12,
+  "avg_semantic_similarity": 0.0,
+  "lost_in_middle_score": 0.0,
+  "context_degradation_rate": 0.0,
+  "avg_latency_ms": 0.046312808990478516,
+  "total_duration_ms": 40.99678993225098,
+  "position_heatmap": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0
+    ]
+  ],
+  "position_heatmap_lengths": [
+    1024,
+    4096
+  ],
+  "position_heatmap_positions": [
+    "start",
+    "middle",
+    "end"
+  ],
+  "position_accuracies": {
+    "start": {
+      "accuracy": 0.0,
+      "total_tasks": 4
+    },
+    "middle": {
+      "accuracy": 0.0,
+      "total_tasks": 4
+    },
+    "end": {
+      "accuracy": 0.0,
+      "total_tasks": 4
+    }
+  },
+  "length_accuracies": {
+    "1024": {
+      "accuracy": 0.0,
+      "total_tasks": 6
+    },
+    "4096": {
+      "accuracy": 0.0,
+      "total_tasks": 6
+    }
+  },
+  "multi_hop_success_rates": {},
+  "comparison_to_leaderboard": {
+    "gpt-4-turbo": {
+      "overall_diff": -0.91,
+      "lost_in_middle_diff": 0.12,
+      "niah_4k_diff": -0.98
+    },
+    "gpt-5": {
+      "overall_diff": -0.94,
+      "lost_in_middle_diff": 0.08,
+      "niah_4k_diff": -0.99
+    },
+    "claude-3-opus": {
+      "overall_diff": -0.95,
+      "lost_in_middle_diff": 0.05,
+      "niah_4k_diff": -0.99
+    },
+    "claude-3-sonnet": {
+      "overall_diff": -0.88,
+      "lost_in_middle_diff": 0.15,
+      "niah_4k_diff": -0.98
+    },
+    "llama-3.1-70b": {
+      "overall_diff": -0.8,
+      "lost_in_middle_diff": 0.22,
+      "niah_4k_diff": -0.95
+    },
+    "mistral-large": {
+      "overall_diff": -0.76,
+      "lost_in_middle_diff": 0.25,
+      "niah_4k_diff": -0.94
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "overall_accuracy": "0.0%",
+    "findings": [
+      "Low retrieval accuracy (<70%)",
+      "Performance below Claude-3-Opus (-95.0%)"
+    ],
+    "recommendations": [
+      "Consider using a model with better context handling"
+    ]
+  },
+  "metadata": {
+    "timestamp": "2026-02-14T19:55:51.170513",
+    "seed": 42,
+    "total_duration_ms": 40.99678993225098
+  }
+}

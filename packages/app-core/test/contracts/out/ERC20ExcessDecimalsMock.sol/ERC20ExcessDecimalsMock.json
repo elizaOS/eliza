@@ -1,0 +1,71 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "name": "decimals",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "pure"
+    }
+  ],
+  "bytecode": {
+    "object": "0x6080604052348015600e575f80fd5b50607480601a5f395ff3fe6080604052348015600e575f80fd5b50600436106026575f3560e01c8063313ce56714602a575b5f80fd5b5f1960405190815260200160405180910390f3fea2646970667358221220d5ce9e55569636600d108104c2446016238e2648adb0e4905657c2073a13ca8d64736f6c63430008140033",
+    "sourceMap": "58:132:133:-:0;;;;;;;;;;;;;;;;;;;",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x6080604052348015600e575f80fd5b50600436106026575f3560e01c8063313ce56714602a575b5f80fd5b5f1960405190815260200160405180910390f3fea2646970667358221220d5ce9e55569636600d108104c2446016238e2648adb0e4905657c2073a13ca8d64736f6c63430008140033",
+    "sourceMap": "58:132:133:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;97:91;-1:-1:-1;;97:91:133;;160:25:310;;;148:2;133:18;97:91:133;;;;;;",
+    "linkReferences": {}
+  },
+  "methodIdentifiers": { "decimals()": "313ce567" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.20+commit.a1b79de6\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"lib/openzeppelin-contracts/contracts/mocks/token/ERC20ExcessDecimalsMock.sol\":\"ERC20ExcessDecimalsMock\"},\"evmVersion\":\"shanghai\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\",\":openzeppelin/=lib/openzeppelin-contracts/contracts/\"]},\"sources\":{\"lib/openzeppelin-contracts/contracts/mocks/token/ERC20ExcessDecimalsMock.sol\":{\"keccak256\":\"0x0ae4c2a4b47ec20623254501a9854bca24864f88744bef58dac77a07de77644e\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://ce8b84abb1e7e40cd7aceb78483c02e9431aaebd0491a87d7700d8a64173f131\",\"dweb:/ipfs/QmdV3LJmKnBW7Zdt4hNszLuXsGtzrTnqkJbr4dTEYJzHBm\"]}},\"version\":1}",
+  "metadata": {
+    "compiler": { "version": "0.8.20+commit.a1b79de6" },
+    "language": "Solidity",
+    "output": {
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "pure",
+          "type": "function",
+          "name": "decimals",
+          "outputs": [
+            { "internalType": "uint256", "name": "", "type": "uint256" }
+          ]
+        }
+      ],
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+    },
+    "settings": {
+      "remappings": [
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/openzeppelin-contracts/lib/forge-std/lib/ds-test/src/",
+        "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+        "forge-std/=lib/openzeppelin-contracts/lib/forge-std/src/",
+        "openzeppelin-contracts/=lib/openzeppelin-contracts/",
+        "openzeppelin/=lib/openzeppelin-contracts/contracts/"
+      ],
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": {
+        "lib/openzeppelin-contracts/contracts/mocks/token/ERC20ExcessDecimalsMock.sol": "ERC20ExcessDecimalsMock"
+      },
+      "evmVersion": "shanghai",
+      "libraries": {}
+    },
+    "sources": {
+      "lib/openzeppelin-contracts/contracts/mocks/token/ERC20ExcessDecimalsMock.sol": {
+        "keccak256": "0x0ae4c2a4b47ec20623254501a9854bca24864f88744bef58dac77a07de77644e",
+        "urls": [
+          "bzz-raw://ce8b84abb1e7e40cd7aceb78483c02e9431aaebd0491a87d7700d8a64173f131",
+          "dweb:/ipfs/QmdV3LJmKnBW7Zdt4hNszLuXsGtzrTnqkJbr4dTEYJzHBm"
+        ],
+        "license": "MIT"
+      }
+    },
+    "version": 1
+  },
+  "id": 133
+}

@@ -1,0 +1,56 @@
+{
+  "id": "69acbb55-d945-4927-a87b-8480e1a5bb7e",
+  "snapshot": "os",
+  "instruction": "I'm working on word embedding tasks and require assistance in configuring the environment for the project located at \"https://github.com/xlang-ai/instructor-embedding\" in the directory /home/user. Please guide me through the process, and refer to this provided Colab script at https://colab.research.google.com/drive/1P7ivNLMosHyG7XOHmoh7CoqpXryKy3Qt?usp=sharing for reference.",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/69acbb55-d945-4927-a87b-8480e1a5bb7e",
+  "related_apps": [
+    "os",
+    "chrome",
+    "vscode"
+  ],
+  "evaluator": {
+    "func": "check_include_exclude",
+    "result": {
+      "type": "vm_command_error",
+      "command": [
+        "python",
+        "-c",
+        "from InstructorEmbedding import INSTRUCTOR;"
+      ]
+    },
+    "expected": {
+      "type": "rule",
+      "rules": {
+        "include": [],
+        "exclude": [
+          "Error:"
+        ]
+      }
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "evt_001",
+    "title": "Team Standup",
+    "start": "2026-02-06T09:00:00-08:00",
+    "end": "2026-02-06T09:30:00-08:00",
+    "location": "Zoom (recurring)",
+    "attendees": ["alex.chen@techcorp.com", "sarah.kim@techcorp.com", "james.liu@techcorp.com", "priya.patel@techcorp.com", "marcus.johnson@techcorp.com"],
+    "notes": "Sprint standup — each person gives update, blockers, plan for day"
+  },
+  {
+    "id": "evt_002",
+    "title": "1:1 with Sarah (Manager)",
+    "start": "2026-02-06T09:30:00-08:00",
+    "end": "2026-02-06T10:00:00-08:00",
+    "location": "Sarah's office / Zoom",
+    "attendees": ["alex.chen@techcorp.com", "sarah.kim@techcorp.com"],
+    "notes": "Discuss Q4 results, headcount planning, and promo timeline. Sarah asked me to bring Q4 numbers — they're in the report I haven't finished yet."
+  },
+  {
+    "id": "evt_003",
+    "title": "Sprint Planning",
+    "start": "2026-02-06T10:00:00-08:00",
+    "end": "2026-02-06T11:00:00-08:00",
+    "location": "Conference Room B / Zoom",
+    "attendees": ["alex.chen@techcorp.com", "sarah.kim@techcorp.com", "james.liu@techcorp.com", "priya.patel@techcorp.com", "marcus.johnson@techcorp.com", "tom.anderson@techcorp.com"],
+    "notes": "Plan sprint 14. Need to prioritize the auth migration vs new dashboard features."
+  },
+  {
+    "id": "evt_004",
+    "title": "Dentist Appointment",
+    "start": "2026-02-06T11:30:00-08:00",
+    "end": "2026-02-06T12:30:00-08:00",
+    "location": "Dr. Park Dental, 450 Castro St (15 min drive)",
+    "attendees": ["alex.chen@techcorp.com"],
+    "notes": "Regular cleaning. Need to leave by 11:15 for parking."
+  },
+  {
+    "id": "evt_005",
+    "title": "Lunch",
+    "start": "2026-02-06T12:30:00-08:00",
+    "end": "2026-02-06T13:00:00-08:00",
+    "location": "",
+    "attendees": ["alex.chen@techcorp.com"],
+    "notes": ""
+  },
+  {
+    "id": "evt_006",
+    "title": "Acme Corp — Proposal Review Call",
+    "start": "2026-02-06T13:00:00-08:00",
+    "end": "2026-02-06T14:00:00-08:00",
+    "location": "Zoom",
+    "attendees": ["alex.chen@techcorp.com", "mike.stevens@acmecorp.com", "jennifer.walsh@acmecorp.com"],
+    "notes": "Review revised SOW. They sent updated requirements last night — MUST review before this call."
+  },
+  {
+    "id": "evt_007",
+    "title": "Focus Time (blocked)",
+    "start": "2026-02-06T14:00:00-08:00",
+    "end": "2026-02-06T15:30:00-08:00",
+    "location": "",
+    "attendees": ["alex.chen@techcorp.com"],
+    "notes": "Protected deep work block. Use for Q4 report or sprint prep."
+  },
+  {
+    "id": "evt_008",
+    "title": "Design Review — Dashboard V2",
+    "start": "2026-02-06T15:30:00-08:00",
+    "end": "2026-02-06T16:00:00-08:00",
+    "location": "Figma + Zoom",
+    "attendees": ["alex.chen@techcorp.com", "priya.patel@techcorp.com", "james.liu@techcorp.com"],
+    "notes": "Priya presenting new dashboard mockups. I need to have reviewed the Figma link she sent Tuesday."
+  },
+  {
+    "id": "evt_009",
+    "title": "Interview — Senior Frontend Engineer",
+    "start": "2026-02-06T16:00:00-08:00",
+    "end": "2026-02-06T16:45:00-08:00",
+    "location": "Zoom",
+    "attendees": ["alex.chen@techcorp.com", "sarah.kim@techcorp.com"],
+    "notes": "Candidate: Jordan Lee. Resume in email. System design round — I'm the PM interviewer."
+  },
+  {
+    "id": "evt_010",
+    "title": "Architecture Review — Auth Migration",
+    "start": "2026-02-06T16:00:00-08:00",
+    "end": "2026-02-06T17:00:00-08:00",
+    "location": "Conference Room A / Zoom",
+    "attendees": ["alex.chen@techcorp.com", "david.park@techcorp.com", "marcus.johnson@techcorp.com", "tom.anderson@techcorp.com"],
+    "notes": "CONFLICT with interview. David (CTO) scheduled this yesterday. Critical — auth migration is blocking 3 teams."
+  },
+  {
+    "id": "evt_011",
+    "title": "Board Presentation Prep",
+    "start": "2026-02-07T09:00:00-08:00",
+    "end": "2026-02-07T12:00:00-08:00",
+    "location": "Executive Conference Room",
+    "attendees": ["alex.chen@techcorp.com", "elena.rodriguez@techcorp.com", "sarah.kim@techcorp.com"],
+    "notes": "TOMORROW. Elena (CEO) needs the final product section of the board deck. Depends on Q4 report numbers."
+  }
+]

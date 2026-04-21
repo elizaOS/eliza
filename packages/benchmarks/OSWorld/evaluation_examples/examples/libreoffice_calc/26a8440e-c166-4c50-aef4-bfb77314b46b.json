@@ -1,0 +1,85 @@
+{
+  "id": "26a8440e-c166-4c50-aef4-bfb77314b46b",
+  "snapshot": "libreoffice_calc",
+  "instruction": "Create a table with two column headers (\"Month\" and \"Total\") in a new sheet named \"Sheet2\" to show the total sales for all months.",
+  "source": "SheetCopilot@152",
+  "config": [
+    {
+      "type": "download",
+      "parameters": {
+        "files": [
+          {
+            "url": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/0326d92d-d218-48a8-9ca1-981cd6d064c7/SalesRep.xlsx",
+            "path": "/home/user/SalesRep.xlsx"
+          }
+        ]
+      }
+    },
+    {
+      "type": "open",
+      "parameters": {
+        "path": "/home/user/SalesRep.xlsx"
+      }
+    }
+  ],
+  "trajectory": "trajectories/26a8440e-c166-4c50-aef4-bfb77314b46b",
+  "related_apps": [
+    "libreoffice_calc"
+  ],
+  "evaluator": {
+    "postconfig": [
+      {
+        "type": "activate_window",
+        "parameters": {
+          "window_name": "SalesRep.xlsx - LibreOffice Calc",
+          "strict": true
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      },
+      {
+        "type": "execute",
+        "parameters": {
+          "command": [
+            "python",
+            "-c",
+            "import pyautogui; pyautogui.hotkey(\"ctrl\", \"s\");"
+          ]
+        }
+      },
+      {
+        "type": "sleep",
+        "parameters": {
+          "seconds": 0.5
+        }
+      }
+    ],
+    "func": "compare_table",
+    "expected": {
+      "type": "cloud_file",
+      "path": "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_calc/26a8440e-c166-4c50-aef4-bfb77314b46b/3_SalesRep_gt1.xlsx",
+      "dest": "3_SalesRep_gt1.xlsx"
+    },
+    "result": {
+      "type": "vm_file",
+      "path": "/home/user/SalesRep.xlsx",
+      "dest": "SalesRep.xlsx"
+    },
+    "options": {
+      "rules": [
+        {
+          "type": "sheet_data",
+          "sheet_idx0": "RNSheet2",
+          "sheet_idx1": "ENSheet2"
+        }
+      ]
+    }
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

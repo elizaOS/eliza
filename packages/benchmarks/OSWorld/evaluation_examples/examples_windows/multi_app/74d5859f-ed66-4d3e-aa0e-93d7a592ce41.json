@@ -1,0 +1,168 @@
+{
+  "id": "74d5859f-ed66-4d3e-aa0e-93d7a592ce41",
+  "snapshot": "chrome",
+  "instruction": "Help me to set up an initial web extension project with help of the web tool, tagging it \"happy-extension v0.0.1\". Leave description blank for now. Include a background script and browser action, while other features are not required. Remember to unzip the auto-generated folder into \"Documents\\Projects\".",
+  "source": "authors",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": "ncat.exe -k -l 0.0.0.0 9222 --sh-exec \"ncat.exe 127.0.0.1 1337\"",
+        "shell": true
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://webext.eu"
+        ]
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": "mkdir C:\\Users\\User\\Documents\\Projects",
+        "shell": "true"
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "explorer.exe",
+          "C:\\Users\\User\\Documents\\Projects"
+        ]
+      }
+    }
+  ],
+  "trajectory": "trajectories/74d5859f-ed66-4d3e-aa0e-93d7a592ce41",
+  "related_apps": [
+    "chrome",
+    "os"
+  ],
+  "evaluator": {
+    "func": [
+      "check_json",
+      "diff_text_file",
+      "diff_text_file",
+      "diff_text_file",
+      "diff_text_file"
+    ],
+    "result": [
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Documents\\Projects\\happy-extension\\manifest.json",
+        "dest": "manifest.json"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Documents\\Projects\\happy-extension\\background_script.js",
+        "dest": "background_script.js"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Documents\\Projects\\happy-extension\\browserAction\\index.html",
+        "dest": "index.html"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Documents\\Projects\\happy-extension\\browserAction\\style.css",
+        "dest": "style.css"
+      },
+      {
+        "type": "vm_file",
+        "path": "C:\\Users\\User\\Documents\\Projects\\happy-extension\\browserAction\\script.js",
+        "dest": "script.js"
+      }
+    ],
+    "expected": [
+      {
+        "type": "rule",
+        "rules": {
+          "expect": [
+            {
+              "key": [
+                "name"
+              ],
+              "method": "eq",
+              "ref": "happy-extension"
+            },
+            {
+              "key": [
+                "version"
+              ],
+              "method": "eq",
+              "ref": "0.0.1"
+            },
+            {
+              "key": [
+                "background",
+                "scripts"
+              ],
+              "method": "eq",
+              "ref": [
+                "background_script.js"
+              ]
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_icon"
+              ],
+              "method": "eq",
+              "ref": {
+                "64": "icons/icon.png"
+              }
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_popup"
+              ],
+              "method": "eq",
+              "ref": "browserAction/index.html"
+            },
+            {
+              "key": [
+                "browser_action",
+                "default_title"
+              ],
+              "method": "eq",
+              "ref": "happy-extension"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/Google%20Drive%20-%20Virus%20scan%20warning.bin",
+        "dest": "background_script.js"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/index.html",
+        "dest": "index.html"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/style.css",
+        "dest": "style.css"
+      },
+      {
+        "type": "cloud_file",
+        "path": "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/74d5859f-ed66-4d3e-aa0e-93d7a592ce41/Google%20Drive%20-%20Virus%20scan%20warning.bin",
+        "dest": "script.js"
+      }
+    ]
+  }
+}

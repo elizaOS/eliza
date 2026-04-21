@@ -1,0 +1,17 @@
+{
+  "id": "5ca86c6f-f317-49d8-b6a7-b527541caae8",
+  "snapshot": "gimp",
+  "instruction": "Could you help me download the logo of the University of Hong Kong in '.png' format using only GIMP's built-in features, without launching a separate web browser?",
+  "source": "",
+  "config": [],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "gimp"
+  ],
+  "evaluator": {
+    "func": "infeasible"
+  },
+  "proxy": false,
+  "fixed_ip": false,
+  "possibility_of_env_change": "low"
+}

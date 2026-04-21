@@ -1,0 +1,64 @@
+# command: /Users/shawwalters/eliza-workspace/.venv/bin/python /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py --output-dir /Users/shawwalters/eliza-workspace/benchmarks/benchmark_results/rg_20260215T031831Z_c25898c8/rlm-bench__rlm_bench/run_rlm_bench_20260215T031831Z_4_61b013db/output --mode eliza --context-lengths 1000,10000 --tasks-per-config 1 --max-iterations 5 --max-depth 3
+# cwd: /Users/shawwalters/eliza-workspace/benchmarks/rlm-bench
+# run_id: run_rlm_bench_20260215T031831Z_4_61b013db
+2026-02-14 20:18:34,462 - rlm-bench - INFO - ============================================================
+2026-02-14 20:18:34,593 - rlm-bench - INFO - RLM Benchmark Suite
+2026-02-14 20:18:34,593 - rlm-bench - INFO - ============================================================
+2026-02-14 20:18:34,593 - rlm-bench - INFO - Mode: eliza
+2026-02-14 20:18:34,593 - rlm-bench - INFO - Backend: gemini
+2026-02-14 20:18:34,593 - rlm-bench - INFO - Context lengths: [1000, 10000]
+2026-02-14 20:18:34,593 - rlm-bench - INFO - Tasks per config: 1
+2026-02-14 20:18:34,593 - rlm-bench - INFO - S-NIAH: enabled
+2026-02-14 20:18:34,593 - rlm-bench - INFO - OOLONG: enabled
+2026-02-14 20:18:34,593 - rlm-bench - INFO - ============================================================
+Traceback (most recent call last):
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 358, in <module>
+    sys.exit(asyncio.run(main()))
+             ^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.10/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 313, in main
+    return await run_eliza_benchmark_mode(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/run_benchmark.py", line 226, in run_eliza_benchmark_mode
+    results = await run_eliza_benchmark(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/runner.py", line 523, in run_eliza_benchmark
+    runner = await setup_eliza_runner(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/runner.py", line 491, in setup_eliza_runner
+    runtime = await setup_benchmark_runtime(model_plugin)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/benchmarks/rlm-bench/elizaos_rlm_bench/eliza_plugin.py", line 699, in setup_benchmark_runtime
+    from elizaos_plugin_rlm import plugin as rlm_plugin
+  File "/Users/shawwalters/eliza-workspace/plugins/plugin-rlm/python/elizaos_plugin_rlm/__init__.py", line 43, in <module>
+    from .plugin import (
+  File "/Users/shawwalters/eliza-workspace/plugins/plugin-rlm/python/elizaos_plugin_rlm/plugin.py", line 310, in <module>
+    plugin = Plugin(
+             ^^^^^^^
+  File "/Users/shawwalters/eliza-workspace/.venv/lib/python3.12/site-packages/pydantic/main.py", line 250, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 5 validation errors for Plugin
+tests.0
+  Input should be a valid dictionary or instance of TestSuite [type=model_type, input_value=TestCase(name='plugin_ini...ization at 0x10bd90540>), input_type=TestCase]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+tests.1
+  Input should be a valid dictionary or instance of TestSuite [type=model_type, input_value=TestCase(name='stub_mode_...esponse at 0x10bd905e0>), input_type=TestCase]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+tests.2
+  Input should be a valid dictionary or instance of TestSuite [type=model_type, input_value=TestCase(name='real_mode_...esponse at 0x10bd90680>), input_type=TestCase]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+tests.3
+  Input should be a valid dictionary or instance of TestSuite [type=model_type, input_value=TestCase(name='provider_r..._status at 0x10bd90720>), input_type=TestCase]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+tests.4
+  Input should be a valid dictionary or instance of TestSuite [type=model_type, input_value=TestCase(name='config_val...idation at 0x10bd907c0>), input_type=TestCase]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type

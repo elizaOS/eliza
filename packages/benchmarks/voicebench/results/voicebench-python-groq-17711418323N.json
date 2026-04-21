@@ -1,0 +1,148 @@
+{
+  "benchmark": "voicebench",
+  "runtime": "python",
+  "profile": "groq",
+  "timestamp": "17711418323N",
+  "iterations": 1,
+  "datasetName": "single-audio",
+  "datasetPath": null,
+  "sampleCount": 1,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ],
+  "results": [
+    {
+      "mode": "simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/examples/town/public/assets/background.mp3",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 4026.452,
+      "responseTtftMs": 1818.957,
+      "responseTotalMs": 1818.973,
+      "voiceGenerationMs": 8763.726,
+      "endToEndMs": 24968.393,
+      "voiceFirstTokenUncachedMs": 1478.372,
+      "voiceFirstTokenCachedMs": 1501.643,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 7379.011,
+      "ttsCachedPipelineMs": 8880.654,
+      "inContext": {
+        "transcript": "Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "**Sample Dialog with VoicebenchAgent**  \nUser: \u201cHey, I need to benchmark the latency of my new microphone setup.\u201d  \nVoicebenchAgent: \u201cSure, I can help. Please provide the sample rate and the duration you\u2019d like to test.\u201d  \nUser: \u201c44.1\u202fkHz, 10\u202fseconds.\u201d  \nVoicebenchAgent: \u201cRunn...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2711102,
+      "ttsFirstSentenceUncachedBytes": 433990,
+      "ttsFirstSentenceCachedBytes": 433990,
+      "ttsRemainderBytes": 2181182,
+      "ttsCachedPipelineBytes": 2615172,
+      "responseSegmentation": {
+        "firstSentence": "**Sample Dialog with VoicebenchAgent**  \nUser: \u201cHey, I need to benchmark the latency of my new microphone setup.\u201d  \nVoicebenchAgent: \u201cSure, I can help.",
+        "remainder": "Please provide the sample rate and the duration you\u2019d like to test.\u201d  \nUser: \u201c44.1\u202fkHz, 10\u202fseconds.\u201d  \nVoicebenchAgent: \u201cRunning a 10\u2011second latency test at 44.1\u202fkHz\u2026 Done. The average round\u2011trip latency is 12\u202fms with a jitter of 1.3\u202fms.\u201d  \nUser: \u201cGreat! How does that compare ..."
+      }
+    },
+    {
+      "mode": "non-simple",
+      "sampleId": "single-audio",
+      "sampleAudioPath": "/Users/shawwalters/eliza-workspace/examples/town/public/assets/background.mp3",
+      "iteration": 1,
+      "profile": "groq",
+      "expectedTranscript": null,
+      "transcriptionExactMatch": null,
+      "transcriptionNormalizedMatch": null,
+      "transcriptionMs": 9566.454,
+      "responseTtftMs": 2432.526,
+      "responseTotalMs": 2432.542,
+      "voiceGenerationMs": 8034.442,
+      "endToEndMs": 28046.753,
+      "voiceFirstTokenUncachedMs": 1041.063,
+      "voiceFirstTokenCachedMs": 1056.217,
+      "ttsFirstSentenceCacheHit": false,
+      "ttsRemainderMs": 5915.967,
+      "ttsCachedPipelineMs": 6972.183,
+      "inContext": {
+        "transcript": "Thank you. Thank you. Thank you. Thank you.",
+        "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output.",
+        "prompt": "Thank you. Thank you. Thank you. Thank you.\n\nYou are running in voicebench. Respond concisely in one sentence."
+      },
+      "outContext": {
+        "response": "Here is a sample interaction for the VoicebenchAgent (fast, precise, focused on voice benchmarking):\n\nUser: Hi, I\u2019d like to benchmark my microphone for a podcast.  \nAgent (REPLY): Sure, I\u2019ll run a quick latency test now.  \nUser: Okay, go ahead.  \nAgent (REPLY): Please say \u201ctes...",
+        "stateExcerpt": "Possible response actions: REPLY, NONE, IGNORE, CHOOSE_OPTION\n\n# Available Actions\n- **IGNORE**: Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodb...",
+        "actions": [
+          "REPLY"
+        ],
+        "providers": []
+      },
+      "trajectory": {
+        "llmCallCount": 0,
+        "providerAccessCount": 0,
+        "llmCalls": [],
+        "providerAccesses": []
+      },
+      "ttsOutputBytes": 2515254,
+      "ttsFirstSentenceUncachedBytes": 303430,
+      "ttsFirstSentenceCachedBytes": 303430,
+      "ttsRemainderBytes": 1831742,
+      "ttsCachedPipelineBytes": 2135172,
+      "responseSegmentation": {
+        "firstSentence": "Here is a sample interaction for the VoicebenchAgent (fast, precise, focused on voice benchmarking):\n\nUser: Hi, I\u2019d like to benchmark my microphone for a podcast.",
+        "remainder": "Agent (REPLY): Sure, I\u2019ll run a quick latency test now.  \nUser: Okay, go ahead.  \nAgent (REPLY): Please say \u201ctesting one two three\u201d at a normal speaking volume.  \nUser: testing one two three  \nAgent (REPLY): Latency measured: 11\u202fms. Sample rate: 48\u202fkHz. Frequency response is f..."
+      }
+    }
+  ],
+  "summary": {
+    "simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 4026.452,
+      "avgResponseTtftMs": 1818.957,
+      "avgResponseTotalMs": 1818.973,
+      "avgVoiceGenerationMs": 8763.726,
+      "avgEndToEndMs": 24968.393,
+      "avgVoiceFirstTokenUncachedMs": 1478.372,
+      "avgVoiceFirstTokenCachedMs": 1501.643,
+      "avgTtsCachedPipelineMs": 8880.654,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    },
+    "non-simple": {
+      "runs": 1,
+      "avgTranscriptionMs": 9566.454,
+      "avgResponseTtftMs": 2432.526,
+      "avgResponseTotalMs": 2432.542,
+      "avgVoiceGenerationMs": 8034.442,
+      "avgEndToEndMs": 28046.753,
+      "avgVoiceFirstTokenUncachedMs": 1041.063,
+      "avgVoiceFirstTokenCachedMs": 1056.217,
+      "avgTtsCachedPipelineMs": 6972.183,
+      "firstSentenceCacheHitRate": 0.0,
+      "transcriptionNormalizedAccuracy": 0.0
+    }
+  }
+}
