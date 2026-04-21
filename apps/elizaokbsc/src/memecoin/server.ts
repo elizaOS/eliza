@@ -3476,7 +3476,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
   </div>
 
   <div class="goo-footer">
-    Powered by <a href="https://github.com/HertzFlow/goo-launch" target="_blank">Goo Protocol</a> &middot; elizaOK Economy Arena &middot; Paper Run Mode
+    Powered by <a href="https://github.com/HertzFlow/goo-launch" target="_blank">Goo Economy</a> &middot; elizaOK Economy Arena &middot; Paper Run Mode
   </div>
 </div>
 
@@ -7297,13 +7297,13 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     toc: "目录",
     sec1t: "什么是 elizaOK？",
     sec1: `基于 <strong>elizaOS</strong> 框架构建，elizaOK 是 BNB Chain 上的<strong>价值层</strong>，自动化 alpha 发现、仓位构建，并通过专属金库实现真实价值交付。<br><br>
-    通过 Goo Protocol（AI 收购 AI），elizaOK 持续吸收竞技场中表现最优的策略参数，不断自我进化，让每一次交易决策更精准。`,
+    通过 Goo Economy（AI 收购 AI），elizaOK 持续吸收竞技场中表现最优的策略参数，不断自我进化，让每一次交易决策更精准。`,
     sec2t: "核心功能",
     sec2_discovery_t: "BSC 代币发现引擎",
     sec2_discovery: `每 15 分钟扫描 BSC 链上新池和热门池，通过 AI 评分引擎对流动性、交易量、买卖压力、市值、池龄等多维度信号进行综合评估。每个代币获得 0-100 评分，自动分为<strong>买入、观察、监控、拒绝</strong>四级。`,
     sec2_portfolio_t: "投资组合管理",
     sec2_portfolio: `elizaOK 采用多层风控体系，每个仓位独立管理。核心策略包括<strong>递进止盈</strong>（多阶段分批锁利）、<strong>硬止损</strong>、<strong>追踪止损</strong>、<strong>链上智能退出</strong>（监测大户/KOL 行为）和<strong>信号衰减退出</strong>。所有策略参数通过 Goo Economy Arena 持续进化优化。`,
-    sec2_goo_t: "Goo Protocol — AI 收购 AI",
+    sec2_goo_t: "Goo Economy — AI 收购 AI",
     sec2_goo: `Goo Economy Arena 是 elizaOK 的策略进化引擎。系统运行 <strong>8 种不同策略的 agent</strong>，它们在同一市场环境下竞争：
     <div class="doc-strat-grid">
       <div class="doc-strat"><strong>Conservative</strong> — 低风险，严格筛选，带追踪止损</div>
@@ -7407,13 +7407,13 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     toc: "Table of Contents",
     sec1t: "What is elizaOK?",
     sec1: `Built on the <strong>elizaOS</strong> framework, elizaOK is the <strong>value layer</strong> that automates alpha discovery, position building, and real value delivery through dedicated vaults on <strong>BNB Chain</strong>.<br><br>
-    Through Goo Protocol (AI acquiring AI), elizaOK continuously absorbs winning strategy parameters from the arena's top performers, self-evolving to sharpen every trading decision.`,
+    Through Goo Economy (AI acquiring AI), elizaOK continuously absorbs winning strategy parameters from the arena's top performers, self-evolving to sharpen every trading decision.`,
     sec2t: "Core Features",
     sec2_discovery_t: "BSC Token Discovery Engine",
     sec2_discovery: `Scans BSC every 15 minutes for new and trending pools, applying an AI scoring engine that evaluates liquidity, volume, buy/sell pressure, valuation, pool age, and trend signals. Each token receives a 0-100 composite score and is classified into <strong>buy, watch, monitor, reject</strong> tiers.`,
     sec2_portfolio_t: "Portfolio Management",
     sec2_portfolio: `elizaOK employs a multi-layer risk management system, managing each position independently. Core strategies include <strong>progressive take-profit</strong> (multi-stage partial harvesting), <strong>hard stop-loss</strong>, <strong>trailing stop</strong>, <strong>on-chain smart exits</strong> (monitoring whale/KOL behavior), and <strong>score decay exit</strong>. All strategy parameters continuously evolve through the Goo Economy Arena.`,
-    sec2_goo_t: "Goo Protocol — AI Acquiring AI",
+    sec2_goo_t: "Goo Economy — AI Acquiring AI",
     sec2_goo: `The Goo Economy Arena is elizaOK's strategy evolution engine. It runs <strong>8 agents with different strategies</strong> competing in the same market:
     <div class="doc-strat-grid">
       <div class="doc-strat"><strong>Conservative</strong> — Low risk, strict filters, trailing stop</div>
