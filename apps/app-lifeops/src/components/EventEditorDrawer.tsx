@@ -47,50 +47,6 @@ type CalendarEventPatch = {
   minutesBefore?: number[];
 };
 
-async function updateCalendarEvent(
-  eventId: string,
-  patch: CalendarEventPatch,
-): Promise<{ event: LifeOpsCalendarEvent }> {
-  // TODO: replace with client.updateLifeOpsCalendarEvent(eventId, patch) when
-  // Stream C lands.
-  if (
-    "updateLifeOpsCalendarEvent" in client &&
-    typeof (client as Record<string, unknown>).updateLifeOpsCalendarEvent ===
-      "function"
-  ) {
-    return (
-      client as unknown as {
-        updateLifeOpsCalendarEvent: (
-          id: string,
-          patch: CalendarEventPatch,
-        ) => Promise<{ event: LifeOpsCalendarEvent }>;
-      }
-    ).updateLifeOpsCalendarEvent(eventId, patch);
-  }
-  throw new Error(
-    "updateLifeOpsCalendarEvent not yet available — Stream C pending",
-  );
-}
-
-async function deleteCalendarEvent(eventId: string): Promise<void> {
-  // TODO: replace with client.deleteLifeOpsCalendarEvent(eventId) when
-  // Stream C lands.
-  if (
-    "deleteLifeOpsCalendarEvent" in client &&
-    typeof (client as Record<string, unknown>).deleteLifeOpsCalendarEvent ===
-      "function"
-  ) {
-    return (
-      client as unknown as {
-        deleteLifeOpsCalendarEvent: (id: string) => Promise<void>;
-      }
-    ).deleteLifeOpsCalendarEvent(eventId);
-  }
-  throw new Error(
-    "deleteLifeOpsCalendarEvent not yet available — Stream C pending",
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -192,7 +148,15 @@ export function EventEditorDrawer({
     setSaving(true);
     setError(null);
     try {
-      const result = await updateCalendarEvent(event.id, patch);
+      const result = await client.updateLifeOpsCalendarEvent(event.id, {
+        title: patch.title,
+        startAt: patch.startAt,
+        endAt: patch.endAt,
+        notes: patch.description,
+        reminders: patch.minutesBefore?.map((minutesBefore) => ({
+          minutesBefore,
+        })),
+      });
       setActionNotice(
         t("eventEditor.saved", {
           defaultValue: "Event saved.",
@@ -233,7 +197,7 @@ export function EventEditorDrawer({
     setDeleting(true);
     setError(null);
     try {
-      await deleteCalendarEvent(event.id);
+      await client.deleteLifeOpsCalendarEvent(event.id);
       setActionNotice(
         t("eventEditor.deleted", {
           defaultValue: "Event deleted.",
