@@ -4,6 +4,7 @@ import {
 	formatActionNames,
 	formatActions,
 	parseActionParams,
+	validateActionParams,
 } from "../actions";
 import { allActionDocs } from "../generated/action-docs";
 import type { Action } from "../types";
@@ -360,6 +361,46 @@ describe("Actions", () => {
 				action: "create",
 				intent: "create a habit to brush teeth at 8am and 9pm daily",
 				title: "Brush Teeth",
+			});
+		});
+	});
+
+	describe("validateActionParams", () => {
+		it("coerces comma-separated strings into string arrays for array params", () => {
+			const action: Action = {
+				name: "BLOCK_WEBSITES",
+				description: "Block websites.",
+				parameters: [
+					{
+						name: "websites",
+						description: "Website hostnames to block.",
+						required: true,
+						schema: {
+							type: "array",
+							items: { type: "string" },
+						},
+					},
+				],
+				examples: [],
+				similes: [],
+				handler: async () => {
+					throw new Error("Not implemented");
+				},
+				validate: async () => {
+					throw new Error("Not implemented");
+				},
+			};
+
+			expect(
+				validateActionParams(action, {
+					websites: "x.com, twitter.com",
+				}),
+			).toEqual({
+				valid: true,
+				params: {
+					websites: ["x.com", "twitter.com"],
+				},
+				errors: [],
 			});
 		});
 	});

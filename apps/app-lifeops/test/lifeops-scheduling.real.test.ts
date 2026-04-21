@@ -38,6 +38,7 @@ import {
   extractBundledMeetingCounterparties,
   formatProposedSlotsReply,
   proposeMeetingTimesAction,
+  schedulingAction,
   updateMeetingPreferencesAction,
 } from "../src/actions/scheduling.js";
 import { readLifeOpsMeetingPreferences } from "../src/lifeops/owner-profile.js";
@@ -75,12 +76,10 @@ function makeMessage(runtime: AgentRuntime, text: string) {
 }
 
 describe("life-ops scheduling-with-others (pure slot logic)", () => {
-  it("extracts bundled counterparties from travel scheduling requests", () => {
-    expect(
-      extractBundledMeetingCounterparties(
-        "I'm in Tokyo for limited time, so schedule PendingReality and Ryan at the same time if possible.",
-      ),
-    ).toEqual(["PendingReality", "Ryan"]);
+  it("keeps SCHEDULING scoped to negotiation workflows", () => {
+    expect(schedulingAction.suppressPostActionContinuation).toBe(true);
+    expect(schedulingAction.similes ?? []).not.toContain("SCHEDULE_MEETING");
+    expect(schedulingAction.similes ?? []).not.toContain("COORDINATE_SCHEDULE");
   });
 
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {

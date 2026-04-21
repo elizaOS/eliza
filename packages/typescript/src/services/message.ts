@@ -280,43 +280,6 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
-function unwrapPlannerIdentifier(value: string): string {
-	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
-	if (!trimmed) {
-		return "";
-	}
-
-	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
-	if (nameMatch) {
-		return nameMatch[1].trim();
-	}
-
-	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (actionMatch) {
-		const inner = actionMatch[1].trim();
-		if (!inner) {
-			return "";
-		}
-		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-		if (nestedNameMatch) {
-			return nestedNameMatch[1].trim();
-		}
-		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
-	}
-
-	// Lenient fallback: the LLM sometimes emits unclosed wrappers like
-	// `<action><name>REPLY</name>` (no `</action>`) or bare `<name>X</name>`
-	// with trailing noise. Recover the inner <name> content when present
-	// so these don't land in the action router as "unknown planner action"
-	// and silently drop the user's request.
-	const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-	if (looseNameMatch) {
-		return looseNameMatch[1].trim();
-	}
-
-	return trimmed;
-}
-
 export function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
 ): string[] {
@@ -340,9 +303,7 @@ export function extractPlannerActionNames(
 						nameMatch ? nameMatch[1] : match[0],
 					);
 					const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-					if (name) {
-						actionEntries.push({ name, paramsXml });
-					}
+					if (name) actionEntries.push({ name, paramsXml });
 				}
 
 				if (actionEntries.length > 0) {
@@ -402,9 +363,49 @@ function normalizePlannerActions(
 			: normalizedActions;
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const validActions = finalActions.flatMap((actionName) =>
-		resolvePlannerActionName(runtime, actionLookup, actionName),
-	);
+	const validActions = finalActions.flatMap((actionName) => {
+		const normalized = normalizeActionIdentifier(actionName);
+		if (!normalized) {
+			return [];
+		}
+
+		if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
+			return [actionName];
+		}
+
+		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
+		if (resolvedAction) {
+			return [resolvedAction.name];
+		}
+
+		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
+		if (aliasedActionName) {
+			const resolvedAlias = resolveRuntimeAction(
+				actionLookup,
+				aliasedActionName,
+			);
+			if (resolvedAlias) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						actionName,
+						aliasedActionName: resolvedAlias.name,
+					},
+					"Repaired planner action alias",
+				);
+				return [resolvedAlias.name];
+			}
+		}
+
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				actionName,
+			},
+			"Dropping unknown planner action",
+		);
+		return [];
+	});
 
 	if (validActions.length > 0) {
 		return validActions;
@@ -1118,48 +1119,53 @@ function normalizeActionIdentifier(actionName: string): string {
 	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
 
+function unwrapPlannerIdentifier(value: string): string {
+	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
+
+	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
+	if (nameMatch) {
+		return nameMatch[1].trim();
+	}
+
+	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
+	if (!actionMatch) {
+		return trimmed;
+	}
+
+	const inner = actionMatch[1].trim();
+	if (!inner) {
+		return "";
+	}
+
+	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+	if (nestedNameMatch) {
+		return nestedNameMatch[1].trim();
+	}
+
+	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+}
+
 const PLANNER_ACTION_ALIASES = new Map(
 	[
-		["BULK_RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
-		["BULK_RESCHEDULE", "OWNER_CALENDAR"],
-		["SCHEDULE_MEETING", "OWNER_CALENDAR"],
-		["RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
-		["GET_AVAILABILITY", "OWNER_CALENDAR"],
-		["CREATE_EVENT", "OWNER_CALENDAR"],
-		["CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
-		["CALENDAR_CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
-		["SCHEDULE_RECURRING_EVENT", "OWNER_CALENDAR"],
-		["SCHEDULE_RECURRING_MEETING", "OWNER_CALENDAR"],
-		["SCHEDULE_RECURRING", "OWNER_CALENDAR"],
+		["BULK_RESCHEDULE_MEETINGS", "PROPOSE_MEETING_TIMES"],
+		["RESCHEDULE_MEETINGS", "CALENDAR_ACTION"],
+		["CREATE_RECURRING_EVENT", "CALENDAR_ACTION"],
+		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
 		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
-		["GET_PENDING_ASSETS", "OWNER_INBOX"],
-		["GET_PENDING_ITEMS", "OWNER_INBOX"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
-		["CREATE_GROUP_CHAT", "OWNER_INBOX"],
-		["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
-		["GET_PENDING_DRAFTS", "OWNER_INBOX"],
-		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
-		["CREATE_REMINDER", "LIFE"],
-		["SET_REMINDER_RULE", "LIFE"],
-		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
-		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
-		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
-		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
-		["FLAG_CONFLICT", "OWNER_CALENDAR"],
+		["GET_PENDING_ASSETS", "INBOX"],
+		["GET_PENDING_ITEMS", "INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "INBOX"],
 		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
-		["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
 		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
 		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
 		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
-		["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
-		to,
+		normalizeActionIdentifier(to),
 	]),
 );
 
@@ -1167,420 +1173,117 @@ const PLANNER_PROVIDER_ALIASES = new Map(
 	[
 		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
 		["INBOX_TRIAGE", "inboxTriage"],
-		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
-		["PENDING_DRAFTS", "inboxTriage"],
-	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		to,
+	]),
 );
 
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
 );
 
-const ACTION_OWNERSHIP_STOPWORDS = new Set([
-	"a",
-	"an",
-	"and",
-	"are",
-	"as",
-	"at",
-	"be",
-	"because",
-	"can",
-	"could",
-	"do",
-	"for",
-	"from",
-	"get",
-	"go",
-	"here",
-	"i",
-	"if",
-	"in",
-	"into",
-	"is",
-	"it",
-	"just",
-	"let",
-	"me",
-	"my",
-	"now",
-	"of",
-	"on",
-	"or",
-	"our",
-	"please",
-	"so",
-	"that",
-	"the",
-	"them",
-	"this",
-	"to",
-	"up",
-	"we",
-	"when",
-	"with",
-	"you",
-	"your",
-]);
+const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
+	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
+);
 
-const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
-	/\b(?:if|when)\b/iu,
-	/\b(?:upload|send over|send|attach)\b/iu,
-	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
-	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
-	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
-	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
-	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
-	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
-];
-
-const ACTION_METADATA_FUTURE_HINTS = /\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
-
-type ActionOwnershipSuggestion = {
-	actionName: string;
-	score: number;
-	secondBestScore: number;
-	reasons: string[];
-};
-
-type ActionOwnershipCandidate = {
-	actionName: string;
-	score: number;
-	reasons: string[];
-};
-
-function tokenizeOwnershipText(text: string): string[] {
-	return text
-		.toLowerCase()
-		.split(/[^a-z0-9]+/u)
-		.map((token) => token.trim())
-		.filter(
-			(token) =>
-				token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
+function shouldAttemptCanonicalActionRepair(
+	rawPlannerActions: string[],
+	normalizedActions: string[],
+): boolean {
+	const hasUnknownOperationalAction = rawPlannerActions.some((actionName) => {
+		const normalized = normalizeActionIdentifier(actionName);
+		return (
+			normalized.length > 0 &&
+			!ACTION_REPAIR_PASSIVE_ACTIONS.has(normalized) &&
+			!PLANNER_CONTROL_ACTIONS.has(normalized)
 		);
-}
+	});
 
-function buildTokenSet(text: string): Set<string> {
-	return new Set(tokenizeOwnershipText(text));
-}
-
-function exampleContentText(action: Action): string[] {
-	return (action.examples ?? []).flatMap((example) =>
-		example.flatMap((turn) => {
-			const text =
-				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
-			return text.length > 0 ? [text] : [];
-		}),
-	);
-}
-
-function splitActionMetadataText(value: string): string[] {
-	const trimmed = value.trim();
-	if (trimmed.length === 0) {
-		return [];
-	}
-	return trimmed
-		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
-		.map((chunk) => chunk.trim())
-		.filter((chunk) => chunk.length > 0);
-}
-
-function actionMetadataTexts(action: Action): string[] {
-	return [
-		action.name,
-		action.description,
-		action.descriptionCompressed,
-		...(action.tags ?? []),
-		...(action.similes ?? []),
-		...exampleContentText(action),
-	]
-		.filter(
-			(value): value is string =>
-				typeof value === "string" && value.trim().length > 0,
-		)
-		.flatMap((value) => splitActionMetadataText(value));
-}
-
-function scoreActionOwnershipMatch(
-	messageText: string,
-	action: Action,
-): { score: number; reasons: string[] } {
-	const messageTokens = buildTokenSet(messageText);
-	if (messageTokens.size === 0) {
-		return { score: 0, reasons: [] };
+	if (!hasUnknownOperationalAction) {
+		return false;
 	}
 
-	let score = 0;
-	const reasons: string[] = [];
-	let bestExampleScore = 0;
-	const normalizedMessage = messageText.toLowerCase();
-	const actionMetadataBlob = actionMetadataTexts(action).join(" ").toLowerCase();
-
-	for (const chunk of actionMetadataTexts(action)) {
-		const chunkTokens = buildTokenSet(chunk);
-		if (chunkTokens.size === 0) {
-			continue;
-		}
-		const overlap = [...messageTokens].filter((token) => chunkTokens.has(token));
-		if (overlap.length === 0) {
-			continue;
-		}
-		const normalizedChunk = chunk.toLowerCase();
-		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
-		if (
-			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
-				normalizedChunk,
-			)
-		) {
-			score -= overlap.length * 1.25 + overlapRatio;
-			if (overlap.length >= 2) {
-				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
-			}
-			continue;
-		}
-		score += overlap.length * 1.25 + overlapRatio;
-		if (overlap.length >= 2) {
-			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
-		}
-
-		if (
-			normalizedChunk.length > 12 &&
-			(normalizedMessage.includes(normalizedChunk) ||
-				normalizedChunk.includes(normalizedMessage))
-		) {
-			score += 3;
-			reasons.push("phrase");
-		}
-
-		const exampleTokens = tokenizeOwnershipText(chunk);
-		if (exampleTokens.length >= 3) {
-			const exampleOverlap = overlap.length / exampleTokens.length;
-			if (exampleOverlap > bestExampleScore) {
-				bestExampleScore = exampleOverlap;
-			}
-		}
-	}
-
-	if (bestExampleScore >= 0.6) {
-		score += 4;
-		reasons.push("example");
-	}
-
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		) &&
-		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
-			actionMetadataBlob,
-		)
-	) {
-		score += 4;
-		reasons.push("schedule-policy");
-	}
-
-	if (
-		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText)) &&
-		ACTION_METADATA_FUTURE_HINTS.test(
-			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
-				.filter(Boolean)
-				.join(" "),
-		)
-	) {
-		score += 2;
-		reasons.push("workflow");
-	}
-
-	return { score, reasons };
-}
-
-function findDirectOwnedActionSuggestion(
-	runtime: Pick<IAgentRuntime, "actions">,
-	messageText: string,
-): ActionOwnershipSuggestion | null {
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		)
-	) {
-		const ownerCalendarAction = (runtime.actions ?? []).find((action) => {
-			const normalizedName = normalizeActionIdentifier(action.name);
-			if (normalizedName === normalizeActionIdentifier("OWNER_CALENDAR")) {
-				return true;
-			}
-			return (action.similes ?? []).some(
-				(simile) =>
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("UPDATE_MEETING_PREFERENCES") ||
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("NO_CALL_HOURS") ||
-					normalizeActionIdentifier(simile) ===
-						normalizeActionIdentifier("PROTECT_SLEEP"),
-			);
-		});
-		if (ownerCalendarAction) {
-			return {
-				actionName: ownerCalendarAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:schedule-policy"],
-			};
-		}
-	}
-
-	return null;
-}
-
-export function suggestOwnedActionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-): ActionOwnershipSuggestion | null {
-	const messageText =
-		typeof message.content?.text === "string" ? message.content.text.trim() : "";
-	if (
-		messageText.length === 0 ||
-		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText))
-	) {
-		return null;
-	}
-
-	const directSuggestion = findDirectOwnedActionSuggestion(runtime, messageText);
-	if (directSuggestion) {
-		return directSuggestion;
-	}
-
-	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
-		.filter((action) => {
-			const normalized = normalizeActionIdentifier(action.name);
-			return (
-				normalized.length > 0 &&
-				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
-				normalized !== normalizeActionIdentifier("IGNORE") &&
-				normalized !== normalizeActionIdentifier("STOP")
-			);
-		})
-		.map((action) => ({
-			actionName: action.name,
-			...scoreActionOwnershipMatch(messageText, action),
-		}))
-		.filter((candidate) => candidate.score > 0)
-		.sort((left, right) => right.score - left.score);
-
-	if (ranked.length === 0) {
-		return null;
-	}
-
-	const best = ranked[0];
-	const secondBestScore = ranked[1]?.score ?? 0;
-	if (best.score < 8 || best.score - secondBestScore < 1.5) {
-		return null;
-	}
-
-	return {
-		actionName: best.actionName,
-		score: best.score,
-		secondBestScore,
-		reasons: best.reasons,
-	};
-}
-
-function findOwnedActionCorrectionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): ActionOwnershipSuggestion | null {
-	const currentAction = responseContent?.actions?.find(
-		(actionName) =>
-			typeof actionName === "string" &&
-			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-				normalizeActionIdentifier(actionName),
-			) &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("IGNORE") &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("STOP"),
-	);
-	if (!currentAction) {
-		return null;
-	}
-
-	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
-	if (!suggestion) {
-		return null;
-	}
-
-	if (
-		normalizeActionIdentifier(suggestion.actionName) ===
-		normalizeActionIdentifier(currentAction)
-	) {
-		return null;
-	}
-
-	const currentActionDef = (runtime.actions ?? []).find(
-		(action) =>
-			normalizeActionIdentifier(action.name) ===
-			normalizeActionIdentifier(currentAction),
-	);
-	const currentScore = currentActionDef
-		? scoreActionOwnershipMatch(
-				typeof message.content?.text === "string" ? message.content.text : "",
-				currentActionDef,
-			).score
-		: 0;
-	if (suggestion.score - currentScore < 4) {
-		return null;
-	}
-
-	return suggestion;
-}
-
-function hasNonPassiveAction(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
 	return (
-		responseContent?.actions?.some(
-			(actionName) =>
-				typeof actionName === "string" &&
-				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-					normalizeActionIdentifier(actionName),
-				) &&
-				normalizeActionIdentifier(actionName) !==
-					normalizeActionIdentifier("IGNORE") &&
-				normalizeActionIdentifier(actionName) !==
-					normalizeActionIdentifier("STOP"),
-		) ?? false
+		normalizedActions.length === 0 ||
+		normalizedActions.every((actionName) =>
+			ACTION_REPAIR_PASSIVE_ACTIONS.has(
+				normalizeActionIdentifier(actionName),
+			),
+		)
 	);
 }
 
-function shouldAttemptActionRescue(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Memory,
-	state: State,
-	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
-): boolean {
-	if (!responseContent) {
-		return false;
+function buildCanonicalActionRepairPrompt(args: {
+	userText: string;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+	availableActionNames: string[];
+}): string {
+	const plannerReplyText =
+		args.plannerReplyText.trim().length > 0
+			? args.plannerReplyText.trim()
+			: "(empty)";
+
+	return [
+		"You are repairing an action-planner output that used a non-canonical action name.",
+		"Choose ONLY from the available runtime actions below.",
+		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
+		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
+		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
+		'Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.',
+		"Do not include <text> unless there is truly no matching runtime action.",
+		"",
+		`user_message:\n${args.userText}`,
+		"",
+		`planner_actions_raw:\n${JSON.stringify(args.rawPlannerActions, null, 2)}`,
+		"",
+		`planner_providers_raw:\n${JSON.stringify(args.rawPlannerProviders, null, 2)}`,
+		"",
+		`planner_reply_text:\n${plannerReplyText}`,
+		"",
+		`available_runtime_actions:\n${args.availableActionNames.join(", ")}`,
+		"",
+		"Example:",
+		'user_message: "Pull up a dossier on Satya Nadella."',
+		'planner_actions_raw: ["LOOKUP"]',
+		'output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>',
+	].join("\n");
+}
+
+async function repairCanonicalPlannerActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+}): Promise<Record<string, unknown> | null> {
+	const availableActionNames = Array.from(
+		new Set(
+			(args.runtime.actions ?? [])
+				.map((action) => action.name?.trim())
+				.filter((name): name is string => Boolean(name)),
+		),
+	).sort();
+
+	if (availableActionNames.length === 0) {
+		return null;
 	}
 
-	if (hasNonPassiveAction(responseContent)) {
-		return false;
-	}
+	const repairPrompt = buildCanonicalActionRepairPrompt({
+		userText: String(args.message.content.text ?? ""),
+		rawPlannerActions: args.rawPlannerActions,
+		rawPlannerProviders: args.rawPlannerProviders,
+		plannerReplyText: args.plannerReplyText,
+		availableActionNames,
+	});
 
-	if (looksLikeNonActionableChatter(message)) {
-		return false;
-	}
+	const repairResponse = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+		prompt: repairPrompt,
+	});
 
-	const availableActionNames =
-		typeof state.values?.actionNames === "string"
-			? state.values.actionNames
-			: "";
-	if (
-		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
-	) {
-		return false;
-	}
-
-	return true;
+	return parseKeyValueXml<Record<string, unknown>>(repairResponse);
 }
 
 function shouldRunProviderFollowup(
@@ -1986,7 +1689,7 @@ function suppressesPostActionContinuation(
  * when `text` is empty.
  */
 export function shouldEmitPlannerPreamble(
-	runtime: Pick<IAgentRuntime, "actions">,
+	runtime: IAgentRuntime,
 	responseContent: Pick<Content, "text" | "actions"> | null | undefined,
 ): boolean {
 	if (!responseContent) return false;
@@ -1996,22 +1699,22 @@ export function shouldEmitPlannerPreamble(
 
 	const firstAction =
 		typeof responseContent.actions?.[0] === "string"
-			? normalizeActionIdentifier(responseContent.actions[0])
+			? responseContent.actions[0]
 			: "";
 	if (firstAction.length === 0) return false;
 
-	const resolvedAction = resolveRuntimeAction(
-		buildRuntimeActionLookup(runtime),
-		firstAction,
-	);
-	if (resolvedAction) {
-		return resolvedAction.suppressPostActionContinuation !== true;
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const resolvedAction = resolveRuntimeAction(actionLookup, firstAction);
+	if (resolvedAction?.suppressPostActionContinuation) {
+		return false;
 	}
 
+	const normalizedFirstAction = normalizeActionIdentifier(firstAction);
+
 	return (
-		firstAction !== normalizeActionIdentifier("REPLY") &&
-		firstAction !== normalizeActionIdentifier("IGNORE") &&
-		firstAction !== normalizeActionIdentifier("STOP")
+		normalizedFirstAction !== normalizeActionIdentifier("REPLY") &&
+		normalizedFirstAction !== normalizeActionIdentifier("IGNORE") &&
+		normalizedFirstAction !== normalizeActionIdentifier("STOP")
 	);
 }
 
@@ -5295,19 +4998,57 @@ export class DefaultMessageService implements IMessageService {
 		if (parsedXml) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
-			const finalActions = normalizePlannerActions(
+			const rawPlannerActions = extractPlannerActionNames(
+				parsedXml as Record<string, unknown>,
+			);
+			let finalActions = normalizePlannerActions(
 				parsedXml as Record<string, unknown>,
 				runtime,
 			);
+			let normalizedProviders = normalizePlannerProviders(
+				parsedXml as Record<string, unknown>,
+				runtime,
+			);
+
+			if (
+				shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)
+			) {
+				const repairedPlannerOutput = await repairCanonicalPlannerActions({
+					runtime,
+					message,
+					rawPlannerActions,
+					rawPlannerProviders: normalizedProviders,
+					plannerReplyText: String(parsedXml.text || ""),
+				});
+				if (repairedPlannerOutput) {
+					const repairedActions = normalizePlannerActions(
+						repairedPlannerOutput,
+						runtime,
+					);
+					const hasRecoveredOperationalAction = repairedActions.some(
+						(actionName) =>
+							!ACTION_REPAIR_PASSIVE_ACTIONS.has(
+								normalizeActionIdentifier(actionName),
+							),
+					);
+					if (hasRecoveredOperationalAction) {
+						finalActions = repairedActions;
+						normalizedProviders = normalizePlannerProviders(
+							repairedPlannerOutput,
+							runtime,
+						);
+						if (repairedPlannerOutput.params) {
+							parsedXml.params = repairedPlannerOutput.params;
+						}
+					}
+				}
+			}
 
 			responseContent = {
 				...parsedXml,
 				thought: String(parsedXml.thought || ""),
 				actions: finalActions,
-				providers: normalizePlannerProviders(
-					parsedXml as Record<string, unknown>,
-					runtime,
-				),
+				providers: normalizedProviders,
 				text: String(parsedXml.text || ""),
 				simple: parsedXml.simple === true || parsedXml.simple === "true",
 			};

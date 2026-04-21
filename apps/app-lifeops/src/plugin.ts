@@ -82,11 +82,85 @@ import {
   releaseBlockAction,
 } from "./website-blocker/chat-integration/index.js";
 import {
-  getSelfControlStatus,
-  type SelfControlPluginConfig,
-  setSelfControlPluginConfig,
-} from "./website-blocker/engine.js";
-import { WebsiteBlockerService } from "./website-blocker/service.js";
+  runMorningCheckinAction,
+  runNightCheckinAction,
+} from "./actions/checkin.js";
+import { relationshipAction } from "./actions/relationships.js";
+import { screenTimeAction } from "./actions/screen-time.js";
+// T8d — Activity tracker (plan §6.12).
+import {
+  getActivityReportAction,
+  getTimeOnAppAction,
+  getTimeOnSiteAction,
+} from "./actions/activity-report.js";
+import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
+import {
+  callExternalAction,
+  callUserAction,
+  twilioCallAction,
+} from "./actions/twilio-call.js";
+import { remoteDesktopAction } from "./actions/remote-desktop.js";
+import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
+import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
+import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
+import { crossChannelSendAction } from "./actions/cross-channel-send.js";
+import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
+import { intentSyncAction } from "./actions/intent-sync.js";
+import { publishDeviceIntentAction } from "./actions/device-bus.js";
+import { passwordManagerAction } from "./actions/password-manager.js";
+import {
+  addAutofillWhitelistAction,
+  listAutofillWhitelistAction,
+  requestFieldFillAction,
+} from "./actions/autofill.js";
+import { calendlyAction } from "./actions/calendly.js";
+import {
+  checkAvailabilityAction,
+  proposeMeetingTimesAction,
+  schedulingAction,
+  updateMeetingPreferencesAction,
+} from "./actions/scheduling.js";
+import { dossierAction } from "./actions/dossier.js";
+// T7f — meeting dossier (plan §6.7).
+import { generateDossierAction } from "./dossier/action.js";
+// T8a — travel-time awareness (plan §6.9).
+import { computeTravelBufferAction } from "./travel-time/action.js";
+import { healthAction } from "./actions/health.js";
+import { subscriptionsAction } from "./actions/subscriptions.js";
+// T8e — browser extension bridge actions (plan §6.13).
+import {
+  fetchBrowserActivityAction,
+  registerBrowserSessionAction,
+} from "./actions/browser-extension.js";
+
+// LifeOps core providers
+import { inboxTriageProvider } from "./providers/inbox-triage.js";
+import { lifeOpsProvider } from "./providers/lifeops.js";
+import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
+
+// LifeOps runtime (scheduler task worker + registration)
+import {
+  ensureLifeOpsSchedulerTask,
+  LIFEOPS_TASK_NAME,
+  registerLifeOpsTaskWorker,
+} from "./lifeops/runtime.js";
+
+// Activity-profile (proactive agent: GM/GN/nudges)
+import { activityProfileProvider } from "./providers/activity-profile.js";
+import {
+  ensureProactiveAgentTask,
+  PROACTIVE_TASK_NAME,
+  registerProactiveTaskWorker,
+} from "./activity-profile/proactive-worker.js";
+
+// Follow-up tracker (T7c — plan §6.4)
+import {
+  FOLLOWUP_TRACKER_TASK_NAME,
+  listOverdueFollowupsAction,
+  markFollowupDoneAction,
+  setFollowupThresholdAction,
+  registerFollowupTrackerWorker,
+} from "./followup/index.js";
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -95,12 +169,20 @@ async function ensureTaskWithRetries(args: {
   ensure: () => Promise<unknown>;
   delays?: readonly number[];
 }): Promise<void> {
+  const isRuntimeStopped = () =>
+    (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true;
   const delays = args.delays ?? [2_000, 5_000, 10_000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    if (isRuntimeStopped()) {
+      return;
+    }
     try {
       await args.ensure();
       return;
     } catch (error) {
+      if (isRuntimeStopped()) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (attempt < delays.length) {
         args.runtime.logger?.warn?.(
@@ -180,9 +262,19 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 }): void {
   void args.runtime.initPromise
     .then(async () => {
+      if (
+        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+      ) {
+        return;
+      }
       await ensureTaskWithRetries(args);
     })
     .catch((error) => {
+      if (
+        (args.runtime as IAgentRuntime & { stopped?: boolean }).stopped === true
+      ) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger?.error?.(
         `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
@@ -196,49 +288,62 @@ const rawAppLifeOpsPlugin: Plugin = {
   description:
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   schema: lifeOpsSchema,
-  get actions() {
-    return [
-      manageLifeOpsBrowserAction,
-      ownerWebsiteBlockAction,
-      blockUntilTaskCompleteAction,
-      listActiveBlocksAction,
-      releaseBlockAction,
-      ownerAppBlockAction,
-      ownerCalendarAction,
-      ownerInboxAction,
-      ownerScheduleAction,
-      xReadAction,
-      scheduleXDmReplyAction,
-      lifeAction,
-      updateOwnerProfileAction,
-      crossPlatformGatewayAction,
-      chatThreadControlAction,
-      runMorningCheckinAction,
-      runNightCheckinAction,
-      relationshipAction,
-      ownerScreenTimeAction,
-      twilioCallAction,
-      callUserAction,
-      callExternalAction,
-      ownerRemoteDesktopAction,
-      lifeOpsComputerUseAction,
-      crossChannelSendAction,
-      bookTravelAction,
-      toggleLifeOpsFeatureAction,
-      publishDeviceIntentAction,
-      intentSyncAction,
-      approveRequestAction,
-      rejectRequestAction,
-      passwordManagerAction,
-      requestFieldFillAction,
-      addAutofillWhitelistAction,
-      listAutofillWhitelistAction,
-      dossierAction,
-      healthAction,
-      subscriptionsAction,
-      emailUnsubscribeAction,
-    ];
-  },
+  actions: [
+    manageLifeOpsBrowserAction,
+    blockWebsitesAction,
+    getWebsiteBlockStatusAction,
+    requestWebsiteBlockingPermissionAction,
+    unblockWebsitesAction,
+    blockUntilTaskCompleteAction,
+    listActiveBlocksAction,
+    releaseBlockAction,
+    blockAppsAction,
+    unblockAppsAction,
+    getAppBlockStatusAction,
+    calendarAction,
+    gmailAction,
+    xReadAction,
+    inboxAction,
+    lifeAction,
+    updateOwnerProfileAction,
+    runMorningCheckinAction,
+    runNightCheckinAction,
+    relationshipAction,
+    screenTimeAction,
+    getActivityReportAction,
+    getTimeOnAppAction,
+    getTimeOnSiteAction,
+    twilioCallAction,
+    callUserAction,
+    callExternalAction,
+    remoteDesktopAction,
+    revokeRemoteSessionAction,
+    listRemoteSessionsAction,
+    lifeOpsComputerUseAction,
+    crossChannelSendAction,
+    searchAcrossChannelsAction,
+    publishDeviceIntentAction,
+    intentSyncAction,
+    passwordManagerAction,
+    requestFieldFillAction,
+    addAutofillWhitelistAction,
+    listAutofillWhitelistAction,
+    calendlyAction,
+    proposeMeetingTimesAction,
+    checkAvailabilityAction,
+    updateMeetingPreferencesAction,
+    schedulingAction,
+    listOverdueFollowupsAction,
+    markFollowupDoneAction,
+    setFollowupThresholdAction,
+    dossierAction,
+    generateDossierAction,
+    computeTravelBufferAction,
+    healthAction,
+    subscriptionsAction,
+    registerBrowserSessionAction,
+    fetchBrowserActivityAction,
+  ],
   providers: [
     lifeOpsBrowserProvider,
     websiteBlockerProvider,

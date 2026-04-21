@@ -18,42 +18,46 @@ import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
 import cancelGooglePlayScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
 import loginRequiredScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
 
-/**
- * Stand-in for the LLM planner: extracts the parameters the SUBSCRIPTIONS
- * handler expects from the user's message text. Kept in the test fixture so
- * the production action stays planner-driven (no regex intent inference), and
- * the scenario still exercises the handler end-to-end deterministically.
- */
-function resolveSubscriptionParams(
-  text: string,
-): Record<string, unknown> {
-  const lower = text.toLowerCase();
-  const params: Record<string, unknown> = {};
-  if (lower.includes("cancel")) {
-    params.mode = "cancel";
-  } else if (lower.includes("audit")) {
-    params.mode = "audit";
-  } else if (lower.includes("status")) {
-    params.mode = "status";
-  }
-  if (lower.includes("google play")) {
-    params.serviceSlug = "google_play";
-  } else if (lower.includes("fixture login required")) {
-    params.serviceSlug = "fixture_login_required";
-  }
-  if (lower.includes("i confirm") || lower.includes("go ahead")) {
-    params.confirmed = true;
-  }
-  return params;
+function buildSubscriptionsPlannerStub() {
+  return async (_modelType: unknown, input: { prompt?: string } | string) => {
+    const prompt =
+      typeof input === "string"
+        ? input
+        : typeof input?.prompt === "string"
+          ? input.prompt
+          : "";
+    const requestMatch = prompt.match(/Current request:\s*(".*")/);
+    const request = requestMatch ? JSON.parse(requestMatch[1]) : "";
+    const normalized = String(request).toLowerCase();
+    const serviceName = normalized.includes("google play")
+      ? "Google Play"
+      : normalized.includes("fixture access wall")
+        ? "Fixture Access Wall"
+        : null;
+    const serviceSlug =
+      serviceName === null
+        ? null
+        : serviceName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const plan = {
+      mode: "cancel",
+      serviceName,
+      serviceSlug,
+      executor: "agent_browser",
+      queryWindowDays: null,
+      confirmed:
+        normalized.includes("confirm") || normalized.includes("go ahead"),
+      shouldAct: true,
+      response: null,
+    };
+    return JSON.stringify(plan);
+  };
 }
 
 async function createScenarioRuntime(agentId: string) {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,
     actions: [subscriptionsAction],
-    useModel: async () => {
-      throw new Error("scenario tests should not invoke useModel");
-    },
+    useModel: buildSubscriptionsPlannerStub(),
     handleTurn: async ({ message, onResponse, runtime, state }) => {
       const text =
         (message.content as { text?: string } | undefined)?.text ?? "";

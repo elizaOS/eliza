@@ -53,6 +53,8 @@ export class TaskService extends Service {
 	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
+	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
+	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
 	/** Set true in stop(). runTick is a no-op when true (daemon may call runTick after unregister). */
@@ -356,6 +358,16 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
+		const execution = this.executeTaskInternal(task);
+		this.executingTaskPromises.add(execution);
+		try {
+			await execution;
+		} finally {
+			this.executingTaskPromises.delete(execution);
+		}
+	}
+
+	private async executeTaskInternal(task: Task) {
 		if (!task?.id) {
 			this.runtime.logger.debug(
 				{
@@ -624,6 +636,10 @@ export class TaskService extends Service {
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
+		}
+		const inFlight = Array.from(this.executingTaskPromises);
+		if (inFlight.length > 0) {
+			await Promise.allSettled(inFlight);
 		}
 		// Clear executing tasks set on stop
 		this.executingTasks.clear();

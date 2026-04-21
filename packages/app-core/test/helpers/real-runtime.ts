@@ -157,6 +157,10 @@ async function flushPendingTrajectoryWrites(
   }
 }
 
+function hasConfiguredHostsPath(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 /** Creates a fully initialized runtime for integration tests. */
 export async function createRealTestRuntime(
   options?: RealTestRuntimeOptions,
@@ -167,9 +171,29 @@ export async function createRealTestRuntime(
   const removePgliteDirOnCleanup =
     options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
   const restoreWindow = suppressWindowDuringNodeRuntime();
+  let selfControlTempDir: string | null = null;
 
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
+  const prevWebsiteBlockerHostsPath =
+    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
+  const prevSelfControlHostsPath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
   process.env.PGLITE_DATA_DIR = pgliteDir;
+
+  if (
+    !hasConfiguredHostsPath(process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH) &&
+    !hasConfiguredHostsPath(process.env.SELFCONTROL_HOSTS_FILE_PATH)
+  ) {
+    selfControlTempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-real-selfcontrol-"),
+    );
+    const testHostsFilePath = path.join(selfControlTempDir, "hosts");
+    fs.mkdirSync(path.dirname(testHostsFilePath), { recursive: true });
+    if (!fs.existsSync(testHostsFilePath)) {
+      fs.writeFileSync(testHostsFilePath, "127.0.0.1 localhost\n", "utf8");
+    }
+    process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = testHostsFilePath;
+    process.env.SELFCONTROL_HOSTS_FILE_PATH = testHostsFilePath;
+  }
 
   // Apply local embedding defaults so PGLite vector search works
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
@@ -286,7 +310,11 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
-    runtime.registerSendHandler("client_chat", async () => {});
+    runtime.registerSendHandler("client_chat", async (_rt, _target, _content) => {
+      // Benchmarks and integration tests do not have a real in-app transport.
+      // Register a no-op handler so inbox digests and proactive reminders can
+      // exercise their normal delivery path without crashing the runtime.
+    });
 
     const cleanup = async () => {
       try {
@@ -315,10 +343,28 @@ export async function createRealTestRuntime(
       } else {
         delete process.env.PGLITE_DATA_DIR;
       }
+      if (prevWebsiteBlockerHostsPath !== undefined) {
+        process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =
+          prevWebsiteBlockerHostsPath;
+      } else {
+        delete process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
+      }
+      if (prevSelfControlHostsPath !== undefined) {
+        process.env.SELFCONTROL_HOSTS_FILE_PATH = prevSelfControlHostsPath;
+      } else {
+        delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
+      }
       restoreWindow();
       if (removePgliteDirOnCleanup) {
         try {
           fs.rmSync(pgliteDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      if (selfControlTempDir) {
+        try {
+          fs.rmSync(selfControlTempDir, { recursive: true, force: true });
         } catch {
           // ignore cleanup errors
         }
@@ -336,6 +382,13 @@ export async function createRealTestRuntime(
     if (removePgliteDirOnCleanup) {
       try {
         fs.rmSync(pgliteDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+    if (selfControlTempDir) {
+      try {
+        fs.rmSync(selfControlTempDir, { recursive: true, force: true });
       } catch {
         // ignore cleanup errors
       }

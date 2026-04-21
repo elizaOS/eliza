@@ -14,5 +14,8 @@ describe("message service no-heuristics contracts", () => {
 		expect(source).not.toContain("inferPlannerActionRepairCandidates");
 		expect(source).toContain("normalizePlannerProviders");
 		expect(source).toContain("shouldRunProviderFollowup");
+		expect(source).not.toContain(
+			"Prioritizing grounded provider follow-up over speculative actions",
+		);
 	});
 });

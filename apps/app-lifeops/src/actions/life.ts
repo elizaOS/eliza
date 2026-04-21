@@ -1060,10 +1060,12 @@ async function resolveOccurrenceWithIntentFallback(args: {
 
 function summarizeCadence(cadence: LifeOpsCadence): string {
   const cadenceWindows = Array.isArray((cadence as { windows?: unknown }).windows)
-    ? ((cadence as { windows: string[] }).windows).filter((window) =>
-        typeof window === "string" && window.trim().length > 0,
+    ? ((cadence as { windows: string[] }).windows ?? []).filter(
+        (windowName) =>
+          typeof windowName === "string" && windowName.trim().length > 0,
       )
     : [];
+
   switch (cadence.kind) {
     case "once": {
       const dueAt = new Date(cadence.dueAt);

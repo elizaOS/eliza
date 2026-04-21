@@ -128,6 +128,48 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   return stringToUuid(`${runtime.agentId}-admin-entity`);
 }
 
+async function ensureBenchmarkConversation(args: {
+  runtime: AgentRuntime;
+  entityId: UUID;
+  roomId: UUID;
+  worldId: UUID;
+}): Promise<void> {
+  const { runtime, entityId, roomId, worldId } = args;
+  const worldMetadata = {
+    ownership: {
+      ownerId: entityId,
+    },
+    roles: {
+      [entityId]: "OWNER",
+    },
+  } as const;
+
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: `${BENCHMARK_USER_NAME}'s Benchmark World`,
+    agentId: runtime.agentId,
+    messageServerId: entityId,
+    metadata: worldMetadata,
+  });
+
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    worldName: `${BENCHMARK_USER_NAME}'s Benchmark World`,
+    userName: BENCHMARK_USER_NAME,
+    name: BENCHMARK_USER_NAME,
+    source: BENCHMARK_SOURCE,
+    channelId: roomId,
+    type: ChannelType.DM,
+    messageServerId: entityId,
+    metadata: worldMetadata,
+  });
+
+  await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+  await runtime.ensureParticipantInRoom(entityId, roomId);
+}
+
 function normalizeActionName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
   const trimmed = name.trim();
@@ -662,7 +704,26 @@ async function runSingleCase(
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
     await seedBenchmarkCaseFixtures(runtime, entityId);
-    await harness.setup();
+    await ensureBenchmarkConversation({
+      runtime,
+      entityId,
+      roomId,
+      worldId,
+    });
+
+    runtime.registerPipelineHook({
+      id: hookId,
+      phase: "outgoing_before_deliver",
+      handler: (_runtime, ctx) => {
+        if (ctx.phase !== "outgoing_before_deliver") return;
+        if (ctx.roomId !== roomId) return;
+        if (capture.firstAction !== null) return;
+        const name = ctx.actionName;
+        if (typeof name === "string" && name.trim().length > 0) {
+          capture.firstAction = name;
+        }
+      },
+    });
 
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,

@@ -179,24 +179,24 @@ describeIf(LIVE_CONNECTOR_SUITE_ENABLED)(
       if (rt) await rt.close();
     });
 
-    it("lists each configured real connector in the live runtime", async () => {
-      const res = await req(rt.port, "GET", "/api/connectors");
-      expect(res.status).toBe(200);
-      const connectors = Array.isArray(res.data)
-        ? (res.data as Array<Record<string, unknown>>)
-        : Array.isArray(res.data.connectors)
-          ? (res.data.connectors as Array<Record<string, unknown>>)
-          : res.data?.connectors &&
-              typeof res.data.connectors === "object" &&
-              !Array.isArray(res.data.connectors)
-            ? Object.entries(
-                res.data.connectors as Record<string, Record<string, unknown>>,
-              ).map(([id, config]) => ({
-                id,
-                ...(config ?? {}),
-              }))
-            : [];
-      expect(connectors.length).toBeGreaterThan(0);
+  it("lists each configured real connector in the live runtime", async () => {
+    const res = await req(rt.port, "GET", "/api/connectors");
+    expect(res.status).toBe(200);
+    const connectors = Array.isArray(res.data)
+      ? (res.data as Array<Record<string, unknown>>)
+      : Array.isArray(res.data.connectors)
+        ? (res.data.connectors as Array<Record<string, unknown>>)
+        : res.data.connectors &&
+            typeof res.data.connectors === "object" &&
+            !Array.isArray(res.data.connectors)
+          ? Object.entries(
+              res.data.connectors as Record<string, Record<string, unknown>>,
+            ).map(([id, config]) => ({
+              id,
+              ...(config ?? {}),
+            }))
+          : [];
+    expect(connectors.length).toBeGreaterThan(0);
 
       for (const connector of CONFIGURED_CONNECTORS) {
         expect(

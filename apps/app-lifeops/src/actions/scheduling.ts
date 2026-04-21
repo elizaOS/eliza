@@ -391,6 +391,8 @@ export const proposeMeetingTimesAction: Action & {
     "FIND_MEETING_SLOTS",
     "PROPOSE_SLOTS",
     "BUNDLE_MEETINGS_WHILE_TRAVELING",
+    "BULK_RESCHEDULE_MEETINGS",
+    "RESCHEDULE_MEETINGS",
   ],
   tags: [
     "meeting slots",
@@ -1032,7 +1034,9 @@ function formatProposalSummary(p: {
   return `Proposal ${p.id}: ${p.startAt} → ${p.endAt} by ${p.proposedBy} (status=${p.status})`;
 }
 
-export const schedulingAction: Action = {
+export const schedulingAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "SCHEDULING",
   similes: [
     "NEGOTIATE_MEETING",
@@ -1049,8 +1053,7 @@ export const schedulingAction: Action = {
     "Do not use this for first-turn calendar requests, recurring blocks, " +
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
     "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
-    "or CROSS_CHANNEL_SEND." +
-    " Use for 'help me schedule a meeting with <person/team>', 'set up a sync with <person>', 'find a time with <team>' — subaction: start. Use for 'propose N times for a sync with <person>' — subaction: propose.",
+    "or CROSS_CHANNEL_SEND.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (

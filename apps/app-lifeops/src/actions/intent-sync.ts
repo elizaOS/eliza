@@ -107,57 +107,6 @@ function fail(
   };
 }
 
-// Validation terminates the turn cleanly with descriptive text. Both the
-// top-level success flag and values.success are false, so callers that check
-// either one see a consistent logical failure. Orchestrators should treat the
-// presence of a structured `error` code as "do not retry" rather than inferring
-// completion from success:true.
-function validationTerminate(
-  error: string,
-  text: string,
-  extra: Record<string, unknown> = {},
-): ActionResult {
-  return {
-    text,
-    success: false,
-    values: { success: false, error, ...extra },
-    data: { actionName: ACTION_NAME, error, ...extra },
-  };
-}
-
-// Parse flat key=value params that arrive as a raw string instead of nested
-// XML/JSON. Handles quoted and unquoted values.
-function parseFlatParams(raw: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const re = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw)) !== null) {
-    out[m[1]] = m[2] ?? m[3] ?? m[4] ?? "";
-  }
-  return out;
-}
-
-// Tolerate a wider shape: if `params` is a string (or carries a rawParams
-// blob), attempt flat parsing and merge into a typed object.
-function normalizeParams(raw: unknown): NormalizedIntentSyncParameters {
-  if (typeof raw === "string") {
-    return parseFlatParams(raw);
-  }
-  if (raw && typeof raw === "object") {
-    const obj = raw as Record<string, unknown>;
-    const merged: Record<string, unknown> = { ...obj };
-    const rawParams = obj.rawParams ?? obj.raw;
-    if (typeof rawParams === "string") {
-      const parsed = parseFlatParams(rawParams);
-      for (const [k, v] of Object.entries(parsed)) {
-        if (merged[k] === undefined) merged[k] = v;
-      }
-    }
-    return merged as NormalizedIntentSyncParameters;
-  }
-  return {} as NormalizedIntentSyncParameters;
-}
-
 export const intentSyncAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -166,20 +115,25 @@ export const intentSyncAction: Action & {
     "BROADCAST_INTENT",
     "SYNC_INTENT",
     "CROSS_DEVICE_INTENT",
-    "BROADCAST_TO_DEVICE",
-    "LIST_PENDING_INTENTS",
-    "ACKNOWLEDGE_DEVICE_INTENT",
-    "PRUNE_DEVICE_INTENTS",
+    "BROADCAST_REMINDER",
+    "MOBILE_REMINDER",
+    "DEVICE_REMINDER",
+    "ROUTINE_REMINDER_TO_PHONE",
+  ],
+  tags: [
+    "always-include",
+    "broadcast reminder",
+    "mobile reminder",
+    "device reminder",
+    "routine reminder",
+    "notify my phone",
   ],
   description:
-    "Compatibility-only low-level device-intent management. Broadcast, list, acknowledge, " +
-    "or prune raw device intents for the owner's devices. Subactions: broadcast, list_pending, " +
-    "acknowledge, prune_expired. Use this for explicit device-intent administration like " +
-    "'broadcast a raw reminder to my mobile', 'list pending device intents', or 'acknowledge that intent'. " +
-    "Do not use this for new owner-facing reminder ladders, updated-ID interventions, document-signing nudges, " +
-    "or cancellation-fee warnings — those belong to PUBLISH_DEVICE_INTENT. Do NOT use CROSS_CHANNEL_SEND " +
-    "for device-targeted reminders: CROSS_CHANNEL_SEND is for sending chat messages to another person on a " +
-    "messaging platform, while INTENT_SYNC manages raw structured intents on the owner's own devices.",
+    "Broadcast intents across devices or acknowledge pending intents. " +
+    "Subactions: broadcast, list_pending, acknowledge, prune_expired. " +
+    "Use this for requests like 'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes', " +
+    "'broadcast a reminder to all my devices', or 'ping my phone with a reminder'.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasAdminAccess(runtime, message),

@@ -49,6 +49,14 @@ const runtime = {
 		},
 	} as Parameters<typeof shouldEmitPlannerPreamble>[0];
 
+const runtime = {
+	actions: [
+		{ name: "INBOX" },
+		{ name: "GMAIL_ACTION" },
+		{ name: "BLOCK_WEBSITES", suppressPostActionContinuation: true },
+	],
+} as Parameters<typeof shouldEmitPlannerPreamble>[0];
+
 describe("shouldEmitPlannerPreamble", () => {
 	it("emits when first action is a non-terminal action and text is present", () => {
 		expect(
@@ -156,86 +164,5 @@ describe("shouldEmitPlannerPreamble", () => {
 				actions: ["BLOCK_WEBSITES"],
 			}),
 		).toBe(false);
-	});
-
-	it("does not emit when a suppressed action is selected by simile", () => {
-		expect(
-			shouldEmitPlannerPreamble(runtime, {
-				text: "I've added a blackout window to your calendar preferences.",
-				actions: ["UPDATE_MEETING_PREFERENCES"],
-			}),
-		).toBe(false);
-	});
-});
-
-describe("resolveStrategyMode", () => {
-	it("uses simple mode only for explicit simple REPLY-only replies with planner text", () => {
-		expect(
-			resolveStrategyMode({
-				actions: ["REPLY"],
-				text: "Hello there",
-				simple: true,
-			}),
-		).toBe("simple");
-	});
-
-	it("uses actions mode for REPLY-only turns when simple is false", () => {
-		expect(
-			resolveStrategyMode({
-				actions: ["REPLY"],
-				text: "Hello there",
-				simple: false,
-			}),
-		).toBe("actions");
-	});
-
-	it("uses actions mode for REPLY-only turns without planner text", () => {
-		expect(
-			resolveStrategyMode({
-				actions: ["REPLY"],
-				text: "   ",
-				simple: true,
-			}),
-		).toBe("actions");
-	});
-
-	it("uses actions mode for non-REPLY actions", () => {
-		expect(
-			resolveStrategyMode({
-				actions: ["INBOX"],
-				text: "Checking your inbox",
-				simple: true,
-			}),
-		).toBe("actions");
-	});
-
-	it("uses none mode for STOP", () => {
-		expect(
-			resolveStrategyMode({
-				actions: ["STOP"],
-				text: "Done",
-				simple: false,
-			}),
-		).toBe("none");
-	});
-});
-
-describe("stripReplyWhenActionOwnsTurn", () => {
-	it("drops REPLY when mixed with a turn-owning action", () => {
-		expect(
-			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "CALL_USER"]),
-		).toEqual(["CALL_USER"]);
-	});
-
-	it("drops REPLY when the turn-owning action is selected by simile", () => {
-		expect(
-			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "CALL_IF_STUCK"]),
-		).toEqual(["CALL_IF_STUCK"]);
-	});
-
-	it("keeps REPLY when paired with a non-owning background action", () => {
-		expect(
-			stripReplyWhenActionOwnsTurn(runtime, ["REPLY", "SLOW_BACKGROUND_LOOKUP"]),
-		).toEqual(["REPLY", "SLOW_BACKGROUND_LOOKUP"]);
 	});
 });

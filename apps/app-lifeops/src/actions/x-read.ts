@@ -213,7 +213,9 @@ function summarizeFeedItems(items: LifeOpsXFeedItem[], feedType: LifeOpsXFeedTyp
   return `X ${feedType} (${items.length}):\n${preview}`;
 }
 
-export const xReadAction: Action = {
+export const xReadAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "X_READ",
   similes: [
     "READ_X",
@@ -231,6 +233,7 @@ export const xReadAction: Action = {
     "Read X/Twitter DMs, the home timeline or mentions feed, or run a recent search. " +
     "Use this for requests like 'check my Twitter DMs', 'what's on my X timeline?', 'show me my mentions', or 'search Twitter for posts about elizaOS'. " +
     "Use this for retrieving content from X, not posting. Do not reply that X/Twitter access is unavailable when this action is registered and visible.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;

@@ -43,6 +43,21 @@ type PasswordManagerParameters = {
   limit?: number;
 };
 
+function parseLooseParameterString(raw: unknown): Partial<PasswordManagerParameters> {
+  if (typeof raw !== "string") {
+    return {};
+  }
+  const subactionMatch = raw.match(
+    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
+  );
+  const queryMatch = raw.match(/\bquery\s*[:=]\s*["']([^"']+)["']/i);
+  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']([^"']+)["']/i);
+  return {
+    subaction: subactionMatch?.[1],
+    query: queryMatch?.[1],
+    intent: intentMatch?.[1],
+  };
+}
 
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -58,6 +73,48 @@ function readConfig(
   return config;
 }
 
+function inferSubactionFromText(
+  text: string,
+): PasswordManagerSubaction | undefined {
+  const lower = text.toLowerCase();
+  if (!lower.trim()) return undefined;
+  // Injection requests usually name an explicit target plus "copy" or "paste"
+  if (/\bcopy\b.*\b(password|secret|token)\b/.test(lower))
+    return "inject_password";
+  if (/\bcopy\b.*\b(username|user|login|email)\b/.test(lower))
+    return "inject_username";
+  if (/\bpaste\b.*\bpassword\b/.test(lower)) return "inject_password";
+  // Listing: "show/list my (saved) logins/passwords/credentials"
+  if (
+    /\b(show|list|see|view|display|what are)\b.*\b(saved|my)?\s*(logins?|passwords?|credentials?|items?|entries|vault)/.test(
+      lower,
+    )
+  ) {
+    return "list";
+  }
+  // Search: "find/lookup my <service> (password|login)"
+  if (
+    /\b(find|look ?up|search|get|fetch|where is|what('?s| is))\b.*\b(password|login|credential|account)\b/.test(
+      lower,
+    ) ||
+    /\bmy\b.*\b(password|login|credential)\b\s+for\b/.test(lower)
+  ) {
+    return "search";
+  }
+  return undefined;
+}
+
+function extractPasswordSearchQuery(text: string): string | undefined {
+  const domainMatch = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i);
+  if (domainMatch?.[1]) {
+    return domainMatch[1].toLowerCase();
+  }
+  const serviceMatch = text.match(
+    /\b(?:for|about|on|my)\s+([a-z0-9._-]+)(?:\s+(?:login|password|credentials?))?\b/i,
+  );
+  return serviceMatch?.[1];
+}
+
 function describeItems(items: PasswordManagerItem[]): string {
   if (items.length === 0) return "No matching items.";
   return items
@@ -71,20 +128,19 @@ function describeItems(items: PasswordManagerItem[]): string {
 }
 
 function failure(error: string, extra?: Record<string, unknown>): ActionResult {
-  const text =
-    error === "PERMISSION_DENIED"
-      ? "Password manager: permission denied — owner only."
-      : error === "MISSING_QUERY"
-        ? "Please tell me which site or login to search for (e.g., \"github\" or \"bank\")."
-        : error === "MISSING_ITEM_ID"
-          ? "Please identify which saved login to copy (search first to get an id)."
-          : error === "CONFIRMATION_REQUIRED"
-            ? "Password injection requires confirmed: true to copy to the clipboard."
-            : error === "UNKNOWN_SUBACTION"
-              ? "Password manager subaction unclear. Try: search <query>, list, inject_username, or inject_password."
-              : `Password manager request could not complete (${error}).`;
+  const userMessages: Record<string, string> = {
+    PERMISSION_DENIED:
+      "Password manager is owner-only; you don't have access here.",
+    MISSING_QUERY:
+      "Which login should I look up? Tell me the service (e.g. GitHub, AWS).",
+    MISSING_ITEM_ID: "I need the password manager item id to copy a field.",
+    CONFIRMATION_REQUIRED:
+      "Copying a credential needs explicit confirmation. Re-issue with confirmed: true.",
+    UNKNOWN_SUBACTION:
+      "Say 'list my saved logins', 'find my <service> login', or 'copy <service> password to clipboard'.",
+  };
   return {
-    text,
+    text: userMessages[error] ?? error,
     success: false,
     values: { success: false, error },
     data: { actionName: "PASSWORD_MANAGER", error, ...(extra ?? {}) },
@@ -124,7 +180,9 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const passwordManagerAction: Action = {
+export const passwordManagerAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "PASSWORD_MANAGER",
   similes: [
     "ONEPASSWORD",
@@ -138,6 +196,7 @@ export const passwordManagerAction: Action = {
     "Look up or copy credentials from your password manager (1Password CLI or ProtonPass). " +
     "Use this for requests like 'look up my GitHub password' or 'show me my saved logins for github.com'. " +
     "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
@@ -147,19 +206,29 @@ export const passwordManagerAction: Action = {
       return failure("PERMISSION_DENIED");
     }
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | PasswordManagerParameters
-        | undefined) ?? {};
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const params = {
+      ...parseLooseParameterString(rawParameters),
+      ...((typeof rawParameters === "object" && rawParameters !== null
+        ? (rawParameters as PasswordManagerParameters)
+        : {}) ?? {}),
+    } satisfies PasswordManagerParameters;
 
-    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
+    const messageText =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    const rawSubaction = (params.subaction ?? "").toString().trim().toLowerCase();
+    const subaction =
+      rawSubaction || inferSubactionFromText(params.intent ?? messageText) || "";
     const config = readConfig(runtime);
 
     if (subaction === "search") {
-      const query = (params.query ?? params.intent ?? "").toString().trim();
+      const query =
+        (params.query ?? extractPasswordSearchQuery(params.intent ?? messageText) ?? params.intent ?? messageText)
+          .toString()
+          .trim();
       if (!query) return failure("MISSING_QUERY");
       const items = await searchPasswordItems(query, config);
-      const text = describeItems(items);
+      const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;
       return {
         text,
         success: true,
@@ -180,7 +249,7 @@ export const passwordManagerAction: Action = {
           : 20;
       const items = await listPasswordItems({ limit }, config);
       return {
-        text: describeItems(items),
+        text: `Saved login items only — passwords remain hidden.\n${describeItems(items)}`,
         success: true,
         values: { success: true, count: items.length },
         data: {

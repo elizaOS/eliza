@@ -22,6 +22,7 @@ describe("resolveWidgetsForSlot", () => {
         "agent-orchestrator/agent-orchestrator.activity",
       ]),
     );
+    expect(widgetIds).not.toContain("lifeops/lifeops.google");
     expect(widgetIds).not.toContain("todo/todo.items");
   });
 

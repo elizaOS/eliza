@@ -18,13 +18,13 @@ import {
   formatWebsiteList,
   type getSelfControlPermissionState,
   getSelfControlStatus,
+  normalizeWebsiteTargets,
   parseSelfControlBlockRequest,
   requestSelfControlPermission,
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.ts";
 import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 type BlockWebsitesParameters = {
   websites?: string[] | string;
@@ -49,6 +49,11 @@ type WebsiteBlockPlan = {
   response?: string;
   websites: string[];
   durationMinutes?: number | null;
+};
+
+type WebsiteBlockConversationTurn = {
+  speaker: "user" | "assistant";
+  text: string;
 };
 
 function formatStatusText(
@@ -132,14 +137,13 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
     : typeof value === "string"
       ? value.split(/\s*\|\|\s*|,|\n/)
       : [];
-  return [
-    ...new Set(
-      values
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0),
-    ),
-  ];
+  return [...new Set(
+    values
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
+      .filter((item) => item.length > 0),
+  )];
 }
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
@@ -170,19 +174,152 @@ function normalizeDurationMinutes(value: unknown): number | null | undefined {
   return undefined;
 }
 
+const WEBSITE_ALIAS_MAP: Readonly<Record<string, readonly string[]>> = {
+  twitter: ["x.com", "twitter.com"],
+  x: ["x.com", "twitter.com"],
+  reddit: ["reddit.com"],
+  youtube: ["youtube.com"],
+  facebook: ["facebook.com"],
+  instagram: ["instagram.com"],
+  tiktok: ["tiktok.com"],
+} as const;
+
+const SOCIAL_MEDIA_SITES = [
+  "facebook.com",
+  "instagram.com",
+  "reddit.com",
+  "tiktok.com",
+  "twitter.com",
+  "x.com",
+  "youtube.com",
+] as const;
+
+function extractHeuristicWebsites(text: string): string[] {
+  const normalized = text.toLowerCase();
+  const fromAliases = Object.entries(WEBSITE_ALIAS_MAP).flatMap(
+    ([alias, websites]) => {
+      if (!new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(normalized)) {
+        return [];
+      }
+      return [...websites];
+    },
+  );
+
+  const explicitHosts = Array.from(
+    normalized.matchAll(
+      /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/g,
+    ),
+    (match) => match[1] ?? "",
+  );
+
+  if (/\bsocial media\b/i.test(normalized)) {
+    return normalizeWebsiteCandidates([
+      ...explicitHosts,
+      ...fromAliases,
+      ...SOCIAL_MEDIA_SITES,
+    ]);
+  }
+
+  return normalizeWebsiteCandidates([...explicitHosts, ...fromAliases]);
+}
+
+function extractHeuristicDurationMinutes(text: string): number | null | undefined {
+  const normalized = text.toLowerCase();
+  if (
+    /\buntil (?:i|we) unblock\b/.test(normalized) ||
+    /\buntil manual(?:ly)? removed?\b/.test(normalized) ||
+    /\bforever\b/.test(normalized)
+  ) {
+    return null;
+  }
+
+  const hourMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*hours?\b/);
+  if (hourMatch?.[1]) {
+    return Math.round(Number.parseFloat(hourMatch[1]) * 60);
+  }
+
+  const minuteMatch = normalized.match(/\b(\d+(?:\.\d+)?)\s*minutes?\b/);
+  if (minuteMatch?.[1]) {
+    return Math.round(Number.parseFloat(minuteMatch[1]));
+  }
+
+  return undefined;
+}
+
+function shouldTrustExplicitWebsites(
+  explicitWebsites: readonly string[],
+  heuristicWebsites: readonly string[],
+): boolean {
+  if (explicitWebsites.length === 0) {
+    return false;
+  }
+  if (heuristicWebsites.length === 0) {
+    return true;
+  }
+  return explicitWebsites.every((website) =>
+    heuristicWebsites.includes(website),
+  );
+}
+
+async function collectWebsiteBlockConversationTurns(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  limit: number;
+}): Promise<WebsiteBlockConversationTurn[]> {
+  const roomId =
+    typeof args.message.roomId === "string" ? args.message.roomId : "";
+  if (!roomId || typeof args.runtime.getMemories !== "function") {
+    return [];
+  }
+
+  try {
+    const memories = await args.runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: Math.max(args.limit * 2, args.limit),
+    });
+    if (!Array.isArray(memories)) {
+      return [];
+    }
+
+    return memories
+      .slice()
+      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .map((memory) => {
+        const text =
+          typeof memory?.content?.text === "string"
+            ? memory.content.text.trim()
+            : "";
+        if (!text) {
+          return null;
+        }
+
+        return {
+          speaker:
+            memory.entityId === args.runtime.agentId ? "assistant" : "user",
+          text,
+        } satisfies WebsiteBlockConversationTurn;
+      })
+      .filter(
+        (turn): turn is WebsiteBlockConversationTurn =>
+          turn !== null && turn.text.length > 0,
+      )
+      .slice(-args.limit);
+  } catch {
+    return [];
+  }
+}
+
 async function resolveWebsiteBlockPlanWithLlm(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
 }): Promise<WebsiteBlockPlan> {
-  const recentConversation = (
-    await collectRecentConversationTexts({
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-      limit: 8,
-    })
-  ).join("\n");
+  const recentTurns = await collectWebsiteBlockConversationTurns({
+    runtime: args.runtime,
+    message: args.message,
+    limit: 10,
+  });
   const currentMessage = getMessageText(args.message).trim();
   const prompt = [
     "Plan the website blocking action for this request.",
@@ -217,12 +354,11 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     "",
     "Return ONLY valid JSON.",
     `Current request: ${JSON.stringify(currentMessage)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
   ].join("\n");
 
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an async service call, not a React hook.
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
@@ -257,6 +393,60 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   }
 }
 
+async function recoverWebsiteContextWithLlm(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+}): Promise<string[]> {
+  const recentTurns = await collectWebsiteBlockConversationTurns({
+    runtime: args.runtime,
+    message: args.message,
+    limit: 12,
+  });
+
+  if (recentTurns.length === 0) {
+    return [];
+  }
+
+  const currentMessage = getMessageText(args.message).trim();
+  const prompt = [
+    "Recover previously mentioned public website hostnames for a website-block request.",
+    "Use the current request plus recent conversation context.",
+    "Return a JSON object with one field only:",
+    "  websites: array of public website hostnames or URLs relevant to the current blocking request",
+    "",
+    "Rules:",
+    "- Extract only websites that were actually mentioned in recent conversation.",
+    "- Prefer bare public hostnames like x.com.",
+    "- Do not invent websites.",
+    "- Return an empty array when no websites were previously mentioned.",
+    "",
+    "Return ONLY valid JSON.",
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Recent conversation turns: ${JSON.stringify(recentTurns)}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    return normalizeWebsiteCandidates(parsed?.websites);
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:website-blocker",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Website blocker context recovery model call failed",
+    );
+    return [];
+  }
+}
+
 export const blockWebsitesAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -277,10 +467,8 @@ export const blockWebsitesAction: Action & {
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
-    "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner." +
-    " DO NOT use this action when the user references apps, games, or things 'on my phone' / 'on my device' — use BLOCK_APPS for those. Do not pair this action with a speculative REPLY; this action provides the final reply itself.",
-  descriptionCompressed:
-    "Admin: block websites via hosts file for set duration.",
+    "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
+  descriptionCompressed: "Admin: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
@@ -295,36 +483,65 @@ export const blockWebsitesAction: Action & {
       };
     }
 
+    const messageText = getMessageText(message);
     const params = options?.parameters as BlockWebsitesParameters | undefined;
-    const explicitWebsites = normalizeWebsiteCandidates(params?.websites);
+    const explicitWebsites = normalizeWebsiteTargets(
+      normalizeWebsiteCandidates(params?.websites),
+    );
     const explicitDurationMinutes = normalizeDurationMinutes(
       params?.durationMinutes,
     );
+    const heuristicWebsites = normalizeWebsiteTargets(
+      extractHeuristicWebsites(messageText),
+    );
+    const trustedExplicitWebsites = shouldTrustExplicitWebsites(
+      explicitWebsites,
+      heuristicWebsites,
+    )
+      ? explicitWebsites
+      : [];
+    const heuristicDurationMinutes =
+      explicitDurationMinutes === undefined
+        ? extractHeuristicDurationMinutes(messageText)
+        : explicitDurationMinutes;
     const llmPlan =
-      explicitWebsites.length === 0
+      trustedExplicitWebsites.length === 0 && heuristicWebsites.length === 0
         ? await resolveWebsiteBlockPlanWithLlm({
             runtime,
             message,
             state,
           })
         : null;
+    const recoveredWebsites =
+      trustedExplicitWebsites.length === 0 &&
+      (llmPlan?.websites.length ?? 0) === 0
+        ? await recoverWebsiteContextWithLlm({
+            runtime,
+            message,
+            state,
+          })
+        : [];
+    const plannedWebsites =
+      trustedExplicitWebsites.length > 0
+        ? trustedExplicitWebsites
+        : heuristicWebsites.length > 0
+          ? heuristicWebsites
+          : ((llmPlan?.websites.length ?? 0) > 0
+            ? llmPlan?.websites
+            : recoveredWebsites);
 
-    if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
+    if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
       return {
         success: false,
         text:
           llmPlan.response ??
-          "I noted those websites and will wait for your confirmation before blocking them.",
-        values: {
-          success: false,
-          error: "DEFERRED_AWAITING_CONFIRMATION",
-          deferred: true,
-          noop: true,
-        },
+          (plannedWebsites.length > 0
+            ? `I noted ${formatWebsiteList(plannedWebsites)} and will wait for your confirmation before blocking them.`
+            : "I noted those websites and will wait for your confirmation before blocking them."),
         data: {
           deferred: true,
           noop: true,
-          error: "DEFERRED_AWAITING_CONFIRMATION",
+          websites: plannedWebsites,
         },
       };
     }
@@ -332,13 +549,13 @@ export const blockWebsitesAction: Action & {
     const parsed = parseSelfControlBlockRequest({
       parameters: {
         websites:
-          explicitWebsites.length > 0
-            ? explicitWebsites
-            : (llmPlan?.websites ?? null),
+          plannedWebsites.length > 0 ? plannedWebsites : null,
         durationMinutes:
           explicitDurationMinutes !== undefined
             ? explicitDurationMinutes
-            : (llmPlan?.durationMinutes ?? null),
+            : (heuristicDurationMinutes !== undefined
+                ? heuristicDurationMinutes
+                : (llmPlan?.durationMinutes ?? null)),
       },
     });
     if (!parsed.request) {
@@ -351,8 +568,7 @@ export const blockWebsitesAction: Action & {
       };
     }
 
-    const confirmed =
-      coerceConfirmedFlag(params?.confirmed) || llmPlan?.confirmed === true;
+    const confirmed = coerceConfirmedFlag(params?.confirmed);
     if (!confirmed) {
       const websitesLabel = formatWebsiteList(parsed.request.websites);
       const durationLabel =
@@ -426,7 +642,7 @@ export const blockWebsitesAction: Action & {
       name: "websites",
       description:
         "Website hostnames or URLs to block, for example ['x.com', 'twitter.com']. When omitted, the planner can recover them from recent conversation context.",
-      required: false,
+      required: true,
       schema: {
         type: "array" as const,
         items: { type: "string" as const },
@@ -446,6 +662,13 @@ export const blockWebsitesAction: Action & {
       required: false,
       schema: { type: "boolean" as const },
     },
+    {
+      name: "confirmed",
+      description:
+        "Set to true only when the owner has explicitly confirmed the block. Without it, the action returns a draft confirmation request instead of editing the system hosts file.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
   ],
   examples: [
     [
@@ -456,7 +679,7 @@ export const blockWebsitesAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
+          text: "Ready to block x.com, twitter.com for 120 minutes. Reply \"confirm\" or re-issue with confirmed: true to start the block.",
           action: "BLOCK_WEBSITES",
         },
       },

@@ -208,10 +208,10 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  // Belt-and-braces: the prototype-level patch installed by
-  // `handler-registry.ts` at module import catches future registrations.
-  // Calling installOn here is a no-op in the common case but ensures
-  // runtimes constructed before the patch was loaded still get wrapped.
+  // Install the side-registry interception as early as possible so it
+  // captures every subsequent `registerModel` call — including our own
+  // handlers below, plus anything else that registers during the rest of
+  // boot. Idempotent per-runtime.
   handlerRegistry.installOn(runtime);
 
   // Loader precedence:
