@@ -190,14 +190,23 @@ async function main(): Promise<void> {
     },
   });
 
-  await runtime.initialize();
+  let runtimeReady = false;
+  try {
+    await runtime.initialize();
+    runtimeReady = true;
+    console.log("elizaOK_BSC initialized.");
+    console.log(
+      "Loaded plugins:",
+      runtime.plugins.map((plugin) => plugin.name).join(", "),
+    );
+    console.log("PGLite:", pgliteDir);
+  } catch (initError) {
+    console.error(
+      "elizaOK_BSC runtime init failed (PGlite WASM). Dashboard will still start.",
+      initError instanceof Error ? initError.message : initError,
+    );
+  }
 
-  console.log("elizaOK_BSC initialized.");
-  console.log(
-    "Loaded plugins:",
-    runtime.plugins.map((plugin) => plugin.name).join(", "),
-  );
-  console.log("PGLite:", pgliteDir);
   console.log(
     "Moltbook:",
     hasMoltbook
@@ -227,27 +236,9 @@ async function main(): Promise<void> {
 
   const dashboardServer = startDashboardServer(runtime);
 
-  try {
-    await setupElizaOkDiscovery(runtime);
-  } catch (discoveryError) {
-    console.error(
-      "ElizaOK discovery setup failed (PGlite task system unavailable). Dashboard still running. Falling back to interval-based discovery.",
-      discoveryError instanceof Error ? discoveryError.message : discoveryError,
-    );
-    const { runElizaOkDiscoveryCycle } = await import("./memecoin/worker");
-    const intervalMs = discoveryConfig.intervalMs || 900_000;
-    const fallbackCycle = async () => {
-      try {
-        await runElizaOkDiscoveryCycle(runtime, "fallback-interval");
-      } catch (e) {
-        console.error("ElizaOK fallback discovery cycle failed:", e instanceof Error ? e.message : e);
-      }
-    };
-    setTimeout(() => void fallbackCycle(), 5_000);
-    setInterval(() => void fallbackCycle(), intervalMs);
-  }
+  await setupElizaOkDiscovery(runtime);
 
-  if (hasMoltbook) {
+  if (hasMoltbook && runtimeReady) {
     await tryBootPost(runtime);
   }
 

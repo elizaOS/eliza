@@ -4,7 +4,7 @@ import path from "node:path";
 import { getDiscoveryConfig } from "./config";
 import { loadPaperAgents, savePaperAgents, spawnDefaultAgentFleet, buildGooPaperSummary } from "./goo-paper-engine";
 import { pushNotification, setLatestSnapshot, setPaperAgents, setPaperSummary } from "./store";
-import { ensureDiscoveryTask, runElizaOkDiscoveryCycle } from "./worker";
+import { runElizaOkDiscoveryCycle } from "./worker";
 
 export async function setupElizaOkDiscovery(
   runtime: AgentRuntime,
@@ -12,7 +12,6 @@ export async function setupElizaOkDiscovery(
   const config = getDiscoveryConfig();
   const reportsDir = path.resolve(config.reportsDir);
 
-  // Pre-load latest snapshot from disk so dashboard renders immediately
   try {
     const snapshotRaw = await readFile(path.join(reportsDir, "latest.json"), "utf-8");
     const snapshot = JSON.parse(snapshotRaw);
@@ -22,8 +21,6 @@ export async function setupElizaOkDiscovery(
     runtime.logger.info("ElizaOK: No previous snapshot found on disk");
   }
 
-  // Pre-load Goo agents from disk so dashboard has data immediately,
-  // even if the first discovery cycle is slow or fails.
   try {
     let agents = await loadPaperAgents(config.reportsDir);
     if (agents.length === 0) {
@@ -53,9 +50,22 @@ export async function setupElizaOkDiscovery(
     runtime.logger.warn("ElizaOK: Failed to pre-load Goo agents at startup");
   }
 
-  await ensureDiscoveryTask(runtime);
-
   if (config.enabled && config.runOnStartup) {
-    await runElizaOkDiscoveryCycle(runtime, "startup");
+    runElizaOkDiscoveryCycle(runtime, "startup").catch((e) => {
+      console.error("ElizaOK: Startup discovery cycle failed:", e instanceof Error ? e.message : e);
+    });
+  }
+
+  if (config.enabled) {
+    const intervalMs = config.intervalMs || 900_000;
+    setInterval(() => {
+      runElizaOkDiscoveryCycle(runtime, "interval").catch((e) => {
+        console.error("ElizaOK: Interval discovery cycle failed:", e instanceof Error ? e.message : e);
+      });
+    }, intervalMs);
+    runtime.logger.info(
+      { intervalMinutes: Math.round(intervalMs / 60_000) },
+      "ElizaOK: Discovery interval started (no PGlite task system)",
+    );
   }
 }
