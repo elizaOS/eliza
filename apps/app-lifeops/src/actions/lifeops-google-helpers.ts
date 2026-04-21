@@ -577,16 +577,22 @@ export function formatOverview(overview: LifeOpsOverview): string {
         : `Sleep status ${schedule.sleepStatus}`;
     lines.push(`- Schedule phase: ${schedule.phase}`);
     if (schedule.relativeTime.minutesSinceWake !== null) {
+      const bedtimeClause =
+        schedule.relativeTime.minutesUntilBedtimeTarget !== null
+          ? `; bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`
+          : schedule.relativeTime.minutesSinceBedtimeTarget !== null
+            ? `; bedtime was ${schedule.relativeTime.minutesSinceBedtimeTarget} minutes ago`
+            : "";
       lines.push(
-        `- Relative time: woke ${schedule.relativeTime.minutesSinceWake} minutes ago${
-          schedule.relativeTime.minutesUntilBedtimeTarget !== null
-            ? `; bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`
-            : ""
-        }`,
+        `- Relative time: woke ${schedule.relativeTime.minutesSinceWake} minutes ago${bedtimeClause}`,
       );
     } else if (schedule.relativeTime.minutesUntilBedtimeTarget !== null) {
       lines.push(
         `- Relative time: bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`,
+      );
+    } else if (schedule.relativeTime.minutesSinceBedtimeTarget !== null) {
+      lines.push(
+        `- Relative time: bedtime was ${schedule.relativeTime.minutesSinceBedtimeTarget} minutes ago`,
       );
     }
     lines.push(`- ${sleepLine}`);

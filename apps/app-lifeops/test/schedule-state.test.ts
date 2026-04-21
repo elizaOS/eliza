@@ -144,6 +144,7 @@ describe("schedule-state", () => {
     expect(merged?.scope).toBe("cloud");
     expect(merged?.phase).toBe("waking");
     expect(merged?.wakeAt).toBe("2026-04-19T11:30:00.000Z");
+    expect(merged?.relativeTime.minutesSinceWake).toBe(90);
     expect(merged?.nextMealLabel).toBe("lunch");
     expect(merged?.deviceCount).toBe(2);
     expect(merged?.contributingDeviceKinds).toEqual(["iphone", "mac"]);
@@ -171,7 +172,7 @@ describe("schedule-state", () => {
           minutesSinceWake: null,
           bedtimeTargetAt: "2026-04-18T23:30:00.000Z",
           bedtimeTargetSource: "sleep_cycle",
-          minutesUntilBedtimeTarget: 0,
+          minutesUntilBedtimeTarget: null,
           minutesSinceBedtimeTarget: 150,
           dayBoundaryStartAt: "2026-04-19T00:00:00.000Z",
           dayBoundaryEndAt: "2026-04-20T00:00:00.000Z",
@@ -201,5 +202,7 @@ describe("schedule-state", () => {
     expect(merged?.phase).toBe("sleeping");
     expect(merged?.effectiveDayKey).toBe("2026-04-18");
     expect(merged?.localDate).toBe("2026-04-19");
+    expect(merged?.relativeTime.minutesUntilBedtimeTarget).toBeNull();
+    expect(merged?.relativeTime.minutesSinceBedtimeTarget).toBe(150);
   });
 });

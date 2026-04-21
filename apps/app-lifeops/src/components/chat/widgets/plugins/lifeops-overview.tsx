@@ -1192,7 +1192,9 @@ function ScheduleSection({
     schedule.relativeTime.minutesSinceWake !== null
       ? t("lifeopsoverview.relativeWakeAndBedtime", {
           defaultValue:
-            "Woke {{wakeMinutes}}m ago · bedtime in {{bedMinutes}}m",
+            schedule.relativeTime.minutesUntilBedtimeTarget !== null
+              ? "Woke {{wakeMinutes}}m ago · bedtime in {{bedMinutes}}m"
+              : "Woke {{wakeMinutes}}m ago · bedtime was {{bedMinutes}}m ago",
           wakeMinutes: schedule.relativeTime.minutesSinceWake,
           bedMinutes:
             schedule.relativeTime.minutesUntilBedtimeTarget ??
@@ -1204,7 +1206,12 @@ function ScheduleSection({
             defaultValue: "Bedtime in {{bedMinutes}}m",
             bedMinutes: schedule.relativeTime.minutesUntilBedtimeTarget,
           })
-        : null;
+        : schedule.relativeTime.minutesSinceBedtimeTarget !== null
+          ? t("lifeopsoverview.relativeBedtimePastOnly", {
+              defaultValue: "Bedtime was {{bedMinutes}}m ago",
+              bedMinutes: schedule.relativeTime.minutesSinceBedtimeTarget,
+            })
+          : null;
 
   return (
     <div className="flex flex-col gap-2">
