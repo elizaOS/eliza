@@ -236,6 +236,15 @@ function logQaStep(profile: Profile, step: string) {
   console.log(`[live-qa][${profile.id}] ${step}`);
 }
 
+async function appendQaOnboardingTrace(step: string): Promise<void> {
+  await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
+  await fs.appendFile(
+    QA_ONBOARDING_TRACE_FILE,
+    `${new Date().toISOString()} ${step}\n`,
+    "utf8",
+  );
+}
+
 function formatQaRequestFailure(failure: QaRequestFailure): string {
   return `${failure.method} ${failure.url} (${failure.errorText})`;
 }
