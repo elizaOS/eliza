@@ -103,7 +103,6 @@ export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
-export * from "./settings";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 // Export everything from types

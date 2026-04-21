@@ -47,14 +47,29 @@ import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
 import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
 import {
   type AgentRuntime,
+  type IAgentRuntime,
   logger,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { WebSocketServer } from "ws";
+import { CharacterSchema } from "../config/zod-schema.js";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
+import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
+import { TxService } from "@elizaos/app-steward/api/tx-service";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
+import { handleXRelayRoute } from "./x-relay-routes.js";
 import {
   resolveApiBindHost,
   resolveServerOnlyPort,
-} from "../config/runtime-env.js";
+} from "@elizaos/shared/runtime-env";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
@@ -504,19 +519,12 @@ function initializeOGCodeInState(): void {
   });
 }
 
-// ConversationMeta re-exported from server-types.ts
-export type { ConversationMeta } from "./server-types.js";
-
 // resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
 // moved to server-helpers.ts; imported in the consolidated import at the top
 
-// AgentStartupDiagnostics, ServerState re-exported from server-types.ts
-export type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-import type { AgentStartupDiagnostics, ServerState } from "./server-types.js";
-
-// ShareIngestItem, SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope
-// re-exported from server-types.ts
+// AgentStartupDiagnostics, ConversationMeta, ServerState, ShareIngestItem,
+// SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope re-exported from
+// server-types.ts
 export type {
   AgentStartupDiagnostics,
   ConversationMeta,

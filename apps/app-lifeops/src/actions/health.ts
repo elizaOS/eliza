@@ -324,7 +324,6 @@ export const healthAction: Action = {
       }
     }
     const service = new LifeOpsService(runtime);
-    const connectorStatus = await service.getHealthConnectorStatus();
 
     // Single availability probe shared by every subaction below. When no
     // backend is configured we surface a clear, conversational reply rather

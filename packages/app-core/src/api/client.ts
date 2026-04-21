@@ -232,7 +232,7 @@ import "./client-computeruse";
 import "./client-wallet";
 import "./client-cloud";
 import "./client-skills";
-import "./client-computeruse";
+
 import "./client-local-inference";
 import "@elizaos/app-vincent/client";
 

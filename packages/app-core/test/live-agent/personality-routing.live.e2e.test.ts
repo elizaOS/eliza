@@ -35,7 +35,6 @@ import {
   extractPlugin,
   type TestPluginModule,
 } from "@elizaos/agent/test-support/test-helpers";
-import { withTimeout } from "../helpers/test-utils";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

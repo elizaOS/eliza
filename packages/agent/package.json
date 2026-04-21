@@ -144,7 +144,7 @@
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-solana": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@miladyai/plugin-wechat": "workspace:*",
+    "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@hapi/boom": "^10.0.1",

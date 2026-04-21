@@ -518,57 +518,6 @@ export interface OnboardingLlmPersistenceSelection {
   remoteApiBase?: string;
   remoteAccessToken?: string;
 }
-export interface OnboardingLlmPersistenceSelection
-  extends OnboardingCloudModelPreferences {}
-
-export interface OnboardingData {
-  name: string;
-  avatarIndex?: number;
-  language?: CharacterLanguage;
-  presetId?: string;
-  sandboxMode?: "off" | "light" | "standard" | "max";
-  bio: string[];
-  systemPrompt: string;
-  style?: {
-    all: string[];
-    chat: string[];
-    post: string[];
-  };
-  adjectives?: string[];
-  postExamples?: string[];
-  messageExamples?: MessageExample[][];
-  deploymentTarget?: DeploymentTargetConfig;
-  linkedAccounts?: LinkedAccountsConfig;
-  serviceRouting?: ServiceRoutingConfig;
-  credentialInputs?: OnboardingCredentialInputs;
-  channels?: Record<string, unknown>;
-  features?: Record<
-    string,
-    boolean | { enabled?: boolean; [key: string]: unknown }
-  >;
-  walletConfig?: WalletConfigUpdateRequest;
-  inventoryProviders?: Array<{
-    chain: string;
-    rpcProvider: string;
-    rpcApiKey?: string;
-  }>;
-  connectors?: Record<string, OnboardingConnectorConfig>;
-  telegramToken?: string;
-  discordToken?: string;
-  whatsappSessionPath?: string;
-  twilioAccountSid?: string;
-  twilioAuthToken?: string;
-  twilioPhoneNumber?: string;
-  blooioApiKey?: string;
-  blooioPhoneNumber?: string;
-  githubToken?: string;
-  topics?: string[];
-  runMode?: string;
-  cloudProvider?: string;
-  smallModel?: string;
-  largeModel?: string;
-}
-
 export interface SubscriptionProviderStatus {
   provider: string;
   configured: boolean;

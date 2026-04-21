@@ -137,7 +137,7 @@ import {
   isAllowedDevConsoleLogPath,
   readDevConsoleLogTail,
 } from "./dev-console-log";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
@@ -147,7 +147,7 @@ import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
+
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
 //           handleStewardCompatRoutes, handleWalletCompatRoutes

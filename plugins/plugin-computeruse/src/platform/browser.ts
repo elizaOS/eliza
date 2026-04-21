@@ -21,12 +21,6 @@ import type {
   ClickableElement,
 } from "../types.js";
 
-type BrowserInfo = BrowserState & {
-  success: boolean;
-  is_open: boolean;
-  error?: string;
-};
-
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
 type Browser = import("puppeteer-core").Browser;
@@ -196,41 +190,12 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
   }
   let lastError: unknown = null;
 
-  const launchArgs = [
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-infobars",
-    "--disable-dev-shm-usage",
-    `--window-size=1280,900`,
-  ];
-  const preferredHeadless = envFlagEnabled(
-    process.env.COMPUTER_USE_BROWSER_HEADLESS,
-  );
-
-  const launchBrowser = async (headless: boolean) =>
-    pup.default.launch({
-      executablePath,
-      headless,
-      userDataDir: tempUserDataDir!,
-      args: launchArgs,
-      defaultViewport: { width: 1280, height: 900 },
-    });
-
-  try {
-    browser = await launchBrowser(preferredHeadless);
-  } catch (error) {
-    const shouldRetryHeadless =
-      !preferredHeadless &&
-      (process.env.CI === "true" ||
-        process.env.CI === "1" ||
-        (!process.env.DISPLAY && currentPlatform() === "linux"));
-
-    if (!shouldRetryHeadless) {
-      throw error;
-    }
-
-    browser = await launchBrowser(true);
-  }
+  for (
+    let attempt = 1;
+    attempt <= BROWSER_LAUNCH_ATTEMPTS;
+    attempt += 1
+  ) {
+    tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
     try {
       browser = await pup.default.launch({
@@ -396,29 +361,6 @@ export async function getBrowserInfo(): Promise<BrowserInfo> {
     return {
       success: false,
       isOpen: false,
-      is_open: false,
-      url: "",
-      title: "",
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-export async function getBrowserContext(): Promise<BrowserState> {
-  return getBrowserState();
-}
-
-export async function getBrowserInfo(): Promise<BrowserInfo> {
-  try {
-    const state = await getBrowserState();
-    return {
-      success: true,
-      is_open: true,
-      ...state,
-    };
-  } catch (error) {
-    return {
-      success: false,
       is_open: false,
       url: "",
       title: "",
