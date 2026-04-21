@@ -7,23 +7,18 @@ const { ptyConsoleBaseProps } = vi.hoisted(() => ({
   ptyConsoleBaseProps: vi.fn(),
 }));
 
-vi.mock("@elizaos/app-task-coordinator", () => ({
+// ChatView reads coding-agent UI from the task-coordinator slot registry
+// in app-core. Stub the slot module so the test doesn't need the real
+// task-coordinator package registered to render.
+vi.mock("../../app-shell/task-coordinator-slots", () => ({
   CodingAgentControlChip: () => null,
+  CodingAgentSettingsSection: () => null,
+  CodingAgentTasksPanel: () => null,
   PtyConsoleBase: (props: Record<string, unknown>) => {
     ptyConsoleBaseProps(props);
     return <div data-testid="pty-console-base">pty</div>;
   },
-}));
-
-vi.mock("@elizaos/app-task-coordinator/CodingAgentControlChip", () => ({
-  CodingAgentControlChip: () => null,
-}));
-
-vi.mock("@elizaos/app-task-coordinator/PtyConsoleBase", () => ({
-  PtyConsoleBase: (props: Record<string, unknown>) => {
-    ptyConsoleBaseProps(props);
-    return <div data-testid="pty-console-base">pty</div>;
-  },
+  registerTaskCoordinatorSlots: () => {},
 }));
 
 // ChatView.tsx has transitive imports that reach into the state layer and

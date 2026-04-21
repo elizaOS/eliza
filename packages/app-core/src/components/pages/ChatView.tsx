@@ -1,4 +1,13 @@
 import {
+  ChatAttachmentStrip,
+  ChatComposer,
+  ChatComposerShell,
+  ChatSourceIcon,
+  ChatThreadLayout,
+  ChatTranscript,
+  TypingIndicator,
+} from "@elizaos/ui";
+import {
   type ChangeEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -9,22 +18,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { CodingAgentControlChip } from "@elizaos/app-task-coordinator/CodingAgentControlChip";
-import { PtyConsoleBase } from "@elizaos/app-task-coordinator/PtyConsoleBase";
-import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-} from "@elizaos/ui";
 import { type CodingAgentSession, client } from "../../api/client";
 import type {
   ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import {
+  CodingAgentControlChip,
+  PtyConsoleBase,
+} from "../../app-shell/task-coordinator-slots.js";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useChatComposer } from "../../state/ChatComposerContext";
