@@ -40,7 +40,12 @@ const SAME_ID = "00000000-0000-0000-0000-000000000001";
 
 beforeEach(() => {
   for (const k of Object.keys(process.env)) {
-    if (k.startsWith("ELIZA_HEALTHKIT") || k.startsWith("ELIZA_GOOGLE_FIT")) {
+    if (
+      k.startsWith("ELIZA_HEALTHKIT") ||
+      k.startsWith("ELIZA_GOOGLE_FIT") ||
+      k === "MILADY_TEST_HEALTH_BACKEND" ||
+      k === "MILADY_BENCHMARK_USE_MOCKS"
+    ) {
       delete process.env[k];
     }
   }
@@ -55,6 +60,22 @@ describe("detectHealthBackend", () => {
   test('returns "none" when no env vars or binary configured', async () => {
     const backend = await detectHealthBackend();
     expect(backend).toBe("none");
+  });
+
+  test("does not enable fixture health data from benchmark mock mode", async () => {
+    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+
+    const backend = await detectHealthBackend();
+
+    expect(backend).toBe("none");
+  });
+
+  test("enables fixture health data only through explicit health test backend", async () => {
+    process.env.MILADY_TEST_HEALTH_BACKEND = "fixture";
+
+    const backend = await detectHealthBackend();
+
+    expect(backend).toBe("fixture");
   });
 });
 
