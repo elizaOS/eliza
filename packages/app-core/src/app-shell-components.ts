@@ -37,6 +37,7 @@ export { RuntimeView } from "./components/pages/RuntimeView";
 export { SettingsView } from "./components/pages/SettingsView";
 export { SkillsView } from "./components/pages/SkillsView";
 export { StreamView } from "./components/pages/StreamView";
+export { TasksPageView } from "./components/pages/TasksPageView";
 export { TrajectoriesView } from "./components/pages/TrajectoriesView";
 export { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
 export { BugReportModal } from "./components/shell/BugReportModal";

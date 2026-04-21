@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getTabGroupsMock,
   isElectrobunRuntimeMock,
+  useMediaQueryMock,
   useAppMock,
   useBrandingMock,
 } = vi.hoisted(() => ({
   getTabGroupsMock: vi.fn(),
   isElectrobunRuntimeMock: vi.fn(),
+  useMediaQueryMock: vi.fn(),
   useAppMock: vi.fn(),
   useBrandingMock: vi.fn(),
 }));
@@ -42,7 +44,7 @@ vi.mock("@elizaos/app-core/config/branding", () => ({
 }));
 
 vi.mock("@elizaos/app-core/hooks", () => ({
-  useMediaQuery: () => false,
+  useMediaQuery: (query: string) => useMediaQueryMock(query),
 }));
 
 vi.mock("@elizaos/app-core/navigation", () => ({
@@ -90,6 +92,7 @@ describe("Header", () => {
     useBrandingMock.mockReset();
     isElectrobunRuntimeMock.mockReset();
     getTabGroupsMock.mockReset();
+    useMediaQueryMock.mockReset();
 
     Object.defineProperty(window.navigator, "userAgent", {
       configurable: true,
@@ -100,6 +103,7 @@ describe("Header", () => {
     useAppMock.mockReturnValue(buildUseAppState());
     useBrandingMock.mockReturnValue({ appName: "Milady" });
     isElectrobunRuntimeMock.mockReturnValue(false);
+    useMediaQueryMock.mockReturnValue(false);
     getTabGroupsMock.mockReturnValue([
       {
         description: "Chat",
@@ -155,5 +159,20 @@ describe("Header", () => {
     render(<Header hideCloudCredits />);
 
     expect(screen.queryByTestId("desktop-window-titlebar")).toBeNull();
+  });
+
+  it("renders the bottom navigation on mobile without desktop chrome controls", () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    render(<Header hideCloudCredits />);
+
+    expect(screen.getByTestId("header-mobile-bottom-nav")).toBeTruthy();
+    expect(screen.queryByTestId("header-language-dropdown")).toBeNull();
+    expect(screen.queryByTestId("header-theme-toggle")).toBeNull();
+    expect(
+      document.documentElement.classList.contains("eliza-mobile-bottom-nav"),
+    ).toBe(true);
   });
 });
