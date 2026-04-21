@@ -33,6 +33,10 @@ import {
 } from "react";
 import { client } from "../../api";
 import type { PluginInfo } from "../../api/client-types-config";
+import {
+  PULSE_STATUSES,
+  STATUS_DOT,
+} from "../../chat/coding-agent-session-state";
 import { useApp } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import {
@@ -462,14 +466,45 @@ export function ConversationsSidebar({
     [messagesModel.rows, t],
   );
 
+  const terminalIndicator = useMemo(() => {
+    if (ptySessions.length === 0) return null;
+    // Choose the most-alerting status so the header dot reflects the session
+    // that most needs attention: error > blocked > active/tool_running.
+    const hasError = ptySessions.some((s) => s.status === "error");
+    const hasBlocked = ptySessions.some((s) => s.status === "blocked");
+    const hasActive = ptySessions.some((s) => PULSE_STATUSES.has(s.status));
+    const dominant = hasError
+      ? "error"
+      : hasBlocked
+        ? "blocked"
+        : hasActive
+          ? "active"
+          : (ptySessions[0]?.status ?? "active");
+    const dotClass = STATUS_DOT[dominant] ?? "bg-muted";
+    const pulse = PULSE_STATUSES.has(dominant) ? " animate-pulse" : "";
+    return (
+      <span
+        aria-hidden
+        data-testid="channel-section-indicator-terminal"
+        className="inline-flex items-center gap-1 rounded-full bg-bg-hover/40 px-1.5 py-0.5 text-3xs font-semibold tabular-nums text-muted"
+      >
+        <span
+          className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}${pulse}`}
+        />
+        {ptySessions.length}
+      </span>
+    );
+  }, [ptySessions]);
+
   const terminalSection = useMemo(
     () => ({
       key: TERMINAL_SOURCE_SCOPE,
       label: t("conversations.scopeTerminal", { defaultValue: "Terminal" }),
       icon: <TerminalIcon className="h-3.5 w-3.5" aria-hidden />,
+      indicator: terminalIndicator,
       rows: terminalRows,
     }),
-    [terminalRows, t],
+    [terminalIndicator, terminalRows, t],
   );
 
   // Connector sections: one section per source (Discord, Telegram, …) with
@@ -839,6 +874,7 @@ export function ConversationsSidebar({
                   sectionKey={terminalSection.key}
                   label={terminalSection.label}
                   icon={terminalSection.icon}
+                  indicator={terminalSection.indicator}
                   rows={terminalSection.rows}
                   collapsed={collapsedSections.has(terminalSection.key)}
                   onToggleCollapsed={toggleSectionCollapsed}
@@ -927,6 +963,8 @@ interface CollapsibleChannelSectionProps {
   sectionKey: string;
   label: string;
   icon?: React.ReactNode;
+  /** Small status element rendered between the label and the chevron. */
+  indicator?: React.ReactNode;
   rows: ConversationsSidebarRow[];
   collapsed: boolean;
   onToggleCollapsed: (key: string) => void;
@@ -957,6 +995,7 @@ function CollapsibleChannelSection({
   sectionKey,
   label,
   icon,
+  indicator,
   rows,
   collapsed,
   onToggleCollapsed,
@@ -1005,6 +1044,11 @@ function CollapsibleChannelSection({
             </span>
           ) : null}
           <span className="truncate">{label}</span>
+          {indicator ? (
+            <span className="ml-0.5 inline-flex shrink-0 items-center">
+              {indicator}
+            </span>
+          ) : null}
           <Chevron
             aria-hidden
             className={`ml-0.5 h-3 w-3 shrink-0 text-muted${hoverHideClass}`}
