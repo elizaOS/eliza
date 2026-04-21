@@ -13,7 +13,7 @@ export interface ThemeToggleProps {
   t?: ThemeTranslatorFn;
   /** Optional extra className on the root */
   className?: string;
-  variant?: "native" | "companion";
+  variant?: "native" | "companion" | "titlebar";
 }
 
 export function ThemeToggle({
@@ -28,6 +28,10 @@ export function ThemeToggle({
   const handleToggle = useCallback(() => {
     setUiTheme(isDark ? "light" : "dark");
   }, [isDark, setUiTheme]);
+  const resolvedClassName =
+    _variant === "titlebar"
+      ? `relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55 ${className ?? ""}`
+      : `inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt text-sm leading-none ${className ?? ""}`;
 
   return (
     <Button
@@ -36,7 +40,7 @@ export function ThemeToggle({
       aria-label={_t ? _t("aria.toggleTheme") : "Toggle theme"}
       onClick={handleToggle}
       onPointerDown={(event) => event.stopPropagation()}
-      className={`inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt text-sm leading-none ${className ?? ""}`}
+      className={resolvedClassName}
       data-testid="theme-toggle"
       data-no-camera-drag="true"
     >

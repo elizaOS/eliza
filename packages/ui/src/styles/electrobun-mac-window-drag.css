@@ -13,21 +13,13 @@
  */
 html.eliza-electrobun-frameless {
   /**
-   * Extra top inset so the first interactive row (shell toggle, header) sits below
-   * the traffic lights — hiddenInset draws them over the web view with no title bar.
-   */
-  --eliza-macos-frame-top-inset: 26px;
-  /**
    * Leading inset so the header nav (Chat, Apps, …) clears the traffic-light
    * cluster. hiddenInset draws controls over the web view; ~68–80px is typical
    * on Apple Silicon macOS (was 56px — still overlapped the lights).
    */
   --eliza-macos-frame-left-inset: 78px;
-  --eliza-macos-titlebar-height: 2.75rem;
-  --eliza-macos-titlebar-side-width: max(
-    env(safe-area-inset-left, 0px),
-    var(--eliza-macos-frame-left-inset)
-  );
+  --eliza-mobile-nav-height: 4.75rem;
+  --eliza-mobile-nav-offset: 0px;
 }
 
 html.eliza-electrobun-frameless:not(.eliza-electrobun-custom-titlebar) body {
@@ -38,16 +30,24 @@ html.eliza-electrobun-frameless [data-window-titlebar="true"] {
   -webkit-app-region: drag;
 }
 
-html.eliza-electrobun-frameless [data-window-titlebar-inner] {
-  min-height: calc(
-    max(env(safe-area-inset-top, 0px), 0px) +
-    var(--eliza-macos-titlebar-height)
-  );
+html.eliza-electrobun-frameless [data-no-window-drag="true"],
+html.eliza-electrobun-frameless [data-no-window-drag="true"] *,
+html.eliza-electrobun-frameless [data-no-window-drag="true"]::before,
+html.eliza-electrobun-frameless [data-no-window-drag="true"]::after,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"],
+html.eliza-electrobun-frameless [data-no-camera-drag="true"] *,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"]::before,
+html.eliza-electrobun-frameless [data-no-camera-drag="true"]::after {
+  -webkit-app-region: no-drag;
 }
 
-html.eliza-electrobun-frameless header [data-header-toolbar-padding] {
-  padding-top: 0.25rem;
-  padding-inline: 0.5rem;
+html.eliza-electrobun-frameless [data-window-titlebar-padding] {
+  padding-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+  padding-inline-end: 0.75rem;
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
 }
 
 html.eliza-electrobun-frameless a,
@@ -81,13 +81,23 @@ html.eliza-electrobun-frameless [role="textbox"],
 html.eliza-electrobun-frameless [role="searchbox"],
 html.eliza-electrobun-frameless [contenteditable="true"],
 html.eliza-electrobun-frameless [aria-haspopup],
-html.eliza-electrobun-frameless [data-shell-scroll-region="true"],
-html.eliza-electrobun-frameless [data-no-window-drag="true"],
-html.eliza-electrobun-frameless [data-no-camera-drag="true"] {
+html.eliza-electrobun-frameless [data-shell-scroll-region="true"] {
   -webkit-app-region: no-drag;
 }
 
 /* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
 html.eliza-electrobun-frameless .onboarding-screen canvas {
   -webkit-app-region: drag;
+}
+
+html.eliza-mobile-bottom-nav {
+  --eliza-mobile-nav-offset: var(--eliza-mobile-nav-height);
+}
+
+html.eliza-mobile-bottom-nav [data-shell-scroll-region="true"] {
+  padding-bottom: calc(
+    var(--eliza-mobile-nav-height) +
+    max(env(safe-area-inset-bottom, 0px), 0px) +
+    1rem
+  );
 }

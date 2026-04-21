@@ -1,3 +1,12 @@
+import {
+  Badge,
+  Button,
+  client,
+  Input,
+  SegmentedControl,
+  Textarea,
+  useApp,
+} from "@elizaos/app-core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -10,16 +19,13 @@ import type {
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  Badge,
-  Button,
-  Input,
-  SegmentedControl,
-  Textarea,
-  client,
-  useApp,
-} from "@elizaos/app-core";
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type CalendarWindow = "today" | "week";
 
@@ -28,40 +34,70 @@ const GMAIL_MESSAGE_LIMIT = 12;
 const TODAY_WINDOW_DAYS = 1;
 const WEEK_WINDOW_DAYS = 7;
 
+type TranslateFn = (
+  key: string,
+  options?: Record<string, unknown> & { defaultValue?: string },
+) => string;
+
 function capabilitySet(
   status: LifeOpsGoogleConnectorStatus | null,
 ): Set<LifeOpsGoogleCapability> {
   return new Set(status?.grantedCapabilities ?? []);
 }
 
-function sideLabel(side: LifeOpsConnectorSide): string {
-  return side === "owner" ? "User" : "Agent";
+function sideLabel(side: LifeOpsConnectorSide, t: TranslateFn): string {
+  return side === "owner"
+    ? t("lifeopsworkspace.user", {
+        defaultValue: "User",
+      })
+    : t("chat.agentType", {
+        defaultValue: "Agent",
+      });
 }
 
 function connectorStatusLabel(
   status: LifeOpsGoogleConnectorStatus | null,
+  t: TranslateFn,
 ): string {
   if (status?.connected) {
-    return "Connected";
+    return t("lifeopsworkspace.connected", {
+      defaultValue: "Connected",
+    });
   }
   switch (status?.reason) {
     case "needs_reauth":
-      return "Needs reauth";
+      return t("lifeopsworkspace.needsReauth", {
+        defaultValue: "Needs reauth",
+      });
     case "config_missing":
-      return "Needs setup";
+      return t("lifeopsworkspace.needsSetup", {
+        defaultValue: "Needs setup",
+      });
     case "token_missing":
-      return "Token missing";
+      return t("lifeopsworkspace.tokenMissing", {
+        defaultValue: "Token missing",
+      });
     default:
-      return "Not connected";
+      return t("lifeopsworkspace.notConnected", {
+        defaultValue: "Not connected",
+      });
   }
 }
 
-function readIdentityLabel(identity: Record<string, unknown> | null): {
+function readIdentityLabel(
+  identity: Record<string, unknown> | null,
+  t: TranslateFn,
+): {
   primary: string;
   secondary: string | null;
 } {
   if (!identity) {
-    return { primary: "Not connected", secondary: null };
+    return {
+      primary: t("lifeopsworkspace.notConnected", {
+        defaultValue: "Not connected",
+      }),
+      secondary: null,
+    };
   }
   const name =
     typeof identity.name === "string" && identity.name.trim().length > 0
@@ -72,7 +108,12 @@ function readIdentityLabel(identity: Record<string, unknown> | null): {
       ? identity.email.trim()
       : null;
   return {
-    primary: name ?? email ?? "Connected",
+    primary:
+      name ??
+      email ??
+      t("lifeopsworkspace.connected", {
+        defaultValue: "Connected",
+      }),
     secondary: name && email ? email : null,
   };
 }
@@ -141,10 +182,13 @@ function formatTimeOfDay(value: string, timeZone: string): string {
 
 function formatEventWindow(
   event: LifeOpsCalendarEvent,
+  t: TranslateFn,
   timeZone: string,
 ): string {
   if (event.isAllDay) {
-    return "All day";
+    return t("lifeopsworkspace.allDay", {
+      defaultValue: "All day",
+    });
   }
   return `${formatTimeOfDay(event.startAt, timeZone)} - ${formatTimeOfDay(
     event.endAt,
@@ -217,7 +261,7 @@ function useLifeOpsSideWorkspace({
   calendarWindow: CalendarWindow;
   timeZone: string;
 }) {
-  const { setActionNotice } = useApp();
+  const { setActionNotice, t } = useApp();
   const connector = useGoogleLifeOpsConnector({
     pollWhileDisconnected: false,
     side,
@@ -302,21 +346,32 @@ function useLifeOpsSideWorkspace({
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Workspace failed to load.",
+          : t("lifeopsworkspace.loadFailed", {
+              defaultValue: "Workspace failed to load.",
+            }),
       );
     } finally {
       setLoading(false);
     }
-  }, [calendarEnabled, connected, emailEnabled, status, timeZone, windowDays]);
+  }, [
+    calendarEnabled,
+    connected,
+    emailEnabled,
+    status,
+    t,
+    timeZone,
+    windowDays,
+  ]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const calendarEvents = useMemo(
-    () => [...(calendarFeed?.events ?? [])].sort((left, right) =>
-      left.startAt.localeCompare(right.startAt),
-    ),
+    () =>
+      [...(calendarFeed?.events ?? [])].sort((left, right) =>
+        left.startAt.localeCompare(right.startAt),
+      ),
     [calendarFeed],
   );
   const groupedCalendarEvents = useMemo(
@@ -342,8 +397,8 @@ function useLifeOpsSideWorkspace({
     [gmailMessages, selectedMessageId],
   );
   const identity = useMemo(
-    () => readIdentityLabel(status?.identity ?? null),
-    [status?.identity],
+    () => readIdentityLabel(status?.identity ?? null, t),
+    [status?.identity, t],
   );
 
   useEffect(() => {
@@ -388,7 +443,11 @@ function useLifeOpsSideWorkspace({
     const startAt = combineDateTime(eventDate, eventTime);
     const durationMinutes = Number(eventDurationMinutes);
     if (!eventTitle.trim() || !startAt || !Number.isFinite(durationMinutes)) {
-      setError("Enter a title, date, time, and duration.");
+      setError(
+        t("lifeopsworkspace.createEventValidation", {
+          defaultValue: "Enter a title, date, time, and duration.",
+        }),
+      );
       return;
     }
 
@@ -404,7 +463,14 @@ function useLifeOpsSideWorkspace({
         timeZone,
         durationMinutes,
       });
-      setActionNotice(`Created ${result.event.title}`, "success", 2400);
+      setActionNotice(
+        t("lifeopsworkspace.createdEvent", {
+          defaultValue: "Created {{title}}",
+          title: result.event.title,
+        }),
+        "success",
+        2400,
+      );
       setEventTitle("");
       setEventLocation("");
       await refresh();
@@ -413,7 +479,9 @@ function useLifeOpsSideWorkspace({
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Could not create the event.",
+          : t("lifeopsworkspace.createEventFailed", {
+              defaultValue: "Could not create the event.",
+            }),
       );
     } finally {
       setCreatingEvent(false);
@@ -428,6 +496,7 @@ function useLifeOpsSideWorkspace({
     refresh,
     setActionNotice,
     status,
+    t,
     timeZone,
   ]);
 
@@ -447,17 +516,33 @@ function useLifeOpsSideWorkspace({
       });
       setDraft(response.draft);
       setDraftBody(response.draft.bodyText);
-      setActionNotice(`Drafted ${selectedGmailMessage.subject}`, "success", 2200);
+      setActionNotice(
+        t("lifeopsworkspace.draftedReply", {
+          defaultValue: "Drafted {{subject}}",
+          subject: selectedGmailMessage.subject,
+        }),
+        "success",
+        2200,
+      );
     } catch (cause) {
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Could not draft the reply.",
+          : t("lifeopsworkspace.draftReplyFailed", {
+              defaultValue: "Could not draft the reply.",
+            }),
       );
     } finally {
       setDrafting(false);
     }
-  }, [draftTone, emailEnabled, selectedGmailMessage, setActionNotice, status]);
+  }, [
+    draftTone,
+    emailEnabled,
+    selectedGmailMessage,
+    setActionNotice,
+    status,
+    t,
+  ]);
 
   const handleSendDraft = useCallback(async () => {
     if (!status || !selectedGmailMessage || draftBody.trim().length === 0) {
@@ -476,7 +561,14 @@ function useLifeOpsSideWorkspace({
         to: draft?.to,
         cc: draft?.cc,
       });
-      setActionNotice(`Sent ${selectedGmailMessage.subject}`, "success", 2400);
+      setActionNotice(
+        t("lifeopsworkspace.sentReply", {
+          defaultValue: "Sent {{subject}}",
+          subject: selectedGmailMessage.subject,
+        }),
+        "success",
+        2400,
+      );
       setDraft(null);
       setDraftBody("");
       await refresh();
@@ -484,19 +576,29 @@ function useLifeOpsSideWorkspace({
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Could not send the reply.",
+          : t("lifeopsworkspace.sendReplyFailed", {
+              defaultValue: "Could not send the reply.",
+            }),
       );
     } finally {
       setSending(false);
     }
-  }, [draft, draftBody, refresh, selectedGmailMessage, setActionNotice, status]);
+  }, [
+    draft,
+    draftBody,
+    refresh,
+    selectedGmailMessage,
+    setActionNotice,
+    status,
+    t,
+  ]);
 
   return {
     side,
     identity,
     status,
     connected,
-    statusLabel: connectorStatusLabel(status),
+    statusLabel: connectorStatusLabel(status, t),
     loading,
     error,
     calendarEnabled,
@@ -562,20 +664,20 @@ function LockedSection({
   hint: string;
   owner: SideWorkspaceState;
   agent: SideWorkspaceState;
+  t: TranslateFn;
 }) {
   return (
     <SectionShell title={title}>
       <div className="mb-3 text-xs leading-5 text-muted">{hint}</div>
       <div className="grid gap-4 lg:grid-cols-2">
         {[owner, agent].map((workspace) => (
-          <div
-            key={workspace.side}
-            className="rounded-2xl bg-bg/36 px-4 py-4"
-          >
+          <div key={workspace.side} className="rounded-2xl bg-bg/36 px-4 py-4">
             <div className="text-sm font-semibold text-txt">
-              {sideLabel(workspace.side)}
+              {sideLabel(workspace.side, t)}
             </div>
-            <div className="mt-1 text-xs text-muted">{workspace.statusLabel}</div>
+            <div className="mt-1 text-xs text-muted">
+              {workspace.statusLabel}
+            </div>
           </div>
         ))}
       </div>
@@ -583,11 +685,7 @@ function LockedSection({
   );
 }
 
-function AccountBadge({
-  label,
-}: {
-  label: string | null | undefined;
-}) {
+function AccountBadge({ label }: { label: string | null | undefined }) {
   if (!label) {
     return null;
   }
@@ -604,6 +702,7 @@ function CalendarColumn({
 }: {
   workspace: SideWorkspaceState;
   timeZone: string;
+  t: TranslateFn;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const eventCount = workspace.calendarEvents.length;
@@ -613,7 +712,7 @@ function CalendarColumn({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-txt">
-            {sideLabel(workspace.side)}
+            {sideLabel(workspace.side, t)}
           </div>
           <div className="mt-1 truncate text-xs text-muted">
             {workspace.identity.secondary ?? workspace.identity.primary}
@@ -632,13 +731,22 @@ function CalendarColumn({
 
       {!workspace.calendarEnabled ? (
         <div className="text-xs text-muted">
-          Grant calendar access for this Google account in Setup.
+          {t("lifeopsworkspace.grantCalendarAccess", {
+            defaultValue:
+              "Grant calendar access for this Google account in Setup.",
+          })}
         </div>
       ) : workspace.loading && eventCount === 0 ? (
-        <div className="text-xs text-muted">Loading events…</div>
+        <div className="text-xs text-muted">
+          {t("lifeopsworkspace.loadingEvents", {
+            defaultValue: "Loading events…",
+          })}
+        </div>
       ) : eventCount === 0 ? (
         <div className="text-xs text-muted">
-          Nothing scheduled. Use New event below to add one.
+          {t("lifeopsworkspace.nothingScheduled", {
+            defaultValue: "Nothing scheduled. Use New event below to add one.",
+          })}
         </div>
       ) : (
         <div className="space-y-3">
@@ -666,7 +774,7 @@ function CalendarColumn({
                         {event.title}
                       </div>
                       <div className="mt-1 text-xs text-muted">
-                        {formatEventWindow(event, timeZone)}
+                        {formatEventWindow(event, t, timeZone)}
                       </div>
                       {event.location.trim().length > 0 ? (
                         <div className="mt-1 truncate text-xs text-muted/90">
@@ -691,7 +799,10 @@ function CalendarColumn({
             {workspace.selectedCalendarEvent.title}
           </div>
           <div>
-            {formatLocalDateTime(workspace.selectedCalendarEvent.startAt, timeZone)}
+            {formatLocalDateTime(
+              workspace.selectedCalendarEvent.startAt,
+              timeZone,
+            )}
           </div>
           {workspace.selectedCalendarEvent.location.trim().length > 0 ? (
             <div>{workspace.selectedCalendarEvent.location}</div>
@@ -713,29 +824,45 @@ function CalendarColumn({
             className="h-8 rounded-xl px-3 text-xs font-semibold"
             onClick={() => setComposerOpen((current) => !current)}
           >
-            {composerOpen ? "Hide new event" : "New event"}
+            {composerOpen
+              ? t("lifeopsworkspace.hideNewEvent", {
+                  defaultValue: "Hide new event",
+                })
+              : t("lifeopsworkspace.newEvent", {
+                  defaultValue: "New event",
+                })}
           </Button>
 
           {composerOpen ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Input
                 value={workspace.eventTitle}
-                onChange={(event) => workspace.setEventTitle(event.target.value)}
-                placeholder="Title"
-                aria-label="Event title"
+                onChange={(event) =>
+                  workspace.setEventTitle(event.target.value)
+                }
+                placeholder={t("common.title", {
+                  defaultValue: "Title",
+                })}
+                aria-label={t("lifeopsworkspace.eventTitle", {
+                  defaultValue: "Event title",
+                })}
                 className="sm:col-span-2"
               />
               <Input
                 type="date"
                 value={workspace.eventDate}
                 onChange={(event) => workspace.setEventDate(event.target.value)}
-                aria-label="Event date"
+                aria-label={t("lifeopsworkspace.eventDate", {
+                  defaultValue: "Event date",
+                })}
               />
               <Input
                 type="time"
                 value={workspace.eventTime}
                 onChange={(event) => workspace.setEventTime(event.target.value)}
-                aria-label="Event start time"
+                aria-label={t("lifeopsworkspace.eventStartTime", {
+                  defaultValue: "Event start time",
+                })}
               />
               <Input
                 type="number"
@@ -745,24 +872,40 @@ function CalendarColumn({
                 onChange={(event) =>
                   workspace.setEventDurationMinutes(event.target.value)
                 }
-                placeholder="Duration in minutes"
-                aria-label="Duration in minutes"
+                placeholder={t("lifeopsworkspace.durationMinutes", {
+                  defaultValue: "Duration in minutes",
+                })}
+                aria-label={t("lifeopsworkspace.durationMinutes", {
+                  defaultValue: "Duration in minutes",
+                })}
               />
               <Input
                 value={workspace.eventLocation}
                 onChange={(event) =>
                   workspace.setEventLocation(event.target.value)
                 }
-                placeholder="Location (optional)"
-                aria-label="Location"
+                placeholder={t("lifeopsworkspace.locationOptional", {
+                  defaultValue: "Location (optional)",
+                })}
+                aria-label={t("common.location", {
+                  defaultValue: "Location",
+                })}
               />
               <Button
                 size="sm"
                 className="h-9 rounded-xl px-3 text-xs font-semibold sm:col-span-2"
-                disabled={workspace.creatingEvent || !workspace.eventTitle.trim()}
+                disabled={
+                  workspace.creatingEvent || !workspace.eventTitle.trim()
+                }
                 onClick={() => void workspace.handleCreateEvent()}
               >
-                {workspace.creatingEvent ? "Creating…" : "Create event"}
+                {workspace.creatingEvent
+                  ? t("lifeopsworkspace.creating", {
+                      defaultValue: "Creating…",
+                    })
+                  : t("lifeopsworkspace.createEvent", {
+                      defaultValue: "Create event",
+                    })}
               </Button>
             </div>
           ) : null}
@@ -778,6 +921,7 @@ function EmailColumn({
 }: {
   workspace: SideWorkspaceState;
   timeZone: string;
+  t: TranslateFn;
 }) {
   const messageCount = workspace.gmailMessages.length;
 
@@ -786,7 +930,7 @@ function EmailColumn({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-txt">
-            {sideLabel(workspace.side)}
+            {sideLabel(workspace.side, t)}
           </div>
           <div className="mt-1 truncate text-xs text-muted">
             {workspace.identity.secondary ?? workspace.identity.primary}
@@ -805,12 +949,23 @@ function EmailColumn({
 
       {!workspace.emailEnabled ? (
         <div className="text-xs text-muted">
-          Grant Gmail access for this Google account in Setup.
+          {t("lifeopsworkspace.grantGmailAccess", {
+            defaultValue:
+              "Grant Gmail access for this Google account in Setup.",
+          })}
         </div>
       ) : workspace.loading && messageCount === 0 ? (
-        <div className="text-xs text-muted">Loading recent mail…</div>
+        <div className="text-xs text-muted">
+          {t("lifeopsworkspace.loadingRecentMail", {
+            defaultValue: "Loading recent mail…",
+          })}
+        </div>
       ) : messageCount === 0 ? (
-        <div className="text-xs text-muted">Inbox clear. Nothing to triage right now.</div>
+        <div className="text-xs text-muted">
+          {t("lifeopsworkspace.inboxClear", {
+            defaultValue: "Inbox clear. Nothing to triage right now.",
+          })}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-2xl bg-bg/45">
           {workspace.gmailMessages.map((message, index) => (
@@ -840,7 +995,9 @@ function EmailColumn({
               <div className="flex flex-col items-end gap-1">
                 {message.likelyReplyNeeded ? (
                   <Badge variant="secondary" className="text-3xs">
-                    Reply
+                    {t("lifeopsworkspace.reply", {
+                      defaultValue: "Reply",
+                    })}
                   </Badge>
                 ) : null}
                 <AccountBadge label={message.accountEmail} />
@@ -864,13 +1021,31 @@ function EmailColumn({
           </div>
 
           <SegmentedControl<LifeOpsGmailDraftTone>
-            aria-label={`${sideLabel(workspace.side)} draft tone`}
+            aria-label={t("lifeopsworkspace.draftToneAria", {
+              defaultValue: "{{side}} draft tone",
+              side: sideLabel(workspace.side, t),
+            })}
             value={workspace.draftTone}
             onValueChange={workspace.setDraftTone}
             items={[
-              { value: "brief", label: "Brief" },
-              { value: "neutral", label: "Neutral" },
-              { value: "warm", label: "Warm" },
+              {
+                value: "brief",
+                label: t("lifeopsworkspace.brief", {
+                  defaultValue: "Brief",
+                }),
+              },
+              {
+                value: "neutral",
+                label: t("lifeopsworkspace.neutral", {
+                  defaultValue: "Neutral",
+                }),
+              },
+              {
+                value: "warm",
+                label: t("lifeopsworkspace.warm", {
+                  defaultValue: "Warm",
+                }),
+              },
             ]}
             className="border-border/28 bg-card/24 p-0.5"
             buttonClassName="min-h-8 px-3 py-1.5 text-xs"
@@ -879,7 +1054,9 @@ function EmailColumn({
           <Textarea
             value={workspace.draftBody}
             onChange={(event) => workspace.setDraftBody(event.target.value)}
-            placeholder="Reply"
+            placeholder={t("lifeopsworkspace.reply", {
+              defaultValue: "Reply",
+            })}
             className="min-h-32"
           />
 
@@ -890,7 +1067,13 @@ function EmailColumn({
               disabled={workspace.drafting}
               onClick={() => void workspace.handleGenerateDraft()}
             >
-              {workspace.drafting ? "Drafting..." : "Draft reply"}
+              {workspace.drafting
+                ? t("lifeopsworkspace.drafting", {
+                    defaultValue: "Drafting...",
+                  })
+                : t("lifeopsworkspace.draftReply", {
+                    defaultValue: "Draft reply",
+                  })}
             </Button>
             <Button
               size="sm"
@@ -901,15 +1084,25 @@ function EmailColumn({
               }
               onClick={() => void workspace.handleSendDraft()}
             >
-              {workspace.sending ? "Sending..." : "Send"}
+              {workspace.sending
+                ? t("lifeopsworkspace.sending", {
+                    defaultValue: "Sending...",
+                  })
+                : t("common.send", {
+                    defaultValue: "Send",
+                  })}
             </Button>
           </div>
 
           {workspace.draft ? (
             <div className="text-xs text-muted">
               {workspace.draft.requiresConfirmation
-                ? "Confirmation required"
-                : "Ready to send"}
+                ? t("lifeopsworkspace.confirmationRequired", {
+                    defaultValue: "Confirmation required",
+                  })
+                : t("lifeopsworkspace.readyToSend", {
+                    defaultValue: "Ready to send",
+                  })}
             </div>
           ) : null}
         </div>
@@ -919,6 +1112,7 @@ function EmailColumn({
 }
 
 export function LifeOpsWorkspaceView() {
+  const { t } = useApp();
   const timeZone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     [],
@@ -940,16 +1134,28 @@ export function LifeOpsWorkspaceView() {
     return (
       <div className="space-y-6">
         <LockedSection
-          title="Calendar"
-          hint="Connect Google for both User and Agent in Setup above to see today's events and create new ones here."
+          title={t("lifeopsworkspace.calendar", {
+            defaultValue: "Calendar",
+          })}
+          hint={t("lifeopsworkspace.calendarLockedHint", {
+            defaultValue:
+              "Connect Google for both User and Agent in Setup above to see today's events and create new ones here.",
+          })}
           owner={owner}
           agent={agent}
+          t={t}
         />
         <LockedSection
-          title="Email"
-          hint="Connect Google for both User and Agent in Setup above to triage replies and draft responses here."
+          title={t("lifeopsworkspace.email", {
+            defaultValue: "Email",
+          })}
+          hint={t("lifeopsworkspace.emailLockedHint", {
+            defaultValue:
+              "Connect Google for both User and Agent in Setup above to triage replies and draft responses here.",
+          })}
           owner={owner}
           agent={agent}
+          t={t}
         />
       </div>
     );
@@ -958,15 +1164,29 @@ export function LifeOpsWorkspaceView() {
   return (
     <div className="space-y-6">
       <SectionShell
-        title="Calendar"
+        title={t("lifeopsworkspace.calendar", {
+          defaultValue: "Calendar",
+        })}
         actions={
           <SegmentedControl<CalendarWindow>
-            aria-label="Calendar window"
+            aria-label={t("lifeopsworkspace.calendarWindow", {
+              defaultValue: "Calendar window",
+            })}
             value={calendarWindow}
             onValueChange={setCalendarWindow}
             items={[
-              { value: "today", label: "Today" },
-              { value: "week", label: "Week" },
+              {
+                value: "today",
+                label: t("lifeopsworkspace.today", {
+                  defaultValue: "Today",
+                }),
+              },
+              {
+                value: "week",
+                label: t("lifeopsworkspace.week", {
+                  defaultValue: "Week",
+                }),
+              },
             ]}
             className="border-border/28 bg-card/24 p-0.5"
             buttonClassName="min-h-8 px-3 py-1.5 text-xs"
@@ -974,15 +1194,19 @@ export function LifeOpsWorkspaceView() {
         }
       >
         <div className="grid gap-4 lg:grid-cols-2">
-          <CalendarColumn workspace={owner} timeZone={timeZone} />
-          <CalendarColumn workspace={agent} timeZone={timeZone} />
+          <CalendarColumn workspace={owner} timeZone={timeZone} t={t} />
+          <CalendarColumn workspace={agent} timeZone={timeZone} t={t} />
         </div>
       </SectionShell>
 
-      <SectionShell title="Email">
+      <SectionShell
+        title={t("lifeopsworkspace.email", {
+          defaultValue: "Email",
+        })}
+      >
         <div className="grid gap-4 lg:grid-cols-2">
-          <EmailColumn workspace={owner} timeZone={timeZone} />
-          <EmailColumn workspace={agent} timeZone={timeZone} />
+          <EmailColumn workspace={owner} timeZone={timeZone} t={t} />
+          <EmailColumn workspace={agent} timeZone={timeZone} t={t} />
         </div>
       </SectionShell>
     </div>
