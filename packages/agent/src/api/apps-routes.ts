@@ -693,7 +693,7 @@ export async function handleAppsRoutes(
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
-      const result = await appManager.stop(pluginManager, "", runId);
+      const result = await appManager.stop(pluginManager, "", runId, null);
       json(res, result);
       return true;
     }
