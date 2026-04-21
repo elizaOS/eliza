@@ -1,8 +1,7 @@
 /**
  * LifeOps-specific window events.
  *
- * Dispatched on `window` for cross-frame visibility (Google connector refresh,
- * GitHub OAuth callback routing).
+ * Dispatched on `window` for cross-frame visibility and local diagnostics.
  */
 
 import type {
@@ -15,6 +14,9 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT =
 
 export const LIFEOPS_GITHUB_CALLBACK_EVENT =
   "eliza:lifeops-github-callback" as const;
+
+export const LIFEOPS_ACTIVITY_SIGNALS_STATUS_EVENT =
+  "eliza:lifeops-activity-signals-status" as const;
 
 export interface LifeOpsGoogleConnectorRefreshDetail {
   origin?: string;
@@ -42,6 +44,15 @@ export interface LifeOpsGithubCallbackDetail {
   restarted?: boolean;
 }
 
+export interface LifeOpsActivitySignalsStatusDetail {
+  status:
+    | "capture_error"
+    | "snapshot_unavailable"
+    | "background_refresh_unavailable";
+  message?: string;
+  reason?: string;
+}
+
 export function dispatchLifeOpsGoogleConnectorRefresh(
   detail?: LifeOpsGoogleConnectorRefreshDetail,
 ): void {
@@ -57,5 +68,14 @@ export function dispatchLifeOpsGithubCallback(
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent(LIFEOPS_GITHUB_CALLBACK_EVENT, { detail }),
+  );
+}
+
+export function dispatchLifeOpsActivitySignalsStatus(
+  detail: LifeOpsActivitySignalsStatusDetail,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(LIFEOPS_ACTIVITY_SIGNALS_STATUS_EVENT, { detail }),
   );
 }

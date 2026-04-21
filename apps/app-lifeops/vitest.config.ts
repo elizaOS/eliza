@@ -19,6 +19,20 @@ const appCoreTestSetup = path.resolve(
   "setup.ts",
 );
 
+const defaultUnitExcludes = [
+  "dist/**",
+  "**/node_modules/**",
+  "**/*-live.test.{ts,tsx}",
+  "**/*.live.test.{ts,tsx}",
+  "**/*-real.test.{ts,tsx}",
+  "**/*.real.test.{ts,tsx}",
+  "**/*.integration.test.{ts,tsx}",
+  "**/*.e2e.test.{ts,tsx}",
+  "**/*.e2e.spec.{ts,tsx}",
+  "**/*.live.e2e.test.{ts,tsx}",
+  "**/*.real.e2e.test.{ts,tsx}",
+];
+
 export default defineConfig({
   ...baseConfig,
   root: repoRoot,
@@ -35,7 +49,7 @@ export default defineConfig({
       `${packageRootFromRepo}/extensions/**/*.test.ts`,
       `${packageRootFromRepo}/extensions/**/*.test.tsx`,
     ],
-    exclude: ["dist/**", "**/node_modules/**"],
+    exclude: defaultUnitExcludes,
     setupFiles: [appCoreTestSetup],
   },
 });

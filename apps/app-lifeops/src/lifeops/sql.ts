@@ -41,27 +41,39 @@ export function toBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function isMissingJsonValue(value: unknown): boolean {
+  return value === null || value === undefined || value === "";
+}
+
 export function parseJsonValue<T>(value: unknown, fallback: T): T {
-  if (value === null || value === undefined || value === "") return fallback;
+  if (isMissingJsonValue(value)) return fallback;
   if (typeof value !== "string") {
     if (typeof value === "object") return value as T;
-    return fallback;
+    throw new Error(
+      `[LifeOpsSql] Expected JSON string or object, received ${typeof value}`,
+    );
   }
   try {
     return JSON.parse(value) as T;
-  } catch {
-    return fallback;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[LifeOpsSql] Invalid JSON value: ${message}`);
   }
 }
 
 export function parseJsonRecord(value: unknown): Record<string, unknown> {
+  if (isMissingJsonValue(value)) return {};
   const parsed = parseJsonValue<Record<string, unknown> | null>(value, null);
-  return asObject(parsed) ?? {};
+  const object = asObject(parsed);
+  if (object) return object;
+  throw new Error("[LifeOpsSql] Expected JSON object");
 }
 
 export function parseJsonArray<T>(value: unknown): T[] {
+  if (isMissingJsonValue(value)) return [];
   const parsed = parseJsonValue<T[] | null>(value, null);
-  return Array.isArray(parsed) ? parsed : [];
+  if (Array.isArray(parsed)) return parsed;
+  throw new Error("[LifeOpsSql] Expected JSON array");
 }
 
 export function extractRows(result: unknown): Array<Record<string, unknown>> {
