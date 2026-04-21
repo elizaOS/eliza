@@ -121,7 +121,7 @@ async function postConversationMessageWithRetry(
   headers: Record<string, string>,
   options?: { timeoutMs?: number },
 ): Promise<{ status: number; data: Record<string, unknown> }> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + (options?.timeoutMs ?? 20_000);
   let lastResult: { status: number; data: Record<string, unknown> } | null =
     null;
 
@@ -139,7 +139,11 @@ async function postConversationMessageWithRetry(
     lastResult = result;
 
     const text = String(result.data?.text ?? result.data?.response ?? "").trim();
-    if (result.status === 200 && text.length > 0) {
+    if (
+      result.status === 200 &&
+      text.length > 0 &&
+      !isProviderIssueResponse(text)
+    ) {
       return result;
     }
 
@@ -154,6 +158,10 @@ async function postConversationMessageWithRetry(
   }
 
   return lastResult;
+}
+
+function isProviderIssueResponse(text: string): boolean {
+  return /provider issue/i.test(text);
 }
 
 async function ensureWalletKeys(): Promise<void> {

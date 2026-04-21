@@ -1559,14 +1559,7 @@ export async function stopRun(ctx: {
   if (!service || typeof service.stop !== "function") {
     return;
   }
-  try {
-    await service.stop();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `[app-2004scape] stopRun: game service stop failed: ${message}`,
-    );
-  }
+  await service.stop();
 }
 
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {

@@ -158,13 +158,21 @@ export async function handleWebsiteBlockerRoutes(
         result.requiredTasks = tasks.requiredTasks;
         result.groupKey = tasks.groupKey;
       } catch (err) {
-        logger.warn(
+        logger.error(
           {
             host: queriedHost,
             error: err instanceof Error ? err.message : String(err),
           },
           "[WebsiteBlockerRoutes] Failed to resolve required tasks for host",
         );
+        error(
+          res,
+          `Failed to resolve required tasks for blocked host: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          500,
+        );
+        return true;
       }
     }
 
