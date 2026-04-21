@@ -33,6 +33,7 @@ import {
   Square,
   SquareArrowOutUpRight,
   SquarePause,
+  Terminal as TerminalIcon,
   Trash2,
   Workflow,
   Wrench,
@@ -41,9 +42,13 @@ import {
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
-import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "../../../app-shell/task-coordinator-slots.js";
+import {
+  PULSE_STATUSES,
+  STATUS_DOT,
+} from "../../../chat/coding-agent-session-state";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useApp } from "../../../state";
+import { usePtySessions } from "../../../state/PtySessionsContext";
 import type { TranslateFn } from "../../../types";
 import { getRunAttentionReasons } from "../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "./shared";
