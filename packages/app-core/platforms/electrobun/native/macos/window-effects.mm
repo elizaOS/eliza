@@ -801,6 +801,7 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 
 		CGFloat dragX = MAX(0.0, x);
 		CGFloat dragHeight = elizaChromeDepthPoints(window, height);
+		CGFloat resizeDepth = MIN(dragHeight, 12.0);
 		CGFloat dragWidth = MAX(0.0, contentView.bounds.size.width - dragX);
 		if (dragWidth <= 0.0) {
 			return;
@@ -817,6 +818,9 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 		}
 
 		[dragView setFrame:NSMakeRect(dragX, dragY, dragWidth, dragHeight)];
+		[dragView
+			setPassthroughRects:elizaTitlebarDragPassthroughRects(dragWidth,
+																  dragHeight)];
 		if (flipped) {
 			[dragView setAutoresizingMask:(NSViewWidthSizable | NSViewMinYMargin)];
 		} else {
@@ -840,7 +844,7 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 			[legacyRight removeFromSuperview];
 		}
 
-		elizaInstallResizeStripOverlays(window, contentView, dragHeight, dragView);
+		elizaInstallResizeStripOverlays(window, contentView, resizeDepth, dragView);
 
 		success = YES;
 	});
