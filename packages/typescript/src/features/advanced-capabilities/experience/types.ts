@@ -15,12 +15,6 @@ declare module "../../../types/service.ts" {
 	}
 }
 
-declare module "@elizaos/core" {
-	interface ServiceTypeRegistry {
-		EXPERIENCE: "EXPERIENCE";
-	}
-}
-
 // Export service type constant
 export const ExperienceServiceType = {
 	EXPERIENCE: "EXPERIENCE" as const,

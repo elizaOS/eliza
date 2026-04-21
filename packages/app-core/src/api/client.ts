@@ -98,7 +98,6 @@ import type {
   MessageExampleContent,
   ModelOption,
   OnboardingConnection,
-  OnboardingData,
   OnboardingOptions,
   OpenRouterModelOption,
   ProviderOption,
@@ -158,7 +157,6 @@ export type {
   MintResult,
   ModelOption,
   OnboardingConnection,
-  OnboardingData,
   OnboardingOptions,
   OpenRouterModelOption,
   PermissionState,
@@ -213,12 +211,6 @@ export {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 };
-export type {
-  ComputerUseApprovalResolution,
-  ComputerUseApprovalSnapshot,
-  ComputerUsePendingApproval,
-} from "./client-computeruse";
-
 // ---------------------------------------------------------------------------
 // Domain method augmentations (declaration merging + prototype assignment)
 // These import ElizaClient from client-base directly, avoiding circular deps.

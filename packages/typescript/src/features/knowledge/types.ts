@@ -139,12 +139,6 @@ declare module "../../types/service.ts" {
 	}
 }
 
-declare module "@elizaos/core" {
-	interface ServiceTypeRegistry {
-		KNOWLEDGE: "knowledge";
-	}
-}
-
 export const KnowledgeServiceType = {
 	KNOWLEDGE: "knowledge" as const,
 } satisfies Partial<ServiceTypeRegistry>;
