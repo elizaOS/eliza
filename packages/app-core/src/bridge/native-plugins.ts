@@ -74,6 +74,41 @@ export interface MobileSignalsSnapshot {
   metadata: Record<string, unknown>;
 }
 
+export type MobileSignalsSettingsTarget =
+  | "app"
+  | "health"
+  | "healthConnect"
+  | "screenTime"
+  | "usageAccess"
+  | "notification"
+  | "batteryOptimization"
+  | "localNetwork"
+  | "deviceSettings";
+
+export interface MobileSignalsSetupAction {
+  id:
+    | "health_permissions"
+    | "screen_time_authorization"
+    | "android_usage_access"
+    | "app_settings"
+    | "notification_settings"
+    | "battery_optimization"
+    | "local_network";
+  label: string;
+  status: "ready" | "needs-action" | "unavailable";
+  canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: MobileSignalsSettingsTarget | null;
+  reason: string | null;
+}
+
+export interface MobileSignalsOpenSettingsResult {
+  opened: boolean;
+  target: MobileSignalsSettingsTarget;
+  actualTarget: MobileSignalsSettingsTarget;
+  reason: string | null;
+}
+
 export interface MobileSignalsScreenTimeStatus {
   supported: boolean;
   requirements: {
@@ -84,6 +119,10 @@ export interface MobileSignalsScreenTimeStatus {
     frameworks: string[];
     deviceActivityReportExtension: boolean;
     deviceActivityMonitorExtension: boolean;
+    android?: {
+      usageStatsPermission: string;
+      usageAccessSettingsAction: string;
+    };
   };
   entitlements: {
     familyControls: boolean;
@@ -102,6 +141,13 @@ export interface MobileSignalsScreenTimeStatus {
   coarseSummaryAvailable: boolean;
   thresholdEventsAvailable: boolean;
   rawUsageExportAvailable: false;
+  android?: {
+    usageAccessGranted: boolean;
+    packageUsageStatsPermissionDeclared: boolean;
+    canOpenUsageAccessSettings: boolean;
+    foregroundEventsAvailable: boolean;
+    totalTimeForegroundMs: number | null;
+  };
   reason: string | null;
 }
 
@@ -212,6 +258,7 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     canRequest: boolean;
     reason?: string;
     screenTime: MobileSignalsScreenTimeStatus;
+    setupActions: MobileSignalsSetupAction[];
     permissions: {
       sleep: boolean;
       biometrics: boolean;
@@ -222,11 +269,15 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     canRequest: boolean;
     reason?: string;
     screenTime: MobileSignalsScreenTimeStatus;
+    setupActions: MobileSignalsSetupAction[];
     permissions: {
       sleep: boolean;
       biometrics: boolean;
     };
   }>;
+  openSettings(options?: {
+    target?: MobileSignalsSettingsTarget;
+  }): Promise<MobileSignalsOpenSettingsResult>;
   startMonitoring(options?: { emitInitial?: boolean }): Promise<{
     enabled: boolean;
     supported: boolean;
