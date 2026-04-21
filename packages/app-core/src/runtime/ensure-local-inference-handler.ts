@@ -3,10 +3,10 @@
  * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE` when no higher-priority
  * provider has claimed those slots.
  *
- * Priority is 0 — any cloud or plugin-local-ai provider with a higher value
- * wins. That keeps this strictly additive: if the user has OpenAI /
- * Anthropic / plugin-local-ai configured, those still take the request, and
- * the local engine only fills in when nothing else is available.
+ * Priority is -1 (below the default 0 used by cloud and direct provider plugins)
+ * so the Milady router's manual tie-break prefers Eliza Cloud / API providers
+ * when the user configured them. Local inference remains available when it is
+ * the only option, or when the user explicitly prefers it in routing settings.
  *
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
@@ -43,7 +43,8 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 };
 
 const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
-const LOCAL_INFERENCE_PRIORITY = 0;
+/** Below default plugin priority (0) so cloud/direct providers win unless the user prefers local. */
+const LOCAL_INFERENCE_PRIORITY = -1;
 
 function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
   const candidate = (
