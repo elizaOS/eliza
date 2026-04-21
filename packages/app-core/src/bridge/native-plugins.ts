@@ -201,6 +201,18 @@ export type MobileSignalsSignal =
   | MobileSignalsSnapshot
   | MobileSignalsHealthSnapshot;
 
+export interface MobileSignalsBackgroundRefreshResult {
+  scheduled: boolean;
+  identifier?: string;
+  earliestBeginInSeconds?: number;
+  reason?: string;
+}
+
+export interface MobileSignalsCancelBackgroundRefreshResult {
+  cancelled: boolean;
+  reason?: string;
+}
+
 export type AppBlockerPermissionStatus =
   | "granted"
   | "denied"
@@ -283,6 +295,8 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     snapshot: MobileSignalsSnapshot | null;
     healthSnapshot: MobileSignalsHealthSnapshot | null;
   }>;
+  scheduleBackgroundRefresh?: () => Promise<MobileSignalsBackgroundRefreshResult>;
+  cancelBackgroundRefresh?: () => Promise<MobileSignalsCancelBackgroundRefreshResult>;
   addListener(
     eventName: "signal",
     listenerFunc: (event: MobileSignalsSignal) => void,
