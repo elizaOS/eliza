@@ -38,8 +38,7 @@ export function LifeOpsSelectionProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [selection, setSelection] =
-    useState<LifeOpsSelection>(EMPTY_SELECTION);
+  const [selection, setSelection] = useState<LifeOpsSelection>(EMPTY_SELECTION);
 
   const select = useCallback((args: SelectArgs) => {
     setSelection({

@@ -10,8 +10,8 @@
 import { useChatComposer } from "@elizaos/app-core";
 import { type ReactNode, useEffect } from "react";
 import {
-  useLifeOpsSelection,
   type LifeOpsSelection,
+  useLifeOpsSelection,
 } from "./LifeOpsSelectionContext.js";
 
 export interface PrefillChatDetail {
@@ -80,11 +80,7 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
  * LifeOpsChatAdapter component — wraps the chat slot.
  * Reads SelectionContext and shows a context banner when something is selected.
  */
-export function LifeOpsChatAdapter({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function LifeOpsChatAdapter({ children }: { children: ReactNode }) {
   const { selection } = useLifeOpsSelection();
   const { placeholder } = useLifeOpsChatAdapter(selection);
 

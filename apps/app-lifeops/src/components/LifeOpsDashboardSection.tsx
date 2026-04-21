@@ -8,9 +8,9 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { Bell, CalendarDays, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
-import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 
 interface LifeOpsDashboardSectionProps {
   onNavigate: (section: LifeOpsSection) => void;

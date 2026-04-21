@@ -19,7 +19,13 @@ import {
   PagePanel,
   useApp,
 } from "@elizaos/app-core";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
@@ -36,12 +42,6 @@ import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
 import { LifeOpsDashboardSection } from "./LifeOpsDashboardSection.js";
 import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
-import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
-import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
-import { MessagingConnectorGrid } from "./MessagingConnectorCards";
-import { PermissionsPanel } from "./PermissionsPanel";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsProfilePanel,
@@ -49,7 +49,13 @@ import {
   LifeOpsStretchPanel,
   LifeOpsXPanel,
 } from "./LifeOpsOperationalPanels";
+import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
+import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
+import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
+import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
+import { MessagingConnectorGrid } from "./MessagingConnectorCards";
+import { PermissionsPanel } from "./PermissionsPanel";
 
 const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/milady/lifeops/github-complete";
 const LIFEOPS_GITHUB_RETURN_URL = "elizaos://lifeops";
@@ -706,13 +712,12 @@ function LifeOpsWorkspaceInner() {
       }
       setBusyAgentGithubId(agentId);
       try {
-        const response =
-          await client.createCloudCompatAgentManagedGithubOauth(
-            agentId,
-            isWebPlatform()
-              ? { postMessage: true }
-              : { returnUrl: LIFEOPS_GITHUB_RETURN_URL },
-          );
+        const response = await client.createCloudCompatAgentManagedGithubOauth(
+          agentId,
+          isWebPlatform()
+            ? { postMessage: true }
+            : { returnUrl: LIFEOPS_GITHUB_RETURN_URL },
+        );
         if (popup && !popup.closed) {
           popup.location.href = response.data.authorizeUrl;
         } else {
@@ -952,9 +957,7 @@ function LifeOpsWorkspaceInner() {
   return (
     <AppWorkspaceChromeFallback
       testId="lifeops-shell"
-      nav={
-        <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
-      }
+      nav={<LifeOpsNavRail activeSection={section} onNavigate={navigate} />}
       main={mainContent}
       chat={
         <LifeOpsChatAdapter>
