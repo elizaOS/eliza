@@ -59,6 +59,24 @@ function messageLooksLikeHostnameOnly(text: string): boolean {
   return trimmed.length > 0 && HOSTNAME_ONLY_RE.test(trimmed);
 }
 
+function parseDirectJsonObject(
+  rawResponse: string,
+): Record<string, unknown> | null {
+  try {
+    const directJson = JSON.parse(rawResponse);
+    return directJson &&
+      typeof directJson === "object" &&
+      !Array.isArray(directJson)
+      ? (directJson as Record<string, unknown>)
+      : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function isPermissionRequest(text: string): boolean {
   const normalized = normalizeText(text);
   if (!normalized) return false;
@@ -275,18 +293,8 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
       prompt,
     });
     const rawResponse = typeof result === "string" ? result : "";
-    let parsed: Record<string, unknown> | null = null;
-    try {
-      const directJson = JSON.parse(rawResponse);
-      if (
-        directJson &&
-        typeof directJson === "object" &&
-        !Array.isArray(directJson)
-      ) {
-        parsed = directJson as Record<string, unknown>;
-      }
-    } catch {}
-    parsed ??=
+    const parsed =
+      parseDirectJsonObject(rawResponse) ??
       parseJSONObjectFromText(rawResponse) ??
       parseKeyValueXml<Record<string, unknown>>(rawResponse);
     if (!parsed) {

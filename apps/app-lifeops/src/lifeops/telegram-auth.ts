@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import type {
   LifeOpsConnectorSide,
 } from "@elizaos/shared/contracts/lifeops";
@@ -96,6 +97,23 @@ const pendingTelegramAuthSessions = new Map<
 >();
 
 const TELEGRAM_AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message.trim()
+    : String(error);
+}
+
+function stopPendingTelegramAuthSession(
+  sessionId: string,
+  session: PendingTelegramAuthSession,
+): void {
+  void session.authSession.stop().catch((error) => {
+    logger.warn(
+      `[TelegramAuth] failed to stop pending auth session ${sessionId}: ${errorMessage(error)}`,
+    );
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Default API credentials
@@ -271,7 +289,7 @@ function cleanupExpiredSessions(): void {
       TELEGRAM_AUTH_SESSION_TTL_MS
     ) {
       // Stop the GramJS client before evicting.
-      session.authSession.stop().catch(() => {});
+      stopPendingTelegramAuthSession(sessionId, session);
       pendingTelegramAuthSessions.delete(sessionId);
       deletePendingTelegramSession(sessionId);
     }
@@ -289,7 +307,7 @@ function clearPendingSessionsForSide(
 ): void {
   for (const [sessionId, session] of pendingTelegramAuthSessions) {
     if (session.agentId === agentId && session.side === side) {
-      session.authSession.stop().catch(() => {});
+      stopPendingTelegramAuthSession(sessionId, session);
       pendingTelegramAuthSessions.delete(sessionId);
       deletePendingTelegramSession(sessionId);
     }
@@ -682,7 +700,13 @@ export function getTelegramAuthStatus(
 export async function cancelTelegramAuth(sessionId: string): Promise<void> {
   const session = pendingTelegramAuthSessions.get(sessionId);
   if (session) {
-    await session.authSession.stop().catch(() => {});
+    try {
+      await session.authSession.stop();
+    } catch (error) {
+      logger.warn(
+        `[TelegramAuth] failed to stop canceled auth session ${sessionId}: ${errorMessage(error)}`,
+      );
+    }
     pendingTelegramAuthSessions.delete(sessionId);
   }
   deletePendingTelegramSession(sessionId);
