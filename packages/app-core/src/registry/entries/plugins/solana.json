@@ -1,0 +1,122 @@
+{
+  "id": "solana",
+  "name": "Solana",
+  "description": "Core Solana blockchain plugin for elizaOS, enabling token operations, trading, and DeFi integrations.",
+  "npmName": "@elizaos/plugin-solana",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "crypto",
+    "solana"
+  ],
+  "config": {
+    "SOL_ADDRESS": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Address",
+      "help": "The mint/contract address used to represent native SOL when interacting with token swap logic.",
+      "advanced": false
+    },
+    "SOLANA_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://api.mainnet-beta.solana.com",
+      "label": "Rpc Url",
+      "help": "The Solana RPC endpoint the application should connect to.",
+      "advanced": false
+    },
+    "WALLET_SECRET_SALT": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Secret Salt",
+      "help": "Salt used to derive or encrypt the Solana wallet's secret key; required if the direct secret key is not provided.",
+      "advanced": false
+    },
+    "WALLET_SECRET_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Secret Key",
+      "help": "Base58-encoded Solana wallet secret (private) key; required if WALLET_SECRET_SALT is not supplied.",
+      "advanced": false
+    },
+    "WALLET_PUBLIC_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Public Key",
+      "help": "Base58-encoded Solana wallet public key corresponding to WALLET_SECRET_KEY.",
+      "advanced": false
+    },
+    "SOLANA_PUBLIC_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Public Key",
+      "help": "Alternative name accepted by runtime for the wallet's public key.",
+      "advanced": false
+    },
+    "SLIPPAGE": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Slippage",
+      "help": "Maximum acceptable slippage (likely as a percentage or basis points) for Solana swaps/transactions.",
+      "advanced": false
+    },
+    "HELIUS_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for accessing the Helius Solana infrastructure services.",
+      "advanced": false
+    },
+    "BIRDEYE_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for accessing Birdeye market data services.",
+      "advanced": false
+    },
+    "SOLANA_PRIVATE_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "The Solana wallet private key in base58 or base64 format, used to create a Keypair when private key access is required.",
+      "advanced": false
+    },
+    "WALLET_PRIVATE_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Alternative variable name for the Solana wallet private key in base58 or base64.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "CircleDot",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-solana#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-solana"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}
