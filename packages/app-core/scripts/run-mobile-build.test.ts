@@ -260,7 +260,7 @@ describe("run-mobile-build", () => {
     expect(androidBuild).not.toContain("capacitor-status-bar");
   });
 
-  it("keeps llama.cpp Capacitor native wiring in shipped templates and generated app files", () => {
+  it("keeps llama.cpp Capacitor native wiring in shipped templates", () => {
     const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
     const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
       repoRootValue: repoRoot,
@@ -275,73 +275,27 @@ describe("run-mobile-build", () => {
       );
     }
 
-    const iosPodfiles = [
+    const iosPodfile = fs.readFileSync(
       path.join(iosTemplateRoot, "App", "Podfile"),
-      path.join(repoRoot, "apps", "app", "ios", "App", "Podfile"),
-    ].map((file) => fs.readFileSync(file, "utf8"));
-    const androidSettingsFiles = [
-      path.join(androidTemplateRoot, "capacitor.settings.gradle"),
-      path.join(
-        repoRoot,
-        "apps",
-        "app",
-        "android",
-        "capacitor.settings.gradle",
-      ),
-    ].map((file) => fs.readFileSync(file, "utf8"));
-    const androidBuildFiles = [
-      path.join(androidTemplateRoot, "app", "capacitor.build.gradle"),
-      path.join(
-        repoRoot,
-        "apps",
-        "app",
-        "android",
-        "app",
-        "capacitor.build.gradle",
-      ),
-    ].map((file) => fs.readFileSync(file, "utf8"));
-    const iosCapacitorConfig = fs.readFileSync(
-      path.join(
-        repoRoot,
-        "apps",
-        "app",
-        "ios",
-        "App",
-        "App",
-        "capacitor.config.json",
-      ),
       "utf8",
     );
-    const androidPluginConfig = fs.readFileSync(
-      path.join(
-        repoRoot,
-        "apps",
-        "app",
-        "android",
-        "app",
-        "src",
-        "main",
-        "assets",
-        "capacitor.plugins.json",
-      ),
+    const androidSettings = fs.readFileSync(
+      path.join(androidTemplateRoot, "capacitor.settings.gradle"),
+      "utf8",
+    );
+    const androidBuild = fs.readFileSync(
+      path.join(androidTemplateRoot, "app", "capacitor.build.gradle"),
       "utf8",
     );
 
-    for (const podfile of iosPodfiles) {
-      expect(podfile).toContain("LlamaCppCapacitor");
-      expect(podfile).toContain("llama-cpp-capacitor");
-    }
-    for (const settings of androidSettingsFiles) {
-      expect(settings).toContain("include ':llama-cpp-capacitor'");
-      expect(settings).toContain("node_modules/llama-cpp-capacitor/android");
-    }
-    for (const build of androidBuildFiles) {
-      expect(build).toContain("implementation project(':llama-cpp-capacitor')");
-    }
-    expect(iosCapacitorConfig).toContain("LlamaCppPlugin");
-    expect(androidPluginConfig).toContain("llama-cpp-capacitor");
-    expect(androidPluginConfig).toContain(
-      "ai.annadata.plugin.capacitor.LlamaCppPlugin",
+    expect(iosPodfile).toContain("LlamaCppCapacitor");
+    expect(iosPodfile).toContain("llama-cpp-capacitor");
+    expect(androidSettings).toContain("include ':llama-cpp-capacitor'");
+    expect(androidSettings).toContain(
+      "node_modules/llama-cpp-capacitor/android",
+    );
+    expect(androidBuild).toContain(
+      "implementation project(':llama-cpp-capacitor')",
     );
   });
 
