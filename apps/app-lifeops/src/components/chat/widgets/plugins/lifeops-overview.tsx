@@ -48,8 +48,8 @@ import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
-import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { formatMinutesDuration } from "../../../../utils/format-duration.js";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
@@ -1190,8 +1190,11 @@ function ScheduleSection({
             defaultValue: "Meal pattern calibrating",
           });
   const relativeLine = (() => {
-    const { minutesSinceWake, minutesUntilBedtimeTarget, minutesSinceBedtimeTarget } =
-      schedule.relativeTime;
+    const {
+      minutesSinceWake,
+      minutesUntilBedtimeTarget,
+      minutesSinceBedtimeTarget,
+    } = schedule.relativeTime;
     if (minutesSinceWake !== null) {
       if (minutesUntilBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimeUpcoming", {
@@ -1202,7 +1205,8 @@ function ScheduleSection({
       }
       if (minutesSinceBedtimeTarget !== null) {
         return t("lifeopsoverview.relativeWakeAndBedtimePast", {
-          defaultValue: "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
+          defaultValue:
+            "Woke {{wakeMinutes}} ago · bedtime was {{bedMinutes}} ago",
           wakeMinutes: formatMinutesDuration(minutesSinceWake),
           bedMinutes: formatMinutesDuration(minutesSinceBedtimeTarget),
         });

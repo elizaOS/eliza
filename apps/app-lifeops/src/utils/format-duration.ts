@@ -9,5 +9,7 @@ export function formatMinutesDuration(minutes: number): string {
   }
   const hours = Math.floor(total / 60);
   const remainingMinutes = total % 60;
-  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
+  return remainingMinutes === 0
+    ? `${hours}h`
+    : `${hours}h ${remainingMinutes}m`;
 }
