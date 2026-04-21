@@ -383,8 +383,6 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
-export const lifeOpsBrowserPlugin = appLifeOpsPlugin;
-
 export {
   runMorningCheckinAction,
   runNightCheckinAction,
@@ -464,5 +462,3 @@ export {
   lifeOpsBrowserProvider,
   manageLifeOpsBrowserAction,
 };
-
-export default appLifeOpsPlugin;
