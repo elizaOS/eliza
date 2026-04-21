@@ -29,6 +29,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
+import { PageScopedChat } from "../chat/PageScopedChat";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import {
   BSC_GAS_READY_THRESHOLD,
   loadTrackedBscTokens,
@@ -53,8 +55,6 @@ import {
 import { NftGrid } from "../inventory/NftGrid";
 import { TokensTable } from "../inventory/TokensTable";
 import { useInventoryData } from "../inventory/useInventoryData";
-import { RightSideChatPanel } from "../chat/RightSideChatPanel";
-import { PageScopedChat } from "../chat/PageScopedChat";
 import { PolicyControlsView } from "../settings/PolicyControlsView";
 import { ConfigPageView } from "./ConfigPageView";
 
@@ -951,176 +951,176 @@ export function InventoryView() {
   return (
     <div className="flex flex-1 min-h-0 flex-row">
       <div className="flex flex-1 min-w-0 min-h-0 flex-col overflow-auto">
-      <PageLayout
-        sidebar={walletSidebar}
-        contentInnerClassName="mx-auto w-full max-w-[76rem]"
-        footer={<WidgetHost slot="wallet" className="py-3" />}
-      >
-        {walletSubTabControls}
-        <div className="grid gap-3">
-          {walletError ? (
-            <PagePanel.Notice tone="danger">{walletError}</PagePanel.Notice>
-          ) : null}
+        <PageLayout
+          sidebar={walletSidebar}
+          contentInnerClassName="mx-auto w-full max-w-[76rem]"
+          footer={<WidgetHost slot="wallet" className="py-3" />}
+        >
+          {walletSubTabControls}
+          <div className="grid gap-3">
+            {walletError ? (
+              <PagePanel.Notice tone="danger">{walletError}</PagePanel.Notice>
+            ) : null}
 
-          {inlineError?.message ? (
-            <PagePanel.Notice
-              tone="danger"
-              actions={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full border-danger/35 px-3 text-xs-tight text-danger shadow-none hover:bg-danger/10"
-                  onClick={() => void loadBalances()}
-                  title={inlineError.retryTitle ?? t("common.retry")}
-                >
-                  {t("common.retry")}
-                </Button>
-              }
-            >
-              {inlineError.message}
-            </PagePanel.Notice>
-          ) : null}
+            {inlineError?.message ? (
+              <PagePanel.Notice
+                tone="danger"
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-full border-danger/35 px-3 text-xs-tight text-danger shadow-none hover:bg-danger/10"
+                    onClick={() => void loadBalances()}
+                    title={inlineError.retryTitle ?? t("common.retry")}
+                  >
+                    {t("common.retry")}
+                  </Button>
+                }
+              >
+                {inlineError.message}
+              </PagePanel.Notice>
+            ) : null}
 
-          {headerWarning ? (
-            <PagePanel.Notice
-              tone="accent"
-              actions={
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs-tight font-medium text-accent"
-                  onClick={goToRpcSettings}
-                >
-                  {headerWarning.actionLabel}
-                </Button>
-              }
-            >
-              <div className="font-semibold text-txt-strong">
-                {headerWarning.title}
-              </div>
-              <div className="mt-1 text-muted">{headerWarning.body}</div>
-            </PagePanel.Notice>
-          ) : null}
-
-          {/* Wallet setup card — shown when no wallet is connected */}
-          {!hasAnyAddress && (
-            <PagePanel variant="workspace">
-              <div className="flex flex-col items-center gap-4 py-8">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10 text-accent">
-                  <Wallet className="h-6 w-6" />
+            {headerWarning ? (
+              <PagePanel.Notice
+                tone="accent"
+                actions={
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs-tight font-medium text-accent"
+                    onClick={goToRpcSettings}
+                  >
+                    {headerWarning.actionLabel}
+                  </Button>
+                }
+              >
+                <div className="font-semibold text-txt-strong">
+                  {headerWarning.title}
                 </div>
-                <div className="text-center">
-                  <h3 className="text-sm font-semibold text-txt">
-                    {t("wallet.setup.title", {
-                      defaultValue: "Connect your wallet",
-                    })}
-                  </h3>
-                  <p className="mt-1 max-w-sm text-xs text-muted">
-                    {t("wallet.setup.description", {
-                      defaultValue:
-                        "Connect via Eliza Cloud or configure wallet keys directly to start trading.",
-                    })}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {elizaCloudConnected ? (
+                <div className="mt-1 text-muted">{headerWarning.body}</div>
+              </PagePanel.Notice>
+            ) : null}
+
+            {/* Wallet setup card — shown when no wallet is connected */}
+            {!hasAnyAddress && (
+              <PagePanel variant="workspace">
+                <div className="flex flex-col items-center gap-4 py-8">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10 text-accent">
+                    <Wallet className="h-6 w-6" />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-sm font-semibold text-txt">
+                      {t("wallet.setup.title", {
+                        defaultValue: "Connect your wallet",
+                      })}
+                    </h3>
+                    <p className="mt-1 max-w-sm text-xs text-muted">
+                      {t("wallet.setup.description", {
+                        defaultValue:
+                          "Connect via Eliza Cloud or configure wallet keys directly to start trading.",
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {elizaCloudConnected ? (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="rounded-full px-5"
+                        onClick={goToRpcSettings}
+                      >
+                        {t("wallet.setup.importFromCloud", {
+                          defaultValue: "Import from Eliza Cloud",
+                        })}
+                      </Button>
+                    ) : null}
+                    {/* Vincent connection moved to Apps → Vincent */}
                     <Button
-                      variant="default"
+                      variant="outline"
                       size="sm"
                       className="rounded-full px-5"
                       onClick={goToRpcSettings}
                     >
-                      {t("wallet.setup.importFromCloud", {
-                        defaultValue: "Import from Eliza Cloud",
+                      <Settings className="mr-1.5 h-3.5 w-3.5" />
+                      {t("wallet.setup.configureRpc", {
+                        defaultValue: "Configure RPC",
                       })}
                     </Button>
-                  ) : null}
-                  {/* Vincent connection moved to Apps → Vincent */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full px-5"
-                    onClick={goToRpcSettings}
-                  >
-                    <Settings className="mr-1.5 h-3.5 w-3.5" />
-                    {t("wallet.setup.configureRpc", {
-                      defaultValue: "Configure RPC",
-                    })}
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            </PagePanel>
-          )}
+              </PagePanel>
+            )}
 
-          {singleChainFocus === "bsc" ? (
-            <TradePanel
-              tradeReady={evmAddr ? tradeReady : false}
-              bnbBalance={bnbBalance}
-              onAddToken={handleAddToken}
-              getBscTradePreflight={getBscTradePreflight}
-              getBscTradeQuote={getBscTradeQuote}
-              executeBscTrade={executeBscTrade}
-              getBscTradeTxStatus={getBscTradeTxStatus}
-              stewardConnected={stewardConnected}
-            />
-          ) : null}
-        </div>
+            {singleChainFocus === "bsc" ? (
+              <TradePanel
+                tradeReady={evmAddr ? tradeReady : false}
+                bnbBalance={bnbBalance}
+                onAddToken={handleAddToken}
+                getBscTradePreflight={getBscTradePreflight}
+                getBscTradeQuote={getBscTradeQuote}
+                executeBscTrade={executeBscTrade}
+                getBscTradeTxStatus={getBscTradeTxStatus}
+                stewardConnected={stewardConnected}
+              />
+            ) : null}
+          </div>
 
-        <div className="mt-4">
-          {walletSubTab === "balances" ? (
-            <PagePanel variant="workspace">
-              {inventoryView === "tokens" ? (
-                <TokensTable
-                  t={t}
-                  walletLoading={walletLoading}
-                  walletBalances={walletBalances}
-                  visibleRows={filteredVisibleRows}
-                  visibleChainErrors={visibleChainErrors}
-                  showChainColumn={singleChainFocus === null}
-                  handleUntrackToken={handleUntrackToken}
-                />
-              ) : (
-                <NftGrid
-                  t={t}
-                  walletNftsLoading={walletNftsLoading}
-                  walletNfts={walletNfts}
-                  allNfts={filteredNfts}
-                />
-              )}
-            </PagePanel>
-          ) : (
-            <PagePanel variant="workspace">
-              {!stewardConnected ? (
-                <PagePanel.Empty
-                  variant="workspace"
-                  title={
-                    walletSubTab === "approvals"
-                      ? "No pending approvals"
-                      : "No transactions yet"
-                  }
-                />
-              ) : walletSubTab === "approvals" ? (
-                <ApprovalQueue
-                  embedded
-                  getStewardPending={getStewardPending}
-                  approveStewardTx={approveStewardTx}
-                  rejectStewardTx={rejectStewardTx}
-                  copyToClipboard={copyToClipboard}
-                  setActionNotice={setActionNotice}
-                  onPendingCountChange={handlePendingCountChange}
-                />
-              ) : (
-                <TransactionHistory
-                  embedded
-                  getStewardHistory={getStewardHistory}
-                  copyToClipboard={copyToClipboard}
-                  setActionNotice={setActionNotice}
-                />
-              )}
-            </PagePanel>
-          )}
-        </div>
-      </PageLayout>
+          <div className="mt-4">
+            {walletSubTab === "balances" ? (
+              <PagePanel variant="workspace">
+                {inventoryView === "tokens" ? (
+                  <TokensTable
+                    t={t}
+                    walletLoading={walletLoading}
+                    walletBalances={walletBalances}
+                    visibleRows={filteredVisibleRows}
+                    visibleChainErrors={visibleChainErrors}
+                    showChainColumn={singleChainFocus === null}
+                    handleUntrackToken={handleUntrackToken}
+                  />
+                ) : (
+                  <NftGrid
+                    t={t}
+                    walletNftsLoading={walletNftsLoading}
+                    walletNfts={walletNfts}
+                    allNfts={filteredNfts}
+                  />
+                )}
+              </PagePanel>
+            ) : (
+              <PagePanel variant="workspace">
+                {!stewardConnected ? (
+                  <PagePanel.Empty
+                    variant="workspace"
+                    title={
+                      walletSubTab === "approvals"
+                        ? "No pending approvals"
+                        : "No transactions yet"
+                    }
+                  />
+                ) : walletSubTab === "approvals" ? (
+                  <ApprovalQueue
+                    embedded
+                    getStewardPending={getStewardPending}
+                    approveStewardTx={approveStewardTx}
+                    rejectStewardTx={rejectStewardTx}
+                    copyToClipboard={copyToClipboard}
+                    setActionNotice={setActionNotice}
+                    onPendingCountChange={handlePendingCountChange}
+                  />
+                ) : (
+                  <TransactionHistory
+                    embedded
+                    getStewardHistory={getStewardHistory}
+                    copyToClipboard={copyToClipboard}
+                    setActionNotice={setActionNotice}
+                  />
+                )}
+              </PagePanel>
+            )}
+          </div>
+        </PageLayout>
       </div>
 
       <RightSideChatPanel

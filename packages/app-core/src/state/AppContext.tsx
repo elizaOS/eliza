@@ -1649,6 +1649,7 @@ function AppProviderInner({
       setAppRuns,
       setActivePackId,
       setActiveGameRunId,
+      setActiveTerminalSessionId,
     ],
   );
 

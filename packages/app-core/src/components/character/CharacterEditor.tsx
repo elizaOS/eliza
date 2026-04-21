@@ -1642,7 +1642,9 @@ export function CharacterEditor({
                         }
                         handleAddStyleEntry={handleAddStyleEntry}
                         handleRemoveStyleEntry={handleRemoveStyleEntry}
-                        handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                        handleStyleEntryDraftChange={
+                          handleStyleEntryDraftChange
+                        }
                         handleCommitStyleEntry={handleCommitStyleEntry}
                         handleReorderStyleEntries={handleReorderStyleEntries}
                         t={t}

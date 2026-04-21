@@ -5,10 +5,10 @@
 import type React from "react";
 import { useEffect } from "react";
 import { useApp } from "../../state";
-import { PageScopedChat } from "../chat/PageScopedChat";
-import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { GameView } from "../apps/GameView";
 import { getAppSlug } from "../apps/helpers";
+import { PageScopedChat } from "../chat/PageScopedChat";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { AppsView } from "./AppsView";
 
 const APPS_SYSTEM_ADDENDUM = `

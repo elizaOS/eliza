@@ -52,9 +52,9 @@ describe("isPageScopeMetadata", () => {
   });
 
   it("returns false for automation scopes", () => {
-    expect(
-      isPageScopeMetadata({ scope: "automation-coordinator" }),
-    ).toBe(false);
+    expect(isPageScopeMetadata({ scope: "automation-coordinator" })).toBe(
+      false,
+    );
   });
 
   it("returns false for general scope", () => {
