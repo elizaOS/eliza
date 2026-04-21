@@ -6,6 +6,7 @@ import type {
   LifeOpsBrowserCompanionPackageStatus,
   LifeOpsBrowserCompanionReleaseManifest,
   LifeOpsBrowserKind,
+  LifeOpsBrowserPackagePathTarget,
 } from "../contracts/lifeops";
 import { VERSION } from "@elizaos/agent/runtime";
 

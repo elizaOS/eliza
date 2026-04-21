@@ -14,6 +14,19 @@ import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
 import { type RefObject, useCallback } from "react";
 import type { StylePreset } from "../api";
 import { ElizaClient, type VoiceConfig } from "../api";
+
+const ensureOnboardedAgentRunning = async (
+  client: ElizaClient,
+): Promise<void> => {
+  try {
+    const status = await client.getStatus();
+    if (status?.state !== "running" && status?.state !== "starting") {
+      await client.startAgent();
+    }
+  } catch {
+    // Non-fatal: agent manager may not be ready yet. Onboarding will retry.
+  }
+};
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,

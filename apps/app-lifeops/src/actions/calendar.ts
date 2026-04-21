@@ -20,10 +20,6 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/app-lifeops/contracts";
-import {
-  getValidationKeywordTerms,
-  textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {

@@ -452,6 +452,10 @@ function LifeOpsSettingsSectionView({
 }
 
 /* ── Inner view — rendered inside SelectionProvider ────────────────── */
+export function LifeOpsPageView() {
+  return <LifeOpsWorkspaceInner />;
+}
+
 function LifeOpsWorkspaceInner() {
   const lifeOpsApp = useLifeOpsAppState();
   const {

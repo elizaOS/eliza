@@ -1,4 +1,3 @@
-import { isPrivateIpAddress } from "@elizaos/core";
 import React, {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
@@ -24,6 +23,95 @@ interface RemoteSessionProps {
 type ConnState = "connecting" | "open" | "closed" | "error";
 
 const PULL_TO_REFRESH_THRESHOLD_PX = 80;
+const PRIVATE_IPV6_PREFIXES = ["fe80:", "fec0:", "fc", "fd"] as const;
+
+function parseIpv4Address(address: string): number[] | null {
+  const parts = address.split(".");
+  if (parts.length !== 4) {
+    return null;
+  }
+  const numbers = parts.map((part) => Number.parseInt(part, 10));
+  if (
+    numbers.some((value) => Number.isNaN(value) || value < 0 || value > 255)
+  ) {
+    return null;
+  }
+  return numbers;
+}
+
+function parseMappedIpv6Address(mappedAddress: string): number[] | null {
+  if (mappedAddress.includes(".")) {
+    return parseIpv4Address(mappedAddress);
+  }
+  const parts = mappedAddress.split(":").filter(Boolean);
+  if (parts.length === 1) {
+    const value = Number.parseInt(parts[0], 16);
+    if (Number.isNaN(value) || value < 0 || value > 0xffff_ffff) {
+      return null;
+    }
+    return [
+      (value >>> 24) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 8) & 0xff,
+      value & 0xff,
+    ];
+  }
+  if (parts.length !== 2) {
+    return null;
+  }
+  const high = Number.parseInt(parts[0], 16);
+  const low = Number.parseInt(parts[1], 16);
+  if (
+    Number.isNaN(high) ||
+    Number.isNaN(low) ||
+    high < 0 ||
+    low < 0 ||
+    high > 0xffff ||
+    low > 0xffff
+  ) {
+    return null;
+  }
+  const value = (high << 16) + low;
+  return [
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ];
+}
+
+function isPrivateIpv4Address(parts: number[]): boolean {
+  const [octet1, octet2] = parts;
+  return (
+    octet1 === 0 ||
+    octet1 === 10 ||
+    octet1 === 127 ||
+    (octet1 === 169 && octet2 === 254) ||
+    (octet1 === 172 && octet2 >= 16 && octet2 <= 31) ||
+    (octet1 === 192 && octet2 === 168) ||
+    (octet1 === 100 && octet2 >= 64 && octet2 <= 127)
+  );
+}
+
+function isPrivateCompanionHost(host: string): boolean {
+  let normalized = host.trim().toLowerCase();
+  if (normalized.startsWith("[") && normalized.endsWith("]")) {
+    normalized = normalized.slice(1, -1);
+  }
+  if (normalized.startsWith("::ffff:")) {
+    const mapped = parseMappedIpv6Address(normalized.slice("::ffff:".length));
+    return mapped !== null && isPrivateIpv4Address(mapped);
+  }
+  if (normalized.includes(":")) {
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      PRIVATE_IPV6_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+    );
+  }
+  const ipv4 = parseIpv4Address(normalized);
+  return ipv4 !== null && isPrivateIpv4Address(ipv4);
+}
 
 /**
  * Reject obviously unsafe companion ingress URLs before they are used as an
@@ -55,7 +143,7 @@ function assertSafeCompanionIngressUrl(ingressUrl: string): URL {
       host === "localhost" ||
       host === "127.0.0.1" ||
       host === "::1" ||
-      isPrivateIpAddress(host);
+      isPrivateCompanionHost(host);
     if (!allowPlaintextWs) {
       throw new Error(
         "ws:// is only allowed on localhost or private networks; use wss:// for this host",

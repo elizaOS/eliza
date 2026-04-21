@@ -53,6 +53,26 @@ function buildSubscriptionsPlannerStub() {
   };
 }
 
+function resolveSubscriptionParams(text: string) {
+  const normalized = text.toLowerCase();
+  const serviceName = normalized.includes("google play")
+    ? "Google Play"
+    : normalized.includes("fixture login required")
+      ? "Fixture Login Required"
+      : "Fixture Access Wall";
+  const serviceSlug = serviceName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return {
+    mode: "cancel",
+    serviceName,
+    serviceSlug,
+    confirmed:
+      normalized.includes("confirm") || normalized.includes("go ahead"),
+  };
+}
+
 async function createScenarioRuntime(agentId: string) {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,

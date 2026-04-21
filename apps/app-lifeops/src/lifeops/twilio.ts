@@ -7,10 +7,19 @@ export interface TwilioCredentials {
   fromPhoneNumber: string;
 }
 
-/** Local estimate for SMS metering (Cloud `@elizaos/billing` is not wired in this workspace). */
 export interface TwilioSmsBillingBreakdown {
   segments: number;
-  costUsd: number;
+  rawCost: number;
+  markup: number;
+  billedCost: number;
+  markupRate: number;
+  costPerSegment: number;
+}
+
+const TWILIO_SMS_MARKUP_RATE = 0.2;
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function calculateTwilioSmsBilling(
@@ -18,9 +27,15 @@ function calculateTwilioSmsBilling(
   costPerSegmentUsd: number,
 ): TwilioSmsBillingBreakdown {
   const segments = Math.max(1, Math.ceil(body.length / 160));
+  const rawCost = roundCurrency(segments * costPerSegmentUsd);
+  const markup = roundCurrency(rawCost * TWILIO_SMS_MARKUP_RATE);
   return {
     segments,
-    costUsd: segments * costPerSegmentUsd,
+    rawCost,
+    markup,
+    billedCost: roundCurrency(rawCost + markup),
+    markupRate: TWILIO_SMS_MARKUP_RATE,
+    costPerSegment: costPerSegmentUsd,
   };
 }
 

@@ -102,6 +102,29 @@ interface PluginEntry {
   widgets?: PluginWidgetDeclarationServer[];
 }
 
+type PluginHealthProbeResult = {
+  ok?: boolean;
+  message?: string;
+};
+
+function getPluginHealthProbe(
+  plugin: unknown,
+): (() => PluginHealthProbeResult | Promise<PluginHealthProbeResult>) | null {
+  if (!plugin || typeof plugin !== "object") {
+    return null;
+  }
+  const record = plugin as Record<string, unknown>;
+  for (const key of ["health", "healthCheck", "testConnection", "test"]) {
+    const candidate = record[key];
+    if (typeof candidate === "function") {
+      return candidate as () =>
+        | PluginHealthProbeResult
+        | Promise<PluginHealthProbeResult>;
+    }
+  }
+  return null;
+}
+
 interface SecretEntry {
   key: string;
   description: string;

@@ -31,7 +31,8 @@
     "./providers/*": "./src/providers/*.ts",
     "./routes/*": "./src/routes/*.ts",
     "./contracts": "./src/contracts/index.ts",
-    "./contracts/lifeops": "./src/contracts/lifeops.ts"
+    "./contracts/lifeops": "./src/contracts/lifeops.ts",
+    "./public": "./src/public.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",

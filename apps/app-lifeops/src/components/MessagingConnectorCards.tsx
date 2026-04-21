@@ -640,7 +640,7 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {authState === "waiting_for_code" ? (
+      {showCodeStep ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
@@ -675,9 +675,8 @@ export function TelegramConnectorCard() {
             </Button>
           </div>
           <div className="text-xs text-muted">
-            {authState === "waiting_for_provisioning_code"
-              ? "This is the code from my.telegram.org used to provision Telegram app credentials."
-              : "Enter the login code Telegram sent to your app or SMS, then retry if the code was wrong or expired."}
+            Enter the login code Telegram sent to your app or SMS, then retry
+            if the code was wrong or expired.
           </div>
         </div>
       ) : null}

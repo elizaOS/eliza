@@ -166,10 +166,20 @@ type GmailPlanningContext = {
   localNow: string;
 };
 
-type GmailIntentPlan = Pick<
-  GmailLlmPlan,
-  "subaction" | "shouldAct" | "response"
->;
+type GmailIntentPlan = {
+  subaction: GmailSubaction | null;
+  shouldAct?: boolean | null;
+  response?: string;
+  confirmed?: boolean;
+  holdForApproval?: boolean;
+  messageId?: string;
+  replyNeededOnly?: boolean;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  bodyText?: string;
+};
 
 type GmailPayloadPlan = Omit<
   GmailLlmPlan,

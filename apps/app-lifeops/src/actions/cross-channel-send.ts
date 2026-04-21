@@ -696,6 +696,42 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
+  x_dm: async ({ channel, target, body }) => {
+    const credentials = readXPosterCredentialsFromEnv();
+    if (!credentials) {
+      return {
+        text: "X DM is not configured. Set X_API_KEY / X_ACCESS_TOKEN.",
+        success: false,
+        values: { success: false, error: "X_NOT_CONFIGURED", channel },
+        data: { actionName: ACTION_NAME, channel },
+      };
+    }
+    try {
+      const result = await sendXDm({
+        credentials,
+        participantId: target,
+        text: body,
+      });
+      return {
+        text: `Sent X DM to ${target}.`,
+        success: true,
+        values: {
+          success: result.ok,
+          channel,
+          target,
+          id: result.dmEventId ?? null,
+        },
+        data: { actionName: ACTION_NAME, channel, target, message: body, result },
+      };
+    } catch (error) {
+      return buildDispatchFailure({
+        channel,
+        target,
+        body,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  },
 };
 
 export async function dispatchCrossChannelSend(
@@ -894,7 +930,7 @@ export const crossChannelSendAction: Action & {
       undefined;
     const confirmed =
       coerceOptionalBool(params.confirmed) ??
-      (planner?.confirmed ?? undefined) ??
+      planner?.confirmed ??
       false;
 
     if (planner?.shouldAct === false && planner.response) {

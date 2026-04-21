@@ -5,6 +5,10 @@ import type {
   LifeOpsSchedulingProposal,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_NEGOTIATION_STATES } from "@elizaos/shared/contracts/lifeops";
+import {
+  inspectLifeOpsSchedule,
+  type LifeOpsScheduleInspection,
+} from "./schedule-insight.js";
 import { fail } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
@@ -49,6 +53,19 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsSchedulingServiceMixin extends Base {
+    async inspectSchedule(args: {
+      timezone: string;
+      now?: Date;
+    }): Promise<LifeOpsScheduleInspection> {
+      return await inspectLifeOpsSchedule({
+        runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone: args.timezone,
+        now: args.now,
+      });
+    }
+
     /**
      * Resolve the counterparty's channel + target from the relationship
      * linked to the negotiation. Returns null if no linked relationship, and

@@ -146,7 +146,6 @@ import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
-import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
 
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,

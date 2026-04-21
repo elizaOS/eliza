@@ -163,33 +163,6 @@ interface PluginDriftDiagnosticsReport {
   plugins: PluginDriftDiagnostic[];
 }
 
-type PluginDriftFlag =
-  | "entries_vs_compat"
-  | "entries_vs_allowlist"
-  | "inactive_but_enabled"
-  | "active_but_disabled";
-
-interface PluginDriftDiagnostic {
-  pluginId: string;
-  npmName: string | null;
-  category: PluginCategory;
-  enabled_ui: boolean;
-  enabled_allowlist: boolean | null;
-  is_active: boolean;
-  drift_flags: PluginDriftFlag[];
-}
-
-interface PluginDriftDiagnosticsSummary {
-  total: number;
-  withDrift: number;
-  byFlag: Record<PluginDriftFlag, number>;
-}
-
-interface PluginDriftDiagnosticsReport {
-  summary: PluginDriftDiagnosticsSummary;
-  plugins: PluginDriftDiagnostic[];
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

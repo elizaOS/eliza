@@ -123,9 +123,6 @@ export interface AppConfig {
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
 
-  /** Web shell metadata (index.html + manifest) */
-  web?: AppWebConfig;
-
   /**
    * Default ELIZA_NAMESPACE value.
    * Determines the state directory name (~/.{namespace}/) and config filename.

@@ -29,6 +29,8 @@ type WorkbenchTodoResponse = {
 // Helpers (only used by workbench/todos routes)
 // ---------------------------------------------------------------------------
 
+const WORKBENCH_TODO_TAG = "workbench:todo";
+
 function asCompatObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;

@@ -330,6 +330,9 @@ async function readPendingCallDraft(
   roomId: string,
   actionName: "CALL_USER" | "CALL_EXTERNAL",
 ): Promise<PendingCallDraft | null> {
+  if (typeof runtime.getCache !== "function") {
+    return null;
+  }
   return (
     (await runtime.getCache<PendingCallDraft>(
       getPendingCallCacheKey(roomId, actionName),
@@ -342,6 +345,9 @@ async function writePendingCallDraft(
   roomId: string,
   draft: PendingCallDraft,
 ): Promise<void> {
+  if (typeof runtime.setCache !== "function") {
+    return;
+  }
   await runtime.setCache(
     getPendingCallCacheKey(roomId, draft.actionName),
     draft,
@@ -353,6 +359,9 @@ async function clearPendingCallDraft(
   roomId: string,
   actionName: "CALL_USER" | "CALL_EXTERNAL",
 ): Promise<void> {
+  if (typeof runtime.deleteCache !== "function") {
+    return;
+  }
   await runtime.deleteCache(getPendingCallCacheKey(roomId, actionName));
 }
 
@@ -581,6 +590,20 @@ export const callUserAction: Action & {
       ((options as HandlerOptions | undefined)?.parameters as
         | CallUserParameters
         | undefined) ?? {};
+    const userText =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    if (params.confirmed !== true && looksLikeStandingCallPolicy(userText)) {
+      return {
+        text: buildCallUserPolicyAcknowledgement(userText),
+        success: true,
+        values: { success: true, policyRecorded: true },
+        data: {
+          actionName: "CALL_USER",
+          policyRecorded: true,
+          channel: "phone_call",
+        },
+      };
+    }
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,
@@ -778,6 +801,7 @@ export const callExternalAction: Action & {
         typeof message.content?.text === "string" ? message.content.text : "",
     });
     const to = resolvedRecipient.to?.trim();
+    const contact: string | undefined = undefined;
     if (!to) {
       return {
         text: "Who should I call, or which saved contact/phone number should I use?",

@@ -15,7 +15,6 @@ import {
 } from "@elizaos/shared";
 import type {
   OnboardingConnectorConfig as ConnectorConfig,
-  OnboardingData,
   OnboardingOptions,
   SubscriptionStatusResponse,
 } from "@elizaos/shared/contracts/onboarding";
@@ -223,7 +222,7 @@ declare module "./client-base" {
     }>;
     pair(code: string): Promise<{ token: string }>;
     getOnboardingOptions(): Promise<OnboardingOptions>;
-    submitOnboarding(data: OnboardingData): Promise<void>;
+    submitOnboarding(data: Record<string, unknown>): Promise<void>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
     exchangeAnthropicCode(code: string): Promise<{
       success: boolean;

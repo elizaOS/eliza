@@ -81,6 +81,14 @@ export interface LifeOpsBrowserService {
     sessionId: string,
     request: CompleteLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
+  autoPairBrowserCompanion(
+    request: CreateLifeOpsBrowserCompanionAutoPairRequest,
+    apiBaseUrl: string,
+  ): Promise<LifeOpsBrowserCompanionAutoPairResponse>;
+  updateBrowserSessionProgress(
+    sessionId: string,
+    request: UpdateLifeOpsBrowserSessionProgressRequest,
+  ): Promise<LifeOpsBrowserSession>;
 }
 
 // ---------------------------------------------------------------------------
