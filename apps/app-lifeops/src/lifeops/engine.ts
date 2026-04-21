@@ -108,16 +108,9 @@ function buildOccurrenceKey(
   return `${prefix}:${localDateKey}:${suffix}`;
 }
 
-function resolveCadenceWindows(
-  cadence: Extract<LifeOpsCadence, { windows: string[] }>,
-  windowMap: ReadonlyMap<string, LifeOpsTimeWindowDefinition>,
-): LifeOpsTimeWindowDefinition[] {
-  const windowNames = Array.isArray(cadence.windows) ? cadence.windows : [];
-  return windowNames
-    .map((windowName) => windowMap.get(windowName))
-    .filter((window): window is LifeOpsTimeWindowDefinition =>
-      Boolean(window),
-    );
+function getCadenceWindows(cadence: LifeOpsCadence): string[] {
+  const windows = (cadence as { windows?: string[] }).windows;
+  return Array.isArray(windows) ? windows : [];
 }
 
 function buildWindowOccurrence(
@@ -473,7 +466,9 @@ export function materializeDefinitionOccurrences(
       if (!definition.cadence.weekdays.includes(weekday)) {
         continue;
       }
-      for (const window of resolveCadenceWindows(definition.cadence, windowMap)) {
+      for (const windowName of getCadenceWindows(definition.cadence)) {
+        const window = windowMap.get(windowName);
+        if (!window) continue;
         const scheduledLocal = {
           ...localDate,
           hour: Math.floor((window.startMinute % (24 * 60)) / 60),
@@ -540,7 +535,11 @@ export function materializeDefinitionOccurrences(
     }
 
     if (definition.cadence.kind === "interval") {
-      const windows = resolveCadenceWindows(definition.cadence, windowMap)
+      const windows = getCadenceWindows(definition.cadence)
+        .map((windowName) => windowMap.get(windowName))
+        .filter((window): window is LifeOpsTimeWindowDefinition =>
+          Boolean(window),
+        )
         .sort((left, right) => left.startMinute - right.startMinute);
       let occurrencesGenerated = 0;
       for (const window of windows) {
@@ -614,7 +613,9 @@ export function materializeDefinitionOccurrences(
       continue;
     }
 
-    for (const window of resolveCadenceWindows(definition.cadence, windowMap)) {
+    for (const windowName of getCadenceWindows(definition.cadence)) {
+      const window = windowMap.get(windowName);
+      if (!window) continue;
       const scheduledLocal = {
         ...localDate,
         hour: Math.floor((window.startMinute % (24 * 60)) / 60),

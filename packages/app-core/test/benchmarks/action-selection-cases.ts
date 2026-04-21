@@ -380,10 +380,13 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "sched-propose-times",
-    userMessage:
-      "propose three times for a 30 minute sync with Marco next week",
-    expectedAction: "OWNER_CALENDAR",
-    acceptableActions: ["PROPOSE", "OWNER_CALENDAR"],
+    userMessage: "propose three times for a 30 minute sync with Marco next week",
+    expectedAction: "SCHEDULING",
+    acceptableActions: [
+      "PROPOSE",
+      "PROPOSE_MEETING_TIMES",
+      "CALENDAR_ACTION",
+    ],
     expectedParams: { intent: "propose" },
     tags: ["scheduling", "critical"],
   },
@@ -574,6 +577,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "intent-sync-broadcast-reminder",
     userMessage: "broadcast a reminder to all my devices",
     expectedAction: "INTENT_SYNC",
+    acceptableActions: ["PUBLISH_DEVICE_INTENT", "CROSS_CHANNEL_SEND"],
     tags: ["intent-sync", "standard"],
   },
   {

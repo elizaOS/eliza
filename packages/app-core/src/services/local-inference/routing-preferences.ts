@@ -1,11 +1,11 @@
 /**
- * Per-model-type user overrides: preferred provider + routing policy.
+ * Per-model-type user override: "for TEXT_LARGE, prefer this provider".
  *
  * Persisted to `$STATE_DIR/local-inference/routing.json` and read by the
- * router-handler at dispatch time. When a slot has no override the
- * router falls back to the runtime's native priority order — i.e. this
- * file is layered over existing registration priority rather than
- * replacing it.
+ * router-handler (see `router-handler.ts`) to pick a provider at dispatch
+ * time. When a slot has no override, the runtime's native priority order
+ * wins — i.e. this is layered over the existing registration priority
+ * rather than replacing it.
  */
 
 import fs from "node:fs/promises";
@@ -28,8 +28,8 @@ export interface RoutingPreferences {
   preferredProvider: Partial<Record<AgentModelSlot, string>>;
   /**
    * Per-slot policy. "manual" honours `preferredProvider` verbatim;
-   * anything else lets the router compute a winner from the policy rule
-   * set. Absent = "manual" (matches legacy behaviour).
+   * everything else lets the router-handler compute a winner from the
+   * policy rule set. Absent = "manual" (matches the legacy behaviour).
    */
   policy: Partial<Record<AgentModelSlot, RoutingPolicy>>;
 }

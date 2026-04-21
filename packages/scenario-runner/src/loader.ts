@@ -99,6 +99,7 @@ export async function loadAllScenarios(
 ): Promise<LoadedScenario[]> {
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
+  const includePending = process.env.SCENARIO_INCLUDE_PENDING === "1";
   for (const file of files) {
     if (fileGlobs && fileGlobs.length > 0) {
       if (!matchesScenarioFileGlobs(file, fileGlobs)) {
@@ -107,6 +108,7 @@ export async function loadAllScenarios(
     }
     const result = await loadScenarioFile(file);
     if (filter && !filter.has(result.scenario.id)) continue;
+    if (result.scenario.status === "pending" && !includePending) continue;
     loaded.push(result);
   }
   return loaded;

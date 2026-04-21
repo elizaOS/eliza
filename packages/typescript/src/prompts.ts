@@ -451,6 +451,7 @@ rules[21]:
 - if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
 - use IGNORE or STOP only by themselves
 - include providers only when needed
+- use only action and provider names that appear in the listed runtime surface; never invent new action names, provider names, benchmark ids, or paraphrased tool labels
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
 - when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
@@ -514,6 +515,8 @@ In each step, decide:
 3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
 
 You can select **multiple providers** and at most **one action** per step.
+
+Use only action and provider names that appear in the listed runtime surface. Never invent new action names, provider names, benchmark ids, or paraphrased tool labels.
 
 If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
 

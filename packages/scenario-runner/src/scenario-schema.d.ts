@@ -283,6 +283,7 @@ declare module "@elizaos/scenario-schema" {
     id: string;
     title: string;
     domain: string;
+    status?: "active" | "pending";
     turns: ScenarioTurn[];
     seed?: ScenarioSeedStep[];
     finalChecks?: ScenarioFinalCheck[];

@@ -181,7 +181,7 @@ export const requestFieldFillAction: Action = {
   name: "REQUEST_FIELD_FILL",
   similes: ["AUTOFILL_FIELD", "AUTOFILL_REQUEST", "FILL_PASSWORD_FIELD"],
   description:
-    "Ask the LifeOps browser extension to autofill a field via the installed password manager (1Password or ProtonPass). Refuses on domains not in the user's autofill whitelist. Credentials never pass through the agent — the extension resolves them locally.",
+    "Ask the LifeOps browser extension to autofill one specific field via the installed password manager (1Password or ProtonPass). Use this only when the current tab URL and exact field purpose are already known. Refuses on domains not in the user's autofill whitelist. Credentials never pass through the agent — the extension resolves them locally. Do not use this for whole portal-upload or broader browser workflows; those belong to LIFEOPS_COMPUTER_USE.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

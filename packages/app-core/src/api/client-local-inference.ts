@@ -37,7 +37,6 @@ export type {
   ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
-  ProviderStatus,
   PublicRegistration,
   RoutingPolicy,
   RoutingPreferences,
@@ -85,7 +84,6 @@ declare module "./client-base" {
       slot: AgentModelSlot,
       policy: RoutingPolicy | null,
     ): Promise<{ preferences: RoutingPreferences }>;
-    getLocalInferenceProviders(): Promise<{ providers: ProviderStatus[] }>;
   }
 }
 
@@ -240,10 +238,4 @@ ElizaClient.prototype.setLocalInferencePolicy = async function (
     method: "POST",
     body: JSON.stringify({ slot, policy }),
   });
-};
-
-ElizaClient.prototype.getLocalInferenceProviders = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/local-inference/providers");
 };

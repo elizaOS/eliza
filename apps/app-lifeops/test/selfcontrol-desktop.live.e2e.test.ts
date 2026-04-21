@@ -172,6 +172,33 @@ async function waitForHostsBlock(
   );
 }
 
+async function removeTempRoot(tempRoot: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await rm(tempRoot, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String((error as NodeJS.ErrnoException).code ?? "")
+          : "";
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) {
+        throw error;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out removing temp directory: ${tempRoot}`);
+}
+
 async function startDesktopStack(
   mode: DesktopMode,
 ): Promise<StartedDesktopStack> {
@@ -270,7 +297,7 @@ async function startDesktopStack(
       child.kill("SIGKILL");
       await waitForChildExit(child, 5_000);
     }
-    await rm(tempRoot, { recursive: true, force: true });
+    await removeTempRoot(tempRoot);
     throw new Error(
       `Desktop stack failed to start (${mode}): ${error instanceof Error ? error.message : String(error)}\n${logTail}`,
     );
@@ -291,7 +318,7 @@ async function startDesktopStack(
         }
       }
 
-      await rm(tempRoot, { recursive: true, force: true });
+      await removeTempRoot(tempRoot);
     },
   };
 }

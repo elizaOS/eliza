@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { broadcastIntent } from "../lifeops/intent-sync.js";
 
 /**
@@ -32,98 +32,7 @@ type PublishDeviceIntentParameters = {
   userId?: string;
 };
 
-function coercePayload(
-  payload: unknown,
-): Record<string, unknown> {
-  return payload && typeof payload === "object"
-    ? (payload as Record<string, unknown>)
-    : {};
-}
-
-function readPayloadString(
-  payload: Record<string, unknown>,
-  keys: readonly string[],
-): string | null {
-  for (const key of keys) {
-    const value = payload[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return null;
-}
-
-function derivePayloadFromMessage(
-  message: Memory,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
-  if (Object.keys(payload).length > 0) {
-    return payload;
-  }
-
-  const text =
-    typeof message.content?.text === "string" ? message.content.text.trim() : "";
-  if (!text) {
-    return payload;
-  }
-
-  const firstSentence = text.split(/(?<=[.!?])\s+/u)[0]?.trim() ?? text;
-  const title =
-    firstSentence.length > 96
-      ? `${firstSentence.slice(0, 93).trimEnd()}...`
-      : firstSentence;
-
-  return {
-    title,
-    body: text,
-    text,
-  };
-}
-
-function buildIntentResultText(
-  prefix: string,
-  kind: string,
-  payload: Record<string, unknown>,
-): string {
-  const body =
-    readPayloadString(payload, ["body", "message", "text", "description"]) ??
-    readPayloadString(payload, ["title", "label", "subject"]);
-  if (body) {
-    return `${prefix} ${kind} intent: ${body}`;
-  }
-  return prefix === "Queued"
-    ? `Queued ${kind} intent locally for device delivery.`
-    : `Published ${kind} intent to device bus.`;
-}
-
-function mapLocalIntentKind(kind: string): "attention_request" | "routine_reminder" {
-  return kind === "block" ? "attention_request" : "routine_reminder";
-}
-
-async function publishLocalFallbackIntent(
-  runtime: IAgentRuntime,
-  kind: string,
-  payload: Record<string, unknown>,
-) {
-  const title =
-    readPayloadString(payload, ["title", "label", "subject"]) ??
-    `Device ${kind}`;
-  const body =
-    readPayloadString(payload, ["body", "message", "text", "description"]) ??
-    `Published ${kind} intent for local delivery.`;
-
-  return await broadcastIntent(runtime, {
-    kind: mapLocalIntentKind(kind),
-    title,
-    body,
-    priority: kind === "alarm" || kind === "block" ? "high" : "medium",
-    metadata: {
-      sourceAction: "PUBLISH_DEVICE_INTENT",
-      deviceBusKind: kind,
-      payload,
-    },
-  });
-}
+type DeviceIntentPayload = Record<string, unknown>;
 
 function readDeviceBusConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -153,6 +62,119 @@ function normalizeKind(kind: string | undefined): KnownKind | string | null {
   return lower;
 }
 
+function coercePayload(
+  payload: unknown,
+): DeviceIntentPayload {
+  return payload && typeof payload === "object"
+    ? (payload as DeviceIntentPayload)
+    : {};
+}
+
+function readPayloadString(
+  payload: DeviceIntentPayload,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function readPayloadNumber(
+  payload: DeviceIntentPayload,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function mapLocalIntentKind(kind: string): "routine_reminder" | "attention_request" {
+  if (kind === "block") {
+    return "attention_request";
+  }
+  return "routine_reminder";
+}
+
+async function publishLocalFallbackIntent(args: {
+  runtime: IAgentRuntime;
+  kind: string;
+  payload: DeviceIntentPayload;
+  userId?: string;
+}): Promise<ActionResult> {
+  const title =
+    readPayloadString(args.payload, ["title", "label", "name", "subject"]) ??
+    (args.kind === "alarm"
+      ? "Device alarm"
+      : args.kind === "block"
+        ? "Device warning"
+        : "Device reminder");
+  const body =
+    readPayloadString(args.payload, [
+      "body",
+      "message",
+      "text",
+      "description",
+      "summary",
+    ]) ?? title;
+  const actionUrl =
+    readPayloadString(args.payload, ["actionUrl", "url", "deepLink"]) ?? undefined;
+  const expiresInMinutes = readPayloadNumber(args.payload, [
+    "expiresInMinutes",
+    "durationMinutes",
+  ]);
+
+  const intent = await broadcastIntent(args.runtime, {
+    kind: mapLocalIntentKind(args.kind),
+    target: "all",
+    title,
+    body,
+    actionUrl,
+    priority: "high",
+    expiresInMinutes:
+      expiresInMinutes !== null && expiresInMinutes > 0
+        ? Math.round(expiresInMinutes)
+        : undefined,
+    metadata: {
+      transport: "local-fallback",
+      originalKind: args.kind,
+      payload: args.payload,
+      userId: args.userId ?? null,
+    },
+  });
+
+  return {
+    text: `Queued ${args.kind} intent locally.`,
+    success: true,
+    values: {
+      success: true,
+      kind: args.kind,
+      intentId: intent.id,
+      transport: "local-fallback",
+    },
+    data: {
+      actionName: "PUBLISH_DEVICE_INTENT",
+      kind: args.kind,
+      intentId: intent.id,
+      transport: "local-fallback",
+      payload: args.payload,
+    },
+  };
+}
+
 export const publishDeviceIntentAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -161,24 +183,37 @@ export const publishDeviceIntentAction: Action & {
     "BROADCAST_DEVICE_INTENT",
     "FIRE_DEVICE_INTENT",
     "NOTIFY_ALL_DEVICES",
+    "BROADCAST_REMINDER",
+    "ROUTINE_REMINDER_TO_PHONE",
+    "MOBILE_REMINDER",
     "SIGNATURE_REMINDER",
     "MEETING_REMINDER_LADDER",
     "DEVICE_WARNING",
+    "CANCELLATION_FEE_WARNING",
+    "UPDATED_ID_COPY_REQUEST",
+    "WORKFLOW_BLOCKER_NUDGE",
   ],
   tags: [
     "always-include",
     "device reminder",
+    "broadcast reminder",
+    "mobile reminder",
+    "routine reminder",
+    "notify my phone",
     "meeting reminder ladder",
     "signature reminder",
     "cancellation fee warning",
     "workflow escalation",
     "updated id copy",
-    "important meetings",
-    "standing warning policy",
-    "cross-device escalation",
+    "cancellation fee warning",
+    "expired id reminder",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, updated-ID interventions, cancellation-fee warnings, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn, even when the exact reservation, workflow, or event still needs a follow-up question. Do not use this for scheduling preferences like protected sleep windows or no-call meeting hours; those belong to OWNER_CALENDAR.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. " +
+    "Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, urgent device-level escalation, and requests like " +
+    "'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes'. " +
+    "Use it for standing warning or escalation policies like cancellation-fee warnings, expired-ID nudges, document-signing reminders, or asking for an updated copy when a workflow is blocked. " +
+    "Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -205,36 +240,20 @@ export const publishDeviceIntentAction: Action & {
 
     const kind = normalizeKind(params.kind) ?? "reminder";
 
-    const payload = derivePayloadFromMessage(
-      message,
-      coercePayload(params.payload),
-    );
+    const payload = coercePayload(params.payload);
 
     const config = readDeviceBusConfig(runtime);
     if (!config) {
-      logger.warn(
+      logger.info(
         { action: "PUBLISH_DEVICE_INTENT", kind },
         "[PUBLISH_DEVICE_INTENT] device bus not configured; falling back to local intent store",
       );
-      const localIntent = await publishLocalFallbackIntent(runtime, kind, payload);
-      return {
-        text: buildIntentResultText("Queued", kind, payload),
-        success: true,
-        values: {
-          success: true,
-          reason: "device-bus-local-fallback",
-          kind,
-          intentId: localIntent.id,
-        },
-        data: {
-          actionName: "PUBLISH_DEVICE_INTENT",
-          reason: "device-bus-local-fallback",
-          kind,
-          intentId: localIntent.id,
-          transport: "local-fallback",
-          payload,
-        },
-      };
+      return publishLocalFallbackIntent({
+        runtime,
+        kind,
+        payload,
+        userId: typeof params.userId === "string" ? params.userId : undefined,
+      });
     }
 
     const body = {

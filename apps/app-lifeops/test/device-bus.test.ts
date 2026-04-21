@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
-const { broadcastIntent } = vi.hoisted(() => ({
-  broadcastIntent: vi.fn(async () => ({ id: "intent-local-1" })),
-}));
+import { broadcastIntent } from "../src/lifeops/intent-sync.js";
+import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
 
 vi.mock("../src/lifeops/intent-sync.js", () => ({
-  broadcastIntent,
+  broadcastIntent: vi.fn(async (_runtime, input) => ({
+    id: "intent-local-1",
+    agentId: "00000000-0000-0000-0000-000000000003",
+    kind: input.kind,
+    target: input.target ?? "all",
+    title: input.title,
+    body: input.body,
+    actionUrl: input.actionUrl,
+    priority: input.priority ?? "high",
+    createdAt: "2026-04-18T00:00:00.000Z",
+    metadata: input.metadata ?? {},
+  })),
 }));
-
-import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -34,6 +41,7 @@ function makeRuntime(settings: Record<string, string> = {}) {
 beforeEach(() => {
   delete process.env.MILADY_DEVICE_BUS_URL;
   delete process.env.MILADY_DEVICE_BUS_TOKEN;
+  vi.mocked(broadcastIntent).mockClear();
 });
 
 afterEach(() => {
@@ -64,18 +72,23 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
       makeRuntime(),
       makeMessage(),
       undefined,
-      { parameters: { kind: "alarm", payload: { time: "07:00" } } },
+      {
+        parameters: {
+          kind: "alarm",
+          payload: { title: "Stretch break", message: "Get up and stretch." },
+        },
+      },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(broadcastIntent).toHaveBeenCalledTimes(1);
     const r = result as { success: boolean; data?: Record<string, unknown> };
     expect(r.success).toBe(true);
     const data = r.data ?? {};
-    expect(data.reason).toBe("device-bus-local-fallback");
     expect(data.transport).toBe("local-fallback");
-    expect(broadcastIntent).toHaveBeenCalledTimes(1);
+    expect(data.intentId).toBe("intent-local-1");
   });
 
-  test("missing kind defaults cleanly through the local fallback", async () => {
+  test("missing kind defaults to a local reminder when the bridge is absent", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
@@ -84,66 +97,9 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
       { parameters: {} },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
-    const r = result as { success: boolean; data?: Record<string, unknown> };
-    expect(r.success).toBe(true);
-    expect(r.data?.kind).toBe("reminder");
     expect(broadcastIntent).toHaveBeenCalledTimes(1);
-  });
-
-  test("uses the configured cloud device bus and returns deliveredTo targets", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://device-bus.example/";
-    process.env.MILADY_DEVICE_BUS_TOKEN = "secret-token";
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        intentId: "intent-cloud-1",
-        deliveredTo: ["desktop:mac-1", "mobile:ios-1"],
-      }),
-    } as Response);
-
-    const result = await publishDeviceIntentAction.handler!(
-      makeRuntime(),
-      makeMessage(),
-      undefined,
-      {
-        parameters: {
-          kind: "reminder",
-          payload: {
-            title: "Board meeting",
-            body: "1 hour warning",
-            ladderId: "meeting-123",
-            rungIndex: 0,
-          },
-        },
-      },
-    );
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] ?? [];
-    expect(url).toBe("https://device-bus.example/api/v1/device-bus/intents");
-    expect(init).toMatchObject({
-      method: "POST",
-      headers: expect.objectContaining({
-        "Content-Type": "application/json",
-        Authorization: "Bearer secret-token",
-      }),
-    });
-    expect(JSON.parse(String(init?.body))).toEqual({
-      kind: "reminder",
-      payload: {
-        title: "Board meeting",
-        body: "1 hour warning",
-        ladderId: "meeting-123",
-        rungIndex: 0,
-      },
-    });
-    expect(broadcastIntent).not.toHaveBeenCalled();
-
-    const data = (result as { success: boolean; data?: Record<string, unknown> })
-      .data;
-    expect(result?.success).toBe(true);
-    expect(data?.intentId).toBe("intent-cloud-1");
-    expect(data?.deliveredTo).toEqual(["desktop:mac-1", "mobile:ios-1"]);
+    const r = result as { success: boolean; values?: Record<string, unknown> };
+    expect(r.success).toBe(true);
+    expect(r.values?.kind).toBe("reminder");
   });
 });

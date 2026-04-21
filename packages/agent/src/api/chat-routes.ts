@@ -135,6 +135,166 @@ function normalizeActionCallbackText(text: string): string {
   return text.trim();
 }
 
+function getLatestVisibleResponseMessageText(
+  responseMessages:
+    | Array<{
+        id?: string;
+        content?: Content;
+      }>
+    | undefined,
+): string {
+  if (!Array.isArray(responseMessages) || responseMessages.length === 0) {
+    return "";
+  }
+
+  for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
+    const content = responseMessages[index]?.content;
+    const text =
+      typeof extractCompatTextContent(content) === "string"
+        ? extractCompatTextContent(content).trim()
+        : "";
+    if (!text || isNoResponsePlaceholder(text)) {
+      continue;
+    }
+    return text;
+  }
+
+  return "";
+}
+
+const EXACT_GROUNDED_VALUE_REQUEST =
+  /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
+const KNOWLEDGE_VALUE_CAPTURE =
+  /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
+const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
+const UUID_IDENTIFIER_CAPTURE =
+  /\b[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\b/gi;
+
+function uniqueMatches(matches: Iterable<string>): string[] {
+  return Array.from(
+    new Set(Array.from(matches).map((value) => value.trim())),
+  ).filter((value) => value.length > 0);
+}
+
+function collectRegexMatches(
+  text: string,
+  pattern: RegExp,
+  groupIndex?: number,
+): string[] {
+  const regex = new RegExp(pattern.source, pattern.flags);
+  return Array.from(text.matchAll(regex), (match) =>
+    String(groupIndex === undefined ? match[0] : match[groupIndex] ?? ""),
+  );
+}
+
+function extractExactGroundedValueFromText(
+  messageText: string,
+  knowledgeText: string,
+): string | null {
+  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
+    return null;
+  }
+
+  if (!knowledgeText) {
+    return null;
+  }
+
+  const capturedKnowledgeValues = uniqueMatches(
+    collectRegexMatches(knowledgeText, KNOWLEDGE_VALUE_CAPTURE, 1),
+  );
+  if (capturedKnowledgeValues.length === 1) {
+    return capturedKnowledgeValues[0];
+  }
+
+  const uppercaseCandidates = uniqueMatches(
+    collectRegexMatches(knowledgeText, UPPERCASE_IDENTIFIER_CAPTURE),
+  );
+  if (uppercaseCandidates.length === 1) {
+    return uppercaseCandidates[0];
+  }
+
+  const uuidCandidates = uniqueMatches(
+    collectRegexMatches(knowledgeText, UUID_IDENTIFIER_CAPTURE),
+  );
+  if (uuidCandidates.length === 1) {
+    return uuidCandidates[0];
+  }
+
+  return null;
+}
+
+async function resolveExactKnowledgeValueForChat(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): Promise<string | null> {
+  const messageText =
+    typeof extractCompatTextContent(message.content) === "string"
+      ? extractCompatTextContent(message.content).trim()
+      : "";
+  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
+    return null;
+  }
+
+  const knowledgeService = runtime.getService?.("knowledge") as
+    | {
+        getKnowledge?: (
+          message: ReturnType<typeof createMessageMemory>,
+        ) => Promise<
+          Array<{
+            content?: { text?: string };
+            metadata?: Record<string, unknown>;
+          }>
+        >;
+      }
+    | null
+    | undefined;
+  if (!knowledgeService || typeof knowledgeService.getKnowledge !== "function") {
+    return null;
+  }
+
+  try {
+    const matches = await knowledgeService.getKnowledge(message);
+    if (!Array.isArray(matches) || matches.length === 0) {
+      return null;
+    }
+
+    const uploadedMatches = matches.filter((match) => {
+      const metadata =
+        match?.metadata && typeof match.metadata === "object"
+          ? match.metadata
+          : null;
+      return metadata?.source === "upload";
+    });
+    const preferredMatches =
+      uploadedMatches.length > 0 ? uploadedMatches : matches;
+    const exactMatchCandidates = uniqueMatches(
+      preferredMatches
+        .map((match) =>
+          typeof match?.content?.text === "string"
+            ? extractExactGroundedValueFromText(
+                messageText,
+                match.content.text.trim(),
+              )
+            : null,
+        )
+        .filter((value): value is string => typeof value === "string"),
+    );
+    if (exactMatchCandidates.length === 1) {
+      return exactMatchCandidates[0];
+    }
+
+    const knowledgeText = preferredMatches
+      .map((match) =>
+        typeof match?.content?.text === "string" ? match.content.text.trim() : "",
+      )
+      .filter((text) => text.length > 0)
+      .join("\n\n");
+    return extractExactGroundedValueFromText(messageText, knowledgeText);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
@@ -1254,7 +1414,13 @@ export async function generateChatResponse(
       },
     );
 
-    const resultText = extractCompatTextContent(result?.responseContent);
+    const responseMessageText = getLatestVisibleResponseMessageText(
+      result?.responseMessages,
+    );
+    const resultText =
+      responseMessageText ||
+      extractCompatTextContent(result?.responseContent) ||
+      "";
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (!responseText && resultText) {
@@ -1299,8 +1465,12 @@ export async function generateChatResponse(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
+    const exactKnowledgeValue = await resolveExactKnowledgeValueForChat(
+      runtime,
+      message,
+    );
     const normalizedResponseText = trimWalletProgressPrefix(
-      responseText || resultText || "",
+      exactKnowledgeValue || responseText || resultText || "",
     );
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,

@@ -114,6 +114,48 @@ async function exportWallet(
   return exportData as WalletExportResponse;
 }
 
+async function postConversationMessageWithRetry(
+  port: number,
+  conversationId: string,
+  body: { text: string },
+  headers: Record<string, string>,
+  options?: { timeoutMs?: number },
+): Promise<{ status: number; data: Record<string, unknown> }> {
+  const deadline = Date.now() + 20_000;
+  let lastResult: { status: number; data: Record<string, unknown> } | null =
+    null;
+
+  do {
+    const result = (await postConversationMessage(
+      port,
+      conversationId,
+      body,
+      headers,
+      options,
+    )) as {
+      status: number;
+      data: Record<string, unknown>;
+    };
+    lastResult = result;
+
+    const text = String(result.data?.text ?? result.data?.response ?? "").trim();
+    if (result.status === 200 && text.length > 0) {
+      return result;
+    }
+
+    if (Date.now() >= deadline) {
+      break;
+    }
+    await sleep(1_000);
+  } while (Date.now() < deadline);
+
+  if (!lastResult) {
+    throw new Error("Authenticated chat did not return a response payload");
+  }
+
+  return lastResult;
+}
+
 async function ensureWalletKeys(): Promise<void> {
   if (!process.env.SOLANA_PRIVATE_KEY && process.env.SOLANA_API_KEY) {
     process.env.SOLANA_PRIVATE_KEY = process.env.SOLANA_API_KEY;
@@ -346,7 +388,7 @@ describeIf(CAN_RUN)(
       );
       expect(noAuth).toBe(401);
 
-      const { status, data } = await postConversationMessage(
+      const { status, data } = await postConversationMessageWithRetry(
         server?.port ?? 0,
         conversationId,
         { text: "Say auth-ok and nothing else." },
@@ -455,7 +497,7 @@ describeIf(CAN_RUN)("Live: Token header variants with LLM", () => {
     );
     expect(noAuth).toBe(401);
 
-    const { status, data } = await postConversationMessage(
+    const { status, data } = await postConversationMessageWithRetry(
       server?.port ?? 0,
       conversationId,
       { text: "Say hello" },

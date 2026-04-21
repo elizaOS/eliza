@@ -1,6 +1,7 @@
 import type http from "node:http";
 import type { ElizaConfig } from "../config/config.js";
 import type { ConnectorConfig } from "../config/types.eliza.js";
+import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,57 @@ export interface ConnectorRouteContext {
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
 }
 
+function getConfiguredConnectorsFromEnv(): Record<string, { enabled: true; configuredViaEnv: true }> {
+  const configured: Record<
+    string,
+    { enabled: true; configuredViaEnv: true }
+  > = {};
+
+  for (const [connectorName, envMap] of Object.entries(CONNECTOR_ENV_MAP)) {
+    const envKeys = new Set(Object.values(envMap));
+    if (connectorName === "discord") {
+      envKeys.add("DISCORD_BOT_TOKEN");
+    }
+
+    const hasAnyEnvValue = [...envKeys].some((envKey) => {
+      const value = process.env[envKey];
+      return typeof value === "string" && value.trim().length > 0;
+    });
+
+    if (hasAnyEnvValue) {
+      configured[connectorName] = {
+        enabled: true,
+        configuredViaEnv: true,
+      };
+    }
+  }
+
+  return configured;
+}
+
+function listVisibleConnectors(config: ElizaConfig): Record<string, unknown> {
+  const rawConnectors =
+    config.connectors ??
+    ((config as Record<string, unknown>).channels as Record<string, unknown> | undefined) ??
+    {};
+  const visibleConnectors =
+    rawConnectors &&
+    typeof rawConnectors === "object" &&
+    !Array.isArray(rawConnectors)
+      ? { ...rawConnectors }
+      : {};
+
+  for (const [connectorName, summary] of Object.entries(
+    getConfiguredConnectorsFromEnv(),
+  )) {
+    if (!(connectorName in visibleConnectors)) {
+      visibleConnectors[connectorName] = summary;
+    }
+  }
+
+  return visibleConnectors;
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -54,12 +106,8 @@ export async function handleConnectorRoutes(
 
   // ── GET /api/connectors ──────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/connectors") {
-    const connectors =
-      state.config.connectors ??
-      (state.config as Record<string, unknown>).channels ??
-      {};
     json(res, {
-      connectors: redactConfigSecrets(connectors as Record<string, unknown>),
+      connectors: redactConfigSecrets(listVisibleConnectors(state.config)),
     });
     return true;
   }

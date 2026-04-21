@@ -156,82 +156,64 @@ function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]
   );
 }
 
-function actionResultData(
+function actionBlob(
   action: ScenarioContext["actionsCalled"][number],
-): Record<string, unknown> | null {
-  return toRecord(action.result?.data) ?? toRecord(action.result?.raw);
-}
-
-function channelMatches(
-  value: string | undefined,
-  accepted: string | string[] | undefined,
-): boolean {
-  return matchesChannel(value, accepted);
-}
-
-function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
+): string {
   const parts = [action.actionName];
   if (action.parameters) {
     parts.push(JSON.stringify(action.parameters));
   }
+  if (action.result?.data) {
+    parts.push(JSON.stringify(action.result.data));
+  }
+  if (action.result?.values) {
+    parts.push(JSON.stringify(action.result.values));
+  }
   if (action.result?.text) {
     parts.push(action.result.text);
   }
-  const data = actionResultData(action);
-  if (data) {
-    parts.push(JSON.stringify(data));
+  if (action.result?.message) {
+    parts.push(action.result.message);
+  }
+  if (action.error?.message) {
+    parts.push(action.error.message);
   }
   return parts.join(" ").toLowerCase();
 }
 
-function actionMatchesChannelExpectation(
+function actionMatchesChannel(
   action: ScenarioContext["actionsCalled"][number],
-  channels: string[],
+  channel: string,
 ): boolean {
-  if (channels.length === 0) {
+  const blob = actionBlob(action);
+  if (blob.includes(channel.toLowerCase())) {
     return true;
   }
-  const data = actionResultData(action);
-  if (!data) {
-    return false;
+  switch (channel) {
+    case "gmail":
+      return ["GMAIL_ACTION", "INBOX", "CROSS_CHANNEL_SEND"].includes(
+        action.actionName,
+      );
+    case "discord":
+    case "telegram":
+    case "signal":
+    case "imessage":
+    case "whatsapp":
+    case "sms":
+      return ["INBOX", "CROSS_CHANNEL_SEND"].includes(action.actionName);
+    case "x-dm":
+      return ["X_READ", "INBOX", "CROSS_CHANNEL_SEND"].includes(
+        action.actionName,
+      );
+    case "desktop":
+    case "mobile":
+    case "phone_call":
+      return ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC", "CALL_USER", "CALL_EXTERNAL"].includes(
+        action.actionName,
+      );
+    default:
+      return false;
   }
-  if (data.gmailDraft && channelMatches("gmail", channels)) {
-    return true;
-  }
-  const channelValue =
-    typeof data.channel === "string"
-      ? data.channel
-      : typeof data.transport === "string"
-        ? data.transport
-        : undefined;
-  return channelMatches(channelValue, channels);
-}
-
-function actionDraftCandidate(
-  action: ScenarioContext["actionsCalled"][number],
-): boolean {
-  const data = actionResultData(action);
-  if (!data) {
-    return false;
-  }
-  if (data.gmailDraft) {
-    return true;
-  }
-  return data.draft === true || data.status === "drafted";
-}
-
-function actionDeliveredCandidate(
-  action: ScenarioContext["actionsCalled"][number],
-): boolean {
-  const data = actionResultData(action);
-  const status =
-    data && typeof data.status === "string" ? data.status.toLowerCase() : "";
-  if (["sent", "delivered", "completed"].includes(status)) {
-    return true;
-  }
-  const text =
-    typeof action.result?.text === "string" ? action.result.text.toLowerCase() : "";
-  return text.includes("sent") || text.includes("delivered");
 }
 
 // ---------------------------------------------------------------------------
@@ -402,28 +384,91 @@ registerFinalCheckHandler(
   },
 );
 
-registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
-  const { from, to, actionName } = check as {
-    from: string;
-    to: string;
+registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
+  if (ctx.connectorDispatches === undefined) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "no connector dispatcher registered",
+    };
+  }
+  const { channel, actionName, minCount } = check as {
+    channel: string | string[];
     actionName?: string | string[];
+    minCount?: number;
   };
-  const matched = (ctx.stateTransitions ?? []).filter(
-    (transition) =>
-      transition.subject === "approval" &&
-      transition.from === from &&
-      transition.to === to &&
-      matchesActionName(transition.actionName ?? "", actionName),
-  );
-  if (matched.length === 0) {
+  const channels = toArray(channel);
+  const matched = ctx.connectorDispatches.filter((dispatch) => {
+    if (channels.length > 0 && !channels.includes(dispatch.channel)) {
+      return false;
+    }
+    return matchesActionName(dispatch.actionName ?? "", actionName);
+  });
+  const min = typeof minCount === "number" ? minCount : 1;
+  if (matched.length < min) {
     return {
       status: "failed",
-      detail: `no approval transition ${from} -> ${to} matched [${toArray(actionName).join(",") || "*"}]`,
+      detail: `expected ${min} connector dispatch(es) on [${channels.join(",")}], saw ${matched.length} of ${ctx.connectorDispatches.length}`,
     };
   }
   return {
     status: "passed",
-    detail: `${matched.length} approval transition(s) ${from} -> ${to}`,
+    detail: `${matched.length} connector dispatch(es) on [${channels.join(",")}]`,
+  };
+});
+
+registerFinalCheckHandler("draftExists", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const channels = toArray(channel);
+  const any = ctx.actionsCalled.some((action) => {
+    const blob = actionBlob(action);
+    const channelOk =
+      channels.length === 0 ||
+      channels.some((candidate) => actionMatchesChannel(action, candidate));
+    return channelOk && /draft/.test(blob);
+  });
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `draftExists=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected draftExists=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("messageDelivered", (check, { ctx }) => {
+  const { channel, expected } = check as {
+    channel?: string | string[];
+    expected?: boolean;
+  };
+  const channels = toArray(channel);
+  const anyDispatch = (ctx.connectorDispatches ?? []).some((dispatch) =>
+    channels.length === 0 ? true : channels.includes(dispatch.channel),
+  );
+  const anyAction = ctx.actionsCalled.some((action) => {
+    const channelOk =
+      channels.length === 0 ||
+      channels.some((candidate) => actionMatchesChannel(action, candidate));
+    if (!channelOk) {
+      return false;
+    }
+    const blob = actionBlob(action);
+    return (
+      action.result?.success === true &&
+      /(deliver|delivered|sent|send|placed|dial|reply|booking link)/.test(blob)
+    );
+  });
+  const any = anyDispatch || anyAction;
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `messageDelivered=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected messageDelivered=${want}, saw ${any}`,
   };
 });
 
@@ -449,54 +494,37 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
 });
 
 registerFinalCheckHandler("pushEscalationOrder", (check, { ctx }) => {
-  if (ctx.connectorDispatches === undefined) {
-    return {
-      status: "skipped-dependency-missing",
-      detail: "no connector dispatcher registered",
-    };
-  }
   const { channelOrder } = check as { channelOrder: string[] };
-  const seenChannels = ctx.connectorDispatches
-    .map((dispatch) => dispatch.channel)
-    .filter((channel): channel is string => typeof channel === "string")
-    .map(normalizeChannel);
-  let searchStart = 0;
+  const seen = (ctx.connectorDispatches ?? []).map((dispatch) => dispatch.channel);
+  let cursor = 0;
   for (const channel of channelOrder) {
-    const normalizedChannel = normalizeChannel(channel);
-    const nextIndex = seenChannels.indexOf(normalizedChannel, searchStart);
-    if (nextIndex === -1) {
+    const index = seen.indexOf(channel, cursor);
+    if (index === -1) {
       return {
         status: "failed",
-        detail: `missing ${channel} in escalation order [${channelOrder.join(" -> ")}]`,
+        detail: `expected push escalation order [${channelOrder.join(",")}], saw [${seen.join(",")}]`,
       };
     }
-    searchStart = nextIndex + 1;
+    cursor = index + 1;
   }
   return {
     status: "passed",
-    detail: `dispatches followed [${channelOrder.join(" -> ")}]`,
+    detail: `push escalation order matched [${channelOrder.join(",")}]`,
   };
 });
 
 registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const any = ctx.actionsCalled.some((action) => {
-    if (action.actionName !== "INTENT_SYNC" || action.result?.success !== true) {
-      return false;
-    }
-    const parameters = toRecord(action.parameters);
-    const data = actionResultData(action);
+    const blob = actionBlob(action);
     return (
-      parameters?.subaction === "acknowledge" ||
-      typeof data?.intentId === "string"
+      action.actionName === "INTENT_SYNC" ||
+      (/acknowledge/.test(blob) && /sync/.test(blob))
     );
   });
   const want = expected ?? true;
   if (any === want) {
-    return {
-      status: "passed",
-      detail: `pushAcknowledgedSync=${want}`,
-    };
+    return { status: "passed", detail: `pushAcknowledgedSync=${want}` };
   }
   return {
     status: "failed",

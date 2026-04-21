@@ -37,6 +37,26 @@ interface CalendlyParameters {
   timezone?: string;
 }
 
+function parseLooseParameterString(raw: unknown): Partial<CalendlyParameters> {
+  if (typeof raw !== "string") {
+    return {};
+  }
+  const subactionMatch = raw.match(
+    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
+  );
+  const eventTypeUriMatch = raw.match(
+    /\beventTypeUri\s*[:=]\s*["']?(https?:\/\/[^"'\s>]+)["']?/i,
+  );
+  const startDateMatch = raw.match(/\bstartDate\s*[:=]\s*["']?(\d{4}-\d{2}-\d{2})["']?/i);
+  const endDateMatch = raw.match(/\bendDate\s*[:=]\s*["']?(\d{4}-\d{2}-\d{2})["']?/i);
+  return {
+    subaction: subactionMatch?.[1],
+    eventTypeUri: eventTypeUriMatch?.[1],
+    startDate: startDateMatch?.[1],
+    endDate: endDateMatch?.[1],
+  };
+}
+
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -55,6 +75,85 @@ function parseSubaction(value: unknown): CalendlySubaction | null {
     return s;
   }
   return null;
+}
+
+/**
+ * Infer a subaction when the LLM provided keywords but no explicit subaction
+ * field. The action planner often extracts params from natural language
+ * without picking a subaction ("check my Calendly availability for
+ * https://..." → should infer "availability" from "availability" + an
+ * eventTypeUri-like URL). Keep inference conservative: only promote to a
+ * subaction when the intent/message contains an unambiguous verb+object.
+ */
+function inferSubactionFromIntent(
+  intentText: string | undefined,
+  params: {
+    eventTypeUri?: string;
+    startDate?: string;
+    endDate?: string;
+  },
+): CalendlySubaction | null {
+  const haystack = (intentText ?? "").toLowerCase();
+  if (!haystack) {
+    if (params.eventTypeUri && (params.startDate || params.endDate)) {
+      return "availability";
+    }
+    return null;
+  }
+  if (
+    haystack.includes("event type") ||
+    haystack.includes("list types") ||
+    /\blist\b.*\bevent\b/.test(haystack)
+  ) {
+    return "list_event_types";
+  }
+  if (
+    haystack.includes("availab") ||
+    haystack.includes("free slot") ||
+    haystack.includes("open slot") ||
+    /\bwhat times\b/.test(haystack)
+  ) {
+    return "availability";
+  }
+  if (
+    haystack.includes("upcoming") ||
+    haystack.includes("scheduled") ||
+    /\bnext meeting\b/.test(haystack)
+  ) {
+    return "upcoming_events";
+  }
+  if (
+    haystack.includes("single-use") ||
+    haystack.includes("single use") ||
+    haystack.includes("booking link") ||
+    haystack.includes("one-time link")
+  ) {
+    return "single_use_link";
+  }
+  if (params.eventTypeUri && (params.startDate || params.endDate)) {
+    return "availability";
+  }
+  return null;
+}
+
+function extractEventTypeUri(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const match = text.match(/https?:\/\/api\.calendly\.com\/event_types\/[^\s"'>]+/i);
+  return match?.[0];
+}
+
+function extractDateRange(text: string | undefined): {
+  startDate?: string;
+  endDate?: string;
+} {
+  if (!text) {
+    return {};
+  }
+  const dates = Array.from(text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g), (match) => match[1]);
+  return {
+    startDate: dates[0],
+    endDate: dates[1],
+  };
 }
 
 function formatEventTypes(types: CalendlyEventType[]): string {
@@ -249,9 +348,32 @@ export const calendlyAction: Action = {
       );
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as CalendlyParameters;
-    const subaction = parseSubaction(params.subaction);
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const params = {
+      ...parseLooseParameterString(rawParameters),
+      ...((typeof rawParameters === "object" && rawParameters !== null
+        ? (rawParameters as CalendlyParameters)
+        : {}) ?? {}),
+    } satisfies CalendlyParameters;
+    const explicitSubaction = parseSubaction(params.subaction);
+    const intentText =
+      coerceString(params.intent) ??
+      coerceString(
+        (message?.content as { text?: unknown } | undefined)?.text,
+      );
+    const extractedDates = extractDateRange(intentText);
+    const eventTypeUri =
+      coerceString(params.eventTypeUri) ?? extractEventTypeUri(intentText);
+    const startDate =
+      coerceString(params.startDate) ?? extractedDates.startDate;
+    const endDate = coerceString(params.endDate) ?? extractedDates.endDate;
+    const subaction =
+      explicitSubaction ??
+      inferSubactionFromIntent(intentText, {
+        eventTypeUri,
+        startDate,
+        endDate,
+      });
     if (!subaction) {
       return failure(
         "Missing or invalid subaction. Use one of: list_event_types, availability, upcoming_events, single_use_link.",
@@ -270,9 +392,6 @@ export const calendlyAction: Action = {
         }
 
         case "availability": {
-          const eventTypeUri = coerceString(params.eventTypeUri);
-          const startDate = coerceString(params.startDate);
-          const endDate = coerceString(params.endDate);
           if (!eventTypeUri) {
             return failure(
               "Missing required parameter: eventTypeUri.",
@@ -318,7 +437,6 @@ export const calendlyAction: Action = {
         }
 
         case "single_use_link": {
-          const eventTypeUri = coerceString(params.eventTypeUri);
           if (!eventTypeUri) {
             return failure(
               "Missing required parameter: eventTypeUri.",

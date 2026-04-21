@@ -70,6 +70,8 @@ export type GmailLlmPlan = {
   replyNeededOnly?: boolean;
   response?: string;
   shouldAct?: boolean | null;
+  confirmed?: boolean;
+  holdForApproval?: boolean;
   to?: string[];
   cc?: string[];
   bcc?: string[];
@@ -117,6 +119,16 @@ type GmailMessageTargetContext = {
   query?: string;
 };
 
+type PendingGmailReplyApproval = {
+  messageId: string;
+  bodyText: string;
+  subject?: string;
+  to?: string[];
+  cc?: string[];
+  approvalTaskId?: string | null;
+  createdAt: string;
+};
+
 type GmailSearchFeed = Awaited<ReturnType<LifeOpsService["getGmailSearch"]>>;
 
 type GmailTargetResolution =
@@ -140,6 +152,7 @@ type GmailActionParams = {
   queries?: string[];
   messageId?: string;
   bodyText?: string;
+  confirmed?: boolean;
   details?: Record<string, unknown>;
 };
 
@@ -164,6 +177,7 @@ type GmailPayloadPlan = Omit<
 >;
 
 const GMAIL_CONTEXT_WINDOW = 12;
+const ACTION_NAME = "GMAIL_ACTION";
 const GMAIL_DETAIL_ALIASES = {
   forceSync: ["forcesync", "force_sync"],
   maxResults: ["maxresults", "max_results"],
@@ -209,6 +223,77 @@ async function buildGmailDraftGenerationContext(args: {
     actionHistory: summarizeRecentActionHistory(args.state, 4),
     trajectorySummary,
   };
+}
+
+function getPendingGmailReplyCacheKey(roomId: string): string {
+  return `lifeops:gmail:pending-reply:${roomId}`;
+}
+
+async function readPendingGmailReplyApproval(
+  runtime: IAgentRuntime,
+  roomId: string,
+): Promise<PendingGmailReplyApproval | null> {
+  return (
+    (await runtime.getCache<PendingGmailReplyApproval>(
+      getPendingGmailReplyCacheKey(roomId),
+    )) ?? null
+  );
+}
+
+async function writePendingGmailReplyApproval(
+  runtime: IAgentRuntime,
+  roomId: string,
+  approval: PendingGmailReplyApproval,
+): Promise<void> {
+  await runtime.setCache(getPendingGmailReplyCacheKey(roomId), approval);
+}
+
+async function clearPendingGmailReplyApproval(
+  runtime: IAgentRuntime,
+  roomId: string,
+): Promise<void> {
+  await runtime.deleteCache(getPendingGmailReplyCacheKey(roomId));
+}
+
+async function enqueueGmailReplyApprovalRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  draft: {
+    messageId: string;
+    bodyText: string;
+    subject?: string;
+    to?: string[];
+    cc?: string[];
+  };
+}): Promise<string | null> {
+  return await args.runtime.createTask({
+    name: `GMAIL_REPLY_APPROVAL_${Date.now()}`,
+    description: `Approve sending the Gmail reply${args.draft.subject ? ` (${args.draft.subject})` : ""}: ${args.draft.bodyText}`,
+    roomId: args.message.roomId,
+    entityId: args.message.entityId,
+    tags: ["AWAITING_CHOICE", "APPROVAL", ACTION_NAME],
+    metadata: {
+      options: [
+        { name: "confirm", description: "Send the drafted Gmail reply" },
+        { name: "cancel", description: "Keep the draft unsent" },
+      ],
+      approvalRequest: {
+        timeoutMs: 24 * 60 * 60 * 1000,
+        timeoutDefault: "cancel",
+        createdAt: Date.now(),
+        isAsync: true,
+      },
+      actionName: ACTION_NAME,
+      channel: "gmail",
+      payload: {
+        messageId: args.draft.messageId,
+        bodyText: args.draft.bodyText,
+        subject: args.draft.subject ?? null,
+        to: args.draft.to ?? [],
+        cc: args.draft.cc ?? [],
+      },
+    },
+  });
 }
 
 function normalizeGmailSubaction(value: unknown): GmailSubaction | null {
@@ -812,19 +897,120 @@ async function buildGmailPlanningContext(args: {
     latestMessageTarget: latestGmailMessageTargetContext(args.state),
     currentMessage,
     timeZone,
-    nowIso: now.toISOString(),
-    localNow: new Intl.DateTimeFormat(undefined, {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(now),
-  };
-}
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  const prompt = [
+    "Plan the Gmail action for this request.",
+    "The user may speak in any language.",
+    "Use the current request plus recent conversation context.",
+    "If the current request is vague or a follow-up, recover the subject from recent conversation and apply the new constraint from the current request.",
+    "You are allowed to decide that the assistant should reply naturally without acting yet.",
+    "Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for email help without enough specifics to safely act.",
+    "When shouldAct=false, provide a short natural response that asks only for what is missing.",
+    "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
+    "For clear reply-workflow commands like 'draft a reply to John's email' or 'send that reply now', still choose the intent-level subaction even if the exact Gmail message id is not known yet. Downstream Gmail logic can clarify the target email.",
+    "",
+    "Return a JSON object with exactly these fields:",
+    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-op",
+    "  shouldAct: boolean",
+    "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
+    "  queries: array or ||-delimited string of up to 3 Gmail search queries",
+    "  messageId: optional Gmail message id",
+    "  replyNeededOnly: optional boolean",
+    "  confirmed: optional boolean when the user is explicitly approving send now",
+    "  holdForApproval: optional boolean when the user wants a draft prepared but held until approval",
+    "  to: optional array of recipient email addresses when subaction is send_message",
+    "  cc: optional array of cc email addresses when subaction is send_message",
+    "  bcc: optional array of bcc email addresses when subaction is send_message",
+    "  subject: optional subject line when subaction is send_message",
+    "  bodyText: optional email body when subaction is send_message",
+    "",
+    "Subactions and when to use each:",
+    "  triage — general inbox overview, unread count, email summary (e.g. 'check my inbox', 'any new emails')",
+    "  needs_response — specifically about emails that need a reply (e.g. 'which emails need a response', 'any reply-needed emails')",
+    "  search — find emails by sender, subject, keyword, date, label (e.g. 'emails from John', 'who emailed me today', 'find the invoice email')",
+    "  read — read a specific email body by message ID (e.g. 'read that email', 'show me the full message')",
+    "  draft_reply — compose a reply to a specific email (e.g. 'draft a reply to John', 'write a response to that email')",
+    "  draft_batch_replies — compose replies to multiple emails at once (e.g. 'draft replies to all of those', 'respond to each one')",
+    "  send_reply — send a confirmed reply to an email (e.g. 'send that reply', 'email them back now')",
+    "  send_batch_replies — send confirmed replies to multiple emails (e.g. 'send all those replies')",
+    "  send_message — compose and send a brand-new outbound email (e.g. 'send an email to zo@iqlabs.dev, subject hello, body how are you doing today?')",
+    "",
+    "For search or read, extract up to 3 short Gmail-compatible queries using Gmail search operators.",
+    "For draft_reply, send_reply, and draft_batch_replies, also extract Gmail-compatible queries whenever the target email is described by sender, subject, keyword, or timeframe but no explicit Gmail message id is known.",
+    "Return Gmail operators in Gmail syntax even if the user speaks another language, and preserve names, addresses, and subject keywords in their original language or script when useful.",
+    "For send_message, preserve the exact recipient addresses and keep the user's intended subject/body wording as close as possible.",
+    "When the user writes in another language, still infer the correct Gmail action and keep extracted subject/body wording in that language unless the user asked to translate.",
+    "",
+    "Gmail search operators — complete reference:",
+    "  Sender/recipient: from:name  to:name  cc:name  bcc:name  deliveredto:alias@example.com",
+    '  Content: subject:word  "exact phrase"  has:attachment  filename:report.pdf  has:drive  has:document  has:spreadsheet  has:presentation  has:youtube',
+    "  Status: is:unread  is:read  is:starred  is:important  is:snoozed",
+    "  Location: in:inbox  in:sent  in:draft  in:trash  in:spam  in:anywhere  label:work  category:primary  category:social  category:promotions  category:updates  category:forums",
+    "  Date/time: newer_than:7d  older_than:30d  after:2025/01/01  before:2025/12/31",
+    "  Size: size:5m  larger:10m  smaller:1m  larger_than:500k  smaller_than:2m",
+    "  Special: from:me  list:info@mailinglist.com",
+    "  Negation: -from:name  -subject:word  -label:work  -is:unread  (prefix any operator with - to exclude)",
+    "  Boolean: {term1 term2} for OR.  Combine operators: from:suran is:unread newer_than:21d",
+    "  Proximity: AROUND (not widely supported but available)",
+    "",
+    "Preserve sender names, email addresses, subject keywords, unread/starred/important status, attachment mentions, and time windows.",
+    "Use the current local datetime to convert relative time references like today, yesterday, this week, and this month into Gmail-compatible operators.",
+    "Set replyNeededOnly to true only when the request is specifically about emails that need a reply.",
+    "",
+    "Examples:",
+    '  "who emailed me today" → {"subaction":"search","shouldAct":true,"response":null,"queries":["newer_than:1d"]}',
+    '  "did suran email me" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran"]}',
+    '  "draft a reply to John" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
+    '  "draft a reply to John\'s email" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["from:john"]}',
+    '  "draft a reply to the unread product brief email and wait for my approval before sending" → {"subaction":"draft_reply","shouldAct":true,"response":null,"queries":["subject:product brief is:unread"],"holdForApproval":true}',
+    '  "what about unread ones?" with recent context about a Suran email search → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran is:unread"]}',
+    '  "rewrite that reply to say I\'m in San Francisco, not NYC" with recent context about an existing Suran draft → {"subaction":"draft_reply","shouldAct":true,"response":null}',
+    '  "send that reply now" with recent context about an existing drafted reply → {"subaction":"send_reply","shouldAct":true,"response":null,"confirmed":true}',
+    '  "check my inbox" → {"subaction":"triage","shouldAct":true,"response":null}',
+    '  "any emails from Sarah about the report" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:sarah subject:report"]}',
+    '  "busca en mi correo si Suran me escribió hoy" → {"subaction":"search","shouldAct":true,"response":null,"queries":["from:suran newer_than:1d"]}',
+    '  "envíale un correo a maria@example.com con asunto hola y cuerpo nos vemos mañana" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["maria@example.com"],"subject":"hola","bodyText":"nos vemos mañana"}',
+    '  "send an email to zo@iqlabs.dev, subject hello anon, body how are you doing today?" → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["zo@iqlabs.dev"],"subject":"hello anon","bodyText":"how are you doing today?"}',
+    '  "can you help me with my email?" → {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?","queries":[]}',
+    '  "send an email like \'test\'" with active draft having to=["shaw@gmail.com"] → {"subaction":"send_message","shouldAct":true,"response":null,"queries":[],"to":["shaw@gmail.com"],"subject":"test","bodyText":"test"}',
+    ...(activeComposeDraft
+      ? [
+          "",
+          "Active compose draft (fields already established in this conversation):",
+          `  ${JSON.stringify({ to: activeComposeDraft.to, cc: activeComposeDraft.cc, bcc: activeComposeDraft.bcc, subject: activeComposeDraft.subject, bodyText: activeComposeDraft.bodyText })}`,
+          "If the active compose draft already has a recipient, subject, or body, do NOT ask for those again.",
+          "Set shouldAct=true and subaction=send_message when the user provides missing fields, confirms sending, or provides a short payload like 'test' to use as subject and body.",
+          "Only set shouldAct=false when genuinely no information is available from conversation context or active draft.",
+        ]
+      : []),
+    ...(latestReplyDraft || latestMessageTarget
+      ? [
+          "",
+          "Recent reply-draft context:",
+          `  ${JSON.stringify({
+            latestReplyDraft,
+            latestMessageTarget,
+          })}`,
+          "If there is a recent drafted reply or known target email and the user says rewrite, edit, revise, change, update, or 'send that reply', keep working on that same reply workflow even if they do not restate the sender or subject.",
+        ]
+      : []),
+    "",
+    "Return ONLY valid JSON. No prose. No markdown. No XML. No <think>.",
+    "",
+    `Current timezone: ${timeZone}`,
+    `Current local datetime: ${localNow}`,
+    `Current ISO datetime: ${nowIso}`,
+    `Current request: ${JSON.stringify(currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(intent)}`,
+    `Recent conversation: ${JSON.stringify(recentConversation)}`,
+  ].join("\n");
 
 function parseGmailPlannerRecord(
   rawResponse: string,
@@ -868,18 +1054,8 @@ function normalizeGmailIntentPlan(
   return {
     subaction: normalizeGmailSubaction(parsed.subaction),
     shouldAct: normalizeShouldAct(parsed.shouldAct),
-    response: normalizePlannerResponse(parsed.response),
-  };
-}
-
-function normalizeGmailPayloadPlan(
-  parsed: Record<string, unknown> | null,
-): GmailPayloadPlan {
-  if (!parsed) {
-    return { queries: [] };
-  }
-  return {
-    queries: dedupeQueries(extractPlannerQueries(parsed)),
+    confirmed: normalizeOptionalBoolean(parsed.confirmed),
+    holdForApproval: normalizeOptionalBoolean(parsed.holdForApproval),
     messageId:
       typeof parsed.messageId === "string" && parsed.messageId.trim().length > 0
         ? parsed.messageId.trim()
@@ -1435,7 +1611,7 @@ function normalizeBatchSendItems(
 export const gmailAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "GMAIL_ACTION",
+  name: ACTION_NAME,
   similes: [
     "GMAIL",
     "CHECK_EMAIL",
@@ -1514,9 +1690,25 @@ export const gmailAction: Action & {
       intent,
       activeComposeDraft,
     );
+    const pendingReplyApproval = await readPendingGmailReplyApproval(
+      runtime,
+      message.roomId,
+    );
     const latestReplyDraft = latestGmailReplyDraftContext(state);
     const latestMessageTarget = latestGmailMessageTargetContext(state);
     const latestBatchReplyDraftItems = latestGmailBatchReplyDraftItems(state);
+    const sendConfirmed =
+      normalizeOptionalBoolean(params.confirmed) ??
+      detailBoolean(details, "confirmSend") ??
+      llmPlan.confirmed ??
+      false;
+    const holdReplyForApproval =
+      detailBoolean(details, "holdForApproval") ??
+      (detailBoolean(details, "confirmSend") === false
+        ? true
+        : undefined) ??
+      llmPlan.holdForApproval ??
+      false;
     const hasStructuredComposeSignal = Boolean(
       params.bodyText ||
         detailString(details, "bodyText") ||
@@ -1633,6 +1825,8 @@ export const gmailAction: Action & {
         detailToType: typeof details?.to,
         detailSubject:
           typeof details?.subject === "string" ? details.subject : undefined,
+        sendConfirmed,
+        holdReplyForApproval,
       },
       "gmail action dispatch",
     );
@@ -1647,7 +1841,7 @@ export const gmailAction: Action & {
       await callback?.({
         text: payload.text,
         source: "action",
-        action: "GMAIL_ACTION",
+        action: ACTION_NAME,
       });
       return payload;
     };
@@ -2036,6 +2230,45 @@ export const gmailAction: Action & {
           ...draftGenerationContext,
         } satisfies CreateLifeOpsGmailReplyDraftRequest);
         const fallback = formatGmailReplyDraft(draft);
+        if (holdReplyForApproval) {
+          if (pendingReplyApproval?.approvalTaskId) {
+            await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+          }
+          const approvalTaskId = await enqueueGmailReplyApprovalRequest({
+            runtime,
+            message,
+            draft,
+          });
+          await writePendingGmailReplyApproval(runtime, message.roomId, {
+            messageId: draft.messageId,
+            bodyText: draft.bodyText,
+            subject: draft.subject,
+            to: draft.to,
+            cc: draft.cc,
+            approvalTaskId,
+            createdAt: new Date().toISOString(),
+          });
+          return respond({
+            success: true,
+            text: await renderReply(
+              "draft_reply",
+              `${fallback}\n\nI'll hold this Gmail reply until you approve sending it.`,
+              {
+                draft,
+                approvalRequired: true,
+              },
+            ),
+            data: toActionData({
+              ...draft,
+              gmailDraft: draft,
+              pendingApproval: true,
+            }),
+          });
+        }
+        if (pendingReplyApproval?.approvalTaskId) {
+          await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+          await clearPendingGmailReplyApproval(runtime, message.roomId);
+        }
         return respond({
           success: true,
           text: await renderReply("draft_reply", fallback, {
@@ -2120,6 +2353,7 @@ export const gmailAction: Action & {
           params.messageId ??
           detailString(details, "messageId") ??
           llmPlan.messageId ??
+          pendingReplyApproval?.messageId ??
           latestReplyDraft?.messageId ??
           latestMessageTarget?.messageId;
         if (!messageId) {
@@ -2150,7 +2384,30 @@ export const gmailAction: Action & {
         const bodyText =
           params.bodyText ??
           detailString(details, "bodyText") ??
+          pendingReplyApproval?.bodyText ??
           latestReplyDraft?.bodyText;
+        if (pendingReplyApproval && !sendConfirmed) {
+          return respond({
+            success: true,
+            text: await renderReply(
+              "clarify_send_reply",
+              "The Gmail reply draft is ready. Confirm when you want me to send it.",
+              {
+                latestReplyDraft: pendingReplyApproval,
+              },
+            ),
+            data: toActionData({
+              gmailDraft: {
+                messageId: pendingReplyApproval.messageId,
+                bodyText: pendingReplyApproval.bodyText,
+                subject: pendingReplyApproval.subject,
+                to: pendingReplyApproval.to,
+                cc: pendingReplyApproval.cc,
+              },
+              pendingApproval: true,
+            }),
+          });
+        }
         if (!messageId || !bodyText) {
           return respond({
             success: false,
@@ -2179,11 +2436,23 @@ export const gmailAction: Action & {
           messageId,
           bodyText,
           subject:
-            detailString(details, "subject") ?? latestReplyDraft?.subject,
-          to: normalizeStringArray(details?.to) ?? latestReplyDraft?.to,
-          cc: normalizeStringArray(details?.cc) ?? latestReplyDraft?.cc,
-          confirmSend: detailBoolean(details, "confirmSend") ?? true,
+            detailString(details, "subject") ??
+            pendingReplyApproval?.subject ??
+            latestReplyDraft?.subject,
+          to:
+            normalizeStringArray(details?.to) ??
+            pendingReplyApproval?.to ??
+            latestReplyDraft?.to,
+          cc:
+            normalizeStringArray(details?.cc) ??
+            pendingReplyApproval?.cc ??
+            latestReplyDraft?.cc,
+          confirmSend: sendConfirmed || !pendingReplyApproval,
         } satisfies SendLifeOpsGmailReplyRequest);
+        if (pendingReplyApproval?.approvalTaskId) {
+          await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+        }
+        await clearPendingGmailReplyApproval(runtime, message.roomId);
         const fallback = "Gmail reply sent.";
         return respond({
           success: true,
@@ -2381,9 +2650,16 @@ export const gmailAction: Action & {
       schema: { type: "string" as const },
     },
     {
+      name: "confirmed",
+      description:
+        "Set true only when the owner is explicitly approving a pending Gmail send right now.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
       name: "details",
       description:
-        "Structured Gmail arguments. Supported keys include mode, side, grantId, forceSync, maxResults, query, queries, replyNeededOnly, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, and items for batch send.",
+        "Structured Gmail arguments. Supported keys include mode, side, grantId, forceSync, maxResults, query, queries, replyNeededOnly, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, holdForApproval, and items for batch send.",
       required: false,
       schema: { type: "object" as const },
     },

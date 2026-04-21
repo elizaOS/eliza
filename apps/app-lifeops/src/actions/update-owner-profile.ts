@@ -36,6 +36,8 @@ export const updateOwnerProfileAction: Action & {
     "SAVE_TRAVEL_PREFERENCES",
     "TRAVEL_PROFILE",
     "BOOKING_PREFERENCES",
+    "CAPTURE_TRAVEL_PREFERENCES",
+    "CAPTURE_BOOKING_PREFERENCES",
   ],
   tags: [
     "always-include",
@@ -48,11 +50,8 @@ export const updateOwnerProfileAction: Action & {
   description:
     "Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them. " +
     "Use only for the owner, never for other contacts, and do not ask follow-up questions just to fill these fields. " +
-    "This is the canonical sink for stable owner facts like preferred name, relationship status, partner name, orientation, gender, age, location, and reusable preferences. " +
-    "Travel-booking preferences are just one subtype of this owner profile memory. Examples include 'remember my name is Shaw', 'update my location to Los Angeles', " +
-    "'remember that I'm partnered', 'save my travel preferences', or 'remember I only do carry-on and moderate hotels close to the venue'. " +
-    "When the owner asks you to remember or save these stable facts, you must call this action rather than replying with a plain acknowledgement. " +
-    "If the owner is asking you to set up a reusable travel-preference checklist for future bookings, this action still owns the turn even before every preference value is supplied; it can ask for the missing categories while remaining the owning action. " +
+    "This includes durable travel-booking preferences or a reusable travel-preference checklist when the owner wants those preferences remembered for future bookings. " +
+    "Requests like 'set up a list of my flight and hotel preferences so you do not have to ask every time' belong here even when the action still needs to gather the actual preference list. " +
     "Do not use this for todos, goals, reminders, temporary plans, or live task state.",
   descriptionCompressed:
     "Persist stable owner facts and reusable preferences when stated or confirmed. Owner only.",

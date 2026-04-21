@@ -380,16 +380,14 @@ function deriveExecutiveAssistantExpectation(
 }
 
 function buildPromptBenchmarkContext(args: {
-  caseId: string;
   scenarioTitle: string;
   expectedAction: string | null;
 }): string {
-  const scenarioLabel = args.scenarioTitle;
   if (args.expectedAction === null) {
-    return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use grounded reasoning, use only registered runtime action/provider names, and avoid executing durable actions unless the request is explicit.`;
+    return `Prompt benchmark scenario "${args.scenarioTitle}". Treat this as a benchmark of restraint: the user may be thinking out loud, making smalltalk, or previewing a future task. Use only registered runtime action and provider names, and avoid executing durable actions unless the request is explicit.`;
   }
 
-  return `Prompt benchmark case ${scenarioLabel}. Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching registered action instead of only describing a hypothetical plan. Use only registered runtime action/provider names.`;
+  return `Prompt benchmark scenario "${args.scenarioTitle}". Treat this as a benchmark of grounded follow-through: when the user is making a real request, prefer executing the best matching registered action instead of only describing a hypothetical plan. If details are missing, choose the owning action anyway and let that action ask the minimum follow-up. Use only registered runtime action and provider names.`;
 }
 
 function buildPromptBenchmarkCasesForScenario(args: {
@@ -436,7 +434,6 @@ function buildPromptBenchmarkCasesForScenario(args: {
       basePrompt,
       prompt: variant.rewrite(basePrompt),
       benchmarkContext: buildPromptBenchmarkContext({
-        caseId,
         scenarioTitle: scenario.title,
         expectedAction,
       }),
