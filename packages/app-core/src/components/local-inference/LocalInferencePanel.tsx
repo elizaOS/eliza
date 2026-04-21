@@ -9,7 +9,6 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
-import { isAndroid, isIOS } from "../../platform/init";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
@@ -274,18 +273,7 @@ export function LocalInferencePanel() {
     return <p className="text-sm text-muted">Loading local models…</p>;
   }
 
-  // On mobile (Capacitor iOS / Android) users can only realistically run
-  // small and tiny models, so we hide the larger buckets entirely and
-  // surface a note about the mobile runtime story. The server-side
-  // catalog is unchanged; this is a pure display filter.
-  const mobile = isIOS || isAndroid;
-  const catalog = mobile
-    ? hub.catalog.filter(
-        (m) =>
-          m.bucket === "small" &&
-          (m.params === "1B" || m.params === "1.7B" || m.params === "3B"),
-      )
-    : hub.catalog;
+  const catalog = hub.catalog;
 
   return (
     <div className="flex flex-col gap-4">
@@ -294,22 +282,15 @@ export function LocalInferencePanel() {
           Local models
         </h3>
         <p className="text-xs text-muted-foreground">
-          Run llama.cpp on this machine or on a paired device. Enable alongside
-          cloud providers — the agent will prefer whichever handler has the
-          highest priority for each ModelType. Use the slot assignments below to
-          pin a specific local model to a slot, or leave them unset to let cloud
-          take priority when configured.
+          Run llama.cpp on this machine, this mobile device, or on a paired
+          device. Enable alongside cloud providers — the agent will prefer
+          whichever handler has the highest priority for each ModelType. Use the
+          slot assignments below to pin a specific local model to a slot, or
+          leave them unset to let cloud take priority when configured.
         </p>
       </header>
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
-      {mobile && (
-        <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-          On-device inference on mobile requires the Milady native runtime
-          plugin (follow-up). Until then, select a small model and Milady will
-          run inference via the companion desktop or cloud server.
-        </div>
-      )}
       <FirstRunOffer
         catalog={catalog}
         installed={hub.installed}
@@ -369,7 +350,7 @@ export function LocalInferencePanel() {
         />
       )}
 
-      {tab === "search" && !mobile && (
+      {tab === "search" && (
         <HuggingFaceSearch
           installed={hub.installed}
           downloads={hub.downloads}
@@ -381,12 +362,6 @@ export function LocalInferencePanel() {
           onUninstall={handleUninstall}
           busy={busy}
         />
-      )}
-      {tab === "search" && mobile && (
-        <p className="text-sm text-muted">
-          HuggingFace search is desktop-only for now — most results would be too
-          large for a phone.
-        </p>
       )}
 
       {tab === "downloads" && (
