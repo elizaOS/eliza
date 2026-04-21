@@ -1073,6 +1073,49 @@
       ],
       "tl": ["tao", "contact", "user", "sino", "profile", "identity", "details"]
     },
+    "contextSignal.link_entity.strong": {
+      "base": [
+        "merge contact",
+        "merge contacts",
+        "link contact",
+        "link contacts",
+        "link identities",
+        "same person",
+        "same human",
+        "combine contacts",
+        "these are the same",
+        "duplicate contact",
+        "dedupe contact"
+      ],
+      "zh-CN": ["合并联系人", "关联联系人", "同一个人", "重复联系人"],
+      "ko": ["연락처 병합", "연락처 연결", "같은 사람", "중복 연락처"],
+      "es": [
+        "fusionar contacto",
+        "vincular contacto",
+        "misma persona",
+        "contacto duplicado",
+        "combinar contactos"
+      ],
+      "pt": [
+        "mesclar contato",
+        "vincular contato",
+        "mesma pessoa",
+        "contato duplicado",
+        "combinar contatos"
+      ],
+      "vi": [
+        "gộp liên hệ",
+        "liên kết liên hệ",
+        "cùng một người",
+        "liên hệ trùng lặp"
+      ],
+      "tl": [
+        "pagsamahin contact",
+        "i-link ang contact",
+        "parehong tao",
+        "duplicate contact"
+      ]
+    },
     "contextSignal.lifeops.strong": {
       "base": [
         "todo",
