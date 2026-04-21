@@ -98,7 +98,7 @@ function isFixtureHealthBackendEnabled(): boolean {
   const explicit = process.env.MILADY_TEST_HEALTH_BACKEND;
   if (isFalsyEnv(explicit)) return false;
   if (isTruthyEnv(explicit)) return true;
-  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+  return false;
 }
 
 function utcMidnightMs(date: string): number {
