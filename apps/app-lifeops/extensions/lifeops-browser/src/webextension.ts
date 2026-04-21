@@ -255,7 +255,7 @@ export function hasManifestPermission(permission: string): boolean {
 export async function storageGet<T>(key: string): Promise<T | null> {
   const area = getRawApi().storage?.local;
   if (!area?.get) {
-    return null;
+    throw new Error("storage.local.get is unavailable");
   }
   const values = await invokeAsync<Record<string, unknown>>((callback) =>
     area.get?.(key, callback),
@@ -268,7 +268,7 @@ export async function storageSet(
 ): Promise<void> {
   const area = getRawApi().storage?.local;
   if (!area?.set) {
-    return;
+    throw new Error("storage.local.set is unavailable");
   }
   await invokeAsync<void>((callback) => area.set?.(values, callback));
 }
@@ -276,7 +276,7 @@ export async function storageSet(
 export async function storageRemove(key: string): Promise<void> {
   const area = getRawApi().storage?.local;
   if (!area?.remove) {
-    return;
+    throw new Error("storage.local.remove is unavailable");
   }
   await invokeAsync<void>((callback) => area.remove?.(key, callback));
 }
