@@ -149,3 +149,17 @@ export function resolveOAuthPath(
 ): string {
   return path.join(resolveOAuthDir(env, stateDirPath), OAUTH_FILENAME);
 }
+
+const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
+
+/**
+ * Canonical path to the persisted Steward credentials file.
+ * Honors `MILADY_STATE_DIR` / `ELIZA_STATE_DIR` / `ELIZA_NAMESPACE`; falls back
+ * to `~/.<namespace>/steward-credentials.json` (default namespace = `eliza`).
+ */
+export function resolveStewardCredentialsPath(
+  env: NodeJS.ProcessEnv = process.env,
+  stateDirPath: string = resolveStateDir(env, os.homedir),
+): string {
+  return path.join(stateDirPath, STEWARD_CREDENTIALS_FILENAME);
+}
