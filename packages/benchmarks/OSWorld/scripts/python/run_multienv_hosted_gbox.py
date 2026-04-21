@@ -74,7 +74,7 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="us.anthropic.claude-sonnet-4-6-v1:0",
+        default="us.anthropic.claude-sonnet-4-6",
         help="Claude model to use (default: Bedrock Sonnet 4.6)"
     )
     parser.add_argument("--max_tokens", type=int, default=1500)

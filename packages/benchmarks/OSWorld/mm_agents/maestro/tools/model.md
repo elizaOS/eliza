@@ -45,10 +45,7 @@
 **Supported Models:**
 
 - `claude-opus-4-7`  Context window: 200K  Max output: 32000
-- `claude-opus-4-7`   Context window: 200K  Max output: 32000
 - `claude-sonnet-4-6`  Context window: 200K  Max output: 64000
-- `claude-sonnet-4-6`   Context window: 200K  Max output: 64000
-- - `claude-sonnet-4-6`   Context window: 200K  Max output: 64000
 - `claude-3-5-haiku-20241022`    Context window: 200K  Max output: 8192
 
 📚 **Reference Link:** <https://www.anthropic.com/api>
@@ -65,8 +62,6 @@
 **Supported Claude Models:**
 
 - `Claude-Opus-4.7`
-- `Claude-Sonnet-4`
-- `Claude-Sonnet-4.6`
 - `Claude-Sonnet-4.6`
 
 📚 **Reference Link:** <https://aws.amazon.com/bedrock/>
@@ -134,9 +129,6 @@
 **Anthropic Claude Models:**
 
 - `claude-opus-4-7`
-- `claude-sonnet-4-6`
-- `claude-sonnet-4-6`
-- `claude-sonnet-4-6`
 - `claude-sonnet-4-6`
 - `claude-3-5-haiku-20241022`
 

@@ -1,16 +1,21 @@
+import { Badge, Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/shared/contracts/lifeops";
-import { Badge, Button, SegmentedControl } from "@elizaos/app-core";
-import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 import { Copy, ExternalLink, GitBranch } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
 const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
 type VisibleConnectorMode = (typeof VISIBLE_CONNECTOR_MODES)[number];
+
+type TranslateFn = (
+  key: string,
+  options?: Record<string, unknown> & { defaultValue?: string },
+) => string;
 
 export type GithubSetupState = {
   identity: string;
@@ -33,38 +38,57 @@ export interface LifeOpsSettingsSectionProps {
 }
 
 const DEFAULT_OWNER_GITHUB: GithubSetupState = {
-  identity: "LifeOps owner GitHub not linked",
-  status: "Not connected",
+  identity: "",
+  status: "",
 };
 
 const DEFAULT_AGENT_GITHUB: GithubSetupState = {
-  identity: "Agent GitHub not linked",
-  status: "Not connected",
+  identity: "",
+  status: "",
 };
 
-function statusLabel(reason: string, connected: boolean): string {
+function statusLabel(
+  reason: string,
+  connected: boolean,
+  t: TranslateFn,
+): string {
   if (connected) {
-    return "Connected";
+    return t("lifeopssettings.connected", {
+      defaultValue: "Connected",
+    });
   }
   switch (reason) {
     case "needs_reauth":
-      return "Needs reauth";
+      return t("lifeopssettings.needsReauth", {
+        defaultValue: "Needs reauth",
+      });
     case "config_missing":
-      return "Needs setup";
+      return t("lifeopssettings.needsSetup", {
+        defaultValue: "Needs setup",
+      });
     case "token_missing":
-      return "Token missing";
+      return t("lifeopssettings.tokenMissing", {
+        defaultValue: "Token missing",
+      });
     default:
-      return "Not connected";
+      return t("lifeopssettings.notConnected", {
+        defaultValue: "Not connected",
+      });
   }
 }
 
-function readIdentity(identity: Record<string, unknown> | null): {
+function readIdentity(
+  identity: Record<string, unknown> | null,
+  t: TranslateFn,
+): {
   primary: string;
   secondary: string | null;
 } {
   if (!identity) {
     return {
-      primary: "Google not connected",
+      primary: t("lifeopssettings.googleNotConnected", {
+        defaultValue: "Google not connected",
+      }),
       secondary: null,
     };
   }
@@ -77,40 +101,72 @@ function readIdentity(identity: Record<string, unknown> | null): {
       ? identity.email.trim()
       : null;
   return {
-    primary: name ?? email ?? "Google connected",
+    primary:
+      name ??
+      email ??
+      t("lifeopssettings.googleConnected", {
+        defaultValue: "Google connected",
+      }),
     secondary: name && email ? email : null,
   };
 }
 
-function modeLabel(mode: LifeOpsConnectorMode): string {
-  return mode === "local" ? "Local" : "Cloud";
-}
-
-function modeDescription(mode: VisibleConnectorMode): string {
+function modeLabel(mode: LifeOpsConnectorMode, t: TranslateFn): string {
   return mode === "local"
-    ? "Tokens stay on this device. LifeOps can only access Google while the app is running."
-    : "Tokens live in Eliza Cloud. The agent can check Google on your behalf even when the app is closed.";
+    ? t("lifeopssettings.local", {
+        defaultValue: "Local",
+      })
+    : t("lifeopssettings.cloud", {
+        defaultValue: "Cloud",
+      });
 }
 
-function sideTitle(side: LifeOpsConnectorSide): string {
-  return side === "owner" ? "User" : "Agent";
+function modeDescription(mode: VisibleConnectorMode, t: TranslateFn): string {
+  return mode === "local"
+    ? t("lifeopssettings.localModeDescription", {
+        defaultValue:
+          "Tokens stay on this device. LifeOps can only access Google while the app is running.",
+      })
+    : t("lifeopssettings.cloudModeDescription", {
+        defaultValue:
+          "Tokens live in Eliza Cloud. The agent can check Google on your behalf even when the app is closed.",
+      });
+}
+
+function sideTitle(side: LifeOpsConnectorSide, t: TranslateFn): string {
+  return side === "owner"
+    ? t("lifeopssettings.user", {
+        defaultValue: "User",
+      })
+    : t("chat.agentType", {
+        defaultValue: "Agent",
+      });
 }
 
 function capabilityLabels(
   capabilities: readonly LifeOpsGoogleCapability[],
+  t: TranslateFn,
 ): string[] {
   const labels: string[] = [];
   if (
     capabilities.includes("google.calendar.read") ||
     capabilities.includes("google.calendar.write")
   ) {
-    labels.push("Cal");
+    labels.push(
+      t("lifeopssettings.capabilityCalendar", {
+        defaultValue: "Cal",
+      }),
+    );
   }
   if (
     capabilities.includes("google.gmail.triage") ||
     capabilities.includes("google.gmail.send")
   ) {
-    labels.push("Mail");
+    labels.push(
+      t("lifeopssettings.capabilityMail", {
+        defaultValue: "Mail",
+      }),
+    );
   }
   return labels;
 }
@@ -152,6 +208,7 @@ function PendingAuthBanner({
   url: string;
   onDismiss: () => void;
 }) {
+  const { t } = useApp();
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(url);
   }, [url]);
@@ -177,7 +234,9 @@ function PendingAuthBanner({
           onClick={() => void handleCopy()}
         >
           <Copy className="mr-1.5 h-3.5 w-3.5" />
-          Copy URL
+          {t("lifeopssettings.copyUrl", {
+            defaultValue: "Copy URL",
+          })}
         </Button>
         <Button
           size="sm"
@@ -186,7 +245,9 @@ function PendingAuthBanner({
           onClick={handleOpen}
         >
           <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-          Open
+          {t("common.open", {
+            defaultValue: "Open",
+          })}
         </Button>
         <Button
           size="sm"
@@ -194,7 +255,9 @@ function PendingAuthBanner({
           className="h-7 rounded-lg px-2 text-[11px] font-semibold"
           onClick={onDismiss}
         >
-          Dismiss
+          {t("common.dismiss", {
+            defaultValue: "Dismiss",
+          })}
         </Button>
       </div>
       <div className="mt-2 break-all text-[11px] text-muted/90">{url}</div>
@@ -203,6 +266,7 @@ function PendingAuthBanner({
 }
 
 function GithubRow({ github }: { github: GithubSetupState }) {
+  const { t } = useApp();
   return (
     <div className="space-y-2 border-t border-border/12 pt-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -222,7 +286,10 @@ function GithubRow({ github }: { github: GithubSetupState }) {
               disabled={github.connectDisabled}
               onClick={github.onConnect}
             >
-              {github.connectLabel ?? "Connect"}
+              {github.connectLabel ??
+                t("common.connect", {
+                  defaultValue: "Connect",
+                })}
             </Button>
           ) : null}
           {github.onDisconnect ? (
@@ -233,7 +300,9 @@ function GithubRow({ github }: { github: GithubSetupState }) {
               disabled={github.disconnectDisabled}
               onClick={github.onDisconnect}
             >
-              Disconnect
+              {t("common.disconnect", {
+                defaultValue: "Disconnect",
+              })}
             </Button>
           ) : null}
         </div>
@@ -252,6 +321,7 @@ function GoogleConnectorSideCard({
   side: LifeOpsConnectorSide;
   github: GithubSetupState;
 }) {
+  const { t } = useApp();
   const {
     accounts,
     activeMode,
@@ -270,10 +340,12 @@ function GoogleConnectorSideCard({
   const connectedAccounts = accounts.filter((account) => account.connected);
   const primaryIdentity = readIdentity(
     connectedAccounts[0]?.identity ?? status?.identity ?? null,
+    t,
   );
   const currentStatusLabel = statusLabel(
     status?.reason ?? "disconnected",
     status?.connected === true,
+    t,
   );
   const controlDisabled = loading || actionPending;
   const visibleMode: VisibleConnectorMode =
@@ -287,7 +359,9 @@ function GoogleConnectorSideCard({
   return (
     <section className="space-y-3 rounded-3xl border border-border/16 bg-card/18 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-txt">{sideTitle(side)}</div>
+        <div className="text-sm font-semibold text-txt">
+          {sideTitle(side, t)}
+        </div>
         <Badge variant="outline" className="text-2xs">
           {connectedAccounts.length} / {MAX_GOOGLE_ACCOUNTS_PER_SIDE}
         </Badge>
@@ -310,12 +384,15 @@ function GoogleConnectorSideCard({
           <span>Google</span>
         </div>
         <SegmentedControl<VisibleConnectorMode>
-          aria-label={`${sideTitle(side)} Google mode`}
+          aria-label={t("lifeopssettings.googleModeAria", {
+            defaultValue: "{{side}} Google mode",
+            side: sideTitle(side, t),
+          })}
           value={visibleMode}
           onValueChange={(mode) => void selectMode(mode)}
           items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
             value: mode,
-            label: modeLabel(mode),
+            label: modeLabel(mode, t),
             disabled: controlDisabled,
           }))}
           className="border-border/28 bg-card/24 p-0.5"
@@ -328,7 +405,13 @@ function GoogleConnectorSideCard({
             disabled={controlDisabled}
             onClick={() => void connect()}
           >
-            {status?.reason === "needs_reauth" ? "Reconnect" : "Connect"}
+            {status?.reason === "needs_reauth"
+              ? t("common.reconnect", {
+                  defaultValue: "Reconnect",
+                })
+              : t("common.connect", {
+                  defaultValue: "Connect",
+                })}
           </Button>
         ) : null}
         {status?.connected &&
@@ -340,7 +423,9 @@ function GoogleConnectorSideCard({
             disabled={controlDisabled}
             onClick={() => void connectAdditional()}
           >
-            Add
+            {t("common.add", {
+              defaultValue: "Add",
+            })}
           </Button>
         ) : null}
         {status?.connected && connectedAccounts.length <= 1 ? (
@@ -351,7 +436,9 @@ function GoogleConnectorSideCard({
             disabled={controlDisabled}
             onClick={() => void disconnect()}
           >
-            Disconnect
+            {t("common.disconnect", {
+              defaultValue: "Disconnect",
+            })}
           </Button>
         ) : null}
       </div>
@@ -363,14 +450,14 @@ function GoogleConnectorSideCard({
       </div>
 
       <div className="text-xs leading-5 text-muted">
-        {modeDescription(visibleMode)}
+        {modeDescription(visibleMode, t)}
       </div>
 
       {connectedAccounts.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {connectedAccounts.map((account) => {
-            const accountIdentity = readIdentity(account.identity ?? null);
-            const labels = capabilityLabels(account.grantedCapabilities);
+            const accountIdentity = readIdentity(account.identity ?? null, t);
+            const labels = capabilityLabels(account.grantedCapabilities, t);
             const isPreferred =
               preferredGrantId != null &&
               account.grant?.id === preferredGrantId;
@@ -384,7 +471,9 @@ function GoogleConnectorSideCard({
                 </span>
                 {isPreferred ? (
                   <Badge variant="secondary" className="text-3xs">
-                    Active
+                    {t("lifeopssettings.active", {
+                      defaultValue: "Active",
+                    })}
                   </Badge>
                 ) : null}
                 {labels.map((label) => (
@@ -396,9 +485,15 @@ function GoogleConnectorSideCard({
                   <button
                     type="button"
                     className="text-muted transition-colors hover:text-danger"
-                    aria-label={`Disconnect ${accountIdentity.primary}`}
+                    aria-label={t("lifeopssettings.disconnectAccount", {
+                      defaultValue: "Disconnect {{label}}",
+                      label: accountIdentity.primary,
+                    })}
                     disabled={controlDisabled}
-                    onClick={() => void disconnectAccount(account.grant!.id)}
+                    onClick={() => {
+                      if (!account.grant?.id) return;
+                      void disconnectAccount(account.grant.id);
+                    }}
                   >
                     x
                   </button>
@@ -428,6 +523,7 @@ export function LifeOpsSettingsSection({
   githubError = null,
   cloudAction = null,
 }: LifeOpsSettingsSectionProps = {}) {
+  const { t } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({
     includeAccounts: true,
     side: "owner",
@@ -436,11 +532,39 @@ export function LifeOpsSettingsSection({
     includeAccounts: true,
     side: "agent",
   });
+  const resolvedOwnerGithub =
+    ownerGithub.identity || ownerGithub.status
+      ? ownerGithub
+      : {
+          ...ownerGithub,
+          identity: t("lifeopssettings.ownerGithubNotLinked", {
+            defaultValue: "LifeOps owner GitHub not linked",
+          }),
+          status: t("lifeopssettings.notConnected", {
+            defaultValue: "Not connected",
+          }),
+        };
+  const resolvedAgentGithub =
+    agentGithub.identity || agentGithub.status
+      ? agentGithub
+      : {
+          ...agentGithub,
+          identity: t("lifeopssettings.agentGithubNotLinked", {
+            defaultValue: "Agent GitHub not linked",
+          }),
+          status: t("lifeopssettings.notConnected", {
+            defaultValue: "Not connected",
+          }),
+        };
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-txt">Accounts</div>
+        <div className="text-sm font-semibold text-txt">
+          {t("lifeopssettings.accounts", {
+            defaultValue: "Accounts",
+          })}
+        </div>
         {cloudAction ? (
           <Button
             size="sm"
@@ -463,12 +587,12 @@ export function LifeOpsSettingsSection({
         <GoogleConnectorSideCard
           connector={ownerConnector}
           side="owner"
-          github={ownerGithub}
+          github={resolvedOwnerGithub}
         />
         <GoogleConnectorSideCard
           connector={agentConnector}
           side="agent"
-          github={agentGithub}
+          github={resolvedAgentGithub}
         />
       </div>
     </section>

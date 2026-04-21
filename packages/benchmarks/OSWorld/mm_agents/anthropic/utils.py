@@ -37,26 +37,6 @@ class APIProvider(Enum):
     VERTEX = "vertex"
 
 
-PROVIDER_TO_DEFAULT_MODEL_NAME: dict[(APIProvider, str), str] = {
-    (APIProvider.ANTHROPIC, "claude-sonnet-4-6"): "claude-sonnet-4-6",
-    (APIProvider.BEDROCK, "claude-sonnet-4-6"): "us.anthropic.claude-sonnet-4-6-v2:0",
-    (APIProvider.VERTEX, "claude-sonnet-4-6"): "claude-sonnet-4-6-v1@20241022",
-    (APIProvider.ANTHROPIC, "claude-sonnet-4-6"): "claude-sonnet-4-6",
-    (APIProvider.BEDROCK, "claude-sonnet-4-6"): "us.anthropic.claude-sonnet-4-6-v1:0",
-    (APIProvider.VERTEX, "claude-sonnet-4-6"): "claude-sonnet-4-6-v1@20250219",
-    (APIProvider.ANTHROPIC, "claude-opus-4-7"): "claude-opus-4-7",
-    (APIProvider.BEDROCK, "claude-opus-4-7"): "us.anthropic.claude-opus-4-7",
-    (APIProvider.VERTEX, "claude-opus-4-7"): "claude-4-opus-v1@20250514",
-    # Add mapping for the alternative model name format
-    (APIProvider.ANTHROPIC, "claude-opus-4-7"): "claude-opus-4-7",
-    (APIProvider.ANTHROPIC, "claude-opus-4-7"): "claude-opus-4-7",
-    (APIProvider.ANTHROPIC, "claude-sonnet-4-6"): "claude-sonnet-4-6",
-    (APIProvider.ANTHROPIC, "claude-sonnet-4-6"): "claude-sonnet-4-6",
-    (APIProvider.BEDROCK, "claude-sonnet-4-6"): "us.anthropic.claude-sonnet-4-6",
-    (APIProvider.VERTEX, "claude-sonnet-4-6"): "claude-sonnet-4-v1@20250514",
-}
-
-
 def get_model_name(provider: APIProvider, model_name: str) -> str:
     """
     Get the actual model name to use for API calls.

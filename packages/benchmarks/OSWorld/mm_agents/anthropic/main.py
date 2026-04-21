@@ -17,7 +17,7 @@ from anthropic.types.beta import (
     BetaMessageParam,
     BetaTextBlockParam,
 )
-from .utils import COMPUTER_USE_BETA_FLAG, PROMPT_CACHING_BETA_FLAG,SYSTEM_PROMPT, SYSTEM_PROMPT_WINDOWS, APIProvider, PROVIDER_TO_DEFAULT_MODEL_NAME, get_model_name
+from .utils import COMPUTER_USE_BETA_FLAG, PROMPT_CACHING_BETA_FLAG,SYSTEM_PROMPT, SYSTEM_PROMPT_WINDOWS, APIProvider, get_model_name
 from .utils import _response_to_params, _inject_prompt_caching, _maybe_filter_to_n_most_recent_images
 
 import logging
@@ -688,4 +688,3 @@ class AnthropicAgent:
             logger = logging.getLogger("desktopenv.agent")
         self.messages = []
         logger.info(f"{self.class_name} reset.")
-

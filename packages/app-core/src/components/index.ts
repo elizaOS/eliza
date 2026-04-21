@@ -70,6 +70,7 @@ export * from "./pages/SecretsView";
 export * from "./pages/SettingsView";
 export * from "./pages/SkillsView";
 export * from "./pages/StreamView";
+export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoriesView";
 export * from "./pages/TrajectoryDetailView";
 export * from "./pages/TriggersView";
