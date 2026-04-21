@@ -117,6 +117,24 @@ export interface PluginInfo {
   configUiHints?: Record<string, ConfigUiHint>;
   /** Optional icon URL or emoji for the plugin card header. */
   icon?: string | null;
+  /**
+   * Lucide icon name (e.g. "Send", "Brain") sourced from the registry.
+   * Replaces the frontend-side DEFAULT_ICONS lookup table.
+   */
+  iconName?: string;
+  /**
+   * Display group from the registry (e.g. "ai-provider", "voice").
+   * Replaces the frontend-side FEATURE_SUBGROUP lookup.
+   */
+  group?: string;
+  /**
+   * Sort order within the display group. Replaces SUBGROUP_DISPLAY_ORDER.
+   */
+  groupOrder?: number;
+  /**
+   * Whether this entry is user-visible. Replaces VISIBLE_CONNECTOR_IDS.
+   */
+  visible?: boolean;
   homepage?: string;
   repository?: string;
   setupGuideUrl?: string;

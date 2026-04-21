@@ -131,6 +131,7 @@ import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
+import { handleCatalogRoutes } from "./catalog-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
@@ -930,6 +931,9 @@ async function handleCompatRoute(
 
   // Plugin routes — extracted to plugins-compat-routes.ts
   if (await handlePluginsCompatRoutes(req, res, state)) return true;
+
+  // Catalog routes — registry SoT projections (apps, plugins, connectors)
+  if (await handleCatalogRoutes(req, res)) return true;
 
   if (await handleOnboardingCompatRoute(req, res, state)) return true;
 
