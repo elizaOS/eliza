@@ -2893,7 +2893,7 @@
   "lifeopsoverview.nextMealWindow": "下一次{{meal}}窗口 {{time}}",
   "lifeopsoverview.lastMeal": "上次进食 {{time}}",
   "lifeopsoverview.mealPatternCalibrating": "饮食模式校准中",
-  "lifeopsoverview.confidence": "{{count}}% 置信度",
+  "lifeopsoverview.confidence": "对下一餐时段的置信度 {{count}}%",
   "lifeopsoverview.label.afternoon": "下午",
   "lifeopsoverview.label.breakfast": "早餐",
   "lifeopsoverview.label.dinner": "晚餐",
