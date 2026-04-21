@@ -189,6 +189,33 @@ export function createLifeOpsChatTestRuntime(options: {
       metadata_json TEXT NOT NULL DEFAULT '{}',
       UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
     );
+    CREATE TABLE IF NOT EXISTS life_screen_time_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      identifier TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT,
+      duration_seconds INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS life_screen_time_daily (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      identifier TEXT NOT NULL,
+      date TEXT NOT NULL,
+      total_seconds INTEGER NOT NULL DEFAULT 0,
+      session_count INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, source, identifier, date)
+    );
     CREATE TABLE IF NOT EXISTS life_audit_events (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
