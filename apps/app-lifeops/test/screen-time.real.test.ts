@@ -141,8 +141,8 @@ describe("screen-time handler — real PGLite", () => {
   });
 
   it("getScreenTimeWeeklyAverageByApp returns structured per-day averages", async () => {
-    const now = Date.now();
-    const weekStart = now - 7 * DAY_MS;
+    const weekStart = Date.parse("2025-02-03T00:00:00.000Z");
+    const weekEnd = weekStart + 7 * DAY_MS;
 
     for (let day = 0; day < 7; day += 1) {
       const dayStart = weekStart + day * DAY_MS;
@@ -167,8 +167,8 @@ describe("screen-time handler — real PGLite", () => {
     }
 
     const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
-      since: new Date(now - 7 * DAY_MS).toISOString(),
-      until: new Date(now).toISOString(),
+      since: new Date(weekStart).toISOString(),
+      until: new Date(weekEnd).toISOString(),
       daysInWindow: 7,
       topN: 10,
     });
