@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 import { Preferences } from "@capacitor/preferences";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { logger } from "./logger";
 
 /**
@@ -31,16 +31,26 @@ export function useNavigation(): NavState {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    Preferences.get({ key: STORAGE_KEY }).then((result) => {
-      if (result.value !== null) {
-        const parsed = parseStack(result.value);
-        if (parsed.length > 0) {
-          setStack(parsed);
-          setView(parsed[parsed.length - 1]);
+    void (async () => {
+      try {
+        const result = await Preferences.get({ key: STORAGE_KEY });
+        if (result.value !== null) {
+          const parsed = parseStack(result.value);
+          if (parsed.length > 0) {
+            setStack(parsed);
+            setView(parsed[parsed.length - 1]);
+          }
         }
+      } catch (err) {
+        logger.warn("[navigation] failed to restore navigation from preferences", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        setStack([DEFAULT_VIEW]);
+        setView(DEFAULT_VIEW);
+      } finally {
+        setReady(true);
       }
-      setReady(true);
-    });
+    })();
   }, []);
 
   useEffect(() => {
@@ -62,20 +72,38 @@ export function useNavigation(): NavState {
     logger.info("[navigation] pop", { fallback });
     triggerHaptic();
     setStack((current) => {
-      if (current.length <= 1) return [fallback];
+      if (current.length <= 1) {
+        setView(fallback);
+        return [fallback];
+      }
       const next = current.slice(0, -1);
       setView(next[next.length - 1]);
       return next;
     });
   }, []);
 
-  return { view, ready, push, pop };
+  return useMemo(() => ({ view, ready, push, pop }), [view, ready, push, pop]);
 }
 
+let hasLoggedInvalidStoredStack = false;
+
 function parseStack(raw: string): ViewName[] {
-  const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(isViewName);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isViewName);
+  } catch (err: unknown) {
+    if (!hasLoggedInvalidStoredStack) {
+      hasLoggedInvalidStoredStack = true;
+      logger.info(
+        "[navigation] invalid persisted stack; falling back to default view",
+        {
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+    }
+    return [];
+  }
 }
 
 function isViewName(value: unknown): value is ViewName {

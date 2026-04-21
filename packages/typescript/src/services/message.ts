@@ -1022,8 +1022,8 @@ interface StrategyResult {
 
 /**
  * True when a plugin registered at least one core text delegate (chat / planning).
- * Embeddings-only (local-ai) and TTS do not count — without this, ACTION_PLANNER
- * and TEXT_LARGE fail with "No handler found for delegate type".
+ * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
+ * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
  */
 export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 	const keys: Array<keyof typeof ModelType | string> = [
@@ -1032,6 +1032,8 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 		ModelType.TEXT_MEDIUM,
 		ModelType.TEXT_NANO,
 		ModelType.TEXT_MEGA,
+		ModelType.ACTION_PLANNER,
+		ModelType.RESPONSE_HANDLER,
 	];
 	for (const k of keys) {
 		if (runtime.getModel(String(k))) return true;
@@ -2984,6 +2986,18 @@ export class DefaultMessageService implements IMessageService {
 				"parallel_with_should_respond",
 				parallelHookCtx,
 			);
+		} else if (!hasTextGenerationHandler(runtime)) {
+			await runtime.applyPipelineHooks(
+				"parallel_with_should_respond",
+				parallelHookCtx,
+			);
+			// Skip LLM should-respond classification when no text delegate is
+			// registered — `dynamicPromptExecFromState` would throw "No handler found".
+			shouldRespondToMessage = true;
+			terminalDecision = null;
+			routedDecision = null;
+			dualPressureLog = null;
+			shouldRespondClassifierAction = null;
 		} else {
 			const [classifyOutcome] = await Promise.all([
 				this.runNonAutonomousShouldRespondClassify(

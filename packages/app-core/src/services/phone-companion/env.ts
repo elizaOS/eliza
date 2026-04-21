@@ -1,8 +1,9 @@
 /**
  * Runtime environment for the phone-companion views.
  *
- * Values come from Vite's `import.meta.env`. Required values throw on access
- * so the app fails loudly instead of masking misconfiguration with defaults.
+ * Values come from Vite's `import.meta.env`. Missing or empty configuration is
+ * represented explicitly: `agentUrl()` returns `null` and `apnsEnabled()`
+ * returns `false` rather than throwing, so callers can branch without try/catch.
  */
 
 interface ViteEnv {
