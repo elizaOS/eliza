@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  resolveIosBuildTarget,
   resolvePlatformTemplateRoot,
   shouldRunIosPodInstall,
   syncPlatformTemplateFiles,
@@ -323,5 +324,46 @@ describe("run-mobile-build", () => {
   it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {
     expect(shouldRunIosPodInstall([path.join("App", "Podfile")])).toBe(true);
     expect(shouldRunIosPodInstall(["build.gradle"])).toBe(false);
+  });
+
+  it("uses a device iOS build target when llama.cpp ships a device framework", () => {
+    const appDir = makeTempDir();
+    writeFile(
+      path.join(
+        appDir,
+        "node_modules",
+        "llama-cpp-capacitor",
+        "ios",
+        "Frameworks",
+        "llama-cpp.framework",
+        "llama-cpp",
+      ),
+      "framework-binary\n",
+    );
+
+    expect(
+      resolveIosBuildTarget({
+        env: {},
+        appDirValue: appDir,
+      }),
+    ).toMatchObject({
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+    });
+  });
+
+  it("allows explicit iOS build target overrides", () => {
+    expect(
+      resolveIosBuildTarget({
+        env: {
+          MILADY_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator",
+          MILADY_IOS_BUILD_SDK: "iphonesimulator",
+        },
+        appDirValue: makeTempDir(),
+      }),
+    ).toMatchObject({
+      destination: "generic/platform=iOS Simulator",
+      sdk: "iphonesimulator",
+    });
   });
 });
