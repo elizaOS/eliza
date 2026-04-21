@@ -666,7 +666,9 @@ export function applyPluginAutoEnable(
     // Default is "local sidecar allowed" — only disable if explicitly set to
     // false. Mobile forces this to false regardless of user setting.
     const localN8nEnabled =
-      params.isNativePlatform === true ? false : n8nConfig?.localEnabled !== false;
+      params.isNativePlatform === true
+        ? false
+        : n8nConfig?.localEnabled !== false;
     const n8nExplicitlyDisabled =
       pluginsConfig.entries[n8nPluginId]?.enabled === false;
     if (

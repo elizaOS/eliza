@@ -211,8 +211,9 @@ function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 }
 
 function formatActionSimiles(action: Action): string | null {
-	const similes = [...new Set((action.similes ?? []).map((simile) => simile.trim()))]
-		.filter((simile) => simile.length > 0);
+	const similes = [
+		...new Set((action.similes ?? []).map((simile) => simile.trim())),
+	].filter((simile) => simile.length > 0);
 
 	if (similes.length === 0) {
 		return null;
@@ -222,9 +223,9 @@ function formatActionSimiles(action: Action): string | null {
 }
 
 function formatActionTags(action: Action): string | null {
-	const tags = [...new Set((action.tags ?? []).map((tag) => tag.trim()))].filter(
-		(tag) => tag.length > 0 && tag !== "always-include",
-	);
+	const tags = [
+		...new Set((action.tags ?? []).map((tag) => tag.trim())),
+	].filter((tag) => tag.length > 0 && tag !== "always-include");
 
 	if (tags.length === 0) {
 		return null;
@@ -559,9 +560,7 @@ export function validateActionParams(
 	for (const paramDef of action.parameters) {
 		const extractedValue = coerceActionParamValue(
 			paramDef,
-			extractedParams
-			? extractedParams[paramDef.name]
-			: undefined,
+			extractedParams ? extractedParams[paramDef.name] : undefined,
 		);
 
 		if (extractedValue === undefined || extractedValue === null) {

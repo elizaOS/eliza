@@ -4207,9 +4207,7 @@ export class AgentRuntime implements IAgentRuntime {
 						timestamp: Date.now(),
 						executionTime: elapsedTime,
 						provider:
-							provider ||
-							this.models.get(modelKey)?.[0]?.provider ||
-							"unknown",
+							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
 						actionContext: this.currentActionContext
 							? {
 									actionName: this.currentActionContext.actionName,

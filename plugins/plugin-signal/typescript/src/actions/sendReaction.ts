@@ -48,11 +48,7 @@ export const sendReaction: Action = {
   similes: ["REACT_SIGNAL", "SIGNAL_REACT", "ADD_SIGNAL_REACTION", "SIGNAL_EMOJI"],
   description: "React to a Signal message with an emoji",
   descriptionCompressed: "React to Signal message.",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
     }
@@ -61,12 +57,7 @@ export const sendReaction: Action = {
       return true;
     }
 
-    if (
-      hasStructuredSignalInvocation(message, "SIGNAL_SEND_REACTION", [
-        "emoji",
-        "targetAuthor",
-      ])
-    ) {
+    if (hasStructuredSignalInvocation(message, "SIGNAL_SEND_REACTION", ["emoji", "targetAuthor"])) {
       return true;
     }
 

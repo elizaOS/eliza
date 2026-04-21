@@ -183,7 +183,7 @@ function collectRegexMatches(
 ): string[] {
   const regex = new RegExp(pattern.source, pattern.flags);
   return Array.from(text.matchAll(regex), (match) =>
-    String(groupIndex === undefined ? match[0] : match[groupIndex] ?? ""),
+    String(groupIndex === undefined ? match[0] : (match[groupIndex] ?? "")),
   );
 }
 
@@ -248,7 +248,10 @@ async function resolveExactKnowledgeValueForChat(
       }
     | null
     | undefined;
-  if (!knowledgeService || typeof knowledgeService.getKnowledge !== "function") {
+  if (
+    !knowledgeService ||
+    typeof knowledgeService.getKnowledge !== "function"
+  ) {
     return null;
   }
 
@@ -285,7 +288,9 @@ async function resolveExactKnowledgeValueForChat(
 
     const knowledgeText = preferredMatches
       .map((match) =>
-        typeof match?.content?.text === "string" ? match.content.text.trim() : "",
+        typeof match?.content?.text === "string"
+          ? match.content.text.trim()
+          : "",
       )
       .filter((text) => text.length > 0)
       .join("\n\n");

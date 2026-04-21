@@ -20,20 +20,20 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, IAgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { createFeatureFlagService } from "@elizaos/app-lifeops/lifeops/feature-flags";
 import {
   ALL_FEATURE_KEYS,
   CLOUD_LINKED_DEFAULT_ON,
-  isLifeOpsFeatureKey,
   type FeatureFlagState,
   isCloudLinkedDefaultOnFeatureKey,
+  isLifeOpsFeatureKey,
   type LifeOpsFeatureFlagRowDto,
   type LifeOpsFeatureFlagsResponse,
   type LifeOpsFeatureFlagsSyncResponse,
   type LifeOpsFeatureKey,
 } from "@elizaos/app-lifeops/lifeops/feature-flags.types";
-import { createFeatureFlagService } from "@elizaos/app-lifeops/lifeops/feature-flags";
+import type { AgentRuntime, IAgentRuntime, Service } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
@@ -240,11 +240,7 @@ async function handleSync(
     synced: remote.rows.length,
     features: list.map(toRowDto),
   };
-  sendJson(
-    res,
-    response,
-    200,
-  );
+  sendJson(res, response, 200);
 }
 
 export async function handleCloudFeaturesRoute(

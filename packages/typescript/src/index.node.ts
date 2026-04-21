@@ -85,6 +85,7 @@ export * from "./services/onboarding-cli";
 export * from "./services/onboarding-rpc";
 // Export onboarding services
 export * from "./services/onboarding-state";
+export * from "./services/optimized-prompt";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
@@ -98,7 +99,6 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/optimized-prompt";
 export * from "./services/trajectories";
 // Export sessions utilities
 export * from "./sessions";

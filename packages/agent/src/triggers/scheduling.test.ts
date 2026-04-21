@@ -37,7 +37,9 @@ describe("normalizeTriggerDraft — workflow kind", () => {
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.draft?.instructions).toBe("Run workflow Nightly Sync Workflow");
+    expect(result.draft?.instructions).toBe(
+      "Run workflow Nightly Sync Workflow",
+    );
     expect(result.draft?.kind).toBe("workflow");
     expect(result.draft?.workflowId).toBe("wf-42");
     expect(result.draft?.workflowName).toBe("Nightly Sync Workflow");

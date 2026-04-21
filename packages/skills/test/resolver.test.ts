@@ -1,9 +1,9 @@
-import { describe, it, afterEach } from "node:test";
 import assert from "node:assert";
-import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { getSkillsDir, clearSkillsDirCache } from "../src/resolver.js";
+import { join } from "node:path";
+import { afterEach, describe, it } from "node:test";
+import { clearSkillsDirCache, getSkillsDir } from "../src/resolver.js";
 
 describe("getSkillsDir", () => {
   afterEach(() => {
@@ -33,7 +33,7 @@ describe("getSkillsDir", () => {
     mkdirSync(tempDir, { recursive: true });
     writeFileSync(
       join(tempDir, "test.md"),
-      "---\nname: test\ndescription: test\n---\n# Test skill"
+      "---\nname: test\ndescription: test\n---\n# Test skill",
     );
 
     clearSkillsDirCache();
@@ -79,7 +79,7 @@ describe("clearSkillsDirCache", () => {
     mkdirSync(tempDir, { recursive: true });
     writeFileSync(
       join(tempDir, "test.md"),
-      "---\nname: test\ndescription: test\n---\n# Test"
+      "---\nname: test\ndescription: test\n---\n# Test",
     );
 
     // Clear cache and set env var

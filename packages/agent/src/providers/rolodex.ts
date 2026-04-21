@@ -59,8 +59,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService =
-        (await resolveRelationshipsGraphService(runtime)) as RelationshipsGraphService | null;
+      const graphService = (await resolveRelationshipsGraphService(
+        runtime,
+      )) as RelationshipsGraphService | null;
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

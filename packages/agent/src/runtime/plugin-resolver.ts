@@ -205,7 +205,10 @@ async function ensureStagedPackageDependencies(params: {
   packageRoot: string;
   stagedPackageRoot: string;
 }): Promise<void> {
-  const stagedNodeModulesPath = path.join(params.stagedPackageRoot, "node_modules");
+  const stagedNodeModulesPath = path.join(
+    params.stagedPackageRoot,
+    "node_modules",
+  );
   if (!(await pathEntryExists(stagedNodeModulesPath))) {
     return;
   }

@@ -168,7 +168,7 @@ export function ChatConversationItem({
 
   const renderedTitle = displayTitle ?? conversation.title;
   const showInlineActions = isGameModal;
-  const showSourceBadge = !isGameModal && conversationSource !== null;
+  const showSourceBadge = !isGameModal && conversation.source !== null;
   return (
     <div
       data-testid="conv-item"

@@ -20,7 +20,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../../../logger.ts";
-import { resolveStateDir } from "../../../utils/state-dir.ts";
 import type {
 	ActionResult,
 	EvaluationExample,
@@ -29,6 +28,7 @@ import type {
 	Memory,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
+import { resolveStateDir } from "../../../utils/state-dir.ts";
 
 interface TrajectoryStep {
 	timestamp: number;
@@ -658,10 +658,9 @@ interface OptimizerModule {
 }
 
 async function loadOptimizerModule(): Promise<OptimizerModule | null> {
-	const dynamicImport = new Function(
-		"name",
-		"return import(name);",
-	) as (name: string) => Promise<unknown>;
+	const dynamicImport = new Function("name", "return import(name);") as (
+		name: string,
+	) => Promise<unknown>;
 	const mod = (await dynamicImport("@elizaos/app-training/optimizers").catch(
 		() => null,
 	)) as OptimizerModule | null;

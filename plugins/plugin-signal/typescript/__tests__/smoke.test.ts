@@ -26,8 +26,7 @@ describe("@elizaos/plugin-signal", () => {
   beforeAll(async () => {
     mod = await import("../src/index.ts");
     const defaultPlugin = isSignalPlugin(mod.default) ? mod.default : undefined;
-    const namedPlugin =
-      "plugin" in mod && isSignalPlugin(mod.plugin) ? mod.plugin : undefined;
+    const namedPlugin = "plugin" in mod && isSignalPlugin(mod.plugin) ? mod.plugin : undefined;
 
     plugin = defaultPlugin ?? namedPlugin ?? Object.values(mod).find(isSignalPlugin);
   });

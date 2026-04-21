@@ -33,6 +33,7 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import { TxService } from "@elizaos/app-steward/api/tx-service";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
@@ -52,8 +53,12 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { WebSocket, WebSocketServer } from "ws";
-import { CharacterSchema } from "../config/zod-schema.js";
+import {
+  resolveApiBindHost,
+  resolveServerOnlyPort,
+} from "@elizaos/shared/runtime-env";
+import { type WebSocket, WebSocketServer } from "ws";
+import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -61,15 +66,7 @@ import {
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
 import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
-import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-import { TxService } from "@elizaos/app-steward/api/tx-service";
-import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
-import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
-import { handleXRelayRoute } from "./x-relay-routes.js";
-import {
-  resolveApiBindHost,
-  resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
+import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
@@ -163,10 +160,10 @@ import {
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
+import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
-import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
 import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
@@ -218,6 +215,8 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
+import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
@@ -240,6 +239,7 @@ import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
+import { handleXRelayRoute } from "./x-relay-routes.js";
 
 export {
   executeFallbackParsedActions,
@@ -2294,13 +2294,10 @@ async function handleRequest(
     );
     if (travelProviderHandled) return;
 
-    const xRelayHandled = await handleXRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
+    const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
+      config: state.config,
+      runtime: state.runtime,
+    });
     if (xRelayHandled) return;
 
     const billingHandled = await handleCloudBillingRoute(

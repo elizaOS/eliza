@@ -1,7 +1,15 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-3    package="ai.eliza.plugins.mobilesignals" >
-4
-5    <uses-sdk android:minSdkVersion="26" />
-6
-7</manifest>
+3    xmlns:tools="http://schemas.android.com/tools"
+4    package="ai.eliza.plugins.mobilesignals" >
+5
+6    <uses-sdk android:minSdkVersion="26" />
+7
+8    <uses-permission
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/main/AndroidManifest.xml:5:5-7:47
+9        android:name="android.permission.PACKAGE_USAGE_STATS"
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/main/AndroidManifest.xml:6:9-62
+10        tools:ignore="ProtectedPermissions" />
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/main/AndroidManifest.xml:7:9-44
+11
+12</manifest>

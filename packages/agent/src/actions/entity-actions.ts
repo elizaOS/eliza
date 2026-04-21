@@ -562,7 +562,7 @@ function linkEntityPrompt(userText: string, peopleList: string): string {
     "entityA: first entity's primaryEntityId (UUID, required)",
     "entityB: second entity's primaryEntityId (UUID, required)",
     "confirmation: true if the user is explicitly confirming the merge",
-    "  (\"yes merge them\", \"confirm\", \"do it\", \"go ahead\"); false or",
+    '  ("yes merge them", "confirm", "do it", "go ahead"); false or',
     "  omitted if the user is only proposing / asking about a link",
     "reason: short free-text reason from the user (optional)",
     "",
@@ -623,9 +623,8 @@ export const linkEntityAction: Action = {
       };
     }
 
-    const explicitParams =
-      ((options as HandlerOptions | undefined)?.parameters ??
-        {}) as LinkEntityParams;
+    const explicitParams = ((options as HandlerOptions | undefined)
+      ?.parameters ?? {}) as LinkEntityParams;
 
     let entityA = isLikelyUuid(explicitParams.entityA)
       ? (explicitParams.entityA as UUID)
@@ -646,9 +645,7 @@ export const linkEntityAction: Action = {
           .map((p) => {
             const identities = p.identities
               .flatMap((identity) =>
-                identity.handles.map(
-                  (h) => `${h.platform}:${h.handle}`,
-                ),
+                identity.handles.map((h) => `${h.platform}:${h.handle}`),
               )
               .slice(0, 5)
               .join(", ");

@@ -10,13 +10,13 @@
  * have a clear landing spot when agent-mailbox integration is implemented.
  */
 
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.js";
 
@@ -100,7 +100,8 @@ export const agentInboxAction: Action = {
     },
     {
       name: "messageId",
-      description: "Specific message id for read_message / draft_reply / send_reply.",
+      description:
+        "Specific message id for read_message / draft_reply / send_reply.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -118,7 +119,12 @@ export const agentInboxAction: Action = {
     },
   ],
 
-  handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
     const params =
       ((options as HandlerOptions | undefined)?.parameters as
         | AgentInboxParameters

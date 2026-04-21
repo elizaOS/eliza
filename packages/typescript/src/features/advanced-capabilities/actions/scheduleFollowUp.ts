@@ -8,10 +8,6 @@ import { logger } from "../../../logger.ts";
 import { scheduleFollowUpTemplate } from "../../../prompts.ts";
 import type { FollowUpService } from "../../../services/followUp.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
-import {
-	extractScheduleFollowUpResponseFromText,
-	type ParsedScheduleFollowUpResponse,
-} from "../../shared/schedule-follow-up-response.ts";
 import type {
 	Action,
 	ActionExample,
@@ -28,6 +24,10 @@ import {
 	parseJSONObjectFromText,
 	parseKeyValueXml,
 } from "../../../utils.ts";
+import {
+	extractScheduleFollowUpResponseFromText,
+	type ParsedScheduleFollowUpResponse,
+} from "../../shared/schedule-follow-up-response.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SCHEDULE_FOLLOW_UP");
@@ -118,7 +118,9 @@ export const scheduleFollowUpAction: Action = {
 
 		const parsedResponse =
 			parseKeyValueXml<ParsedScheduleFollowUpResponse>(response) ??
-			(parseJSONObjectFromText(response) as ParsedScheduleFollowUpResponse | null) ??
+			(parseJSONObjectFromText(
+				response,
+			) as ParsedScheduleFollowUpResponse | null) ??
 			extractScheduleFollowUpResponseFromText(response);
 		const contactName = parsedResponse?.contactName?.trim();
 		if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {

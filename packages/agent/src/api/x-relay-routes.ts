@@ -9,9 +9,9 @@
 
 import type http from "node:http";
 import type { Service } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import type { ElizaConfig } from "../config/config.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "./http-helpers.js";
 import { resolveCloudApiKey } from "./wallet-rpc.js";
@@ -59,7 +59,9 @@ function normalizeCloudApiKey(value: string | null | undefined): string | null {
 }
 
 function resolveProxyApiKey(state: XRelayRouteState): string | null {
-  const cloudAuth = state.runtime ? state.runtime.getService("CLOUD_AUTH") : null;
+  const cloudAuth = state.runtime
+    ? state.runtime.getService("CLOUD_AUTH")
+    : null;
   const runtimeApiKey =
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())

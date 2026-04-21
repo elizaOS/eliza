@@ -1,4 +1,9 @@
-import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+} from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
 import {
   isPluginManagerLike,

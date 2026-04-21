@@ -23,9 +23,7 @@ describe("signal plugin defaults", () => {
 
   it("defaults auth dir to $HOME/.local/share/signal-cli on every platform", () => {
     // signal-cli hardcodes this XDG path; do NOT use macOS Library/.
-    expect(defaultSignalAuthDir()).toBe(
-      path.join(os.homedir(), ".local", "share", "signal-cli"),
-    );
+    expect(defaultSignalAuthDir()).toBe(path.join(os.homedir(), ".local", "share", "signal-cli"));
   });
 
   it("auth dir default is stable across calls (pure function)", () => {

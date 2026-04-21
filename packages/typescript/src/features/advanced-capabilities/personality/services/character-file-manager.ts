@@ -525,7 +525,8 @@ export class CharacterFileManager extends Service {
 		}
 
 		const files = await fs.readdir(this.backupDir);
-		const backups: Array<{ path: string; timestamp: number; size: number }> = [];
+		const backups: Array<{ path: string; timestamp: number; size: number }> =
+			[];
 
 		for (const file of files) {
 			if (file.endsWith(".json")) {

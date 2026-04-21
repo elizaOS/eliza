@@ -1,10 +1,17 @@
-import type { Action, ActionExample, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
 import {
+  type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
-  type BrowserWorkspaceCommand,
 } from "../services/browser-workspace.js";
 
 type BrowserSessionParameters = {
@@ -136,7 +143,8 @@ export const browserSessionAction: Action = {
       | BrowserSessionParameters
       | undefined;
     const messageText = getMessageText(message);
-    const url = params?.url?.trim() || extractFirstUrl(messageText) || undefined;
+    const url =
+      params?.url?.trim() || extractFirstUrl(messageText) || undefined;
     const subaction = inferBrowserSubaction(params, messageText);
 
     const command: BrowserWorkspaceCommand = {

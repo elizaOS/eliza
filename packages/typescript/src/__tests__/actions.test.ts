@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ACTION_BENCHMARK_CASES } from "../../../app-core/test/benchmarks/action-selection-cases.ts";
 import {
 	composeActionExamples,
 	formatActionNames,
@@ -8,7 +9,6 @@ import {
 } from "../actions";
 import { allActionDocs } from "../generated/action-docs";
 import type { Action } from "../types";
-import { ACTION_BENCHMARK_CASES } from "../../../app-core/test/benchmarks/action-selection-cases.ts";
 
 describe("Actions", () => {
 	const mockActions: Action[] = [
@@ -309,7 +309,8 @@ describe("Actions", () => {
 			expect(casesById.has("cross-send-slack")).toBe(false);
 			expect(casesById.get("cross-send-signal")).toMatchObject({
 				expectedAction: "OWNER_SEND_MESSAGE",
-				userMessage: "send a Signal message to Priya saying thanks for the review",
+				userMessage:
+					"send a Signal message to Priya saying thanks for the review",
 			});
 
 			expect(casesById.has("computer-use-fill-form")).toBe(false);
@@ -319,17 +320,18 @@ describe("Actions", () => {
 			});
 
 			expect(casesById.has("intent-sync-send-to-mobile")).toBe(false);
-			expect(casesById.get("intent-sync-mobile-routine-reminder"))
-				.toMatchObject({
-					expectedAction: "INTENT_SYNC",
-					expectedParams: {
-						subaction: "broadcast",
-						kind: "routine_reminder",
-						target: "mobile",
-						title: "Stretch break",
-						body: "Get up and stretch for five minutes",
-					},
-				});
+			expect(
+				casesById.get("intent-sync-mobile-routine-reminder"),
+			).toMatchObject({
+				expectedAction: "INTENT_SYNC",
+				expectedParams: {
+					subaction: "broadcast",
+					kind: "routine_reminder",
+					target: "mobile",
+					title: "Stretch break",
+					body: "Get up and stretch for five minutes",
+				},
+			});
 
 			expect(casesById.has("calendly-list-slots")).toBe(false);
 			expect(casesById.get("calendly-check-availability")).toMatchObject({

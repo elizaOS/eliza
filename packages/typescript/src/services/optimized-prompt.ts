@@ -146,7 +146,10 @@ export function parseOptimizedPromptArtifact(
 	if (typeof raw.score !== "number" || typeof raw.baselineScore !== "number") {
 		return null;
 	}
-	if (typeof raw.datasetId !== "string" || typeof raw.datasetSize !== "number") {
+	if (
+		typeof raw.datasetId !== "string" ||
+		typeof raw.datasetSize !== "number"
+	) {
 		return null;
 	}
 	if (typeof raw.generatedAt !== "string") return null;

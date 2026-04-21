@@ -45,8 +45,8 @@ export type StatusMixinDependencies = LifeOpsServiceBase & {
 };
 
 type CheckResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; message: string; observedAt: string };
+  | { ok: true; value: T; message?: string; observedAt?: string }
+  | { ok: false; value?: T; message: string; observedAt: string };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0

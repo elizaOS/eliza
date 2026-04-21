@@ -9,18 +9,23 @@
  * persisted to disk and immediately visible to `resolveAppUserName`.
  */
 
-import {
-  fetchConfiguredOwnerName,
-  OWNER_NAME_MAX_LENGTH,
-  persistConfiguredOwnerName,
-} from "../services/owner-name.js";
-import type { Action, ActionExample, HandlerOptions, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  State,
+} from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared/validation-keywords";
 import { hasOwnerAccess } from "../security/access.js";
+import {
+  fetchConfiguredOwnerName,
+  OWNER_NAME_MAX_LENGTH,
+  persistConfiguredOwnerName,
+} from "../services/owner-name.js";
 
 const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
   "action.setUserName.recentContext",

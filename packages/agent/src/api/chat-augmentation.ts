@@ -351,7 +351,9 @@ export async function maybeAugmentChatMessageWithKnowledge(
 
   let relevantMatches: Awaited<ReturnType<typeof loadMatchesAcrossScopes>> = [];
   try {
-    relevantMatches = selectRelevantMatches(await loadMatchesAcrossScopes(userPrompt))
+    relevantMatches = selectRelevantMatches(
+      await loadMatchesAcrossScopes(userPrompt),
+    )
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
       .slice(0, CHAT_KNOWLEDGE_LIMIT);
 
@@ -361,7 +363,9 @@ export async function maybeAugmentChatMessageWithKnowledge(
         const recoveredMatches = selectRelevantMatches(
           await loadMatchesAcrossScopes(query),
         )
-          .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+          .sort(
+            (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
+          )
           .slice(0, CHAT_KNOWLEDGE_LIMIT);
         if (recoveredMatches.length > 0) {
           relevantMatches = recoveredMatches;
@@ -388,9 +392,11 @@ export async function maybeAugmentChatMessageWithKnowledge(
     .map((match, index) => {
       const metadata = match.metadata as Record<string, unknown> | undefined;
       const title =
-        typeof metadata?.filename === "string" && metadata.filename.trim().length > 0
+        typeof metadata?.filename === "string" &&
+        metadata.filename.trim().length > 0
           ? metadata.filename.trim()
-          : typeof metadata?.title === "string" && metadata.title.trim().length > 0
+          : typeof metadata?.title === "string" &&
+              metadata.title.trim().length > 0
             ? metadata.title.trim()
             : `source-${index + 1}`;
       const text = (match.content?.text ?? "").trim();

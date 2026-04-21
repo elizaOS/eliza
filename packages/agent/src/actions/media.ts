@@ -13,7 +13,12 @@
  * @module actions/media
  */
 
-import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+} from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
 import { loadElizaConfig } from "../config/config.js";
 import {

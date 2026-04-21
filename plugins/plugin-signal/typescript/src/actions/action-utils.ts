@@ -6,9 +6,7 @@ function contentRecord(message: Memory): Record<string, unknown> {
   return message.content as Record<string, unknown>;
 }
 
-export function getSignalService(
-  runtime: IAgentRuntime,
-): SignalService | null {
+export function getSignalService(runtime: IAgentRuntime): SignalService | null {
   return runtime.getService(SIGNAL_SERVICE_NAME) as SignalService | null;
 }
 
@@ -21,15 +19,13 @@ export function isSignalConversation(message: Memory): boolean {
 }
 
 export function getMessageText(message: Memory): string {
-  return typeof message.content.text === "string"
-    ? message.content.text.trim()
-    : "";
+  return typeof message.content.text === "string" ? message.content.text.trim() : "";
 }
 
 export function hasStructuredSignalInvocation(
   message: Memory,
   actionName: string,
-  structuredKeys: string[] = [],
+  structuredKeys: string[] = []
 ): boolean {
   const content = contentRecord(message);
   const actions = Array.isArray(content.actions) ? content.actions : [];

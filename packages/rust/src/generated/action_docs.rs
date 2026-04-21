@@ -2764,7 +2764,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "BROWSER_ACTION",
-      "description": "Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+      "description": "Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_BROWSER",
@@ -2862,6 +2862,29 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
+      ]
+    },
+    {
+      "name": "FETCH_FEED_TOP",
+      "description": "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+      "parameters": [],
+      "similes": [
+        "GET_X_FEED",
+        "TOP_TWEETS",
+        "FEED_TOP"
+      ]
+    },
+    {
+      "name": "FILE_ACTION",
+      "description": "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
+      "parameters": [],
+      "similes": [
+        "READ_FILE",
+        "WRITE_FILE",
+        "EDIT_FILE",
+        "DELETE_FILE",
+        "LIST_DIRECTORY",
+        "FILE_OPERATION"
       ]
     },
     {
@@ -3102,6 +3125,8 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "LIST_WINDOWS",
         "FOCUS_WINDOW",
         "SWITCH_WINDOW",
+        "ARRANGE_WINDOWS",
+        "MOVE_WINDOW",
         "MINIMIZE_WINDOW",
         "MAXIMIZE_WINDOW",
         "CLOSE_WINDOW",
@@ -3426,6 +3451,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "SEND_X_POST",
+      "description": "Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+      "parameters": [],
+      "similes": [
+        "POST_X",
+        "TWEET_WITH_CONFIRMATION",
+        "PUBLISH_TWEET"
+      ]
+    },
+    {
       "name": "SETUP_CREDENTIALS",
       "description": "Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
       "parameters": [
@@ -3721,20 +3756,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "TAKE_SCREENSHOT",
-      "description": "Take a screenshot of the current screen to see what is displayed. ",
-      "parameters": [],
-      "similes": [
-        "CAPTURE_SCREEN",
-        "SCREEN_CAPTURE",
-        "GET_SCREENSHOT",
-        "SEE_SCREEN",
-        "LOOK_AT_SCREEN",
-        "VIEW_SCREEN",
-        "SCREEN_STATE"
-      ]
-    },
-    {
       "name": "TASK_CONTROL",
       "description": "Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
       "parameters": [],
@@ -3773,6 +3794,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "TERMINAL_ACTION",
+      "description": "Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
+      "parameters": [],
+      "similes": [
+        "RUN_COMMAND",
+        "EXECUTE_COMMAND",
+        "SHELL_COMMAND",
+        "TERMINAL",
+        "RUN_SHELL"
+      ]
+    },
+    {
       "name": "TOGGLE_SKILL",
       "description": "Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
       "parameters": [],
@@ -3796,7 +3829,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "USE_COMPUTER",
-      "description": "Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+      "description": "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
       "parameters": [],
       "similes": [
         "CONTROL_COMPUTER",
@@ -3810,7 +3843,19 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SCROLL_SCREEN",
         "MOVE_MOUSE",
         "DRAG",
-        "MOUSE_CLICK"
+        "MOUSE_CLICK",
+        "CLICK_WITH_MODIFIERS"
+      ]
+    },
+    {
+      "name": "USE_SKILL",
+      "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+      "parameters": [],
+      "similes": [
+        "INVOKE_SKILL",
+        "EXECUTE_SKILL",
+        "RUN_SKILL",
+        "CALL_SKILL"
       ]
     }
   ]

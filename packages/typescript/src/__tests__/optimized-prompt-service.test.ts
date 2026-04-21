@@ -1,12 +1,19 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptArtifact,
 	OptimizedPromptService,
 	parseOptimizedPromptArtifact,
-	type OptimizedPromptArtifact,
 } from "../services/optimized-prompt";
 
 let storeRoot: string;
@@ -65,16 +72,8 @@ describe("OptimizedPromptService", () => {
 			prompt: "NEWER_PROMPT",
 			generatedAt: "2025-06-01T00:00:00.000Z",
 		});
-		writeFileSync(
-			join(dir, "older.json"),
-			JSON.stringify(older),
-			"utf-8",
-		);
-		writeFileSync(
-			join(dir, "newer.json"),
-			JSON.stringify(newer),
-			"utf-8",
-		);
+		writeFileSync(join(dir, "older.json"), JSON.stringify(older), "utf-8");
+		writeFileSync(join(dir, "newer.json"), JSON.stringify(newer), "utf-8");
 		const service = new OptimizedPromptService();
 		service.setStoreRoot(storeRoot);
 		await service.refresh();

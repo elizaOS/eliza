@@ -45,11 +45,7 @@ export const sendMessage: Action = {
   similes: ["SEND_SIGNAL_MESSAGE", "TEXT_SIGNAL", "MESSAGE_SIGNAL", "SIGNAL_TEXT"],
   description: "Send a message to a Signal contact or group",
   descriptionCompressed: "Send Signal message.",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
     }
@@ -58,20 +54,12 @@ export const sendMessage: Action = {
       return true;
     }
 
-    if (
-      hasStructuredSignalInvocation(message, "SIGNAL_SEND_MESSAGE", [
-        "recipient",
-        "text",
-      ])
-    ) {
+    if (hasStructuredSignalInvocation(message, "SIGNAL_SEND_MESSAGE", ["recipient", "text"])) {
       return true;
     }
 
     const text = getMessageText(message);
-    return (
-      /\bsignal\b/i.test(text) &&
-      /\b(reply|send|message|text)\b/i.test(text)
-    );
+    return /\bsignal\b/i.test(text) && /\b(reply|send|message|text)\b/i.test(text);
   },
   handler: async (
     runtime: IAgentRuntime,
