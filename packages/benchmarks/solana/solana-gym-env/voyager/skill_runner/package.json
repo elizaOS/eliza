@@ -11,7 +11,7 @@
     "@coral-xyz/borsh": "^0.32.0",
     "@ellipsis-labs/phoenix-sdk": "^2.0.3",
     "@jup-ag/api": "^6.0.0",
-    "@orca-so/whirlpools-sdk": "^0.15.0",
+    "@orca-so/whirlpools-sdk": "^0.20.0",
     "@raydium-io/raydium-sdk-v2": "^0.2.12-alpha",
     "@solana/kit": "^6.0.0",
     "@solana/spl-token": "^0.4.13",
