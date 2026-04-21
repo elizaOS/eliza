@@ -775,6 +775,11 @@ export class ComputerUseService extends Service {
             entry,
             await deleteDirectory(targetPath),
           );
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown file action: ${(params as { action: string }).action}`,
+          });
       }
     } catch (error) {
       return this.failEntry(entry, {
@@ -860,6 +865,11 @@ export class ComputerUseService extends Service {
               cwd: params.cwd,
             }),
           );
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown terminal action: ${(params as { action: string }).action}`,
+          });
       }
     } catch (error) {
       return this.failEntry(entry, {
@@ -1045,6 +1055,8 @@ export class ComputerUseService extends Service {
         return "browser_get_dom";
       case "get_clickables":
         return "browser_get_clickables";
+      default:
+        return `browser_${action as string}`;
     }
   }
 
