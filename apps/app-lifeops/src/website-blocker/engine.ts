@@ -688,6 +688,12 @@ export function hasWebsiteBlockDeferralIntent(text: string): boolean {
   );
 }
 
+export function hasWebsiteBlockIntent(text: string): boolean {
+  return /\b(block|unblock|website\s+block(?:er|ing)?|self\s*control|focus\s+mode|focus)\b/i.test(
+    text,
+  );
+}
+
 export function parseSelfControlBlockRequest(
   options?: HandlerOptions,
 ): { request: SelfControlBlockRequest | null; error?: string } {
