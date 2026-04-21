@@ -214,11 +214,7 @@ export function PermissionsPanel() {
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Permissions
       </div>
-      <div className="pb-2 text-xs leading-5 text-muted">
-        LifeOps cannot read system permissions directly. Use Open Settings on
-        each row and confirm the toggle in System Settings.
-      </div>
-      <div className="divide-y divide-border/12">
+      <div className="space-y-1">
         {permissions.map((entry) => (
           <PermissionRow key={entry.id} entry={entry} />
         ))}

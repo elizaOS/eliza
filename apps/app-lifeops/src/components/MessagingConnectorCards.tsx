@@ -236,7 +236,12 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
-  const isPairing = signal.pairingStatus != null;
+  const pairingState = signal.pairingStatus?.state ?? null;
+  const isPairing =
+    !isConnected &&
+    (pairingState === "generating_qr" ||
+      pairingState === "waiting_for_scan" ||
+      pairingState === "linking");
   const busy = signal.actionPending || signal.loading;
 
   return (
@@ -617,7 +622,7 @@ export function TelegramConnectorCard() {
             placeholder="+1 234 567 8900"
             value={phoneInput}
             onChange={(e) => setPhoneInput(e.target.value)}
-            className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 handleSendCode();
@@ -635,15 +640,18 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {showCodeStep ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder={
-                authState === "waiting_for_provisioning_code"
-                  ? "my.telegram.org code"
-                  : "Verification code"
+      {authState === "waiting_for_code" ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Verification code"
+            value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value)}
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            autoComplete="one-time-code"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleVerifyCode();
               }
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
@@ -681,44 +689,28 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {showPasswordStep ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              placeholder="Telegram 2FA password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              className="h-8 flex-1 rounded-xl border border-border/28 bg-card/24 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSubmitPassword();
-                }
-              }}
-            />
-            <Button
-              size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={busy || passwordInput.length === 0}
-              onClick={handleSubmitPassword}
-            >
-              Submit
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={busy}
-              onClick={handleRestartAuth}
-            >
-              Restart
-            </Button>
-          </div>
-          <div className="text-xs text-muted">
-            This is your Telegram two-step verification password from Telegram
-            Settings → Privacy and Security → Two-Step Verification. It is not
-            the login code sent by SMS or the Telegram app.
-          </div>
+      {authState === "waiting_for_password" ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="password"
+            placeholder="2FA password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            className="h-8 flex-1 rounded-lg bg-bg/40 px-3 text-xs text-txt placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSubmitPassword();
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={busy || passwordInput.length === 0}
+            onClick={handleSubmitPassword}
+          >
+            Submit
+          </Button>
         </div>
       ) : null}
 
@@ -942,7 +934,7 @@ export function MessagingConnectorGrid() {
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Messaging
       </div>
-      <div className="divide-y divide-border/12">
+      <div className="space-y-1">
         <SignalConnectorCard />
         <DiscordConnectorCard />
         <TelegramConnectorCard />

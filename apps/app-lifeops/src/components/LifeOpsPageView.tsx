@@ -955,73 +955,80 @@ function LifeOpsWorkspaceInner() {
   })();
 
   return (
-    <AppWorkspaceChromeFallback
-      testId="lifeops-shell"
-      nav={<LifeOpsNavRail activeSection={section} onNavigate={navigate} />}
-      main={mainContent}
-      chat={
-        <LifeOpsChatAdapter>
-          <div className="flex h-full items-center justify-center text-xs text-muted">
-            Chat panel
-          </div>
-        </LifeOpsChatAdapter>
-      }
-    />
-  );
-}
+    <div
+      className="space-y-6 px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
+      data-testid="lifeops-shell"
+    >
+      <div className="space-y-4">
+        <PagePanel.Header heading="LifeOps" className="px-0 py-0 sm:px-0" />
 
-/* ── Enable prompt ──────────────────────────────────────────────── */
-function EnablePrompt({
-  loading,
-  onEnable,
-  t,
-}: {
-  loading: boolean;
-  onEnable: () => void;
-  t: TranslateFn;
-}) {
-  return (
-    <section className="space-y-5 rounded-3xl border border-border/16 bg-card/18 px-4 py-6 sm:px-6 sm:py-7">
-      <div className="space-y-2">
-        <div className="text-base font-semibold text-txt">
-          {t("lifeopspage.enableTitle", {
-            defaultValue:
-              "Your personal assistant for calendar, email, and routines",
-          })}
-        </div>
-        <div className="text-sm leading-relaxed text-muted">
-          {t("lifeopspage.enableDescription", {
-            defaultValue:
-              "Enable LifeOps to let the agent triage email, manage your calendar, and keep your goals and reminders on track. You pick which accounts and permissions to connect after turning it on.",
-          })}
-        </div>
+        {lifeOpsApp.error ? (
+          <PagePanel.Notice tone="danger">
+            {lifeOpsApp.error}
+          </PagePanel.Notice>
+        ) : null}
+
+        {lifeOpsApp.loading ? (
+          <PagePanel.Loading
+            variant="surface"
+            heading="Loading LifeOps app state"
+          />
+        ) : null}
+
+        {appEnabled && !runtimeReady ? (
+          <PagePanel.Loading
+            variant="surface"
+            heading="Waiting for LifeOps runtime"
+          />
+        ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-3 pt-1">
+
+      {appEnabled && runtimeReady ? (
+        <>
+          <section>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 py-3 text-left"
+              onClick={() => setSetupOpen((current) => !current)}
+              aria-expanded={setupOpen}
+            >
+              <div className="text-sm font-semibold text-txt">Setup</div>
+              <ChevronDown
+                className={`h-4 w-4 text-muted transition-transform ${
+                  setupOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {setupOpen ? (
+              <div className="space-y-6 pt-2">
+                <LifeOpsSettingsSection
+                  ownerGithub={ownerGithubSetup}
+                  agentGithub={agentGithubSetup}
+                  githubError={githubError}
+                />
+                <MessagingConnectorGrid />
+              </div>
+            ) : null}
+          </section>
+
+          <LifeOpsWorkspaceView />
+
+          <PermissionsPanel />
+        </>
+      ) : null}
+
+      <div className="flex justify-end border-t border-border/16 pt-2">
         <Button
+          variant={appEnabled ? "surfaceDestructive" : "default"}
           size="sm"
-          className="rounded-full px-5 py-2 text-xs-tight font-semibold"
-          onClick={onEnable}
-          disabled={loading}
+          className="rounded-full px-4 text-xs-tight font-semibold"
+          onClick={() => void handleSetLifeOpsEnabled(!appEnabled)}
+          disabled={lifeOpsApp.loading || lifeOpsApp.saving}
         >
-          {loading
-            ? t("lifeopspage.enabling", { defaultValue: "Enabling…" })
-            : t("lifeopspage.enable", { defaultValue: "Enable LifeOps" })}
+          {appEnabled ? "Disable LifeOps" : "Enable LifeOps"}
         </Button>
-        <span className="text-xs text-muted">
-          {t("lifeopspage.disableHint", {
-            defaultValue: "You can disable LifeOps at any time.",
-          })}
-        </span>
       </div>
-    </section>
-  );
-}
-
-/* ── Public export ───────────────────────────────────────────────── */
-export function LifeOpsPageView() {
-  return (
-    <LifeOpsSelectionProvider>
-      <LifeOpsWorkspaceInner />
-    </LifeOpsSelectionProvider>
+    </div>
   );
 }
