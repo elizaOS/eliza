@@ -304,9 +304,8 @@ export async function reconcileFollowupsOnce(
   );
   await writeOverdueDigestMemory(runtime, digest);
 
-  // WS5: route each overdue contact through the shared LLM planner.
-  // Sensitive actions (nudges, calls, emails) are enqueued into the WS6
-  // approval queue — the tracker itself never auto-sends.
+  // Route each overdue contact through the shared LLM planner. Sensitive
+  // actions are enqueued into the approval queue; the tracker never auto-sends.
   for (const entry of digest.overdue) {
     const plannerContext: BackgroundJobContext = {
       jobKind: "followup_watchdog",

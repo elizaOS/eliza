@@ -82,7 +82,7 @@ export const getActivityReportAction: Action = {
   name: "GET_ACTIVITY_REPORT",
   similes: ["ACTIVITY_REPORT", "WHAT_DID_I_WORK_ON", "TIME_TRACKING_REPORT"],
   description:
-    "T8d — Per-app time breakdown for the last N hours (default 24h). Returns noDataReason='macos-only' on non-Darwin platforms.",
+    "Per-app time breakdown for the last N hours (default 24h). Returns noDataReason='macos-only' on non-Darwin platforms.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -161,7 +161,7 @@ export const getTimeOnAppAction: Action = {
   name: "GET_TIME_ON_APP",
   similes: ["TIME_IN_APP", "HOW_LONG_IN_APP"],
   description:
-    "T8d — Time spent on a specific app (matched by app name or bundle id) over the last N hours.",
+    "Time spent on a specific app (matched by app name or bundle id) over the last N hours.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -257,7 +257,7 @@ export const getTimeOnSiteAction: Action = {
   name: "GET_TIME_ON_SITE",
   similes: ["TIME_ON_WEBSITE", "TIME_ON_DOMAIN"],
   description:
-    "T8d — Time on a specific site based on browser activity reports pushed into the runtime store.",
+    "Time on a specific site based on browser activity reports pushed into the runtime store.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
