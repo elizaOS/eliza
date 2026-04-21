@@ -760,6 +760,7 @@ async function executeSession(
  * at ID offset 10001 to avoid collisions with other rule uses.
  */
 const BLOCKING_RULE_ID_OFFSET = 10_001;
+const ALLOWLIST_RULE_ID_OFFSET = 20_001;
 
 async function syncBlockingRules(apiBase: string): Promise<void> {
   try {
@@ -769,27 +770,47 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
     }
     const data = (await resp.json()) as {
       active?: boolean;
+      blockedWebsites?: string[];
+      allowedWebsites?: string[];
       websites?: string[];
     };
 
     const existingRules = await getDynamicRules();
     const blockingRuleIds = existingRules
-      .filter((rule) => rule.id >= BLOCKING_RULE_ID_OFFSET)
+      .filter(
+        (rule) =>
+          rule.id >= BLOCKING_RULE_ID_OFFSET &&
+          rule.id < BLOCKING_RULE_ID_OFFSET + 5_000,
+      )
+      .map((rule) => rule.id);
+    const allowRuleIds = existingRules
+      .filter(
+        (rule) =>
+          rule.id >= ALLOWLIST_RULE_ID_OFFSET &&
+          rule.id < ALLOWLIST_RULE_ID_OFFSET + 5_000,
+      )
       .map((rule) => rule.id);
 
     if (
       !data.active ||
-      !Array.isArray(data.websites) ||
-      data.websites.length === 0
+      !Array.isArray(data.blockedWebsites ?? data.websites) ||
+      (data.blockedWebsites ?? data.websites)?.length === 0
     ) {
-      if (blockingRuleIds.length > 0) {
-        await updateDynamicRules({ removeRuleIds: blockingRuleIds });
+      const ruleIdsToRemove = [...blockingRuleIds, ...allowRuleIds];
+      if (ruleIdsToRemove.length > 0) {
+        await updateDynamicRules({ removeRuleIds: ruleIdsToRemove });
       }
       return;
     }
 
     const extensionBlockedPage = getExtensionUrl("blocked.html");
-    const rules = data.websites.map((host, index) => ({
+    const blockedWebsites = (data.blockedWebsites ?? data.websites ?? []).filter(
+      (website): website is string => typeof website === "string",
+    );
+    const allowedWebsites = (data.allowedWebsites ?? []).filter(
+      (website): website is string => typeof website === "string",
+    );
+    const blockedRules = blockedWebsites.map((host, index) => ({
       id: BLOCKING_RULE_ID_OFFSET + index,
       priority: 1,
       action: {
@@ -799,14 +820,25 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
         },
       },
       condition: {
-        urlFilter: `||${host}`,
+        urlFilter: `||${host}^`,
+        resourceTypes: ["main_frame" as const],
+      },
+    }));
+    const allowRules = allowedWebsites.map((host, index) => ({
+      id: ALLOWLIST_RULE_ID_OFFSET + index,
+      priority: 2,
+      action: {
+        type: "allow" as const,
+      },
+      condition: {
+        urlFilter: `||${host}^`,
         resourceTypes: ["main_frame" as const],
       },
     }));
 
     await updateDynamicRules({
-      removeRuleIds: blockingRuleIds,
-      addRules: rules,
+      removeRuleIds: [...blockingRuleIds, ...allowRuleIds],
+      addRules: [...allowRules, ...blockedRules],
     });
   } catch (err) {
     console.warn("[lifeops-browser] Failed to sync blocking rules:", err);

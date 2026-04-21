@@ -56,6 +56,9 @@ const TOPBAR_NAV_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
 const TOPBAR_ICON_BUTTON_CLASSNAME =
   "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
 const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
+const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
+  "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
+const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent";
 const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
   "relative inline-flex min-w-0 flex-1 items-center justify-center rounded-[0.85rem] px-2 py-2.5 text-muted transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-[0.15rem] after:h-[2px] after:rounded-full after:bg-accent/60 after:opacity-0 after:transition-opacity after:duration-150";
 
@@ -313,8 +316,8 @@ export function Header({
       <Button
         size="icon"
         variant="ghost"
-        className={`${TOPBAR_ICON_BUTTON_CLASSNAME} ${
-          isSettingsActive ? TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME : ""
+        className={`${TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME} ${
+          isSettingsActive ? TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME : ""
         }`}
         onClick={() => setTab(settingsTabGroup?.tabs[0] ?? "settings")}
         onPointerDown={stopHeaderPointerPropagation}
@@ -334,7 +337,6 @@ export function Header({
       <header
         className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
         style={{ WebkitUserSelect: "none", userSelect: "none" }}
-        data-no-camera-drag="true"
       >
         <div
           className={showMacDesktopTitleBar ? "pointer-events-auto" : undefined}

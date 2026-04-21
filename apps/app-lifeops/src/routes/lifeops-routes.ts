@@ -1113,16 +1113,25 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/status") {
     return runRoute(ctx, async (service) => {
       const rawMode = url.searchParams.get("mode");
-      if (rawMode !== null && rawMode !== "local" && rawMode !== "remote") {
+      if (
+        rawMode !== null &&
+        rawMode !== "local" &&
+        rawMode !== "remote" &&
+        rawMode !== "cloud_managed"
+      ) {
         throw new LifeOpsServiceError(
           400,
-          "mode must be one of: local, remote",
+          "mode must be one of: local, remote, cloud_managed",
         );
       }
       json(
         res,
         await service.getXConnectorStatus(
-          (rawMode ?? undefined) as "local" | "remote" | undefined,
+          (rawMode ?? undefined) as
+            | "local"
+            | "remote"
+            | "cloud_managed"
+            | undefined,
         ),
       );
     });
@@ -1141,6 +1150,67 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.createXPost(body), 201);
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/x/dms/digest") {
+    return runRoute(ctx, async (service) => {
+      const limitParam = url.searchParams.get("limit");
+      const limit =
+        limitParam && Number.isFinite(Number(limitParam))
+          ? Math.max(1, Math.min(100, Math.floor(Number(limitParam))))
+          : undefined;
+      const conversationId = url.searchParams.get("conversationId")?.trim();
+      json(
+        res,
+        await service.getXDmDigest({
+          limit,
+          conversationId: conversationId?.length ? conversationId : undefined,
+        }),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/x/dms/curate") {
+    const body = await readJsonBody<{
+      messageIds?: string[];
+      conversationId?: string;
+      markRead?: boolean;
+      markReplied?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.curateXDms(body));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/x/dms/send") {
+    const body = await readJsonBody<{
+      participantId?: string;
+      text?: string;
+      confirmSend?: boolean;
+      mode?: LifeOpsConnectorMode;
+    }>(req, res);
+    if (!body) return true;
+    if (typeof body.participantId !== "string" || body.participantId.trim().length === 0) {
+      json(res, { ok: false, error: "participantId is required" }, 400);
+      return true;
+    }
+    if (typeof body.text !== "string" || body.text.trim().length === 0) {
+      json(res, { ok: false, error: "text is required" }, 400);
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendXDirectMessage({
+          participantId: body.participantId,
+          text: body.text,
+          confirmSend: body.confirmSend,
+          mode: body.mode,
+        }),
+        201,
+      );
     });
   }
 

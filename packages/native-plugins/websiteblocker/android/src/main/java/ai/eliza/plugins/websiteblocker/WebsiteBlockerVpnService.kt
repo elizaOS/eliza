@@ -46,6 +46,12 @@ class WebsiteBlockerVpnService : VpnService() {
     private var shouldClearStateOnStop = false
     @Volatile
     private var blockedWebsites: Set<String> = emptySet()
+    @Volatile
+    private var allowedWebsites: Set<String> = emptySet()
+    @Volatile
+    private var matchMode: String = "exact"
+    @Volatile
+    private var activePolicy: SavedWebsiteBlock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -65,7 +71,7 @@ class WebsiteBlockerVpnService : VpnService() {
         val websites = intent?.getStringArrayListExtra(EXTRA_WEBSITES)
             ?.mapNotNull(WebsiteBlockerStateStore::normalizeHostname)
             ?.distinct()
-            ?: persisted?.websites
+            ?: persisted?.requestedWebsites
             ?: emptyList()
         if (websites.isEmpty()) {
             shouldClearStateOnStop = true
@@ -81,8 +87,16 @@ class WebsiteBlockerVpnService : VpnService() {
             else -> persisted?.endsAtEpochMs
         }
 
-        blockedWebsites = websites.toSet()
-        WebsiteBlockerStateStore.save(this, blockedWebsites, endsAt)
+        val savedBlock = WebsiteBlockerStateStore.save(this, websites, endsAt)
+            ?: run {
+                shouldClearStateOnStop = true
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        activePolicy = savedBlock
+        blockedWebsites = savedBlock.blockedWebsites.toSet()
+        allowedWebsites = savedBlock.allowedWebsites.toSet()
+        matchMode = savedBlock.matchMode
         shouldClearStateOnStop = false
         startForegroundNotification()
         establishVpn()
@@ -133,6 +147,7 @@ class WebsiteBlockerVpnService : VpnService() {
         }
 
         val descriptor = vpnInterface ?: return
+        val policy = activePolicy ?: WebsiteBlockerStateStore.load(this) ?: return
         tunnelRunning.set(true)
         tunnelThread = Thread {
             val dnsAddress = InetAddress.getByName(DNS_ADDRESS) as Inet4Address
@@ -152,7 +167,7 @@ class WebsiteBlockerVpnService : VpnService() {
                         val query = DnsPacketCodec.parseUdpDnsQuery(packetBuffer, length, dnsAddress)
                             ?: continue
                         val responsePayload = if (
-                            WebsiteBlockerStateStore.isBlockedHostname(blockedWebsites, query.queryName)
+                            WebsiteBlockerStateStore.isBlockedHostname(policy, query.queryName)
                         ) {
                             DnsPacketCodec.buildBlockedDnsResponse(query.dnsPayload)
                         } else {

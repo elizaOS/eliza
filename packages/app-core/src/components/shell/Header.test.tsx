@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -129,7 +129,11 @@ describe("Header", () => {
 
     render(<Header hideCloudCredits />);
 
-    expect(screen.getByTestId("desktop-window-titlebar")).toBeTruthy();
+    const titlebar = screen.getByTestId("desktop-window-titlebar");
+    expect(titlebar).toBeTruthy();
+    expect(
+      titlebar.closest("header")?.hasAttribute("data-no-camera-drag"),
+    ).toBe(false);
     expect(
       document.documentElement.classList.contains(
         "eliza-electrobun-custom-titlebar",
@@ -174,5 +178,52 @@ describe("Header", () => {
     expect(
       document.documentElement.classList.contains("eliza-mobile-bottom-nav"),
     ).toBe(true);
+  });
+
+  it("keeps desktop titlebar buttons out of drag handling and clickable", () => {
+    const setTab = vi.fn();
+    const outerPointerDown = vi.fn();
+    isElectrobunRuntimeMock.mockReturnValue(true);
+    useAppMock.mockReturnValue(buildUseAppState({ setTab, tab: "chat" }));
+    getTabGroupsMock.mockReturnValue([
+      {
+        description: "Chat",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Chat",
+        tabs: ["chat"],
+      },
+      {
+        description: "Apps",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Apps",
+        tabs: ["apps"],
+      },
+      {
+        description: "Settings",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Settings",
+        tabs: ["settings"],
+      },
+    ]);
+
+    render(
+      <div onPointerDown={outerPointerDown}>
+        <Header hideCloudCredits />
+      </div>,
+    );
+
+    const appsButton = screen.getByTestId("header-nav-button-apps");
+    expect(appsButton.getAttribute("data-no-camera-drag")).toBe("true");
+    fireEvent.pointerDown(appsButton);
+    expect(outerPointerDown).not.toHaveBeenCalled();
+    fireEvent.click(appsButton);
+    expect(setTab).toHaveBeenCalledWith("apps");
+
+    const settingsButton = screen.getByTestId("header-settings-button");
+    expect(settingsButton.getAttribute("data-no-camera-drag")).toBe("true");
+    fireEvent.pointerDown(settingsButton);
+    expect(outerPointerDown).not.toHaveBeenCalled();
+    fireEvent.click(settingsButton);
+    expect(setTab).toHaveBeenCalledWith("settings");
   });
 });
