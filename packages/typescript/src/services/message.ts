@@ -11,6 +11,7 @@ import {
 	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
 } from "../features/advanced-capabilities/evaluators/task-completion";
+import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import {
 	imageDescriptionTemplate,
@@ -21,11 +22,6 @@ import {
 	shouldRespondTemplate,
 } from "../prompts";
 import { isExplicitSelfModificationRequest } from "../should-respond";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
-} from "./optimized-prompt";
-import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
@@ -101,7 +97,11 @@ import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
-import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
+import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "./optimized-prompt";
+import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 
 /**
  * Reserved XML response keys that are NOT action names.
@@ -441,7 +441,8 @@ export function resolvePlannerActionName(
 		return [actionName];
 	}
 
-	const lookup = actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
+	const lookup =
+		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
@@ -497,8 +498,9 @@ function normalizePlannerProviders(
 			const canonicalProvider =
 				providerLookup.get(normalizedProviderName) ??
 				(() => {
-					const aliasedProvider =
-						PLANNER_PROVIDER_ALIASES.get(normalizedProviderName);
+					const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
+						normalizedProviderName,
+					);
 					if (!aliasedProvider) {
 						return undefined;
 					}
@@ -556,8 +558,7 @@ function normalizePlannerProviders(
 				);
 				continue;
 			}
-			const normalizedCompanion =
-				normalizeActionIdentifier(canonicalCompanion);
+			const normalizedCompanion = normalizeActionIdentifier(canonicalCompanion);
 			if (seenProviders.has(normalizedCompanion)) {
 				continue;
 			}
@@ -680,7 +681,8 @@ export function extractPlannerProviderNames(
 		return rawProviders.flatMap((providerName) => {
 			if (typeof providerName !== "string") {
 				const normalized = String(providerName).trim();
-				return normalized.length > 0 && isStructuredPlannerIdentifier(normalized)
+				return normalized.length > 0 &&
+					isStructuredPlannerIdentifier(normalized)
 					? [normalized]
 					: [];
 			}
@@ -1117,7 +1119,10 @@ export function isSimpleReplyResponse(
 }
 
 export function resolveStrategyMode(
-	responseContent: Pick<Content, "actions" | "text" | "simple"> | null | undefined,
+	responseContent:
+		| Pick<Content, "actions" | "text" | "simple">
+		| null
+		| undefined,
 ): StrategyMode {
 	if (isStopResponse(responseContent)) {
 		return "none";
@@ -1182,52 +1187,60 @@ function unwrapPlannerIdentifier(value: string): string {
 
 const PLANNER_ACTION_ALIASES = new Map(
 	[
-		["BULK_RESCHEDULE_MEETINGS", "PROPOSE_MEETING_TIMES"],
-		["RESCHEDULE_MEETINGS", "CALENDAR_ACTION"],
-		["CREATE_RECURRING_EVENT", "CALENDAR_ACTION"],
-		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
+		["BULK_RESCHEDULE", "OWNER_CALENDAR"],
+		["BULK_RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
+		["SCHEDULE_MEETING", "OWNER_CALENDAR"],
+		["RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
+		["GET_AVAILABILITY", "OWNER_CALENDAR"],
+		["CREATE_EVENT", "OWNER_CALENDAR"],
+		["CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["CALENDAR_CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING_MEETING", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING", "OWNER_CALENDAR"],
+		["BOOK_TRAVEL_ACTION", "CALL_EXTERNAL"],
 		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-			["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
-			["GET_PENDING_ASSETS", "OWNER_INBOX"],
-			["GET_PENDING_ITEMS", "OWNER_INBOX"],
-			["EVENT_ASSET_CHECKLIST", "OWNER_INBOX"],
-			["OUTSTANDING_EVENT_ASSETS", "OWNER_INBOX"],
-			["PORTAL_ASSET_CHECKLIST", "OWNER_INBOX"],
-			["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
-			["GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
-			["SET_GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
-			["CREATE_GROUP_CHAT", "OWNER_INBOX"],
-			["BUMP_WITH_CONTEXT", "OWNER_INBOX"],
-			["CONTEXTUAL_BUMP", "OWNER_INBOX"],
-			["BUMP_UNANSWERED_DECISION", "OWNER_INBOX"],
-			["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
-			["GET_PENDING_DRAFTS", "OWNER_INBOX"],
-			["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
+		["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
+		["GET_PENDING_ASSETS", "OWNER_INBOX"],
+		["GET_PENDING_ITEMS", "OWNER_INBOX"],
+		["EVENT_ASSET_CHECKLIST", "OWNER_INBOX"],
+		["OUTSTANDING_EVENT_ASSETS", "OWNER_INBOX"],
+		["PORTAL_ASSET_CHECKLIST", "OWNER_INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
+		["GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+		["SET_GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+		["CREATE_GROUP_CHAT", "OWNER_INBOX"],
+		["BUMP_WITH_CONTEXT", "OWNER_INBOX"],
+		["CONTEXTUAL_BUMP", "OWNER_INBOX"],
+		["BUMP_UNANSWERED_DECISION", "OWNER_INBOX"],
+		["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
+		["GET_PENDING_DRAFTS", "OWNER_INBOX"],
+		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
 		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
 		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
 		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
-			["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
-			["FLAG_CONFLICT", "OWNER_CALENDAR"],
-			["CHECK_FLIGHT_CONFLICT", "OWNER_CALENDAR"],
-			["FLIGHT_CONFLICT_REBOOKING", "OWNER_CALENDAR"],
-			["REBOOK_CONFLICTING_EVENT", "OWNER_CALENDAR"],
-			["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
-			["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
-			["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
-			["CANCELLATION_FEE_WARNING", "PUBLISH_DEVICE_INTENT"],
-			["WARN_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
-			["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
-			["REQUEST_UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
-			["UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
-			["UPDATED_ID_INTERVENTION", "PUBLISH_DEVICE_INTENT"],
-			["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
-			["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
+		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
+		["FLAG_CONFLICT", "OWNER_CALENDAR"],
+		["CHECK_FLIGHT_CONFLICT", "OWNER_CALENDAR"],
+		["FLIGHT_CONFLICT_REBOOKING", "OWNER_CALENDAR"],
+		["REBOOK_CONFLICTING_EVENT", "OWNER_CALENDAR"],
+		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["CANCELLATION_FEE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["WARN_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+		["UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+		["UPDATED_ID_INTERVENTION", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+		["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
@@ -1236,13 +1249,13 @@ const PLANNER_ACTION_ALIASES = new Map(
 
 const PLANNER_PROVIDER_ALIASES = new Map(
 	[
-			["DOCUMENT_LOOKUP", "ATTACHMENTS"],
-			["INBOX_TRIAGE", "inboxTriage"],
-			["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
-			["PENDING_DRAFTS", "inboxTriage"],
-			["DRAFTS", "inboxTriage"],
-		].map(([from, to]) => [normalizeActionIdentifier(from), to]),
-	);
+		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
+		["INBOX_TRIAGE", "inboxTriage"],
+		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
+		["PENDING_DRAFTS", "inboxTriage"],
+		["DRAFTS", "inboxTriage"],
+	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
+);
 
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
@@ -1272,9 +1285,7 @@ function shouldAttemptCanonicalActionRepair(
 	return (
 		normalizedActions.length === 0 ||
 		normalizedActions.every((actionName) =>
-			ACTION_REPAIR_PASSIVE_ACTIONS.has(
-				normalizeActionIdentifier(actionName),
-			),
+			ACTION_REPAIR_PASSIVE_ACTIONS.has(normalizeActionIdentifier(actionName)),
 		)
 	);
 }
@@ -1297,7 +1308,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
 		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
 		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		'Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.',
+		"Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.",
 		"Do not include <text> unless there is truly no matching runtime action.",
 		"",
 		`user_message:\n${args.userText}`,
@@ -1313,7 +1324,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
 		'planner_actions_raw: ["LOOKUP"]',
-		'output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>',
+		"output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>",
 	].join("\n");
 }
 
@@ -1387,7 +1398,10 @@ If KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVA
 Do not ask "which file?" when the grounded KNOWLEDGE result already resolves the request.`;
 }
 
-function buildActionRescuePrompt(basePrompt: string, draftReply: string): string {
+function buildActionRescuePrompt(
+	basePrompt: string,
+	draftReply: string,
+): string {
 	const trimmedDraftReply = draftReply.trim();
 	const draftSection =
 		trimmedDraftReply.length > 0
@@ -1522,7 +1536,8 @@ const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
 	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
 ];
 
-const ACTION_METADATA_FUTURE_HINTS = /\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
+const ACTION_METADATA_FUTURE_HINTS =
+	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
 
 type ActionOwnershipSuggestion = {
 	actionName: string;
@@ -1543,8 +1558,7 @@ function tokenizeOwnershipText(text: string): string[] {
 		.split(/[^a-z0-9]+/u)
 		.map((token) => token.trim())
 		.filter(
-			(token) =>
-				token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
+			(token) => token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
 		);
 }
 
@@ -1602,14 +1616,18 @@ function scoreActionOwnershipMatch(
 	const reasons: string[] = [];
 	let bestExampleScore = 0;
 	const normalizedMessage = messageText.toLowerCase();
-	const actionMetadataBlob = actionMetadataTexts(action).join(" ").toLowerCase();
+	const actionMetadataBlob = actionMetadataTexts(action)
+		.join(" ")
+		.toLowerCase();
 
 	for (const chunk of actionMetadataTexts(action)) {
 		const chunkTokens = buildTokenSet(chunk);
 		if (chunkTokens.size === 0) {
 			continue;
 		}
-		const overlap = [...messageTokens].filter((token) => chunkTokens.has(token));
+		const overlap = [...messageTokens].filter((token) =>
+			chunkTokens.has(token),
+		);
 		if (overlap.length === 0) {
 			continue;
 		}
@@ -1667,7 +1685,9 @@ function scoreActionOwnershipMatch(
 	}
 
 	if (
-		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText)) &&
+		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
+			pattern.test(messageText),
+		) &&
 		ACTION_METADATA_FUTURE_HINTS.test(
 			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
 				.filter(Boolean)
@@ -1723,15 +1743,22 @@ export function suggestOwnedActionFromMetadata(
 	message: Pick<Memory, "content">,
 ): ActionOwnershipSuggestion | null {
 	const messageText =
-		typeof message.content?.text === "string" ? message.content.text.trim() : "";
+		typeof message.content?.text === "string"
+			? message.content.text.trim()
+			: "";
 	if (
 		messageText.length === 0 ||
-		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText))
+		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
+			pattern.test(messageText),
+		)
 	) {
 		return null;
 	}
 
-	const directSuggestion = findDirectOwnedActionSuggestion(runtime, messageText);
+	const directSuggestion = findDirectOwnedActionSuggestion(
+		runtime,
+		messageText,
+	);
 	if (directSuggestion) {
 		return directSuggestion;
 	}
@@ -1843,7 +1870,10 @@ function shouldAttemptActionRescue(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
 	state: State,
-	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
+	responseContent:
+		| Pick<Content, "actions" | "providers" | "text">
+		| null
+		| undefined,
 ): boolean {
 	if (!responseContent) {
 		return false;
@@ -1910,7 +1940,10 @@ function shouldAttemptOwnershipRepair(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
 	state: State,
-	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
+	responseContent:
+		| Pick<Content, "actions" | "providers" | "text">
+		| null
+		| undefined,
 ): boolean {
 	if (!responseContent || !hasNonPassiveAction(responseContent)) {
 		return false;
@@ -2360,7 +2393,9 @@ function callbackTextPreview(content: Content | null | undefined): string {
 	return text.replace(/\s+/g, " ").slice(0, 200);
 }
 
-function callbackHasVisibleOutput(content: Content | null | undefined): boolean {
+function callbackHasVisibleOutput(
+	content: Content | null | undefined,
+): boolean {
 	if (!content || typeof content !== "object") {
 		return false;
 	}
@@ -3888,8 +3923,7 @@ export class DefaultMessageService implements IMessageService {
 			const providerStateValues = {
 				[AVAILABLE_CONTEXTS_STATE_KEY]:
 					state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-				[CONTEXT_ROUTING_STATE_KEY]:
-					state.values?.[CONTEXT_ROUTING_STATE_KEY],
+				[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
 			};
 
 			if (responseContent?.providers && responseContent.providers.length > 0) {
@@ -3903,61 +3937,64 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-				if (responseContent && shouldRunProviderFollowup(responseContent)) {
-					const providerFollowupState =
-						responseContent.providers && responseContent.providers.length > 0
-							? withContextRoutingValues(
-									await composeFocusedProviderReplyState(
-										runtime,
-										message,
-										responseContent.providers,
-									),
-									providerStateValues,
-								)
-							: state;
-					runtime.logger.info(
-						{
-							src: "service:message",
-							providers: responseContent.providers ?? [],
-							actions: responseContent.actions ?? [],
-						},
-						"Running provider follow-up pass",
-					);
-					const providerContinuation = await this.runSingleShotCore(
-						runtime,
-						message,
-						providerFollowupState,
-						opts,
-						responseId,
-						promptAttachments,
-						{
-							precomposedState: providerFollowupState,
-							failureStage: "answering from requested provider results",
-							providerFollowup: true,
-						},
-					);
+			if (responseContent && shouldRunProviderFollowup(responseContent)) {
+				const providerFollowupState =
+					responseContent.providers && responseContent.providers.length > 0
+						? withContextRoutingValues(
+								await composeFocusedProviderReplyState(
+									runtime,
+									message,
+									responseContent.providers,
+								),
+								providerStateValues,
+							)
+						: state;
+				runtime.logger.info(
+					{
+						src: "service:message",
+						providers: responseContent.providers ?? [],
+						actions: responseContent.actions ?? [],
+					},
+					"Running provider follow-up pass",
+				);
+				const providerContinuation = await this.runSingleShotCore(
+					runtime,
+					message,
+					providerFollowupState,
+					opts,
+					responseId,
+					promptAttachments,
+					{
+						precomposedState: providerFollowupState,
+						failureStage: "answering from requested provider results",
+						providerFollowup: true,
+					},
+				);
 				responseContent = providerContinuation.responseContent;
 				responseMessages = providerContinuation.responseMessages;
 				state = providerContinuation.state;
 				mode = providerContinuation.mode;
 
-					if (responseContent && message.id) {
-						responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
-					}
+				if (responseContent && message.id) {
+					responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+				}
 
-					runtime.logger.info(
-						{
-							src: "service:message",
-							finalActions: responseContent?.actions ?? [],
-							finalProviders: responseContent?.providers ?? [],
-							hasText:
-								typeof responseContent?.text === "string" &&
-								responseContent.text.length > 0,
-						},
-						"Provider follow-up pass completed",
-					);
+				runtime.logger.info(
+					{
+						src: "service:message",
+						finalActions: responseContent?.actions ?? [],
+						finalProviders: responseContent?.providers ?? [],
+						hasText:
+							typeof responseContent?.text === "string" &&
+							responseContent.text.length > 0,
+					},
+					"Provider follow-up pass completed",
+				);
 
-					if (responseContent?.providers && responseContent.providers.length > 0) {
+				if (
+					responseContent?.providers &&
+					responseContent.providers.length > 0
+				) {
 					state = withContextRoutingValues(
 						await runtime.composeState(
 							message,
@@ -4232,11 +4269,7 @@ export class DefaultMessageService implements IMessageService {
 
 		await runEvaluate();
 
-		if (
-			opts.continueAfterActions &&
-			message.id &&
-			!isBenchmarkMode(state)
-		) {
+		if (opts.continueAfterActions && message.id && !isBenchmarkMode(state)) {
 			const taskCompletion = await runtime.getCache<TaskCompletionAssessment>(
 				getTaskCompletionCacheKey(message.id),
 			);
@@ -4849,7 +4882,9 @@ export class DefaultMessageService implements IMessageService {
 					}
 
 					const optimizedMediaService =
-						runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+						runtime.getService<OptimizedPromptService>(
+							OPTIMIZED_PROMPT_SERVICE,
+						);
 					const resolvedImagePrompt = resolveOptimizedPrompt(
 						optimizedMediaService,
 						"media_description",
@@ -5528,8 +5563,9 @@ export class DefaultMessageService implements IMessageService {
 
 		// Resolve the template prompt once so it's available for both the primary
 		// call and any follow-up repair prompts (e.g. parameter repair).
-		const optimizedResponseService =
-			runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+		const optimizedResponseService = runtime.getService<OptimizedPromptService>(
+			OPTIMIZED_PROMPT_SERVICE,
+		);
 		const baselineResponseTemplate =
 			runtime.character.templates?.messageHandlerTemplate ||
 			messageHandlerTemplate;
@@ -5623,9 +5659,7 @@ export class DefaultMessageService implements IMessageService {
 				runtime,
 			);
 
-			if (
-				shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)
-			) {
+			if (shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)) {
 				const repairedPlannerOutput = await repairCanonicalPlannerActions({
 					runtime,
 					message,
@@ -5769,474 +5803,467 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-			if (!responseContent) {
-				return {
-					responseContent: null,
-					responseMessages: [],
-					state,
-					mode: "none",
-				};
-			}
+		if (!responseContent) {
+			return {
+				responseContent: null,
+				responseMessages: [],
+				state,
+				mode: "none",
+			};
+		}
 
-			if (
-				!overrides?.providerFollowup &&
-				shouldAttemptProviderRescue(responseContent)
-			) {
-				const rescuedProviders = await recoverProvidersForTurn({
-					runtime,
-					state,
-					draftReply: String(responseContent.text || ""),
-					attachments: promptAttachments,
-				});
-				if (rescuedProviders.length > 0) {
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptProviderRescue(responseContent)
+		) {
+			const rescuedProviders = await recoverProvidersForTurn({
+				runtime,
+				state,
+				draftReply: String(responseContent.text || ""),
+				attachments: promptAttachments,
+			});
+			if (rescuedProviders.length > 0) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						rescuedProviders,
+						originalActions: responseContent.actions ?? [],
+					},
+					"Selected providers during reply rescue pass",
+				);
+				responseContent.providers = rescuedProviders;
+			}
+		}
+
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptActionRescue(runtime, message, state, responseContent)
+		) {
+			const actionRescuePrompt = buildActionRescuePrompt(
+				prompt,
+				String(responseContent.text || ""),
+			);
+			const rescuedActionXml = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: actionRescuePrompt,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about whether a grounded action should own the turn",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description:
+							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "providers",
+						description:
+							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: false,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
+
+			if (rescuedActionXml) {
+				const rescuedContent: Content = {
+					...rescuedActionXml,
+					thought: String(rescuedActionXml.thought || ""),
+					actions: normalizePlannerActions(
+						rescuedActionXml as Record<string, unknown>,
+						runtime,
+					),
+					providers: normalizePlannerProviders(
+						rescuedActionXml as Record<string, unknown>,
+						runtime,
+					),
+					text:
+						typeof rescuedActionXml.text === "string" &&
+						rescuedActionXml.text.trim().length > 0
+							? String(rescuedActionXml.text)
+							: responseContent.text,
+					simple:
+						rescuedActionXml.simple === true ||
+						rescuedActionXml.simple === "true",
+				};
+
+				if (
+					hasNonPassiveAction(rescuedContent) ||
+					(rescuedContent.providers?.length ?? 0) >
+						(responseContent.providers?.length ?? 0)
+				) {
 					runtime.logger.info(
 						{
 							src: "service:message",
-							rescuedProviders,
 							originalActions: responseContent.actions ?? [],
+							rescuedActions: rescuedContent.actions ?? [],
+							rescuedProviders: rescuedContent.providers ?? [],
 						},
-						"Selected providers during reply rescue pass",
+						"Recovered grounded action plan after passive reply draft",
 					);
-					responseContent.providers = rescuedProviders;
+					responseContent = rescuedContent;
 				}
 			}
+		}
 
-				if (
-					!overrides?.providerFollowup &&
-					shouldAttemptActionRescue(runtime, message, state, responseContent)
-				) {
-				const actionRescuePrompt = buildActionRescuePrompt(
-					prompt,
-					String(responseContent.text || ""),
-				);
-				const rescuedActionXml = await runtime.dynamicPromptExecFromState({
-					state,
-					params: {
-						prompt: actionRescuePrompt,
-						...(promptAttachments ? { attachments: promptAttachments } : {}),
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptOwnershipRepair(runtime, message, state, responseContent)
+		) {
+			const selectedActionName =
+				(typeof responseContent.actions?.[0] === "string" &&
+					responseContent.actions[0]) ||
+				"UNKNOWN_ACTION";
+			const ownershipRepairPrompt = buildOwnershipRepairPrompt(
+				prompt,
+				selectedActionName,
+				String(responseContent.text || ""),
+			);
+			const repairedOwnershipXml = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: ownershipRepairPrompt,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about whether a more specific owning action should replace the current one",
+						validateField: false,
+						streamField: false,
 					},
-					schema: [
-						{
-							field: "thought",
-							description:
-								"Short reasoning about whether a grounded action should own the turn",
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "actions",
-							description:
-								"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
-							required: false,
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "providers",
-							description:
-								"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-							required: false,
-							validateField: false,
-							streamField: false,
-						},
-						{
-							field: "text",
-							description: "The text response to send to the user",
-							streamField: false,
-						},
-						{
-							field: "simple",
-							description: "Whether this is a simple response (true/false)",
-							validateField: false,
-							streamField: false,
-						},
-					],
-					options: {
-						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "xml",
-						maxRetries: 1,
+					{
+						field: "actions",
+						description:
+							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						required: true,
+						validateField: false,
+						streamField: false,
 					},
-				});
+					{
+						field: "providers",
+						description:
+							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: false,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
 
-				if (rescuedActionXml) {
-					const rescuedContent: Content = {
-						...rescuedActionXml,
-						thought: String(rescuedActionXml.thought || ""),
-						actions: normalizePlannerActions(
-							rescuedActionXml as Record<string, unknown>,
-							runtime,
-						),
-						providers: normalizePlannerProviders(
-							rescuedActionXml as Record<string, unknown>,
-							runtime,
-						),
-						text:
-							typeof rescuedActionXml.text === "string" &&
-							rescuedActionXml.text.trim().length > 0
-								? String(rescuedActionXml.text)
-								: responseContent.text,
-						simple:
-							rescuedActionXml.simple === true ||
-							rescuedActionXml.simple === "true",
-					};
-
-					if (
-						hasNonPassiveAction(rescuedContent) ||
-						(rescuedContent.providers?.length ?? 0) >
-							(responseContent.providers?.length ?? 0)
-					) {
-						runtime.logger.info(
-							{
-								src: "service:message",
-								originalActions: responseContent.actions ?? [],
-								rescuedActions: rescuedContent.actions ?? [],
-								rescuedProviders: rescuedContent.providers ?? [],
-							},
-							"Recovered grounded action plan after passive reply draft",
-						);
-						responseContent = rescuedContent;
-						}
-					}
-				}
-
-				if (
-					!overrides?.providerFollowup &&
-					shouldAttemptOwnershipRepair(
+			if (repairedOwnershipXml) {
+				const repairedOwnershipContent: Content = {
+					...repairedOwnershipXml,
+					thought: String(repairedOwnershipXml.thought || ""),
+					actions: normalizePlannerActions(
+						repairedOwnershipXml as Record<string, unknown>,
 						runtime,
-						message,
-						state,
-						responseContent,
+					),
+					providers: normalizePlannerProviders(
+						repairedOwnershipXml as Record<string, unknown>,
+						runtime,
+					),
+					text:
+						typeof repairedOwnershipXml.text === "string" &&
+						repairedOwnershipXml.text.trim().length > 0
+							? String(repairedOwnershipXml.text)
+							: responseContent.text,
+					simple:
+						repairedOwnershipXml.simple === true ||
+						repairedOwnershipXml.simple === "true",
+				};
+
+				if (
+					hasNonPassiveAction(repairedOwnershipContent) &&
+					JSON.stringify(repairedOwnershipContent.actions ?? []) !==
+						JSON.stringify(responseContent.actions ?? [])
+				) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							originalActions: responseContent.actions ?? [],
+							repairedActions: repairedOwnershipContent.actions ?? [],
+							repairedProviders: repairedOwnershipContent.providers ?? [],
+						},
+						"Replaced broad routing action with a more specific owning action",
+					);
+					responseContent = repairedOwnershipContent;
+				}
+			}
+		}
+
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptActionRescue(runtime, message, state, responseContent)
+		) {
+			const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: buildActionOnlyRescuePrompt(
+						String(responseContent.text || ""),
+					),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about the single best grounded action",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description: "Exactly one action entry inside <actions>.",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
+
+			if (actionOnlyRescue) {
+				const rescuedActions = normalizePlannerActions(
+					actionOnlyRescue as Record<string, unknown>,
+					runtime,
+				);
+				if (
+					rescuedActions.some(
+						(actionName) =>
+							!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+								normalizeActionIdentifier(actionName),
+							),
 					)
 				) {
-					const selectedActionName =
-						(typeof responseContent.actions?.[0] === "string" &&
-							responseContent.actions[0]) ||
-						"UNKNOWN_ACTION";
-					const ownershipRepairPrompt = buildOwnershipRepairPrompt(
-						prompt,
-						selectedActionName,
-						String(responseContent.text || ""),
-					);
-					const repairedOwnershipXml = await runtime.dynamicPromptExecFromState({
-						state,
-						params: {
-							prompt: ownershipRepairPrompt,
-							...(promptAttachments ? { attachments: promptAttachments } : {}),
-						},
-						schema: [
-							{
-								field: "thought",
-								description:
-									"Short reasoning about whether a more specific owning action should replace the current one",
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "actions",
-								description:
-									"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
-								required: true,
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "providers",
-								description:
-									"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
-								required: false,
-								validateField: false,
-								streamField: false,
-							},
-							{
-								field: "text",
-								description: "The text response to send to the user",
-								streamField: false,
-							},
-							{
-								field: "simple",
-								description: "Whether this is a simple response (true/false)",
-								validateField: false,
-								streamField: false,
-							},
-						],
-						options: {
-							modelType: ModelType.ACTION_PLANNER,
-							preferredEncapsulation: "xml",
-							maxRetries: 1,
-						},
-					});
-
-					if (repairedOwnershipXml) {
-						const repairedOwnershipContent: Content = {
-							...repairedOwnershipXml,
-							thought: String(repairedOwnershipXml.thought || ""),
-							actions: normalizePlannerActions(
-								repairedOwnershipXml as Record<string, unknown>,
-								runtime,
-							),
-							providers: normalizePlannerProviders(
-								repairedOwnershipXml as Record<string, unknown>,
-								runtime,
-							),
-							text:
-								typeof repairedOwnershipXml.text === "string" &&
-								repairedOwnershipXml.text.trim().length > 0
-									? String(repairedOwnershipXml.text)
-									: responseContent.text,
-							simple:
-								repairedOwnershipXml.simple === true ||
-								repairedOwnershipXml.simple === "true",
-						};
-
-						if (
-							hasNonPassiveAction(repairedOwnershipContent) &&
-							JSON.stringify(repairedOwnershipContent.actions ?? []) !==
-								JSON.stringify(responseContent.actions ?? [])
-						) {
-							runtime.logger.info(
-								{
-									src: "service:message",
-									originalActions: responseContent.actions ?? [],
-									repairedActions: repairedOwnershipContent.actions ?? [],
-									repairedProviders: repairedOwnershipContent.providers ?? [],
-								},
-								"Replaced broad routing action with a more specific owning action",
-							);
-							responseContent = repairedOwnershipContent;
-						}
-					}
-				}
-
-				if (
-					!overrides?.providerFollowup &&
-					shouldAttemptActionRescue(runtime, message, state, responseContent)
-				) {
-				const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
-					state,
-					params: {
-						prompt: buildActionOnlyRescuePrompt(
-							String(responseContent.text || ""),
-						),
-					},
-					schema: [
+					runtime.logger.info(
 						{
-							field: "thought",
-							description:
-								"Short reasoning about the single best grounded action",
-							validateField: false,
-							streamField: false,
+							src: "service:message",
+							originalActions: responseContent.actions ?? [],
+							rescuedActions,
 						},
-						{
-							field: "actions",
-							description:
-								"Exactly one action entry inside <actions>.",
-							required: true,
-							validateField: false,
-							streamField: false,
-						},
-					],
-					options: {
-						modelType: ModelType.ACTION_PLANNER,
-						preferredEncapsulation: "xml",
-						maxRetries: 1,
-					},
-				});
-
-				if (actionOnlyRescue) {
-					const rescuedActions = normalizePlannerActions(
-						actionOnlyRescue as Record<string, unknown>,
-						runtime,
+						"Recovered primary action after passive reply draft",
 					);
-					if (
-						rescuedActions.some(
-							(actionName) =>
-								!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-									normalizeActionIdentifier(actionName),
-								),
-						)
-					) {
-						runtime.logger.info(
-							{
-								src: "service:message",
-								originalActions: responseContent.actions ?? [],
-								rescuedActions,
-							},
-							"Recovered primary action after passive reply draft",
-						);
-						responseContent.actions = rescuedActions;
-						}
-					}
-				}
-
-				if (!hasNonPassiveAction(responseContent)) {
-					const metadataSuggestion = suggestOwnedActionFromMetadata(
-						runtime,
-						message,
-					);
-					if (metadataSuggestion) {
-						runtime.logger.info(
-							{
-								src: "service:message",
-								originalActions: responseContent.actions ?? [],
-								suggestedAction: metadataSuggestion.actionName,
-								score: metadataSuggestion.score,
-								secondBestScore: metadataSuggestion.secondBestScore,
-								reasons: metadataSuggestion.reasons,
-							},
-							"Recovered primary action from action metadata after passive reply draft",
-						);
-						responseContent.actions = [metadataSuggestion.actionName];
-					}
-				}
-
-				// Action parameter repair (Python parity):
-				// If the model selected actions with missing or invalid params, do a
-			// second pass asking for ONLY a corrected <params> block.
-			const actionByName = new Map<string, Action>();
-			for (const action of runtime.actions) {
-				const normalizedName = action.name.trim().toUpperCase();
-				if (normalizedName) {
-					actionByName.set(normalizedName, action);
+					responseContent.actions = rescuedActions;
 				}
 			}
+		}
 
-			const metadataCorrection = findOwnedActionCorrectionFromMetadata(
+		if (!hasNonPassiveAction(responseContent)) {
+			const metadataSuggestion = suggestOwnedActionFromMetadata(
 				runtime,
 				message,
-				responseContent,
 			);
-			if (metadataCorrection) {
+			if (metadataSuggestion) {
 				runtime.logger.info(
 					{
 						src: "service:message",
 						originalActions: responseContent.actions ?? [],
-						suggestedAction: metadataCorrection.actionName,
-						score: metadataCorrection.score,
-						secondBestScore: metadataCorrection.secondBestScore,
-						reasons: metadataCorrection.reasons,
+						suggestedAction: metadataSuggestion.actionName,
+						score: metadataSuggestion.score,
+						secondBestScore: metadataSuggestion.secondBestScore,
+						reasons: metadataSuggestion.reasons,
 					},
-					"Corrected routed action from action metadata",
+					"Recovered primary action from action metadata after passive reply draft",
 				);
-				responseContent.actions = [metadataCorrection.actionName];
+				responseContent.actions = [metadataSuggestion.actionName];
 			}
+		}
 
-			const collectParameterValidationIssues = (
-				paramsByAction: Map<string, ActionParameters>,
-			): Array<{
+		// Action parameter repair (Python parity):
+		// If the model selected actions with missing or invalid params, do a
+		// second pass asking for ONLY a corrected <params> block.
+		const actionByName = new Map<string, Action>();
+		for (const action of runtime.actions) {
+			const normalizedName = action.name.trim().toUpperCase();
+			if (normalizedName) {
+				actionByName.set(normalizedName, action);
+			}
+		}
+
+		const metadataCorrection = findOwnedActionCorrectionFromMetadata(
+			runtime,
+			message,
+			responseContent,
+		);
+		if (metadataCorrection) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					originalActions: responseContent.actions ?? [],
+					suggestedAction: metadataCorrection.actionName,
+					score: metadataCorrection.score,
+					secondBestScore: metadataCorrection.secondBestScore,
+					reasons: metadataCorrection.reasons,
+				},
+				"Corrected routed action from action metadata",
+			);
+			responseContent.actions = [metadataCorrection.actionName];
+		}
+
+		const collectParameterValidationIssues = (
+			paramsByAction: Map<string, ActionParameters>,
+		): Array<{
+			actionName: string;
+			required: string[];
+			errors: string[];
+		}> => {
+			const issues: Array<{
 				actionName: string;
 				required: string[];
 				errors: string[];
-			}> => {
-				const issues: Array<{
-					actionName: string;
-					required: string[];
-					errors: string[];
-				}> = [];
-				for (const selectedAction of responseContent.actions ?? []) {
-					const actionName =
-						typeof selectedAction === "string"
-							? selectedAction.trim().toUpperCase()
-							: "";
-					if (!actionName) {
-						continue;
-					}
-					const actionDef = actionByName.get(actionName);
-					if (!actionDef?.parameters?.length) {
-						continue;
-					}
-					const validation = validateActionParams(
-						actionDef,
-						paramsByAction.get(actionName),
-					);
-					if (validation.valid) {
-						continue;
-					}
-					issues.push({
-						actionName,
-						required: actionDef.parameters
-							.filter((parameter) => parameter.required)
-							.map((parameter) => parameter.name),
-						errors: validation.errors,
-					});
+			}> = [];
+			for (const selectedAction of responseContent.actions ?? []) {
+				const actionName =
+					typeof selectedAction === "string"
+						? selectedAction.trim().toUpperCase()
+						: "";
+				if (!actionName) {
+					continue;
 				}
-				return issues;
-			};
-
-			let existingParams = parseActionParams(responseContent.params);
-			let parameterValidationIssues =
-				collectParameterValidationIssues(existingParams);
-
-			if (parameterValidationIssues.length > 0) {
-				const requirementLines = parameterValidationIssues
-					.map(
-						({ actionName, required, errors }) =>
-							[
-								`- ${actionName}`,
-								required.length > 0
-									? `  required: ${required.join(", ")}`
-									: "  required: (none)",
-								...errors.map((error) => `  error: ${error}`),
-							].join("\n"),
-					)
-					.join("\n");
-				const existingParamBlock =
-					typeof responseContent.params === "string" &&
-					responseContent.params.trim().length > 0
-						? responseContent.params.trim()
-						: "(none)";
-				const repairPrompt = [
-					prompt,
-					"",
-					"# Parameter Repair",
-					"You selected actions whose params are missing or invalid.",
-					"Return ONLY XML with a top-level <params> field that fixes those actions.",
-					"Do not change the selected actions.",
-					"Example:",
-					"<response>",
-					"  <params>",
-					"    <SEND_MESSAGE>",
-					"      <target>room-or-channel-id</target>",
-					"      <text>message body</text>",
-					"    </SEND_MESSAGE>",
-					"  </params>",
-					"</response>",
-					"",
-					"Current params:",
-					existingParamBlock,
-					"",
-					"Issues by action:",
-					requirementLines,
-					"",
-					"Do not include thought, actions, providers, text, or any other fields.",
-				].join("\n");
-
-				const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-					prompt: repairPrompt,
-				});
-				const repairParsed =
-					parseKeyValueXml<Record<string, unknown>>(repairResponse);
-				if (repairParsed?.params) {
-					responseContent.params = repairParsed.params as Content["params"];
-					existingParams = parseActionParams(responseContent.params);
-					parameterValidationIssues =
-						collectParameterValidationIssues(existingParams);
+				const actionDef = actionByName.get(actionName);
+				if (!actionDef?.parameters?.length) {
+					continue;
 				}
-			}
-
-			if (parameterValidationIssues.length > 0) {
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						issues: parameterValidationIssues,
-					},
-					"Planner response still has invalid action params after repair pass",
+				const validation = validateActionParams(
+					actionDef,
+					paramsByAction.get(actionName),
 				);
+				if (validation.valid) {
+					continue;
+				}
+				issues.push({
+					actionName,
+					required: actionDef.parameters
+						.filter((parameter) => parameter.required)
+						.map((parameter) => parameter.name),
+					errors: validation.errors,
+				});
 			}
+			return issues;
+		};
 
-			const benchmarkMode = isBenchmarkMode(state);
+		let existingParams = parseActionParams(responseContent.params);
+		let parameterValidationIssues =
+			collectParameterValidationIssues(existingParams);
 
-			// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
-			if (benchmarkMode) {
+		if (parameterValidationIssues.length > 0) {
+			const requirementLines = parameterValidationIssues
+				.map(({ actionName, required, errors }) =>
+					[
+						`- ${actionName}`,
+						required.length > 0
+							? `  required: ${required.join(", ")}`
+							: "  required: (none)",
+						...errors.map((error) => `  error: ${error}`),
+					].join("\n"),
+				)
+				.join("\n");
+			const existingParamBlock =
+				typeof responseContent.params === "string" &&
+				responseContent.params.trim().length > 0
+					? responseContent.params.trim()
+					: "(none)";
+			const repairPrompt = [
+				prompt,
+				"",
+				"# Parameter Repair",
+				"You selected actions whose params are missing or invalid.",
+				"Return ONLY XML with a top-level <params> field that fixes those actions.",
+				"Do not change the selected actions.",
+				"Example:",
+				"<response>",
+				"  <params>",
+				"    <SEND_MESSAGE>",
+				"      <target>room-or-channel-id</target>",
+				"      <text>message body</text>",
+				"    </SEND_MESSAGE>",
+				"  </params>",
+				"</response>",
+				"",
+				"Current params:",
+				existingParamBlock,
+				"",
+				"Issues by action:",
+				requirementLines,
+				"",
+				"Do not include thought, actions, providers, text, or any other fields.",
+			].join("\n");
+
+			const repairResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+				prompt: repairPrompt,
+			});
+			const repairParsed =
+				parseKeyValueXml<Record<string, unknown>>(repairResponse);
+			if (repairParsed?.params) {
+				responseContent.params = repairParsed.params as Content["params"];
+				existingParams = parseActionParams(responseContent.params);
+				parameterValidationIssues =
+					collectParameterValidationIssues(existingParams);
+			}
+		}
+
+		if (parameterValidationIssues.length > 0) {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					issues: parameterValidationIssues,
+				},
+				"Planner response still has invalid action params after repair pass",
+			);
+		}
+
+		const benchmarkMode = isBenchmarkMode(state);
+
+		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
+		if (benchmarkMode) {
 			if (!responseContent.actions || responseContent.actions.length === 0) {
 				responseContent.actions = ["REPLY"];
 			}
@@ -6300,13 +6327,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 			},
 		];
 
-			return {
-				responseContent,
-				responseMessages,
-				state,
-				mode,
-			};
-		}
+		return {
+			responseContent,
+			responseMessages,
+			state,
+			mode,
+		};
+	}
 
 	private async tryGroundedFallbackReply(
 		runtime: IAgentRuntime,

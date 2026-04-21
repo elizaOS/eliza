@@ -1,4 +1,11 @@
-import type { Action, ActionExample, HandlerOptions, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
 import {
@@ -27,7 +34,10 @@ function extractFirstUrl(value: string): string | null {
   return match?.[0] ?? null;
 }
 
-function formatExtractPreview(markdown: string | null, html: string | null): string {
+function formatExtractPreview(
+  markdown: string | null,
+  html: string | null,
+): string {
   const source = markdown?.trim() || html?.trim() || "";
   if (!source) {
     return "No page content was returned.";

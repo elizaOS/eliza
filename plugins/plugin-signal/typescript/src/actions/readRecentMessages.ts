@@ -29,10 +29,7 @@ export const readRecentMessages: Action = {
   ],
   description: "Read the most recent Signal messages across active conversations",
   descriptionCompressed: "Read recent Signal messages.",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
     }
@@ -41,20 +38,14 @@ export const readRecentMessages: Action = {
       return true;
     }
 
-    if (
-      hasStructuredSignalInvocation(message, "SIGNAL_READ_RECENT_MESSAGES", [
-        "limit",
-      ])
-    ) {
+    if (hasStructuredSignalInvocation(message, "SIGNAL_READ_RECENT_MESSAGES", ["limit"])) {
       return true;
     }
 
     const text = getMessageText(message);
     return (
       /\bsignal\b/i.test(text) &&
-      /\b(message|messages|inbox|recent|latest|thread|threads|chat)\b/i.test(
-        text,
-      )
+      /\b(message|messages|inbox|recent|latest|thread|threads|chat)\b/i.test(text)
     );
   },
   handler: async (
@@ -62,7 +53,7 @@ export const readRecentMessages: Action = {
     message: Memory,
     _state,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     const signalService = getSignalService(runtime);
 
@@ -77,7 +68,7 @@ export const readRecentMessages: Action = {
     const requestedLimit = Number(
       options?.parameters && typeof options.parameters === "object"
         ? (options.parameters as Record<string, unknown>).limit
-        : DEFAULT_LIMIT,
+        : DEFAULT_LIMIT
     );
     const limit = Number.isFinite(requestedLimit)
       ? Math.min(Math.max(1, requestedLimit), MAX_LIMIT)

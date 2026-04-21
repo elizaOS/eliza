@@ -131,6 +131,48 @@ function getMessageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function memoryLikeToConversationTurn(
+  value: unknown,
+  agentId: string,
+): WebsiteBlockConversationTurn | null {
+  const memory = asRecord(value);
+  const content = asRecord(memory?.content);
+  const text = typeof content?.text === "string" ? content.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  return {
+    speaker: memory?.entityId === agentId ? "assistant" : "user",
+    text,
+  };
+}
+
+function collectProviderBackedConversationTurns(args: {
+  state: State | undefined;
+  agentId: string;
+  limit: number;
+}): WebsiteBlockConversationTurn[] {
+  const providers = asRecord(asRecord(args.state?.data)?.providers);
+  const recentMessagesProvider = asRecord(providers?.RECENT_MESSAGES);
+  const recentMessages = asRecord(recentMessagesProvider?.data)?.recentMessages;
+  if (!Array.isArray(recentMessages)) {
+    return [];
+  }
+  return recentMessages
+    .map((memory) => memoryLikeToConversationTurn(memory, args.agentId))
+    .filter(
+      (turn): turn is WebsiteBlockConversationTurn =>
+        turn !== null && turn.text.length > 0,
+    )
+    .slice(-args.limit);
+}
+
 function normalizeWebsiteCandidates(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
@@ -264,12 +306,17 @@ function shouldTrustExplicitWebsites(
 async function collectWebsiteBlockConversationTurns(args: {
   runtime: IAgentRuntime;
   message: Memory;
+  state: State | undefined;
   limit: number;
 }): Promise<WebsiteBlockConversationTurn[]> {
   const roomId =
     typeof args.message.roomId === "string" ? args.message.roomId : "";
   if (!roomId || typeof args.runtime.getMemories !== "function") {
-    return [];
+    return collectProviderBackedConversationTurns({
+      state: args.state,
+      agentId: String(args.runtime.agentId),
+      limit: args.limit,
+    });
   }
 
   try {
@@ -306,7 +353,11 @@ async function collectWebsiteBlockConversationTurns(args: {
       )
       .slice(-args.limit);
   } catch {
-    return [];
+    return collectProviderBackedConversationTurns({
+      state: args.state,
+      agentId: String(args.runtime.agentId),
+      limit: args.limit,
+    });
   }
 }
 
@@ -318,6 +369,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
   const recentTurns = await collectWebsiteBlockConversationTurns({
     runtime: args.runtime,
     message: args.message,
+    state: args.state,
     limit: 10,
   });
   const currentMessage = getMessageText(args.message).trim();
@@ -401,6 +453,7 @@ async function recoverWebsiteContextWithLlm(args: {
   const recentTurns = await collectWebsiteBlockConversationTurns({
     runtime: args.runtime,
     message: args.message,
+    state: args.state,
     limit: 12,
   });
 

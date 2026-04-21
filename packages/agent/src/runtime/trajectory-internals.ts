@@ -19,6 +19,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared/type-guards";
+
 export { asRecord };
 
 import {
@@ -144,7 +145,6 @@ let cachedSqlRaw: ((query: string) => { queryChunks: object[] }) | null = null;
 // Module version - changes on each hot reload, ensuring schema checks run
 const SCHEMA_VERSION = Date.now();
 const schemaVersions = new WeakMap<object, number>();
-
 
 export function toText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;

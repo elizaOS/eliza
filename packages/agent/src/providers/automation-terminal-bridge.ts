@@ -25,10 +25,7 @@ export const automationTerminalBridgeProvider: Provider = {
   dynamic: true,
   position: 5,
 
-  async get(
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<ProviderResult> {
+  async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     if (!(await hasAdminAccess(runtime, message))) {
       return { text: "", values: {}, data: {} };
     }

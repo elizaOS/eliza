@@ -33,10 +33,7 @@ export function resolveOptimizedPrompt(
 	if (!service) return baseline;
 	const optimized = service.getPrompt(task);
 	if (!optimized) return baseline;
-	if (
-		!optimized.fewShotExamples ||
-		optimized.fewShotExamples.length === 0
-	) {
+	if (!optimized.fewShotExamples || optimized.fewShotExamples.length === 0) {
 		return optimized.prompt;
 	}
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);

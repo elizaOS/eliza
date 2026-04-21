@@ -74,7 +74,9 @@ function normalizeCloudApiKey(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-function resolveProxyApiKey(state: TravelProviderRelayRouteState): string | null {
+function resolveProxyApiKey(
+  state: TravelProviderRelayRouteState,
+): string | null {
   const cloudAuth = state.runtime
     ? state.runtime.getService<Service & CloudAuthApiKeyService>("CLOUD_AUTH")
     : null;
@@ -171,7 +173,8 @@ function matchRoute(method: string, pathname: string): boolean {
     return false;
   }
   return TRAVEL_PROVIDER_RELAY_ROUTES.some(
-    (route) => route.method === method && route.pattern.test(parsed.providerPath),
+    (route) =>
+      route.method === method && route.pattern.test(parsed.providerPath),
   );
 }
 

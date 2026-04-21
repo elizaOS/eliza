@@ -19,15 +19,11 @@ function createMessage(text: string, source = "dashboard"): Memory {
   };
 }
 
-function createRuntime(
-  service: Record<string, unknown>,
-): IAgentRuntime {
+function createRuntime(service: Record<string, unknown>): IAgentRuntime {
   return {
     agentId: "agent-1" as UUID,
     character: { name: "Milady" },
-    getService: vi.fn().mockImplementation((name: string) =>
-      name === "signal" ? service : null,
-    ),
+    getService: vi.fn().mockImplementation((name: string) => (name === "signal" ? service : null)),
     getSetting: vi.fn(),
   } as unknown as IAgentRuntime;
 }
@@ -35,9 +31,7 @@ function createRuntime(
 describe("@elizaos/plugin-signal action validation", () => {
   it("allows sending from dashboard prompts when the Signal service is registered", async () => {
     const runtime = createRuntime(new SignalService());
-    const message = createMessage(
-      "Reply on Signal to Dana saying I confirmed the booking.",
-    );
+    const message = createMessage("Reply on Signal to Dana saying I confirmed the booking.");
 
     await expect(sendMessage.validate(runtime, message)).resolves.toBe(true);
   });
@@ -75,19 +69,19 @@ describe("@elizaos/plugin-signal recent message reads", () => {
       createMessage("Check my Signal messages"),
       undefined,
       undefined,
-      callback,
+      callback
     );
 
     expect(result).toEqual(
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({ messageCount: 1 }),
-      }),
+      })
     );
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Dana"),
-      }),
+      })
     );
   });
 

@@ -1,7 +1,7 @@
 import type http from "node:http";
 import type { ElizaConfig } from "../config/config.js";
-import type { ConnectorConfig } from "../config/types.eliza.js";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
+import type { ConnectorConfig } from "../config/types.eliza.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -31,11 +31,12 @@ export interface ConnectorRouteContext {
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
 }
 
-function getConfiguredConnectorsFromEnv(): Record<string, { enabled: true; configuredViaEnv: true }> {
-  const configured: Record<
-    string,
-    { enabled: true; configuredViaEnv: true }
-  > = {};
+function getConfiguredConnectorsFromEnv(): Record<
+  string,
+  { enabled: true; configuredViaEnv: true }
+> {
+  const configured: Record<string, { enabled: true; configuredViaEnv: true }> =
+    {};
 
   for (const [connectorName, envMap] of Object.entries(CONNECTOR_ENV_MAP)) {
     const envKeys = new Set(Object.values(envMap));
@@ -62,7 +63,9 @@ function getConfiguredConnectorsFromEnv(): Record<string, { enabled: true; confi
 function listVisibleConnectors(config: ElizaConfig): Record<string, unknown> {
   const rawConnectors =
     config.connectors ??
-    ((config as Record<string, unknown>).channels as Record<string, unknown> | undefined) ??
+    ((config as Record<string, unknown>).channels as
+      | Record<string, unknown>
+      | undefined) ??
     {};
   const visibleConnectors =
     rawConnectors &&

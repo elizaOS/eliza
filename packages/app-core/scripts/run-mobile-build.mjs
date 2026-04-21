@@ -298,7 +298,7 @@ function overlayAndroid() {
   const srcJava = path.join(platformsDir, "android", "app", "src", "main", "java", "ai", "elizaos", "app");
   const gradlePath = path.join(androidDir, "app", "build.gradle");
   const namespace = fs.existsSync(gradlePath)
-    ? fs.readFileSync(gradlePath, "utf8").match(/namespace\s*[=:]\s*["']([^"']+)["']/)?.[1]
+    ? fs.readFileSync(gradlePath, "utf8").match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
     : APP.appId;
   const androidPackage = namespace || APP.appId;
   const dstJava = path.join(
@@ -319,10 +319,20 @@ function overlayAndroid() {
     "elizaos",
     "app",
   );
+  const appIdJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    ...APP.appId.split("."),
+  );
 
   if (fs.existsSync(srcJava)) {
-    if (legacyJava !== dstJava) {
-      fs.rmSync(legacyJava, { recursive: true, force: true });
+    for (const staleJava of [legacyJava, appIdJava]) {
+      if (staleJava !== dstJava) {
+        fs.rmSync(staleJava, { recursive: true, force: true });
+      }
     }
     fs.mkdirSync(dstJava, { recursive: true });
     for (const file of ["GatewayConnectionService.java", "MainActivity.java"]) {
@@ -357,17 +367,16 @@ function overlayAndroid() {
       dirty = true;
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
-    if (xml.includes('android:name="ai.elizaos.app.GatewayConnectionService"')) {
-      xml = xml.replaceAll(
-        'android:name="ai.elizaos.app.GatewayConnectionService"',
-        `android:name="${gatewayServiceName}"`,
-      );
-      dirty = true;
-    } else if (!xml.includes(`android:name="${gatewayServiceName}"`)) {
-      xml = xml.replace("</application>",
-        `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`);
+    const gatewayServicePattern =
+      /\n\s*<service\b(?=[\s\S]*?android:name="[^"]*GatewayConnectionService")[\s\S]*?\/>\s*/g;
+    const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
+    if (withoutGatewayServices !== xml) {
+      xml = withoutGatewayServices;
       dirty = true;
     }
+    xml = xml.replace("</application>",
+      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`);
+    dirty = true;
     for (const perm of ANDROID_PERMISSIONS) {
       const full = `android.permission.${perm}`;
       if (!xml.includes(full)) {
@@ -678,8 +687,8 @@ async function buildAndroid() {
   await ensurePlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
 
-  overlayAndroid();
   patchAndroidGradle();
+  overlayAndroid();
 
   const env = {
     ...process.env,

@@ -7,11 +7,17 @@ export function getLocalizedConversationTitle(
     vars?: Record<string, string | number | boolean | null | undefined>,
   ) => string,
 ): string {
-  if (!title || title === "New Chat" || title === "companion.newChat") {
+  const trimmed = title?.trim() ?? "";
+  if (
+    !trimmed ||
+    trimmed === "New Chat" ||
+    trimmed === "companion.newChat" ||
+    trimmed.toLowerCase() === "default"
+  ) {
     const localized = t("companion.newChat");
     return localized === "companion.newChat" ? "New Chat" : localized;
   }
-  return title;
+  return trimmed;
 }
 
 export const BROWSER_CAPABILITY_PLUGIN_IDS = new Set([

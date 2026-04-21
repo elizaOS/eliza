@@ -29,32 +29,24 @@ const runtime = {
 		{ name: "INBOX" },
 		{ name: "GMAIL_ACTION" },
 		{ name: "BLOCK_WEBSITES", suppressPostActionContinuation: true },
-			{
-				name: "OWNER_CALENDAR",
-				similes: ["UPDATE_MEETING_PREFERENCES"],
-				suppressPostActionContinuation: true,
-			},
-			{
-				name: "CALL_USER",
-				similes: ["CALL_IF_STUCK"],
-				suppressPostActionContinuation: true,
-			},
-			{ name: "SLOW_BACKGROUND_LOOKUP" },
-		],
-		logger: {
-			info() {},
-			warn() {},
-			debug() {},
-			error() {},
+		{
+			name: "OWNER_CALENDAR",
+			similes: ["UPDATE_MEETING_PREFERENCES"],
+			suppressPostActionContinuation: true,
 		},
-	} as Parameters<typeof shouldEmitPlannerPreamble>[0];
-
-const runtime = {
-	actions: [
-		{ name: "INBOX" },
-		{ name: "GMAIL_ACTION" },
-		{ name: "BLOCK_WEBSITES", suppressPostActionContinuation: true },
+		{
+			name: "CALL_USER",
+			similes: ["CALL_IF_STUCK"],
+			suppressPostActionContinuation: true,
+		},
+		{ name: "SLOW_BACKGROUND_LOOKUP" },
 	],
+	logger: {
+		info() {},
+		warn() {},
+		debug() {},
+		error() {},
+	},
 } as Parameters<typeof shouldEmitPlannerPreamble>[0];
 
 describe("shouldEmitPlannerPreamble", () => {

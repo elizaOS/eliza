@@ -84,6 +84,12 @@ function toRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function actionResultData(
+  action: ScenarioContext["actionsCalled"][number],
+): Record<string, unknown> | null {
+  return toRecord(action.result?.data) ?? toRecord(action.result?.raw);
+}
+
 function hasBrowserTaskCompletedValue(value: unknown): boolean {
   const record = toRecord(value);
   if (!record) {

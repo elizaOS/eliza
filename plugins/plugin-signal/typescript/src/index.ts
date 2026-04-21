@@ -46,9 +46,7 @@ const signalPlugin: Plugin = {
         settings: {
           accountNumber: maskNumber(accountNumber),
           httpUrl: httpUrl || "[not set]",
-          cliPath: cliPath
-            ? cliPath
-            : `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
+          cliPath: cliPath ? cliPath : `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
           ignoreGroups: ignoreGroups || "false",
         },
       },
@@ -119,6 +117,17 @@ export type {
   SignalConfig,
   SignalReactionLevel,
 } from "./config";
+// Pairing service (device linking via QR code / signal-cli)
+export {
+  type SignalPairingEvent,
+  type SignalPairingOptions,
+  SignalPairingSession,
+  type SignalPairingSnapshot,
+  type SignalPairingStatus,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+} from "./pairing-service";
 // Export providers
 export { conversationStateProvider } from "./providers/conversationState";
 // RPC client exports
@@ -143,21 +152,10 @@ export {
   signalSendTyping,
   streamSignalEvents,
 } from "./rpc";
-// Pairing service (device linking via QR code / signal-cli)
-export {
-  SignalPairingSession,
-  sanitizeAccountId as sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-  type SignalPairingEvent,
-  type SignalPairingOptions,
-  type SignalPairingSnapshot,
-  type SignalPairingStatus,
-} from "./pairing-service";
-// Setup routes (QR pairing / disconnect)
-export { applySignalQrOverride, signalSetupRoutes } from "./setup-routes";
 // Export service for direct access
 export { SignalService } from "./service";
+// Setup routes (QR pairing / disconnect)
+export { applySignalQrOverride, signalSetupRoutes } from "./setup-routes";
 // Export types
 export type {
   ISignalService,
@@ -170,10 +168,10 @@ export type {
   SignalMessageReceivedPayload,
   SignalMessageSendOptions,
   SignalMessageSentPayload,
-  SignalRecentMessage,
   SignalQuote,
   SignalReactionInfo,
   SignalReactionPayload,
+  SignalRecentMessage,
   SignalSettings,
 } from "./types";
 export {

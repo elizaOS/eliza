@@ -11,10 +11,14 @@ describe("message service benchmark integration contracts", () => {
 	it("centralizes benchmark mode detection through a single helper", async () => {
 		const source = await readFile(MESSAGE_SOURCE, "utf8");
 
-		expect(source).toContain('function isBenchmarkMode(state: Pick<State, "values">)');
+		expect(source).toContain(
+			'function isBenchmarkMode(state: Pick<State, "values">)',
+		);
 		expect(source).not.toContain("state.values.benchmark_has_context === true");
 		expect(source).not.toContain("state.values.benchmark_has_context !== true");
-		expect(source.match(/isBenchmarkMode\(state\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+		expect(
+			source.match(/isBenchmarkMode\(state\)/g)?.length ?? 0,
+		).toBeGreaterThanOrEqual(2);
 	});
 
 	it("still gates both action forcing and continuation suppression on benchmark mode", async () => {

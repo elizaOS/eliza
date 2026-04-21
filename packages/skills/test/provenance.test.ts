@@ -1,5 +1,11 @@
 import assert from "node:assert";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -138,13 +144,20 @@ describe("curated namespace", () => {
         `---\nname: proposed-skill\ndescription: A proposed skill\nprovenance:\n  source: agent-generated\n  createdAt: 2025-01-01T00:00:00Z\n  refinedCount: 0\n---\nbody\n`,
       );
 
-      const { skills } = loadSkills({ includeDefaults: true, bundledSkillsDir: undefined });
+      const { skills } = loadSkills({
+        includeDefaults: true,
+        bundledSkillsDir: undefined,
+      });
       const activeMatch = skills.find((s) => s.name === "active-skill");
       const proposedMatch = skills.find((s) => s.name === "proposed-skill");
       assert.ok(activeMatch, "active skill should be loaded");
       assert.strictEqual(activeMatch?.source, "curated");
       assert.strictEqual(activeMatch?.provenance?.source, "agent-generated");
-      assert.strictEqual(proposedMatch, undefined, "proposed skill must not be loaded");
+      assert.strictEqual(
+        proposedMatch,
+        undefined,
+        "proposed skill must not be loaded",
+      );
     });
   });
 

@@ -9,9 +9,9 @@ import {
   normalizeOnboardingCredentialInputs,
 } from "../contracts/onboarding.js";
 import {
+  type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
-  type DeploymentTargetConfig,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
 } from "../contracts/service-routing.js";

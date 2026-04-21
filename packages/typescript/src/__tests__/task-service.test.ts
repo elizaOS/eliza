@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { TaskService } from "../services/task";
-import type { Task, TaskMetadata, TaskWorker } from "../types/task";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import type { Task, TaskMetadata, TaskWorker } from "../types/task";
 
 function createRuntime(task: Task) {
 	const tasks = new Map<string, Task>([[String(task.id), task]]);

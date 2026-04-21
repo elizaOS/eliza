@@ -43,8 +43,8 @@ import {
   shouldInstallMainWindowOnboardingPatches,
   syncDetachedShellLocation,
 } from "@elizaos/app-core/platform";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
 import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
 import "@elizaos/app-lifeops/widgets";
 // Side-effect: register game operator surfaces + detail extensions.

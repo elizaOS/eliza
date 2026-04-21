@@ -95,9 +95,11 @@ export const coreActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
+				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
 			similes: [
 				"GREET",
+				"REPLY_TO_MESSAGE",
+				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -1347,9 +1349,11 @@ export const allActionsSpec = {
 		{
 			name: "REPLY",
 			description:
-				"Sends a direct chat reply in the current conversation/thread using the generated message text. This is not an email reply, inbox workflow, or external-channel send. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final chat response.",
+				"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
 			similes: [
 				"GREET",
+				"REPLY_TO_MESSAGE",
+				"SEND_REPLY",
 				"RESPOND",
 				"RESPONSE",
 			],
@@ -2612,7 +2616,7 @@ export const allActionsSpec = {
 		{
 			name: "BROWSER_ACTION",
 			description:
-				"Control a web browser to navigate websites, click elements, fill forms, read page content, ",
+				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n",
 			parameters: [],
 			similes: [
 				"CONTROL_BROWSER",
@@ -2703,6 +2707,27 @@ export const allActionsSpec = {
 				"MODIFY_MESSAGE",
 				"CHANGE_MESSAGE",
 				"EDIT_DISCORD_MESSAGE",
+			],
+		},
+		{
+			name: "FETCH_FEED_TOP",
+			description:
+				"Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
+			parameters: [],
+			similes: ["GET_X_FEED", "TOP_TWEETS", "FEED_TOP"],
+		},
+		{
+			name: "FILE_ACTION",
+			description:
+				"Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n",
+			parameters: [],
+			similes: [
+				"READ_FILE",
+				"WRITE_FILE",
+				"EDIT_FILE",
+				"DELETE_FILE",
+				"LIST_DIRECTORY",
+				"FILE_OPERATION",
 			],
 		},
 		{
@@ -2918,6 +2943,8 @@ export const allActionsSpec = {
 				"LIST_WINDOWS",
 				"FOCUS_WINDOW",
 				"SWITCH_WINDOW",
+				"ARRANGE_WINDOWS",
+				"MOVE_WINDOW",
 				"MINIMIZE_WINDOW",
 				"MAXIMIZE_WINDOW",
 				"CLOSE_WINDOW",
@@ -3209,6 +3236,13 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "SEND_X_POST",
+			description:
+				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+			parameters: [],
+			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
+		},
+		{
 			name: "SETUP_CREDENTIALS",
 			description:
 				"Guide the user through setting up API credentials for supported third-party services, validate them when possible, and store them securely.",
@@ -3469,21 +3503,6 @@ export const allActionsSpec = {
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
 		},
 		{
-			name: "TAKE_SCREENSHOT",
-			description:
-				"Take a screenshot of the current screen to see what is displayed. ",
-			parameters: [],
-			similes: [
-				"CAPTURE_SCREEN",
-				"SCREEN_CAPTURE",
-				"GET_SCREENSHOT",
-				"SEE_SCREEN",
-				"LOOK_AT_SCREEN",
-				"VIEW_SCREEN",
-				"SCREEN_STATE",
-			],
-		},
-		{
 			name: "TASK_CONTROL",
 			description:
 				"Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.",
@@ -3525,6 +3544,19 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "TERMINAL_ACTION",
+			description:
+				"Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n",
+			parameters: [],
+			similes: [
+				"RUN_COMMAND",
+				"EXECUTE_COMMAND",
+				"SHELL_COMMAND",
+				"TERMINAL",
+				"RUN_SHELL",
+			],
+		},
+		{
 			name: "TOGGLE_SKILL",
 			description:
 				"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
@@ -3548,7 +3580,7 @@ export const allActionsSpec = {
 		{
 			name: "USE_COMPUTER",
 			description:
-				"Control the computer desktop by performing mouse and keyboard actions, or capture a screenshot of the current screen. ",
+				"Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n",
 			parameters: [],
 			similes: [
 				"CONTROL_COMPUTER",
@@ -3563,7 +3595,15 @@ export const allActionsSpec = {
 				"MOVE_MOUSE",
 				"DRAG",
 				"MOUSE_CLICK",
+				"CLICK_WITH_MODIFIERS",
 			],
+		},
+		{
+			name: "USE_SKILL",
+			description:
+				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+			parameters: [],
+			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

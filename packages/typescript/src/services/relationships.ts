@@ -2174,10 +2174,7 @@ export class RelationshipsService extends Service {
 			});
 			for (const relationship of relationships) {
 				if (!isConfirmedIdentityLinkLike(relationship)) continue;
-				uf.union(
-					relationship.sourceEntityId,
-					relationship.targetEntityId,
-				);
+				uf.union(relationship.sourceEntityId, relationship.targetEntityId);
 				if (!visited.has(relationship.sourceEntityId)) {
 					nextFrontier.add(relationship.sourceEntityId);
 				}
@@ -2229,12 +2226,17 @@ export class RelationshipsService extends Service {
 			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
 				AND entity_id IN (${quoted})`,
 		);
-		const rows: Array<{ entityId: UUID; platform: string; handle: string }> = [];
+		const rows: Array<{ entityId: UUID; platform: string; handle: string }> =
+			[];
 		for (const row of result.rows) {
 			const e = row.entity_id;
 			const p = row.platform;
 			const h = row.handle;
-			if (typeof e !== "string" || typeof p !== "string" || typeof h !== "string") {
+			if (
+				typeof e !== "string" ||
+				typeof p !== "string" ||
+				typeof h !== "string"
+			) {
 				continue;
 			}
 			rows.push({ entityId: asUUID(e), platform: p, handle: h });

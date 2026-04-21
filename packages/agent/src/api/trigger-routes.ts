@@ -247,11 +247,7 @@ export async function handleTriggerRoutes(
     const workflowId = parseNonEmptyString(body.workflowId);
     const workflowName = parseNonEmptyString(body.workflowName);
     if (kind === "workflow" && !workflowId) {
-      error(
-        res,
-        "workflowId is required when kind is 'workflow'",
-        400,
-      );
+      error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
     const inputDraft: TriggerDraftInput = {
@@ -499,11 +495,7 @@ export async function handleTriggerRoutes(
     const nextWorkflowName =
       parseNonEmptyString(body.workflowName) ?? current.workflowName;
     if (nextKind === "workflow" && !nextWorkflowId) {
-      error(
-        res,
-        "workflowId is required when kind is 'workflow'",
-        400,
-      );
+      error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
 

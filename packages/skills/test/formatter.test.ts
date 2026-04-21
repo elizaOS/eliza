@@ -1,11 +1,11 @@
-import { describe, it } from "node:test";
 import assert from "node:assert";
+import { describe, it } from "node:test";
 import {
-  formatSkillsForPrompt,
+  buildSkillCommandSpecs,
   formatSkillEntriesForPrompt,
   formatSkillSummary,
+  formatSkillsForPrompt,
   formatSkillsList,
-  buildSkillCommandSpecs,
 } from "../src/formatter.js";
 import type { Skill, SkillEntry } from "../src/types.js";
 
@@ -42,9 +42,7 @@ describe("formatSkillsForPrompt", () => {
   });
 
   it("omits location when filePath is not set", () => {
-    const skills: Skill[] = [
-      { name: "inline", description: "Inline skill" },
-    ];
+    const skills: Skill[] = [{ name: "inline", description: "Inline skill" }];
     const result = formatSkillsForPrompt(skills);
     assert.ok(result.includes("<name>inline</name>"));
     assert.ok(!result.includes("<location>"));
@@ -52,7 +50,7 @@ describe("formatSkillsForPrompt", () => {
 
   it("escapes XML special characters in name and description", () => {
     const skills: Skill[] = [
-      { name: "test", description: 'Uses <tags> & "quotes" and \'apos\'' },
+      { name: "test", description: "Uses <tags> & \"quotes\" and 'apos'" },
     ];
     const result = formatSkillsForPrompt(skills);
     assert.ok(result.includes("&lt;tags&gt;"));

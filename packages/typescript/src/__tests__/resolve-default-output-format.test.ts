@@ -15,10 +15,15 @@ describe("resolveDefaultOutputFormat", () => {
 		expect(resolveDefaultOutputFormat(input)).toBe(expected);
 	});
 
-	test.each([undefined, null, "", "yaml", "markdown", 42, {}])(
-		"unrecognized %p → TOON",
-		(input) => {
-			expect(resolveDefaultOutputFormat(input)).toBe("TOON");
-		},
-	);
+	test.each([
+		undefined,
+		null,
+		"",
+		"yaml",
+		"markdown",
+		42,
+		{},
+	])("unrecognized %p → TOON", (input) => {
+		expect(resolveDefaultOutputFormat(input)).toBe("TOON");
+	});
 });

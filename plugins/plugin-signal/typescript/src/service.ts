@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,9 +47,9 @@ import {
   type SignalGroup,
   type SignalMessage,
   type SignalMessageSendOptions,
-  type SignalRecentMessage,
   type SignalQuote,
   type SignalReactionInfo,
+  type SignalRecentMessage,
   type SignalSettings,
 } from "./types";
 
@@ -59,10 +59,7 @@ export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
-const COMMON_SIGNAL_CLI_PATHS = [
-  "/opt/homebrew/bin/signal-cli",
-  "/usr/local/bin/signal-cli",
-];
+const COMMON_SIGNAL_CLI_PATHS = ["/opt/homebrew/bin/signal-cli", "/usr/local/bin/signal-cli"];
 
 /**
  * signal-cli uses `$HOME/.local/share/signal-cli` as its default data
@@ -227,13 +224,18 @@ class SignalApiClient {
     targetAuthor: string,
     remove = false
   ): Promise<void> {
-    await this.request("POST", `/v1/reactions/${this.accountNumber}`, {
-      recipient,
-      reaction: emoji,
-      target_author: targetAuthor,
-      timestamp: targetTimestamp,
-      remove,
-    }, true);
+    await this.request(
+      "POST",
+      `/v1/reactions/${this.accountNumber}`,
+      {
+        recipient,
+        reaction: emoji,
+        target_author: targetAuthor,
+        timestamp: targetTimestamp,
+        remove,
+      },
+      true
+    );
   }
 
   async getContacts(): Promise<SignalContact[]> {
@@ -260,17 +262,27 @@ class SignalApiClient {
   }
 
   async sendTyping(recipient: string, stop = false): Promise<void> {
-    await this.request("PUT", `/v1/typing-indicator/${this.accountNumber}`, {
-      recipient,
-      stop,
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/typing-indicator/${this.accountNumber}`,
+      {
+        recipient,
+        stop,
+      },
+      true
+    );
   }
 
   async setProfile(name: string, about?: string): Promise<void> {
-    await this.request("PUT", `/v1/profiles/${this.accountNumber}`, {
-      name,
-      about: about || "",
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/profiles/${this.accountNumber}`,
+      {
+        name,
+        about: about || "",
+      },
+      true
+    );
   }
 
   async getIdentities(): Promise<
@@ -286,9 +298,14 @@ class SignalApiClient {
     number: string,
     trustLevel: "TRUSTED_VERIFIED" | "TRUSTED_UNVERIFIED" | "UNTRUSTED"
   ): Promise<void> {
-    await this.request("PUT", `/v1/identities/${this.accountNumber}/trust/${number}`, {
-      trust_level: trustLevel,
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/identities/${this.accountNumber}/trust/${number}`,
+      {
+        trust_level: trustLevel,
+      },
+      true
+    );
   }
 }
 
@@ -345,22 +362,19 @@ export class SignalService extends Service implements ISignalService {
 
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
-    const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as
-      | string
-      | undefined;
+    const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
     const authDir =
       typeof rawAuthDir === "string" && rawAuthDir.trim().length > 0
         ? rawAuthDir.trim()
         : defaultSignalAuthDir();
     const configuredCliPath =
-      (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) ||
-      DEFAULT_SIGNAL_CLI_PATH;
+      (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) || DEFAULT_SIGNAL_CLI_PATH;
     const httpHost =
       (runtime.getSetting("SIGNAL_HTTP_HOST") as string | undefined)?.trim() ||
       DEFAULT_SIGNAL_HTTP_HOST;
     const parsedHttpPort = Number.parseInt(
       String(runtime.getSetting("SIGNAL_HTTP_PORT") ?? ""),
-      10,
+      10
     );
     const httpPort =
       Number.isFinite(parsedHttpPort) && parsedHttpPort > 0
@@ -368,7 +382,7 @@ export class SignalService extends Service implements ISignalService {
         : DEFAULT_SIGNAL_HTTP_PORT;
     const parsedStartupTimeout = Number.parseInt(
       String(runtime.getSetting("SIGNAL_STARTUP_TIMEOUT_MS") ?? ""),
-      10,
+      10
     );
     const startupTimeoutMs =
       Number.isFinite(parsedStartupTimeout) && parsedStartupTimeout > 0
@@ -394,9 +408,7 @@ export class SignalService extends Service implements ISignalService {
 
     service.accountNumber = normalizedNumber;
 
-    const baseUrl = httpUrl?.trim()
-      ? normalizeBaseUrl(httpUrl)
-      : `http://${httpHost}:${httpPort}`;
+    const baseUrl = httpUrl?.trim() ? normalizeBaseUrl(httpUrl) : `http://${httpHost}:${httpPort}`;
 
     if (!httpUrl) {
       // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
@@ -416,12 +428,7 @@ export class SignalService extends Service implements ISignalService {
       }
 
       try {
-        await service.ensureDaemonRunning(
-          configuredCliPath,
-          authDir,
-          baseUrl,
-          startupTimeoutMs,
-        );
+        await service.ensureDaemonRunning(configuredCliPath, authDir, baseUrl, startupTimeoutMs);
       } catch (error) {
         runtime.logger.error(
           {
@@ -455,10 +462,7 @@ export class SignalService extends Service implements ISignalService {
     return service;
   }
 
-  static registerSendHandlers(
-    runtime: IAgentRuntime,
-    service: SignalService
-  ): void {
+  static registerSendHandlers(runtime: IAgentRuntime, service: SignalService): void {
     runtime.registerSendHandler("signal", async (_runtime, target, content) => {
       const text = typeof content.text === "string" ? content.text.trim() : "";
       if (!text) {
@@ -555,7 +559,7 @@ export class SignalService extends Service implements ISignalService {
     cliPath: string,
     authDir: string,
     baseUrl: string,
-    startupTimeoutMs: number,
+    startupTimeoutMs: number
   ): Promise<void> {
     const current = await signalCheck(baseUrl, 1_500);
     if (current.ok) {
@@ -623,9 +627,7 @@ export class SignalService extends Service implements ISignalService {
     const startedAt = Date.now();
     while (Date.now() - startedAt < startupTimeoutMs) {
       if (child.exitCode !== null) {
-        throw new Error(
-          `signal-cli daemon exited before becoming ready (code ${child.exitCode})`
-        );
+        throw new Error(`signal-cli daemon exited before becoming ready (code ${child.exitCode})`);
       }
 
       const ready = await signalCheck(baseUrl, 1_500);
@@ -938,9 +940,7 @@ export class SignalService extends Service implements ISignalService {
 
     // signal-cli may identify senders by UUID instead of phone number.
     // Accept both UUID and E.164 formats.
-    const normalizedRecipient = isValidUuid(recipient)
-      ? recipient
-      : normalizeE164(recipient);
+    const normalizedRecipient = isValidUuid(recipient) ? recipient : normalizeE164(recipient);
     if (!normalizedRecipient) {
       throw new Error(`Invalid recipient number: ${recipient}`);
     }
@@ -1046,12 +1046,8 @@ export class SignalService extends Service implements ISignalService {
       return [];
     }
 
-    const requestedLimit = Number.isFinite(limit)
-      ? Math.max(1, Math.min(limit, 100))
-      : 20;
-    const participantRoomIds = await this.runtime.getRoomsForParticipant(
-      this.runtime.agentId,
-    );
+    const requestedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 20;
+    const participantRoomIds = await this.runtime.getRoomsForParticipant(this.runtime.agentId);
 
     const signalRooms: Room[] = [];
     for (const roomId of participantRoomIds) {
@@ -1077,8 +1073,7 @@ export class SignalService extends Service implements ISignalService {
       .filter((memory) => memory.content?.source === "signal")
       .filter(
         (memory) =>
-          typeof memory.content?.text === "string" &&
-          memory.content.text.trim().length > 0,
+          typeof memory.content?.text === "string" && memory.content.text.trim().length > 0
       )
       .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
       .slice(0, requestedLimit)
@@ -1091,8 +1086,7 @@ export class SignalService extends Service implements ISignalService {
         const speakerName =
           memory.entityId === this.runtime.agentId
             ? this.character?.name || "Agent"
-            : typeof memory.content.name === "string" &&
-                memory.content.name.trim().length > 0
+            : typeof memory.content.name === "string" && memory.content.name.trim().length > 0
               ? memory.content.name.trim()
               : room?.name || room?.channelId || "Unknown";
 

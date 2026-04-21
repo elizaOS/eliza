@@ -752,7 +752,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             )}
           >
             {collapseButtonLeading ? (
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 {collapseButtonLeading}
               </div>
             ) : null}

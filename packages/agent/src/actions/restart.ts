@@ -16,7 +16,13 @@
  */
 
 import crypto from "node:crypto";
-import type { Action, ActionExample, HandlerOptions, Memory, UUID } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getValidationKeywordTerms,

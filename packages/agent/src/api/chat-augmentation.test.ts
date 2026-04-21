@@ -1,4 +1,8 @@
-import { createMessageMemory, type AgentRuntime, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  createMessageMemory,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { maybeAugmentChatMessageWithKnowledge } from "./chat-augmentation.js";

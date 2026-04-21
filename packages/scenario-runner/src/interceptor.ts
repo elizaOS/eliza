@@ -21,7 +21,6 @@ import type {
   CapturedApprovalRequest,
   CapturedArtifact,
   CapturedConnectorDispatch,
-  CapturedStateTransition,
   CapturedMemoryWrite,
   CapturedStateTransition,
 } from "@elizaos/scenario-schema";
@@ -50,7 +49,6 @@ export interface ActionInterceptor {
   readonly memoryWrites: CapturedMemoryWrite[];
   readonly stateTransitions: CapturedStateTransition[];
   readonly artifacts: CapturedArtifact[];
-  readonly stateTransitions: CapturedStateTransition[];
   reset(): void;
   detach(): void;
 }
@@ -73,7 +71,7 @@ function toRecord(value: unknown): Record<string, unknown> | null {
 function getRuntimeCaptureHooks(
   runtime: IAgentRuntime,
 ): RuntimeCaptureHooks | null {
-  const hooks = (runtime as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
+  const hooks = (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
   if (!hooks || typeof hooks !== "object") {
     return null;
   }
@@ -177,7 +175,10 @@ export async function ensureInterceptorRuntimeHooks(): Promise<void> {
         | { prototype?: Record<string, unknown> }
         | undefined;
       const prototype = PgApprovalQueue?.prototype;
-      if (!prototype || prototype[APPROVAL_QUEUE_PATCH_MARKER]) {
+      if (
+        !prototype ||
+        (prototype as Record<PropertyKey, unknown>)[APPROVAL_QUEUE_PATCH_MARKER]
+      ) {
         return;
       }
 
@@ -225,7 +226,8 @@ export async function ensureInterceptorRuntimeHooks(): Promise<void> {
         wrapMethod(methodName);
       }
 
-      prototype[APPROVAL_QUEUE_PATCH_MARKER] = true;
+      (prototype as Record<PropertyKey, unknown>)[APPROVAL_QUEUE_PATCH_MARKER] =
+        true;
     } catch {
       // Scenario runner also lives outside the app-lifeops repo surface.
       // Absence of the optional app module should not break generic usage.
@@ -519,11 +521,12 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   const connectorDispatches: CapturedConnectorDispatch[] = [];
   const memoryWrites: CapturedMemoryWrite[] = [];
   const artifacts: CapturedArtifact[] = [];
+  const stateTransitions: CapturedStateTransition[] = [];
 
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
 
-  (runtime as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK] = {
+  (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK] = {
     approvalRequests,
     connectorDispatches,
     stateTransitions,
@@ -695,7 +698,6 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     memoryWrites,
     stateTransitions,
     artifacts,
-    stateTransitions,
     reset(): void {
       actions.length = 0;
       approvalRequests.length = 0;
@@ -703,10 +705,9 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       memoryWrites.length = 0;
       stateTransitions.length = 0;
       artifacts.length = 0;
-      stateTransitions.length = 0;
     },
     detach(): void {
-      delete (runtime as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
+      delete (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
       for (const restore of restoreFns) restore();
       restoreFns.length = 0;
     },

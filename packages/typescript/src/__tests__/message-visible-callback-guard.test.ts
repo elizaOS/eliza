@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory } from "../types";
 import { wrapSingleTurnVisibleCallback } from "../services/message.ts";
+import type { IAgentRuntime, Memory } from "../types";
 import { stringToUuid } from "../utils";
 
 function buildCallbackMemory(): Memory {

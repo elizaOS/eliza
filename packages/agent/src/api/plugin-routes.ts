@@ -213,9 +213,7 @@ function readCompatEnabledFromConfig(
   config: ElizaConfig,
   pluginId: string,
 ): boolean | null {
-  const asRecord = (
-    value: unknown,
-  ): Record<string, unknown> | null => {
+  const asRecord = (value: unknown): Record<string, unknown> | null => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return null;
     }
@@ -223,7 +221,8 @@ function readCompatEnabledFromConfig(
   };
 
   const container =
-    asRecord(config.connectors)?.[pluginId] ?? asRecord(config.streaming)?.[pluginId];
+    asRecord(config.connectors)?.[pluginId] ??
+    asRecord(config.streaming)?.[pluginId];
   const value = asRecord(container)?.enabled;
   return typeof value === "boolean" ? value : null;
 }
@@ -233,7 +232,9 @@ function buildCoreToggleDiagnostics(
   npmName: string,
 ): CoreToggleDriftDiagnostic | null {
   const pluginId = optionalPluginListId(npmName);
-  const isOptional = (OPTIONAL_CORE_PLUGINS as readonly string[]).includes(npmName);
+  const isOptional = (OPTIONAL_CORE_PLUGINS as readonly string[]).includes(
+    npmName,
+  );
   if (!isOptional) {
     return null;
   }
@@ -248,7 +249,11 @@ function buildCoreToggleDiagnostics(
   if (enabledEntries !== null && enabledEntries !== enabledAllowList) {
     driftFlags.push("entries_vs_allowlist");
   }
-  if (enabledEntries !== null && enabledCompat !== null && enabledEntries !== enabledCompat) {
+  if (
+    enabledEntries !== null &&
+    enabledCompat !== null &&
+    enabledEntries !== enabledCompat
+  ) {
     driftFlags.push("entries_vs_compat");
   }
 
@@ -1696,7 +1701,10 @@ export async function handlePluginRoutes(
       unloadedPackages: runtimeApply.unloadedPackages,
       reloadedPackages: runtimeApply.reloadedPackages,
       diagnostics: (() => {
-        const diagnostic = buildCoreToggleDiagnostics(state.config, body.npmName);
+        const diagnostic = buildCoreToggleDiagnostics(
+          state.config,
+          body.npmName,
+        );
         return diagnostic && diagnostic.drift_flags.length > 0
           ? {
               withDrift: true,

@@ -42,7 +42,11 @@ describe("automation room providers", () => {
     };
 
     await expect(
-      recentConversationsProvider.get(runtime as never, buildMessage(), {} as never),
+      recentConversationsProvider.get(
+        runtime as never,
+        buildMessage(),
+        {} as never,
+      ),
     ).resolves.toEqual({
       text: "",
       values: {},

@@ -84,6 +84,11 @@ type ScenarioApiServer = {
   close: () => Promise<void>;
 };
 
+type SeedRunResult = {
+  now: Date;
+  error?: string;
+};
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -533,7 +538,7 @@ async function startScenarioApiServer(
 }
 
 function resolveNowToken(token: string, baseNow: Date): string | null {
-  const match = token.match(/^now(?:([+-])(\d+)([mhd]))?$/i);
+  const match = token.match(/^now(?:([+-])(\d+)([mhdw]))?$/i);
   if (!match) {
     return null;
   }
@@ -546,12 +551,47 @@ function resolveNowToken(token: string, baseNow: Date): string | null {
         ? 60_000
         : unit.toLowerCase() === "h"
           ? 60 * 60_000
-          : 24 * 60 * 60_000;
+          : unit.toLowerCase() === "d"
+            ? 24 * 60 * 60_000
+            : 7 * 24 * 60 * 60_000;
     resolved.setTime(
       resolved.getTime() + (sign === "+" ? amount : -amount) * multiplier,
     );
   }
   return resolved.toISOString();
+}
+
+function addClockOffset(baseNow: Date, offset: string): Date {
+  const resolved = resolveNowToken(`now${offset}`, baseNow);
+  if (resolved === null) {
+    throw new Error(`unsupported clock offset '${offset}'`);
+  }
+  return new Date(resolved);
+}
+
+function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\{\{([^}]+)\}\}/g, (fullMatch, rawToken) => {
+      const token = String(rawToken).trim();
+      const resolved = resolveNowToken(token, currentNow);
+      if (resolved === null) {
+        throw new Error(`[executor] unsupported scenario template token ${fullMatch}`);
+      }
+      return resolved;
+    });
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveScenarioTemplates(item, currentNow));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        resolveScenarioTemplates(item, currentNow),
+      ]),
+    );
+  }
+  return value;
 }
 
 function indexResponseIdentifiers(
@@ -860,11 +900,12 @@ async function executeMessageTurn(
   runtime: AgentRuntime,
   turn: ScenarioTurn,
   room: ScenarioRoomDefinition,
+  currentNow: Date,
   turnTimeoutMs: number,
 ): Promise<{ responseText: string; durationMs: number }> {
   const text =
     typeof turn.text === "string"
-      ? resolveScenarioTemplates(turn.text, currentNow)
+      ? String(resolveScenarioTemplates(turn.text, currentNow))
       : "";
   if (text.length === 0) {
     throw new Error(`[executor] turn '${turn.name}' has no text to send`);
@@ -1231,7 +1272,7 @@ export async function runScenario(
       });
     }
 
-    const seedResult = await runSeedSteps(scenario, runtime, ctx, logicalNow);
+    const seedResult = await runCustomSeeds(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;
     ctx.now = logicalNow.toISOString();
     if (seedResult.error) {
@@ -1321,6 +1362,7 @@ export async function runScenario(
                 runtime,
                 turn,
                 resolveTurnRoom(turn, rooms),
+                logicalNow,
                 opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
               )),
             };

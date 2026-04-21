@@ -20,17 +20,14 @@ const DEFAULT_SIGNAL_CLI_NAME = "signal-cli";
 const DEFAULT_SIGNAL_DEVICE_NAME = "Eliza Mac";
 const DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS = 30_000;
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
-const COMMON_SIGNAL_CLI_PATHS = [
-  "/opt/homebrew/bin/signal-cli",
-  "/usr/local/bin/signal-cli",
-];
+const COMMON_SIGNAL_CLI_PATHS = ["/opt/homebrew/bin/signal-cli", "/usr/local/bin/signal-cli"];
 
 /** Validate accountId to prevent path traversal. */
 export function sanitizeAccountId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
   if (!cleaned || cleaned !== raw) {
     throw new Error(
-      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`,
+      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`
     );
   }
   return cleaned;
@@ -70,10 +67,7 @@ export interface SignalPairingOptions {
 }
 
 interface QrCodeModule {
-  toDataURL: (
-    text: string,
-    options?: Record<string, unknown>,
-  ) => Promise<string>;
+  toDataURL: (text: string, options?: Record<string, unknown>) => Promise<string>;
 }
 
 export function extractSignalCliProvisioningUrl(text: string): string | null {
@@ -154,10 +148,7 @@ function resolveSignalCliJavaHome(): string | null {
     return BREW_OPENJDK_HOME;
   }
 
-  if (
-    typeof process.env.JAVA_HOME === "string" &&
-    process.env.JAVA_HOME.trim().length > 0
-  ) {
+  if (typeof process.env.JAVA_HOME === "string" && process.env.JAVA_HOME.trim().length > 0) {
     return process.env.JAVA_HOME.trim();
   }
 
@@ -177,12 +168,8 @@ function buildSignalCliEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-export function classifySignalPairingErrorStatus(
-  errorMessage: string,
-): SignalPairingStatus {
-  return /(timed?\s*out|timeout|expired)/i.test(errorMessage)
-    ? "timeout"
-    : "error";
+export function classifySignalPairingErrorStatus(errorMessage: string): SignalPairingStatus {
+  return /(timed?\s*out|timeout|expired)/i.test(errorMessage) ? "timeout" : "error";
 }
 
 export class SignalPairingSession {
@@ -279,14 +266,12 @@ export class SignalPairingSession {
     });
   }
 
-  private async loadSignalNativeModule(): Promise<
-    typeof import("@elizaos/signal-native") | null
-  > {
+  private async loadSignalNativeModule(): Promise<typeof import("@elizaos/signal-native") | null> {
     try {
       return await import(/* @vite-ignore */ SIGNAL_NATIVE_MODULE_ID);
     } catch (error) {
       console.info(
-        `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`,
+        `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`
       );
       return null;
     }
@@ -294,12 +279,12 @@ export class SignalPairingSession {
 
   private async startWithSignalNative(
     native: typeof import("@elizaos/signal-native"),
-    qrCode: QrCodeModule,
+    qrCode: QrCodeModule
   ): Promise<void> {
     console.info(`${LOG_PREFIX} Starting device linking with signal-native...`);
     const provisioningUrl = await native.linkDevice(
       this.options.authDir,
-      DEFAULT_SIGNAL_DEVICE_NAME,
+      DEFAULT_SIGNAL_DEVICE_NAME
     );
 
     if (this.aborted) return;
@@ -319,9 +304,7 @@ export class SignalPairingSession {
       qrDataUrl,
     });
 
-    console.info(
-      `${LOG_PREFIX} QR code generated, waiting for user to scan...`,
-    );
+    console.info(`${LOG_PREFIX} QR code generated, waiting for user to scan...`);
 
     await native.finishLink(this.options.authDir);
     if (this.aborted) return;
@@ -333,9 +316,7 @@ export class SignalPairingSession {
       uuid = profile.uuid;
       phoneNumber = profile.phoneNumber ?? "";
     } catch (error) {
-      console.warn(
-        `${LOG_PREFIX} Failed to read Signal profile after linking: ${String(error)}`,
-      );
+      console.warn(`${LOG_PREFIX} Failed to read Signal profile after linking: ${String(error)}`);
     }
 
     this.finishConnected(phoneNumber || null, uuid || undefined);
@@ -343,14 +324,12 @@ export class SignalPairingSession {
 
   private async startWithSignalCli(qrCode: QrCodeModule): Promise<void> {
     const cliPath = await resolveExecutablePath(
-      this.options.cliPath?.trim() ||
-        process.env.SIGNAL_CLI_PATH ||
-        DEFAULT_SIGNAL_CLI_NAME,
+      this.options.cliPath?.trim() || process.env.SIGNAL_CLI_PATH || DEFAULT_SIGNAL_CLI_NAME
     );
 
     if (!cliPath) {
       throw new Error(
-        `Failed to load dependencies: Cannot find ${this.options.cliPath?.trim() || DEFAULT_SIGNAL_CLI_NAME}`,
+        `Failed to load dependencies: Cannot find ${this.options.cliPath?.trim() || DEFAULT_SIGNAL_CLI_NAME}`
       );
     }
 
@@ -358,17 +337,11 @@ export class SignalPairingSession {
 
     const child = spawn(
       cliPath,
-      [
-        "--config",
-        this.options.authDir,
-        "link",
-        "-n",
-        DEFAULT_SIGNAL_DEVICE_NAME,
-      ],
+      ["--config", this.options.authDir, "link", "-n", DEFAULT_SIGNAL_DEVICE_NAME],
       {
         env: buildSignalCliEnv(),
         stdio: ["ignore", "pipe", "pipe"],
-      },
+      }
     );
     this.activeChild = child;
 
@@ -378,8 +351,8 @@ export class SignalPairingSession {
       const timer = setTimeout(() => {
         reject(
           new Error(
-            `signal-cli link did not emit a provisioning URL within ${DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS}ms`,
-          ),
+            `signal-cli link did not emit a provisioning URL within ${DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS}ms`
+          )
         );
       }, DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS);
 
@@ -486,35 +459,28 @@ export class SignalPairingSession {
     });
 
     console.info(
-      `${LOG_PREFIX} Device linked successfully${phoneNumber ? ` (${phoneNumber})` : ""}`,
+      `${LOG_PREFIX} Device linked successfully${phoneNumber ? ` (${phoneNumber})` : ""}`
     );
   }
 
-  private async readLinkedSignalAccount(
-    cliPath: string,
-  ): Promise<string | null> {
+  private async readLinkedSignalAccount(cliPath: string): Promise<string | null> {
     try {
       const { stdout } = await execFileAsync(
         cliPath,
         ["--config", this.options.authDir, "-o", "json", "listAccounts"],
         {
           env: buildSignalCliEnv(),
-        },
+        }
       );
       return parseSignalCliAccountsOutput(stdout);
     } catch (error) {
-      console.warn(
-        `${LOG_PREFIX} Failed to read linked Signal account: ${String(error)}`,
-      );
+      console.warn(`${LOG_PREFIX} Failed to read linked Signal account: ${String(error)}`);
       return null;
     }
   }
 }
 
-export function signalAuthExists(
-  workspaceDir: string,
-  accountId = "default",
-): boolean {
+export function signalAuthExists(workspaceDir: string, accountId = "default"): boolean {
   const authDir = path.join(workspaceDir, "signal-auth", accountId);
   if (!fs.existsSync(authDir)) {
     return false;
@@ -535,10 +501,7 @@ export function signalAuthExists(
   }
 }
 
-export function signalLogout(
-  workspaceDir: string,
-  accountId = "default",
-): void {
+export function signalLogout(workspaceDir: string, accountId = "default"): void {
   const authDir = path.join(workspaceDir, "signal-auth", accountId);
   fs.rmSync(authDir, { recursive: true, force: true });
 }

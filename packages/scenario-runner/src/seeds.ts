@@ -187,14 +187,12 @@ async function seedTodo(
       ...occurrence,
       state:
         requestedState === "completed" ||
-        requestedState === "active" ||
         requestedState === "visible" ||
         requestedState === "pending" ||
         requestedState === "expired" ||
         requestedState === "snoozed" ||
         requestedState === "skipped" ||
-        requestedState === "muted" ||
-        requestedState === "in_progress"
+        requestedState === "muted"
           ? requestedState
           : occurrence.state,
     });

@@ -9,12 +9,12 @@
 import type { Action, HandlerOptions, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
-import { hasContextSignalSyncForKey } from "./context-signal.js";
 import {
+  type HostedSearchResponse,
   isHostedCloudToolingConfigured,
   searchHostedCloudWeb,
-  type HostedSearchResponse,
 } from "../services/hosted-tools.js";
+import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
 // Brave Search API types
@@ -206,7 +206,9 @@ export const webSearchAction: Action = {
 
     try {
       if (hasHostedSearch) {
-        logger.info(`[web-search] Hosted search: "${query}" (max ${maxResults})`);
+        logger.info(
+          `[web-search] Hosted search: "${query}" (max ${maxResults})`,
+        );
         const hostedResult = await searchHostedCloudWeb({
           maxResults,
           query,
@@ -227,7 +229,9 @@ export const webSearchAction: Action = {
       }
 
       if (!braveApiKey) {
-        throw new Error("Hosted search is unavailable and BRAVE_API_KEY is not configured.");
+        throw new Error(
+          "Hosted search is unavailable and BRAVE_API_KEY is not configured.",
+        );
       }
 
       logger.info(`[web-search] Brave search: "${query}" (max ${maxResults})`);
@@ -258,7 +262,11 @@ export const webSearchAction: Action = {
           logger.warn(
             `[web-search] Hosted search failed, falling back to Brave: ${errMsg}`,
           );
-          const fallbackResults = await braveSearch(query, braveApiKey, maxResults);
+          const fallbackResults = await braveSearch(
+            query,
+            braveApiKey,
+            maxResults,
+          );
           return {
             text: formatResults(fallbackResults, query),
             success: true,

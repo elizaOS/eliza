@@ -125,7 +125,6 @@ function resolveCuratedBaseDir(): string {
   return join(resolveStateDir(), "skills", "curated");
 }
 
-
 /**
  * Absolute path to the curated **active** skills directory. Skills here are
  * loaded into the runtime alongside bundled and managed skills.

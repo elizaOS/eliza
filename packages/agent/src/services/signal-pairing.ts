@@ -286,9 +286,7 @@ export class SignalPairingSession {
     });
   }
 
-  private async loadSignalNativeModule(): Promise<
-    SignalNativeModule | null
-  > {
+  private async loadSignalNativeModule(): Promise<SignalNativeModule | null> {
     try {
       const moduleSpecifier: string = SIGNAL_NATIVE_MODULE_ID;
       const imported = await import(/* @vite-ignore */ moduleSpecifier);

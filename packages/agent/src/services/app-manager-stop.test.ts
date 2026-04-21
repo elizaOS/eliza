@@ -117,9 +117,7 @@ describe("AppManager.stop (explicit Stop button)", () => {
       | { runId?: string; appName?: string; runtime?: unknown }
       | undefined;
     expect(firstArg?.runId).toBe("run-to-stop");
-    expect(firstArg?.appName).toBe(
-      "@elizaos/app-defense-of-the-agents",
-    );
+    expect(firstArg?.appName).toBe("@elizaos/app-defense-of-the-agents");
   });
 
   it("passes runtime through to stopRun so plugins can resolve their service", async () => {
