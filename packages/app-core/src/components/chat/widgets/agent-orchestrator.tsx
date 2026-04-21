@@ -467,6 +467,7 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
   const activeTerminalSessionId =
     (app?.activeTerminalSessionId as string | null | undefined) ?? null;
   const { ptySessions } = usePtySessions();
+  const [spawnError, setSpawnError] = useState<string | null>(null);
 
   const sessions = useMemo(
     () => [...ptySessions].sort((a, b) => a.label.localeCompare(b.label)),
@@ -480,11 +481,16 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
   };
 
   const spawnTerminal = async () => {
+    setSpawnError(null);
     try {
       const res = await client.spawnShellSession();
       focusSession(res.sessionId);
-    } catch (err) {
-      console.error("[OrchestratorTasksWidget] spawn failed:", err);
+    } catch {
+      setSpawnError(
+        t("orchestratortaskswidget.SpawnFailed", {
+          defaultValue: "Could not start terminal",
+        }),
+      );
     }
   };
 
@@ -507,6 +513,11 @@ function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
       }
       testId="chat-widget-terminals"
     >
+      {spawnError ? (
+        <div className="rounded-[var(--radius-sm)] px-2 py-1 text-2xs text-danger">
+          {spawnError}
+        </div>
+      ) : null}
       {sessions.length === 0 ? (
         <EmptyWidgetState
           icon={<TerminalIcon className="h-4 w-4" />}
