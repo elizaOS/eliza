@@ -35,12 +35,7 @@ const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
 const platformsDir = path.join(repoRoot, "eliza", "packages", "app-core", "platforms");
 const nativePluginsDir = path.join(repoRoot, "eliza", "packages", "native-plugins");
-
-const target = process.argv[2];
-if (target !== "android" && target !== "ios") {
-  console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
-  process.exit(1);
-}
+const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
 
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
@@ -121,6 +116,155 @@ function resolvePackagePath(pkgName, relativeTo) {
   return path.relative(relativeTo, fs.realpathSync(linked));
 }
 
+function collectTemplateFiles(root, dir = root) {
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectTemplateFiles(root, fullPath));
+    } else if (entry.isFile()) {
+      files.push(path.relative(root, fullPath));
+    }
+  }
+  return files;
+}
+
+function templateFilePriority(platform, relPath) {
+  if (platform !== "ios") return relPath;
+  const priority = [
+    path.join("App", "Podfile"),
+    path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
+    path.join("App", "App", "MiladyIntentPlugin.swift"),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "ActionRequestHandler.swift"),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "WebsiteBlockerContentExtension.entitlements"),
+  ];
+  const index = priority.indexOf(relPath);
+  return `${String(index === -1 ? priority.length : index).padStart(4, "0")}:${relPath}`;
+}
+
+export function resolvePlatformTemplateRoot(platform, { repoRootValue = repoRoot } = {}) {
+  const templateRoot = path.join(
+    repoRootValue,
+    "eliza",
+    "packages",
+    "app-core",
+    "platforms",
+    platform,
+  );
+  return fs.existsSync(templateRoot) ? templateRoot : null;
+}
+
+export function syncPlatformTemplateFiles(
+  platform,
+  { repoRootValue = repoRoot, appDirValue = appDir, log = console.log } = {},
+) {
+  const templateRoot = resolvePlatformTemplateRoot(platform, { repoRootValue });
+  if (!templateRoot) return [];
+  const targetRoot = path.join(appDirValue, platform);
+  const files = collectTemplateFiles(templateRoot).sort((a, b) =>
+    templateFilePriority(platform, a).localeCompare(templateFilePriority(platform, b)),
+  );
+  const copied = [];
+  for (const relPath of files) {
+    const source = path.join(templateRoot, relPath);
+    const targetPath = path.join(targetRoot, relPath);
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(source, targetPath);
+    copied.push(relPath);
+  }
+  if (copied.length > 0) {
+    log(`[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`);
+  }
+  return copied;
+}
+
+export function isCapacitorPlatformReady(platform, { appDirValue = appDir } = {}) {
+  if (platform === "ios") {
+    return (
+      fs.existsSync(path.join(appDirValue, "ios", "App", "Podfile")) &&
+      fs.existsSync(
+        path.join(appDirValue, "ios", "App", "App.xcodeproj", "project.pbxproj"),
+      )
+    );
+  }
+  if (platform === "android") {
+    return (
+      fs.existsSync(path.join(appDirValue, "android", "gradlew")) &&
+      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle"))
+    );
+  }
+  return false;
+}
+
+function replaceInFile(filePath, replacements) {
+  if (!fs.existsSync(filePath)) return false;
+  let content = fs.readFileSync(filePath, "utf8");
+  const original = content;
+  for (const [search, replacement] of replacements) {
+    content = content.replaceAll(search, replacement);
+  }
+  if (content === original) return false;
+  fs.writeFileSync(filePath, content, "utf8");
+  return true;
+}
+
+export function applyIosAppIdentity({
+  appDirValue = appDir,
+  appId = APP.appId,
+  appGroup = `group.${appId}`,
+  developmentTeam = process.env.MILADY_IOS_DEVELOPMENT_TEAM ??
+    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
+    null,
+  log = console.log,
+} = {}) {
+  const iosAppRoot = path.join(appDirValue, "ios", "App");
+  const changed = [];
+  const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
+  if (fs.existsSync(projectPath)) {
+    let project = fs.readFileSync(projectPath, "utf8");
+    const original = project;
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.WebsiteBlockerContentExtension;`,
+    );
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+    );
+    if (developmentTeam) {
+      project = project.replace(/DEVELOPMENT_TEAM = [A-Z0-9]+;/g, `DEVELOPMENT_TEAM = ${developmentTeam};`);
+    }
+    if (project !== original) {
+      fs.writeFileSync(projectPath, project, "utf8");
+      changed.push(path.relative(iosAppRoot, projectPath));
+    }
+  }
+
+  const replacements = [
+    ["group.ai.elizaos.app", appGroup],
+    ['"group.ai.elizaos.app"', `"${appGroup}"`],
+  ];
+  for (const relPath of [
+    path.join("App", "App.entitlements"),
+    path.join("App", "ScreenTimeSupport.swift"),
+    path.join("App", "WebsiteBlockerContentExtension", "WebsiteBlockerContentExtension.entitlements"),
+    path.join("App", "WebsiteBlockerContentExtension", "ActionRequestHandler.swift"),
+  ]) {
+    const filePath = path.join(iosAppRoot, relPath);
+    if (replaceInFile(filePath, replacements)) {
+      changed.push(relPath);
+    }
+  }
+  if (changed.length > 0) {
+    log(`[mobile-build] Applied iOS identity ${appId}.`);
+  }
+  return changed;
+}
+
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
 async function buildWeb() {
@@ -131,9 +275,13 @@ async function buildWeb() {
 
 async function ensurePlatform(platform) {
   const dir = platform === "android" ? androidDir : iosDir;
-  if (fs.existsSync(dir)) return;
-  console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
-  await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+  if (!fs.existsSync(dir)) {
+    console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
+    await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+  }
+  if (!isCapacitorPlatformReady(platform)) {
+    syncPlatformTemplateFiles(platform);
+  }
 }
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
@@ -335,6 +483,7 @@ function overlayIos() {
 
   // Generate Podfile
   generatePodfile();
+  applyIosAppIdentity();
 }
 
 function generatePodfile() {
@@ -553,13 +702,14 @@ async function buildIos() {
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
+  const syncedFiles = syncPlatformTemplateFiles("ios");
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
 
   overlayIos();
   stripSpmIncompatiblePlugins();
 
   // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
-  if (fs.existsSync(path.join(iosDir, "Podfile"))) {
+  if (fs.existsSync(path.join(iosDir, "Podfile")) || shouldRunIosPodInstall(syncedFiles)) {
     await run("pod", ["install"], { cwd: iosDir });
   }
 
@@ -567,13 +717,14 @@ async function buildIos() {
   const projectArgs = fs.existsSync(wsPath)
     ? ["-workspace", "App.xcworkspace"]
     : ["-project", "App.xcodeproj"];
+  const buildTarget = resolveIosBuildTarget();
 
   await run("xcodebuild", [
     ...projectArgs,
     "-scheme", "App",
     "-configuration", "Debug",
-    "-destination", "generic/platform=iOS",
-    "-sdk", "iphoneos",
+    "-destination", buildTarget.destination,
+    "-sdk", buildTarget.sdk,
     "CODE_SIGNING_ALLOWED=NO",
     "build",
   ], { cwd: iosDir });
@@ -581,10 +732,17 @@ async function buildIos() {
 
 // ── Entry point ─────────────────────────────────────────────────────────
 
-if (target === "android") {
-  await buildAndroid();
-} else {
-  await buildIos();
+export async function main(argv = process.argv.slice(2)) {
+  const target = argv[0];
+  if (target !== "android" && target !== "ios") {
+    console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
+    process.exit(1);
+  }
+  if (target === "android") {
+    await buildAndroid();
+  } else {
+    await buildIos();
+  }
 }
 
 const isMain =
