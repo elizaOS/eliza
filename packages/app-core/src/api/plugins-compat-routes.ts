@@ -163,6 +163,33 @@ interface PluginDriftDiagnosticsReport {
   plugins: PluginDriftDiagnostic[];
 }
 
+type PluginDriftFlag =
+  | "entries_vs_compat"
+  | "entries_vs_allowlist"
+  | "inactive_but_enabled"
+  | "active_but_disabled";
+
+interface PluginDriftDiagnostic {
+  pluginId: string;
+  npmName: string | null;
+  category: PluginCategory;
+  enabled_ui: boolean;
+  enabled_allowlist: boolean | null;
+  is_active: boolean;
+  drift_flags: PluginDriftFlag[];
+}
+
+interface PluginDriftDiagnosticsSummary {
+  total: number;
+  withDrift: number;
+  byFlag: Record<PluginDriftFlag, number>;
+}
+
+interface PluginDriftDiagnosticsReport {
+  summary: PluginDriftDiagnosticsSummary;
+  plugins: PluginDriftDiagnostic[];
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -447,11 +474,7 @@ export function analyzePluginStateDrift(
       category === "connector"
         ? readCompatSectionEnabled(
             configRecord.connectors,
-            resolveCompatConfigKey(
-              pluginId,
-              npmName ?? undefined,
-              CONNECTOR_PLUGINS,
-            ),
+            resolveCompatConfigKey(pluginId, npmName ?? undefined, CONNECTOR_PLUGINS),
           )
         : category === "streaming"
           ? readCompatSectionEnabled(
@@ -468,7 +491,9 @@ export function analyzePluginStateDrift(
         ? Boolean(configEntries[pluginId]?.enabled)
         : undefined;
     const enabledAllowList =
-      npmName == null ? null : allowList.has(npmName) || allowList.has(shortId);
+      npmName == null
+        ? null
+        : allowList.has(npmName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
     const driftFlags: PluginDriftFlag[] = [];
 
@@ -479,15 +504,7 @@ export function analyzePluginStateDrift(
     ) {
       driftFlags.push("entries_vs_compat");
     }
-    // Connector and streaming plugins load from config.connectors / config.streaming,
-    // not from plugins.allow.  Only flag allowlist drift for plugins whose load path
-    // actually depends on the allow list (i.e. optional core plugins).
-    if (
-      enabledAllowList !== null &&
-      entryEnabled !== undefined &&
-      category !== "connector" &&
-      category !== "streaming"
-    ) {
+    if (enabledAllowList !== null && entryEnabled !== undefined) {
       if (enabledAllowList !== entryEnabled) {
         driftFlags.push("entries_vs_allowlist");
       }
@@ -510,9 +527,7 @@ export function analyzePluginStateDrift(
     };
   });
 
-  const withDrift = diagnostics.filter(
-    (plugin) => plugin.drift_flags.length > 0,
-  );
+  const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
   const byFlag: Record<PluginDriftFlag, number> = {
     entries_vs_compat: 0,
     entries_vs_allowlist: 0,
@@ -538,7 +553,8 @@ export function analyzePluginStateDrift(
 function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
-  const pluginList = buildPluginListResponse(runtime).plugins;
+  const pluginList = buildPluginListResponse(runtime)
+    .plugins as unknown as CompatPluginRecord[];
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
