@@ -59,13 +59,15 @@ import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
   buildUserMessages,
-  type ConversationMeta,
   getErrorMessage,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
-} from "./server.js";
-import type { ConversationMetadata } from "./server-types.js";
+} from "./server-helpers.js";
+import type {
+  ConversationMeta,
+  ConversationMetadata,
+} from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence

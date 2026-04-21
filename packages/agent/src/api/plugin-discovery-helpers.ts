@@ -26,7 +26,7 @@ import {
   type PluginParamInfo,
   validatePluginConfig,
 } from "./plugin-validation.js";
-import { findOwnPackageRoot } from "./server.js";
+import { findOwnPackageRoot } from "./server-helpers.js";
 import { applySignalQrOverride } from "./signal-routes.js";
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 
