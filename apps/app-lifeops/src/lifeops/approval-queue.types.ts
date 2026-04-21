@@ -1,10 +1,8 @@
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
 /**
- * WS6 — Approval queue as first-class state. Type-only stub published by WS5
- * so background-job code can compile against the interface WS6 will
- * implement. NO runtime behavior lives in this file: WS6 owns the
- * implementation, persistence, state machine, and UI.
+ * Approval queue contracts shared by the queue implementation, actions, and
+ * background planner.
  *
  * State machine (strict — no fallback transitions, no implicit re-entry):
  *

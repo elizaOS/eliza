@@ -4,9 +4,9 @@ import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinReport } from "../lifeops/checkin/types.js";
 
 /**
- * Actions for T9f morning/night check-in engine (plan §6.23). These expose the
- * entry points used by the scenario runner. Automatic cron firing at the
- * user-configured morning/night times is a follow-up PR (T9f-followup-PR).
+ * Actions for the morning/night check-in engine. The actions expose explicit
+ * chat and scenario-runner entry points; scheduler wiring lives in the LifeOps
+ * runtime task worker.
  */
 
 function reportToActionData(report: CheckinReport): ProviderDataRecord {

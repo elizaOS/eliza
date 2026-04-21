@@ -1,6 +1,6 @@
 /**
  * Agent-side actions that bridge the LifeOps browser extension to the
- * LifeOps agent runtime (plan §6.13 — T8e).
+ * LifeOps agent runtime.
  *
  * REGISTER_BROWSER_SESSION
  *   Invoked when the extension announces itself at startup. Persists the
