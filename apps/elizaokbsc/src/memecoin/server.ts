@@ -563,6 +563,9 @@ function recommendationTone(value: string): string {
 }
 
 function formatUsd(value: number): string {
+  const abs = Math.abs(value);
+  if (abs < 1) return `$${value.toFixed(2)}`;
+  if (abs < 100) return `$${value.toFixed(2)}`;
   return `$${Math.round(value).toLocaleString()}`;
 }
 
@@ -6833,7 +6836,7 @@ function renderHtml(
           <div class="aside-stat"><span>Exited</span><strong class="w">${portfolioLifecycle.exitedPositions.length}</strong></div>
           <div class="aside-stat"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
           <div class="aside-stat"><span>ROI</span><strong class="${roiPct >= 0 ? 'g' : 'r'}">${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%</strong></div>
-          <div class="aside-stat"><span>Sim. P&L</span><strong class="${portfolioLifecycle.totalRealizedPnlUsd >= 0 ? 'g' : 'r'}">${formatUsd(portfolioLifecycle.totalRealizedPnlUsd)}</strong></div>
+          <div class="aside-stat"><span>Sim. P&L</span><strong class="${totalPnlUsd >= 0 ? 'g' : 'r'}">${totalPnlUsd >= 0 ? '+' : ''}${formatUsd(totalPnlUsd)}</strong></div>
           <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Execution</div>
           <div class="aside-stat"><span>Per position</span><strong class="y">${formatBnb(positionSizeBnb)}</strong></div>
           <div class="aside-stat"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
