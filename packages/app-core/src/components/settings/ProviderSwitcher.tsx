@@ -77,6 +77,11 @@ interface ProviderSwitcherProps {
     values: Record<string, unknown>,
   ) => void | Promise<void>;
   handleCloudLogin?: () => Promise<void>;
+  /**
+   * When true, render the full 7-dropdown model-tier override grid. In simple
+   * mode only the provider picker + API key / login action are shown.
+   */
+  showAdvanced?: boolean;
 }
 
 function getSubscriptionProviderLabel(
@@ -623,11 +628,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         >
           <SelectTrigger
             id="provider-switcher-select"
-            className="h-9 w-full rounded-lg border border-border bg-card text-sm"
+            className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
           >
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-64">
             {providerChoices.map((choice) => (
               <SelectItem
                 key={choice.id}
@@ -639,9 +644,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             ))}
           </SelectContent>
         </Select>
-        <p className="mt-1.5 text-xs-tight text-muted">
-          {t("providerswitcher.chooseYourPreferredProvider")}
-        </p>
       </div>
 
       {/* Cloud model tiers (when Cloud is selected) */}
@@ -687,7 +689,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 </>
               )}
             </div>
-          ) : cloudModelSchema ? (
+          ) : cloudModelSchema && props.showAdvanced ? (
             <div className="border-t border-border/40 pt-4">
               <ConfigRenderer
                 schema={cloudModelSchema.schema}
@@ -698,6 +700,54 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 onChange={handleModelFieldChange}
               />
               <div className="mt-3 flex items-center justify-between gap-2">
+                <p className="text-xs-tight text-muted">
+                  {t("providerswitcher.restartRequiredHint")}
+                </p>
+                <div className="flex items-center gap-2">
+                  {modelSaving && (
+                    <span className="text-xs-tight text-muted">
+                      {t("providerswitcher.savingRestarting")}
+                    </span>
+                  )}
+                  {modelSaveSuccess && (
+                    <span className="text-xs-tight text-ok">
+                      {t("providerswitcher.savedRestartingAgent")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : modelOptions && modelOptions.large.length > 0 ? (
+            <div className="border-t border-border/40 pt-4">
+              <label
+                htmlFor="provider-switcher-primary-model"
+                className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
+              >
+                {t("providerswitcher.model", { defaultValue: "Model" })}
+              </label>
+              <Select
+                value={currentLargeModel || ""}
+                onValueChange={(v) => handleModelFieldChange("large", v)}
+              >
+                <SelectTrigger
+                  id="provider-switcher-primary-model"
+                  className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+                >
+                  <SelectValue
+                    placeholder={t("providerswitcher.chooseModel", {
+                      defaultValue: "Choose a model",
+                    })}
+                  />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {modelOptions.large.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-xs-tight text-muted">
                   {t("providerswitcher.restartRequiredHint")}
                 </p>

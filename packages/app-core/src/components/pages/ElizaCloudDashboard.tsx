@@ -42,7 +42,6 @@ import {
   buildAutoTopUpFormState,
   consumeManagedDiscordCallbackUrl,
   consumeManagedGithubCallbackUrl,
-  ELIZA_CLOUD_INSTANCES_URL,
   ELIZA_CLOUD_WEB_URL,
   getBillingAutoTopUp,
   getBillingLimits,
@@ -529,28 +528,26 @@ export function CloudDashboard() {
 
   /* ── Overview (default view): account + balance + actions ────────────── */
   const overviewContent = (
-    <div className="px-5 py-6 sm:px-6">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
+    <div className="px-4 py-3 sm:px-5 sm:py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted">
             {t("elizaclouddashboard.Balance", { defaultValue: "Balance" })}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={`text-3xl font-bold tracking-tight tabular-nums ${creditStatusColor}`}
-            >
-              {currencyPrefix}
-              {formattedBalance ?? (
-                <span className="text-muted">{billingLoading ? "…" : "—"}</span>
-              )}
-            </span>
-            {billingLoading && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted" />
+          </span>
+          <span
+            className={`text-lg font-semibold tracking-tight tabular-nums ${creditStatusColor}`}
+          >
+            {currencyPrefix}
+            {formattedBalance ?? (
+              <span className="text-muted">{billingLoading ? "…" : "—"}</span>
             )}
-          </div>
+          </span>
+          {billingLoading && (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />
+          )}
         </div>
         <span
-          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-2xs font-semibold uppercase tracking-wider ${statusChipClass}`}
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${statusChipClass}`}
         >
           {creditStatusTone}
         </span>
@@ -574,7 +571,7 @@ export function CloudDashboard() {
         </div>
       )}
 
-      <dl className="mb-6 space-y-2 text-xs">
+      <dl className="mb-3 space-y-1 text-xs">
         <div className="flex items-center justify-between gap-3">
           <dt className="text-muted">
             {t("elizaclouddashboard.Account", { defaultValue: "Account" })}
@@ -643,17 +640,6 @@ export function CloudDashboard() {
             ? t("providerswitcher.disconnecting")
             : t("providerswitcher.disconnect")}
         </Button>
-        <div className="ml-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-auto p-0 text-xs text-muted hover:text-txt"
-            onClick={() => void openExternalUrl(ELIZA_CLOUD_INSTANCES_URL)}
-          >
-            {t("elizaclouddashboard.AdvancedDashboard")}
-            <ExternalLink className="ml-1 h-3 w-3" />
-          </Button>
-        </div>
       </div>
     </div>
   );
