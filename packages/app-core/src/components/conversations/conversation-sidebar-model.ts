@@ -29,6 +29,7 @@ export interface InboxChatSidebarRow {
   canSend?: boolean;
   id: string;
   lastMessageAt: number;
+  roomType?: string;
   source: string;
   transportSource?: string;
   title: string;
@@ -80,12 +81,24 @@ function sourceLabel(source: string): string {
   return getChatSourceMeta(source).label;
 }
 
+const FALLBACK_WORLD_LABEL_RE = /^world for (server|room) /i;
+
+function isDmLike(chat: InboxChatSidebarRow): boolean {
+  // Authoritative signal from the backend when the connector tags rooms.
+  if (chat.roomType?.trim().toUpperCase() === "DM") return true;
+  const trimmedWorldId = chat.worldId?.trim();
+  if (!trimmedWorldId) return true;
+  const label = chat.worldLabel?.trim() ?? "";
+  // Fallback heuristic — backends emit "World for server <id>" / "World for
+  // room <id>" when there is no named guild. In practice that's a DM.
+  return FALLBACK_WORLD_LABEL_RE.test(label);
+}
+
 function normalizeWorldLabel(
   chat: InboxChatSidebarRow,
   t?: TranslateFn,
 ): string {
-  const trimmedWorldId = chat.worldId?.trim();
-  if (!trimmedWorldId) {
+  if (isDmLike(chat)) {
     return (
       t?.("conversations.scopeDms", {
         defaultValue: "DMs",
@@ -104,6 +117,9 @@ function normalizeWorldLabel(
 }
 
 function worldKey(chat: InboxChatSidebarRow, normalizedSource: string): string {
+  if (isDmLike(chat)) {
+    return `${DMS_WORLD_PREFIX}:${normalizedSource}`;
+  }
   const trimmedWorldId = chat.worldId?.trim();
   if (trimmedWorldId) {
     return trimmedWorldId;

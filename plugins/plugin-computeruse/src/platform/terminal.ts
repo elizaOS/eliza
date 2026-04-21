@@ -7,10 +7,12 @@ export type TerminalSession = {
   id: string;
   cwd: string;
   createdAt: string;
+  lastOutput?: string;
 };
 
 const sessions = new Map<string, TerminalSession>();
 let sessionCounter = 0;
+let lastOutputBuffer = "";
 
 function truncateOutput(output: string): string {
   return output.slice(0, 5000);
@@ -30,9 +32,10 @@ function resolveShell(): { command: string; argsFor: (command: string) => string
   };
 }
 
-export async function connectTerminal(
-  cwd?: string,
-): Promise<TerminalActionResult> {
+export function connectTerminal(
+  arg?: string | { cwd?: string },
+): TerminalActionResult {
+  const cwd = typeof arg === "string" ? arg : arg?.cwd;
   const sessionId = `term_${++sessionCounter}`;
   const sessionCwd = cwd || os.homedir();
   sessions.set(sessionId, {
@@ -84,6 +87,13 @@ export async function executeTerminal(params: {
       },
       (error, stdout, stderr) => {
         const output = truncateOutput(`${stdout}${stderr ? `\n${stderr}` : ""}`);
+        lastOutputBuffer = output;
+        if (params.sessionId) {
+          const existing = sessions.get(params.sessionId);
+          if (existing) {
+            existing.lastOutput = output;
+          }
+        }
         if (!error) {
           resolve({
             success: true,
@@ -132,40 +142,63 @@ export async function executeTerminal(params: {
   });
 }
 
-export async function readTerminal(
-  sessionId?: string,
-): Promise<TerminalActionResult> {
+export function readTerminal(
+  arg?: string | { session_id?: string; sessionId?: string },
+): TerminalActionResult {
+  const sessionId =
+    typeof arg === "string"
+      ? arg
+      : arg?.session_id ?? arg?.sessionId;
+  const output =
+    (sessionId ? sessions.get(sessionId)?.lastOutput : undefined) ??
+    lastOutputBuffer;
   return {
     success: true,
     sessionId,
     session_id: sessionId,
-    output: "",
-    message: "No pending terminal output.",
+    output,
+    message: output.length > 0 ? undefined : "No pending terminal output.",
   };
 }
 
-export async function typeTerminal(
-  text: string,
-): Promise<TerminalActionResult> {
-  return {
-    success: true,
-    message: `Queued terminal text: ${text.slice(0, 50)}`,
-  };
-}
-
-export async function clearTerminal(
-  sessionId?: string,
-): Promise<TerminalActionResult> {
+export function typeTerminal(
+  arg: string | { text: string; session_id?: string; sessionId?: string },
+): TerminalActionResult {
+  const text = typeof arg === "string" ? arg : arg.text;
+  const sessionId =
+    typeof arg === "string"
+      ? undefined
+      : arg.session_id ?? arg.sessionId;
   return {
     success: true,
     sessionId,
+    session_id: sessionId,
+    message: `queued terminal text: ${text.slice(0, 50)}`,
+  };
+}
+
+export function clearTerminal(
+  arg?: string | { session_id?: string; sessionId?: string },
+): TerminalActionResult {
+  const sessionId =
+    typeof arg === "string"
+      ? arg
+      : arg?.session_id ?? arg?.sessionId;
+  return {
+    success: true,
+    sessionId,
+    session_id: sessionId,
     message: "Terminal cleared.",
   };
 }
 
-export async function closeTerminal(
-  sessionId?: string,
-): Promise<TerminalActionResult> {
+export function closeTerminal(
+  arg?: string | { session_id?: string; sessionId?: string },
+): TerminalActionResult {
+  const sessionId =
+    typeof arg === "string"
+      ? arg
+      : arg?.session_id ?? arg?.sessionId;
   if (sessionId) {
     sessions.delete(sessionId);
   } else {
@@ -187,3 +220,6 @@ export function closeAllTerminalSessions(): void {
 export function listTerminalSessions(): TerminalSession[] {
   return Array.from(sessions.values());
 }
+
+/** Alias of executeTerminal — upstream calls it execute_command. */
+export const executeCommand = executeTerminal;
