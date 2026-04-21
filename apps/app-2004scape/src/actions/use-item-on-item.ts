@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const useItemOnItem: Action = {
   name: "USE_ITEM_ON_ITEM",
-  description: "Use one inventory item on another (e.g. tinderbox on logs)"
+  description: "Use one inventory item on another (e.g. tinderbox on logs)",
   descriptionCompressed: "Use inventory item on another.",
   similes: ["COMBINE_ITEMS"],
   examples: [],

@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const useItemOnObject: Action = {
   name: "USE_ITEM_ON_OBJECT",
-  description: "Use an inventory item on a world object (e.g. ore on furnace)"
+  description: "Use an inventory item on a world object (e.g. ore on furnace)",
   descriptionCompressed: "Use inventory item on world object.",
   similes: ["ITEM_ON_OBJECT"],
   examples: [],

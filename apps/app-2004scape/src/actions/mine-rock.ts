@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const mineRock: Action = {
   name: "MINE_ROCK",
-  description: "Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)"
+  description: "Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)",
   descriptionCompressed: "Mine nearby rock, opt. ore type.",
   similes: ["MINE_ORE", "MINE"],
   examples: [],

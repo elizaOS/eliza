@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const pickupItem: Action = {
   name: "PICKUP_ITEM",
-  description: "Pick up an item from the ground by name"
+  description: "Pick up an item from the ground by name",
   descriptionCompressed: "Pick up ground item.",
   similes: ["TAKE_ITEM", "GRAB_ITEM", "LOOT_ITEM"],
   examples: [],

@@ -2,7 +2,7 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const craftLeather: Action = {
   name: "CRAFT_LEATHER",
-  description: "Use a needle on leather in inventory to craft leather armour"
+  description: "Use a needle on leather in inventory to craft leather armour",
   descriptionCompressed: "Craft leather armour with needle.",
   similes: ["CRAFTING", "SEW_LEATHER"],
   examples: [],

@@ -4,7 +4,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 
 export const buyFromShop: Action = {
   name: "BUY_FROM_SHOP",
-  description: "Buy an item from the currently open shop, optionally specifying a count (defaults to 1)"
+  description: "Buy an item from the currently open shop, optionally specifying a count (defaults to 1)",
   descriptionCompressed: "Buy item from open shop.",
   similes: ["PURCHASE_ITEM", "BUY_ITEM"],
   examples: [],

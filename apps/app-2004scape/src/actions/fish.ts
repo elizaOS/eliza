@@ -4,7 +4,7 @@ import { extractParam } from "./param-parser.js";
 
 export const fish: Action = {
   name: "FISH",
-  description: "Fish at a nearby fishing spot, optionally specifying the spot type"
+  description: "Fish at a nearby fishing spot, optionally specifying the spot type",
   descriptionCompressed: "Fish at nearby spot, opt. type.",
   similes: ["GO_FISHING", "CATCH_FISH"],
   examples: [],

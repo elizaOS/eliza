@@ -2,7 +2,7 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 
 export const closeBank: Action = {
   name: "CLOSE_BANK",
-  description: "Close the bank interface"
+  description: "Close the bank interface",
   descriptionCompressed: "Close bank interface.",
   similes: ["EXIT_BANK"],
   examples: [],
