@@ -53,6 +53,10 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
                             "active": false,
                             "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: savedState)),
                             "websites": savedState.websites,
+                            "requestedWebsites": savedState.requestedWebsites ?? savedState.websites,
+                            "blockedWebsites": savedState.blockedWebsites ?? savedState.websites,
+                            "allowedWebsites": savedState.allowedWebsites ?? [],
+                            "matchMode": savedState.matchMode ?? WebsiteBlockerShared.exactMatchMode,
                             "requiresElevation": true,
                         ],
                     ])
@@ -76,6 +80,10 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
                         "active": false,
                         "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: storedState)),
                         "websites": storedState?.websites ?? [],
+                        "requestedWebsites": storedState?.requestedWebsites ?? storedState?.websites ?? [],
+                        "blockedWebsites": storedState?.blockedWebsites ?? storedState?.websites ?? [],
+                        "allowedWebsites": storedState?.allowedWebsites ?? [],
+                        "matchMode": storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode,
                         "requiresElevation": true,
                     ],
                 ])
@@ -147,7 +155,9 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
             return [
                 "status": "not-determined",
                 "canRequest": true,
-                "reason": disabledReason(configuredWebsites: WebsiteBlockerShared.loadState()?.websites ?? []),
+                "reason": disabledReason(
+                    configuredWebsites: WebsiteBlockerShared.loadState()?.websites ?? []
+                ),
             ]
         } catch {
             return [
@@ -172,6 +182,10 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
             "hostsFilePath": NSNull(),
             "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: storedState)),
             "websites": websites,
+            "requestedWebsites": storedState?.requestedWebsites ?? websites,
+            "blockedWebsites": storedState?.blockedWebsites ?? websites,
+            "allowedWebsites": storedState?.allowedWebsites ?? [],
+            "matchMode": storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode,
             "canUnblockEarly": true,
             "requiresElevation": !enabled,
             "engine": "content-blocker",

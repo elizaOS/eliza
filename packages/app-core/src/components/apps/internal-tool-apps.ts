@@ -5,7 +5,7 @@ interface InternalToolAppDefinition {
   capabilities: string[];
   description: string;
   displayName: string;
-  heroImage: string;
+  heroImage?: string | null;
   name: string;
   order: number;
   targetTab: Tab;
@@ -23,6 +23,15 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     order: 0,
   },
   {
+    name: "@elizaos/app-browser",
+    displayName: "Browser Workspace",
+    description:
+      "Control tabs, pages, and wallet approvals in the shared browser workspace.",
+    targetTab: "browser",
+    capabilities: ["browser", "workspace", "tabs", "wallet"],
+    order: 1,
+  },
+  {
     name: "@elizaos/app-plugin-viewer",
     displayName: "Plugin Viewer",
     description:
@@ -30,7 +39,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/plugin-viewer.png",
     targetTab: "plugins",
     capabilities: ["plugins", "connectors", "viewer"],
-    order: 1,
+    order: 2,
   },
   {
     name: "@elizaos/app-skills-viewer",
@@ -39,7 +48,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/skills-viewer.png",
     targetTab: "skills",
     capabilities: ["skills", "viewer"],
-    order: 2,
+    order: 3,
+  },
+  {
+    name: "@elizaos/app-training",
+    displayName: "Fine Tuning",
+    description:
+      "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
+    targetTab: "fine-tuning",
+    capabilities: ["training", "fine-tuning", "datasets", "models"],
+    order: 4,
   },
   {
     name: "@elizaos/app-trajectory-viewer",
@@ -48,7 +66,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/trajectory-viewer.png",
     targetTab: "trajectories",
     capabilities: ["trajectories", "debug", "viewer"],
-    order: 3,
+    order: 5,
+  },
+  {
+    name: "@elizaos/app-task-coordinator",
+    displayName: "Task Coordinator",
+    description:
+      "Inspect coding-agent tasks, approvals, coordinator output, and terminal sessions.",
+    targetTab: "tasks",
+    capabilities: ["tasks", "coding-agents", "approvals", "terminal"],
+    order: 6,
   },
   {
     name: "@elizaos/app-relationship-viewer",
@@ -58,7 +85,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/relationship-viewer.png",
     targetTab: "relationships",
     capabilities: ["relationships", "graph", "viewer"],
-    order: 4,
+    order: 7,
+  },
+  {
+    name: "@elizaos/app-knowledge",
+    displayName: "Knowledge",
+    description:
+      "Manage uploaded files, ingested knowledge, and character knowledge settings.",
+    targetTab: "knowledge",
+    capabilities: ["knowledge", "documents", "ingestion"],
+    order: 8,
   },
   {
     name: "@elizaos/app-memory-viewer",
@@ -67,7 +103,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/memory-viewer.png",
     targetTab: "memories",
     capabilities: ["memory", "facts", "viewer"],
-    order: 5,
+    order: 9,
+  },
+  {
+    name: "@elizaos/app-steward",
+    displayName: "Steward",
+    description:
+      "Review wallet approvals, transaction history, and signing execution status.",
+    targetTab: "inventory",
+    capabilities: ["wallet", "transactions", "approvals", "trading"],
+    order: 10,
   },
   {
     name: "@elizaos/app-runtime-debugger",
@@ -77,7 +122,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/runtime-debugger.png",
     targetTab: "runtime",
     capabilities: ["runtime", "debug", "viewer"],
-    order: 6,
+    order: 11,
+  },
+  {
+    name: "@elizaos/app-form",
+    displayName: "Forms",
+    description:
+      "Use conversational forms and structured data collection flows in chat.",
+    targetTab: "chat",
+    capabilities: ["forms", "structured-input", "chat"],
+    order: 12,
   },
   {
     name: "@elizaos/app-database-viewer",
@@ -86,7 +140,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/database-viewer.png",
     targetTab: "database",
     capabilities: ["database", "sql", "viewer"],
-    order: 7,
+    order: 13,
+  },
+  {
+    name: "@elizaos/app-elizamaker",
+    displayName: "ElizaMaker",
+    description:
+      "Run drop, mint, whitelist, and verification workflows through the agent surfaces.",
+    targetTab: "chat",
+    capabilities: ["drops", "minting", "whitelist", "verification"],
+    order: 14,
   },
   {
     name: "@elizaos/app-log-viewer",
@@ -95,7 +158,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     heroImage: "/app-heroes/log-viewer.png",
     targetTab: "logs",
     capabilities: ["logs", "debug", "viewer"],
-    order: 8,
+    order: 15,
   },
 ] as const;
 
@@ -112,7 +175,7 @@ export function getInternalToolApps(): RegistryAppInfo[] {
     launchType: "local",
     launchUrl: null,
     icon: null,
-    heroImage: app.heroImage,
+    heroImage: app.heroImage ?? null,
     capabilities: app.capabilities,
     stars: 0,
     repository: "",

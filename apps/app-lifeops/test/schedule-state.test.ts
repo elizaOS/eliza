@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { LifeOpsScheduleInsight } from "@elizaos/shared/contracts/lifeops";
+import { describe, expect, it } from "vitest";
 import {
   deriveLocalScheduleObservations,
   mergeScheduleObservations,
@@ -32,7 +32,9 @@ const BASE_INSIGHT: LifeOpsScheduleInsight = {
   nextMealConfidence: 0.62,
 };
 
-function observation(overrides: Partial<LifeOpsScheduleObservation>): LifeOpsScheduleObservation {
+function observation(
+  overrides: Partial<LifeOpsScheduleObservation>,
+): LifeOpsScheduleObservation {
   return {
     id: "observation-1",
     agentId: "agent-1",
@@ -128,5 +130,42 @@ describe("schedule-state", () => {
     expect(merged?.nextMealLabel).toBe("lunch");
     expect(merged?.deviceCount).toBe(2);
     expect(merged?.contributingDeviceKinds).toEqual(["iphone", "mac"]);
+  });
+
+  it("preserves the inferred effective day key from schedule snapshots", () => {
+    const observations = deriveLocalScheduleObservations({
+      agentId: "agent-1",
+      deviceId: "iphone-1",
+      deviceKind: "iphone",
+      timezone: "UTC",
+      observedAt: "2026-04-19T02:00:00.000Z",
+      insight: {
+        ...BASE_INSIGHT,
+        effectiveDayKey: "2026-04-18",
+        localDate: "2026-04-19",
+        inferredAt: "2026-04-19T02:00:00.000Z",
+        phase: "sleeping",
+        sleepStatus: "sleeping_now",
+        isProbablySleeping: true,
+        currentSleepStartedAt: "2026-04-18T23:30:00.000Z",
+        lastSleepStartedAt: "2026-04-18T23:30:00.000Z",
+        lastSleepEndedAt: null,
+        wakeAt: null,
+        firstActiveAt: null,
+        lastActiveAt: "2026-04-18T23:20:00.000Z",
+      },
+    });
+
+    const merged = mergeScheduleObservations({
+      agentId: "agent-1",
+      scope: "cloud",
+      timezone: "UTC",
+      now: new Date("2026-04-19T02:00:00.000Z"),
+      observations,
+    });
+
+    expect(merged?.phase).toBe("sleeping");
+    expect(merged?.effectiveDayKey).toBe("2026-04-18");
+    expect(merged?.localDate).toBe("2026-04-19");
   });
 });

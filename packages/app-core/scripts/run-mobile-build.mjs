@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { assertIosScreenTimeBuildWiring } from "../../native-plugins/mobile-signals/scripts/validate-ios-screen-time.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -238,6 +239,13 @@ export function syncPlatformTemplateFiles(
 
 function getCapacitorPlatformRoot(platform) {
   return platform === "android" ? androidDir : iosPlatformDir;
+}
+
+function resolveNativePluginRoot(pluginName) {
+  return firstExisting([
+    path.join(repoRoot, "eliza", "packages", "native-plugins", pluginName),
+    path.join(repoRoot, "packages", "native-plugins", pluginName),
+  ]);
 }
 
 function isCapacitorPlatformReady(platform) {
@@ -557,6 +565,49 @@ function overlayIosNativeFiles() {
   generateIosPodfile();
 }
 
+function validateIosScreenTimeNativeFiles() {
+  const mobileSignalsRoot = resolveNativePluginRoot("mobile-signals");
+  const provisioningProfilePath =
+    process.env.MOBILE_SIGNALS_IOS_PROVISIONING_PROFILE ||
+    firstExisting([
+      path.join(appDir, "ios", "App", "App", "embedded.mobileprovision"),
+    ]);
+
+  const result = assertIosScreenTimeBuildWiring({
+    entitlementsPath: path.join(
+      appDir,
+      "ios",
+      "App",
+      "App",
+      "App.entitlements",
+    ),
+    projectPath: path.join(
+      appDir,
+      "ios",
+      "App",
+      "App.xcodeproj",
+      "project.pbxproj",
+    ),
+    podspecPath: path.join(
+      mobileSignalsRoot ??
+        path.join(repoRoot, "packages", "native-plugins", "mobile-signals"),
+      "ElizaosCapacitorMobileSignals.podspec",
+    ),
+    provisioningProfilePath,
+    requireProvisioningProfile:
+      process.env.MOBILE_SIGNALS_REQUIRE_IOS_PROVISIONING_PROFILE === "1",
+  });
+
+  const skippedProvisioning = result.checks.some(
+    (check) => check.id === "provisioning-entitlements" && check.skipped,
+  );
+  console.log(
+    `[mobile-build] Validated iOS Screen Time entitlements and build wiring${
+      skippedProvisioning ? " (provisioning profile not supplied)" : ""
+    }.`,
+  );
+}
+
 /**
  * Resolve the real path to a node_modules package, following symlinks
  * through bun's store. Returns a path relative to the Podfile directory
@@ -808,6 +859,7 @@ async function buildIos() {
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIosNativeFiles();
+  validateIosScreenTimeNativeFiles();
 
   // Always strip incompatible official plugins from SPM Package.swift.
   // Xcode compiles SPM targets regardless of whether CocoaPods is used.

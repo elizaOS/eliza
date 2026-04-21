@@ -45,6 +45,7 @@ import { RuntimeView } from "./components/pages/RuntimeView";
 import { SettingsView } from "./components/pages/SettingsView";
 import { SkillsView } from "./components/pages/SkillsView";
 import { StreamView } from "./components/pages/StreamView";
+import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -148,7 +149,7 @@ function ViewRouter({
       case "tasks":
         return (
           <TabContentView>
-            <AutomationsView />
+            <TasksPageView />
           </TabContentView>
         );
       case "character":
