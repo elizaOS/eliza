@@ -402,19 +402,9 @@ export function desktopMouseMove(x: number, y: number): void {
       if (commandExists("cliclick")) {
         runCommand("cliclick", [`m:${sx},${sy}`], 5000);
       } else {
-        // Use Python + Quartz CoreGraphics for mouse move (available on all macOS)
-        const pyScript = `import Quartz; Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (${sx}, ${sy}), Quartz.kCGMouseButtonLeft))`;
-        try {
-          runCommand("python3", ["-c", pyScript], 5000);
-        } catch {
-          // Last resort: use AppleScript click-at (moves cursor as side effect)
-          // This is imperfect but better than failing
-          runCommand(
-            "osascript",
-            ["-e", `tell application "System Events" to click at {${sx}, ${sy}}`],
-            5000,
-          );
-        }
+        // JXA (JavaScript for Automation) CoreGraphics fallback — no deps.
+        const jxa = `ObjC.import('CoreGraphics'); const e = $.CGEventCreateMouseEvent($(), $.kCGEventMouseMoved, {x:${sx}, y:${sy}}, $.kCGMouseButtonLeft); $.CGEventPost($.kCGHIDEventTap, e);`;
+        runCommand("osascript", ["-l", "JavaScript", "-e", jxa], 5000);
       }
     } else if (os === "linux") {
       requireXdotool();
@@ -502,42 +492,17 @@ export function desktopScroll(
     const os = currentPlatform();
 
     if (os === "darwin") {
-      // Move mouse first, then scroll
-      if (commandExists("cliclick")) {
-        runCommand("cliclick", [`m:${sx},${sy}`], 3000);
-      }
-      // AppleScript scroll using System Events
-      const scrollDir = direction === "up" || direction === "left" ? -1 : 1;
+      // JXA CGEventCreateScrollWheelEvent — works without cliclick.
+      // For vertical scrolls, positive Y deltas scroll up, negative scrolls down.
+      // For horizontal, positive X deltas scroll right, negative scrolls left.
       const axis = direction === "left" || direction === "right" ? "horizontal" : "vertical";
-      if (axis === "vertical") {
-        const script = `tell application "System Events" to scroll area 1 of scroll area 1`;
-        // Use cliclick scroll if available, otherwise AppleScript key presses
-        if (commandExists("cliclick")) {
-          // cliclick doesn't have scroll — use key arrows
-          const key = direction === "up" ? "arrow-up" : "arrow-down";
-          for (let i = 0; i < clicks; i++) {
-            runCommand("cliclick", [`kp:${key}`], 2000);
-          }
-        } else {
-          const keyCode = direction === "up" ? 126 : 125; // up=126 down=125
-          for (let i = 0; i < clicks; i++) {
-            runCommand(
-              "osascript",
-              ["-e", `tell application "System Events" to key code ${keyCode}`],
-              2000,
-            );
-          }
-        }
-      } else {
-        const keyCode = direction === "left" ? 123 : 124; // left=123 right=124
-        for (let i = 0; i < clicks; i++) {
-          runCommand(
-            "osascript",
-            ["-e", `tell application "System Events" to key code ${keyCode}`],
-            2000,
-          );
-        }
-      }
+      const delta =
+        direction === "up" || direction === "left" ? clicks : -clicks;
+      const jxa =
+        axis === "vertical"
+          ? `ObjC.import('CoreGraphics'); const e = $.CGEventCreateScrollWheelEvent($(), $.kCGScrollEventUnitLine, 1, ${delta}); $.CGEventPost($.kCGHIDEventTap, e);`
+          : `ObjC.import('CoreGraphics'); const e = $.CGEventCreateScrollWheelEvent($(), $.kCGScrollEventUnitLine, 2, 0, ${delta}); $.CGEventPost($.kCGHIDEventTap, e);`;
+      runCommand("osascript", ["-l", "JavaScript", "-e", jxa], 5000);
     } else if (os === "linux") {
       requireXdotool();
       // Move to position first
@@ -682,6 +647,15 @@ export function desktopKeyCombo(combo: string): void {
         shift: "shift down",
         alt: "option down", option: "option down",
       };
+      const macKeyCodes: Record<string, number> = {
+        return: 36, enter: 36, tab: 48, space: 49,
+        escape: 53, esc: 53,
+        delete: 51, backspace: 51, forwarddelete: 117,
+        left: 123, right: 124, down: 125, up: 126,
+        home: 115, end: 119, pageup: 116, pagedown: 121,
+        f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97,
+        f7: 98, f8: 100, f9: 101, f10: 109, f11: 103, f12: 111,
+      };
       const modifiers: string[] = [];
       let key = "";
       for (const part of parts) {
@@ -694,11 +668,13 @@ export function desktopKeyCombo(combo: string): void {
       const using = modifiers.length > 0
         ? ` using {${modifiers.join(", ")}}`
         : "";
-      runCommand(
-        "osascript",
-        ["-e", `tell application "System Events" to keystroke ${escapeAppleScript(key)}${using}`],
-        5000,
-      );
+      const canonical = canonicalKeyName(key);
+      const keyCode = macKeyCodes[canonical];
+      const command =
+        keyCode !== undefined
+          ? `tell application "System Events" to key code ${keyCode}${using}`
+          : `tell application "System Events" to keystroke ${escapeAppleScript(key)}${using}`;
+      runCommand("osascript", ["-e", command], 5000);
     } else if (os === "linux") {
       requireXdotool();
       // xdotool key combo: "ctrl+c" → "ctrl+c" (xdotool understands this directly)
@@ -707,7 +683,7 @@ export function desktopKeyCombo(combo: string): void {
           cmd: "super", command: "super", meta: "super",
           ctrl: "ctrl", control: "ctrl",
         };
-        return xMap[p] ?? p;
+        return xMap[p] ?? toXdotoolKeyName(p);
       });
       runCommand("xdotool", ["key", xParts.join("+")], 5000);
     } else if (os === "win32") {
@@ -727,7 +703,8 @@ export function desktopKeyCombo(combo: string): void {
           key = part;
         }
       }
-      const sendKey = `${prefix}${key}`.replace(/'/g, "''");
+      const mappedKey = toWindowsSendKey(key);
+      const sendKey = `${prefix}${mappedKey}`.replace(/'/g, "''");
       runCommand(
         "powershell",
         [

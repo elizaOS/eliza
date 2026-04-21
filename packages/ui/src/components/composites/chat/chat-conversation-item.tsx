@@ -180,7 +180,7 @@ export function ChatConversationItem({
                 ? "border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
                 : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
             }`
-          : `group relative flex w-full items-center gap-2 px-1.5 py-1 text-left transition-colors duration-100 ${
+          : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
               isActive
                 ? "text-txt"
                 : "text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:text-txt"

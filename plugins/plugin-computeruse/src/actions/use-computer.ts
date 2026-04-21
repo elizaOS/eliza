@@ -157,6 +157,9 @@ export const useComputerAction: Action = {
     "DRAG",
     "MOUSE_CLICK",
     "CLICK_WITH_MODIFIERS",
+    "TAKE_SCREENSHOT",
+    "CAPTURE_SCREEN",
+    "SEE_SCREEN",
   ],
   description:
     "Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interaction when the agent needs to operate the user's computer directly.\n\n" +
