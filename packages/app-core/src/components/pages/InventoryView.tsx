@@ -53,8 +53,21 @@ import {
 import { NftGrid } from "../inventory/NftGrid";
 import { TokensTable } from "../inventory/TokensTable";
 import { useInventoryData } from "../inventory/useInventoryData";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
+import { PageScopedChat } from "../chat/PageScopedChat";
 import { PolicyControlsView } from "../settings/PolicyControlsView";
 import { ConfigPageView } from "./ConfigPageView";
+
+/* ── Wallet assistant system addendum ───────────────────────────────────── */
+
+const WALLET_SYSTEM_ADDENDUM = `You are scoped to helping the user with their wallet on this page.
+Tools available:
+- transferToken — send SPL tokens or SOL to a recipient.
+- executeSwap — swap tokens via Jupiter.
+- The walletProvider exposes balances, token holdings, and portfolio value; you may read these to answer.
+
+Before executing a transfer or swap, summarize the action in one line and wait for explicit confirmation.
+For requests unrelated to the wallet, politely direct the user to the main chat.`;
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -284,6 +297,7 @@ export function InventoryView() {
     vincentLoginError,
     handleVincentLogin,
     handleVincentDisconnect,
+    activeConversationId,
     t,
   } = useApp();
 
@@ -935,7 +949,8 @@ export function InventoryView() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
+    <div className="flex flex-1 min-h-0 flex-row">
+      <div className="flex flex-1 min-w-0 min-h-0 flex-col overflow-auto">
       <PageLayout
         sidebar={walletSidebar}
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
@@ -1106,6 +1121,22 @@ export function InventoryView() {
           )}
         </div>
       </PageLayout>
+      </div>
+
+      <RightSideChatPanel
+        storageKey="milady:chat-panel:wallet"
+        defaultWidth={384}
+        minWidth={300}
+        maxWidth={720}
+      >
+        <PageScopedChat
+          scope="page-wallet"
+          title="Wallet assistant"
+          placeholder="Ask about balances, send tokens, swap..."
+          systemAddendum={WALLET_SYSTEM_ADDENDUM}
+          bridgeFromConversationId={activeConversationId}
+        />
+      </RightSideChatPanel>
 
       {/* ── Wallet & RPC popup ── */}
       <Dialog open={walletRpcOpen} onOpenChange={setWalletRpcOpen}>

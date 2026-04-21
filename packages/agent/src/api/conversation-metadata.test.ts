@@ -100,4 +100,81 @@ describe("conversation metadata helpers", () => {
     ).toBe(false);
     expect(isAutomationConversationMetadata(undefined)).toBe(false);
   });
+
+  it("sanitizes page-scoped conversation metadata with pageId", () => {
+    expect(
+      sanitizeConversationMetadata({
+        scope: "page-character",
+        pageId: "char-abc",
+        sourceConversationId: "conv-main",
+        terminalBridgeConversationId: "conv-main",
+      }),
+    ).toEqual({
+      scope: "page-character",
+      pageId: "char-abc",
+      sourceConversationId: "conv-main",
+      terminalBridgeConversationId: "conv-main",
+    });
+  });
+
+  it("sanitizes page-scoped metadata without pageId", () => {
+    expect(
+      sanitizeConversationMetadata({
+        scope: "page-apps",
+      }),
+    ).toEqual({ scope: "page-apps" });
+  });
+
+  it("accepts all five page scopes as valid", () => {
+    for (const scope of [
+      "page-character",
+      "page-apps",
+      "page-wallet",
+      "page-browser",
+      "page-automations",
+    ] as const) {
+      expect(sanitizeConversationMetadata({ scope, pageId: "x" })).toEqual({
+        scope,
+        pageId: "x",
+      });
+    }
+  });
+
+  it("persists page-scoped metadata with pageId onto room metadata and reads it back", () => {
+    const metadata = buildConversationRoomMetadata(
+      {
+        id: "conv-page-1",
+        metadata: {
+          scope: "page-browser",
+          pageId: "tab-42",
+          sourceConversationId: "conv-main",
+          terminalBridgeConversationId: "conv-main",
+        },
+      },
+      "owner-2",
+    );
+
+    expect(metadata).toMatchObject({
+      ownership: { ownerId: "owner-2" },
+      webConversation: {
+        conversationId: "conv-page-1",
+        scope: "page-browser",
+        pageId: "tab-42",
+        sourceConversationId: "conv-main",
+        terminalBridgeConversationId: "conv-main",
+      },
+    });
+
+    expect(
+      extractConversationMetadataFromRoom(
+        { metadata } as { metadata: unknown },
+        "conv-page-1",
+      ),
+    ).toEqual({
+      scope: "page-browser",
+      pageId: "tab-42",
+      sourceConversationId: "conv-main",
+      terminalBridgeConversationId: "conv-main",
+    });
+  });
 });

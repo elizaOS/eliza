@@ -122,6 +122,13 @@ export function useMiscUiState() {
   const [activeInboxChat, setActiveInboxChat] =
     useState<ActiveInboxChat | null>(null);
 
+  // ── Terminal channel ───────────────────────────────────────────────
+  // Selected PTY session id when the Terminal channel is active.
+  // Mutually exclusive with activeInboxChat / activeConversationId.
+  const [activeTerminalSessionId, setActiveTerminalSessionId] = useState<
+    string | null
+  >(null);
+
   // ── Callbacks ──────────────────────────────────────────────────────
 
   const closeCommandPalette = useCallback(() => {
@@ -169,8 +176,10 @@ export function useMiscUiState() {
       companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
+      activeTerminalSessionId,
     },
     setActiveInboxChat,
+    setActiveTerminalSessionId,
     setCommandQuery,
     setCommandActiveIndex,
     setEmotePickerOpen,

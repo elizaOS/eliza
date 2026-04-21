@@ -16,6 +16,8 @@ import {
   sanitizeApiKey,
 } from "../../voice/types";
 import { WidgetHost } from "../../widgets";
+import { PageScopedChat } from "../chat/PageScopedChat";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import {
   CharacterExamplesPanel,
@@ -129,6 +131,12 @@ const pageTabsBoxShadow =
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
+const CHARACTER_SYSTEM_ADDENDUM = `You are scoped to helping the user edit the active character.
+Tools available:
+- MODIFY_CHARACTER (aliases: UPDATE_PERSONALITY, CHANGE_PERSONALITY, CHANGE_TONE, CHANGE_VOICE, CHANGE_STYLE, SET_USER_PREFERENCE, EVOLVE_CHARACTER) — use this to change bio, adjectives, tone, voice, style, personality, topics, and any other character field.
+For any request not related to character editing, politely tell the user to switch to the main chat.
+When the user asks for a change, state what you are changing in one line, then call MODIFY_CHARACTER with a clear natural-language request and scope: "global".`;
+
 const CHARACTER_EDITOR_PAGES = [
   "personality",
   "style",
@@ -210,6 +218,7 @@ export function CharacterEditor({
     walletConfig: _walletConfig,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
+    activeConversationId,
   } = useApp();
 
   /** ElevenLabs voices are available only when direct key or cloud voice routing is active. */
@@ -1591,70 +1600,89 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
-            {standaloneContentHeader ? (
-              <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
-            ) : null}
-            <div className="flex min-h-0 flex-1 min-w-0 flex-col">
-              {activePage === "personality" && (
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <CharacterIdentityPanel
-                    d={d}
-                    bioText={bioText}
-                    generating={generating}
-                    voiceSelectValue={voiceSelectValue}
-                    activeVoicePreset={activeVoicePreset}
-                    voiceTesting={voiceTesting}
-                    voiceLoading={voiceLoading}
-                    useElevenLabs={useElevenLabs}
-                    elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                    edgeVoiceGroups={edgeVoiceGroups}
-                    handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
-                    handleSelectPreset={handleSelectPreset}
-                    handleStopTest={handleStopTest}
-                    setVoiceTesting={setVoiceTesting}
-                    setVoiceTestAudio={setVoiceTestAudio}
-                    t={t}
-                  />
+            <div className="flex flex-row min-h-0 flex-1">
+              <div className="flex-1 min-w-0 overflow-auto flex flex-col">
+                {standaloneContentHeader ? (
+                  <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
+                ) : null}
+                <div className="flex min-h-0 flex-1 min-w-0 flex-col">
+                  {activePage === "personality" && (
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                      <CharacterIdentityPanel
+                        d={d}
+                        bioText={bioText}
+                        generating={generating}
+                        voiceSelectValue={voiceSelectValue}
+                        activeVoicePreset={activeVoicePreset}
+                        voiceTesting={voiceTesting}
+                        voiceLoading={voiceLoading}
+                        useElevenLabs={useElevenLabs}
+                        elevenLabsVoiceGroups={elevenLabsVoiceGroups}
+                        edgeVoiceGroups={edgeVoiceGroups}
+                        handleFieldEdit={handleFieldEdit}
+                        handleGenerate={handleGenerate}
+                        handleSelectPreset={handleSelectPreset}
+                        handleStopTest={handleStopTest}
+                        setVoiceTesting={setVoiceTesting}
+                        setVoiceTestAudio={setVoiceTestAudio}
+                        t={t}
+                      />
+                    </div>
+                  )}
+                  {activePage === "style" && (
+                    <div className="flex flex-col gap-5">
+                      <CharacterStylePanel
+                        d={d}
+                        generating={generating}
+                        pendingStyleEntries={pendingStyleEntries}
+                        styleEntryDrafts={styleEntryDrafts}
+                        handleGenerate={handleGenerate}
+                        handlePendingStyleEntryChange={
+                          handlePendingStyleEntryChange
+                        }
+                        handleAddStyleEntry={handleAddStyleEntry}
+                        handleRemoveStyleEntry={handleRemoveStyleEntry}
+                        handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                        handleCommitStyleEntry={handleCommitStyleEntry}
+                        handleReorderStyleEntries={handleReorderStyleEntries}
+                        t={t}
+                      />
+                    </div>
+                  )}
+                  {activePage === "examples" && (
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
+                      <CharacterExamplesPanel
+                        d={d}
+                        normalizedMessageExamples={normalizedMessageExamples}
+                        generating={generating}
+                        handleFieldEdit={handleFieldEdit}
+                        handleGenerate={handleGenerate}
+                        t={t}
+                      />
+                    </div>
+                  )}
+                  {activePage === "knowledge" && (
+                    <div className="flex flex-col flex-1 min-h-[60vh]">
+                      <KnowledgeView embedded />
+                    </div>
+                  )}
                 </div>
-              )}
-              {activePage === "style" && (
-                <div className="flex flex-col gap-5">
-                  <CharacterStylePanel
-                    d={d}
-                    generating={generating}
-                    pendingStyleEntries={pendingStyleEntries}
-                    styleEntryDrafts={styleEntryDrafts}
-                    handleGenerate={handleGenerate}
-                    handlePendingStyleEntryChange={
-                      handlePendingStyleEntryChange
-                    }
-                    handleAddStyleEntry={handleAddStyleEntry}
-                    handleRemoveStyleEntry={handleRemoveStyleEntry}
-                    handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-                    handleCommitStyleEntry={handleCommitStyleEntry}
-                    handleReorderStyleEntries={handleReorderStyleEntries}
-                    t={t}
-                  />
-                </div>
-              )}
-              {activePage === "examples" && (
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
-                  <CharacterExamplesPanel
-                    d={d}
-                    normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
-                    handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
-                    t={t}
-                  />
-                </div>
-              )}
-              {activePage === "knowledge" && (
-                <div className="flex flex-col flex-1 min-h-[60vh]">
-                  <KnowledgeView embedded />
-                </div>
-              )}
+              </div>
+              <RightSideChatPanel
+                storageKey="milady:chat-panel:character"
+                defaultWidth={384}
+                minWidth={300}
+                maxWidth={720}
+              >
+                <PageScopedChat
+                  scope="page-character"
+                  pageId={selectedCharacterId ?? undefined}
+                  title="Character assistant"
+                  placeholder="Ask to change the bio, tone, style, or any personality trait..."
+                  systemAddendum={CHARACTER_SYSTEM_ADDENDUM}
+                  bridgeFromConversationId={activeConversationId}
+                />
+              </RightSideChatPanel>
             </div>
           </PageLayout>
         )}
