@@ -12,6 +12,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 import {
   acknowledgeIntent,
   broadcastIntent,
@@ -36,10 +37,11 @@ describe("intent-sync — real PGLite", () => {
   let testResult: RealTestRuntimeResult;
 
   beforeAll(async () => {
-    testResult = await createRealTestRuntime({ characterName: AGENT_ID });
+    testResult = await createRealTestRuntime({
+      characterName: AGENT_ID,
+      plugins: [appLifeOpsPlugin],
+    });
     runtime = testResult.runtime;
-    // intent-sync ensures its own table on first call; no schema bootstrap
-    // needed for life_intents specifically.
   }, 180_000);
 
   afterAll(async () => {
@@ -268,9 +270,11 @@ describe("intent-sync — real PGLite", () => {
       } as never,
       async () => {},
     );
-    // validationTerminate returns success:true at the ActionResult level to
-    // signal the orchestrator not to retry, but values.success:false + a
-    // descriptive error code for downstream consumers.
+    // validationTerminate returns success:false at both the top level and
+    // values.success (the action did NOT complete the broadcast because the
+    // kind was invalid); a descriptive error code is set for downstream
+    // consumers.
+    expect((result as unknown as { success?: boolean }).success).toBe(false);
     expect((result as unknown as { values?: { success?: boolean } }).values?.success).toBe(
       false,
     );

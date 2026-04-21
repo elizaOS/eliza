@@ -1464,7 +1464,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return createdPlan;
     }
 
-    private serializeScheduleObservationForSync(
+    /** @internal — public to satisfy TS4094 on exported anonymous mixin class */
+    serializeScheduleObservationForSync(
       observation: LifeOpsScheduleObservationRecord,
     ): SyncLifeOpsScheduleObservationInput {
       const metadata = isRecord(observation.metadata) ? observation.metadata : null;
@@ -2555,6 +2556,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       eventStartAt?: string | null;
       acknowledged: boolean;
       nearbyReminderTitles?: string[];
+      timezone: string;
+      definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
     }): Promise<LifeOpsReminderAttempt | null> {
       if (!shouldDeliverReminderForIntensity(args.intensity, args.urgency)) {
         return null;
@@ -2646,20 +2649,28 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!previousAttempt) {
         return null;
       }
-      const delayMinutes = resolveReminderEscalationDelayMinutes(
+      const baseDelayMinutes = resolveReminderEscalationDelayMinutes(
         args.urgency,
         previousAttempt.outcome,
         escalationAttempts.length > 0,
       );
-      if (delayMinutes === null) {
+      if (baseDelayMinutes === null) {
         return null;
       }
-      // TODO: wire enforcement overrides here — call
-      // buildReminderEnforcementState(now, timezone, definition, twilioVoiceAvailable)
-      // and applyEnforcementOverrides(delayMinutes, state) to shorten the gap
-      // for morning/night routine occurrences, and force a voice channel
-      // when state.forceVoice is true. Pipe the timezone + definition in via
-      // dispatchReminderAttempt args before enabling this path.
+      const twilioVoiceAvailable = readTwilioCredentialsFromEnv() !== null;
+      const enforcementState = buildReminderEnforcementState(
+        args.now,
+        args.timezone,
+        args.definition,
+        twilioVoiceAvailable,
+      );
+      const { delayMinutes, forceVoice } = applyEnforcementOverrides(
+        baseDelayMinutes,
+        enforcementState,
+      );
+      if (forceVoice && nextChannel !== "voice") {
+        nextChannel = "voice";
+      }
       const scheduledFor = addMinutes(
         new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
         delayMinutes,
@@ -2691,6 +2702,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             : "plan_exhausted_without_acknowledgement",
         activityProfile: args.activityProfile,
         nearbyReminderTitles: args.nearbyReminderTitles,
+        timezone: args.timezone,
+        definition: args.definition,
       });
 
       await this.markReminderEscalationStarted({
@@ -2900,6 +2913,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       escalationReason?: string;
       activityProfile?: ReminderActivityProfileSnapshot | null;
       nearbyReminderTitles?: string[];
+      timezone: string;
+      definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
     }): Promise<LifeOpsReminderAttempt> {
       const attemptedAt = args.attemptedAt;
       const attemptedAtDate = new Date(attemptedAt);
@@ -3541,6 +3556,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           request.limit === undefined
             ? DEFAULT_REMINDER_PROCESS_LIMIT
             : normalizePositiveInteger(request.limit, "limit");
+        const ownerTimezone = resolveDefaultTimeZone();
 
         const definitions = await this.repository.listActiveDefinitions(
           this.agentId(),
@@ -3728,6 +3744,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               events: calendarEvents,
               limit: 3,
             }),
+            timezone: ownerTimezone,
+            definition:
+              definitionsById.get(occurrence.definitionId) ?? null,
           });
           dueAttempts.push(attempt);
           if (attempt.outcome === "delivered") {
@@ -3795,6 +3814,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               events: calendarEvents,
               limit: 3,
             }),
+            timezone: ownerTimezone,
+            definition: null,
           });
           dueAttempts.push(attempt);
           if (attempt.outcome === "delivered") {
@@ -3854,6 +3875,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               events: calendarEvents,
               limit: 3,
             }),
+            timezone: ownerTimezone,
+            definition:
+              definitionsById.get(occurrence.definitionId) ?? null,
           });
           if (!attempt) continue;
           dueAttempts.push(attempt);
@@ -3892,6 +3916,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               events: calendarEvents,
               limit: 3,
             }),
+            timezone: ownerTimezone,
+            definition: null,
           });
           if (!attempt) continue;
           dueAttempts.push(attempt);

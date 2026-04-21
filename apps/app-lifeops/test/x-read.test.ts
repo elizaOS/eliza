@@ -1,3 +1,36 @@
+/**
+ * MIXED FETCH-SHIM + MIXIN-SHAPE TEST — this file is two different things
+ * stitched together. Read before you trust a green run.
+ *
+ * Part 1 (genuine integration against the real x-reader code):
+ *   - `readXDms`, `pullXFeed`, and `searchX` describe blocks stub the global
+ *     `fetch` and assert that the real x-reader code under test:
+ *       - hits the correct Twitter API v2 URL (`/2/.../dm_events`, etc.)
+ *       - sends an OAuth 1.0a `Authorization` header with `oauth_signature=`
+ *       - translates 401 → `XReadError{category: "auth"}` and 429 +
+ *         `Retry-After` → `XReadError{category: "rate_limit",
+ *         retryAfterSeconds}`
+ *     These are real assertions against real code and are the valuable
+ *     tests in this file.
+ *
+ * Part 2 (shape-only — LARP caveat):
+ *   - `describe("withXRead mixin")` composes the mixin onto a StubBase and
+ *     ONLY asserts `typeof svc.syncXDms === "function"` (and three sibling
+ *     typeof checks). It does NOT invoke any mixin method and therefore does
+ *     NOT exercise sync logic, pagination cursors, dedup against the
+ *     repository, or the OAuth plumbing.
+ *   - `describe("xReadAction.validate")` replaces `LifeOpsService` with a
+ *     `vi.spyOn(...).mockImplementation` stub that only exposes
+ *     `getXConnectorStatus`. It verifies the validate-gate returns false
+ *     when the connector reports `connected: false`, not that validate
+ *     ever actually consults a real service.
+ *
+ * Regressions that would slip past the shape-only parts:
+ *   - A mixin method whose signature exists but whose body throws.
+ *   - A repository `upsertXDm` call that silently drops fields on real rows.
+ *   - `xReadAction.validate` returning true when the connector reports
+ *     connected but inbound sync is disabled.
+ */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   pullXFeed,

@@ -99,12 +99,17 @@ export const updateOwnerProfileAction: Action & {
           ? await persistConfiguredOwnerName(patch.name)
           : null;
 
+      const updatedFields = Object.keys(patch);
+      const text =
+        updatedFields.length === 1
+          ? `Updated ${updatedFields[0]}.`
+          : `Updated ${updatedFields.length} owner profile fields: ${updatedFields.join(", ")}.`;
       return {
-        text: "",
+        text,
         success: true,
         data: {
           profile,
-          updatedFields: Object.keys(patch),
+          updatedFields,
           nameSyncSaved,
         },
       };

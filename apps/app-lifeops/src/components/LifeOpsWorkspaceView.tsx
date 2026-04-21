@@ -554,15 +554,18 @@ function SectionShell({
 
 function LockedSection({
   title,
+  hint,
   owner,
   agent,
 }: {
   title: string;
+  hint: string;
   owner: SideWorkspaceState;
   agent: SideWorkspaceState;
 }) {
   return (
     <SectionShell title={title}>
+      <div className="mb-3 text-xs leading-5 text-muted">{hint}</div>
       <div className="grid gap-4 lg:grid-cols-2">
         {[owner, agent].map((workspace) => (
           <div
@@ -628,11 +631,15 @@ function CalendarColumn({
       ) : null}
 
       {!workspace.calendarEnabled ? (
-        <div className="text-xs text-muted">No calendar access</div>
+        <div className="text-xs text-muted">
+          Grant calendar access for this Google account in Setup.
+        </div>
       ) : workspace.loading && eventCount === 0 ? (
-        <div className="text-xs text-muted">Loading</div>
+        <div className="text-xs text-muted">Loading events…</div>
       ) : eventCount === 0 ? (
-        <div className="text-xs text-muted">No events</div>
+        <div className="text-xs text-muted">
+          Nothing scheduled. Use New event below to add one.
+        </div>
       ) : (
         <div className="space-y-3">
           {workspace.groupedCalendarEvents.map((group) => (
@@ -715,17 +722,20 @@ function CalendarColumn({
                 value={workspace.eventTitle}
                 onChange={(event) => workspace.setEventTitle(event.target.value)}
                 placeholder="Title"
+                aria-label="Event title"
                 className="sm:col-span-2"
               />
               <Input
                 type="date"
                 value={workspace.eventDate}
                 onChange={(event) => workspace.setEventDate(event.target.value)}
+                aria-label="Event date"
               />
               <Input
                 type="time"
                 value={workspace.eventTime}
                 onChange={(event) => workspace.setEventTime(event.target.value)}
+                aria-label="Event start time"
               />
               <Input
                 type="number"
@@ -735,22 +745,24 @@ function CalendarColumn({
                 onChange={(event) =>
                   workspace.setEventDurationMinutes(event.target.value)
                 }
-                placeholder="Minutes"
+                placeholder="Duration in minutes"
+                aria-label="Duration in minutes"
               />
               <Input
                 value={workspace.eventLocation}
                 onChange={(event) =>
                   workspace.setEventLocation(event.target.value)
                 }
-                placeholder="Location"
+                placeholder="Location (optional)"
+                aria-label="Location"
               />
               <Button
                 size="sm"
                 className="h-9 rounded-xl px-3 text-xs font-semibold sm:col-span-2"
-                disabled={workspace.creatingEvent}
+                disabled={workspace.creatingEvent || !workspace.eventTitle.trim()}
                 onClick={() => void workspace.handleCreateEvent()}
               >
-                {workspace.creatingEvent ? "Creating..." : "Create event"}
+                {workspace.creatingEvent ? "Creating…" : "Create event"}
               </Button>
             </div>
           ) : null}
@@ -792,11 +804,13 @@ function EmailColumn({
       ) : null}
 
       {!workspace.emailEnabled ? (
-        <div className="text-xs text-muted">No email access</div>
+        <div className="text-xs text-muted">
+          Grant Gmail access for this Google account in Setup.
+        </div>
       ) : workspace.loading && messageCount === 0 ? (
-        <div className="text-xs text-muted">Loading</div>
+        <div className="text-xs text-muted">Loading recent mail…</div>
       ) : messageCount === 0 ? (
-        <div className="text-xs text-muted">No messages</div>
+        <div className="text-xs text-muted">Inbox clear. Nothing to triage right now.</div>
       ) : (
         <div className="overflow-hidden rounded-2xl bg-bg/45">
           {workspace.gmailMessages.map((message, index) => (
@@ -925,8 +939,18 @@ export function LifeOpsWorkspaceView() {
   if (!workspaceReady) {
     return (
       <div className="space-y-6">
-        <LockedSection title="Calendar" owner={owner} agent={agent} />
-        <LockedSection title="Email" owner={owner} agent={agent} />
+        <LockedSection
+          title="Calendar"
+          hint="Connect Google for both User and Agent in Setup above to see today's events and create new ones here."
+          owner={owner}
+          agent={agent}
+        />
+        <LockedSection
+          title="Email"
+          hint="Connect Google for both User and Agent in Setup above to triage replies and draft responses here."
+          owner={owner}
+          agent={agent}
+        />
       </div>
     );
   }

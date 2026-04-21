@@ -1,3 +1,5 @@
+import { asRecord } from "../type-guards";
+
 export type LinkedAccountStatus = "linked" | "unlinked";
 
 export type LinkedAccountSource =
@@ -165,12 +167,6 @@ export function buildDefaultElizaCloudServiceRouting(
   }
 
   return next;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function readTrimmedString(

@@ -321,12 +321,12 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
     ): LifeOpsSignalPairingStatus {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      stopSignalPairingFlow(this.agentId(), resolvedSide);
+      const result = stopSignalPairingFlow(this.agentId(), resolvedSide);
       return {
-        sessionId: "",
-        state: "idle",
+        sessionId: result.sessionId ?? "",
+        state: result.stopped ? "idle" : "failed",
         qrDataUrl: null,
-        error: null,
+        error: result.stopped ? null : "No active pairing session to stop",
       };
     }
 

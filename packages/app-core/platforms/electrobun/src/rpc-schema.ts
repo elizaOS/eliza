@@ -12,6 +12,12 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+  NavigateBrowserWorkspaceTabRequest,
+  OpenBrowserWorkspaceTabRequest,
+} from "@elizaos/agent/services/browser-workspace";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
@@ -690,6 +696,36 @@ export type ElizaDesktopRPCSchema = {
           browse?: string;
         };
         response: undefined;
+      };
+
+      // ---- Browser Workspace ----
+      browserWorkspaceGetSnapshot: {
+        params: undefined;
+        response: BrowserWorkspaceSnapshot;
+      };
+      browserWorkspaceOpenTab: {
+        params: OpenBrowserWorkspaceTabRequest;
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceNavigateTab: {
+        params: NavigateBrowserWorkspaceTabRequest;
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceShowTab: {
+        params: { id: string };
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceHideTab: {
+        params: { id: string };
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceCloseTab: {
+        params: { id: string };
+        response: { closed: boolean };
+      };
+      browserWorkspaceSnapshotTab: {
+        params: { id: string };
+        response: { data: string };
       };
 
       // ---- Desktop: Clipboard ----
@@ -1442,6 +1478,15 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
+
+  // Browser Workspace
+  "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
+  "browser-workspace:openTab": "browserWorkspaceOpenTab",
+  "browser-workspace:navigateTab": "browserWorkspaceNavigateTab",
+  "browser-workspace:showTab": "browserWorkspaceShowTab",
+  "browser-workspace:hideTab": "browserWorkspaceHideTab",
+  "browser-workspace:closeTab": "browserWorkspaceCloseTab",
+  "browser-workspace:snapshotTab": "browserWorkspaceSnapshotTab",
 
   // Desktop: Clipboard
   "desktop:writeToClipboard": "desktopWriteToClipboard",

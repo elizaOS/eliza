@@ -131,7 +131,7 @@ function resolveHealthSignal(signal: LifeOpsActivitySignal): LifeOpsHealthSignal
     return signal.health;
   }
   const metadataHealth = isRecord(signal.metadata.health)
-    ? (signal.metadata.health as LifeOpsHealthSignal)
+    ? (signal.metadata.health as unknown as LifeOpsHealthSignal)
     : null;
   return metadataHealth ?? null;
 }

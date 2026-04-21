@@ -37,6 +37,15 @@ type ScreenTimeAggregateRow = {
   metadata?: Record<string, unknown>;
 };
 
+type ScreenTimeWeeklyAverageItem = {
+  source: "app";
+  identifier: string;
+  displayName: string;
+  totalSeconds: number;
+  averageSecondsPerDay: number;
+  averageMinutesPerDay: number;
+};
+
 function resolveUtcDateWindow(date: string): {
   startIso: string;
   endIso: string;
@@ -201,6 +210,26 @@ function toSummaryItems(rows: ScreenTimeAggregateRow[], topN?: number): {
     })),
     totalSeconds: sorted.reduce((sum, row) => sum + row.totalSeconds, 0),
   };
+}
+
+function toWeeklyAverageItems(
+  items: Array<{
+    source: "app" | "website";
+    identifier: string;
+    displayName: string;
+    totalSeconds: number;
+  }>,
+  daysInWindow: number,
+): ScreenTimeWeeklyAverageItem[] {
+  const safeDays = Math.max(1, Math.floor(daysInWindow));
+  return items.map((item) => ({
+    source: "app",
+    identifier: item.identifier,
+    displayName: item.displayName,
+    totalSeconds: item.totalSeconds,
+    averageSecondsPerDay: Math.round(item.totalSeconds / safeDays),
+    averageMinutesPerDay: Math.round(item.totalSeconds / safeDays / 60),
+  }));
 }
 
 /** @internal */
@@ -379,6 +408,30 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       return toSummaryItems(rows, opts.topN);
+    }
+
+    async getScreenTimeWeeklyAverageByApp(opts: {
+      since: string;
+      until: string;
+      daysInWindow: number;
+      topN?: number;
+    }): Promise<{
+      items: ScreenTimeWeeklyAverageItem[];
+      totalSeconds: number;
+      daysInWindow: number;
+    }> {
+      const summary = await this.getScreenTimeSummary({
+        since: opts.since,
+        until: opts.until,
+        source: "app",
+        topN: opts.topN,
+      });
+      const daysInWindow = Math.max(1, Math.floor(opts.daysInWindow));
+      return {
+        items: toWeeklyAverageItems(summary.items, daysInWindow),
+        totalSeconds: summary.totalSeconds,
+        daysInWindow,
+      };
     }
 
     async aggregateDailyForDate(date: string): Promise<{ updated: number }> {

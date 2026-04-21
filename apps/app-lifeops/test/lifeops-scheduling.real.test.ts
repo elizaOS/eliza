@@ -35,6 +35,8 @@ import { ensureLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
 import {
   checkAvailabilityAction,
   computeProposedSlots,
+  extractBundledMeetingCounterparties,
+  formatProposedSlotsReply,
   proposeMeetingTimesAction,
   updateMeetingPreferencesAction,
 } from "../src/actions/scheduling.js";
@@ -73,6 +75,14 @@ function makeMessage(runtime: AgentRuntime, text: string) {
 }
 
 describe("life-ops scheduling-with-others (pure slot logic)", () => {
+  it("extracts bundled counterparties from travel scheduling requests", () => {
+    expect(
+      extractBundledMeetingCounterparties(
+        "I'm in Tokyo for limited time, so schedule PendingReality and Ryan at the same time if possible.",
+      ),
+    ).toEqual(["PendingReality", "Ryan"]);
+  });
+
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {
     const now = new Date();
     const windowStart = new Date(localIso(1, 0, 0));
@@ -194,6 +204,31 @@ describe("life-ops scheduling-with-others (pure slot logic)", () => {
       const e = Date.parse(slot.endAt);
       expect(s < blockedEnd && e > blockedStart).toBe(false);
     }
+  });
+
+  it("formats bundled travel slot replies with counterparties and travel city", () => {
+    const reply = formatProposedSlotsReply({
+      slots: [
+        {
+          startAt: localIso(1, 10, 0),
+          endAt: localIso(1, 10, 30),
+          durationMinutes: 30,
+          localStart: "Tue, Apr 21, 10:00 AM",
+          localEnd: "Tue, Apr 21, 10:30 AM",
+          timeZone: "Asia/Tokyo",
+        },
+      ],
+      context: {
+        counterparties: ["PendingReality", "Ryan"],
+        bundleLocationLabel: "Tokyo",
+        timeZone: "Asia/Tokyo",
+      },
+    });
+
+    expect(reply).toContain("Tokyo-time");
+    expect(reply).toContain("PendingReality");
+    expect(reply).toContain("Ryan");
+    expect(reply).toContain("same window");
   });
 });
 

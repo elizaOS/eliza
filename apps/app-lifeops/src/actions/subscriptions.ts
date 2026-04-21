@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
@@ -142,6 +143,10 @@ async function runSubscriptionsAction(
         executor: params.executor ?? null,
         confirmed: parseConfirmed(params),
       });
+      const playbookNotImplemented =
+        summary.cancellation.status === "unsupported_surface" &&
+        typeof summary.cancellation.error === "string" &&
+        summary.cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR);
       return {
         success:
           summary.cancellation.status !== "failed" &&
@@ -151,6 +156,13 @@ async function runSubscriptionsAction(
           cancellation: summary.cancellation,
           candidate: summary.candidate,
           browserTask: browserTaskData(summary),
+          ...(playbookNotImplemented
+            ? {
+                error: PLAYBOOK_NOT_IMPLEMENTED_ERROR,
+                serviceSlug: summary.cancellation.serviceSlug,
+                managementUrl: summary.cancellation.managementUrl,
+              }
+            : {}),
         },
       };
     }

@@ -13,6 +13,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -571,7 +572,7 @@ export async function injectCredentialToClipboard(
   itemId: string,
   field: "username" | "password",
   config?: PasswordManagerBridgeConfig,
-): Promise<{ ok: true; expiresInSeconds: number }> {
+): Promise<{ ok: true; expiresInSeconds: number; fixtureMode?: boolean }> {
   if (!itemId || typeof itemId !== "string") {
     throw new PasswordManagerError(
       "itemId is required",
@@ -581,7 +582,11 @@ export async function injectCredentialToClipboard(
   const backend = await resolveActiveBackend(config);
 
   if (backend === "fixture") {
-    return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS };
+    logger.warn(
+      { itemId, field, boundary: "lifeops", component: "password-manager-bridge" },
+      "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set MILADY_TEST_PASSWORD_MANAGER_BACKEND/MILADY_BENCHMARK_USE_MOCKS to 0 for real injection.",
+    );
+    return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS, fixtureMode: true };
   }
 
   if (backend === "1password") {

@@ -1,7 +1,7 @@
 /**
  * LifeOps screen time action — query per-app and per-website dwell time.
  *
- * Subactions: summary, today, weekly, by_app, by_website.
+ * Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website.
  */
 
 import type {
@@ -15,7 +15,13 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
 
-type Subaction = "summary" | "today" | "weekly" | "by_app" | "by_website";
+type Subaction =
+  | "summary"
+  | "today"
+  | "weekly"
+  | "weekly_average_by_app"
+  | "by_app"
+  | "by_website";
 
 type ScreenTimeParameters = {
   subaction?: Subaction;
@@ -56,11 +62,16 @@ function formatSeconds(seconds: number): string {
   return `${m}m`;
 }
 
+function resolveWindowDays(value: number | undefined): number {
+  const raw = typeof value === "number" && Number.isFinite(value) ? value : 7;
+  return Math.max(1, Math.floor(raw));
+}
+
 export const screenTimeAction: Action = {
   name: "SCREEN_TIME",
   similes: ["SCREENTIME", "APP_USAGE", "WEBSITE_USAGE", "DWELL_TIME"],
   description:
-    "Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break down my screen time by app this week', or 'which websites did I spend the most time on?'. Do not use this when the user is only reflecting or venting like 'I spend too much time on my phone' unless they actually ask for the numbers. Subactions: summary, today, weekly, by_app, by_website.",
+    "Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break down my screen time by app this week', or 'which websites did I spend the most time on?'. Do not use this when the user is only reflecting or venting like 'I spend too much time on my phone' unless they actually ask for the numbers. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website.",
   validate: async (runtime, message) => {
     if (looksLikeScreenTimeReflection(messageText(message))) {
       return false;
@@ -131,6 +142,32 @@ export const screenTimeAction: Action = {
       };
     }
 
+    if (subaction === "weekly_average_by_app") {
+      const daysInWindow = resolveWindowDays(params.sinceDays ?? 7);
+      const until = new Date().toISOString();
+      const since = daysAgoIso(daysInWindow);
+      const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
+        since,
+        until,
+        daysInWindow,
+      });
+      const text =
+        weeklyAverage.items.length === 0
+          ? `No app screen time recorded in the last ${daysInWindow} days.`
+          : `Weekly average per app over the last ${daysInWindow} days (total ${formatSeconds(weeklyAverage.totalSeconds)}):\n${weeklyAverage.items
+              .map(
+                (item) =>
+                  `- ${item.displayName} — ${formatSeconds(item.averageSecondsPerDay)}/day average (${formatSeconds(item.totalSeconds)} total)`,
+              )
+              .join("\n")}`;
+      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
+      return {
+        text,
+        success: true,
+        data: { subaction, source: "app", since, until, weeklyAverage },
+      };
+    }
+
     if (subaction === "by_app" || subaction === "by_website") {
       const source = subaction === "by_app" ? "app" : "website";
       const until = new Date().toISOString();
@@ -188,7 +225,7 @@ export const screenTimeAction: Action = {
     {
       name: "subaction",
       description:
-        "Which screen time query to run: summary, today, weekly, by_app, by_website.",
+        "Which screen time query to run: summary, today, weekly, weekly_average_by_app, by_app, by_website.",
       schema: { type: "string" as const },
     },
     {
@@ -242,6 +279,19 @@ export const screenTimeAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Top screen time over the last 7 days (total 28h 10m): ...",
+          action: "SCREEN_TIME",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "What's my weekly average per app?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Weekly average per app over the last 7 days (total 28h 10m): ...",
           action: "SCREEN_TIME",
         },
       },

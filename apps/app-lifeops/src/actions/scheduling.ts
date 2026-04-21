@@ -45,6 +45,7 @@ import {
 } from "../lifeops/owner-profile.js";
 import { getZonedDateParts } from "../lifeops/time.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;
@@ -67,6 +68,8 @@ export type ProposeMeetingTimesParameters = {
   slotCount?: number;
   windowStart?: string;
   windowEnd?: string;
+  timeZone?: string;
+  counterparties?: string[];
 };
 
 export type CheckAvailabilityParameters = {
@@ -263,6 +266,101 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
   return `Here ${slots.length === 1 ? "is an available option" : `are ${slots.length} options`} you can offer:\n${lines.join("\n")}`;
 }
 
+function cleanBundledCounterparty(value: string): string {
+  return value
+    .replace(/^(?:with|for|and|also|maybe|please)\s+/iu, "")
+    .replace(/\s+(?:at|if|while|during|thanks|please)\b.*$/iu, "")
+    .replace(/[.?!,;:]+$/u, "")
+    .trim();
+}
+
+export function extractBundledMeetingCounterparties(messageText: string): string[] {
+  const trimmed = messageText.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  const patterns = [
+    /\bschedule\s+(.+?)(?:\s+at\s+the\s+same\s+time\b|\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
+    /\bbundle\s+(.+?)(?:\s+together\b|\s+on\s+the\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
+    /\bmeetings?\s+with\s+(.+?)(?:\s+on\s+the\s+same\s+day\b|\s+at\s+the\s+same\s+time\b|\s+if\s+possible\b|[.?!]|$)/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(trimmed);
+    const raw = match?.[1]?.trim();
+    if (!raw) {
+      continue;
+    }
+    const counterparties = raw
+      .split(/\s*(?:,|&|\band\b)\s*/iu)
+      .map(cleanBundledCounterparty)
+      .filter((value) => value.length > 0);
+    if (counterparties.length >= 2) {
+      return counterparties.slice(0, 4);
+    }
+  }
+
+  return [];
+}
+
+function formatCounterpartyList(counterparties: readonly string[]): string {
+  if (counterparties.length === 0) {
+    return "those meetings";
+  }
+  if (counterparties.length === 1) {
+    return counterparties[0] ?? "that meeting";
+  }
+  if (counterparties.length === 2) {
+    return `${counterparties[0]} and ${counterparties[1]}`;
+  }
+  return `${counterparties.slice(0, -1).join(", ")}, and ${counterparties[counterparties.length - 1]}`;
+}
+
+function deriveBundleLocationLabel(messageText: string): string | null {
+  const lowered = messageText.toLowerCase();
+  const inMatch = /\b(?:in|while i(?:'| a)?m in|while im in)\s+([a-z][a-z\s._-]{1,40}?)(?:\s+(?:for|with|so|and)\b|[,.!?]|$)/iu.exec(
+    lowered,
+  );
+  const candidate = inMatch?.[1]?.replace(/[_]+/g, " ").trim();
+  if (!candidate) {
+    return null;
+  }
+  return candidate
+    .split(/\s+/u)
+    .map((part) => (part.length > 0 ? `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}` : part))
+    .join(" ");
+}
+
+type ProposedSlotsReplyContext = {
+  counterparties?: string[];
+  bundleLocationLabel?: string | null;
+  timeZone: string;
+};
+
+export function formatProposedSlotsReply(args: {
+  slots: readonly ProposedMeetingSlot[];
+  context?: ProposedSlotsReplyContext;
+}): string {
+  const counterparties = args.context?.counterparties ?? [];
+  const locationLabel = args.context?.bundleLocationLabel?.trim();
+  const targetLabel = formatCounterpartyList(counterparties);
+  const windowLabel = locationLabel ? `${locationLabel}-time` : args.context?.timeZone;
+
+  if (counterparties.length >= 2) {
+    if (args.slots.length === 0) {
+      return `I couldn't find ${windowLabel} slots that keep ${targetLabel} in the same window. If you want, I can widen the search or split them across nearby times.`;
+    }
+    const lines = args.slots.map(
+      (slot, idx) =>
+        `${idx + 1}. ${slot.localStart} – ${slot.localEnd} (${slot.durationMinutes} min)`,
+    );
+    return `Here ${args.slots.length === 1 ? "is 1" : `are ${args.slots.length}`} ${windowLabel} option${args.slots.length === 1 ? "" : "s"} that keep ${targetLabel} in the same window:\n${lines.join("\n")}`;
+  }
+
+  return formatSlotsText(args.slots);
+}
+
 function parseOptionalIso(value: unknown): Date | null {
   if (typeof value !== "string") return null;
   const parsed = new Date(value);
@@ -329,12 +427,26 @@ export const proposeMeetingTimesAction: Action & {
 
     const params = getParams<ProposeMeetingTimesParameters>(options);
     const preferences = await readLifeOpsMeetingPreferences(runtime);
+    const messageText =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    const inferredTimeZone =
+      (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
+        ? params.timeZone.trim()
+        : null) ?? inferTimeZoneFromLocationText(messageText);
+    const effectivePreferences = inferredTimeZone
+      ? { ...preferences, timeZone: inferredTimeZone }
+      : preferences;
+    const counterparties =
+      Array.isArray(params.counterparties) && params.counterparties.length > 0
+        ? params.counterparties
+        : extractBundledMeetingCounterparties(messageText);
+    const bundleLocationLabel = deriveBundleLocationLabel(messageText);
     const durationMinutes =
       typeof params.durationMinutes === "number" &&
       params.durationMinutes >= 5 &&
       params.durationMinutes <= 480
         ? Math.floor(params.durationMinutes)
-        : preferences.defaultDurationMinutes;
+        : effectivePreferences.defaultDurationMinutes;
     const slotCount =
       typeof params.slotCount === "number" &&
       params.slotCount >= 1 &&
@@ -362,7 +474,7 @@ export const proposeMeetingTimesAction: Action & {
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
         timeMin: windowStart.toISOString(),
         timeMax: windowEnd.toISOString(),
-        timeZone: preferences.timeZone,
+        timeZone: effectivePreferences.timeZone,
       });
       events = feed.events;
     } catch (error) {
@@ -391,11 +503,18 @@ export const proposeMeetingTimesAction: Action & {
       windowEnd,
       durationMinutes,
       slotCount,
-      preferences,
+      preferences: effectivePreferences,
       events,
     });
 
-    const text = formatSlotsText(slots);
+    const text = formatProposedSlotsReply({
+      slots,
+      context: {
+        counterparties,
+        bundleLocationLabel,
+        timeZone: effectivePreferences.timeZone,
+      },
+    });
     await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
     return {
       text,
@@ -405,8 +524,10 @@ export const proposeMeetingTimesAction: Action & {
         durationMinutes,
         windowStart: windowStart.toISOString(),
         windowEnd: windowEnd.toISOString(),
-        timeZone: preferences.timeZone,
-        preferences,
+        timeZone: effectivePreferences.timeZone,
+        preferences: effectivePreferences,
+        counterparties,
+        bundleLocationLabel,
       },
     };
   },
@@ -436,6 +557,12 @@ export const proposeMeetingTimesAction: Action & {
     {
       name: "windowEnd",
       description: "Optional ISO-8601 latest end for the search window.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "timeZone",
+      description:
+        "Optional IANA time zone override when the user is temporarily traveling and wants proposals shown in that local time.",
       schema: { type: "string" as const },
     },
   ],
@@ -961,7 +1088,16 @@ export const schedulingAction: Action = {
         llmPlan.response ??
         "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
       await callback?.({ text });
-      return { text, success: true, data: { noop: true } };
+      return {
+        text,
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
+      };
     }
 
     if (!subaction) {
@@ -988,7 +1124,7 @@ export const schedulingAction: Action = {
           durationMinutes: params.durationMinutes,
           timezone: params.timezone,
         });
-        const text = `Started ${formatNegotiationSummary(neg)}.`;
+        const text = `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
@@ -1004,13 +1140,17 @@ export const schedulingAction: Action = {
             data: { error: "MISSING_PROPOSAL_FIELDS" },
           };
         }
+        const proposedBy = params.proposedBy ?? "agent";
         const proposal = await service.proposeTime({
           negotiationId: params.negotiationId,
           startAt: params.startAt,
           endAt: params.endAt,
-          proposedBy: params.proposedBy ?? "agent",
+          proposedBy,
         });
-        const text = `Recorded ${formatProposalSummary(proposal)}.`;
+        const text =
+          proposedBy === "counterparty"
+            ? `Recorded ${formatProposalSummary(proposal)}.`
+            : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { proposal } };
       }
@@ -1048,7 +1188,7 @@ export const schedulingAction: Action = {
           params.negotiationId,
           params.proposalId,
         );
-        const text = `Confirmed ${formatNegotiationSummary(neg)}.`;
+        const text = `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return { text, success: true, data: { negotiation: neg } };
       }
@@ -1064,7 +1204,7 @@ export const schedulingAction: Action = {
           };
         }
         await service.cancelNegotiation(params.negotiationId, params.reason);
-        const text = `Cancelled negotiation ${params.negotiationId}.`;
+        const text = `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`;
         await callback?.({ text, source: "action", action: "OWNER_CALENDAR" });
         return {
           text,

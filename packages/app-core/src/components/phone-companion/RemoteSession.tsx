@@ -66,23 +66,27 @@ function assertSafeCompanionIngressUrl(ingressUrl: string): URL {
 }
 
 /**
- * Builds the noVNC viewer URL from a pairing payload.
+ * Builds the noVNC viewer URL from a validated pairing ingress URL.
  * The ingress hosts noVNC at `/vnc` and the input WS at `/input`.
  */
-function buildViewerUrl(payload: PairingPayload): string {
-  const baseUrl = payload.ingressUrl
-    .replace(/^wss:\/\//, "https://")
-    .replace(/^ws:\/\//, "http://")
-    .replace(/\/input\/?$/, "");
-  const separator = baseUrl.includes("?") ? "&" : "?";
-  return `${baseUrl}/vnc${separator}token=${encodeURIComponent(
-    payload.sessionToken,
-  )}&agent=${encodeURIComponent(payload.agentId)}`;
+function buildViewerUrl(ingressUrl: URL, payload: PairingPayload): string {
+  const viewerUrl = new URL(ingressUrl.toString());
+  viewerUrl.protocol = ingressUrl.protocol === "wss:" ? "https:" : "http:";
+  viewerUrl.pathname = ingressUrl.pathname.replace(/\/input\/?$/, "") || "/";
+  viewerUrl.pathname = viewerUrl.pathname.replace(/\/$/, "") + "/vnc";
+  viewerUrl.searchParams.set("token", payload.sessionToken);
+  viewerUrl.searchParams.set("agent", payload.agentId);
+  viewerUrl.hash = "";
+  return viewerUrl.toString();
 }
 
-function buildInputUrl(payload: PairingPayload): string {
-  if (/\/input\/?$/.test(payload.ingressUrl)) return payload.ingressUrl;
-  return payload.ingressUrl.replace(/\/?$/, "/input");
+function buildInputUrl(ingressUrl: URL): string {
+  const inputUrl = new URL(ingressUrl.toString());
+  if (!/\/input\/?$/.test(inputUrl.pathname)) {
+    inputUrl.pathname = inputUrl.pathname.replace(/\/$/, "") + "/input";
+  }
+  inputUrl.hash = "";
+  return inputUrl.toString();
 }
 
 export function RemoteSession({
@@ -103,11 +107,11 @@ export function RemoteSession({
 
   const sessionEndpoints = useMemo(() => {
     try {
-      assertSafeCompanionIngressUrl(payload.ingressUrl);
+      const ingressUrl = assertSafeCompanionIngressUrl(payload.ingressUrl);
       return {
         ok: true as const,
-        viewerUrl: buildViewerUrl(payload),
-        inputUrl: buildInputUrl(payload),
+        viewerUrl: buildViewerUrl(ingressUrl, payload),
+        inputUrl: buildInputUrl(ingressUrl),
       };
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : String(cause);

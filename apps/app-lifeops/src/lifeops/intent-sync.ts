@@ -2,23 +2,25 @@ import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
-  getRuntimeDb,
   parseJsonRecord,
   sqlText,
   toText,
 } from "./sql.js";
 
 /**
- * Cross-device intent sync.
+ * Local intent store (formerly called "cross-device intent sync").
  *
- * An intent is a small structured message broadcast to one or more of the
- * owner's paired devices (desktop, mobile, specific device). Intents are
- * persisted locally so that each device can poll its pending queue, and
- * once acknowledged by a device they are no longer returned.
+ * An intent is a small structured message targeted at one or more of the
+ * owner's logical devices (desktop, mobile, specific device). Intents are
+ * persisted in a single local database table, and any process attached to
+ * that database polls its pending queue; once acknowledged they are no
+ * longer returned.
  *
- * This module is the agent-local store. A separate bridge (e.g. Eliza
- * Cloud device-bus) is responsible for wire-level replication across
- * devices; this table is the source of truth for the local agent.
+ * NOTE: this module is *local-only*. There is no wire-level replication
+ * across machines. Two separate agent processes running on different
+ * machines will NOT see each other's intents. A cross-device replication
+ * bridge (e.g. Eliza Cloud device-bus) is out of scope here — if/when that
+ * bridge exists, it would sit alongside this table, not inside it.
  */
 
 export const LIFE_INTENT_KINDS = [
@@ -74,38 +76,6 @@ export interface BroadcastIntentInput {
   priority?: LifeOpsIntentPriority;
   expiresInMinutes?: number;
   metadata?: Record<string, unknown>;
-}
-
-const CREATE_TABLE_SQL = `
-CREATE TABLE IF NOT EXISTS life_intents (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  target TEXT NOT NULL,
-  target_device_id TEXT,
-  title TEXT NOT NULL,
-  body TEXT NOT NULL,
-  action_url TEXT,
-  priority TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  expires_at TEXT,
-  acknowledged_at TEXT,
-  acknowledged_by TEXT,
-  metadata_json TEXT
-)`;
-
-const CREATE_INDEX_SQL = `
-CREATE INDEX IF NOT EXISTS idx_life_intents_agent_kind
-  ON life_intents(agent_id, kind)`;
-
-const ensuredDatabases = new WeakSet<object>();
-
-async function ensureIntentsTable(runtime: IAgentRuntime): Promise<void> {
-  const db = getRuntimeDb(runtime) as unknown as object;
-  if (ensuredDatabases.has(db)) return;
-  await executeRawSql(runtime, CREATE_TABLE_SQL);
-  await executeRawSql(runtime, CREATE_INDEX_SQL);
-  ensuredDatabases.add(db);
 }
 
 function assertKnownKind(kind: string): LifeOpsIntentKind {
@@ -300,8 +270,6 @@ export async function broadcastIntent(
   runtime: IAgentRuntime,
   input: BroadcastIntentInput,
 ): Promise<LifeOpsIntent> {
-  await ensureIntentsTable(runtime);
-
   const kind = assertKnownKind(input.kind);
   const target = assertKnownTarget(input.target ?? "all");
   if (target === "specific" && !input.targetDeviceId) {
@@ -370,8 +338,6 @@ export async function receivePendingIntents(
     limit?: number;
   },
 ): Promise<LifeOpsIntent[]> {
-  await ensureIntentsTable(runtime);
-
   const device = opts?.device;
   if (device !== undefined) {
     assertKnownTarget(device);
@@ -417,7 +383,6 @@ export async function acknowledgeIntent(
   intentId: string,
   deviceId: string,
 ): Promise<void> {
-  await ensureIntentsTable(runtime);
   if (!intentId) throw new Error("intentId is required");
   if (!deviceId) throw new Error("deviceId is required");
 
@@ -439,7 +404,6 @@ export async function acknowledgeIntent(
 export async function pruneExpiredIntents(
   runtime: IAgentRuntime,
 ): Promise<{ pruned: number }> {
-  await ensureIntentsTable(runtime);
   const nowIso = new Date().toISOString();
 
   const countSql = `

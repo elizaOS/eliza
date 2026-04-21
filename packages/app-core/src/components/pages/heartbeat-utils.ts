@@ -14,6 +14,7 @@ import type {
 } from "../../api/client";
 import type { TriggerKind } from "@elizaos/agent/triggers/types";
 import { formatDurationMs } from "../../utils/format";
+import { CronExpressionParser } from "cron-parser";
 
 // ── Translation helper type ────────────────────────────────────────
 
@@ -291,6 +292,73 @@ export function buildUpdateRequest(
   return { ...buildCreateRequest(form) };
 }
 
+// ── Cron validation ────────────────────────────────────────────────
+
+/**
+ * Validate a 5-field cron expression using cron-parser.
+ * Returns `{ ok: true, message: null }` on success or
+ * `{ ok: false, message: string }` with the parser error message on failure.
+ */
+export function validateCronExpression(
+  expr: string,
+): { ok: true; message: null } | { ok: false; message: string } {
+  const trimmed = expr.trim();
+  if (!trimmed) return { ok: false, message: "Expression is empty" };
+  try {
+    CronExpressionParser.parse(trimmed);
+    return { ok: true, message: null };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ── Schedule preview ───────────────────────────────────────────────
+
+/**
+ * Compute the next N fire dates for an interval trigger (ms between fires).
+ * Returns an empty array when intervalMs is not positive.
+ */
+export function nextRunsForInterval(
+  intervalMs: number,
+  count: number,
+  from = new Date(),
+): Date[] {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return [];
+  const results: Date[] = [];
+  for (let i = 1; i <= count; i++) {
+    results.push(new Date(from.getTime() + intervalMs * i));
+  }
+  return results;
+}
+
+/**
+ * Compute the next N fire dates for a cron expression.
+ * Returns an empty array when parsing fails.
+ */
+export function nextRunsForCron(
+  expr: string,
+  count: number,
+  from = new Date(),
+): Date[] {
+  const trimmed = expr.trim();
+  if (!trimmed) return [];
+  try {
+    const schedule = CronExpressionParser.parse(trimmed, {
+      currentDate: from,
+    });
+    const results: Date[] = [];
+    for (let i = 0; i < count; i++) {
+      results.push(schedule.next().toDate());
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Validates the kind-specific payload fields only (no schedule validation).
  * Returns an error message when invalid, null when valid.
@@ -337,24 +405,9 @@ export function validateForm(
   if (form.triggerType === "cron") {
     const cronTrimmed = form.cronExpression.trim();
     if (!cronTrimmed) return t("heartbeatsview.validationCronRequired");
-    const cronParts = cronTrimmed.split(/\s+/);
-    if (cronParts.length !== 5) {
-      return t("heartbeatsview.validationCronFiveFields");
-    }
-    const ranges = [
-      { name: t("heartbeatsview.cronFieldMinute") },
-      { name: t("heartbeatsview.cronFieldHour") },
-      { name: t("heartbeatsview.cronFieldDay") },
-      { name: t("heartbeatsview.cronFieldMonth") },
-      { name: t("heartbeatsview.cronFieldWeekday") },
-    ];
-    for (let index = 0; index < 5; index += 1) {
-      if (!/^[\d,\-*/]+$/.test(cronParts[index])) {
-        return t("heartbeatsview.validationCronInvalidField", {
-          field: ranges[index]?.name ?? "",
-          value: cronParts[index] ?? "",
-        });
-      }
+    const cronResult = validateCronExpression(cronTrimmed);
+    if (!cronResult.ok) {
+      return `${t("triggers.cronError")} ${cronResult.message}`;
     }
   }
   if (form.maxRuns.trim() && !parsePositiveInteger(form.maxRuns)) {

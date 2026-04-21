@@ -1,7 +1,7 @@
 const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
 	[
 		"OWNER_INBOX",
-		new Set(["INBOX", "GMAIL_ACTION"]),
+		new Set(["INBOX", "GMAIL_ACTION", "SEND_EMAIL", "SEND_MESSAGE"]),
 	],
 	[
 		"OWNER_CALENDAR",
@@ -12,11 +12,22 @@ const ACTION_UMBRELLA_DELEGATES = new Map<string, ReadonlySet<string>>([
 			"UPDATE_MEETING_PREFERENCES",
 			"CALENDLY",
 			"SCHEDULING",
+			"SCHEDULE_EVENT",
+			"MODIFY_EVENT",
+			"CANCEL_EVENT",
 		]),
 	],
 	[
 		"OWNER_SEND_MESSAGE",
-		new Set(["CROSS_CHANNEL_SEND"]),
+		new Set(["CROSS_CHANNEL_SEND", "SEND_MESSAGE"]),
+	],
+	[
+		"CALL_USER",
+		new Set(["MAKE_CALL"]),
+	],
+	[
+		"CALL_EXTERNAL",
+		new Set(["MAKE_CALL"]),
 	],
 	[
 		"OWNER_RELATIONSHIP",
@@ -50,6 +61,15 @@ function isUmbrellaDelegatePair(left: string, right: string): boolean {
 	return rightDelegates?.has(left) ?? false;
 }
 
+function shareUmbrellaDelegateFamily(left: string, right: string): boolean {
+	for (const delegates of ACTION_UMBRELLA_DELEGATES.values()) {
+		if (delegates.has(left) && delegates.has(right)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function actionsAreScenarioEquivalent(
 	left: string | null | undefined,
 	right: string | null | undefined,
@@ -62,7 +82,10 @@ export function actionsAreScenarioEquivalent(
 	if (normalizedLeft === normalizedRight) {
 		return true;
 	}
-	return isUmbrellaDelegatePair(normalizedLeft, normalizedRight);
+	return (
+		isUmbrellaDelegatePair(normalizedLeft, normalizedRight) ||
+		shareUmbrellaDelegateFamily(normalizedLeft, normalizedRight)
+	);
 }
 
 export function actionMatchesScenarioExpectation(

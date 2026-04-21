@@ -125,7 +125,7 @@ const requiredWorkflowSnippets = [
   "Start-Process -FilePath $installer",
   "Extract Windows app bundle for Inno Setup",
   '$extractDir = "C:\\m"',
-  "milady-dist/entry.js found",
+  "eliza-dist/entry.js found",
   "Build Inno Setup installer",
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\m"',
@@ -903,7 +903,7 @@ function assertElectrobunConfigHasPostWrapSigner() {
 function assertMacArtifactStagerLooksCorrect() {
   const script = readElectrobunFile("scripts", "stage-macos-release-artifacts.sh");
   const requiredSnippets = [
-    'find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
+    'find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
     "no macOS updater tarball found",
     'DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"',
     'codesign -d --entitlements :- "$STAGED_APP_PATH"',

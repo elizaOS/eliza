@@ -311,13 +311,20 @@ export const blockWebsitesAction: Action & {
 
     if (llmPlan?.shouldAct === false && explicitWebsites.length === 0) {
       return {
-        success: true,
+        success: false,
         text:
           llmPlan.response ??
           "I noted those websites and will wait for your confirmation before blocking them.",
+        values: {
+          success: false,
+          error: "DEFERRED_AWAITING_CONFIRMATION",
+          deferred: true,
+          noop: true,
+        },
         data: {
           deferred: true,
           noop: true,
+          error: "DEFERRED_AWAITING_CONFIRMATION",
         },
       };
     }

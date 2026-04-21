@@ -2,6 +2,7 @@ import {
   applySubscriptionCredentials,
   deleteCredentials,
 } from "@elizaos/agent/auth";
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
@@ -40,19 +41,7 @@ type MutableElizaConfig = Partial<ElizaConfig> & {
   serviceRouting?: ServiceRoutingConfig;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function trimToUndefined(value: string | null | undefined): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+const trimToUndefined = asNonEmptyString;
 
 function ensureEnv(config: MutableElizaConfig): Record<string, unknown> {
   config.env ??= {};

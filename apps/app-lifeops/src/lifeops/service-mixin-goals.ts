@@ -4,6 +4,9 @@ import type {
   LifeOpsActiveReminderView,
   LifeOpsChannelPolicy,
   LifeOpsGoalDefinition,
+  LifeOpsGoalExperienceLoop,
+  LifeOpsGoalExperienceLoopMatch,
+  LifeOpsGoalExperienceLoopSuggestion,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoalSupportSuggestion,
@@ -15,6 +18,7 @@ import type {
   LifeOpsReminderPreference,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
+  LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import {
@@ -71,6 +75,60 @@ import {
   OVERVIEW_HORIZON_MINUTES,
 } from "./service-constants.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+
+const GOAL_EXPERIENCE_STOP_WORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "your",
+  "want",
+  "goal",
+  "another",
+  "quarter",
+  "month",
+  "year",
+]);
+
+function stableUnique<T>(values: readonly T[]): T[] {
+  return [...new Set(values)];
+}
+
+function tokenizeGoalText(value: string | null | undefined): string[] {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return [];
+  }
+  return stableUnique(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(
+        (token) =>
+          token.length >= 2 &&
+          !GOAL_EXPERIENCE_STOP_WORDS.has(token) &&
+          !/^\d{4}$/.test(token),
+      ),
+  );
+}
+
+function buildGoalSimilarityTokens(args: {
+  title: string;
+  description?: string | null;
+  successCriteria?: Record<string, unknown> | null;
+}): string[] {
+  return stableUnique([
+    ...tokenizeGoalText(args.title),
+    ...tokenizeGoalText(args.description ?? ""),
+    ...tokenizeGoalText(
+      args.successCriteria ? JSON.stringify(args.successCriteria) : "",
+    ),
+  ]);
+}
 
 /** @internal */
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
@@ -454,6 +512,88 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           occurrenceId: null,
         });
       }
+      return suggestions.slice(0, 3);
+    }
+
+    public scoreGoalSimilarity(args: {
+      reference: {
+        title: string;
+        description?: string | null;
+        successCriteria?: Record<string, unknown> | null;
+      };
+      candidate: LifeOpsGoalDefinition;
+    }): number {
+      const referenceTokens = buildGoalSimilarityTokens({
+        title: args.reference.title,
+        description: args.reference.description,
+        successCriteria: args.reference.successCriteria,
+      });
+      if (referenceTokens.length === 0) {
+        return 0;
+      }
+      const candidateTokens = new Set(
+        buildGoalSimilarityTokens({
+          title: args.candidate.title,
+          description: args.candidate.description,
+          successCriteria: normalizeOptionalRecord(
+            args.candidate.successCriteria,
+            "successCriteria",
+          ),
+        }),
+      );
+      const overlap = referenceTokens.filter((token) =>
+        candidateTokens.has(token),
+      ).length;
+      if (overlap === 0) {
+        return 0;
+      }
+      const referenceTitleTokens = tokenizeGoalText(args.reference.title);
+      const candidateTitleTokens = new Set(tokenizeGoalText(args.candidate.title));
+      const titleOverlap = referenceTitleTokens.filter((token) =>
+        candidateTitleTokens.has(token),
+      ).length;
+      const baseScore = overlap / referenceTokens.length;
+      const titleBonus =
+        referenceTitleTokens.length > 0
+          ? (titleOverlap / referenceTitleTokens.length) * 0.35
+          : 0;
+      return Math.max(0, Math.min(1, baseScore * 0.75 + titleBonus));
+    }
+
+    public buildExperienceLoopSuggestions(args: {
+      goal: LifeOpsGoalDefinition;
+      linkedDefinitions: LifeOpsTaskDefinition[];
+      recentCompletions: LifeOpsOccurrenceView[];
+    }): LifeOpsGoalExperienceLoopSuggestion[] {
+      const suggestions: LifeOpsGoalExperienceLoopSuggestion[] = [];
+      const seen = new Set<string>();
+      const pushSuggestion = (suggestion: LifeOpsGoalExperienceLoopSuggestion) => {
+        const key = `${suggestion.definitionId ?? "none"}:${suggestion.title.toLowerCase()}`;
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        suggestions.push(suggestion);
+      };
+
+      for (const completion of args.recentCompletions.slice(0, 2)) {
+        pushSuggestion({
+          sourceGoalId: args.goal.id,
+          definitionId: completion.definitionId,
+          title: completion.title,
+          detail: `Carry forward "${completion.title}" because it was one of the support steps you actually completed when "${args.goal.title}" stayed on track.`,
+        });
+      }
+
+      for (const definition of args.linkedDefinitions.slice(0, 3)) {
+        pushSuggestion({
+          sourceGoalId: args.goal.id,
+          definitionId: definition.id,
+          title: definition.title,
+          detail: `Re-use "${definition.title}" if the new goal needs the same support structure that helped "${args.goal.title}".`,
+        });
+      }
+
       return suggestions.slice(0, 3);
     }
 
@@ -848,6 +988,135 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return this.buildGoalReview(goalRecord, now, {
         allowSemanticEvaluation: true,
       });
+    }
+
+    async buildGoalExperienceLoop(
+      reference: {
+        goalId?: string | null;
+        title: string;
+        description?: string | null;
+        successCriteria?: Record<string, unknown> | null;
+      },
+      now = new Date(),
+    ): Promise<LifeOpsGoalExperienceLoop> {
+      const goalRecords = await this.listGoals();
+      const matches: Array<
+        LifeOpsGoalExperienceLoopMatch & { readonly scoreSort: number }
+      > = [];
+      for (const record of goalRecords) {
+        if (record.goal.id === reference.goalId) {
+          continue;
+        }
+        if (record.goal.status !== "satisfied") {
+          continue;
+        }
+        const score = this.scoreGoalSimilarity({
+          reference,
+          candidate: record.goal,
+        });
+        if (score < 0.34) {
+          continue;
+        }
+        const review = await this.buildGoalReview(record, now, {
+          allowSemanticEvaluation: false,
+        });
+        matches.push({
+          goalId: review.goal.id,
+          title: review.goal.title,
+          description: review.goal.description,
+          score: Number(score.toFixed(3)),
+          scoreSort: score,
+          status: review.goal.status,
+          reviewState: review.summary.reviewState,
+          linkedDefinitionCount: review.summary.linkedDefinitionCount,
+          completedLast7Days: review.summary.completedLast7Days,
+          lastActivityAt: review.summary.lastActivityAt,
+          explanation: review.summary.explanation,
+          carryForwardSuggestions: this.buildExperienceLoopSuggestions({
+            goal: review.goal,
+            linkedDefinitions: review.linkedDefinitions,
+            recentCompletions: review.recentCompletions,
+          }),
+        });
+      }
+
+      matches.sort((left, right) => right.scoreSort - left.scoreSort);
+      const similarGoals = matches
+        .slice(0, 3)
+        .map(({ scoreSort: _scoreSort, ...match }) => match);
+      const carryForwardSeen = new Set<string>();
+      const suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[] = [];
+      for (const match of similarGoals) {
+        for (const suggestion of match.carryForwardSuggestions) {
+          const key = `${suggestion.sourceGoalId}:${suggestion.definitionId ?? "none"}:${suggestion.title.toLowerCase()}`;
+          if (carryForwardSeen.has(key)) {
+            continue;
+          }
+          carryForwardSeen.add(key);
+          suggestedCarryForward.push(suggestion);
+        }
+      }
+      const topMatch = similarGoals[0] ?? null;
+
+      return {
+        referenceGoalId: reference.goalId ?? null,
+        referenceTitle: reference.title,
+        similarGoals,
+        suggestedCarryForward: suggestedCarryForward.slice(0, 4),
+        summary: topMatch
+          ? `A similar completed goal, "${topMatch.title}", is the best carry-forward reference for "${reference.title}".`
+          : null,
+      };
+    }
+
+    async reviewGoalsForWeek(now = new Date()): Promise<LifeOpsWeeklyGoalReview> {
+      const goals = (await this.repository.listGoals(this.agentId())).filter(
+        (goal) => goal.status === "active",
+      );
+      const reviews: LifeOpsGoalReview[] = [];
+      for (const goal of goals) {
+        reviews.push(
+          await this.buildGoalReview(
+            {
+              goal,
+              links: await this.repository.listGoalLinksForGoal(
+                this.agentId(),
+                goal.id,
+              ),
+            },
+            now,
+            { allowSemanticEvaluation: false },
+          ),
+        );
+      }
+      const onTrack = reviews.filter(
+        (review) => review.summary.reviewState === "on_track",
+      );
+      const atRisk = reviews.filter(
+        (review) => review.summary.reviewState === "at_risk",
+      );
+      const needsAttention = reviews.filter(
+        (review) => review.summary.reviewState === "needs_attention",
+      );
+      const idle = reviews.filter(
+        (review) => review.summary.reviewState === "idle",
+      );
+
+      return {
+        generatedAt: now.toISOString(),
+        reviewWindow: "this_week",
+        summary: {
+          totalGoals: reviews.length,
+          onTrackCount: onTrack.length,
+          atRiskCount: atRisk.length,
+          needsAttentionCount: needsAttention.length,
+          idleCount: idle.length,
+        },
+        onTrack,
+        atRisk,
+        needsAttention,
+        idle,
+      };
     }
 
     async explainOccurrence(

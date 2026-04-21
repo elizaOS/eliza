@@ -1,4 +1,5 @@
 export type { TrainingServiceLike, TrainingServiceWithRuntime } from "./training-service-like.js";
+export { TrainingService } from "./training-service.js";
 export { detectAvailableBackends, clearBackendCache, type BackendAvailability } from "./training-backend-check.js";
 export {
   bootstrapOptimizationFromAccumulatedTrajectories,

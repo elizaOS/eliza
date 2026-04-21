@@ -29,6 +29,9 @@ import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { xReadAction } from "./actions/x-read.js";
 import { lifeAction } from "./actions/life.js";
 import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
+import { crossPlatformGatewayAction } from "./actions/cross-platform-gateway.js";
+import { chatThreadControlAction } from "./actions/chat-thread-control.js";
+import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
 // T9f — Morning/night check-in engine (plan §6.23).
 import {
   runMorningCheckinAction,
@@ -55,6 +58,7 @@ import {
 } from "./actions/autofill.js";
 import { dossierAction } from "./actions/dossier.js";
 import { bookTravelAction } from "./actions/book-travel.js";
+import { toggleLifeOpsFeatureAction } from "./actions/feature-toggle.js";
 // T7f — meeting dossier (plan §6.7).
 import { generateDossierAction } from "./dossier/action.js";
 // T8a — travel-time awareness (plan §6.9).
@@ -147,6 +151,40 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
   return enableValue === "0" || enableValue === "false";
 }
 
+const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
+  "eliza:lifeops:plugin:init-failures";
+
+async function recordTaskInitFailure(
+  runtime: IAgentRuntime,
+  label: string,
+  message: string,
+): Promise<void> {
+  try {
+    const existing =
+      (await runtime.getCache<Record<string, string>>(
+        LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY,
+      )) ?? {};
+    existing[label] = message;
+    await runtime.setCache(LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY, existing);
+  } catch {
+    // Cache not available; the logger.error is the primary signal.
+  }
+}
+
+/**
+ * Kick off task registration AFTER `runtime.initPromise` resolves — this step
+ * cannot be awaited inside `init()` because `init()` runs before the runtime
+ * itself has finished initializing. That means failures here are NOT fatal
+ * to plugin load; the plugin reports as "loaded" and the specific task
+ * subsystem reports as "unavailable". The failure is surfaced via the
+ * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
+ * via logger.error so ops tooling can alert on it.
+ *
+ * Prior docs in REMEDIATION_LOG.md item #8 stated that this path should
+ * "abort init after bounded retries" — that claim is NOT currently enforced
+ * because aborting here would orphan an already-loaded plugin. Do not read
+ * REMEDIATION_LOG #8 as a live contract; read this comment instead.
+ */
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -161,8 +199,9 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       args.runtime.logger?.error?.(
-        `${args.prefix} ${args.label} init failed after runtime initialization: ${message}`,
+        `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
       );
+      void recordTaskInitFailure(args.runtime, args.label, message);
     });
 }
 
@@ -182,8 +221,11 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerInboxAction,
     ownerScheduleAction,
     xReadAction,
+    scheduleXDmReplyAction,
     lifeAction,
     updateOwnerProfileAction,
+    crossPlatformGatewayAction,
+    chatThreadControlAction,
     runMorningCheckinAction,
     runNightCheckinAction,
     relationshipAction,
@@ -195,6 +237,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     lifeOpsComputerUseAction,
     crossChannelSendAction,
     bookTravelAction,
+    toggleLifeOpsFeatureAction,
     publishDeviceIntentAction,
     intentSyncAction,
     approveRequestAction,
@@ -226,18 +269,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
-    // Bootstrap LifeOps database tables before anything else runs.
-    try {
-      await LifeOpsRepository.bootstrapSchema(runtime);
-      logger.info("[lifeops] Database schema bootstrapped");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(
-        `[lifeops] Failed to bootstrap database schema: ${msg}`,
-      );
-      throw error instanceof Error ? error : new Error(msg);
-    }
-
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
 

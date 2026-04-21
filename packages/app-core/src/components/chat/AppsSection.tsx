@@ -185,7 +185,10 @@ export function AppsSection() {
               key={app.name}
               type="button"
               title={displayName}
-              aria-label={`Launch ${displayName}`}
+              aria-label={t("chatsidebar.launchApp", {
+                defaultValue: "Launch {{name}}",
+                name: displayName,
+              })}
               className={`flex h-9 w-9 items-center justify-center rounded-xl border border-border/35 bg-card/72 text-base transition-all hover:border-accent/30 hover:bg-bg-hover/70 hover:scale-110 ${ringClass}`}
               onClick={() => void handleLaunch(app)}
             >

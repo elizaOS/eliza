@@ -22,7 +22,9 @@
 		"skipLibCheck": true,
 		"paths": {
 			"@elizaos/core": ["./src/index.node.ts"],
-			"@elizaos/core/*": ["./src/*"]
+			"@elizaos/core/*": ["./src/*"],
+			"@elizaos/shared": ["../shared/src/index.ts"],
+			"@elizaos/shared/*": ["../shared/src/*"]
 		}
 	},
 	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],

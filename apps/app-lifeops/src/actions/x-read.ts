@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import {
   ModelType,
+  logger,
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
@@ -240,7 +241,15 @@ export const xReadAction: Action = {
         status.grant &&
           status.grantedCapabilities.includes("x.read"),
       );
-    } catch {
+    } catch (error) {
+      logger.warn(
+        {
+          boundary: "lifeops",
+          component: "x-read",
+          detail: error instanceof Error ? error.message : String(error),
+        },
+        "[x-read] getXConnectorStatus failed; action validation defaulting to false",
+      );
       return false;
     }
   },
@@ -295,11 +304,16 @@ export const xReadAction: Action = {
       params.limit === undefined
     ) {
       return respond({
-        success: true,
+        success: false,
         text:
           llmPlan.response ??
           "Do you want me to read your X DMs, timeline, mentions, or run a search?",
-        data: { noop: true },
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
       });
     }
 

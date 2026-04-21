@@ -17,6 +17,16 @@ function makeMessage() {
   >[1];
 }
 
+function makeMessageWithText(text: string) {
+  return {
+    entityId: "00000000-0000-0000-0000-000000000001",
+    roomId: "00000000-0000-0000-0000-000000000002",
+    content: { text, ownerAccess: true },
+  } as unknown as Parameters<
+    NonNullable<typeof callUserAction.handler>
+  >[1];
+}
+
 function makeRuntime(settings: Record<string, string> = {}) {
   return {
     agentId: "00000000-0000-0000-0000-000000000003",
@@ -77,6 +87,33 @@ describe("CALL_USER confirmation gate", () => {
     expect(
       data.requiresConfirmation === true || data.error === "PERMISSION_DENIED",
     ).toBe(true);
+  });
+
+  test("records a standing escalation policy instead of asking for immediate confirmation", async () => {
+    const runtime = makeRuntime();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const result = await callUserAction.handler!(
+      runtime,
+      {
+        entityId: runtime.agentId,
+        roomId: "00000000-0000-0000-0000-000000000002",
+        agentId: runtime.agentId,
+        content: {
+          text: "If you get stuck in the browser or on my computer, call me and let me jump in to unblock it.",
+        },
+      } as Parameters<NonNullable<typeof callUserAction.handler>>[1],
+      undefined,
+      { parameters: {} },
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("escalate by phone");
+    expect(result?.text).toContain("browser or on your computer");
+    expect(result?.data).toMatchObject({
+      actionName: "CALL_USER",
+      policyRecorded: true,
+      channel: "phone_call",
+    });
   });
 });
 
