@@ -3,12 +3,16 @@ import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../src/lifeops/service.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
-async function createDiscordBrowserService(agentId: string): Promise<LifeOpsService> {
+async function createDiscordBrowserService(
+  agentId: string,
+): Promise<LifeOpsService> {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,
     handleTurn: async () => ({ text: "ok" }),
     useModel: async () => {
-      throw new Error("useModel should not be called in Discord connector tests");
+      throw new Error(
+        "useModel should not be called in Discord connector tests",
+      );
     },
   });
   await LifeOpsRepository.bootstrapSchema(runtime);
@@ -134,6 +138,17 @@ describe("LifeOps Discord owner connector via browser companion", () => {
       count: 2,
       selectedChannelId: "222",
     });
+    expect(status.browserAccess).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "lifeops_browser",
+          active: true,
+          authState: "logged_in",
+          tabState: "dm_inbox_visible",
+          nextAction: "none",
+        }),
+      ]),
+    );
     expect(status.dmInbox.previews).toMatchObject([
       { label: "Alice", channelId: "111" },
       { label: "Bob", channelId: "222", selected: true },
@@ -253,6 +268,19 @@ describe("LifeOps Discord owner connector via browser companion", () => {
       count: 2,
       selectedChannelId: "222",
     });
+    expect(status.browserAccess).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "lifeops_browser",
+          active: true,
+          nextAction: "none",
+        }),
+        expect.objectContaining({
+          source: "desktop_browser",
+          active: false,
+        }),
+      ]),
+    );
     expect(status.grant?.metadata).toMatchObject({
       sessionId: session.id,
       companionId: expect.any(String),

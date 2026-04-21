@@ -10,7 +10,7 @@
  * @module actions/read-messages
  */
 
-import type { Action, HandlerOptions } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
 import {
@@ -100,7 +100,7 @@ export const readMessagesAction: Action = {
       if (entityId) {
         // Direct entity ID lookup — find person in graph
         const { getGraphService } = await import("./connector-resolver.js");
-        const graphService = getGraphService(runtime);
+        const graphService = await getGraphService(runtime);
         if (!graphService) {
           return {
             text: "Relationships service not available.",
@@ -212,7 +212,7 @@ export const readMessagesAction: Action = {
 
       const footer =
         `\nReachable platforms: ${reachable.join(", ") || "none"}` +
-        "\nUse SEND_MESSAGE with recipient name to reply on the best platform." +
+        "\nUse AGENT_SEND_MESSAGE with recipient name to reply on the best platform." +
         "\nTo save to clipboard, use CLIPBOARD_WRITE.";
 
       return {
@@ -283,4 +283,34 @@ export const readMessagesAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What have Jill and I been talking about recently?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Conversations with Jill Park across discord and telegram — 22 messages total.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me my last DMs with Marco on Telegram.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Conversations with Marco Pierre on telegram — 8 messages total.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

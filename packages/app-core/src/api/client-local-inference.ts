@@ -5,25 +5,43 @@
  * raw `fetch` from UI code.
  */
 
+import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
+import type { PublicRegistration } from "../services/local-inference/handler-registry";
+import type { ProviderStatus } from "../services/local-inference/providers";
+import type {
+  RoutingPolicy,
+  RoutingPreferences,
+} from "../services/local-inference/routing-preferences";
 import type {
   ActiveModelState,
+  AgentModelSlot,
   CatalogModel,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
+import type { VerifyResult } from "../services/local-inference/verify";
 import { ElizaClient } from "./client-base";
 
 export type {
   ActiveModelState,
+  AgentModelSlot,
   CatalogModel,
+  DeviceBridgeStatus,
   DownloadJob,
   HardwareProbe,
   InstalledModel,
+  ModelAssignments,
   ModelBucket,
   ModelHubSnapshot,
+  ProviderStatus,
+  PublicRegistration,
+  RoutingPolicy,
+  RoutingPreferences,
+  VerifyResult,
 };
 
 declare module "./client-base" {
@@ -46,6 +64,28 @@ declare module "./client-base" {
     setLocalInferenceActive(modelId: string): Promise<ActiveModelState>;
     clearLocalInferenceActive(): Promise<ActiveModelState>;
     uninstallLocalInferenceModel(id: string): Promise<{ removed: boolean }>;
+    getLocalInferenceDeviceStatus(): Promise<DeviceBridgeStatus>;
+    getLocalInferenceAssignments(): Promise<{
+      assignments: ModelAssignments;
+    }>;
+    setLocalInferenceAssignment(
+      slot: AgentModelSlot,
+      modelId: string | null,
+    ): Promise<{ assignments: ModelAssignments }>;
+    verifyLocalInferenceModel(id: string): Promise<VerifyResult>;
+    getLocalInferenceRouting(): Promise<{
+      registrations: PublicRegistration[];
+      preferences: RoutingPreferences;
+    }>;
+    setLocalInferencePreferredProvider(
+      slot: AgentModelSlot,
+      provider: string | null,
+    ): Promise<{ preferences: RoutingPreferences }>;
+    setLocalInferencePolicy(
+      slot: AgentModelSlot,
+      policy: RoutingPolicy | null,
+    ): Promise<{ preferences: RoutingPreferences }>;
+    getLocalInferenceProviders(): Promise<{ providers: ProviderStatus[] }>;
   }
 }
 
@@ -139,4 +179,71 @@ ElizaClient.prototype.uninstallLocalInferenceModel = async function (
     `/api/local-inference/installed/${encodeURIComponent(id)}`,
     { method: "DELETE" },
   );
+};
+
+ElizaClient.prototype.getLocalInferenceDeviceStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/device");
+};
+
+ElizaClient.prototype.getLocalInferenceAssignments = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/assignments");
+};
+
+ElizaClient.prototype.setLocalInferenceAssignment = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  modelId: string | null,
+) {
+  return this.fetch("/api/local-inference/assignments", {
+    method: "POST",
+    body: JSON.stringify({ slot, modelId }),
+  });
+};
+
+ElizaClient.prototype.verifyLocalInferenceModel = async function (
+  this: ElizaClient,
+  id: string,
+) {
+  return this.fetch(
+    `/api/local-inference/installed/${encodeURIComponent(id)}/verify`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.getLocalInferenceRouting = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/routing");
+};
+
+ElizaClient.prototype.setLocalInferencePreferredProvider = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  provider: string | null,
+) {
+  return this.fetch("/api/local-inference/routing/preferred", {
+    method: "POST",
+    body: JSON.stringify({ slot, provider }),
+  });
+};
+
+ElizaClient.prototype.setLocalInferencePolicy = async function (
+  this: ElizaClient,
+  slot: AgentModelSlot,
+  policy: RoutingPolicy | null,
+) {
+  return this.fetch("/api/local-inference/routing/policy", {
+    method: "POST",
+    body: JSON.stringify({ slot, policy }),
+  });
+};
+
+ElizaClient.prototype.getLocalInferenceProviders = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/local-inference/providers");
 };

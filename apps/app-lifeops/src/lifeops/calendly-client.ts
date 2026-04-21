@@ -40,8 +40,11 @@ export class CalendlyError extends Error {
   }
 }
 
-const CALENDLY_BASE_URL = "https://api.calendly.com";
 const REQUEST_TIMEOUT_MS = 12_000;
+
+function getCalendlyBaseUrl(): string {
+  return process.env.MILADY_MOCK_CALENDLY_BASE ?? "https://api.calendly.com";
+}
 
 export function readCalendlyCredentialsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -107,7 +110,7 @@ async function calendlyRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${CALENDLY_BASE_URL}${path}`;
+  const url = path.startsWith("http") ? path : `${getCalendlyBaseUrl()}${path}`;
   const response = await fetch(url, {
     ...init,
     headers: {

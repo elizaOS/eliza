@@ -224,6 +224,24 @@ export function hasGoogleGmailSendCapability(grant: LifeOpsConnectorGrant): bool
   return capabilities.has("google.gmail.send");
 }
 
+export function hasGoogleGmailManageCapability(
+  grant: LifeOpsConnectorGrant,
+): boolean {
+  const capabilities = new Set(normalizeGrantCapabilities(grant.capabilities));
+  if (capabilities.has("google.gmail.manage")) {
+    return true;
+  }
+  const scopes = new Set(
+    (grant.grantedScopes ?? [])
+      .map((scope) => (typeof scope === "string" ? scope.trim() : ""))
+      .filter(Boolean),
+  );
+  return (
+    scopes.has("https://www.googleapis.com/auth/gmail.modify") &&
+    scopes.has("https://www.googleapis.com/auth/gmail.settings.basic")
+  );
+}
+
 export function normalizeCalendarAttendees(
   value: unknown,
 ): Array<{ email: string; displayName?: string; optional?: boolean }> {

@@ -156,10 +156,20 @@ declare module "./client-base" {
       skillId: string,
       autoRefresh: boolean,
     ): Promise<void>;
-    updateSkill(
+    enableSkill(
       skillId: string,
-      enabled: boolean,
-    ): Promise<{ skill: SkillInfo }>;
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
+    disableSkill(
+      skillId: string,
+    ): Promise<{
+      ok: boolean;
+      skill: SkillInfo;
+      scanStatus: string | null;
+    }>;
     createSkill(
       name: string,
       description: string,
@@ -730,14 +740,21 @@ ElizaClient.prototype.uninstallMarketplaceSkill = async function (
   });
 };
 
-ElizaClient.prototype.updateSkill = async function (
+ElizaClient.prototype.enableSkill = async function (
   this: ElizaClient,
   skillId,
-  enabled,
 ) {
-  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ enabled }),
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/enable`, {
+    method: "POST",
+  });
+};
+
+ElizaClient.prototype.disableSkill = async function (
+  this: ElizaClient,
+  skillId,
+) {
+  return this.fetch(`/api/skills/${encodeURIComponent(skillId)}/disable`, {
+    method: "POST",
   });
 };
 
@@ -1132,8 +1149,18 @@ ElizaClient.prototype.getSignalStatus = async function (
 ElizaClient.prototype.startSignalPairing = async function (
   this: ElizaClient,
   accountId = "default",
-) {
-  return this.fetch("/api/signal/pair", {
+): Promise<{
+  ok: boolean;
+  accountId: string;
+  status: string;
+  error?: string;
+}> {
+  return this.fetch<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+    error?: string;
+  }>("/api/signal/pair", {
     method: "POST",
     body: JSON.stringify({ accountId }),
   });
@@ -1142,8 +1169,16 @@ ElizaClient.prototype.startSignalPairing = async function (
 ElizaClient.prototype.stopSignalPairing = async function (
   this: ElizaClient,
   accountId = "default",
-) {
-  return this.fetch("/api/signal/pair/stop", {
+): Promise<{
+  ok: boolean;
+  accountId: string;
+  status: string;
+}> {
+  return this.fetch<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+  }>("/api/signal/pair/stop", {
     method: "POST",
     body: JSON.stringify({ accountId }),
   });

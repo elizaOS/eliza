@@ -6,6 +6,8 @@ import type {
 import { LifeOpsBrowserRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BackgroundState,
+  CompanionAutoPairRequest,
+  CompanionAutoPairResponse,
   CompanionConfig,
   CompanionSession,
   CompanionSyncRequest,
@@ -14,7 +16,9 @@ import type {
   PopupResponse,
 } from "../src/protocol";
 import {
+  candidateApiBaseUrlsFromTabs,
   clearCompanionConfig,
+  discoverReachableLifeOpsApiBaseUrls,
   loadBackgroundState,
   loadCompanionConfig,
   normalizeCompanionConfig,
@@ -35,9 +39,9 @@ import {
   addTabsRemovedListener,
   addTabsUpdatedListener,
   addWindowFocusListener,
-  clearAlarm,
   createAlarm,
   createTab,
+  executeScriptInMainWorld,
   focusWindow,
   getAllWindows,
   getDynamicRules,
@@ -60,6 +64,8 @@ const SYNC_ALARM = "lifeops-browser-sync";
 const SYNC_INTERVAL_MINUTES = 0.5;
 const SYNC_DEBOUNCE_MS = 750;
 const MAX_REMEMBERED_TABS = 10;
+const AUTO_PAIR_COOLDOWN_MS = 30_000;
+const AUTO_PAIR_ROUTE = "/api/lifeops/browser/companions/auto-pair";
 
 let backgroundState: BackgroundState = {
   config: null,
@@ -75,8 +81,10 @@ let backgroundState: BackgroundState = {
 let rememberedTabs: RememberedTab[] = [];
 let syncScheduled = false;
 let syncInFlight = false;
-let configInvalidated = false;
+let _configInvalidated = false;
 let activeSessionId: string | null = null;
+let autoPairInFlight = false;
+let lastAutoPairAttemptAt = 0;
 
 function canSyncUrl(url: string | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
@@ -88,6 +96,272 @@ function parseNumericId(value: string | null | undefined): number | null {
   }
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeOrigin(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value).origin.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function tabsForApiBaseUrl(
+  tabs: readonly { id?: number; url?: string }[],
+  apiBaseUrl: string,
+): number[] {
+  const origin = normalizeOrigin(apiBaseUrl);
+  if (!origin) {
+    return [];
+  }
+  return tabs
+    .map((tab) => ({
+      tabId: typeof tab.id === "number" ? tab.id : null,
+      origin: normalizeOrigin(tab.url),
+    }))
+    .filter(
+      (candidate): candidate is { tabId: number; origin: string } =>
+        candidate.tabId !== null && candidate.origin === origin,
+    )
+    .map((candidate) => candidate.tabId);
+}
+
+function buildAutoPairRequest(
+  config: CompanionConfig | null,
+): CompanionAutoPairRequest {
+  return {
+    browser: __LIFEOPS_BROWSER_KIND__,
+    profileId: config?.profileId ?? "default",
+    profileLabel: config?.profileLabel ?? "Default",
+    label: config?.label ?? "",
+    extensionVersion: getManifestVersion(),
+  };
+}
+
+function autoPairErrorMessage(
+  apiBaseUrl: string,
+  status: number | null,
+  error: string,
+): string {
+  if (status === 401 || status === 403) {
+    return `Open ${apiBaseUrl} while logged in, then reopen the LifeOps Browser popup to auto-pair.`;
+  }
+  if (status === 404) {
+    return `${apiBaseUrl} does not expose LifeOps browser auto-pair yet.`;
+  }
+  return error;
+}
+
+async function requestAutoPairFromBackground(
+  apiBaseUrl: string,
+  request: CompanionAutoPairRequest,
+): Promise<
+  | { ok: true; data: CompanionAutoPairResponse }
+  | { ok: false; status: number | null; error: string }
+> {
+  try {
+    const response = await fetch(`${apiBaseUrl}${AUTO_PAIR_ROUTE}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(request),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | CompanionAutoPairResponse
+      | { error?: string; message?: string }
+      | null;
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error:
+          (payload &&
+            typeof payload === "object" &&
+            (payload.error ?? payload.message)) ||
+          `${response.status} ${response.statusText}`,
+      };
+    }
+    return {
+      ok: true,
+      data: payload as CompanionAutoPairResponse,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function requestAutoPairFromTab(
+  tabId: number,
+  apiBaseUrl: string,
+  request: CompanionAutoPairRequest,
+): Promise<
+  | { ok: true; data: CompanionAutoPairResponse }
+  | { ok: false; status: number | null; error: string }
+> {
+  try {
+    const result = await executeScriptInMainWorld<{
+      ok: boolean;
+      status: number | null;
+      error?: string;
+      data?: CompanionAutoPairResponse;
+    }>(
+      tabId,
+      async (baseUrl, payload) => {
+        try {
+          const response = await fetch(
+            `${String(baseUrl)}/api/lifeops/browser/companions/auto-pair`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              credentials: "include",
+              body: JSON.stringify(payload),
+            },
+          );
+          const data = (await response.json().catch(() => null)) as
+            | CompanionAutoPairResponse
+            | { error?: string; message?: string }
+            | null;
+          if (!response.ok) {
+            return {
+              ok: false,
+              status: response.status,
+              error:
+                (data &&
+                  typeof data === "object" &&
+                  (data.error ?? data.message)) ||
+                `${response.status} ${response.statusText}`,
+            };
+          }
+          return {
+            ok: true,
+            status: response.status,
+            data: data as CompanionAutoPairResponse,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            status: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      [apiBaseUrl, request],
+    );
+    if (result.ok && result.data) {
+      return {
+        ok: true,
+        data: result.data,
+      };
+    }
+    return {
+      ok: false,
+      status: result.status,
+      error: result.error ?? "Auto-pair failed in the LifeOps tab.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function attemptAutoPair(
+  reason: string,
+): Promise<CompanionConfig | null> {
+  if (autoPairInFlight) {
+    return null;
+  }
+  const now = Date.now();
+  if (now - lastAutoPairAttemptAt < AUTO_PAIR_COOLDOWN_MS) {
+    return null;
+  }
+  lastAutoPairAttemptAt = now;
+  autoPairInFlight = true;
+
+  try {
+    const existingConfig = await loadCompanionConfig();
+    const request = buildAutoPairRequest(existingConfig);
+    const openTabs = await queryTabs({});
+    const candidateApiBaseUrls = [
+      ...new Set([
+        ...candidateApiBaseUrlsFromTabs(openTabs),
+        ...(await discoverReachableLifeOpsApiBaseUrls()),
+      ]),
+    ];
+    let lastErrorMessage =
+      "Open LifeOps in this browser, then reopen the popup to auto-pair.";
+
+    for (const apiBaseUrl of candidateApiBaseUrls) {
+      for (const tabId of tabsForApiBaseUrl(openTabs, apiBaseUrl)) {
+        const response = await requestAutoPairFromTab(
+          tabId,
+          apiBaseUrl,
+          request,
+        );
+        if (response.ok) {
+          const config = await saveCompanionConfig(response.data.config);
+          if (config) {
+            _configInvalidated = false;
+            createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
+            await setState({
+              config,
+              lastError: null,
+              lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
+            });
+            return config;
+          }
+        }
+        lastErrorMessage = autoPairErrorMessage(
+          apiBaseUrl,
+          response.status,
+          response.error,
+        );
+      }
+
+      const response = await requestAutoPairFromBackground(apiBaseUrl, request);
+      if (response.ok) {
+        const config = await saveCompanionConfig(response.data.config);
+        if (config) {
+          _configInvalidated = false;
+          createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
+          await setState({
+            config,
+            lastError: null,
+            lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
+          });
+          return config;
+        }
+      }
+      lastErrorMessage = autoPairErrorMessage(
+        apiBaseUrl,
+        response.status,
+        response.error,
+      );
+    }
+
+    await setState({
+      lastError:
+        reason === "popup"
+          ? lastErrorMessage
+          : (backgroundState.lastError ?? lastErrorMessage),
+    });
+    return null;
+  } finally {
+    autoPairInFlight = false;
+  }
 }
 
 async function saveState(): Promise<void> {
@@ -540,14 +814,15 @@ async function syncBlockingRules(apiBase: string): Promise<void> {
 }
 
 async function syncNow(reason: string): Promise<BackgroundState> {
-  if (configInvalidated) {
-    return backgroundState;
+  let config = await readConfig();
+  if (!config) {
+    config = await attemptAutoPair(reason);
   }
-  const config = await readConfig();
   if (!config) {
     await setState({
       syncing: false,
-      lastError: "LifeOps Browser companion is not paired.",
+      lastError:
+        backgroundState.lastError ?? "LifeOps Browser companion is not paired.",
       settingsSummary: null,
       lastSessionStatus: null,
     });
@@ -584,8 +859,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
     const isPairingInvalid =
       error instanceof RelayApiError && error.status === 401;
     if (isPairingInvalid) {
-      configInvalidated = true;
-      clearAlarm(SYNC_ALARM);
+      _configInvalidated = true;
       syncScheduled = false;
       await clearCompanionConfig();
     }
@@ -593,7 +867,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
       syncing: false,
       ...(isPairingInvalid && { config: null, settingsSummary: null }),
       lastError: isPairingInvalid
-        ? "Pairing is invalid. Please re-pair the browser companion."
+        ? "Pairing expired. LifeOps Browser will try to auto-pair again."
         : `${reason}: ${error instanceof Error ? error.message : String(error)}`,
     });
   } finally {
@@ -631,6 +905,10 @@ async function handlePopupMessage(
         backgroundState.config = config;
         return { ok: true, state: backgroundState };
       }
+      case "lifeops-browser:auto-pair": {
+        await attemptAutoPair("popup");
+        return { ok: true, state: backgroundState };
+      }
       case "lifeops-browser:save-config": {
         const nextConfig = normalizeCompanionConfig({
           ...(await readConfig()),
@@ -640,7 +918,7 @@ async function handlePopupMessage(
         if (!nextConfig) {
           throw new Error("companionId and pairingToken are required");
         }
-        configInvalidated = false;
+        _configInvalidated = false;
         await saveCompanionConfig(nextConfig);
         await setState({
           config: nextConfig,
@@ -652,6 +930,7 @@ async function handlePopupMessage(
         return { ok: true, state: backgroundState };
       }
       case "lifeops-browser:clear-config": {
+        _configInvalidated = false;
         await clearCompanionConfig();
         rememberedTabs = [];
         activeSessionId = null;

@@ -12,6 +12,7 @@
 
 import { readFile } from "fs/promises";
 import { parseArgs } from "util";
+import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
   createOpenAITeacher,
@@ -33,8 +34,78 @@ import {
   normalizeVertexBaseModel,
   orchestrateVertexTuning,
   type VertexTuningConfig,
+  type VertexTuningScope,
+  type VertexTuningSlot,
   waitForTuningJob,
 } from "./vertex-tuning.js";
+
+const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
+type AgentDecision = (typeof AGENT_DECISIONS)[number];
+
+const VERTEX_TUNING_SLOTS: readonly VertexTuningSlot[] = [
+  "should_respond",
+  "response_handler",
+  "action_planner",
+  "planner",
+  "response",
+  "media_description",
+];
+
+const VERTEX_TUNING_SCOPES: readonly VertexTuningScope[] = [
+  "global",
+  "organization",
+  "user",
+];
+
+function parseAgentContexts(value: string | undefined): AgentContext[] | undefined {
+  if (!value) return undefined;
+  const out: AgentContext[] = [];
+  for (const entry of value.split(",")) {
+    const trimmed = entry.trim();
+    if (
+      trimmed &&
+      (AGENT_CONTEXTS as readonly string[]).includes(trimmed)
+    ) {
+      out.push(trimmed as AgentContext);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseAgentDecisions(
+  value: string | undefined,
+): AgentDecision[] | undefined {
+  if (!value) return undefined;
+  const out: AgentDecision[] = [];
+  for (const entry of value.split(",")) {
+    const trimmed = entry.trim();
+    if (
+      trimmed &&
+      (AGENT_DECISIONS as readonly string[]).includes(trimmed)
+    ) {
+      out.push(trimmed as AgentDecision);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function parseVertexTuningSlot(value: string): VertexTuningSlot {
+  if (!(VERTEX_TUNING_SLOTS as readonly string[]).includes(value)) {
+    throw new Error(
+      `Invalid slot "${value}". Expected one of: ${VERTEX_TUNING_SLOTS.join(", ")}`,
+    );
+  }
+  return value as VertexTuningSlot;
+}
+
+function parseVertexTuningScope(value: string): VertexTuningScope {
+  if (!(VERTEX_TUNING_SCOPES as readonly string[]).includes(value)) {
+    throw new Error(
+      `Invalid scope "${value}". Expected one of: ${VERTEX_TUNING_SCOPES.join(", ")}`,
+    );
+  }
+  return value as VertexTuningScope;
+}
 
 function getTeacherModel(): TeacherModel {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -72,12 +143,8 @@ async function cmdGenerate(args: string[]) {
   const outputDir = values.output!;
   const concurrency = parseInt(values.concurrency!, 10);
 
-  const filterContexts = values.contexts
-    ? (values.contexts.split(",") as any[])
-    : undefined;
-  const filterDecisions = values.decisions
-    ? (values.decisions.split(",") as any[])
-    : undefined;
+  const filterContexts = parseAgentContexts(values.contexts);
+  const filterDecisions = parseAgentDecisions(values.decisions);
   const limitBlueprints = values.limitBlueprints
     ? parseInt(values.limitBlueprints, 10)
     : undefined;
@@ -286,16 +353,19 @@ async function cmdOrchestrate(args: string[]) {
     process.exit(1);
   }
 
+  const slot = parseVertexTuningSlot(values.slot!);
+  const scope = parseVertexTuningScope(values.scope!);
+
   const result = await orchestrateVertexTuning({
     projectId: values.project,
     region: values.region,
     gcsBucket: values.bucket,
-    baseModel: normalizeVertexBaseModel(values.model, values.slot as any),
+    baseModel: normalizeVertexBaseModel(values.model, slot),
     trainingDataPath: values.data,
     epochs: parseInt(values.epochs!, 10),
     displayName: values.name!,
-    slot: values.slot as any,
-    scope: values.scope as any,
+    slot,
+    scope,
     ownerId: values.ownerId,
   });
 

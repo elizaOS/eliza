@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   injectCredentialToClipboard,
   listPasswordItems,
@@ -43,6 +43,7 @@ type PasswordManagerParameters = {
   limit?: number;
 };
 
+
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
 ): PasswordManagerBridgeConfig {
@@ -70,8 +71,20 @@ function describeItems(items: PasswordManagerItem[]): string {
 }
 
 function failure(error: string, extra?: Record<string, unknown>): ActionResult {
+  const text =
+    error === "PERMISSION_DENIED"
+      ? "Password manager: permission denied — owner only."
+      : error === "MISSING_QUERY"
+        ? "Please tell me which site or login to search for (e.g., \"github\" or \"bank\")."
+        : error === "MISSING_ITEM_ID"
+          ? "Please identify which saved login to copy (search first to get an id)."
+          : error === "CONFIRMATION_REQUIRED"
+            ? "Password injection requires confirmed: true to copy to the clipboard."
+            : error === "UNKNOWN_SUBACTION"
+              ? "Password manager subaction unclear. Try: search <query>, list, inject_username, or inject_password."
+              : `Password manager request could not complete (${error}).`;
   return {
-    text: "",
+    text,
     success: false,
     values: { success: false, error },
     data: { actionName: "PASSWORD_MANAGER", error, ...(extra ?? {}) },
@@ -113,9 +126,18 @@ const examples: ActionExample[][] = [
 
 export const passwordManagerAction: Action = {
   name: "PASSWORD_MANAGER",
-  similes: ["ONEPASSWORD", "CREDENTIAL_LOOKUP", "COPY_CREDENTIAL"],
+  similes: [
+    "ONEPASSWORD",
+    "CREDENTIAL_LOOKUP",
+    "COPY_CREDENTIAL",
+    "LOOK_UP_PASSWORD",
+    "SHOW_SAVED_LOGINS",
+    "LIST_LOGINS",
+  ],
   description:
-    "Look up or copy credentials from your password manager (1Password CLI or ProtonPass). Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
+    "Look up or copy credentials from your password manager (1Password CLI or ProtonPass). " +
+    "Use this for requests like 'look up my GitHub password' or 'show me my saved logins for github.com'. " +
+    "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

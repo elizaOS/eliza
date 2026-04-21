@@ -43,6 +43,7 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
 } from "./auth";
+import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRuntimeState,
   clearCompatRuntimeRestart,
@@ -114,6 +115,7 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
+import { deviceBridge } from "../services/local-inference/device-bridge";
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
@@ -736,6 +738,7 @@ async function handleCompatRoute(
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+  if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
   // n8n routes — status surface (read-only), sidecar start (fire-and-forget),
   // and workflow CRUD proxy. Auth sits in front of every n8n route. The
@@ -1114,11 +1117,23 @@ export function patchHttpCreateServerForCompat(
       });
     };
 
-    if (typeof firstArg === "function") {
-      return originalCreateServer(wrappedListener);
-    }
+    const created =
+      typeof firstArg === "function"
+        ? originalCreateServer(wrappedListener)
+        : originalCreateServer(firstArg, wrappedListener);
 
-    return originalCreateServer(firstArg, wrappedListener);
+    // Attach the local-inference device-bridge WS upgrade handler to every
+    // HTTP server created through this patched factory. Safe to call on
+    // every server — `attachToHttpServer` is idempotent and only installs
+    // the upgrade listener once.
+    void deviceBridge.attachToHttpServer(created).catch((err) => {
+      logger.warn(
+        "[compat] Failed to attach device-bridge WS handler:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+
+    return created;
   }) as typeof http.createServer;
 
   return () => {

@@ -1,6 +1,6 @@
 import type { JSDOM } from "jsdom";
 
-export type BrowserWorkspaceMode = "desktop" | "web";
+export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
 
 export type BrowserWorkspaceOperation =
   | "list"
@@ -160,6 +160,10 @@ export interface BrowserWorkspaceTab {
   createdAt: string;
   updatedAt: string;
   lastFocusedAt: string | null;
+  liveViewUrl?: string | null;
+  interactiveLiveViewUrl?: string | null;
+  status?: string | null;
+  provider?: string | null;
 }
 
 export interface BrowserWorkspaceSnapshot {

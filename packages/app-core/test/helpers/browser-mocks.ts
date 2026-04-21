@@ -60,9 +60,9 @@ export function createCanvas2DContext(): CanvasRenderingContext2D {
     clearRect() {},
     getImageData() {
       return {
-      data: new Uint8ClampedArray(0),
-      width: 0,
-      height: 0,
+        data: new Uint8ClampedArray(0),
+        width: 0,
+        height: 0,
       };
     },
     putImageData() {},
@@ -145,10 +145,10 @@ export function installCanvasShims(): void {
 export function installMediaElementShims(): void {
   if (typeof globalThis.HTMLMediaElement === "undefined") return;
 
-  const prototype = globalThis.HTMLMediaElement.prototype as
-    HTMLMediaElement["prototype"] & {
-      [MEDIA_PATCH_MARK]?: boolean;
-    };
+  const prototype = globalThis.HTMLMediaElement
+    .prototype as HTMLMediaElement["prototype"] & {
+    [MEDIA_PATCH_MARK]?: boolean;
+  };
   if (!prototype[MEDIA_PATCH_MARK]) {
     Object.defineProperty(prototype, "load", {
       value() {},

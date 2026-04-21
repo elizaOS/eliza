@@ -2,7 +2,8 @@
  * LifeOps relationships action — Rolodex management.
  *
  * Subactions: list_contacts, add_contact, log_interaction, add_follow_up,
- * complete_follow_up, follow_up_list, days_since.
+ * complete_follow_up, follow_up_list, days_since, list_overdue_followups,
+ * mark_followup_done, set_followup_threshold.
  */
 
 import type {
@@ -34,7 +35,10 @@ type Subaction =
   | "add_follow_up"
   | "complete_follow_up"
   | "follow_up_list"
-  | "days_since";
+  | "days_since"
+  | "list_overdue_followups"
+  | "mark_followup_done"
+  | "set_followup_threshold";
 
 type RelationshipParameters = {
   subaction?: Subaction;
@@ -49,6 +53,7 @@ type RelationshipParameters = {
   followUpId?: string;
   reason?: string;
   dueAt?: string;
+  thresholdDays?: number | string;
   confirmed?: boolean;
 };
 
@@ -65,6 +70,210 @@ function messageText(message: Memory): string {
   return (message?.content?.text ?? "").toString();
 }
 
+function normalizedNonEmpty(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeLookup(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+async function resolveRelationshipIdByName(
+  service: LifeOpsService,
+  rawName: string,
+): Promise<string | null> {
+  const needle = normalizeLookup(rawName);
+  if (!needle) {
+    return null;
+  }
+
+  const relationships = await service.listRelationships({ limit: 200 });
+  const exactMatch =
+    relationships.find(
+      (relationship) => normalizeLookup(relationship.name) === needle,
+    ) ??
+    relationships.find(
+      (relationship) =>
+        normalizeLookup(relationship.primaryHandle).includes(needle) ||
+        normalizeLookup(relationship.email ?? "").includes(needle),
+    );
+  if (exactMatch) {
+    return exactMatch.id;
+  }
+
+  return (
+    relationships.find((relationship) =>
+      normalizeLookup(relationship.name).includes(needle),
+    )?.id ?? null
+  );
+}
+
+async function resolveRelationshipIdFromText(
+  service: LifeOpsService,
+  rawText: string,
+): Promise<string | null> {
+  const haystack = normalizeLookup(rawText);
+  if (!haystack) {
+    return null;
+  }
+
+  const relationships = await service.listRelationships({ limit: 200 });
+  const fullNameMatch = relationships.find((relationship) =>
+    haystack.includes(normalizeLookup(relationship.name)),
+  );
+  if (fullNameMatch) {
+    return fullNameMatch.id;
+  }
+
+  const candidateMatches = new Map<string, string>();
+  for (const relationship of relationships) {
+    const nameTokens = normalizeLookup(relationship.name)
+      .split(" ")
+      .filter((token) => token.length >= 3);
+    const handleTokens = [
+      normalizeLookup(relationship.primaryHandle).replace(/^@/, ""),
+      normalizeLookup(relationship.email ?? "").split("@")[0] ?? "",
+    ].filter((token) => token.length >= 3);
+
+    for (const token of [...nameTokens, ...handleTokens]) {
+      const tokenPattern = new RegExp(`\\b${escapeRegExp(token)}\\b`, "i");
+      if (tokenPattern.test(rawText)) {
+        candidateMatches.set(relationship.id, relationship.id);
+        break;
+      }
+    }
+  }
+
+  if (candidateMatches.size === 1) {
+    return [...candidateMatches.values()][0] ?? null;
+  }
+
+  return null;
+}
+
+async function resolveRelationshipId(
+  service: LifeOpsService,
+  params: Pick<RelationshipParameters, "relationshipId" | "name" | "intent">,
+  body?: string,
+): Promise<string | null> {
+  const explicitRelationshipId = normalizedNonEmpty(params.relationshipId);
+  if (explicitRelationshipId) {
+    if (UUID_PATTERN.test(explicitRelationshipId)) {
+      return explicitRelationshipId;
+    }
+
+    const resolvedFromRelationshipId = await resolveRelationshipIdByName(
+      service,
+      explicitRelationshipId,
+    );
+    if (resolvedFromRelationshipId) {
+      return resolvedFromRelationshipId;
+    }
+  }
+
+  const name = normalizedNonEmpty(params.name);
+  if (!name) {
+    for (const candidate of [params.intent, body]) {
+      const normalizedCandidate = normalizedNonEmpty(candidate);
+      const resolvedFromText = normalizedCandidate
+        ? await resolveRelationshipIdFromText(service, normalizedCandidate)
+        : null;
+      if (resolvedFromText) {
+        return resolvedFromText;
+      }
+    }
+    return null;
+  }
+
+  const resolvedFromName = await resolveRelationshipIdByName(service, name);
+  if (resolvedFromName) {
+    return resolvedFromName;
+  }
+
+  return resolveRelationshipIdFromText(service, name);
+}
+
+function normalizeFollowUpDueAt(rawDueAt: string): string | null {
+  const trimmed = rawDueAt.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directMs = Date.parse(trimmed);
+  if (Number.isFinite(directMs)) {
+    return new Date(directMs).toISOString();
+  }
+
+  const normalized = normalizeLookup(trimmed);
+  const base = new Date();
+  const atDefaultFollowUpTime = (date: Date): string => {
+    const copy = new Date(date);
+    copy.setHours(9, 0, 0, 0);
+    return copy.toISOString();
+  };
+
+  if (/\btoday\b/.test(normalized)) {
+    return atDefaultFollowUpTime(base);
+  }
+  if (/\btomorrow\b/.test(normalized)) {
+    const tomorrow = new Date(base);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return atDefaultFollowUpTime(tomorrow);
+  }
+  if (
+    /\bnext week\b/.test(normalized) ||
+    /\bin a week\b/.test(normalized) ||
+    /\ba week from now\b/.test(normalized)
+  ) {
+    const nextWeek = new Date(base);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    return atDefaultFollowUpTime(nextWeek);
+  }
+
+  const weekdayMap: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const weekdayMatch = normalized.match(
+    /\b(?:(next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/,
+  );
+  if (weekdayMatch) {
+    const qualifier = weekdayMatch[1] ?? "";
+    const weekdayToken = weekdayMatch[2] ?? "";
+    const targetWeekday = weekdayMap[weekdayToken];
+    if (targetWeekday !== undefined) {
+      const currentWeekday = base.getDay();
+      let delta = (targetWeekday - currentWeekday + 7) % 7;
+      if (qualifier === "next") {
+        delta = delta === 0 ? 7 : delta + 7;
+      } else if (delta === 0) {
+        delta = 7;
+      }
+      const resolved = new Date(base);
+      resolved.setDate(resolved.getDate() + delta);
+      return atDefaultFollowUpTime(resolved);
+    }
+  }
+
+  return null;
+}
+
 const RELATIONSHIP_SUBACTIONS: readonly Subaction[] = [
   "list_contacts",
   "add_contact",
@@ -73,6 +282,9 @@ const RELATIONSHIP_SUBACTIONS: readonly Subaction[] = [
   "complete_follow_up",
   "follow_up_list",
   "days_since",
+  "list_overdue_followups",
+  "mark_followup_done",
+  "set_followup_threshold",
 ];
 
 function normalizeRelationshipSubaction(value: unknown): Subaction | null {
@@ -105,6 +317,72 @@ type RelationshipLlmPlan = {
   response?: string;
 };
 
+const DEFAULT_FOLLOWUP_THRESHOLD_DAYS = 30;
+
+type OverdueRelationshipRecord = {
+  relationshipId: string;
+  name: string;
+  lastContactedAt: string;
+  thresholdDays: number;
+  daysOverdue: number;
+};
+
+function parseThresholdDays(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return null;
+}
+
+function resolveRelationshipThresholdDays(relationship: {
+  metadata: Record<string, unknown>;
+}): number {
+  return (
+    parseThresholdDays(relationship.metadata.followupThresholdDays) ??
+    DEFAULT_FOLLOWUP_THRESHOLD_DAYS
+  );
+}
+
+async function listOverdueRelationships(
+  service: LifeOpsService,
+  nowMs: number = Date.now(),
+): Promise<OverdueRelationshipRecord[]> {
+  const overdue: OverdueRelationshipRecord[] = [];
+  const relationships = await service.listRelationships({ limit: 200 });
+
+  for (const relationship of relationships) {
+    if (!relationship.lastContactedAt) {
+      continue;
+    }
+    const lastContactedMs = new Date(relationship.lastContactedAt).getTime();
+    if (!Number.isFinite(lastContactedMs)) {
+      continue;
+    }
+    const thresholdDays = resolveRelationshipThresholdDays(relationship);
+    const thresholdMs = thresholdDays * 24 * 60 * 60 * 1000;
+    const ageMs = nowMs - lastContactedMs;
+    if (ageMs <= thresholdMs) {
+      continue;
+    }
+    overdue.push({
+      relationshipId: relationship.id,
+      name: relationship.name,
+      lastContactedAt: relationship.lastContactedAt,
+      thresholdDays,
+      daysOverdue: Math.floor((ageMs - thresholdMs) / (24 * 60 * 60 * 1000)),
+    });
+  }
+
+  overdue.sort((left, right) => right.daysOverdue - left.daysOverdue);
+  return overdue;
+}
+
 async function resolveRelationshipPlanWithLlm(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -129,10 +407,10 @@ async function resolveRelationshipPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the RELATIONSHIP (Rolodex) subaction for this request.",
+    "Plan the OWNER_RELATIONSHIP (Rolodex) subaction for this request.",
     "The user may speak in any language.",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"list_contacts"|"add_contact"|"log_interaction"|"add_follow_up"|"complete_follow_up"|"follow_up_list"|"days_since"|null,"shouldAct":true|false,"response":"string|null"}',
+    '{"subaction":"list_contacts"|"add_contact"|"log_interaction"|"add_follow_up"|"complete_follow_up"|"follow_up_list"|"days_since"|"list_overdue_followups"|"mark_followup_done"|"set_followup_threshold"|null,"shouldAct":true|false,"response":"string|null"}',
     "",
     "Choose list_contacts when the user wants to see, browse, list, or recall who is in the Rolodex.",
     "Choose add_contact when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -141,7 +419,10 @@ async function resolveRelationshipPlanWithLlm(args: {
     "Choose complete_follow_up when the user marks an existing follow-up as done or finished.",
     "Choose follow_up_list when the user asks what follow-ups are pending or due.",
     "Choose days_since when the user asks how long it has been since they last talked to or contacted a person.",
-    "Set shouldAct=false only when the request is too vague to safely choose any of the seven subactions.",
+    "Choose list_overdue_followups when the user asks who is overdue, who they owe a follow-up to, or who they have not contacted in too long.",
+    "Choose mark_followup_done when the user says they already followed up, closed the loop, or wants an overdue follow-up marked done for a contact.",
+    "Choose set_followup_threshold when the user wants a durable cadence like every 14 days for a specific contact.",
+    "Set shouldAct=false only when the request is too vague to safely choose any of the ten subactions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "",
     `Current request: ${JSON.stringify(currentMessage)}`,
@@ -161,9 +442,10 @@ async function resolveRelationshipPlanWithLlm(args: {
     if (!parsed) {
       return { subaction: null, shouldAct: null };
     }
+    const subaction = normalizeRelationshipSubaction(parsed.subaction);
     return {
-      subaction: normalizeRelationshipSubaction(parsed.subaction),
-      shouldAct: normalizeShouldAct(parsed.shouldAct),
+      subaction,
+      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
       response: normalizePlannerResponse(parsed.response),
     };
   } catch (error) {
@@ -190,17 +472,46 @@ function formatRelationshipLine(rel: {
   return `- ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle})${last}`;
 }
 
-export const relationshipAction: Action = {
-  name: "RELATIONSHIP",
+export const relationshipAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
+  name: "OWNER_RELATIONSHIP",
   similes: [
+    "RELATIONSHIP",
+    "RELATIONSHIPS",
     "CONTACT",
+    "CONTACTS",
     "ROLODEX",
     "FOLLOW_UP",
+    "FOLLOW_UPS",
     "LOG_INTERACTION",
     "ADD_CONTACT",
+    "DAYS_SINCE",
+    "LAST_CONTACTED",
+    "LIST_OVERDUE_FOLLOWUPS",
+    "MARK_FOLLOWUP_DONE",
+    "SET_FOLLOWUP_THRESHOLD",
+    "OVERDUE_FOLLOWUPS",
   ],
   description:
-    "Manage contacts, relationships, and follow-ups. Subactions: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since.",
+    "OWNER-scoped contacts / rolodex / follow-up tracker. Single umbrella for " +
+    "everything to do with the owner's people graph: listing or adding " +
+    "contacts, logging an interaction, asking how long since the owner " +
+    "talked to someone, creating or completing a follow-up, listing overdue " +
+    "follow-ups, and tuning the overdue threshold. " +
+    "Subactions: list_contacts | add_contact | log_interaction | days_since | " +
+    "add_follow_up | complete_follow_up | follow_up_list | list_overdue_followups | " +
+    "mark_followup_done | set_followup_threshold. " +
+    "Positive triggers: 'how long since I talked to <person>' → days_since; " +
+    "'remind me to follow up with <person> [when]' → add_follow_up; " +
+    "'who do I need to follow up with' / 'show overdue follow-ups' → " +
+    "list_overdue_followups; 'mark the <person> follow-up done' → " +
+    "mark_followup_done; 'bump the overdue threshold to N days' → " +
+    "set_followup_threshold. " +
+    "Do NOT split this request across OWNER_RELATIONSHIP and any LIST_OVERDUE_FOLLOWUPS " +
+    "/ MARK_FOLLOWUP_DONE / SET_FOLLOWUP_THRESHOLD action — OWNER_RELATIONSHIP is " +
+    "the single entry point for the entire contacts + follow-up surface.",
+  suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -210,8 +521,7 @@ export const relationshipAction: Action = {
     callback,
   ): Promise<ActionResult> => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text =
-        "Relationship management is restricted to the owner.";
+      const text = "Relationship management is restricted to the owner.";
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
@@ -233,7 +543,7 @@ export const relationshipAction: Action = {
       if (plan.shouldAct === false || !subaction) {
         const text =
           plan.response ??
-          "Tell me whether you want to list contacts, add a contact, log an interaction, schedule a follow-up, complete a follow-up, list follow-ups, or check days since last contact.";
+          "Tell me whether you want to list contacts, add a contact, log an interaction, schedule a follow-up, complete a follow-up, list overdue follow-ups, change a follow-up threshold, or check days since last contact.";
         await callback?.({ text });
         return {
           text,
@@ -253,7 +563,7 @@ export const relationshipAction: Action = {
         contacts.length === 0
           ? "You have no contacts in your Rolodex yet."
           : `You have ${contacts.length} contact${contacts.length === 1 ? "" : "s"}:\n${contacts.map(formatRelationshipLine).join("\n")}`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -297,7 +607,7 @@ export const relationshipAction: Action = {
         metadata: {},
       });
       const text = `Added ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle}) to your Rolodex.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -306,9 +616,9 @@ export const relationshipAction: Action = {
     }
 
     if (subaction === "log_interaction") {
-      const relationshipId = params.relationshipId;
+      const relationshipId = await resolveRelationshipId(service, params, body);
       if (!relationshipId) {
-        const text = "I need the contact's relationshipId to log an interaction.";
+        const text = "I need a known contact to log an interaction.";
         await callback?.({ text });
         return {
           text,
@@ -336,7 +646,7 @@ export const relationshipAction: Action = {
         metadata: {},
       });
       const text = `Logged interaction with ${rel.name} on ${channel}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -345,11 +655,14 @@ export const relationshipAction: Action = {
     }
 
     if (subaction === "add_follow_up") {
-      const relationshipId = params.relationshipId;
-      const dueAt = params.dueAt;
+      const relationshipId = await resolveRelationshipId(service, params, body);
+      const dueAtSource = normalizedNonEmpty(params.dueAt) ?? body;
+      const dueAt = dueAtSource ? normalizeFollowUpDueAt(dueAtSource) : null;
       const reason = params.reason ?? params.notes ?? "";
       if (!relationshipId || !dueAt) {
-        const text = "I need a contact relationshipId and a dueAt to schedule a follow-up.";
+        const text = !relationshipId
+          ? "I need a known contact to schedule a follow-up."
+          : "I need a due date or time to schedule a follow-up.";
         await callback?.({ text });
         return {
           text,
@@ -367,7 +680,7 @@ export const relationshipAction: Action = {
         metadata: {},
       });
       const text = `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -388,7 +701,7 @@ export const relationshipAction: Action = {
       }
       await service.completeFollowUp(followUpId);
       const text = `Marked follow-up ${followUpId} as completed.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -402,12 +715,9 @@ export const relationshipAction: Action = {
         queue.length === 0
           ? "No follow-ups due today."
           : `You have ${queue.length} follow-up${queue.length === 1 ? "" : "s"} due:\n${queue
-              .map(
-                (fu) =>
-                  `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`,
-              )
+              .map((fu) => `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`)
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
@@ -416,9 +726,9 @@ export const relationshipAction: Action = {
     }
 
     if (subaction === "days_since") {
-      const relationshipId = params.relationshipId;
+      const relationshipId = await resolveRelationshipId(service, params, body);
       if (!relationshipId) {
-        const text = "I need a relationshipId to check last contact.";
+        const text = "I need a known contact to check last contact.";
         await callback?.({ text });
         return {
           text,
@@ -432,11 +742,140 @@ export const relationshipAction: Action = {
         days === null
           ? `No contact has been logged with ${rel?.name ?? relationshipId}.`
           : `It has been ${days} day${days === 1 ? "" : "s"} since you contacted ${rel?.name ?? relationshipId}.`;
-      await callback?.({ text, source: "action", action: "RELATIONSHIP" });
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
       return {
         text,
         success: true,
         data: { subaction, relationshipId, days },
+      };
+    }
+
+    if (subaction === "list_overdue_followups") {
+      const overdue = await listOverdueRelationships(service);
+      const text =
+        overdue.length === 0
+          ? "No overdue follow-ups."
+          : `Overdue follow-ups (${overdue.length}):\n${overdue
+              .map(
+                (entry) =>
+                  `- ${entry.name}: last contacted ${entry.lastContactedAt} (+${entry.daysOverdue}d over ${entry.thresholdDays}d threshold)`,
+              )
+              .join("\n")}`;
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      return {
+        text,
+        success: true,
+        data: { subaction, overdue },
+      };
+    }
+
+    if (subaction === "mark_followup_done") {
+      const relationshipId = await resolveRelationshipId(service, params, body);
+      if (!relationshipId) {
+        const text = "I need a known contact to mark that follow-up done.";
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
+        };
+      }
+      const relationship = await service.getRelationship(relationshipId);
+      if (!relationship) {
+        const text = `No contact found with id ${relationshipId}.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: { subaction, error: "NOT_FOUND" },
+        };
+      }
+      const nowIso = new Date().toISOString();
+      await service.upsertRelationship({
+        id: relationship.id,
+        name: relationship.name,
+        primaryChannel: relationship.primaryChannel,
+        primaryHandle: relationship.primaryHandle,
+        email: relationship.email,
+        phone: relationship.phone,
+        notes: relationship.notes,
+        tags: relationship.tags,
+        relationshipType: relationship.relationshipType,
+        lastContactedAt: nowIso,
+        metadata: {
+          ...relationship.metadata,
+          lastFollowupNote: params.notes ?? params.reason ?? null,
+        },
+      });
+      const pendingFollowUps = (
+        await service.listFollowUps({ status: "pending", limit: 100 })
+      ).filter((followUp) => followUp.relationshipId === relationship.id);
+      for (const followUp of pendingFollowUps) {
+        await service.completeFollowUp(followUp.id);
+      }
+      const text =
+        pendingFollowUps.length > 0
+          ? `Marked ${relationship.name} as followed up and completed ${pendingFollowUps.length} open follow-up${pendingFollowUps.length === 1 ? "" : "s"}.`
+          : `Marked ${relationship.name} as followed up.`;
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      return {
+        text,
+        success: true,
+        data: {
+          subaction,
+          relationshipId: relationship.id,
+          completedFollowUpIds: pendingFollowUps.map((followUp) => followUp.id),
+          lastContactedAt: nowIso,
+        },
+      };
+    }
+
+    if (subaction === "set_followup_threshold") {
+      const relationshipId = await resolveRelationshipId(service, params, body);
+      const thresholdDays = parseThresholdDays(params.thresholdDays);
+      if (!relationshipId || thresholdDays === null) {
+        const text = !relationshipId
+          ? "I need a known contact to change the follow-up threshold."
+          : "I need a positive threshold in days.";
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: { subaction, error: "MISSING_FIELDS" },
+        };
+      }
+      const relationship = await service.getRelationship(relationshipId);
+      if (!relationship) {
+        const text = `No contact found with id ${relationshipId}.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: false,
+          data: { subaction, error: "NOT_FOUND" },
+        };
+      }
+      await service.upsertRelationship({
+        id: relationship.id,
+        name: relationship.name,
+        primaryChannel: relationship.primaryChannel,
+        primaryHandle: relationship.primaryHandle,
+        email: relationship.email,
+        phone: relationship.phone,
+        notes: relationship.notes,
+        tags: relationship.tags,
+        relationshipType: relationship.relationshipType,
+        lastContactedAt: relationship.lastContactedAt,
+        metadata: {
+          ...relationship.metadata,
+          followupThresholdDays: thresholdDays,
+        },
+      });
+      const text = `Set follow-up threshold for ${relationship.name} to ${thresholdDays} days.`;
+      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      return {
+        text,
+        success: true,
+        data: { subaction, relationshipId: relationship.id, thresholdDays },
       };
     }
 
@@ -452,17 +891,19 @@ export const relationshipAction: Action = {
     {
       name: "subaction",
       description:
-        "Which relationship operation to run: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since.",
+        "Which relationship operation to run: list_contacts, add_contact, log_interaction, add_follow_up, complete_follow_up, follow_up_list, days_since, list_overdue_followups, mark_followup_done, or set_followup_threshold.",
       schema: { type: "string" as const },
     },
     {
       name: "intent",
-      description: "Free-form user intent used to infer subaction when not set.",
+      description:
+        "Free-form user intent used to infer subaction when not set.",
       schema: { type: "string" as const },
     },
     {
       name: "name",
-      description: "Contact display name.",
+      description:
+        "Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name.",
       schema: { type: "string" as const },
     },
     {
@@ -508,8 +949,15 @@ export const relationshipAction: Action = {
     },
     {
       name: "dueAt",
-      description: "ISO-8601 due time for a follow-up.",
+      description:
+        "Follow-up due time. Accepts natural language like 'tomorrow', 'next week', or 'next Tuesday at 3pm', or an ISO-8601 timestamp.",
       schema: { type: "string" as const },
+    },
+    {
+      name: "thresholdDays",
+      description:
+        "Durable overdue threshold in days for this contact. Use for cadence rules like every 14 days.",
+      schema: { type: "number" as const },
     },
     {
       name: "confirmed",
@@ -527,7 +975,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "You have 3 contacts: ...",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -542,7 +990,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Added Alice (telegram: @alice) to your Rolodex.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -557,7 +1005,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Logged interaction with Bob on telegram.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -572,7 +1020,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Scheduled follow-up for 2026-04-20T09:00:00Z: the contract.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -585,7 +1033,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "You have 2 follow-ups due: ...",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],
@@ -598,7 +1046,7 @@ export const relationshipAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "It has been 14 days since you contacted Dan.",
-          action: "RELATIONSHIP",
+          action: "OWNER_RELATIONSHIP",
         },
       },
     ],

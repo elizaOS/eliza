@@ -1,7 +1,7 @@
 # Isolierte Benchmark-Umgebung für OpenClaw mit Sandboxing
 # Wir nutzen ein Debian Image (Bookworm) und installieren Docker manuell,
 # da Alpine (docker:dind) Probleme mit native Modules (node-llama-cpp) macht.
-FROM node:22-bookworm
+FROM node:24-bookworm
 
 # Labels für eindeutige Identifikation
 LABEL project="benchmark" \

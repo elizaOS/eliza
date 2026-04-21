@@ -44,6 +44,7 @@ export class LifeOpsBrowserRelayClient {
     return {
       Authorization: `Bearer ${this.config.pairingToken}`,
       "Content-Type": "application/json",
+      "X-LifeOps-Browser-Companion-Id": this.config.companionId,
       "X-Eliza-Browser-Companion-Id": this.config.companionId,
     };
   }

@@ -19,6 +19,8 @@ import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
+  LifeOpsScheduleInsight,
+  LifeOpsScheduleMealInsight,
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
   LifeOpsGmailMessageSummary,
@@ -48,6 +50,7 @@ import {
   parseJsonRecord,
   sqlBoolean,
   sqlInteger,
+  sqlNumber,
   sqlJson,
   sqlQuote,
   sqlText,
@@ -55,6 +58,20 @@ import {
   toNumber,
   toText,
 } from "./sql.js";
+import type {
+  LifeOpsSubscriptionAudit,
+  LifeOpsSubscriptionCandidate,
+  LifeOpsSubscriptionCancellation,
+} from "./subscriptions-types.js";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "./schedule-sync-contracts.js";
+import type {
+  EmailUnsubscribeMethod,
+  EmailUnsubscribeRecord,
+  EmailUnsubscribeStatus,
+} from "./email-unsubscribe-types.js";
 
 type BrowserCompanionCredential = {
   companion: LifeOpsBrowserCompanionStatus;
@@ -95,6 +112,20 @@ export interface LifeOpsWebsiteAccessGrant {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
+  id: string;
+  agentId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsScheduleObservationRecord
+  extends LifeOpsScheduleObservation {}
+
+export interface LifeOpsScheduleMergedStateRecord
+  extends LifeOpsScheduleMergedState {}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -424,6 +455,133 @@ function parseAuditEvent(row: Record<string, unknown>): LifeOpsAuditEvent {
     decision: parseJsonRecord(row.decision_json),
     actor: toText(row.actor) as LifeOpsAuditEvent["actor"],
     createdAt: toText(row.created_at),
+  };
+}
+
+function parseSubscriptionAudit(
+  row: Record<string, unknown>,
+): LifeOpsSubscriptionAudit {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    source: toText(
+      row.source,
+      "gmail",
+    ) as LifeOpsSubscriptionAudit["source"],
+    queryWindowDays: toNumber(row.query_window_days, 180),
+    status: toText(
+      row.status,
+      "completed",
+    ) as LifeOpsSubscriptionAudit["status"],
+    totalCandidates: toNumber(row.total_candidates, 0),
+    activeCandidates: toNumber(row.active_candidates, 0),
+    canceledCandidates: toNumber(row.canceled_candidates, 0),
+    uncertainCandidates: toNumber(row.uncertain_candidates, 0),
+    summary: toText(row.summary),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseSubscriptionCandidate(
+  row: Record<string, unknown>,
+): LifeOpsSubscriptionCandidate {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    auditId: toText(row.audit_id),
+    serviceSlug: toText(row.service_slug),
+    serviceName: toText(row.service_name),
+    provider: toText(row.provider),
+    cadence: toText(
+      row.cadence,
+      "unknown",
+    ) as LifeOpsSubscriptionCandidate["cadence"],
+    state: toText(
+      row.state,
+      "uncertain",
+    ) as LifeOpsSubscriptionCandidate["state"],
+    confidence: toNumber(row.confidence, 0),
+    annualCostEstimateUsd:
+      row.annual_cost_estimate_usd === null ||
+      row.annual_cost_estimate_usd === undefined
+        ? null
+        : toNumber(row.annual_cost_estimate_usd, 0),
+    managementUrl: row.management_url ? toText(row.management_url) : null,
+    latestEvidenceAt: row.latest_evidence_at
+      ? toText(row.latest_evidence_at)
+      : null,
+    evidenceJson: parseJsonArray<Record<string, unknown>>(row.evidence_json),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseSubscriptionCancellation(
+  row: Record<string, unknown>,
+): LifeOpsSubscriptionCancellation {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    auditId: row.audit_id ? toText(row.audit_id) : null,
+    candidateId: row.candidate_id ? toText(row.candidate_id) : null,
+    serviceSlug: toText(row.service_slug),
+    serviceName: toText(row.service_name),
+    executor: toText(
+      row.executor,
+      "agent_browser",
+    ) as LifeOpsSubscriptionCancellation["executor"],
+    status: toText(
+      row.status,
+      "draft",
+    ) as LifeOpsSubscriptionCancellation["status"],
+    confirmed: toBoolean(row.confirmed),
+    currentStep: row.current_step ? toText(row.current_step) : null,
+    browserSessionId: row.browser_session_id
+      ? toText(row.browser_session_id)
+      : null,
+    evidenceSummary: row.evidence_summary
+      ? toText(row.evidence_summary)
+      : null,
+    artifactCount: toNumber(row.artifact_count, 0),
+    managementUrl: row.management_url ? toText(row.management_url) : null,
+    error: row.error ? toText(row.error) : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+    finishedAt: row.finished_at ? toText(row.finished_at) : null,
+  };
+}
+
+function parseEmailUnsubscribe(
+  row: Record<string, unknown>,
+): EmailUnsubscribeRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    senderEmail: toText(row.sender_email),
+    senderDisplay: toText(row.sender_display),
+    senderDomain: row.sender_domain ? toText(row.sender_domain) : null,
+    listId: row.list_id ? toText(row.list_id) : null,
+    method: toText(
+      row.method,
+      "manual_only",
+    ) as EmailUnsubscribeMethod,
+    status: toText(row.status, "failed") as EmailUnsubscribeStatus,
+    httpStatusCode:
+      row.http_status_code === null || row.http_status_code === undefined
+        ? null
+        : toNumber(row.http_status_code, 0),
+    httpFinalUrl: row.http_final_url ? toText(row.http_final_url) : null,
+    filterCreated: toBoolean(row.filter_created),
+    filterId: row.filter_id ? toText(row.filter_id) : null,
+    threadsTrashed: toNumber(row.threads_trashed, 0),
+    errorMessage: row.error_message ? toText(row.error_message) : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
   };
 }
 
@@ -1041,6 +1199,106 @@ function parseScreenTimeDaily(
   };
 }
 
+function parseScheduleObservation(
+  row: Record<string, unknown>,
+): LifeOpsScheduleObservationRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    origin: toText(row.origin) as LifeOpsScheduleObservationRecord["origin"],
+    deviceId: toText(row.device_id),
+    deviceKind: toText(
+      row.device_kind,
+    ) as LifeOpsScheduleObservationRecord["deviceKind"],
+    timezone: toText(row.timezone, "UTC"),
+    observedAt: toText(row.observed_at),
+    windowStartAt: toText(row.window_start_at),
+    windowEndAt: row.window_end_at ? toText(row.window_end_at) : null,
+    state: toText(row.state) as LifeOpsScheduleObservationRecord["state"],
+    phase: row.phase
+      ? (toText(row.phase) as LifeOpsScheduleObservationRecord["phase"])
+      : null,
+    mealLabel: row.meal_label
+      ? (toText(row.meal_label) as LifeOpsScheduleObservationRecord["mealLabel"])
+      : null,
+    confidence: toNumber(row.confidence, 0),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseScheduleMergedState(
+  row: Record<string, unknown>,
+): LifeOpsScheduleMergedStateRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    scope: toText(row.scope) as LifeOpsScheduleMergedStateRecord["scope"],
+    mergedAt: toText(row.merged_at),
+    effectiveDayKey: toText(row.effective_day_key),
+    localDate: toText(row.local_date),
+    timezone: toText(row.timezone, "UTC"),
+    inferredAt: toText(row.inferred_at),
+    phase: toText(row.phase) as LifeOpsScheduleMergedStateRecord["phase"],
+    sleepStatus: toText(
+      row.sleep_status,
+    ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
+    isProbablySleeping: toBoolean(row.is_probably_sleeping),
+    sleepConfidence: toNumber(row.sleep_confidence, 0),
+    currentSleepStartedAt: row.current_sleep_started_at
+      ? toText(row.current_sleep_started_at)
+      : null,
+    lastSleepStartedAt: row.last_sleep_started_at
+      ? toText(row.last_sleep_started_at)
+      : null,
+    lastSleepEndedAt: row.last_sleep_ended_at
+      ? toText(row.last_sleep_ended_at)
+      : null,
+    lastSleepDurationMinutes:
+      row.last_sleep_duration_minutes !== null &&
+      row.last_sleep_duration_minutes !== undefined &&
+      row.last_sleep_duration_minutes !== ""
+      ? toNumber(row.last_sleep_duration_minutes, 0)
+      : null,
+    typicalWakeHour:
+      row.typical_wake_hour !== null &&
+      row.typical_wake_hour !== undefined &&
+      row.typical_wake_hour !== ""
+      ? toNumber(row.typical_wake_hour, 0)
+      : null,
+    typicalSleepHour:
+      row.typical_sleep_hour !== null &&
+      row.typical_sleep_hour !== undefined &&
+      row.typical_sleep_hour !== ""
+      ? toNumber(row.typical_sleep_hour, 0)
+      : null,
+    wakeAt: row.wake_at ? toText(row.wake_at) : null,
+    firstActiveAt: row.first_active_at ? toText(row.first_active_at) : null,
+    lastActiveAt: row.last_active_at ? toText(row.last_active_at) : null,
+    meals: parseJsonArray<LifeOpsScheduleMealInsight>(row.meals_json),
+    lastMealAt: row.last_meal_at ? toText(row.last_meal_at) : null,
+    nextMealLabel: row.next_meal_label
+      ? (toText(row.next_meal_label) as LifeOpsScheduleMergedStateRecord["nextMealLabel"])
+      : null,
+    nextMealWindowStartAt: row.next_meal_window_start_at
+      ? toText(row.next_meal_window_start_at)
+      : null,
+    nextMealWindowEndAt: row.next_meal_window_end_at
+      ? toText(row.next_meal_window_end_at)
+      : null,
+    nextMealConfidence: toNumber(row.next_meal_confidence, 0),
+    observationCount: toNumber(row.observation_count, 0),
+    deviceCount: toNumber(row.device_count, 0),
+    contributingDeviceKinds: parseJsonArray<
+      LifeOpsScheduleMergedStateRecord["contributingDeviceKinds"][number]
+    >(row.contributing_device_kinds_json),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
 function parseSchedulingNegotiation(
   row: Record<string, unknown>,
 ): LifeOpsSchedulingNegotiation {
@@ -1287,6 +1545,102 @@ export class LifeOpsRepository {
         actor TEXT NOT NULL DEFAULT 'agent',
         created_at TEXT NOT NULL
       )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_subscription_audits (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'gmail',
+        query_window_days INTEGER NOT NULL DEFAULT 180,
+        status TEXT NOT NULL DEFAULT 'completed',
+        total_candidates INTEGER NOT NULL DEFAULT 0,
+        active_candidates INTEGER NOT NULL DEFAULT 0,
+        canceled_candidates INTEGER NOT NULL DEFAULT 0,
+        uncertain_candidates INTEGER NOT NULL DEFAULT 0,
+        summary TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_subscription_candidates (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        audit_id TEXT NOT NULL,
+        service_slug TEXT NOT NULL,
+        service_name TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'unknown',
+        cadence TEXT NOT NULL DEFAULT 'unknown',
+        state TEXT NOT NULL DEFAULT 'uncertain',
+        confidence REAL NOT NULL DEFAULT 0,
+        annual_cost_estimate_usd REAL,
+        management_url TEXT,
+        latest_evidence_at TEXT,
+        evidence_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, audit_id, service_slug)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_subscription_cancellations (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        audit_id TEXT,
+        candidate_id TEXT,
+        service_slug TEXT NOT NULL,
+        service_name TEXT NOT NULL,
+        executor TEXT NOT NULL DEFAULT 'agent_browser',
+        status TEXT NOT NULL DEFAULT 'draft',
+        confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+        current_step TEXT,
+        browser_session_id TEXT,
+        evidence_summary TEXT,
+        artifact_count INTEGER NOT NULL DEFAULT 0,
+        management_url TEXT,
+        error TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        finished_at TEXT
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_email_unsubscribes (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        sender_email TEXT NOT NULL,
+        sender_display TEXT NOT NULL DEFAULT '',
+        sender_domain TEXT,
+        list_id TEXT,
+        method TEXT NOT NULL DEFAULT 'manual_only',
+        status TEXT NOT NULL DEFAULT 'failed',
+        http_status_code INTEGER,
+        http_final_url TEXT,
+        filter_created BOOLEAN NOT NULL DEFAULT FALSE,
+        filter_id TEXT,
+        threads_trashed INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_email_unsubscribes_agent_sender
+        ON life_email_unsubscribes(agent_id, sender_email)`,
     );
 
     await executeRawSql(
@@ -1671,6 +2025,65 @@ export class LifeOpsRepository {
 
     await executeRawSql(
       runtime,
+      `CREATE TABLE IF NOT EXISTS life_inbox_triage_entries (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        source_room_id TEXT,
+        source_entity_id TEXT,
+        source_message_id TEXT,
+        channel_name TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        deep_link TEXT,
+        classification TEXT NOT NULL,
+        urgency TEXT NOT NULL DEFAULT 'low',
+        confidence REAL NOT NULL DEFAULT 0.5,
+        snippet TEXT NOT NULL DEFAULT '',
+        sender_name TEXT,
+        thread_context TEXT,
+        triage_reasoning TEXT,
+        suggested_response TEXT,
+        draft_response TEXT,
+        auto_replied BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_entries_agent_created
+       ON life_inbox_triage_entries(agent_id, created_at DESC)`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_entries_agent_source_message
+       ON life_inbox_triage_entries(agent_id, source_message_id)`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_inbox_triage_examples (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        snippet TEXT NOT NULL DEFAULT '',
+        classification TEXT NOT NULL,
+        owner_action TEXT NOT NULL,
+        owner_classification TEXT,
+        context_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_inbox_triage_examples_agent_created
+       ON life_inbox_triage_examples(agent_id, created_at DESC)`,
+    );
+
+    await executeRawSql(
+      runtime,
       `CREATE TABLE IF NOT EXISTS life_x_dms (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
@@ -1753,6 +2166,103 @@ export class LifeOpsRepository {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(agent_id, source, identifier, date)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_insights (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        effective_day_key TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        inferred_at TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        sleep_status TEXT NOT NULL,
+        is_probably_sleeping BOOLEAN NOT NULL DEFAULT FALSE,
+        sleep_confidence REAL NOT NULL DEFAULT 0,
+        current_sleep_started_at TEXT,
+        last_sleep_started_at TEXT,
+        last_sleep_ended_at TEXT,
+        last_sleep_duration_minutes INTEGER,
+        typical_wake_hour REAL,
+        typical_sleep_hour REAL,
+        wake_at TEXT,
+        first_active_at TEXT,
+        last_active_at TEXT,
+        last_meal_at TEXT,
+        next_meal_label TEXT,
+        next_meal_window_start_at TEXT,
+        next_meal_window_end_at TEXT,
+        next_meal_confidence REAL NOT NULL DEFAULT 0,
+        meals_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, effective_day_key)
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_observations (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        device_kind TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        window_start_at TEXT NOT NULL,
+        window_end_at TEXT,
+        state TEXT NOT NULL,
+        phase TEXT,
+        meal_label TEXT,
+        confidence REAL NOT NULL DEFAULT 0,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    );
+
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS life_schedule_merged_states (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        effective_day_key TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        timezone TEXT NOT NULL,
+        merged_at TEXT NOT NULL,
+        inferred_at TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        sleep_status TEXT NOT NULL,
+        is_probably_sleeping BOOLEAN NOT NULL DEFAULT FALSE,
+        sleep_confidence REAL NOT NULL DEFAULT 0,
+        current_sleep_started_at TEXT,
+        last_sleep_started_at TEXT,
+        last_sleep_ended_at TEXT,
+        last_sleep_duration_minutes INTEGER,
+        typical_wake_hour REAL,
+        typical_sleep_hour REAL,
+        wake_at TEXT,
+        first_active_at TEXT,
+        last_active_at TEXT,
+        last_meal_at TEXT,
+        next_meal_label TEXT,
+        next_meal_window_start_at TEXT,
+        next_meal_window_end_at TEXT,
+        next_meal_confidence REAL NOT NULL DEFAULT 0,
+        meals_json TEXT NOT NULL DEFAULT '[]',
+        observation_count INTEGER NOT NULL DEFAULT 0,
+        device_count INTEGER NOT NULL DEFAULT 0,
+        contributing_device_kinds_json TEXT NOT NULL DEFAULT '[]',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(agent_id, scope, timezone)
       )`,
     );
 
@@ -2496,6 +3006,347 @@ export class LifeOpsRepository {
     return rows.map(parseAuditEvent);
   }
 
+  async createSubscriptionAudit(
+    audit: LifeOpsSubscriptionAudit,
+  ): Promise<void> {
+
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_subscription_audits (
+        id, agent_id, source, query_window_days, status, total_candidates,
+        active_candidates, canceled_candidates, uncertain_candidates, summary,
+        metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(audit.id)},
+        ${sqlQuote(audit.agentId)},
+        ${sqlQuote(audit.source)},
+        ${sqlInteger(audit.queryWindowDays)},
+        ${sqlQuote(audit.status)},
+        ${sqlInteger(audit.totalCandidates)},
+        ${sqlInteger(audit.activeCandidates)},
+        ${sqlInteger(audit.canceledCandidates)},
+        ${sqlInteger(audit.uncertainCandidates)},
+        ${sqlQuote(audit.summary)},
+        ${sqlJson(audit.metadata)},
+        ${sqlQuote(audit.createdAt)},
+        ${sqlQuote(audit.updatedAt)}
+      )`,
+    );
+  }
+
+  async updateSubscriptionAudit(
+    audit: LifeOpsSubscriptionAudit,
+  ): Promise<void> {
+
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_subscription_audits
+          SET source = ${sqlQuote(audit.source)},
+              query_window_days = ${sqlInteger(audit.queryWindowDays)},
+              status = ${sqlQuote(audit.status)},
+              total_candidates = ${sqlInteger(audit.totalCandidates)},
+              active_candidates = ${sqlInteger(audit.activeCandidates)},
+              canceled_candidates = ${sqlInteger(audit.canceledCandidates)},
+              uncertain_candidates = ${sqlInteger(audit.uncertainCandidates)},
+              summary = ${sqlQuote(audit.summary)},
+              metadata_json = ${sqlJson(audit.metadata)},
+              updated_at = ${sqlQuote(audit.updatedAt)}
+        WHERE id = ${sqlQuote(audit.id)}
+          AND agent_id = ${sqlQuote(audit.agentId)}`,
+    );
+  }
+
+  async getSubscriptionAudit(
+    agentId: string,
+    auditId: string,
+  ): Promise<LifeOpsSubscriptionAudit | null> {
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_audits
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(auditId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSubscriptionAudit(row) : null;
+  }
+
+  async getLatestSubscriptionAudit(
+    agentId: string,
+  ): Promise<LifeOpsSubscriptionAudit | null> {
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_audits
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSubscriptionAudit(row) : null;
+  }
+
+  async createSubscriptionCandidate(
+    candidate: LifeOpsSubscriptionCandidate,
+  ): Promise<void> {
+
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_subscription_candidates (
+        id, agent_id, audit_id, service_slug, service_name, provider, cadence,
+        state, confidence, annual_cost_estimate_usd, management_url,
+        latest_evidence_at, evidence_json, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(candidate.id)},
+        ${sqlQuote(candidate.agentId)},
+        ${sqlQuote(candidate.auditId)},
+        ${sqlQuote(candidate.serviceSlug)},
+        ${sqlQuote(candidate.serviceName)},
+        ${sqlQuote(candidate.provider)},
+        ${sqlQuote(candidate.cadence)},
+        ${sqlQuote(candidate.state)},
+        ${sqlNumber(candidate.confidence)},
+        ${sqlNumber(candidate.annualCostEstimateUsd)},
+        ${sqlText(candidate.managementUrl)},
+        ${sqlText(candidate.latestEvidenceAt)},
+        ${sqlJson(candidate.evidenceJson)},
+        ${sqlJson(candidate.metadata)},
+        ${sqlQuote(candidate.createdAt)},
+        ${sqlQuote(candidate.updatedAt)}
+      )
+      ON CONFLICT(agent_id, audit_id, service_slug) DO UPDATE SET
+        service_name = excluded.service_name,
+        provider = excluded.provider,
+        cadence = excluded.cadence,
+        state = excluded.state,
+        confidence = excluded.confidence,
+        annual_cost_estimate_usd = excluded.annual_cost_estimate_usd,
+        management_url = excluded.management_url,
+        latest_evidence_at = excluded.latest_evidence_at,
+        evidence_json = excluded.evidence_json,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listSubscriptionCandidatesForAudit(
+    agentId: string,
+    auditId: string,
+  ): Promise<LifeOpsSubscriptionCandidate[]> {
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_candidates
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND audit_id = ${sqlQuote(auditId)}
+        ORDER BY confidence DESC, service_name ASC`,
+    );
+    return rows.map(parseSubscriptionCandidate);
+  }
+
+  async getSubscriptionCandidate(
+    agentId: string,
+    candidateId: string,
+  ): Promise<LifeOpsSubscriptionCandidate | null> {
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_candidates
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(candidateId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSubscriptionCandidate(row) : null;
+  }
+
+  async createSubscriptionCancellation(
+    cancellation: LifeOpsSubscriptionCancellation,
+  ): Promise<void> {
+
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_subscription_cancellations (
+        id, agent_id, audit_id, candidate_id, service_slug, service_name,
+        executor, status, confirmed, current_step, browser_session_id,
+        evidence_summary, artifact_count, management_url, error, metadata_json,
+        created_at, updated_at, finished_at
+      ) VALUES (
+        ${sqlQuote(cancellation.id)},
+        ${sqlQuote(cancellation.agentId)},
+        ${sqlText(cancellation.auditId)},
+        ${sqlText(cancellation.candidateId)},
+        ${sqlQuote(cancellation.serviceSlug)},
+        ${sqlQuote(cancellation.serviceName)},
+        ${sqlQuote(cancellation.executor)},
+        ${sqlQuote(cancellation.status)},
+        ${sqlBoolean(cancellation.confirmed)},
+        ${sqlText(cancellation.currentStep)},
+        ${sqlText(cancellation.browserSessionId)},
+        ${sqlText(cancellation.evidenceSummary)},
+        ${sqlInteger(cancellation.artifactCount)},
+        ${sqlText(cancellation.managementUrl)},
+        ${sqlText(cancellation.error)},
+        ${sqlJson(cancellation.metadata)},
+        ${sqlQuote(cancellation.createdAt)},
+        ${sqlQuote(cancellation.updatedAt)},
+        ${sqlText(cancellation.finishedAt)}
+      )`,
+    );
+  }
+
+  async updateSubscriptionCancellation(
+    cancellation: LifeOpsSubscriptionCancellation,
+  ): Promise<void> {
+
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_subscription_cancellations
+          SET audit_id = ${sqlText(cancellation.auditId)},
+              candidate_id = ${sqlText(cancellation.candidateId)},
+              service_slug = ${sqlQuote(cancellation.serviceSlug)},
+              service_name = ${sqlQuote(cancellation.serviceName)},
+              executor = ${sqlQuote(cancellation.executor)},
+              status = ${sqlQuote(cancellation.status)},
+              confirmed = ${sqlBoolean(cancellation.confirmed)},
+              current_step = ${sqlText(cancellation.currentStep)},
+              browser_session_id = ${sqlText(cancellation.browserSessionId)},
+              evidence_summary = ${sqlText(cancellation.evidenceSummary)},
+              artifact_count = ${sqlInteger(cancellation.artifactCount)},
+              management_url = ${sqlText(cancellation.managementUrl)},
+              error = ${sqlText(cancellation.error)},
+              metadata_json = ${sqlJson(cancellation.metadata)},
+              updated_at = ${sqlQuote(cancellation.updatedAt)},
+              finished_at = ${sqlText(cancellation.finishedAt)}
+        WHERE id = ${sqlQuote(cancellation.id)}
+          AND agent_id = ${sqlQuote(cancellation.agentId)}`,
+    );
+  }
+
+  async getSubscriptionCancellation(
+    agentId: string,
+    cancellationId: string,
+  ): Promise<LifeOpsSubscriptionCancellation | null> {
+
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_cancellations
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(cancellationId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSubscriptionCancellation(row) : null;
+  }
+
+  async getLatestSubscriptionCancellation(
+    agentId: string,
+    serviceSlug?: string,
+  ): Promise<LifeOpsSubscriptionCancellation | null> {
+
+    const serviceClause = serviceSlug
+      ? `AND service_slug = ${sqlQuote(serviceSlug)}`
+      : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_subscription_cancellations
+        WHERE agent_id = ${sqlQuote(agentId)}
+          ${serviceClause}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseSubscriptionCancellation(row) : null;
+  }
+
+  async createEmailUnsubscribe(
+    record: EmailUnsubscribeRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_email_unsubscribes (
+        id, agent_id, sender_email, sender_display, sender_domain, list_id,
+        method, status, http_status_code, http_final_url, filter_created,
+        filter_id, threads_trashed, error_message, metadata_json,
+        created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(record.id)},
+        ${sqlQuote(record.agentId)},
+        ${sqlQuote(record.senderEmail)},
+        ${sqlQuote(record.senderDisplay)},
+        ${sqlText(record.senderDomain)},
+        ${sqlText(record.listId)},
+        ${sqlQuote(record.method)},
+        ${sqlQuote(record.status)},
+        ${record.httpStatusCode === null ? "NULL" : sqlInteger(record.httpStatusCode)},
+        ${sqlText(record.httpFinalUrl)},
+        ${sqlBoolean(record.filterCreated)},
+        ${sqlText(record.filterId)},
+        ${sqlInteger(record.threadsTrashed)},
+        ${sqlText(record.errorMessage)},
+        ${sqlJson(record.metadata)},
+        ${sqlQuote(record.createdAt)},
+        ${sqlQuote(record.updatedAt)}
+      )`,
+    );
+  }
+
+  async listEmailUnsubscribes(
+    agentId: string,
+    args: { limit?: number } = {},
+  ): Promise<EmailUnsubscribeRecord[]> {
+    const limit = Math.max(1, Math.min(500, Math.trunc(args.limit ?? 100)));
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_email_unsubscribes
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY created_at DESC
+        LIMIT ${limit}`,
+    );
+    return rows.map(parseEmailUnsubscribe);
+  }
+
+  async getEmailUnsubscribe(
+    agentId: string,
+    id: string,
+  ): Promise<EmailUnsubscribeRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_email_unsubscribes
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseEmailUnsubscribe(row) : null;
+  }
+
+  async findEmailUnsubscribeBySender(
+    agentId: string,
+    senderEmail: string,
+  ): Promise<EmailUnsubscribeRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_email_unsubscribes
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND sender_email = ${sqlQuote(senderEmail.trim().toLowerCase())}
+        ORDER BY created_at DESC
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseEmailUnsubscribe(row) : null;
+  }
+
   async createActivitySignal(signal: LifeOpsActivitySignal): Promise<void> {
 
     const metadata =
@@ -2932,6 +3783,43 @@ export class LifeOpsRepository {
           ${timeMinClause}
           ${timeMaxClause}
         ORDER BY start_at ASC`,
+    );
+    return rows.map(parseCalendarEvent);
+  }
+
+  /**
+   * Returns events whose `end_at` falls in (cursorEndAt, upToIso] OR
+   * (end_at == cursorEndAt AND id > cursorId). Ordered by (end_at, id) ascending
+   * so callers can advance a tuple cursor and never re-fire for the same event.
+   */
+  async listCalendarEventsEndedAfterCursor(args: {
+    agentId: string;
+    provider: LifeOpsConnectorGrant["provider"];
+    side?: LifeOpsConnectorSide;
+    cursorEndAt: string | null;
+    cursorEventId: string | null;
+    upToIso: string;
+    limit: number;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const sideClause = args.side ? `AND side = ${sqlQuote(args.side)}` : "";
+    let cursorClause = "";
+    if (args.cursorEndAt) {
+      cursorClause = args.cursorEventId
+        ? `AND (end_at > ${sqlQuote(args.cursorEndAt)}
+              OR (end_at = ${sqlQuote(args.cursorEndAt)} AND id > ${sqlQuote(args.cursorEventId)}))`
+        : `AND end_at > ${sqlQuote(args.cursorEndAt)}`;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = ${sqlQuote(args.provider)}
+          ${sideClause}
+          AND end_at <= ${sqlQuote(args.upToIso)}
+          ${cursorClause}
+        ORDER BY end_at ASC, id ASC
+        LIMIT ${Math.max(1, Math.floor(args.limit))}`,
     );
     return rows.map(parseCalendarEvent);
   }
@@ -4552,6 +5440,35 @@ export class LifeOpsRepository {
     return rows.map(parseScreenTimeSession);
   }
 
+  async listScreenTimeSessionsOverlapping(
+    agentId: string,
+    start: string,
+    end: string,
+    opts?: { source?: string; limit?: number },
+  ): Promise<LifeOpsScreenTimeSession[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `start_at < ${sqlQuote(end)}`,
+      `(end_at IS NULL OR end_at > ${sqlQuote(start)})`,
+    ];
+    if (opts?.source) {
+      clauses.push(`source = ${sqlQuote(opts.source)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_screen_time_sessions
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY start_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseScreenTimeSession);
+  }
+
   async upsertScreenTimeDaily(row: LifeOpsScreenTimeDaily): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -4576,6 +5493,248 @@ export class LifeOpsRepository {
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
+  }
+
+  async upsertScheduleInsight(
+    insight: LifeOpsScheduleInsightRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_insights (
+         id, agent_id, effective_day_key, local_date, timezone, inferred_at,
+         phase, sleep_status, is_probably_sleeping, sleep_confidence,
+         current_sleep_started_at, last_sleep_started_at, last_sleep_ended_at,
+         last_sleep_duration_minutes, typical_wake_hour, typical_sleep_hour,
+         wake_at, first_active_at, last_active_at, last_meal_at,
+         next_meal_label, next_meal_window_start_at, next_meal_window_end_at,
+         next_meal_confidence, meals_json, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(insight.id)},
+         ${sqlQuote(insight.agentId)},
+         ${sqlQuote(insight.effectiveDayKey)},
+         ${sqlQuote(insight.localDate)},
+         ${sqlQuote(insight.timezone)},
+         ${sqlQuote(insight.inferredAt)},
+         ${sqlQuote(insight.phase)},
+         ${sqlQuote(insight.sleepStatus)},
+         ${sqlBoolean(insight.isProbablySleeping)},
+         ${sqlNumber(insight.sleepConfidence)},
+         ${sqlText(insight.currentSleepStartedAt)},
+         ${sqlText(insight.lastSleepStartedAt)},
+         ${sqlText(insight.lastSleepEndedAt)},
+         ${sqlInteger(insight.lastSleepDurationMinutes)},
+         ${sqlNumber(insight.typicalWakeHour)},
+         ${sqlNumber(insight.typicalSleepHour)},
+         ${sqlText(insight.wakeAt)},
+         ${sqlText(insight.firstActiveAt)},
+         ${sqlText(insight.lastActiveAt)},
+         ${sqlText(insight.lastMealAt)},
+         ${sqlText(insight.nextMealLabel)},
+         ${sqlText(insight.nextMealWindowStartAt)},
+         ${sqlText(insight.nextMealWindowEndAt)},
+         ${sqlNumber(insight.nextMealConfidence)},
+         ${sqlJson(insight.meals)},
+         ${sqlJson(insight.metadata)},
+         ${sqlQuote(insight.createdAt)},
+         ${sqlQuote(insight.updatedAt)}
+       )
+       ON CONFLICT(agent_id, effective_day_key) DO UPDATE SET
+         local_date = EXCLUDED.local_date,
+         timezone = EXCLUDED.timezone,
+         inferred_at = EXCLUDED.inferred_at,
+         phase = EXCLUDED.phase,
+         sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
+         sleep_confidence = EXCLUDED.sleep_confidence,
+         current_sleep_started_at = EXCLUDED.current_sleep_started_at,
+         last_sleep_started_at = EXCLUDED.last_sleep_started_at,
+         last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
+         last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
+         wake_at = EXCLUDED.wake_at,
+         first_active_at = EXCLUDED.first_active_at,
+         last_active_at = EXCLUDED.last_active_at,
+         last_meal_at = EXCLUDED.last_meal_at,
+         next_meal_label = EXCLUDED.next_meal_label,
+         next_meal_window_start_at = EXCLUDED.next_meal_window_start_at,
+         next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
+         next_meal_confidence = EXCLUDED.next_meal_confidence,
+         meals_json = EXCLUDED.meals_json,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async upsertScheduleObservation(
+    observation: LifeOpsScheduleObservationRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_observations (
+         id, agent_id, origin, device_id, device_kind, timezone, observed_at,
+         window_start_at, window_end_at, state, phase, meal_label,
+         confidence, metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(observation.id)},
+         ${sqlQuote(observation.agentId)},
+         ${sqlQuote(observation.origin)},
+         ${sqlQuote(observation.deviceId)},
+         ${sqlQuote(observation.deviceKind)},
+         ${sqlQuote(observation.timezone)},
+         ${sqlQuote(observation.observedAt)},
+         ${sqlQuote(observation.windowStartAt)},
+         ${sqlText(observation.windowEndAt)},
+         ${sqlQuote(observation.state)},
+         ${sqlText(observation.phase)},
+         ${sqlText(observation.mealLabel)},
+         ${sqlNumber(observation.confidence)},
+         ${sqlJson(observation.metadata)},
+         ${sqlQuote(observation.createdAt)},
+         ${sqlQuote(observation.updatedAt)}
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         observed_at = EXCLUDED.observed_at,
+         window_end_at = EXCLUDED.window_end_at,
+         phase = EXCLUDED.phase,
+         meal_label = EXCLUDED.meal_label,
+         confidence = EXCLUDED.confidence,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async listScheduleObservations(
+    agentId: string,
+    sinceAt: string,
+    opts?: {
+      origin?: LifeOpsScheduleObservationRecord["origin"];
+      deviceId?: string;
+      limit?: number;
+    },
+  ): Promise<LifeOpsScheduleObservationRecord[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `observed_at >= ${sqlQuote(sinceAt)}`,
+    ];
+    if (opts?.origin) {
+      clauses.push(`origin = ${sqlQuote(opts.origin)}`);
+    }
+    if (opts?.deviceId) {
+      clauses.push(`device_id = ${sqlQuote(opts.deviceId)}`);
+    }
+    const limitClause =
+      typeof opts?.limit === "number"
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_schedule_observations
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY observed_at DESC
+        ${limitClause}`,
+    );
+    return rows.map(parseScheduleObservation);
+  }
+
+  async upsertScheduleMergedState(
+    state: LifeOpsScheduleMergedStateRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_schedule_merged_states (
+         id, agent_id, scope, effective_day_key, local_date, timezone,
+         merged_at, inferred_at, phase, sleep_status, is_probably_sleeping,
+         sleep_confidence, current_sleep_started_at, last_sleep_started_at,
+         last_sleep_ended_at, last_sleep_duration_minutes, typical_wake_hour,
+         typical_sleep_hour, wake_at, first_active_at, last_active_at,
+         last_meal_at, next_meal_label, next_meal_window_start_at,
+         next_meal_window_end_at, next_meal_confidence, meals_json,
+         observation_count, device_count, contributing_device_kinds_json,
+         metadata_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(state.id)},
+         ${sqlQuote(state.agentId)},
+         ${sqlQuote(state.scope)},
+         ${sqlQuote(state.effectiveDayKey)},
+         ${sqlQuote(state.localDate)},
+         ${sqlQuote(state.timezone)},
+         ${sqlQuote(state.mergedAt)},
+         ${sqlQuote(state.inferredAt)},
+         ${sqlQuote(state.phase)},
+         ${sqlQuote(state.sleepStatus)},
+         ${sqlBoolean(state.isProbablySleeping)},
+         ${sqlNumber(state.sleepConfidence)},
+         ${sqlText(state.currentSleepStartedAt)},
+         ${sqlText(state.lastSleepStartedAt)},
+         ${sqlText(state.lastSleepEndedAt)},
+         ${sqlInteger(state.lastSleepDurationMinutes)},
+         ${sqlNumber(state.typicalWakeHour)},
+         ${sqlNumber(state.typicalSleepHour)},
+         ${sqlText(state.wakeAt)},
+         ${sqlText(state.firstActiveAt)},
+         ${sqlText(state.lastActiveAt)},
+         ${sqlText(state.lastMealAt)},
+         ${sqlText(state.nextMealLabel)},
+         ${sqlText(state.nextMealWindowStartAt)},
+         ${sqlText(state.nextMealWindowEndAt)},
+         ${sqlNumber(state.nextMealConfidence)},
+         ${sqlJson(state.meals)},
+         ${sqlInteger(state.observationCount)},
+         ${sqlInteger(state.deviceCount)},
+         ${sqlJson(state.contributingDeviceKinds)},
+         ${sqlJson(state.metadata)},
+         ${sqlQuote(state.createdAt)},
+         ${sqlQuote(state.updatedAt)}
+       )
+       ON CONFLICT(agent_id, scope, timezone) DO UPDATE SET
+         effective_day_key = EXCLUDED.effective_day_key,
+         local_date = EXCLUDED.local_date,
+         merged_at = EXCLUDED.merged_at,
+         inferred_at = EXCLUDED.inferred_at,
+         phase = EXCLUDED.phase,
+         sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
+         sleep_confidence = EXCLUDED.sleep_confidence,
+         current_sleep_started_at = EXCLUDED.current_sleep_started_at,
+         last_sleep_started_at = EXCLUDED.last_sleep_started_at,
+         last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
+         last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
+         wake_at = EXCLUDED.wake_at,
+         first_active_at = EXCLUDED.first_active_at,
+         last_active_at = EXCLUDED.last_active_at,
+         last_meal_at = EXCLUDED.last_meal_at,
+         next_meal_label = EXCLUDED.next_meal_label,
+         next_meal_window_start_at = EXCLUDED.next_meal_window_start_at,
+         next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
+         next_meal_confidence = EXCLUDED.next_meal_confidence,
+         meals_json = EXCLUDED.meals_json,
+         observation_count = EXCLUDED.observation_count,
+         device_count = EXCLUDED.device_count,
+         contributing_device_kinds_json = EXCLUDED.contributing_device_kinds_json,
+         metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getScheduleMergedState(
+    agentId: string,
+    scope: LifeOpsScheduleMergedStateRecord["scope"],
+    timezone: string,
+  ): Promise<LifeOpsScheduleMergedStateRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_schedule_merged_states
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND scope = ${sqlQuote(scope)}
+          AND timezone = ${sqlQuote(timezone)}
+        LIMIT 1`,
+    );
+    return rows[0] ? parseScheduleMergedState(rows[0]) : null;
   }
 
   async listScreenTimeDaily(
@@ -4979,6 +6138,48 @@ export function createLifeOpsAuditEvent(
     ...params,
     id: crypto.randomUUID(),
     createdAt: isoNow(),
+  };
+}
+
+export function createLifeOpsSubscriptionAudit(
+  params: Omit<LifeOpsSubscriptionAudit, "id" | "createdAt" | "updatedAt">,
+): LifeOpsSubscriptionAudit {
+  const timestamp = isoNow();
+  return {
+    ...params,
+    id: crypto.randomUUID(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function createLifeOpsSubscriptionCandidate(
+  params: Omit<
+    LifeOpsSubscriptionCandidate,
+    "id" | "createdAt" | "updatedAt"
+  >,
+): LifeOpsSubscriptionCandidate {
+  const timestamp = isoNow();
+  return {
+    ...params,
+    id: crypto.randomUUID(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function createLifeOpsSubscriptionCancellation(
+  params: Omit<
+    LifeOpsSubscriptionCancellation,
+    "id" | "createdAt" | "updatedAt"
+  >,
+): LifeOpsSubscriptionCancellation {
+  const timestamp = isoNow();
+  return {
+    ...params,
+    id: crypto.randomUUID(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
 }
 

@@ -19,6 +19,19 @@ export interface LocalInferenceLoader {
   loadModel(args: { modelPath: string }): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
+  /**
+   * Optional generation surface. When a loader implements this, the runtime
+   * handler (`ensure-local-inference-handler.ts`) routes TEXT_SMALL /
+   * TEXT_LARGE requests through it instead of the standalone engine. Mobile
+   * builds populate this via the Capacitor adapter; desktop leaves it
+   * unimplemented and falls back to the `LocalInferenceEngine`.
+   */
+  generate?(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string>;
 }
 
 function isLoader(value: unknown): value is LocalInferenceLoader {

@@ -29,6 +29,7 @@ export interface RegistryPluginInfo extends RegistryClientPluginInfo {
   category?: string;
   capabilities?: string[];
   icon?: string | null;
+  heroImage?: string | null;
   runtimePlugin?: string;
   session?: RegistryPluginAppSessionInfo;
 }

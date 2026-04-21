@@ -233,14 +233,6 @@ describe("AppManager.reapStaleRuns", () => {
 });
 
 describe("AppManager.startStaleRunSweeper", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("reaps stale runs on each tick and is idempotent", async () => {
     const stale = new Date(Date.now() - 5 * 60_000).toISOString();
     writeAppRunStore(
@@ -248,10 +240,13 @@ describe("AppManager.startStaleRunSweeper", () => {
       stateDir,
     );
 
+    // Use a very short real-timer interval so the sweeper actually fires
+    // once without depending on vi.advanceTimersByTimeAsync (not
+    // implemented by bun's vitest-compat shim).
     const manager = new AppManager({
       stateDir,
       heartbeatTimeoutMs: 60_000,
-      heartbeatSweepIntervalMs: 1_000,
+      heartbeatSweepIntervalMs: 50,
     });
 
     manager.startStaleRunSweeper(() => null);
@@ -259,10 +254,9 @@ describe("AppManager.startStaleRunSweeper", () => {
     // checking that only one stopRun fires per tick interval.
     manager.startStaleRunSweeper(() => null);
 
-    await vi.advanceTimersByTimeAsync(1_100);
-    // Yield once more so the awaited reapStaleRuns inside runSweeperTick
-    // settles before we assert.
-    await vi.runOnlyPendingTimersAsync();
+    // Wait long enough for at least one sweeper tick + the awaited reap
+    // inside `runSweeperTick` to settle. 200ms >> 50ms tick interval.
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(stopRunMock).toHaveBeenCalledTimes(1);
     expect(await manager.listRuns(null)).toEqual([]);

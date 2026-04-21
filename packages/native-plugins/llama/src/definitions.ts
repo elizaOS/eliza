@@ -1,114 +1,67 @@
-import type { PluginListenerHandle } from "@capacitor/core";
-
 /**
- * Capacitor plugin contract for on-device llama.cpp inference.
+ * Milady-flavoured Capacitor llama.cpp adapter contract.
  *
- * The shape intentionally mirrors `LocalInferenceLoader` +
- * `LocalInferenceEngine` in @elizaos/app-core so the existing
- * ActiveModelCoordinator can swap between the desktop (node-llama-cpp)
- * engine and this mobile plugin via the same service contract.
+ * This mirrors the `LocalInferenceLoader` interface in @elizaos/app-core so
+ * `ActiveModelCoordinator` can swap between the desktop engine
+ * (node-llama-cpp) and the mobile Capacitor plugin without caring which is
+ * active. Native llama.cpp work is handled by `llama-cpp-capacitor`; this
+ * package is intentionally just a thin mapping layer.
  */
 
-export interface LlamaLoadOptions {
+export interface LoadOptions {
   /**
-   * Absolute or scoped-URI path to a GGUF file on device storage. On iOS
-   * this may live under `Application Support/llama-models/`. On Android
-   * under the app's internal files dir or a scoped storage URI.
+   * Absolute or sandbox path to a GGUF file on device storage. On iOS this
+   * lives under `Application Support/`. On Android under the app's internal
+   * files dir.
    */
   modelPath: string;
-  /** Optional context window override; defaults to model metadata. */
+  /** Context window size; default 4096, capped by model metadata. */
   contextSize?: number;
-  /** Optional cap on number of threads the native runtime may use. */
-  maxThreads?: number;
-  /**
-   * When true the plugin attempts to use a GPU delegate (Metal on iOS,
-   * GPU/Vulkan on Android). Defaults to platform-native best effort.
-   */
+  /** Hint: when true, the native layer uses GPU/Metal/Vulkan where available. */
   useGpu?: boolean;
+  /** Cap on native thread count; native layer picks a reasonable default otherwise. */
+  maxThreads?: number;
 }
 
-export interface LlamaGenerateOptions {
-  /** Prompt text to feed the model. */
+export interface GenerateOptions {
   prompt: string;
-  /** Upper bound on output tokens; plugin clamps to model context minus prompt length. */
   maxTokens?: number;
-  /** 0..1 temperature; defaults to 0.7. */
   temperature?: number;
-  /** Nucleus sampling; defaults to 0.9. */
   topP?: number;
-  /** Stop generation on any of these substrings. */
   stopSequences?: string[];
-  /**
-   * Stream tokens as they arrive via the "token" plugin listener. When
-   * false (the default) `generate` resolves once with the full text.
-   */
+  /** When true, token events fire on the "token" listener. */
   stream?: boolean;
 }
 
-export interface LlamaGenerateResult {
-  /** Generated text (full output when non-streaming; "" when streaming). */
+export interface GenerateResult {
   text: string;
-  /** Number of prompt tokens consumed. */
   promptTokens: number;
-  /** Number of output tokens generated. */
   outputTokens: number;
-  /** Wall-clock milliseconds spent in native inference. */
   durationMs: number;
 }
 
-export interface LlamaTokenEvent {
-  /** A single decoded token chunk. */
-  token: string;
-  /** Cumulative output-token count at the time this token fired. */
-  index: number;
-}
-
-export interface LlamaHardwareInfo {
-  platform: "ios" | "android";
+export interface HardwareInfo {
+  platform: "ios" | "android" | "web";
+  /** Human-readable device model when the OS exposes one. */
   deviceModel: string;
   totalRamGb: number;
-  /** Only populated when the OS exposes a detail-level RAM reading. */
   availableRamGb: number | null;
-  gpu:
-    | { backend: "metal" | "vulkan" | "gpu-delegate"; available: boolean }
-    | null;
   cpuCores: number;
-  /** Whether the plugin was compiled with GPU support on this device. */
+  gpu: {
+    backend: "metal" | "vulkan" | "gpu-delegate";
+    available: boolean;
+  } | null;
+  /** True when the underlying llama.cpp build has GPU support compiled in. */
   gpuSupported: boolean;
 }
 
-export interface LlamaCapacitorPlugin {
-  /** Report hardware capabilities so the UI can filter model options. */
-  getHardwareInfo(): Promise<LlamaHardwareInfo>;
-  /** Returns true if a model is currently loaded. */
+export interface LlamaAdapter {
+  getHardwareInfo(): Promise<HardwareInfo>;
   isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }>;
-  /** Load a GGUF file into native memory. Unloads any prior model first. */
-  loadModel(options: LlamaLoadOptions): Promise<void>;
-  /** Unload the current model and release native memory. */
-  unloadModel(): Promise<void>;
-  /**
-   * Generate text. When `stream: true`, tokens are also emitted via the
-   * "token" listener and the resolved text is empty.
-   */
-  generate(options: LlamaGenerateOptions): Promise<LlamaGenerateResult>;
-  /** Cancel any in-flight generation. No-op if idle. */
+  load(options: LoadOptions): Promise<void>;
+  unload(): Promise<void>;
+  generate(options: GenerateOptions): Promise<GenerateResult>;
   cancelGenerate(): Promise<void>;
-
-  /** Token-by-token streaming hook (fires only when `stream: true`). */
-  addListener(
-    eventName: "token",
-    listener: (event: LlamaTokenEvent) => void,
-  ): Promise<PluginListenerHandle>;
-
-  /** Fires once at the end of a streamed generation. */
-  addListener(
-    eventName: "generationComplete",
-    listener: (event: LlamaGenerateResult) => void,
-  ): Promise<PluginListenerHandle>;
-
-  /** Fires when generation fails mid-stream. */
-  addListener(
-    eventName: "generationError",
-    listener: (event: { message: string }) => void,
-  ): Promise<PluginListenerHandle>;
+  /** Fires when `generate({ stream: true })` emits a new token. */
+  onToken(listener: (token: string, index: number) => void): () => void;
 }

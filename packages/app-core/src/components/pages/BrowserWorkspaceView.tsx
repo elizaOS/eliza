@@ -2,11 +2,16 @@ import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
 } from "@elizaos/app-steward/browser-workspace-wallet";
+import type {
+  LifeOpsBrowserCompanionPackageStatus,
+  LifeOpsBrowserCompanionStatus,
+} from "@elizaos/shared/contracts/lifeops";
 import { Button, Input } from "@elizaos/ui";
 import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FolderOpen,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -31,6 +36,13 @@ import { ChatView } from "./ChatView.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
+const LIFEOPS_BROWSER_POLL_INTERVAL_MS = 4_000;
+
+function isBrowserWorkspaceSessionMode(
+  mode: BrowserWorkspaceSnapshot["mode"],
+): boolean {
+  return mode === "cloud" || mode === "desktop";
+}
 
 function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
@@ -48,7 +60,7 @@ function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
     throw new Error("Enter a valid http or https URL.");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https pages can be embedded.");
+    throw new Error("Only http and https URLs are supported.");
   }
   return parsed.toString();
 }
@@ -122,8 +134,17 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [locationDirty, setLocationDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
+  const [lifeOpsBrowserAvailable, setLifeOpsBrowserAvailable] = useState(false);
+  const [lifeOpsBrowserLoading, setLifeOpsBrowserLoading] = useState(true);
+  const [lifeOpsBrowserCompanions, setLifeOpsBrowserCompanions] = useState<
+    LifeOpsBrowserCompanionStatus[]
+  >([]);
+  const [lifeOpsBrowserPackageStatus, setLifeOpsBrowserPackageStatus] =
+    useState<LifeOpsBrowserCompanionPackageStatus | null>(null);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
@@ -150,6 +171,22 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
+  const selectedTabSnapshot = selectedTabId
+    ? (tabSnapshots[selectedTabId] ?? null)
+    : null;
+  const selectedTabLiveViewUrl =
+    selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
+  const primaryLifeOpsBrowserCompanion = useMemo(
+    () =>
+      lifeOpsBrowserCompanions.find(
+        (companion) => companion.connectionState === "connected",
+      ) ??
+      lifeOpsBrowserCompanions[0] ??
+      null,
+    [lifeOpsBrowserCompanions],
+  );
+  const lifeOpsBrowserConnected =
+    primaryLifeOpsBrowserCompanion?.connectionState === "connected";
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -204,6 +241,40 @@ export function BrowserWorkspaceView(): JSX.Element {
       return nextState;
     }
   }, []);
+
+  const loadLifeOpsBrowserState = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLifeOpsBrowserLoading(true);
+      }
+      const [companionsResult, packageResult] = await Promise.allSettled([
+        client.fetch<{ companions: LifeOpsBrowserCompanionStatus[] }>(
+          "/api/lifeops/browser/companions",
+        ),
+        client.fetch<{ status: LifeOpsBrowserCompanionPackageStatus }>(
+          "/api/lifeops/browser/packages",
+        ),
+      ]);
+      if (companionsResult.status === "fulfilled") {
+        setLifeOpsBrowserCompanions(companionsResult.value.companions);
+      } else {
+        setLifeOpsBrowserCompanions([]);
+      }
+      if (packageResult.status === "fulfilled") {
+        setLifeOpsBrowserPackageStatus(packageResult.value.status);
+      } else {
+        setLifeOpsBrowserPackageStatus(null);
+      }
+      setLifeOpsBrowserAvailable(
+        companionsResult.status === "fulfilled" ||
+          packageResult.status === "fulfilled",
+      );
+      if (!options?.silent) {
+        setLifeOpsBrowserLoading(false);
+      }
+    },
+    [],
+  );
 
   const loadWorkspace = useCallback(
     async (options?: { preferTabId?: string | null; silent?: boolean }) => {
@@ -262,6 +333,34 @@ export function BrowserWorkspaceView(): JSX.Element {
     [],
   );
 
+  const loadSelectedBrowserWorkspaceSnapshot = useCallback(
+    async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
+      if (!isBrowserWorkspaceSessionMode(mode)) {
+        setSnapshotError(null);
+        return;
+      }
+      try {
+        const snapshot = await client.snapshotBrowserWorkspaceTab(tabId);
+        setTabSnapshots((current) => {
+          if (current[tabId] === snapshot.data) {
+            return current;
+          }
+          return { ...current, [tabId]: snapshot.data };
+        });
+        setSnapshotError(null);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : tRef.current("browserworkspace.SnapshotFailed", {
+                defaultValue: "Failed to load browser session preview.",
+              });
+        setSnapshotError(message);
+      }
+    },
+    [],
+  );
+
   const openNewBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
       const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
@@ -305,17 +404,20 @@ export function BrowserWorkspaceView(): JSX.Element {
         selectedTabId,
         url,
       );
-      // React won't re-navigate an existing iframe when only the src attribute
-      // changes (same key = same DOM element). Set the src directly via the ref.
-      const iframe = iframeRefs.current.get(selectedTabId);
-      if (iframe && iframe.src !== tab.url) {
-        iframe.src = tab.url;
+      if (workspace.mode === "web") {
+        // React won't re-navigate an existing iframe when only the src
+        // attribute changes (same key = same DOM element). Set the src
+        // directly via the ref in embedded web mode only.
+        const iframe = iframeRefs.current.get(selectedTabId);
+        if (iframe && iframe.src !== tab.url) {
+          iframe.src = tab.url;
+        }
       }
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId],
+    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId, workspace.mode],
   );
 
   const registerBrowserWorkspaceIframe = useCallback(
@@ -331,7 +433,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const { postBrowserWalletReady } = useBrowserWorkspaceWalletBridge({
     iframeRefs,
-    workspaceTabs: workspace.tabs,
+    workspaceTabs: workspace.mode === "web" ? workspace.tabs : [],
     walletState: browserWalletState,
     loadWalletState: loadBrowserWalletState,
   });
@@ -345,6 +447,14 @@ export function BrowserWorkspaceView(): JSX.Element {
   }, [loadBrowserWalletState]);
 
   useEffect(() => {
+    if (workspace.mode !== "web") {
+      setLifeOpsBrowserLoading(false);
+      return;
+    }
+    void loadLifeOpsBrowserState();
+  }, [loadLifeOpsBrowserState, workspace.mode]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       void loadWorkspace({ preferTabId: selectedTabId, silent: true });
     }, POLL_INTERVAL_MS);
@@ -352,11 +462,39 @@ export function BrowserWorkspaceView(): JSX.Element {
   }, [loadWorkspace, selectedTabId]);
 
   useEffect(() => {
+    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+      setSnapshotError(null);
+      return;
+    }
+    void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+  }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
+
+  useEffect(() => {
+    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       void loadBrowserWalletState();
     }, 5_000);
     return () => window.clearInterval(timer);
   }, [loadBrowserWalletState]);
+
+  useEffect(() => {
+    if (workspace.mode !== "web") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadLifeOpsBrowserState({ silent: true });
+    }, LIFEOPS_BROWSER_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [loadLifeOpsBrowserState, workspace.mode]);
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
@@ -415,13 +553,154 @@ export function BrowserWorkspaceView(): JSX.Element {
     workspace.tabs,
   ]);
 
-  const reloadSelectedBrowserWorkspaceTab = useCallback(() => {
+  const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
-    const iframe = iframeRefs.current.get(selectedTab.id);
-    if (iframe) {
-      iframe.src = selectedTab.url;
+    if (workspace.mode === "web") {
+      const iframe = iframeRefs.current.get(selectedTab.id);
+      if (iframe) {
+        iframe.src = selectedTab.url;
+      }
+      return;
     }
-  }, [selectedTab]);
+    await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
+  }, [selectedTab, workspace.mode]);
+
+  const installLifeOpsBrowserExtension = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "lifeops-browser:install",
+      async () => {
+        let nextPackageStatus = lifeOpsBrowserPackageStatus;
+        if (!nextPackageStatus?.chromeBuildPath) {
+          const buildResponse = await client.fetch<{
+            status: LifeOpsBrowserCompanionPackageStatus;
+          }>("/api/lifeops/browser/packages/chrome/build", {
+            method: "POST",
+          });
+          nextPackageStatus = buildResponse.status;
+          setLifeOpsBrowserPackageStatus(buildResponse.status);
+        }
+
+        const revealResponse = await client.fetch<{
+          path: string;
+          target: string;
+          revealOnly: boolean;
+        }>("/api/lifeops/browser/packages/open-path", {
+          method: "POST",
+          body: JSON.stringify({
+            target: "chrome_build",
+            revealOnly: true,
+          }),
+        });
+
+        let openedManager = true;
+        try {
+          await client.fetch(
+            "/api/lifeops/browser/packages/chrome/open-manager",
+            {
+              method: "POST",
+            },
+          );
+        } catch {
+          openedManager = false;
+        }
+
+        setActionNoticeRef.current(
+          openedManager
+            ? `Chrome is ready. Click Load unpacked and choose ${revealResponse.path}.`
+            : `The LifeOps Browser folder is ready at ${revealResponse.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`,
+          "success",
+          6_000,
+        );
+        await loadLifeOpsBrowserState({ silent: true });
+      },
+      t("browserworkspace.InstallLifeOpsBrowserFailed", {
+        defaultValue: "Failed to prepare the LifeOps Browser extension.",
+      }),
+    );
+  }, [
+    lifeOpsBrowserPackageStatus,
+    loadLifeOpsBrowserState,
+    runBrowserWorkspaceAction,
+    t,
+  ]);
+
+  const revealLifeOpsBrowserFolder = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "lifeops-browser:reveal-folder",
+      async () => {
+        const response = await client.fetch<{
+          path: string;
+          target: string;
+          revealOnly: boolean;
+        }>("/api/lifeops/browser/packages/open-path", {
+          method: "POST",
+          body: JSON.stringify({
+            target: "chrome_build",
+            revealOnly: true,
+          }),
+        });
+        setActionNoticeRef.current(
+          `Revealed the LifeOps Browser folder at ${response.path}.`,
+          "success",
+          4_000,
+        );
+      },
+      t("browserworkspace.OpenLifeOpsBrowserFolderFailed", {
+        defaultValue: "Failed to reveal the LifeOps Browser extension folder.",
+      }),
+    );
+  }, [runBrowserWorkspaceAction, t]);
+
+  const openLifeOpsChromeExtensions = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "lifeops-browser:open-manager",
+      async () => {
+        await client.fetch(
+          "/api/lifeops/browser/packages/chrome/open-manager",
+          {
+            method: "POST",
+          },
+        );
+        setActionNoticeRef.current(
+          "Opened Chrome extensions. Click Load unpacked and choose the LifeOps Browser folder.",
+          "success",
+          4_000,
+        );
+      },
+      t("browserworkspace.OpenLifeOpsBrowserManagerFailed", {
+        defaultValue: "Failed to open Chrome extensions.",
+      }),
+    );
+  }, [runBrowserWorkspaceAction, t]);
+
+  const openBlankBrowserWorkspaceTab = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "open:new-blank",
+      async () => {
+        await openNewBrowserWorkspaceTab("about:blank");
+      },
+      t("browserworkspace.OpenBlankTabFailed", {
+        defaultValue: "Failed to open a blank browser tab.",
+      }),
+    );
+  }, [openNewBrowserWorkspaceTab, runBrowserWorkspaceAction, t]);
+
+  const refreshLifeOpsBrowserConnection = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "lifeops-browser:refresh",
+      async () => {
+        await loadLifeOpsBrowserState({ silent: true });
+        setActionNoticeRef.current(
+          "Refreshed LifeOps Browser connection status.",
+          "success",
+          3_000,
+        );
+      },
+      t("browserworkspace.RefreshLifeOpsBrowserFailed", {
+        defaultValue: "Failed to refresh LifeOps Browser status.",
+      }),
+    );
+  }, [loadLifeOpsBrowserState, runBrowserWorkspaceAction, t]);
 
   return (
     <div
@@ -432,6 +711,8 @@ export function BrowserWorkspaceView(): JSX.Element {
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border/30 bg-card/30 px-2 pt-2">
         {workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
+          const tabHasSessionFocus =
+            workspace.mode === "web" ? tab.visible : active;
           const label = getBrowserWorkspaceTabLabel(tab);
           const activate = () =>
             void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
@@ -459,13 +740,18 @@ export function BrowserWorkspaceView(): JSX.Element {
                   : "border-transparent bg-card/30 text-muted hover:bg-card/60 hover:text-txt"
               }`}
             >
-              {tab.visible ? (
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
-                  aria-label={t("browserworkspace.AgentActive", {
-                    defaultValue: "Agent is on this tab",
-                  })}
-                />
+              {tabHasSessionFocus ? (
+                <>
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
+                  />
+                  <span className="sr-only">
+                    {t("browserworkspace.AgentActive", {
+                      defaultValue: "Agent is on this tab",
+                    })}
+                  </span>
+                </>
               ) : (
                 <span
                   aria-hidden
@@ -533,7 +819,11 @@ export function BrowserWorkspaceView(): JSX.Element {
           className="h-8 w-8"
           aria-label={t("common.refresh", { defaultValue: "Refresh" })}
           disabled={!selectedTab || busyAction !== null}
-          onClick={reloadSelectedBrowserWorkspaceTab}
+          onClick={() =>
+            void runBrowserWorkspaceAction("reload:selected", async () => {
+              await reloadSelectedBrowserWorkspaceTab();
+            })
+          }
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -589,27 +879,128 @@ export function BrowserWorkspaceView(): JSX.Element {
 
           {workspace.tabs.length === 0 ? (
             <div className="flex h-full items-center justify-center">
-              <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-                <div className="text-sm font-semibold text-txt">
-                  {loading
-                    ? t("browserworkspace.Loading", {
-                        defaultValue: "Loading browser workspace",
-                      })
-                    : t("browserworkspace.EmptyTitle", {
-                        defaultValue: "No browser tabs yet",
-                      })}
+              {workspace.mode === "web" && lifeOpsBrowserAvailable ? (
+                <div className="w-full max-w-2xl px-6">
+                  <div className="rounded-3xl border border-border/24 bg-card/22 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                          LifeOps Browser
+                        </div>
+                        <div className="text-lg font-semibold text-txt">
+                          {lifeOpsBrowserConnected
+                            ? "Your browser is connected"
+                            : lifeOpsBrowserLoading
+                              ? "Checking your browser connection"
+                              : "Use your real browser here"}
+                        </div>
+                        <div className="max-w-xl text-sm leading-relaxed text-muted">
+                          {lifeOpsBrowserConnected
+                            ? `LifeOps Browser is active in ${primaryLifeOpsBrowserCompanion?.browser === "safari" ? "Safari" : "Chrome"} / ${primaryLifeOpsBrowserCompanion?.profileLabel ?? "Default"}. Use that real browser profile for Discord, Google, and other sites that do not belong inside an embed.`
+                            : "Install the LifeOps Browser extension in this Chrome profile so LifeOps can see and control your real tabs instead of falling back to embedded browsing."}
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-border/24 bg-bg/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                        {lifeOpsBrowserConnected
+                          ? "Connected"
+                          : lifeOpsBrowserLoading
+                            ? "Checking"
+                            : "Install"}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {lifeOpsBrowserConnected ? (
+                        <Button
+                          type="button"
+                          onClick={() => void openBlankBrowserWorkspaceTab()}
+                          disabled={busyAction !== null}
+                        >
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          Open blank tab here
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          onClick={() => void installLifeOpsBrowserExtension()}
+                          disabled={busyAction !== null}
+                        >
+                          Install LifeOps Browser
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void refreshLifeOpsBrowserConnection()}
+                        disabled={busyAction !== null}
+                      >
+                        <RefreshCw className="mr-1.5 h-4 w-4" />
+                        Refresh
+                      </Button>
+                      {!lifeOpsBrowserConnected &&
+                      lifeOpsBrowserPackageStatus?.chromeBuildPath ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void revealLifeOpsBrowserFolder()}
+                          disabled={busyAction !== null}
+                        >
+                          <FolderOpen className="mr-1.5 h-4 w-4" />
+                          Open extension folder
+                        </Button>
+                      ) : null}
+                      {!lifeOpsBrowserConnected ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void openLifeOpsChromeExtensions()}
+                          disabled={busyAction !== null}
+                        >
+                          Open Chrome extensions
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    {lifeOpsBrowserPackageStatus?.chromeBuildPath ? (
+                      <div className="mt-4 rounded-2xl bg-bg/70 px-3 py-2 text-[11px] text-muted">
+                        <div className="font-semibold uppercase tracking-[0.14em] text-muted">
+                          Chrome Build
+                        </div>
+                        <div className="mt-1 truncate font-mono text-txt/85">
+                          {lifeOpsBrowserPackageStatus.chromeBuildPath}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="text-xs text-muted">
-                  {t("browserworkspace.EmptyDescription", {
-                    defaultValue:
-                      "Open a page here, or let the agent create tabs through the browser workspace plugin.",
-                  })}
+              ) : (
+                <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+                  <div className="text-sm font-semibold text-txt">
+                    {loading
+                      ? t("browserworkspace.Loading", {
+                          defaultValue: "Loading browser workspace",
+                        })
+                      : t("browserworkspace.EmptyTitle", {
+                          defaultValue: "No browser tabs yet",
+                        })}
+                  </div>
+                  <div className="text-xs text-muted">
+                    {isBrowserWorkspaceSessionMode(workspace.mode)
+                      ? t("browserworkspace.EmptySessionDescription", {
+                          defaultValue:
+                            "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
+                        })
+                      : t("browserworkspace.EmptyDescription", {
+                          defaultValue: "Open a page here to get started.",
+                        })}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-          ) : (
+          ) : workspace.mode === "web" ? (
             workspace.tabs.map((tab) => {
               const active = tab.id === selectedTabId;
+              const highlighted = tab.visible;
               return (
                 <iframe
                   key={tab.id}
@@ -627,10 +1018,116 @@ export function BrowserWorkspaceView(): JSX.Element {
                       ? "pointer-events-auto opacity-100"
                       : "pointer-events-none opacity-0"
                   }`}
-                  onLoad={() => postBrowserWalletReady(tab, browserWalletState)}
+                  onLoad={() =>
+                    highlighted
+                      ? postBrowserWalletReady(tab, browserWalletState)
+                      : undefined
+                  }
                 />
               );
             })
+          ) : (
+            <div className="flex h-full flex-1 flex-col bg-bg">
+              <div className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+                <span className="rounded-full border border-border/40 bg-card/60 px-2 py-1 font-medium text-txt">
+                  {workspace.mode === "cloud"
+                    ? t("browserworkspace.CloudSession", {
+                        defaultValue: "Cloud browser session",
+                      })
+                    : t("browserworkspace.DesktopSession", {
+                        defaultValue: "Desktop browser session",
+                      })}
+                </span>
+                {selectedTab?.provider ? (
+                  <span>
+                    {t("browserworkspace.Provider", {
+                      defaultValue: "Provider",
+                    })}
+                    {`: ${selectedTab.provider}`}
+                  </span>
+                ) : null}
+                {selectedTab?.status ? (
+                  <span>
+                    {t("browserworkspace.Status", {
+                      defaultValue: "Status",
+                    })}
+                    {`: ${selectedTab.status}`}
+                  </span>
+                ) : null}
+                {selectedTabLiveViewUrl ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
+                    onClick={() =>
+                      void runBrowserWorkspaceAction(
+                        "open:live-session",
+                        async () => {
+                          await openExternalUrl(selectedTabLiveViewUrl);
+                        },
+                      )
+                    }
+                  >
+                    {t("browserworkspace.OpenLiveSession", {
+                      defaultValue: "Open live session",
+                    })}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-card/15">
+                {snapshotError ? (
+                  <div
+                    className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+                    role="alert"
+                  >
+                    {snapshotError}
+                  </div>
+                ) : null}
+
+                {selectedTabSnapshot ? (
+                  <img
+                    alt={
+                      selectedTab
+                        ? getBrowserWorkspaceTabLabel(selectedTab)
+                        : t("browserworkspace.SessionPreview", {
+                            defaultValue: "Browser session preview",
+                          })
+                    }
+                    src={`data:image/png;base64,${selectedTabSnapshot}`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="flex max-w-sm flex-col items-center gap-2 px-6 text-center">
+                    <div className="text-sm font-semibold text-txt">
+                      {t("browserworkspace.SessionPreviewPending", {
+                        defaultValue: "Waiting for browser session preview",
+                      })}
+                    </div>
+                    <div className="text-xs text-muted">
+                      {t("browserworkspace.SessionPreviewPendingDescription", {
+                        defaultValue:
+                          "The page is running in a real browser session. A fresh preview will appear here as the session updates.",
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selectedTab ? (
+                <div className="border-t border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+                  <div className="truncate font-medium text-txt">
+                    {getBrowserWorkspaceTabLabel(selectedTab)}
+                  </div>
+                  <div className="truncate">{selectedTab.url}</div>
+                  <div className="mt-1">
+                    {t("browserworkspace.RealSessionDescription", {
+                      defaultValue:
+                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
 

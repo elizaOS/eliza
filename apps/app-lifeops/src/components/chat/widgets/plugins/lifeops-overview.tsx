@@ -1,22 +1,25 @@
-
-
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
+  LifeOpsDiscordDmPreview,
   LifeOpsGoalDefinition,
   LifeOpsGoalReview,
   LifeOpsOccurrenceExplanation,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
+  LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   Bell,
   BellRing,
   Bot,
+  Check,
   CheckCircle2,
+  Clock,
   Clock3,
   Cloud,
+  Info,
   ListTodo,
   Mail,
   MessageCircleMore,
@@ -27,25 +30,32 @@ import {
   Smartphone,
   Sparkles,
   SquareArrowOutUpRight,
+  X,
 } from "lucide-react";
-import type { ComponentType } from "react";
-import type { PropsWithChildren, ReactElement, SVGProps } from "react";
+import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button } from "@elizaos/ui";
 import { client } from "@elizaos/app-core/api";
 import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
+import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useApp } from "@elizaos/app-core/state";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "@elizaos/app-core/components/chat/widgets/types";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
+import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
-const MAX_SECTION_OCCURRENCES = 4;
-const MAX_SECTION_GOALS = 3;
+const MAX_SECTION_OCCURRENCES = 3;
+const MAX_SECTION_GOALS = 2;
 const MAX_SECTION_REMINDERS = 2;
+const MAX_DISCORD_PREVIEWS = 3;
 const NEXT_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 type SnoozePreset = "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
@@ -158,6 +168,20 @@ function reviewStateLabel(
   }
 }
 
+function reviewStateDotClass(
+  reviewState: LifeOpsGoalDefinition["reviewState"],
+): string {
+  switch (reviewState) {
+    case "needs_attention":
+    case "at_risk":
+      return "bg-warn";
+    case "on_track":
+      return "bg-ok";
+    default:
+      return "bg-muted/40";
+  }
+}
+
 function hasSectionContent(section: LifeOpsOverviewSection): boolean {
   return (
     section.occurrences.length > 0 ||
@@ -198,24 +222,24 @@ function sectionSummary(section: LifeOpsOverviewSection): string {
 
 function reminderChannelIcon(
   channel: LifeOpsActiveReminderView["channel"],
-): ComponentType<SVGProps<SVGSVGElement>> | null {
+): ReactElement | null {
   switch (channel) {
     case "in_app":
-      return Bell;
+      return <Bell className="h-3 w-3" />;
     case "telegram":
-      return Send;
-    case "email":
-      return Mail;
-    case "push":
-      return Smartphone;
+      return <Send className="h-3 w-3" />;
     case "sms":
-      return MessageSquareText;
-    case "cloud":
-      return Cloud;
+      return <MessageSquareText className="h-3 w-3" />;
+    case "voice":
+      return <Phone className="h-3 w-3" />;
     case "discord":
-      return MessageCircleMore;
+      return <MessageCircleMore className="h-3 w-3" />;
+    case "signal":
+      return <Mail className="h-3 w-3" />;
     case "whatsapp":
-      return Phone;
+      return <Smartphone className="h-3 w-3" />;
+    case "imessage":
+      return <Cloud className="h-3 w-3" />;
     default:
       return null;
   }
@@ -441,9 +465,10 @@ function SnoozeMenu({
         variant="ghost"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className="h-7 px-2 text-xs-tight"
+        aria-label="Snooze"
+        className="h-6 w-6 p-0"
       >
-        Snooze
+        <Clock className="h-3.5 w-3.5" />
       </Button>
     );
   }
@@ -508,7 +533,7 @@ function OccurrenceRow({
     occurrence.state === "muted";
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex items-start gap-2">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
@@ -551,7 +576,7 @@ function OccurrenceRow({
             {dueLabel ? <span>{dueLabel}</span> : null}
             {cadenceSecondary ? <span>{cadenceSecondary}</span> : null}
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             {!isClosed ? (
               <>
                 <Button
@@ -559,9 +584,10 @@ function OccurrenceRow({
                   variant="outline"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "complete")}
-                  className="h-7 px-2 text-xs-tight"
+                  aria-label="Done"
+                  className="h-6 w-6 p-0"
                 >
-                  Done
+                  <Check className="h-3.5 w-3.5" />
                 </Button>
                 <SnoozeMenu
                   occurrenceId={occurrence.id}
@@ -573,9 +599,10 @@ function OccurrenceRow({
                   variant="ghost"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "skip")}
-                  className="h-7 px-2 text-xs-tight"
+                  aria-label="Skip"
+                  className="h-6 w-6 p-0"
                 >
-                  Skip
+                  <X className="h-3.5 w-3.5" />
                 </Button>
               </>
             ) : null}
@@ -584,9 +611,10 @@ function OccurrenceRow({
               variant="ghost"
               disabled={detailPending}
               onClick={() => void onExplain(occurrence.id)}
-              className="h-7 px-2 text-xs-tight"
+              aria-label={isExpanded ? "Hide details" : "Show details"}
+              className="h-6 w-6 p-0"
             >
-              {isExpanded ? "Hide why" : "Why this?"}
+              <Info className="h-3.5 w-3.5" />
             </Button>
           </div>
           {isExpanded && explanation ? (
@@ -626,14 +654,16 @@ function GoalRow({
   const description = goal.description.trim() || groundingSummary || "";
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${reviewStateDotClass(goal.reviewState)}`}
+          aria-label={reviewStateLabel(goal.reviewState)}
+          title={reviewStateLabel(goal.reviewState)}
+        />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {goal.title}
         </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {reviewStateLabel(goal.reviewState)}
-        </Badge>
       </div>
       {description.length > 0 ? (
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
@@ -645,15 +675,16 @@ function GoalRow({
           {cadenceText}
         </div>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1">
         <Button
           size="sm"
           variant="ghost"
           disabled={detailPending}
           onClick={() => void onReview(goal.id)}
-          className="h-7 px-2 text-xs-tight"
+          aria-label={isExpanded ? "Hide review" : "Review"}
+          className="h-6 w-6 p-0"
         >
-          {isExpanded ? "Hide review" : "Review"}
+          <Info className="h-3.5 w-3.5" />
         </Button>
       </div>
       {isExpanded && review ? <GoalReviewPanel review={review} /> : null}
@@ -664,11 +695,11 @@ function GoalRow({
 function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
   const scheduledFor = formatDateTime(reminder.scheduledFor);
   const dueAt = formatDateTime(reminder.dueAt);
-  const ChannelIcon = reminderChannelIcon(reminder.channel);
+  const channelIcon = reminderChannelIcon(reminder.channel);
   const channelLabel = reminder.channel.replace(/_/g, " ");
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {reminder.title}
@@ -678,11 +709,7 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
           className="text-[10px]"
           aria-label={channelLabel}
         >
-          {ChannelIcon ? (
-            <ChannelIcon className="h-3 w-3" />
-          ) : (
-            channelLabel
-          )}
+          {channelIcon ?? channelLabel}
         </Badge>
       </div>
       <div className="mt-1 text-xs text-muted">{reminder.stepLabel}</div>
@@ -799,6 +826,54 @@ function GoalSection({
   );
 }
 
+function DiscordPreviewRow({ preview }: { preview: LifeOpsDiscordDmPreview }) {
+  const snippet = preview.snippet?.trim() ?? "";
+  return (
+    <div className="flex items-center gap-2 px-0.5 py-0.5">
+      <span
+        className={`shrink-0 inline-block h-1.5 w-1.5 rounded-full ${preview.unread ? "bg-accent" : "bg-muted/30"}`}
+      />
+      <span className="min-w-0 flex-1 truncate text-2xs text-txt">
+        {preview.label}
+      </span>
+      {snippet.length > 0 ? (
+        <span className="min-w-0 max-w-[50%] truncate text-3xs text-muted">
+          {snippet}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function DiscordMessagesGlance() {
+  const connector = useDiscordConnector({ side: "owner" });
+  const previews = connector.status?.dmInbox?.previews ?? [];
+  if (!connector.status?.connected || previews.length === 0) {
+    return null;
+  }
+  const unreadFirst = [...previews].sort(
+    (a, b) => Number(b.unread) - Number(a.unread),
+  );
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 px-0.5">
+        <span className="text-muted">
+          <MessageCircleMore className="h-3 w-3" />
+        </span>
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          Discord
+        </span>
+      </div>
+      {unreadFirst.slice(0, MAX_DISCORD_PREVIEWS).map((preview) => (
+        <DiscordPreviewRow
+          key={`${preview.channelId ?? preview.label}`}
+          preview={preview}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ReminderSection({
   reminders,
 }: {
@@ -817,9 +892,6 @@ function ReminderSection({
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
           Reminders
         </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {reminders.length}
-        </Badge>
       </div>
       {reminders.slice(0, MAX_SECTION_REMINDERS).map((reminder) => (
         <ReminderRow
@@ -827,6 +899,55 @@ function ReminderSection({
           reminder={reminder}
         />
       ))}
+    </div>
+  );
+}
+
+function ScheduleSection({
+  schedule,
+}: {
+  schedule: LifeOpsScheduleInsight | null | undefined;
+}) {
+  if (!schedule) {
+    return null;
+  }
+
+  const sleepLine = schedule.isProbablySleeping
+    ? schedule.currentSleepStartedAt
+      ? `Likely asleep since ${formatDateTime(schedule.currentSleepStartedAt)}`
+      : "Likely asleep now"
+    : schedule.lastSleepEndedAt
+      ? `Last wake ${formatDateTime(schedule.lastSleepEndedAt)}${schedule.lastSleepDurationMinutes ? ` • ${schedule.lastSleepDurationMinutes}m asleep` : ""}`
+      : `Sleep ${humanizeLifeOpsLabel(schedule.sleepStatus)}`;
+  const mealLine =
+    schedule.nextMealLabel && schedule.nextMealWindowStartAt
+      ? `Next ${schedule.nextMealLabel} window ${formatDateTime(schedule.nextMealWindowStartAt)}`
+      : schedule.lastMealAt
+        ? `Last meal ${formatDateTime(schedule.lastMealAt)}`
+        : "Meal pattern calibrating";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-0.5">
+        <span className="text-muted">
+          <Moon className="h-3.5 w-3.5" />
+        </span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+          Schedule
+        </span>
+        <Badge variant="secondary" className="text-[10px]">
+          {humanizeLifeOpsLabel(schedule.phase)}
+        </Badge>
+      </div>
+      <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
+        <div className="text-xs font-semibold text-txt">{sleepLine}</div>
+        <div className="mt-1 text-xs text-muted">{mealLine}</div>
+        {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
+          <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
+            {Math.round(schedule.nextMealConfidence * 100)}% confidence
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -881,9 +1002,7 @@ function AgentOpsSection({
             section.summary.activeReminderCount}
         </Badge>
       </div>
-      <p className="px-0.5 text-xs text-muted">
-        {sectionSummary(section)}
-      </p>
+      <p className="px-0.5 text-xs text-muted">{sectionSummary(section)}</p>
       {section.occurrences
         .slice(0, MAX_SECTION_OCCURRENCES)
         .map((occurrence) => (
@@ -921,10 +1040,8 @@ function AgentOpsSection({
 
 export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lifeOpsApp = useLifeOpsAppState();
-  const { workbench, agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
-  const [overview, setOverview] = useState<LifeOpsOverview | null>(
-    workbench?.lifeops ?? null,
-  );
+  const { agentStatus, backendConnection, startupPhase, setTab, t } = useApp();
+  const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<string | null>(null);
@@ -944,12 +1061,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     agentState: agentStatus?.state ?? null,
     backendState: backendConnection?.state ?? null,
   });
-
-  useEffect(() => {
-    if (workbench?.lifeops) {
-      setOverview(workbench.lifeops);
-    }
-  }, [workbench?.lifeops]);
 
   const loadOverview = useCallback(
     async (silent = false) => {
@@ -978,7 +1089,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
 
     void (async () => {
       try {
-        await loadOverview(Boolean(workbench?.lifeops));
+        await loadOverview(false);
       } catch (cause) {
         if (isTransientLifeOpsAvailabilityError(cause)) {
           setError(null);
@@ -989,9 +1100,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
           cause instanceof Error && cause.message.trim().length > 0
             ? cause.message.trim()
             : "Life ops failed to refresh.";
-        if (!workbench?.lifeops) {
-          setOverview(null);
-        }
+        setOverview(null);
         setError(message);
         setLoading(false);
       }
@@ -1022,7 +1131,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [loadOverview, runtimeReady, workbench?.lifeops]);
+  }, [loadOverview, runtimeReady]);
 
   const onOccurrenceAction = useCallback(
     async (occurrenceId: string, action: OccurrenceAction) => {
@@ -1163,6 +1272,10 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     () => bucketOccurrences(overview?.owner.occurrences ?? [], new Date()),
     [overview?.owner.occurrences],
   );
+  const timeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    [],
+  );
 
   if (lifeOpsApp.loading || !lifeOpsApp.enabled) {
     return null;
@@ -1170,14 +1283,16 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   return (
     <WidgetSection
-      title="Life Ops"
+      title="Glance"
       icon={<ListTodo className="h-4 w-4" />}
       action={
         <Button
           size="sm"
           variant="ghost"
           onClick={() => setTab("lifeops")}
-          aria-label={t("lifeopsoverview.OpenView", { defaultValue: "Open LifeOps view" })}
+          aria-label={t("lifeopsoverview.OpenView", {
+            defaultValue: "Open LifeOps view",
+          })}
           className="h-6 w-6 p-0"
         >
           <SquareArrowOutUpRight className="h-3.5 w-3.5" />
@@ -1185,86 +1300,80 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
       }
       testId="chat-widget-lifeops-overview"
     >
-      {!hasAnyContent ? (
-        <EmptyWidgetState
-          icon={<CheckCircle2 className="h-8 w-8" />}
-          title={loading ? "Refreshing life ops…" : "No life ops yet"}
-        />
-      ) : (
-        <div className="flex flex-col gap-4">
-          <OccurrenceBucketBlock
-            title="Now"
-            icon={<ListTodo className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.now}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <OccurrenceBucketBlock
-            title="Next"
-            icon={<Clock3 className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.next}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <OccurrenceBucketBlock
-            title="Upcoming"
-            icon={<Clock3 className="h-3.5 w-3.5" />}
-            occurrences={ownerBuckets.upcoming}
-            actionState={actionState}
-            detailState={detailState}
-            occurrenceExplanations={occurrenceExplanations}
-            expandedOccurrenceId={expandedOccurrenceId}
-            onOccurrenceAction={onOccurrenceAction}
-            onSnoozeOccurrence={onSnoozeOccurrence}
-            onExplainOccurrence={onExplainOccurrence}
-          />
-          <GoalSection
-            goals={ownerSection?.goals ?? []}
-            goalReviews={goalReviews}
-            detailState={detailState}
-            expandedGoalId={expandedGoalId}
-            onReviewGoal={onReviewGoal}
-          />
-          <ReminderSection reminders={ownerSection?.reminders ?? []} />
-          {agentOpsSection ? (
-            <AgentOpsSection
-              section={agentOpsSection}
+      <div className="flex flex-col gap-3">
+        {hasAnyContent ? (
+          <>
+            <OccurrenceBucketBlock
+              title="Now"
+              icon={<ListTodo className="h-3 w-3" />}
+              occurrences={ownerBuckets.now}
               actionState={actionState}
               detailState={detailState}
               occurrenceExplanations={occurrenceExplanations}
-              goalReviews={goalReviews}
               expandedOccurrenceId={expandedOccurrenceId}
-              expandedGoalId={expandedGoalId}
               onOccurrenceAction={onOccurrenceAction}
               onSnoozeOccurrence={onSnoozeOccurrence}
               onExplainOccurrence={onExplainOccurrence}
+            />
+            <OccurrenceBucketBlock
+              title="Next"
+              icon={<Clock3 className="h-3 w-3" />}
+              occurrences={ownerBuckets.next}
+              actionState={actionState}
+              detailState={detailState}
+              occurrenceExplanations={occurrenceExplanations}
+              expandedOccurrenceId={expandedOccurrenceId}
+              onOccurrenceAction={onOccurrenceAction}
+              onSnoozeOccurrence={onSnoozeOccurrence}
+              onExplainOccurrence={onExplainOccurrence}
+            />
+            <OccurrenceBucketBlock
+              title="Upcoming"
+              icon={<Clock3 className="h-3 w-3" />}
+              occurrences={ownerBuckets.upcoming}
+              actionState={actionState}
+              detailState={detailState}
+              occurrenceExplanations={occurrenceExplanations}
+              expandedOccurrenceId={expandedOccurrenceId}
+              onOccurrenceAction={onOccurrenceAction}
+              onSnoozeOccurrence={onSnoozeOccurrence}
+              onExplainOccurrence={onExplainOccurrence}
+            />
+            <GoalSection
+              goals={ownerSection?.goals ?? []}
+              goalReviews={goalReviews}
+              detailState={detailState}
+              expandedGoalId={expandedGoalId}
               onReviewGoal={onReviewGoal}
             />
-          ) : null}
-          <div className="rounded-lg border border-border/50 bg-bg-accent/30 px-3 py-2 text-xs text-muted">
-            <div className="flex items-center gap-2">
-              <BellRing className="h-3.5 w-3.5" />
-              <span>
-                Reminders are driven from LifeOps and scheduled by the queue
-                worker.
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-      {error ? (
-        <div className="mt-3 text-xs text-danger">{error}</div>
-      ) : null}
+            <ScheduleSection schedule={overview?.schedule} />
+            <ReminderSection reminders={ownerSection?.reminders ?? []} />
+            {agentOpsSection ? (
+              <AgentOpsSection
+                section={agentOpsSection}
+                actionState={actionState}
+                detailState={detailState}
+                occurrenceExplanations={occurrenceExplanations}
+                goalReviews={goalReviews}
+                expandedOccurrenceId={expandedOccurrenceId}
+                expandedGoalId={expandedGoalId}
+                onOccurrenceAction={onOccurrenceAction}
+                onSnoozeOccurrence={onSnoozeOccurrence}
+                onExplainOccurrence={onExplainOccurrence}
+                onReviewGoal={onReviewGoal}
+              />
+            ) : null}
+          </>
+        ) : (
+          <EmptyWidgetState
+            icon={<CheckCircle2 className="h-8 w-8" />}
+            title={loading ? "Refreshing life ops…" : "No life ops yet"}
+          />
+        )}
+        <GoogleGlanceSection timeZone={timeZone} />
+        <DiscordMessagesGlance />
+      </div>
+      {error ? <div className="mt-3 text-xs text-danger">{error}</div> : null}
     </WidgetSection>
   );
 }

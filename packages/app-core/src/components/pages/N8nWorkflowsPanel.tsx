@@ -11,13 +11,9 @@
  * filter === "workflows".
  */
 
-import { Button, FieldLabel, StatusBadge, Textarea } from "@elizaos/ui";
+import { Button, FieldLabel, StatusBadge } from "@elizaos/ui";
 import {
-  ChevronDown,
-  ChevronUp,
   RefreshCw,
-  Send,
-  Square,
   Workflow,
   X,
   Zap,
@@ -26,13 +22,12 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import { client } from "../../api";
 import type {
-  ConversationMessage,
+  Conversation,
   N8nMode,
   N8nSidecarStatus,
   N8nStatusResponse,
@@ -40,55 +35,26 @@ import type {
 } from "../../api/client-types";
 import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
+import { AutomationRoomChatPane } from "./AutomationRoomChatPane";
+import {
+  buildWorkflowConversationMetadata,
+  buildWorkflowDraftConversationMetadata,
+  getAutomationBridgeConversationId,
+} from "./automation-conversations";
 
 // ---------------------------------------------------------------------------
 // System addendum constant
 // ---------------------------------------------------------------------------
 
-const AUTOMATIONS_SYSTEM_ADDENDUM =
+const WORKFLOW_SYSTEM_ADDENDUM =
   "You are in the Automations assistant. When the user asks to automate, " +
   "schedule, trigger, or connect apps, use the n8n workflow actions " +
   "(CREATE_N8N_WORKFLOW, ACTIVATE_N8N_WORKFLOW, DEACTIVATE_N8N_WORKFLOW, " +
   "DELETE_N8N_WORKFLOW, GET_N8N_EXECUTIONS). Confirm workflow drafts with the " +
   "user before deploying.";
 
-// Action keywords used to detect workflow mutations in assistant replies.
-const WORKFLOW_ACTION_KEYWORDS =
-  /CREATE_N8N_WORKFLOW|ACTIVATE_N8N_WORKFLOW|DEACTIVATE_N8N_WORKFLOW|DELETE_N8N_WORKFLOW|workflow.*(created|deployed|activated|deactivated|deleted)/i;
-
-// Stable conversation title — same value the reference implementation uses.
-const AUTOMATIONS_CONVERSATION_TITLE = "__automations-scope__";
-
-// Module-level cache so re-mounting the tab doesn't re-resolve the conversation.
-// M5: guard against concurrent resolves with an in-flight promise.
-let _cachedConvId: string | null = null;
-let _inflight: Promise<string> | null = null;
-
-async function resolveAutomationsConversation(): Promise<string> {
-  if (_cachedConvId) return _cachedConvId;
-  if (_inflight) return _inflight;
-  _inflight = (async () => {
-    try {
-      const { conversations } = await client.listConversations();
-      const existing = conversations.find(
-        (c) => c.title === AUTOMATIONS_CONVERSATION_TITLE,
-      );
-      if (existing) {
-        _cachedConvId = existing.id;
-        return existing.id;
-      }
-    } catch {
-      /* fall through to create */
-    }
-    const { conversation } = await client.createConversation(
-      AUTOMATIONS_CONVERSATION_TITLE,
-    );
-    _cachedConvId = conversation.id;
-    return conversation.id;
-  })().finally(() => {
-    _inflight = null;
-  });
-  return _inflight;
+function createWorkflowDraftId(): string {
+  return globalThis.crypto.randomUUID();
 }
 
 // ---------------------------------------------------------------------------
@@ -308,334 +274,6 @@ function N8nStatusBanner({
 }
 
 // ---------------------------------------------------------------------------
-// Scoped Chat Pane
-// ---------------------------------------------------------------------------
-
-interface AutomationsChatPaneProps {
-  collapsed: boolean;
-  onToggleCollapse: () => void;
-  composerRef: React.RefObject<HTMLTextAreaElement | null>;
-  onWorkflowMutated: () => void;
-}
-
-function AutomationsChatPane({
-  collapsed,
-  onToggleCollapse,
-  composerRef,
-  onWorkflowMutated,
-}: AutomationsChatPaneProps) {
-  const { t } = useApp();
-
-  const [convId, setConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [firstTokenReceived, setFirstTokenReceived] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Remove unsafe cast — composerRef is already the right type
-  const textareaRef = composerRef;
-
-  // Resolve scoped conversation on mount. M4: reset cache on 404.
-  useEffect(() => {
-    let cancelled = false;
-    void resolveAutomationsConversation().then(async (id) => {
-      if (cancelled) return;
-      setConvId(id);
-      try {
-        const { messages: msgs } = await client.getConversationMessages(id);
-        if (!cancelled) setMessages(msgs);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "";
-        if (
-          msg.toLowerCase().includes("not found") ||
-          msg.includes("404") ||
-          (err as { status?: number }).status === 404
-        ) {
-          // M4: invalidate cache and re-resolve
-          _cachedConvId = null;
-          if (!cancelled) {
-            void resolveAutomationsConversation().then((newId) => {
-              if (!cancelled) setConvId(newId);
-            });
-          }
-        }
-      }
-    });
-    return () => {
-      cancelled = true;
-      // M1: abort in-flight stream on unmount
-      abortRef.current?.abort();
-    };
-  }, []);
-
-  // Auto-scroll to bottom.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll fires on any message/send change
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: dist < 150 ? "auto" : "smooth",
-    });
-  }, [messages, sending]);
-
-  // Auto-resize textarea.
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    if (!input) {
-      ta.style.height = "38px";
-      ta.style.overflowY = "hidden";
-      return;
-    }
-    ta.style.height = "auto";
-    ta.style.overflowY = "hidden";
-    const h = Math.min(ta.scrollHeight, 150);
-    ta.style.height = `${h}px`;
-    ta.style.overflowY = ta.scrollHeight > 150 ? "auto" : "hidden";
-  }, [input, textareaRef]);
-
-  const handleSend = useCallback(async () => {
-    const raw = input.trim();
-    if (!raw || !convId || sending) return;
-
-    const now = Date.now();
-    const userMsgId = `auto-u-${now}`;
-    const assistantMsgId = `auto-a-${now}`;
-
-    // B5: Only prepend system addendum on first turn (messages.length === 0).
-    // systemAddendum field not yet present in backend streaming endpoint — keep prepend gate.
-    const isFirstTurn = messages.length === 0;
-    const textToSend = isFirstTurn
-      ? `[SYSTEM]${AUTOMATIONS_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${raw}`
-      : raw;
-
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, role: "user", text: raw, timestamp: now },
-      { id: assistantMsgId, role: "assistant", text: "", timestamp: now },
-    ]);
-    setInput("");
-    setSending(true);
-    setFirstTokenReceived(false);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    let streamed = "";
-    let finalText = "";
-
-    try {
-      const data = await client.sendConversationMessageStream(
-        convId,
-        textToSend,
-        (token) => {
-          if (!token) return;
-          const delta = token.slice(streamed.length);
-          if (!delta) return;
-          streamed += delta;
-          setFirstTokenReceived(true);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId ? { ...m, text: m.text + delta } : m,
-            ),
-          );
-        },
-        "DM",
-        controller.signal,
-      );
-
-      finalText = data.text ?? streamed;
-      if (data.text && data.text !== streamed) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId ? { ...m, text: data.text } : m,
-          ),
-        );
-      }
-
-      // M3: Only trigger workflow refresh if reply mentions workflow actions.
-      if (WORKFLOW_ACTION_KEYWORDS.test(finalText)) {
-        onWorkflowMutated();
-      }
-    } catch (err) {
-      if ((err as { name?: string }).name === "AbortError") return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMsgId
-            ? { ...m, text: t("automations.chat.errorGeneric") }
-            : m,
-        ),
-      );
-    } finally {
-      setSending(false);
-      abortRef.current = null;
-    }
-  }, [input, convId, sending, messages.length, onWorkflowMutated, t]);
-
-  const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (sending) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  };
-
-  const visibleMsgs = useMemo(
-    () =>
-      messages.filter(
-        (m) =>
-          !(
-            sending &&
-            !firstTokenReceived &&
-            m.role === "assistant" &&
-            !m.text.trim()
-          ),
-      ),
-    [messages, sending, firstTokenReceived],
-  );
-
-  const label = t("automations.chat.assistantLabel");
-
-  if (collapsed) {
-    return (
-      <div className="border border-border/40 bg-card/60 rounded-xl overflow-hidden">
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-bg/50 transition-colors text-left h-auto justify-start"
-          onClick={onToggleCollapse}
-          aria-label={t("automations.chat.expand")}
-        >
-          <Zap className="w-3.5 h-3.5 text-accent shrink-0" />
-          <span className="text-xs font-semibold text-txt-strong flex-1">
-            {label}
-          </span>
-          <ChevronDown className="w-3.5 h-3.5 text-muted" />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <section
-      className="flex flex-col border border-border/40 bg-card/60 rounded-xl overflow-hidden"
-      style={{ minHeight: 0 }}
-      aria-label={label}
-    >
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full flex items-center gap-2 px-4 py-2.5 border-b border-border/30 hover:bg-bg/50 transition-colors text-left h-auto justify-start"
-        onClick={onToggleCollapse}
-        aria-label={t("automations.chat.collapse")}
-      >
-        <Zap className="w-3.5 h-3.5 text-accent shrink-0" />
-        <span className="text-xs font-semibold text-txt-strong flex-1">
-          {label}
-        </span>
-        <ChevronUp className="w-3.5 h-3.5 text-muted" />
-      </Button>
-
-      {/* M6: role="log" + aria-live for screen reader announcements of streamed tokens */}
-      <div
-        ref={scrollRef}
-        role="log"
-        aria-live="polite"
-        aria-atomic="false"
-        className="flex-1 overflow-y-auto px-3 py-2 flex flex-col"
-        style={{ maxHeight: "240px", minHeight: "80px" }}
-      >
-        {visibleMsgs.length === 0 && !sending ? (
-          <div className="flex-1 flex items-center justify-center text-center px-4 py-5">
-            <p className="text-sm text-muted">
-              {t("automations.chat.placeholder")}
-            </p>
-          </div>
-        ) : (
-          <div className="w-full space-y-1">
-            {visibleMsgs.map((msg) => (
-              <div
-                key={msg.id}
-                className={`text-sm leading-relaxed rounded-lg px-3 py-2 ${
-                  msg.role === "user"
-                    ? "bg-accent/10 text-txt self-end ml-8"
-                    : "bg-bg/50 text-txt mr-8"
-                }`}
-              >
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">
-                  {msg.role === "user"
-                    ? t("automations.chat.roleUser")
-                    : t("automations.chat.roleAssistant")}
-                </div>
-                <div className="whitespace-pre-wrap">{msg.text}</div>
-              </div>
-            ))}
-            {sending && !firstTokenReceived && (
-              <div className="bg-bg/50 rounded-lg px-3 py-2 mr-8">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-0.5">
-                  {t("automations.chat.roleAssistant")}
-                </div>
-                <div className="flex gap-1 items-center">
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted/60 animate-bounce [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted/60 animate-bounce [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted/60 animate-bounce [animation-delay:300ms]" />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-1.5 items-end border-t border-border/30 px-3 py-2">
-        {/* M12: use Textarea primitive; className overrides min-h to match design */}
-        <Textarea
-          ref={textareaRef}
-          variant="default"
-          className="flex-1 min-w-0 px-3 py-2 bg-bg/40 border border-border/40 rounded-lg focus:border-accent/40 focus-visible:ring-0 focus:outline-none text-txt text-sm resize-none overflow-y-hidden min-h-[38px] max-h-[150px] placeholder:text-muted/60"
-          rows={1}
-          aria-label={label}
-          placeholder={t("automations.chat.placeholder")}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={sending || !convId}
-        />
-        {sending ? (
-          <Button
-            variant="destructive"
-            className="h-[38px] shrink-0 px-3 text-sm gap-1.5"
-            onClick={handleStop}
-            title={t("automations.chat.stop")}
-          >
-            <Square className="w-3 h-3 fill-current" />
-            <span>{t("automations.chat.stop")}</span>
-          </Button>
-        ) : (
-          <Button
-            variant="default"
-            className="h-[38px] shrink-0 px-4 text-sm gap-1.5"
-            onClick={() => void handleSend()}
-            disabled={!input.trim() || !convId}
-            aria-label={t("automations.chat.send")}
-          >
-            <Send className="w-4 h-4" />
-            <span className="hidden sm:inline">
-              {t("automations.chat.send")}
-            </span>
-          </Button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Workflow sidebar row
 // ---------------------------------------------------------------------------
 
@@ -694,17 +332,25 @@ function WorkflowSidebarRow({
 
 function WorkflowDetailPane({
   workflow,
+  conversationTitle,
+  conversationMetadata,
   busy,
   onToggleActive,
   onDelete,
   composerRef,
+  onConversationResolved,
   onWorkflowMutated,
 }: {
   workflow: N8nWorkflow | null;
+  conversationTitle: string;
+  conversationMetadata: ReturnType<
+    typeof buildWorkflowConversationMetadata
+  > | ReturnType<typeof buildWorkflowDraftConversationMetadata>;
   busy: string | null;
   onToggleActive: (wf: N8nWorkflow) => void;
   onDelete: (wf: N8nWorkflow) => void;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  onConversationResolved: (conversation: Conversation) => void;
   onWorkflowMutated: () => void;
 }) {
   const { t } = useApp();
@@ -716,14 +362,19 @@ function WorkflowDetailPane({
   }, [workflow?.id]);
 
   if (!workflow) {
-    // No selection: chat fills the pane.
     return (
       <div className="flex flex-col gap-4 p-4 h-full">
-        <AutomationsChatPane
+        <AutomationRoomChatPane
+          assistantLabel={t("automations.chat.assistantLabel")}
           collapsed={false}
+          metadata={conversationMetadata}
           onToggleCollapse={() => {}}
           composerRef={composerRef}
-          onWorkflowMutated={onWorkflowMutated}
+          onConversationResolved={onConversationResolved}
+          onAutomationMutated={onWorkflowMutated}
+          placeholder={t("automations.chat.placeholder")}
+          systemAddendum={WORKFLOW_SYSTEM_ADDENDUM}
+          title={conversationTitle}
         />
       </div>
     );
@@ -735,11 +386,17 @@ function WorkflowDetailPane({
   return (
     <div className="flex flex-col gap-4 p-4 overflow-y-auto">
       {/* Scoped chat — collapsible above workflow detail */}
-      <AutomationsChatPane
+      <AutomationRoomChatPane
+        assistantLabel={t("automations.chat.assistantLabel")}
         collapsed={chatCollapsed}
+        metadata={conversationMetadata}
         onToggleCollapse={() => setChatCollapsed((v) => !v)}
         composerRef={composerRef}
-        onWorkflowMutated={onWorkflowMutated}
+        onConversationResolved={onConversationResolved}
+        onAutomationMutated={onWorkflowMutated}
+        placeholder={t("automations.chat.placeholder")}
+        systemAddendum={WORKFLOW_SYSTEM_ADDENDUM}
+        title={conversationTitle}
       />
 
       {/* Workflow detail card */}
@@ -851,10 +508,14 @@ function WorkflowDetailPane({
 export interface N8nWorkflowsPanelProps {
   /** Forwarded from AutomationsLayout so "New workflow" can focus the composer. */
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  draftToken: number;
 }
 
-export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
-  const { t } = useApp();
+export function N8nWorkflowsPanel({
+  composerRef,
+  draftToken,
+}: N8nWorkflowsPanelProps) {
+  const { t, activeConversationId, conversations } = useApp();
 
   // ── Status + workflow state ─────────────────────────────────────────────
   const [n8nStatus, setN8nStatus] = useState<N8nStatusResponse | null>(null);
@@ -867,9 +528,39 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [draftId, setDraftId] = useState(() => createWorkflowDraftId());
+  const [activeAutomationConversation, setActiveAutomationConversation] =
+    useState<Conversation | null>(null);
   const didAutoStart = useRef(false);
+  const previousDraftTokenRef = useRef(draftToken);
+  const workflowsRef = useRef<N8nWorkflow[]>([]);
+
+  useEffect(() => {
+    workflowsRef.current = workflows;
+  }, [workflows]);
+
+  useEffect(() => {
+    if (previousDraftTokenRef.current === draftToken) {
+      return;
+    }
+    previousDraftTokenRef.current = draftToken;
+    setDraftId(createWorkflowDraftId());
+    setSelectedId(null);
+  }, [draftToken]);
 
   const selectedWorkflow = workflows.find((wf) => wf.id === selectedId) ?? null;
+  const bridgeConversationId = getAutomationBridgeConversationId(
+    activeConversationId,
+    conversations,
+  );
+  const conversationTitle = selectedWorkflow?.name ?? "New Workflow Draft";
+  const conversationMetadata = selectedWorkflow
+    ? buildWorkflowConversationMetadata(
+        selectedWorkflow.id,
+        selectedWorkflow.name,
+        bridgeConversationId,
+      )
+    : buildWorkflowDraftConversationMetadata(draftId, bridgeConversationId);
 
   const pushError = useCallback((message: string) => {
     const id = `err-${Date.now()}-${Math.random()}`;
@@ -900,16 +591,47 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
     }
   }, [pushError, t]);
 
-  const loadWorkflows = useCallback(async () => {
+  const loadWorkflows = useCallback(
+    async (options?: { bindDraftConversation?: Conversation | null }) => {
     setWorkflowsLoading(true);
     try {
+      const previousWorkflowIds = new Set(workflowsRef.current.map((wf) => wf.id));
       const list = await client.listN8nWorkflows();
       setWorkflows(list);
-      // M8: clear errors on successful refresh
       setErrors([]);
-      // Minor: rewrite as proper ternary
-      setSelectedId((cur) =>
-        cur && list.some((wf) => wf.id === cur) ? cur : null,
+
+      const draftConversation = options?.bindDraftConversation;
+      if (
+        draftConversation?.metadata?.scope === "automation-workflow-draft" &&
+        draftConversation.metadata.automationType === "n8n_workflow"
+      ) {
+        const createdWorkflows = list.filter(
+          (workflow) => !previousWorkflowIds.has(workflow.id),
+        );
+        if (createdWorkflows.length === 1) {
+          const createdWorkflow = createdWorkflows[0];
+          const reboundMetadata = buildWorkflowConversationMetadata(
+            createdWorkflow.id,
+            createdWorkflow.name,
+            draftConversation.metadata.terminalBridgeConversationId,
+          );
+          const { conversation } = await client.updateConversation(
+            draftConversation.id,
+            {
+              title: createdWorkflow.name,
+              metadata: reboundMetadata,
+            },
+          );
+          setActiveAutomationConversation(conversation);
+          setSelectedId(createdWorkflow.id);
+          return;
+        }
+      }
+
+      setSelectedId((currentSelectedId) =>
+        currentSelectedId && list.some((workflow) => workflow.id === currentSelectedId)
+          ? currentSelectedId
+          : null,
       );
     } catch (err) {
       pushError(
@@ -1000,9 +722,11 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
 
   const handleWorkflowMutated = useCallback(() => {
     if (n8nStatus && n8nStatus.mode !== "disabled") {
-      void loadWorkflows();
+      void loadWorkflows({
+        bindDraftConversation: activeAutomationConversation,
+      });
     }
-  }, [n8nStatus, loadWorkflows]);
+  }, [activeAutomationConversation, n8nStatus, loadWorkflows]);
 
   const handleRefresh = useCallback(() => {
     void loadStatus();
@@ -1129,9 +853,7 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
             key={wf.id}
             workflow={wf}
             selected={selectedId === wf.id}
-            onClick={() =>
-              setSelectedId((cur) => (cur === wf.id ? null : wf.id))
-            }
+            onClick={() => setSelectedId(wf.id)}
             onKeyDown={(e) => handleRowKeyDown(e, index)}
           />
         ))
@@ -1207,10 +929,13 @@ export function N8nWorkflowsPanel({ composerRef }: N8nWorkflowsPanelProps) {
         <div className="flex-1 min-w-0 overflow-y-auto">
           <WorkflowDetailPane
             workflow={selectedWorkflow}
+            conversationTitle={conversationTitle}
+            conversationMetadata={conversationMetadata}
             busy={busy}
             onToggleActive={(wf) => void handleToggleActive(wf)}
             onDelete={(wf) => void handleDelete(wf)}
             composerRef={composerRef}
+            onConversationResolved={setActiveAutomationConversation}
             onWorkflowMutated={handleWorkflowMutated}
           />
         </div>

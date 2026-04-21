@@ -68,6 +68,7 @@ export type ApprovalPayload =
       subject: string;
       body: string;
       threadId: string | null;
+      replyToMessageId?: string | null;
     }
   | {
       action: "schedule_event";
@@ -100,11 +101,18 @@ export type ApprovalPayload =
     }
   | {
       action: "book_travel";
-      kind: "flight" | "hotel" | "ground";
+      kind: TravelBookingPayloadFields["kind"];
       provider: string;
       itineraryRef: string;
       totalCents: number;
       currency: string;
+      offerId?: string | null;
+      offerRequestId?: string | null;
+      orderType?: "hold" | "instant" | null;
+      search?: TravelBookingPayloadFields["search"];
+      passengers?: TravelBookingPayloadFields["passengers"];
+      calendarSync?: TravelBookingPayloadFields["calendarSync"];
+      summary?: string | null;
     }
   | {
       action: "make_call";
@@ -222,3 +230,4 @@ export interface ApprovalQueue {
   markExpired(id: string): Promise<ApprovalRequest>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
+import type { TravelBookingPayloadFields } from "./travel-booking.types.js";

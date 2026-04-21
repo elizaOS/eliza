@@ -244,9 +244,30 @@ function formatSummary(summary: {
 
 export const healthAction: Action = {
   name: "HEALTH",
-  similes: ["FITNESS", "HEALTHKIT", "GOOGLE_FIT", "WELLNESS"],
+  similes: [
+    "FITNESS",
+    "HEALTHKIT",
+    "GOOGLE_FIT",
+    "WELLNESS",
+    "SLEEP",
+    "SLEEP_DATA",
+    "SLEEP_STATS",
+    "STEPS",
+    "STEP_COUNT",
+    "HEART_RATE",
+    "WORKOUT",
+    "EXERCISE",
+    "CALORIES",
+    "ACTIVITY_METRICS",
+  ],
   description:
-    "Query health and fitness data from HealthKit or Google Fit. Subactions: today, trend, by_metric, status.",
+    "Query health and fitness telemetry from HealthKit or Google Fit — sleep " +
+    "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
+    "other body/activity metrics. Subactions: today, trend, by_metric, status. " +
+    "Use this for questions like 'how did I sleep last night', 'how many steps " +
+    "today', 'what was my resting heart rate', 'show my sleep trend this week'. " +
+    "Do NOT route health-metric questions through LIFE (LIFE is for tasks/goals/" +
+    "habits lifecycle, not wearable/quantified-self data).",
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),
   handler: async (
@@ -296,14 +317,35 @@ export const healthAction: Action = {
       }
     }
     const service = new LifeOpsService(runtime);
+    const connectorStatus = await service.getHealthConnectorStatus();
 
     if (subaction === "status") {
-      const status = await service.getHealthConnectorStatus();
-      const text = status.available
-        ? `Health backend available: ${status.backend}.`
+      const text = connectorStatus.available
+        ? `Health backend available: ${connectorStatus.backend}.`
         : "No health backend available. Set ELIZA_HEALTHKIT_CLI_PATH or ELIZA_GOOGLE_FIT_ACCESS_TOKEN.";
       await callback?.({ text, source: "action", action: "HEALTH" });
-      return { text, success: true, data: { subaction, status } };
+      return {
+        text,
+        success: true,
+        data: { subaction, status: connectorStatus },
+      };
+    }
+
+    // Graceful degradation: if no HealthKit/GoogleFit backend is configured,
+    // surface a clear message instead of letting the health bridge throw.
+    if (!connectorStatus.available) {
+      const text =
+        "I don't have a health data source connected yet. To share daily summaries, trends, or per-metric details, connect Apple Health (ELIZA_HEALTHKIT_CLI_PATH) or Google Fit (ELIZA_GOOGLE_FIT_ACCESS_TOKEN) and I'll pick it up.";
+      await callback?.({ text, source: "action", action: "HEALTH" });
+      return {
+        text,
+        success: true,
+        data: {
+          subaction,
+          status: connectorStatus,
+          degraded: "no-backend",
+        },
+      };
     }
 
     if (subaction === "trend") {

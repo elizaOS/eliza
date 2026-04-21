@@ -234,6 +234,9 @@ export function SkillsModalView() {
     installSkillFromMarketplace,
     uninstallMarketplaceSkill,
     installSkillFromGithubUrl,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
     t,
   } = useApp();
 
@@ -478,6 +481,12 @@ export function SkillsModalView() {
           installSkillFromMarketplace={installSkillFromMarketplace}
           uninstallMarketplaceSkill={uninstallMarketplaceSkill}
           installSkillFromGithubUrl={installSkillFromGithubUrl}
+          enableSkill={enableMarketplaceSkill}
+          disableSkill={disableMarketplaceSkill}
+          copySkillSource={copyMarketplaceSkillSource}
+          showSkillDetails={(_skillId: string) => {
+            setInstallModalOpen(false);
+          }}
           setState={setState}
           onClose={() => setInstallModalOpen(false)}
         />

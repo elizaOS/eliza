@@ -1,5 +1,5 @@
 name: milady
-version: '2.0.0-alpha.92'
+version: "2.0.0-alpha.92"
 summary: Personal AI assistant built on elizaOS
 description: |
   elizaOS App is a personal AI assistant you run on your own devices, built on
@@ -77,7 +77,7 @@ parts:
       "$CRAFT_PART_INSTALL/bin/node" --version
       "$CRAFT_PART_INSTALL/bin/npm" --version
     organize:
-      '*': node/
+      "*": node/
 
   bun:
     plugin: nil
@@ -267,6 +267,10 @@ parts:
       # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
       bun install --ignore-scripts
+
+      # Rehydrate published-only workspace deps that Vite and app-core imports
+      # still need after the destructive workspace rewrite above.
+      bash scripts/install-published-workspace-fallback-deps.sh
 
       # Inject tailwindcss into eliza/packages/app-core/node_modules so the
       # Vite CSS pipeline can resolve @import "tailwindcss" from the app-core

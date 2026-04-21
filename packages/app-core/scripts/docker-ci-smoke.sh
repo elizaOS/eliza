@@ -138,9 +138,9 @@ fi
 cleanup() {
   set +e
   if "$DOCKER_BIN" ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-    "$DOCKER_BIN" inspect "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container-inspect.json" 2>&1 || true
-    "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container.log" 2>&1 || true
-    "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    timeout 15 "$DOCKER_BIN" inspect "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container-inspect.json" 2>&1 || true
+    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container.log" 2>&1 || true
+    timeout 10 "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [[ -f "$DOCKERIGNORE_BACKUP" ]]; then
     if [[ "$HAD_ROOT_DOCKERIGNORE" == "1" ]]; then
@@ -272,7 +272,7 @@ probe_ok() {
 deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
 while (( SECONDS < deadline )); do
   if ! "$DOCKER_BIN" ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-    "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
+    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
     log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
     fail "Container exited before smoke probe succeeded"
   fi
@@ -292,6 +292,6 @@ while (( SECONDS < deadline )); do
   sleep 5
 done
 
-"$DOCKER_BIN" logs "$CONTAINER_NAME" || true
+timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
 log "Preserved timeout artifacts in $SMOKE_ARTIFACT_DIR"
 fail "Timed out waiting for container smoke probe (${SMOKE_TIMEOUT_SEC}s)"

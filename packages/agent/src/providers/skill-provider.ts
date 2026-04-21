@@ -19,6 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import { hasAdminAccess } from "../security/access.js";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
@@ -283,20 +284,13 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
 // ── Recent context helper ────────────────────────────────────────────────────
 
 function getRecentContext(state: State): string {
-  const recentMessages =
-    (state as Record<string, unknown>).recentMessages ??
-    (state as Record<string, unknown>).recentMessagesData ??
-    [];
-  if (Array.isArray(recentMessages)) {
-    return recentMessages
-      .slice(-5)
-      .map((m: Record<string, unknown>) => {
-        const content = m.content as Record<string, unknown> | undefined;
-        return (content?.text as string) ?? "";
-      })
-      .join(" ");
-  }
-  return "";
+  return getRecentMessagesData(state)
+    .slice(-5)
+    .map((message) => {
+      const content = message.content as Record<string, unknown> | undefined;
+      return (content?.text as string) ?? "";
+    })
+    .join(" ");
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -383,7 +377,7 @@ export function createDynamicSkillProvider(): Provider {
 
       if (topMatch.score < THRESHOLD_HIGHLY_RELEVANT) {
         return {
-          text: `## Relevant Skills\n\n${compactList}\n\n*Use GET_SKILL_GUIDANCE for detailed instructions.*`,
+          text: `## Relevant Skills\n\n${compactList}\n\n*Use USE_SKILL to invoke one, or SEARCH_SKILLS for more detail.*`,
           values: {
             skillMatchTier: "relevant" as never,
             topSkill: topMatch.slug as never,
@@ -400,7 +394,7 @@ export function createDynamicSkillProvider(): Provider {
       if (instructions?.body) {
         body =
           instructions.body.length > MAX_INSTRUCTION_CHARS
-            ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use GET_SKILL_GUIDANCE for full instructions]`
+            ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
             : instructions.body;
       }
 

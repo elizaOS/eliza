@@ -8,7 +8,7 @@ import {
 import {
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
+} from "@elizaos/agent/config";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
@@ -19,7 +19,7 @@ import {
   type BackgroundJobContext,
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { getAgentEventService } from "@elizaos/agent/runtime";
 import { resolveEffectiveDayKey } from "./analyzer.js";
 import {
   type CalendarEventSlim,
@@ -50,9 +50,34 @@ export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
 export const PROACTIVE_TASK_INTERVAL_MS = 60_000;
 const SEEDING_MIN_IDLE_MS = 15 * 60_000;
 const CALENDAR_PROACTIVE_CLASSIFICATION_HORIZON_DAYS = 21;
+/**
+ * Drop scheduled actions that were due more than this long ago. Without
+ * this guard, any planner bug that lands `scheduledFor` in the past
+ * would dispatch on every tick of the worker (60s).
+ */
+const STALE_ACTION_THRESHOLD_MS = 4 * 60 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function resolveExecutionNow(
+  options: Record<string, unknown> = {},
+): Date {
+  const raw = options.now;
+  if (raw instanceof Date) {
+    return new Date(raw.getTime());
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return new Date(raw);
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return new Date();
 }
 
 function isProactiveTask(task: Task): boolean {
@@ -248,8 +273,9 @@ export function resolveProactiveOwnerContact(args: {
 
 export async function executeProactiveTask(
   runtime: IAgentRuntime,
+  options: Record<string, unknown> = {},
 ): Promise<{ nextInterval: number }> {
-  const now = new Date();
+  const now = resolveExecutionNow(options);
   const timezone = resolveDefaultTimeZone();
 
   try {
@@ -393,6 +419,16 @@ export async function executeProactiveTask(
     });
     for (const action of allActions) {
       if (action.scheduledFor > now.getTime()) {
+        continue;
+      }
+      // Defensive: don't dispatch stale actions (e.g. a GN whose target
+      // hour resolved to the past). Without this guard a single planner
+      // miscomputation will fire every PROACTIVE_TASK_INTERVAL_MS.
+      const ageMs = now.getTime() - action.scheduledFor;
+      if (ageMs > STALE_ACTION_THRESHOLD_MS) {
+        logger.warn(
+          `[proactive] Skipping stale ${action.kind} (scheduledFor was ${Math.round(ageMs / 60000)} min ago)`,
+        );
         continue;
       }
 
@@ -772,7 +808,8 @@ export function registerProactiveTaskWorker(runtime: IAgentRuntime): void {
         return true;
       }
     },
-    execute: (rt) => executeProactiveTask(rt),
+    execute: (rt, options) =>
+      executeProactiveTask(rt, isRecord(options) ? options : {}),
   });
 }
 

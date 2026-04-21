@@ -22,15 +22,15 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.173"
+    "@elizaos/core": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.173"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "22.10.9",
+    "@types/node": "24.12.2",
     "tsup": "8.4.0",
-    "typescript": "5.7.3",
+    "typescript": "6.0.3",
     "vitest": "3.0.5"
   },
   "publishConfig": {

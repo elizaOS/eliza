@@ -26,6 +26,10 @@ interface ModelCardProps {
   onCancel: (modelId: string) => void;
   onActivate: (modelId: string) => void;
   onUninstall: (modelId: string) => void;
+  /** When present, a "Verify" button appears on installed models. */
+  onVerify?: (modelId: string) => void;
+  /** When present, a "Redownload" button appears on installed models. */
+  onRedownload?: (modelId: string) => void;
   busy: boolean;
 }
 
@@ -45,6 +49,8 @@ export function ModelCard({
   onCancel,
   onActivate,
   onUninstall,
+  onVerify,
+  onRedownload,
   busy,
 }: ModelCardProps) {
   const fit = computeFit(model, hardware);
@@ -124,6 +130,26 @@ export function ModelCard({
         {isActive && (
           <Button size="sm" variant="outline" disabled>
             Active
+          </Button>
+        )}
+        {installedEntry && onVerify && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onVerify(installedEntry.id)}
+            disabled={busy}
+          >
+            Verify
+          </Button>
+        )}
+        {installedEntry?.source === "milady-download" && onRedownload && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onRedownload(model.id)}
+            disabled={busy}
+          >
+            Redownload
           </Button>
         )}
         {installedEntry?.source === "milady-download" && (

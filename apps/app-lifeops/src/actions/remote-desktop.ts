@@ -6,7 +6,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   detectRemoteDesktopBackend,
   endRemoteSession,
@@ -63,7 +63,7 @@ export const remoteDesktopAction: Action = {
     "PHONE_REMOTE_ACCESS",
   ],
   description:
-    "Start or end a secure remote desktop session so you can view/control the computer from your phone. Requires a pairing code. Subactions: start, status, end, list.",
+    "Start or end a secure remote desktop session so you can view/control the computer from another device. Requires a pairing code. Use this only for remote-session lifecycle work (start, status, end, list), not for local Finder/Desktop automation, screenshots, browser workflows, or file handling on this machine — those belong to LIFEOPS_COMPUTER_USE.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
@@ -158,7 +158,7 @@ export const remoteDesktopAction: Action = {
     if (!subaction) {
       return {
         text: "Missing or invalid subaction. Use one of: start, status, end, list.",
-        success: false,
+        success: true,
         values: { success: false, error: "INVALID_SUBACTION" },
         data: { actionName: ACTION_NAME },
       };

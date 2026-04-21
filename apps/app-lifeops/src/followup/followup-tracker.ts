@@ -66,6 +66,27 @@ export const FOLLOWUP_MEMORY_TABLE = "reminders" as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function resolveTrackerNowMs(options: Record<string, unknown> = {}): number {
+  const raw = options.now;
+  if (raw instanceof Date) {
+    return raw.getTime();
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = new Date(raw).getTime();
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
+}
+
 export interface OverdueFollowup {
   entityId: UUID;
   displayName: string;
@@ -321,6 +342,27 @@ export async function reconcileFollowupsOnce(
   return digest;
 }
 
+export async function executeFollowupTrackerTick(
+  runtime: IAgentRuntime,
+  options: Record<string, unknown> = {},
+): Promise<{ nextInterval: number; digest: OverdueDigest }> {
+  const defaultThresholdDays =
+    typeof options.defaultThresholdDays === "number" &&
+    Number.isFinite(options.defaultThresholdDays) &&
+    options.defaultThresholdDays > 0
+      ? options.defaultThresholdDays
+      : FOLLOWUP_DEFAULT_THRESHOLD_DAYS;
+  const digest = await reconcileFollowupsOnce(
+    runtime,
+    resolveTrackerNowMs(options),
+    defaultThresholdDays,
+  );
+  return {
+    nextInterval: FOLLOWUP_TRACKER_INTERVAL_MS,
+    digest,
+  };
+}
+
 /**
  * Register the tracker as a periodic task worker. Mirrors the
  * BlockRuleReconciler pattern so it integrates with the agent scheduler.
@@ -341,10 +383,8 @@ export function registerFollowupTrackerWorker(runtime: IAgentRuntime): void {
         return true;
       }
     },
-    execute: async (rt) => {
-      await reconcileFollowupsOnce(rt);
-      return undefined;
-    },
+    execute: (rt, options) =>
+      executeFollowupTrackerTick(rt, isRecord(options) ? options : {}),
   });
 }
 

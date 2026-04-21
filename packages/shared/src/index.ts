@@ -6,6 +6,7 @@
 export * from "./connectors";
 export { migrateLegacyRuntimeConfig } from "./contracts/onboarding";
 export * from "./env-utils";
+export * from "./recent-messages-state";
 export * from "./restart";
 export * from "./runtime-env";
 export {

@@ -15,6 +15,8 @@ import {
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
+  /** Enable built-in advanced capabilities (for example MODIFY_CHARACTER). */
+  advancedCapabilities?: boolean;
   /** Additional plugins to register. */
   plugins?: Plugin[];
   /** Register a real LLM plugin based on available API keys. Default: false. */
@@ -47,11 +49,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isPlugin(value: unknown): value is Plugin {
-  return (
-    isRecord(value) &&
-    typeof value.name === "string" &&
-    typeof value.description === "string"
-  );
+  return isRecord(value) && typeof value.name === "string";
 }
 
 function getPendingTrajectoryWrites(service: unknown): Promise<void>[] {
@@ -73,6 +71,10 @@ function extractPlugin(
   moduleExports: unknown,
   exportNames: readonly string[],
 ): Plugin | null {
+  if (isPlugin(moduleExports)) {
+    return moduleExports;
+  }
+
   if (!isRecord(moduleExports)) {
     return null;
   }
@@ -81,6 +83,20 @@ function extractPlugin(
     const candidate = moduleExports[exportName];
     if (isPlugin(candidate)) {
       return candidate;
+    }
+
+    if (isRecord(candidate) && isPlugin(candidate.default)) {
+      return candidate.default;
+    }
+  }
+
+  for (const candidate of Object.values(moduleExports)) {
+    if (isPlugin(candidate)) {
+      return candidate;
+    }
+
+    if (isRecord(candidate) && isPlugin(candidate.default)) {
+      return candidate.default;
     }
   }
 
@@ -172,6 +188,7 @@ export async function createRealTestRuntime(
       character,
       plugins: [],
       logLevel: "warn",
+      advancedCapabilities: options?.advancedCapabilities ?? false,
       enableAutonomy: false,
     });
 
@@ -220,6 +237,10 @@ export async function createRealTestRuntime(
             logger.info(
               `[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
             );
+          } else {
+            logger.warn(
+              `[real-runtime] Loaded ${providerConfig.pluginPackage} but could not find a plugin export`,
+            );
           }
         } catch (err) {
           logger.warn(
@@ -265,6 +286,7 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
+    runtime.registerSendHandler("client_chat", async () => {});
 
     const cleanup = async () => {
       try {

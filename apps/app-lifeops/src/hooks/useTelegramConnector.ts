@@ -38,7 +38,7 @@ export function useTelegramConnector(
       const nextStatus = await client.getTelegramConnectorStatus(side);
       setStatus(nextStatus);
       setAuthState(nextStatus.authState);
-      setError(null);
+      setError(nextStatus.authError ?? null);
     } catch (cause) {
       setError(
         formatError(cause, "Telegram connector status failed to load."),
@@ -57,7 +57,7 @@ export function useTelegramConnector(
         if (cancelled) return;
         setStatus(nextStatus);
         setAuthState(nextStatus.authState);
-        setError(null);
+        setError(nextStatus.authError ?? null);
       } catch (cause) {
         if (cancelled) return;
         setError(
@@ -82,9 +82,7 @@ export function useTelegramConnector(
         if (result.error) {
           setError(result.error);
         }
-        if (result.state === "connected") {
-          void refresh();
-        }
+        void refresh();
       } catch (cause) {
         setError(formatError(cause, "Telegram auth failed to start."));
       } finally {
@@ -104,9 +102,7 @@ export function useTelegramConnector(
         if (result.error) {
           setError(result.error);
         }
-        if (result.state === "connected") {
-          void refresh();
-        }
+        void refresh();
       } catch (cause) {
         setError(formatError(cause, "Telegram code submission failed."));
       } finally {
@@ -126,9 +122,7 @@ export function useTelegramConnector(
         if (result.error) {
           setError(result.error);
         }
-        if (result.state === "connected") {
-          void refresh();
-        }
+        void refresh();
       } catch (cause) {
         setError(formatError(cause, "Telegram password submission failed."));
       } finally {
@@ -141,9 +135,11 @@ export function useTelegramConnector(
   const cancelAuth = useCallback(async () => {
     try {
       setActionPending(true);
-      await client.cancelTelegramAuth({ side, provider: "telegram" });
-      setAuthState("idle");
+      const nextStatus = await client.cancelTelegramAuth({ side, provider: "telegram" });
+      setStatus(nextStatus);
+      setAuthState(nextStatus.authState);
       setError(null);
+      setVerification(null);
     } catch (cause) {
       setError(formatError(cause, "Telegram auth cancellation failed."));
     } finally {
@@ -161,6 +157,7 @@ export function useTelegramConnector(
       setStatus(nextStatus);
       setAuthState(nextStatus.authState);
       setError(null);
+      setVerification(null);
     } catch (cause) {
       setError(formatError(cause, "Telegram connector disconnect failed."));
     } finally {

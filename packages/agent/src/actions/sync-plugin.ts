@@ -1,4 +1,4 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -61,4 +61,34 @@ export const syncPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Pull the latest upstream changes into my forked discord plugin.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Synced @elizaos/plugin-discord.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Update my ejected telegram plugin from upstream.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Synced @elizaos/plugin-telegram.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

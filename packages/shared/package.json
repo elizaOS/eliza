@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0-alpha.222",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "src/index.ts",
@@ -52,7 +52,8 @@
     "./onboarding-presets": "./src/onboarding-presets.ts",
     "./dev-settings-table": "./src/dev-settings-table.ts",
     "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
-    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts"
+    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
+    "./recent-messages-state": "./src/recent-messages-state.ts"
   },
   "publishConfig": {
     "access": "public",
@@ -68,6 +69,6 @@
   "devDependencies": {
     "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   }
 }

@@ -19,6 +19,7 @@ declare module "./client-base" {
     showBrowserWorkspaceTab(id: string): Promise<{ tab: BrowserWorkspaceTab }>;
     hideBrowserWorkspaceTab(id: string): Promise<{ tab: BrowserWorkspaceTab }>;
     closeBrowserWorkspaceTab(id: string): Promise<{ closed: boolean }>;
+    snapshotBrowserWorkspaceTab(id: string): Promise<{ data: string }>;
   }
 }
 
@@ -84,4 +85,13 @@ ElizaClient.prototype.closeBrowserWorkspaceTab = async function (
   return this.fetch(`/api/browser-workspace/tabs/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+};
+
+ElizaClient.prototype.snapshotBrowserWorkspaceTab = async function (
+  this: ElizaClient,
+  id,
+) {
+  return this.fetch(
+    `/api/browser-workspace/tabs/${encodeURIComponent(id)}/snapshot`,
+  );
 };

@@ -1,3 +1,4 @@
+export * from "./agent-event-service.js";
 export * from "./eliza.js";
 export * from "./eliza-plugin.js";
 export * from "./embedding-presets.js";

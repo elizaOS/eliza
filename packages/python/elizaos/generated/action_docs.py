@@ -3038,20 +3038,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "GET_SKILL_GUIDANCE",
-      "description": "Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
-      "parameters": [],
-      "similes": [
-        "FIND_SKILL",
-        "SEARCH_SKILLS",
-        "SKILL_HELP",
-        "HOW_TO",
-        "GET_INSTRUCTIONS",
-        "LEARN_SKILL",
-        "LOOKUP_SKILL"
-      ]
-    },
-    {
       "name": "HELP_COMMAND",
       "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
       "parameters": [],
@@ -3428,15 +3414,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "RUN_SKILL_SCRIPT",
-      "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
-      "parameters": [],
-      "similes": [
-        "EXECUTE_SKILL_SCRIPT",
-        "SKILL_SCRIPT"
-      ]
-    },
-    {
       "name": "SAVE_PLAYLIST",
       "description": "Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
       "parameters": [
@@ -3483,7 +3460,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "SEARCH_SKILLS",
-      "description": "Search the skill registry for available skills by keyword or category.",
+      "description": "Search the skill registry for available skills by keyword or category. Returns each result with action chips (use/enable/disable/install/copy/details).",
       "parameters": [],
       "similes": [
         "BROWSE_SKILLS",
@@ -3966,6 +3943,17 @@ _ALL_ACTION_DOCS_JSON = """{
         "SEE_SCREEN",
         "LOOK_AT_SCREEN",
         "VIEW_SCREEN"
+      ]
+    },
+    {
+      "name": "USE_SKILL",
+      "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+      "parameters": [],
+      "similes": [
+        "INVOKE_SKILL",
+        "EXECUTE_SKILL",
+        "RUN_SKILL",
+        "CALL_SKILL"
       ]
     }
   ]

@@ -1,11 +1,6 @@
 /**
  * Provenance of a skill — distinguishes human-authored from agent-derived
  * skills, and tracks self-improvement signal across the closed learning loop.
- *
- * Track C of the Hermes-parity initiative seeds and refines skills from
- * successful trajectories. The provenance block carries the audit trail back
- * to the trajectory that produced or reinforced the skill, plus the most
- * recent eval score from the nightly skill-scoring cron.
  */
 export interface SkillProvenance {
   /** Whether the skill was authored by a human or derived by the agent. */
@@ -18,6 +13,19 @@ export interface SkillProvenance {
   refinedCount: number;
   /** Most recent eval score from the scoring cron, in [0, 1]. */
   lastEvalScore?: number;
+  /**
+   * Audit trail for native-optimizer-driven skill refinements.
+   *
+   * Populated by the gradient-mode branch of `skillRefinementEvaluator` —
+   * after the LLM-diff auto-budget is exhausted, the evaluator switches to
+   * the native `prompt-evolution` optimizer and appends one entry per run.
+   */
+  optimizationLineage?: Array<{
+    optimizer: "instruction-search" | "prompt-evolution" | "bootstrap-fewshot";
+    score: number;
+    datasetSize: number;
+    generatedAt: string;
+  }>;
 }
 
 /**

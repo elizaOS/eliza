@@ -25,7 +25,6 @@ export type AppCatalogSectionKey =
   | "favorites"
   | "games"
   | "developerUtilities"
-  | "companions"
   | "finance"
   | "lifeManagement"
   | "other";
@@ -33,9 +32,8 @@ export type AppCatalogSectionKey =
 export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
   {
     favorites: "Favorites",
-    games: "Games",
+    games: "Games & Entertainment",
     developerUtilities: "Developer Utilities",
-    companions: "Companions",
     finance: "Finance",
     lifeManagement: "Life Management",
     other: "Other",
@@ -43,10 +41,9 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "favorites",
-  "companions",
+  "games",
   "finance",
   "lifeManagement",
-  "games",
   "developerUtilities",
   "other",
 ];
@@ -189,7 +186,7 @@ export function getAppCatalogSectionKey(
   const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
   switch (canonicalName) {
     case "@elizaos/app-companion":
-      return "companions";
+      return "games";
     case "@elizaos/app-vincent":
     case "@elizaos/app-shopify":
       return "finance";
@@ -211,7 +208,7 @@ export function getAppCatalogSectionKey(
     return "developerUtilities";
   }
   if (normalizedCategory === "social" || normalizedCategory === "world") {
-    return "companions";
+    return "games";
   }
   if (normalizedCategory === "platform") {
     return "finance";
@@ -234,7 +231,7 @@ export function getAppCatalogSectionKey(
     return "lifeManagement";
   }
   if (/companion|avatar|assistant|friend|chat|social/.test(searchBlob)) {
-    return "companions";
+    return "games";
   }
   if (
     /commerce|shop|store|finance|wallet|market|trade|sales|business|team/.test(
@@ -307,7 +304,6 @@ export function getAppEmoji(app: RegistryAppInfo): string {
   const sectionKey = getAppCatalogSectionKey(app);
   if (sectionKey === "games") return "🎮";
   if (sectionKey === "developerUtilities") return "🛠️";
-  if (sectionKey === "companions") return "💬";
   if (sectionKey === "finance") return "💰";
   if (sectionKey === "lifeManagement") return "🗓️";
   return "📦";

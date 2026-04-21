@@ -26,6 +26,16 @@ const GM_CUTOFF_HOUR = 11;
 const GN_LAG_MINUTES = 30;
 /** Default GN hour (local) when no data. */
 const DEFAULT_GN_HOUR = 22;
+/** Earliest hour of day a GN message is allowed to fire. */
+const GN_MIN_HOUR = 17;
+/**
+ * Minimum interval between two GM (or two GN) deliveries. Acts as a
+ * timestamp-based once-per-day cooldown that survives effective-day-key
+ * flips (e.g. when an open activity cycle's start-date moves between
+ * worker ticks). 12h is short enough that yesterday's GN never blocks
+ * today's GN, but long enough that no single calendar day fires twice.
+ */
+const ONCE_PER_DAY_GUARD_MS = 12 * 60 * 60 * 1000;
 /** Minutes before an occurrence/event to send a nudge. */
 const NUDGE_LEAD_MINUTES = 30;
 /** Maximum nudge lookahead window. */
@@ -34,6 +44,19 @@ const NUDGE_HORIZON_MINUTES = 45;
 const INACTIVITY_SKIP_MS = 48 * 60 * 60 * 1000; // 48 hours
 /** Days since last review before a goal is eligible for a check-in. */
 const GOAL_CHECK_IN_COOLDOWN_DAYS = 3;
+
+/**
+ * True if `firedAt` is set and the gap to `now` is shorter than the
+ * once-per-day guard window. Future timestamps (firedAt > now) — which
+ * shouldn't happen but indicate a clock glitch — are also treated as
+ * recent so we don't fire again.
+ */
+function firedRecently(firedAt: number | undefined, now: Date): boolean {
+  if (!firedAt) return false;
+  const elapsedMs = now.getTime() - firedAt;
+  if (elapsedMs < 0) return true;
+  return elapsedMs < ONCE_PER_DAY_GUARD_MS;
+}
 
 // ── Goal check-in contract ───────────────────────────
 
@@ -91,8 +114,9 @@ export function planGm(
     return null;
   }
 
-  // Already fired today
-  if (firedToday?.gmFiredAt) {
+  // Already fired recently — timestamp-based gate so a flipping effective
+  // day key (which can null out firedToday) cannot cause repeated GMs.
+  if (firedRecently(firedToday?.gmFiredAt, currentTime)) {
     return null;
   }
 
@@ -180,8 +204,9 @@ export function planGn(
     return null;
   }
 
-  // Already fired today
-  if (firedToday?.gnFiredAt) {
+  // Already fired recently — timestamp-based gate so a flipping effective
+  // day key (which can null out firedToday) cannot cause repeated GNs.
+  if (firedRecently(firedToday?.gnFiredAt, currentTime)) {
     return null;
   }
 
@@ -486,9 +511,19 @@ function resolveGmHour(
 }
 
 function resolveGnHour(profile: ActivityProfile): number {
-  if (profile.typicalLastActiveHour !== null) {
+  // Ignore typicalLastActiveHour values that fall before noon: those almost
+  // certainly come from the LATE_NIGHT bucket (00:00–05:00 midpoint = 3),
+  // which historically wins the chronological-last race when a user has
+  // any overnight activity at all. Treating that as "go to bed at 4 AM"
+  // schedules GN in the past and causes per-tick spam. Fall back to the
+  // sensible default and clamp to the evening floor either way.
+  if (
+    profile.typicalLastActiveHour !== null &&
+    profile.typicalLastActiveHour >= 12
+  ) {
     const lagHour = profile.typicalLastActiveHour + GN_LAG_MINUTES / 60;
-    return Math.min(Math.ceil(lagHour), 23);
+    const ceiled = Math.min(Math.ceil(lagHour), 23);
+    return Math.max(ceiled, GN_MIN_HOUR);
   }
   return DEFAULT_GN_HOUR;
 }

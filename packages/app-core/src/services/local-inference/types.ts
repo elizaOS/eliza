@@ -88,6 +88,10 @@ export interface InstalledModel {
     | "ollama"
     | "huggingface"
     | "text-gen-webui";
+  /** SHA256 of the GGUF file recorded at install time. Optional for legacy entries. */
+  sha256?: string;
+  /** ISO timestamp of the last successful re-verification. Absent = never verified since install. */
+  lastVerifiedAt?: string;
 }
 
 export type DownloadState =
@@ -131,10 +135,34 @@ export interface DownloadEvent {
   job: DownloadJob;
 }
 
+/**
+ * Agent model-type slots Milady lets the user wire to local models. These
+ * match the `ModelType` enum in `@elizaos/core` — kept as string literals
+ * here so the types file stays framework-free.
+ */
+export type AgentModelSlot =
+  | "TEXT_SMALL"
+  | "TEXT_LARGE"
+  | "TEXT_EMBEDDING"
+  | "OBJECT_SMALL"
+  | "OBJECT_LARGE";
+
+export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
+  "TEXT_SMALL",
+  "TEXT_LARGE",
+  "TEXT_EMBEDDING",
+  "OBJECT_SMALL",
+  "OBJECT_LARGE",
+];
+
+/** User-configured mapping of agent model slots → installed model ids. */
+export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
+
 export interface ModelHubSnapshot {
   catalog: CatalogModel[];
   installed: InstalledModel[];
   active: ActiveModelState;
   downloads: DownloadJob[];
   hardware: HardwareProbe;
+  assignments: ModelAssignments;
 }

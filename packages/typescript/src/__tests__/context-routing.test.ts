@@ -123,6 +123,11 @@ describe("context-routing utilities", () => {
 			false,
 		);
 	});
+
+	it("treats missing routing as unfiltered", () => {
+		expect(getActiveRoutingContexts({})).toEqual([]);
+		expect(shouldIncludeByContext(["wallet"], [])).toBe(true);
+	});
 });
 
 describe("context-gated providers", () => {
@@ -219,5 +224,134 @@ describe("context-gated providers", () => {
 		expect(
 			result.data?.dynamicProviders?.map((provider: Provider) => provider.name),
 		).toEqual(["GeneralProvider", "walletBalance"]);
+	});
+
+	it("keeps only generic chat actions for non-actionable chatter", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [
+				{
+					name: "SCREEN_TIME",
+					description: "screen time lookup",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "REPLY",
+					description: "reply",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "IGNORE",
+					description: "ignore",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "NONE",
+					description: "none",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await actionsProvider.get(
+			runtime,
+			{
+				...message,
+				content: { text: "I think I spend too much time on my phone" },
+			},
+			createState({}),
+		);
+
+		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
+			"REPLY",
+			"IGNORE",
+			"NONE",
+		]);
+	});
+
+	it("hides providers for non-actionable chatter", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [],
+			providers: [
+				{
+					name: "appBlocker",
+					description: "mobile app blocker",
+					get: async () => ({ text: "" }),
+					dynamic: true,
+				},
+				{
+					name: "CURRENT_TIME",
+					description: "time",
+					get: async () => ({ text: "" }),
+					dynamic: true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await providersProvider.get(
+			runtime,
+			{
+				...message,
+				content: { text: "I think I spend too much time on my phone" },
+			},
+			createState({}),
+		);
+
+		expect(result.data?.allProviders).toEqual([]);
+		expect(result.data?.dynamicProviders).toEqual([]);
+		expect(result.text).toContain("providers[0]");
+	});
+
+	it("prefers OWNER_RELATIONSHIP for person-specific follow-up reminders", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [
+				{
+					name: "OWNER_RELATIONSHIP",
+					description: "relationship follow-up",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "LIFE",
+					description: "life reminders",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "SCHEDULING",
+					description: "meeting scheduling",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "REPLY",
+					description: "reply",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await actionsProvider.get(
+			runtime,
+			{
+				...message,
+				content: {
+					text: "remind me to follow up with David next week about the project",
+				},
+			},
+			createState({}),
+		);
+
+		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
+			"OWNER_RELATIONSHIP",
+			"REPLY",
+		]);
 	});
 });

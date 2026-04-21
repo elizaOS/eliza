@@ -16,6 +16,7 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -29,9 +30,11 @@ import type {
   GetLifeOpsGmailTriageRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserCompanionPackageStatus,
+  LifeOpsBrowserCompanionAutoPairResponse,
   LifeOpsBrowserCompanionPairingResponse,
   LifeOpsBrowserCompanionStatus,
   LifeOpsBrowserKind,
+  LifeOpsBrowserPackagePathTarget,
   LifeOpsBrowserPageContext,
   LifeOpsBrowserSession,
   LifeOpsBrowserSettings,
@@ -53,6 +56,8 @@ import type {
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
+  OpenLifeOpsBrowserCompanionManagerResponse,
+  OpenLifeOpsBrowserCompanionPackagePathResponse,
   LifeOpsReminderInspection,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
@@ -72,6 +77,7 @@ import type {
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
   SyncLifeOpsBrowserStateRequest,
+  UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
@@ -95,12 +101,22 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsBrowserPackageStatus(): Promise<{
       status: LifeOpsBrowserCompanionPackageStatus;
     }>;
+    autoPairLifeOpsBrowserCompanion(
+      data: CreateLifeOpsBrowserCompanionAutoPairRequest,
+    ): Promise<LifeOpsBrowserCompanionAutoPairResponse>;
     createLifeOpsBrowserCompanionPairing(
       data: CreateLifeOpsBrowserCompanionPairingRequest,
     ): Promise<LifeOpsBrowserCompanionPairingResponse>;
     buildLifeOpsBrowserCompanionPackage(browser: LifeOpsBrowserKind): Promise<{
       status: LifeOpsBrowserCompanionPackageStatus;
     }>;
+    openLifeOpsBrowserCompanionPackagePath(data: {
+      target: LifeOpsBrowserPackagePathTarget;
+      revealOnly?: boolean;
+    }): Promise<OpenLifeOpsBrowserCompanionPackagePathResponse>;
+    openLifeOpsBrowserCompanionManager(
+      browser: LifeOpsBrowserKind,
+    ): Promise<OpenLifeOpsBrowserCompanionManagerResponse>;
     downloadLifeOpsBrowserCompanionPackage(
       browser: LifeOpsBrowserKind,
     ): Promise<{
@@ -128,6 +144,10 @@ declare module "@elizaos/app-core/api/client-base" {
     confirmLifeOpsBrowserSession(
       sessionId: string,
       data: ConfirmLifeOpsBrowserSessionRequest,
+    ): Promise<{ session: LifeOpsBrowserSession }>;
+    updateLifeOpsBrowserSessionProgress(
+      sessionId: string,
+      data: UpdateLifeOpsBrowserSessionProgressRequest,
     ): Promise<{ session: LifeOpsBrowserSession }>;
     completeLifeOpsBrowserSession(
       sessionId: string,
@@ -233,13 +253,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getSignalConnectorStatus(
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsSignalConnectorStatus>;
-    startSignalPairing(
+    startLifeOpsSignalPairing(
       data?: StartLifeOpsSignalPairingRequest,
     ): Promise<StartLifeOpsSignalPairingResponse>;
     getSignalPairingStatus(
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
-    stopSignalPairing(sessionId: string): Promise<void>;
+    stopLifeOpsSignalPairing(sessionId: string): Promise<void>;
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
@@ -323,6 +343,16 @@ ElizaClient.prototype.getLifeOpsBrowserPackageStatus = async function (
   return this.fetch("/api/lifeops/browser/packages");
 };
 
+ElizaClient.prototype.autoPairLifeOpsBrowserCompanion = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/browser/companions/auto-pair", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 ElizaClient.prototype.createLifeOpsBrowserCompanionPairing = async function (
   this: ElizaClient,
   data,
@@ -339,6 +369,28 @@ ElizaClient.prototype.buildLifeOpsBrowserCompanionPackage = async function (
 ) {
   return this.fetch(
     `/api/lifeops/browser/packages/${encodeURIComponent(browser)}/build`,
+    {
+      method: "POST",
+    },
+  );
+};
+
+ElizaClient.prototype.openLifeOpsBrowserCompanionPackagePath = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/browser/packages/open-path", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.openLifeOpsBrowserCompanionManager = async function (
+  this: ElizaClient,
+  browser,
+) {
+  return this.fetch(
+    `/api/lifeops/browser/packages/${encodeURIComponent(browser)}/open-manager`,
     {
       method: "POST",
     },
@@ -419,6 +471,20 @@ ElizaClient.prototype.confirmLifeOpsBrowserSession = async function (
 ) {
   return this.fetch(
     `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.updateLifeOpsBrowserSessionProgress = async function (
+  this: ElizaClient,
+  sessionId,
+  data,
+) {
+  return this.fetch(
+    `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}/progress`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -822,14 +888,17 @@ ElizaClient.prototype.getSignalConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/signal/status${query}`);
 };
 
-ElizaClient.prototype.startSignalPairing = async function (
+ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   this: ElizaClient,
   data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/signal/pair", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+): Promise<StartLifeOpsSignalPairingResponse> {
+  return this.fetch<StartLifeOpsSignalPairingResponse>(
+    "/api/lifeops/connectors/signal/pair",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 };
 
 ElizaClient.prototype.getSignalPairingStatus = async function (
@@ -842,11 +911,11 @@ ElizaClient.prototype.getSignalPairingStatus = async function (
   );
 };
 
-ElizaClient.prototype.stopSignalPairing = async function (
+ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
   this: ElizaClient,
   sessionId,
-) {
-  return this.fetch("/api/lifeops/connectors/signal/stop", {
+): Promise<void> {
+  return this.fetch<void>("/api/lifeops/connectors/signal/stop", {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });

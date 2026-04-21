@@ -5,7 +5,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { Badge, Button, SegmentedControl } from "@elizaos/app-core";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
-import { Copy, ExternalLink, Github } from "lucide-react";
+import { Copy, ExternalLink, GitBranch } from "lucide-react";
 import { useCallback, useState } from "react";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
@@ -90,7 +90,9 @@ function sideTitle(side: LifeOpsConnectorSide): string {
   return side === "owner" ? "User" : "Agent";
 }
 
-function capabilityLabels(capabilities: readonly LifeOpsGoogleCapability[]): string[] {
+function capabilityLabels(
+  capabilities: readonly LifeOpsGoogleCapability[],
+): string[] {
   const labels: string[] = [];
   if (
     capabilities.includes("google.calendar.read") ||
@@ -194,16 +196,12 @@ function PendingAuthBanner({
   );
 }
 
-function GithubRow({
-  github,
-}: {
-  github: GithubSetupState;
-}) {
+function GithubRow({ github }: { github: GithubSetupState }) {
   return (
     <div className="space-y-2 border-t border-border/12 pt-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-          <Github className="h-4 w-4 shrink-0" />
+          <GitBranch className="h-4 w-4 shrink-0" />
           <span>GitHub</span>
         </div>
         <div className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
@@ -275,7 +273,9 @@ function GoogleConnectorSideCard({
   const visibleMode: VisibleConnectorMode =
     activeMode === "local" ? "local" : "cloud_managed";
   const visibleAuthUrl =
-    pendingAuthUrl && pendingAuthUrl !== dismissedAuthUrl ? pendingAuthUrl : null;
+    pendingAuthUrl && pendingAuthUrl !== dismissedAuthUrl
+      ? pendingAuthUrl
+      : null;
   const preferredGrantId = status?.grant?.id ?? null;
 
   return (
@@ -325,7 +325,8 @@ function GoogleConnectorSideCard({
             {status?.reason === "needs_reauth" ? "Reconnect" : "Connect"}
           </Button>
         ) : null}
-        {status?.connected && connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
+        {status?.connected &&
+        connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
           <Button
             size="sm"
             variant="outline"
@@ -349,7 +350,9 @@ function GoogleConnectorSideCard({
         ) : null}
       </div>
 
-      <div className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}>
+      <div
+        className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}
+      >
         {currentStatusLabel}
       </div>
 
@@ -359,7 +362,8 @@ function GoogleConnectorSideCard({
             const accountIdentity = readIdentity(account.identity ?? null);
             const labels = capabilityLabels(account.grantedCapabilities);
             const isPreferred =
-              preferredGrantId != null && account.grant?.id === preferredGrantId;
+              preferredGrantId != null &&
+              account.grant?.id === preferredGrantId;
             return (
               <div
                 key={account.grant?.id ?? accountIdentity.primary}
@@ -414,8 +418,14 @@ export function LifeOpsSettingsSection({
   githubError = null,
   cloudAction = null,
 }: LifeOpsSettingsSectionProps = {}) {
-  const ownerConnector = useGoogleLifeOpsConnector({ side: "owner" });
-  const agentConnector = useGoogleLifeOpsConnector({ side: "agent" });
+  const ownerConnector = useGoogleLifeOpsConnector({
+    includeAccounts: true,
+    side: "owner",
+  });
+  const agentConnector = useGoogleLifeOpsConnector({
+    includeAccounts: true,
+    side: "agent",
+  });
 
   return (
     <section className="space-y-4">

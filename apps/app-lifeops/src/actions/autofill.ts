@@ -21,12 +21,13 @@
 import {
   logger,
   type Action,
+  type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
   extractRegistrableDomain,
@@ -308,6 +309,36 @@ export const requestFieldFillAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Can you log me into github? I'm on the sign-in page.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Requested password autofill on github.com via the browser extension.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Fill in my email on this signup form.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Requested email autofill on example.com via the browser extension.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 interface AddAutofillWhitelistParameters {
@@ -398,6 +429,36 @@ export const addAutofillWhitelistAction: Action = {
       schema: { type: "boolean" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Yes, trust notion.so for autofill going forward.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Added notion.so to the autofill whitelist.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Go ahead and approve linear.app for password autofill.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Added linear.app to the autofill whitelist.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const listAutofillWhitelistAction: Action = {
@@ -432,6 +493,36 @@ export const listAutofillWhitelistAction: Action = {
   },
 
   parameters: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Which sites are allowed for autofill right now?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Autofill whitelist (4 entries): github.com, notion.so, linear.app, example.com",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me my trusted sites.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Autofill whitelist (3 entries): github.com, notion.so, linear.app",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const __internal = {

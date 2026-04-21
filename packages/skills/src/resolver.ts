@@ -5,9 +5,9 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveStateDir } from "@elizaos/core";
 
 /**
  * Cached skills directory path
@@ -122,12 +122,9 @@ export function clearSkillsDirCache(): void {
  * to `~/.milady`.
  */
 function resolveCuratedBaseDir(): string {
-  const stateDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    join(homedir(), ".milady");
-  return join(stateDir, "skills", "curated");
+  return join(resolveStateDir(), "skills", "curated");
 }
+
 
 /**
  * Absolute path to the curated **active** skills directory. Skills here are

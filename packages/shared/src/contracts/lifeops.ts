@@ -63,9 +63,40 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
 export type LifeOpsWorkflowRunStatus =
   (typeof LIFEOPS_WORKFLOW_RUN_STATUSES)[number];
 
-export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = ["manual", "schedule"] as const;
+export const LIFEOPS_WORKFLOW_TRIGGER_TYPES = [
+  "manual",
+  "schedule",
+  "event",
+] as const;
 export type LifeOpsWorkflowTriggerType =
   (typeof LIFEOPS_WORKFLOW_TRIGGER_TYPES)[number];
+
+/**
+ * Registry of event kinds that can fire a LifeOps workflow.
+ *
+ * Each entry is a stable identifier ("namespace.subject.verb") emitted by a
+ * detector inside the engine. Adding a new entry means adding a detector that
+ * publishes matching occurrences to `runDueEventWorkflows`, and — optionally —
+ * a filter shape under {@link LifeOpsEventFilters}.
+ */
+export const LIFEOPS_EVENT_KINDS = ["calendar.event.ended"] as const;
+export type LifeOpsEventKind = (typeof LIFEOPS_EVENT_KINDS)[number];
+
+export interface LifeOpsCalendarEventEndedFilters {
+  /** Only fire for events on these calendar ids (e.g. "primary"). */
+  calendarIds?: string[];
+  /** Only fire when event title matches one of these case-insensitive substrings. */
+  titleIncludesAny?: string[];
+  /** Only fire when the event lasted at least this many minutes. */
+  minDurationMinutes?: number;
+  /** Only fire when one attendee email contains one of these substrings. */
+  attendeeEmailIncludesAny?: string[];
+}
+
+export type LifeOpsEventFilters = {
+  kind: "calendar.event.ended";
+  filters?: LifeOpsCalendarEventEndedFilters;
+};
 
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
@@ -162,6 +193,7 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
   "google.calendar.write",
   "google.gmail.triage",
   "google.gmail.send",
+  "google.gmail.manage",
 ] as const;
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];
@@ -617,6 +649,11 @@ export type LifeOpsWorkflowSchedule =
       kind: "cron";
       cronExpression: string;
       timezone: string;
+    }
+  | {
+      kind: "event";
+      eventKind: LifeOpsEventKind;
+      filters?: LifeOpsEventFilters;
     };
 
 export interface LifeOpsWorkflowPermissionPolicy {
@@ -844,9 +881,29 @@ export interface LifeOpsBrowserCompanionPairingResponse {
   pairingToken: string;
 }
 
-/** Body for POST /api/lifeops/browser/companions/auto-pair (same shape as pairing). */
-export type CreateLifeOpsBrowserCompanionAutoPairRequest =
-  CreateLifeOpsBrowserCompanionPairingRequest;
+export interface LifeOpsBrowserCompanionConfig {
+  apiBaseUrl: string;
+  companionId: string;
+  pairingToken: string;
+  browser: LifeOpsBrowserKind;
+  profileId: string;
+  profileLabel: string;
+  label: string;
+}
+
+export interface CreateLifeOpsBrowserCompanionAutoPairRequest {
+  browser: LifeOpsBrowserKind;
+  profileId?: string | null;
+  profileLabel?: string | null;
+  label?: string | null;
+  extensionVersion?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LifeOpsBrowserCompanionAutoPairResponse {
+  companion: LifeOpsBrowserCompanionStatus;
+  config: LifeOpsBrowserCompanionConfig;
+}
 
 export interface UpdateLifeOpsBrowserSessionProgressRequest {
   currentActionIndex?: number;
@@ -861,6 +918,17 @@ export interface LifeOpsBrowserCompanionSyncResponse {
   settings: LifeOpsBrowserSettings;
   session: LifeOpsBrowserSession | null;
 }
+
+export const LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS = [
+  "extension_root",
+  "chrome_build",
+  "chrome_package",
+  "safari_web_extension",
+  "safari_app",
+  "safari_package",
+] as const;
+export type LifeOpsBrowserPackagePathTarget =
+  (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
 
 export interface LifeOpsBrowserCompanionPackageStatus {
   extensionPath: string | null;
@@ -901,6 +969,21 @@ export interface LifeOpsBrowserCompanionReleaseManifest {
   chrome: LifeOpsBrowserCompanionReleaseTarget;
   safari: LifeOpsBrowserCompanionReleaseTarget;
   generatedAt: string;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathRequest {
+  target: LifeOpsBrowserPackagePathTarget;
+  revealOnly?: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionPackagePathResponse {
+  target: LifeOpsBrowserPackagePathTarget;
+  path: string;
+  revealOnly: boolean;
+}
+
+export interface OpenLifeOpsBrowserCompanionManagerResponse {
+  browser: LifeOpsBrowserKind;
 }
 
 export interface LifeOpsWorkflowActionBase {
@@ -1140,6 +1223,61 @@ export interface LifeOpsOverviewSummary {
   activeGoalCount: number;
 }
 
+export type LifeOpsSchedulePhase =
+  | "sleeping"
+  | "waking"
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "winding_down"
+  | "offline";
+
+export type LifeOpsScheduleSleepStatus =
+  | "sleeping_now"
+  | "slept"
+  | "likely_missed"
+  | "unknown";
+
+export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
+
+export type LifeOpsScheduleMealSource =
+  | "activity_gap"
+  | "expected_window"
+  | "health";
+
+export interface LifeOpsScheduleMealInsight {
+  label: LifeOpsScheduleMealLabel;
+  detectedAt: string;
+  confidence: number;
+  source: LifeOpsScheduleMealSource;
+}
+
+export interface LifeOpsScheduleInsight {
+  effectiveDayKey: string;
+  localDate: string;
+  timezone: string;
+  inferredAt: string;
+  phase: LifeOpsSchedulePhase;
+  sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
+  sleepConfidence: number;
+  currentSleepStartedAt: string | null;
+  lastSleepStartedAt: string | null;
+  lastSleepEndedAt: string | null;
+  lastSleepDurationMinutes: number | null;
+  typicalWakeHour: number | null;
+  typicalSleepHour: number | null;
+  wakeAt: string | null;
+  firstActiveAt: string | null;
+  lastActiveAt: string | null;
+  meals: LifeOpsScheduleMealInsight[];
+  lastMealAt: string | null;
+  nextMealLabel: LifeOpsScheduleMealLabel | null;
+  nextMealWindowStartAt: string | null;
+  nextMealWindowEndAt: string | null;
+  nextMealConfidence: number;
+}
+
 export interface LifeOpsOverviewSection {
   occurrences: LifeOpsOccurrenceView[];
   goals: LifeOpsGoalDefinition[];
@@ -1154,6 +1292,7 @@ export interface LifeOpsOverview {
   summary: LifeOpsOverviewSummary;
   owner: LifeOpsOverviewSection;
   agentOps: LifeOpsOverviewSection;
+  schedule: LifeOpsScheduleInsight | null;
 }
 
 export interface LifeOpsCalendarEventAttendee {
@@ -1469,6 +1608,29 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
 export type LifeOpsGoogleConnectorReason =
   (typeof LIFEOPS_GOOGLE_CONNECTOR_REASONS)[number];
 
+export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = [
+  "missing-scope",
+  "rate-limited",
+  "disconnected",
+  "auth-expired",
+  "session-revoked",
+  "delivery-degraded",
+  "helper-disconnected",
+  "retry-idempotent",
+  "hold-expired",
+  "transport-offline",
+  "blocked-resume",
+] as const;
+export type LifeOpsConnectorDegradationAxis =
+  (typeof LIFEOPS_CONNECTOR_DEGRADATION_AXES)[number];
+
+export interface LifeOpsConnectorDegradation {
+  axis: LifeOpsConnectorDegradationAxis;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
 export interface LifeOpsGoogleConnectorStatus {
   provider: "google";
   side: LifeOpsConnectorSide;
@@ -1488,6 +1650,7 @@ export interface LifeOpsGoogleConnectorStatus {
   expiresAt: string | null;
   hasRefreshToken: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsXConnectorStatus {
@@ -1502,9 +1665,10 @@ export interface LifeOpsXConnectorStatus {
    * DM inbound read is supported when `x.read` capability is granted.
    * Use `syncXDms()` to pull and persist, then `getXDms()` or
    * `readXInboundDms()` to retrieve.
-   */
+  */
   dmInbound: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,11 +1690,36 @@ export interface LifeOpsSignalConnectorStatus {
   provider: "signal";
   side: LifeOpsConnectorSide;
   connected: boolean;
+  inbound: boolean;
   reason: LifeOpsMessagingConnectorReason;
   identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
   grantedCapabilities: LifeOpsSignalCapability[];
   pairing: LifeOpsSignalPairingStatus | null;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
+}
+
+/**
+ * A single inbound Signal message as returned by {@link readSignalInbound} and
+ * the signal-local-client reader.
+ */
+export interface LifeOpsSignalInboundMessage {
+  /** Stable message ID (from the Signal service memory store or signal-cli). */
+  id: string;
+  /** elizaOS room ID this message was placed into. */
+  roomId: string;
+  /** Signal channel ID (typically the sender's phone number or group ID). */
+  channelId: string;
+  /** Display name of the sender. */
+  speakerName: string;
+  /** Plain-text body of the message. */
+  text: string;
+  /** Unix millisecond timestamp of the message. */
+  createdAt: number;
+  /** True when the message was sent by a contact (not by the agent's account). */
+  isInbound: boolean;
+  /** True when the message was received in a group conversation. */
+  isGroup: boolean;
 }
 
 export interface LifeOpsDiscordDmPreview {
@@ -1547,6 +1736,63 @@ export interface LifeOpsDiscordDmInboxStatus {
   count: number;
   selectedChannelId: string | null;
   previews: LifeOpsDiscordDmPreview[];
+}
+
+export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
+  "lifeops_browser",
+  "desktop_browser",
+] as const;
+export type LifeOpsOwnerBrowserAccessSource =
+  (typeof LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_TAB_STATES = [
+  "missing",
+  "background_discord",
+  "discord_open",
+  "dm_inbox_visible",
+] as const;
+export type LifeOpsOwnerBrowserTabState =
+  (typeof LIFEOPS_OWNER_BROWSER_TAB_STATES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_AUTH_STATES = [
+  "unknown",
+  "logged_out",
+  "logged_in",
+] as const;
+export type LifeOpsOwnerBrowserAuthState =
+  (typeof LIFEOPS_OWNER_BROWSER_AUTH_STATES)[number];
+
+export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
+  "none",
+  "connect_browser",
+  "open_extension_popup",
+  "enable_browser_access",
+  "enable_browser_control",
+  "open_discord",
+  "open_dm_inbox",
+  "focus_discord_manually",
+  "focus_dm_inbox_manually",
+  "log_in",
+  "open_desktop_browser",
+] as const;
+export type LifeOpsOwnerBrowserNextAction =
+  (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
+
+export interface LifeOpsOwnerBrowserAccessStatus {
+  source: LifeOpsOwnerBrowserAccessSource;
+  active: boolean;
+  available: boolean;
+  browser: LifeOpsBrowserKind | null;
+  profileId: string | null;
+  profileLabel: string | null;
+  companionId: string | null;
+  companionLabel: string | null;
+  canControl: boolean;
+  siteAccessOk: boolean | null;
+  currentUrl: string | null;
+  tabState: LifeOpsOwnerBrowserTabState;
+  authState: LifeOpsOwnerBrowserAuthState;
+  nextAction: LifeOpsOwnerBrowserNextAction;
 }
 
 export interface LifeOpsDiscordConnectorStatus {
@@ -1569,7 +1815,10 @@ export interface LifeOpsDiscordConnectorStatus {
   lastError: string | null;
   /** Browser Workspace tab hosting Discord, when that desktop path is in use. */
   tabId: string | null;
+  /** Owner-side browser options for reaching the user's real Discord session. */
+  browserAccess?: LifeOpsOwnerBrowserAccessStatus[];
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export const LIFEOPS_TELEGRAM_AUTH_STATES = [
@@ -1593,6 +1842,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
   inbound: true;
   phoneNumberId?: string;
   lastCheckedAt: string;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramConnectorStatus {
@@ -1613,6 +1863,7 @@ export interface LifeOpsTelegramConnectorStatus {
   managedCredentialsAvailable: boolean;
   storedCredentialsAvailable: boolean;
   grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
 }
 
 export interface LifeOpsTelegramDialogSummary {

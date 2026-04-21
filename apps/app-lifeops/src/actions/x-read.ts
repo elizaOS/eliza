@@ -214,17 +214,32 @@ function summarizeFeedItems(items: LifeOpsXFeedItem[], feedType: LifeOpsXFeedTyp
 
 export const xReadAction: Action = {
   name: "X_READ",
-  similes: ["READ_X", "READ_TWITTER", "X_DMS", "X_FEED", "X_SEARCH"],
+  similes: [
+    "READ_X",
+    "READ_TWITTER",
+    "CHECK_TWITTER_DMS",
+    "TWITTER_TIMELINE",
+    "X_TIMELINE",
+    "TWITTER_MENTIONS",
+    "SEARCH_TWITTER",
+    "X_DMS",
+    "X_FEED",
+    "X_SEARCH",
+  ],
   description:
     "Read X/Twitter DMs, the home timeline or mentions feed, or run a recent search. " +
-    "Use this for retrieving content from X (not posting).",
+    "Use this for requests like 'check my Twitter DMs', 'what's on my X timeline?', 'show me my mentions', or 'search Twitter for posts about elizaOS'. " +
+    "Use this for retrieving content from X, not posting. Do not reply that X/Twitter access is unavailable when this action is registered and visible.",
 
   validate: async (runtime, message) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
     const service = new LifeOpsService(runtime);
     try {
       const status = await service.getXConnectorStatus();
-      return Boolean(status.connected);
+      return Boolean(
+        status.grant &&
+          status.grantedCapabilities.includes("x.read"),
+      );
     } catch {
       return false;
     }
@@ -421,6 +436,18 @@ export const xReadAction: Action = {
     [
       {
         name: "{{name1}}",
+        content: { text: "What's on my X timeline?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "X home_timeline (5):\n- @carol: great post!",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
         content: { text: "What are my recent X mentions?" },
       },
       {
@@ -433,7 +460,7 @@ export const xReadAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: 'Search X for "elizaOS".' },
+        content: { text: "Search Twitter for posts about elizaOS." },
       },
       {
         name: "{{agentName}}",

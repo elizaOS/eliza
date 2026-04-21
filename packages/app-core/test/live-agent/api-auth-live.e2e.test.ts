@@ -4,23 +4,26 @@
  * These tests exercise the real authenticated flow end-to-end:
  * auth -> onboarding -> agent start -> chat -> wallet operations -> agent stop.
  */
-import { config as loadDotenv } from "dotenv";
+
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import { config as loadDotenv } from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import {
-  isLiveTestEnabled,
-  selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
-import { saveEnv } from "../../../../../test/helpers/test-utils";
 import {
   createConversation,
   postConversationMessage,
   req,
 } from "../../../../../test/helpers/http";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import {
+  buildIsolatedLiveProviderEnv,
+  isLiveTestEnabled,
+  LIVE_PROVIDER_ENV_KEYS,
+  selectLiveProvider,
+} from "../../../../../test/helpers/live-provider";
+import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
+import { saveEnv } from "../../../../../test/helpers/test-utils";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 loadDotenv({ path: envPath });
@@ -49,7 +52,9 @@ function readExportNonce(errorMessage: unknown): {
   nonce: string;
 } {
   if (typeof errorMessage !== "string" || errorMessage.length === 0) {
-    throw new Error("Wallet export nonce request did not return an error payload");
+    throw new Error(
+      "Wallet export nonce request did not return an error payload",
+    );
   }
 
   let parsed: unknown;
@@ -69,7 +74,9 @@ function readExportNonce(errorMessage: unknown): {
     typeof parsed.nonce !== "string" ||
     typeof parsed.delaySeconds !== "number"
   ) {
-    throw new Error(`Wallet export nonce response was malformed: ${errorMessage}`);
+    throw new Error(
+      `Wallet export nonce response was malformed: ${errorMessage}`,
+    );
   }
 
   return {
@@ -154,7 +161,7 @@ async function startLiveServer(args: {
   exportToken?: string;
 }): Promise<{ restore: () => Promise<void>; server: StartedLiveServer }> {
   const envBackup = saveEnv(
-    ...Object.keys(LIVE_PROVIDER?.env ?? {}),
+    ...LIVE_PROVIDER_ENV_KEYS,
     "ELIZA_API_TOKEN",
     "ELIZA_WALLET_EXPORT_TOKEN",
     "ELIZA_PAIRING_DISABLED",
@@ -165,8 +172,12 @@ async function startLiveServer(args: {
     "PGLITE_DATA_DIR",
   );
 
-  for (const [key, value] of Object.entries(LIVE_PROVIDER?.env ?? {})) {
-    process.env[key] = value;
+  const isolatedProviderEnv = buildIsolatedLiveProviderEnv(
+    process.env,
+    LIVE_PROVIDER,
+  );
+  for (const key of LIVE_PROVIDER_ENV_KEYS) {
+    process.env[key] = isolatedProviderEnv[key] ?? "";
   }
   process.env.ELIZA_API_TOKEN = args.apiToken;
   if (args.exportToken) {
@@ -553,11 +564,7 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    const exported = await exportWallet(
-      server?.port ?? 0,
-      EXPORT_TOKEN,
-      auth,
-    );
+    const exported = await exportWallet(server?.port ?? 0, EXPORT_TOKEN, auth);
     const evm = exported.evm;
     expect(evm).not.toBeNull();
     expect(evm.privateKey).toBe(importedKey);

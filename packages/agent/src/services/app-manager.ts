@@ -491,7 +491,7 @@ function mergeLocalRegistryInfo<T extends RegistryPluginInfo>(
 }
 
 function deriveAppMetaFromPluginInfo(
-  appInfo: RegistryPluginInfo,
+  appInfo: RegistryPluginInfo & Partial<NonNullable<RegistryPluginInfo["appMeta"]>>,
 ): RegistryPluginInfo["appMeta"] | undefined {
   const hasTopLevelAppMeta =
     appInfo.displayName !== undefined ||
