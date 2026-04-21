@@ -3135,6 +3135,7 @@ function renderGooPaperPage(
     return `
     <div class="goo-agent-row" style="animation-delay:${i * 0.04}s" data-id="${escapeHtml(a.id)}" onclick="window.location='/goo/agent/${escapeHtml(a.id)}'">
       <span class="goo-rank-badge">#${i + 1}</span>
+      <img class="goo-agent-row__logo" src="/assets/goo-economy-logo.png" alt="Goo" />
       <div class="goo-agent-row__dot goo-dot--${a.chainState}"></div>
       <div class="goo-agent-row__main">
         <div class="goo-agent-row__title">
@@ -3257,6 +3258,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
 .goo-agent-row:last-child{border-bottom:none;}
 .goo-agent-row:hover{background:rgba(0,199,210,.02);}
 
+.goo-agent-row__logo{width:22px;height:22px;border-radius:50%;flex-shrink:0;border:1.5px solid rgba(0,199,210,.25);object-fit:cover;}
 .goo-agent-row__dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
 .goo-dot--active{background:var(--goo-brand);animation:dotPulse 2s ease-in-out infinite;}
 .goo-dot--starving{background:var(--goo-warn);}
@@ -6115,6 +6117,7 @@ function renderHtml(
     }
     .arena-card--leader .arena-card__rank { color: var(--yellow); }
     .arena-card__head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .arena-card__goo-logo { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; opacity: .85; }
     .arena-card__dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .arena-card__name { font-size: 0.72rem; font-weight: 700; color: var(--white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .arena-card__badge {
@@ -6579,6 +6582,7 @@ function renderHtml(
             <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
               <div class="arena-card__rank">#${idx + 1}</div>
               <div class="arena-card__head">
+                <img class="arena-card__goo-logo" src="/assets/goo-economy-logo.png" alt="Goo" />
                 <div class="arena-card__dot" style="background:${stateColor}"></div>
                 <div class="arena-card__name">${escapeHtml(agent.agentName)}</div>
                 <span class="arena-card__badge">${escapeHtml(agent.strategy.label)}</span>
