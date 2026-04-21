@@ -48,6 +48,7 @@ export const PLATFORM_TEMPLATE_FILES = {
   ios: [
     path.join("App", "Podfile"),
     path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "MiladyIntentPlugin.swift"),
     path.join(
       "App",
       "App",
@@ -893,6 +894,47 @@ export function shouldRunIosPodInstall(syncedFiles = []) {
   return syncedFiles.includes(path.join("App", "Podfile"));
 }
 
+export function resolveIosBuildTarget({
+  env = process.env,
+  appDirValue = appDir,
+} = {}) {
+  const explicitDestination =
+    env.MILADY_IOS_BUILD_DESTINATION ?? env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitSdk = env.MILADY_IOS_BUILD_SDK ?? env.ELIZA_IOS_BUILD_SDK;
+
+  if (explicitDestination || explicitSdk) {
+    return {
+      destination: explicitDestination ?? "generic/platform=iOS Simulator",
+      sdk: explicitSdk ?? "iphonesimulator",
+      reason: "explicit environment override",
+    };
+  }
+
+  const llamaCppFramework = path.join(
+    appDirValue,
+    "node_modules",
+    "llama-cpp-capacitor",
+    "ios",
+    "Frameworks",
+    "llama-cpp.framework",
+    "llama-cpp",
+  );
+
+  if (fs.existsSync(llamaCppFramework)) {
+    return {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "llama-cpp-capacitor ships a device iOS framework",
+    };
+  }
+
+  return {
+    destination: "generic/platform=iOS Simulator",
+    sdk: "iphonesimulator",
+    reason: "default simulator build",
+  };
+}
+
 async function buildAndroid() {
   const androidSdkRoot = resolveAndroidSdkRoot();
   const javaHome = resolveJavaHome();
@@ -966,6 +1008,10 @@ async function buildIos() {
     await run("pod", ["install"], { cwd: iosDir });
   }
   await ensureIosWorkspace();
+  const iosBuildTarget = resolveIosBuildTarget();
+  console.log(
+    `[mobile-build] Building iOS with ${iosBuildTarget.sdk} (${iosBuildTarget.reason}).`,
+  );
   await run(
     "xcodebuild",
     [
@@ -976,9 +1022,9 @@ async function buildIos() {
       "-configuration",
       "Debug",
       "-destination",
-      "generic/platform=iOS Simulator",
+      iosBuildTarget.destination,
       "-sdk",
-      "iphonesimulator",
+      iosBuildTarget.sdk,
       "CODE_SIGNING_ALLOWED=NO",
       "build",
     ],
