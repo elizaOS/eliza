@@ -83,24 +83,10 @@ export function resolvePlatformTemplateRoot(
 
 const androidPlatformSrc =
   resolvePlatformTemplateRoot("android") ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "platforms",
-    "android",
-  );
+  path.join(repoRoot, "eliza", "packages", "app-core", "platforms", "android");
 const iosPlatformSrc =
   resolvePlatformTemplateRoot("ios") ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "platforms",
-    "ios",
-  );
+  path.join(repoRoot, "eliza", "packages", "app-core", "platforms", "ios");
 const androidBuildGradleTemplate = path.join(
   androidPlatformSrc,
   "build.gradle",
@@ -190,12 +176,19 @@ function withPrependedPath(env, entries) {
   return `${filtered.join(separator)}${separator}${env.PATH ?? ""}`;
 }
 
-async function buildSharedApp() {
+async function buildSharedApp(platform) {
   if (process.env.ELIZA_SKIP_WEB_BUILD === "1") {
     console.log("[mobile-build] Skipping web build (ELIZA_SKIP_WEB_BUILD=1).");
     return;
   }
-  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+  await run("bun", ["scripts/build.mjs"], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: platform,
+      MILADY_CAPACITOR_BUILD_TARGET: platform,
+    },
+  });
 }
 
 export function syncPlatformTemplateFiles(
@@ -326,10 +319,24 @@ const ANDROID_QUERIES_BLOCK = `
  */
 function overlayAndroidNativeFiles() {
   const srcJavaDir = path.join(
-    androidPlatformSrc, "app", "src", "main", "java", "ai", "elizaos", "app",
+    androidPlatformSrc,
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
   );
   const targetJavaDir = path.join(
-    androidDir, "app", "src", "main", "java", "ai", "elizaos", "app",
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
   );
 
   // Detect the host app's namespace so we can add an R import.
@@ -361,20 +368,25 @@ function overlayAndroidNativeFiles() {
         const rImport = `import ${appNamespace}.R;`;
         if (!content.includes(rImport)) {
           // Insert right after the package declaration line
-          content = content.replace(
-            /^(package\s+[^;]+;)/m,
-            `$1\n\n${rImport}`,
-          );
+          content = content.replace(/^(package\s+[^;]+;)/m, `$1\n\n${rImport}`);
         }
       }
 
       fs.writeFileSync(path.join(targetJavaDir, file), content, "utf8");
     }
-    console.log("[mobile-build] Copied Android Java source files (GatewayConnectionService, MainActivity).");
+    console.log(
+      "[mobile-build] Copied Android Java source files (GatewayConnectionService, MainActivity).",
+    );
   }
 
   // -- Merge AndroidManifest.xml --
-  const manifestPath = path.join(androidDir, "app", "src", "main", "AndroidManifest.xml");
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
   if (fs.existsSync(manifestPath)) {
     let manifest = fs.readFileSync(manifestPath, "utf8");
     let changed = false;
@@ -411,22 +423,25 @@ function overlayAndroidNativeFiles() {
       // Extract the permission name for checking
       const nameMatch = perm.match(/android:name="([^"]+)"/);
       if (nameMatch && !manifest.includes(nameMatch[1])) {
-        manifest = manifest.replace(
-          "</manifest>",
-          `    ${perm}\n</manifest>`,
-        );
+        manifest = manifest.replace("</manifest>", `    ${perm}\n</manifest>`);
         changed = true;
       }
     }
 
     if (changed) {
       fs.writeFileSync(manifestPath, manifest, "utf8");
-      console.log("[mobile-build] Merged permissions and service into AndroidManifest.xml.");
+      console.log(
+        "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+      );
     }
   }
 
   // -- Copy ProGuard rules --
-  const srcProguard = path.join(androidPlatformSrc, "app", "proguard-rules.pro");
+  const srcProguard = path.join(
+    androidPlatformSrc,
+    "app",
+    "proguard-rules.pro",
+  );
   const targetProguard = path.join(androidDir, "app", "proguard-rules.pro");
   if (fs.existsSync(srcProguard)) {
     fs.copyFileSync(srcProguard, targetProguard);
@@ -446,7 +461,10 @@ function overlayAndroidNativeFiles() {
     }
 
     // Add shrinkResources if missing
-    if (!gradle.includes("shrinkResources") && gradle.includes("minifyEnabled true")) {
+    if (
+      !gradle.includes("shrinkResources") &&
+      gradle.includes("minifyEnabled true")
+    ) {
       gradle = gradle.replace(
         "minifyEnabled true",
         "minifyEnabled true\n            shrinkResources true",
@@ -456,7 +474,9 @@ function overlayAndroidNativeFiles() {
 
     if (gradleChanged) {
       fs.writeFileSync(appBuildGradle, gradle, "utf8");
-      console.log("[mobile-build] Enabled release minification in app/build.gradle.");
+      console.log(
+        "[mobile-build] Enabled release minification in app/build.gradle.",
+      );
     }
   }
 }
@@ -468,16 +488,56 @@ function overlayAndroidNativeFiles() {
  * Order: key line, then value line(s).
  */
 const IOS_PLIST_ENTRIES = [
-  { key: "NSCameraUsageDescription", value: "<string>This app uses your camera to capture photos and video when you ask it to.</string>" },
-  { key: "NSMicrophoneUsageDescription", value: "<string>This app needs microphone access for voice wake, talk mode, and video capture.</string>" },
-  { key: "NSLocationWhenInUseUsageDescription", value: "<string>This app uses your location to provide location-aware responses when you allow it.</string>" },
-  { key: "NSLocationAlwaysAndWhenInUseUsageDescription", value: "<string>This app can share your location in the background so it stays up to date even when the app is not in use.</string>" },
-  { key: "NSPhotoLibraryUsageDescription", value: "<string>This app accesses your photo library to attach and share photos or videos.</string>" },
-  { key: "NSPhotoLibraryAddUsageDescription", value: "<string>This app saves captured photos and videos to your photo library.</string>" },
-  { key: "NSHealthShareUsageDescription", value: "<string>This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.</string>" },
-  { key: "NSHealthUpdateUsageDescription", value: "<string>This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.</string>" },
-  { key: "NSSpeechRecognitionUsageDescription", value: "<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>" },
-  { key: "NSLocalNetworkUsageDescription", value: "<string>This app discovers and connects to your elizaOS gateway on the local network.</string>" },
+  {
+    key: "NSCameraUsageDescription",
+    value:
+      "<string>This app uses your camera to capture photos and video when you ask it to.</string>",
+  },
+  {
+    key: "NSMicrophoneUsageDescription",
+    value:
+      "<string>This app needs microphone access for voice wake, talk mode, and video capture.</string>",
+  },
+  {
+    key: "NSLocationWhenInUseUsageDescription",
+    value:
+      "<string>This app uses your location to provide location-aware responses when you allow it.</string>",
+  },
+  {
+    key: "NSLocationAlwaysAndWhenInUseUsageDescription",
+    value:
+      "<string>This app can share your location in the background so it stays up to date even when the app is not in use.</string>",
+  },
+  {
+    key: "NSPhotoLibraryUsageDescription",
+    value:
+      "<string>This app accesses your photo library to attach and share photos or videos.</string>",
+  },
+  {
+    key: "NSPhotoLibraryAddUsageDescription",
+    value:
+      "<string>This app saves captured photos and videos to your photo library.</string>",
+  },
+  {
+    key: "NSHealthShareUsageDescription",
+    value:
+      "<string>This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.</string>",
+  },
+  {
+    key: "NSHealthUpdateUsageDescription",
+    value:
+      "<string>This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.</string>",
+  },
+  {
+    key: "NSSpeechRecognitionUsageDescription",
+    value:
+      "<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>",
+  },
+  {
+    key: "NSLocalNetworkUsageDescription",
+    value:
+      "<string>This app discovers and connects to your elizaOS gateway on the local network.</string>",
+  },
 ];
 
 const IOS_BONJOUR_BLOCK = `\t<key>NSBonjourServices</key>
@@ -510,37 +570,48 @@ function overlayIosNativeFiles() {
 
     // Add Bonjour services if missing
     if (!plist.includes("NSBonjourServices")) {
-      plist = plist.replace(
-        "</dict>",
-        `${IOS_BONJOUR_BLOCK}\n</dict>`,
-      );
+      plist = plist.replace("</dict>", `${IOS_BONJOUR_BLOCK}\n</dict>`);
       changed = true;
     }
 
     if (changed) {
       fs.writeFileSync(plistPath, plist, "utf8");
-      console.log("[mobile-build] Merged permission strings into iOS Info.plist.");
+      console.log(
+        "[mobile-build] Merged permission strings into iOS Info.plist.",
+      );
     }
   }
 
   // -- Copy entitlements file --
-  const srcEntitlements = path.join(iosPlatformSrc, "App", "App", "App.entitlements");
+  const srcEntitlements = path.join(
+    iosPlatformSrc,
+    "App",
+    "App",
+    "App.entitlements",
+  );
   const targetEntitlements = path.join(targetAppDir, "App.entitlements");
   if (fs.existsSync(srcEntitlements)) {
     let entitlements = fs.readFileSync(srcEntitlements, "utf8");
     // Replace the generic app group with the Milady-specific one
-    entitlements = entitlements.replace(
-      "group.ai.elizaos.app",
-      APP.appGroup,
-    );
+    entitlements = entitlements.replace("group.ai.elizaos.app", APP.appGroup);
     fs.writeFileSync(targetEntitlements, entitlements, "utf8");
-    console.log(`[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`);
+    console.log(
+      `[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`,
+    );
   }
 
   // -- Copy AppDelegate.swift (Capacitor CLI template has broken API call) --
-  const srcAppDelegate = path.join(iosPlatformSrc, "App", "App", "AppDelegate.swift");
+  const srcAppDelegate = path.join(
+    iosPlatformSrc,
+    "App",
+    "App",
+    "AppDelegate.swift",
+  );
   if (fs.existsSync(srcAppDelegate)) {
-    fs.copyFileSync(srcAppDelegate, path.join(targetAppDir, "AppDelegate.swift"));
+    fs.copyFileSync(
+      srcAppDelegate,
+      path.join(targetAppDir, "AppDelegate.swift"),
+    );
     console.log("[mobile-build] Copied iOS AppDelegate.swift.");
   }
 
@@ -624,7 +695,9 @@ function generateIosPodfile() {
   const podfileDir = path.join(appDir, "ios", "App");
   const iosPath = resolveCapacitorPodPath("@capacitor/ios");
   if (!iosPath) {
-    console.warn("[mobile-build] Could not resolve @capacitor/ios — skipping Podfile generation.");
+    console.warn(
+      "[mobile-build] Could not resolve @capacitor/ios — skipping Podfile generation.",
+    );
     return;
   }
 
@@ -637,6 +710,7 @@ function generateIosPodfile() {
     ["CapacitorKeyboard", "@capacitor/keyboard"],
     ["CapacitorPreferences", "@capacitor/preferences"],
     ["CapacitorStatusBar", "@capacitor/status-bar"],
+    ["LlamaCppCapacitor", "llama-cpp-capacitor"],
   ];
 
   const nativePluginPods = [
@@ -666,9 +740,17 @@ function generateIosPodfile() {
     path.join(repoRoot, "eliza", "packages", "native-plugins"),
   );
   for (const [podName, dirName] of nativePluginPods) {
-    const pluginDir = path.join(repoRoot, "eliza", "packages", "native-plugins", dirName);
+    const pluginDir = path.join(
+      repoRoot,
+      "eliza",
+      "packages",
+      "native-plugins",
+      dirName,
+    );
     if (fs.existsSync(pluginDir)) {
-      podLines.push(`  pod '${podName}', :path => '${nativePluginsBase}/${dirName}'`);
+      podLines.push(
+        `  pod '${podName}', :path => '${nativePluginsBase}/${dirName}'`,
+      );
     }
   }
 
@@ -708,11 +790,21 @@ end
  * This becomes a no-op once the project uses Xcode 26+.
  */
 function patchIosPluginSwiftCompat() {
-  const packageSwiftPath = path.join(appDir, "ios", "App", "CapApp-SPM", "Package.swift");
+  const packageSwiftPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "CapApp-SPM",
+    "Package.swift",
+  );
   if (!fs.existsSync(packageSwiftPath)) return;
 
   let content = fs.readFileSync(packageSwiftPath, "utf8");
-  const incompatible = ["CapacitorStatusBar", "CapacitorPreferences", "CapacitorApp"];
+  const incompatible = [
+    "CapacitorStatusBar",
+    "CapacitorPreferences",
+    "CapacitorApp",
+  ];
   let changed = false;
 
   for (const name of incompatible) {
@@ -747,7 +839,10 @@ function patchIosPluginSwiftCompat() {
 
 function ensureAndroidBuildGradlePatched() {
   const targetPath = path.join(androidDir, "build.gradle");
-  if (!fs.existsSync(targetPath) || !fs.existsSync(androidBuildGradleTemplate)) {
+  if (
+    !fs.existsSync(targetPath) ||
+    !fs.existsSync(androidBuildGradleTemplate)
+  ) {
     return;
   }
 
@@ -758,7 +853,9 @@ function ensureAndroidBuildGradlePatched() {
   }
 
   fs.writeFileSync(targetPath, template, "utf8");
-  console.log("[mobile-build] Patched android/build.gradle for native plugins.");
+  console.log(
+    "[mobile-build] Patched android/build.gradle for native plugins.",
+  );
 }
 
 function ensureAndroidVariablesPatched() {
@@ -768,10 +865,7 @@ function ensureAndroidVariablesPatched() {
   }
 
   const current = fs.readFileSync(targetPath, "utf8");
-  const next = current.replace(
-    /minSdkVersion\s*=\s*\d+/,
-    "minSdkVersion = 26",
-  );
+  const next = current.replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26");
   if (next === current) {
     return;
   }
@@ -815,7 +909,7 @@ async function buildAndroid() {
     );
   }
 
-  await buildSharedApp();
+  await buildSharedApp("android");
   await ensureCapacitorPlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
   syncPlatformTemplateFiles("android");
@@ -853,7 +947,7 @@ async function buildIos() {
     throw new Error("iOS builds require macOS and Xcode.");
   }
 
-  await buildSharedApp();
+  await buildSharedApp("ios");
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });

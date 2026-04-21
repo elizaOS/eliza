@@ -8,21 +8,41 @@ enum ScreenTimeSupport {
     private static let appAndWebsiteUsageEntitlement = "com.apple.developer.family-controls.app-and-website-usage"
     private static let requiredFrameworks = ["FamilyControls", "DeviceActivity"]
 
+    private struct EntitlementInspection {
+        let familyControls: Bool
+        let appAndWebsiteUsage: Bool
+        let inspected: String
+        let reason: String?
+
+        var satisfied: Bool {
+            familyControls && appAndWebsiteUsage
+        }
+
+        var canAttemptAuthorization: Bool {
+            inspected == "not-inspectable" || familyControls
+        }
+    }
+
     static func buildStatus(reasonOverride: String? = nil) -> [String: Any] {
-        let familyControlsEnabled = entitlementIsEnabled(familyControlsEntitlement)
-        let appAndWebsiteUsageEnabled = entitlementIsEnabled(appAndWebsiteUsageEntitlement)
+        let entitlementInspection = inspectEntitlements()
+        let familyControlsEnabled = entitlementInspection.familyControls
+        let appAndWebsiteUsageEnabled = entitlementInspection.appAndWebsiteUsage
+        let authorizationEntitlementAvailable = entitlementInspection.canAttemptAuthorization
+        let usageEntitlementAvailable = entitlementInspection.inspected == "not-inspectable" || appAndWebsiteUsageEnabled
         let authorizationStatus = authorizationStatusString()
-        let provisioningSatisfied = familyControlsEnabled && appAndWebsiteUsageEnabled
+        let provisioningSatisfied = entitlementInspection.satisfied
 
         let reason = reasonOverride ?? derivedReason(
-            familyControlsEnabled: familyControlsEnabled,
-            appAndWebsiteUsageEnabled: appAndWebsiteUsageEnabled,
+            familyControlsEnabled: authorizationEntitlementAvailable,
+            appAndWebsiteUsageEnabled: usageEntitlementAvailable,
             authorizationStatus: authorizationStatus
         )
-        let provisioningReason: Any = provisioningSatisfied ? NSNull() : reason
+        let provisioningReason: Any = provisioningSatisfied
+            ? NSNull()
+            : (entitlementInspection.reason ?? reason)
 
         return [
-            "supported": provisioningSatisfied,
+            "supported": provisioningSatisfied || entitlementInspection.inspected == "not-inspectable",
             "requirements": [
                 "entitlements": [
                     "familyControls": familyControlsEntitlement,
@@ -38,13 +58,13 @@ enum ScreenTimeSupport {
             ],
             "provisioning": [
                 "satisfied": provisioningSatisfied,
-                "inspected": "code-signature",
+                "inspected": entitlementInspection.inspected,
                 "reason": provisioningReason,
             ],
             "authorization": [
                 "status": authorizationStatus,
                 "canRequest": canRequestAuthorization(
-                    familyControlsEnabled: familyControlsEnabled,
+                    familyControlsEnabled: authorizationEntitlementAvailable,
                     authorizationStatus: authorizationStatus
                 ),
             ],
@@ -54,6 +74,47 @@ enum ScreenTimeSupport {
             "rawUsageExportAvailable": false,
             "reason": reason,
         ]
+    }
+
+    static func requestAuthorizationIfAvailable(
+        completion: @escaping (String?) -> Void
+    ) {
+        let entitlementInspection = inspectEntitlements()
+        let authorizationStatus = authorizationStatusString()
+        guard canRequestAuthorization(
+            familyControlsEnabled: entitlementInspection.canAttemptAuthorization,
+            authorizationStatus: authorizationStatus
+        ) else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        if #available(iOS 16.0, *) {
+            Task { @MainActor in
+                do {
+                    try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+                    completion(nil)
+                } catch {
+                    completion("Screen Time authorization request failed: \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+
+        DispatchQueue.main.async {
+            AuthorizationCenter.shared.requestAuthorization { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case .failure(let error):
+                        completion("Screen Time authorization request failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
     }
 
     private static func authorizationStatusString() -> String {
@@ -98,6 +159,25 @@ enum ScreenTimeSupport {
         return "DeviceActivity report and monitor extensions are not wired in this checkout."
     }
 
+    private static func inspectEntitlements() -> EntitlementInspection {
+        #if os(macOS)
+        return EntitlementInspection(
+            familyControls: entitlementIsEnabled(familyControlsEntitlement),
+            appAndWebsiteUsage: entitlementIsEnabled(appAndWebsiteUsageEntitlement),
+            inspected: "code-signature",
+            reason: nil
+        )
+        #else
+        return EntitlementInspection(
+            familyControls: false,
+            appAndWebsiteUsage: false,
+            inspected: "not-inspectable",
+            reason: "iOS entitlement inspection is handled by build validation and provisioning profile checks."
+        )
+        #endif
+    }
+
+    #if os(macOS)
     private static func entitlementIsEnabled(_ key: String) -> Bool {
         guard let task = SecTaskCreateFromSelf(nil) else {
             return false
@@ -110,6 +190,7 @@ enum ScreenTimeSupport {
         }
         return false
     }
+    #endif
 
     private static func runOnMain<T>(_ work: () -> T) -> T {
         if Thread.isMainThread {

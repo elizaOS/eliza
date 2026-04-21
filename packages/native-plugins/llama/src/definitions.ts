@@ -58,6 +58,7 @@ export interface HardwareInfo {
 export interface LlamaAdapter {
   getHardwareInfo(): Promise<HardwareInfo>;
   isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }>;
+  currentModelPath(): string | null;
   load(options: LoadOptions): Promise<void>;
   unload(): Promise<void>;
   generate(options: GenerateOptions): Promise<GenerateResult>;

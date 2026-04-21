@@ -16,6 +16,12 @@
 // - Exits cleanly on SIGTERM / SIGINT.
 // - No stderr output unless a fatal error occurs (stderr line prefixed "[activity-collector] ").
 //
+// System sleep / lock integration:
+// - On system sleep, screen lock, or screens-off, we emit a synthetic
+//   `deactivate` for the last-activated app so downstream sleep inference
+//   does not treat a lingering frontmost app as hours of continuous use.
+// - On wake / unlock, we re-emit an `activate` for the current frontmost app.
+//
 // The TypeScript service spawns this helper, pipes stdout, and persists events.
 
 #if os(macOS)
@@ -79,6 +85,7 @@ func frontmostWindowTitle(for app: NSRunningApplication) -> String? {
 final class Collector {
     let workspace = NSWorkspace.shared
     var lastActivatedBundleId: String?
+    var lastActivatedAppName: String?
 
     func start() {
         let nc = workspace.notificationCenter
@@ -96,6 +103,55 @@ final class Collector {
         ) { [weak self] note in
             self?.handleDeactivate(note)
         }
+        // macOS does not fire NSWorkspace.didDeactivateApplicationNotification
+        // when the system sleeps, the screen locks, or the screensaver kicks
+        // in. Without a synthetic deactivate the last-activated app looks
+        // "focused" for hours, which hides sleep from downstream inference.
+        let systemDeactivateNames: [Notification.Name] = [
+            NSWorkspace.willSleepNotification,
+            NSWorkspace.screensDidSleepNotification,
+            NSWorkspace.sessionDidResignActiveNotification,
+        ]
+        for name in systemDeactivateNames {
+            nc.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.emitSystemDeactivate(reason: name.rawValue)
+            }
+        }
+        let systemActivateNames: [Notification.Name] = [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.screensDidWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification,
+        ]
+        for name in systemActivateNames {
+            nc.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.emitSystemActivate()
+            }
+        }
+        // The screen-locked / screen-unlocked notifications live on the
+        // Distributed Notification Center, not the workspace center.
+        let dnc = DistributedNotificationCenter.default()
+        dnc.addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.emitSystemDeactivate(reason: "screenIsLocked")
+        }
+        dnc.addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.emitSystemActivate()
+        }
 
         // Emit the current frontmost app as a synthetic first activate so the
         // consumer has a starting anchor for duration computation.
@@ -104,6 +160,7 @@ final class Collector {
             let appName = current.localizedName ?? ""
             let title = frontmostWindowTitle(for: current)
             lastActivatedBundleId = bundleId
+            lastActivatedAppName = appName
             emit(event: "activate", bundleId: bundleId, appName: appName, windowTitle: title)
         }
     }
@@ -116,6 +173,7 @@ final class Collector {
         let appName = app.localizedName ?? ""
         let title = frontmostWindowTitle(for: app)
         lastActivatedBundleId = bundleId
+        lastActivatedAppName = appName
         emit(event: "activate", bundleId: bundleId, appName: appName, windowTitle: title)
     }
 
@@ -126,6 +184,27 @@ final class Collector {
         let bundleId = app.bundleIdentifier ?? ""
         let appName = app.localizedName ?? ""
         emit(event: "deactivate", bundleId: bundleId, appName: appName, windowTitle: nil)
+    }
+
+    func emitSystemDeactivate(reason: String) {
+        guard let bundleId = lastActivatedBundleId else { return }
+        let appName = lastActivatedAppName ?? ""
+        emit(event: "deactivate", bundleId: bundleId, appName: appName, windowTitle: nil)
+        // Clear so a subsequent deactivate does not double-emit for the same
+        // system-sleep transition.
+        lastActivatedBundleId = nil
+        lastActivatedAppName = nil
+        _ = reason
+    }
+
+    func emitSystemActivate() {
+        guard let current = workspace.frontmostApplication else { return }
+        let bundleId = current.bundleIdentifier ?? ""
+        let appName = current.localizedName ?? ""
+        let title = frontmostWindowTitle(for: current)
+        lastActivatedBundleId = bundleId
+        lastActivatedAppName = appName
+        emit(event: "activate", bundleId: bundleId, appName: appName, windowTitle: title)
     }
 }
 

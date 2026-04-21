@@ -11,12 +11,13 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
+import { screenTimeAction } from "../src/actions/screen-time.js";
 import { insertActivityEvent } from "../src/activity-profile/activity-tracker-repo.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
-import { screenTimeAction } from "../src/actions/screen-time.js";
 
 const AGENT_ID = "lifeops-screentime-agent";
+const DAY_MS = 24 * 60 * 60_000;
 
 function makeMessage(runtime: IAgentRuntime, text: string) {
   return {
@@ -140,11 +141,11 @@ describe("screen-time handler — real PGLite", () => {
   });
 
   it("getScreenTimeWeeklyAverageByApp returns structured per-day averages", async () => {
-    const now = Date.now();
-    const weekStart = now - 6 * 24 * 60 * 60_000;
+    const weekStart = Date.parse("2025-02-03T00:00:00.000Z");
+    const weekEnd = weekStart + 7 * DAY_MS;
 
     for (let day = 0; day < 7; day += 1) {
-      const dayStart = weekStart + day * 24 * 60 * 60_000;
+      const dayStart = weekStart + day * DAY_MS;
       await service.recordScreenTimeEvent({
         source: "app",
         identifier: "com.weekly.VSCode",
@@ -166,8 +167,8 @@ describe("screen-time handler — real PGLite", () => {
     }
 
     const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
-      since: new Date(now - 7 * 24 * 60 * 60_000).toISOString(),
-      until: new Date(now).toISOString(),
+      since: new Date(weekStart).toISOString(),
+      until: new Date(weekEnd).toISOString(),
       daysInWindow: 7,
       topN: 10,
     });
@@ -188,10 +189,10 @@ describe("screen-time handler — real PGLite", () => {
 
   it("SCREEN_TIME weekly_average_by_app returns structured action data", async () => {
     const now = Date.now();
-    const weekStart = now - 6 * 24 * 60 * 60_000;
+    const weekStart = now - 7 * DAY_MS;
 
     for (let day = 0; day < 7; day += 1) {
-      const dayStart = weekStart + day * 24 * 60 * 60_000;
+      const dayStart = weekStart + day * DAY_MS;
       await service.recordScreenTimeEvent({
         source: "app",
         identifier: "com.action.VSCode",
