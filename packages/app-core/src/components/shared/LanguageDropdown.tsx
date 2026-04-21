@@ -35,7 +35,7 @@ export interface LanguageDropdownProps {
   className?: string;
   /** Optional extra className on the trigger button */
   triggerClassName?: string;
-  variant?: "native" | "companion";
+  variant?: "native" | "companion" | "titlebar";
   menuPlacement?: "bottom-end" | "top-end";
 }
 
@@ -51,6 +51,14 @@ export function LanguageDropdown({
   const [open, setOpen] = useState(false);
 
   const current = LANGUAGES.find((l) => l.id === uiLanguage) ?? LANGUAGES[0];
+  const triggerClassNameResolved =
+    variant === "titlebar"
+      ? `inline-flex h-9 min-h-9 min-w-0 items-center justify-center rounded-md border border-transparent bg-transparent px-2.5 py-0 text-[11px] font-medium text-muted shadow-none ring-0 transition-[background-color,color,border-color] duration-150 hover:bg-accent/10 hover:text-txt ${open ? "bg-accent/12 text-txt" : ""} ${triggerClassName ?? ""}`
+      : `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt shadow-md" : ""} ${triggerClassName ?? ""}`;
+  const contentClassName =
+    variant === "titlebar"
+      ? "w-40 overflow-hidden rounded-xl border border-border/70 bg-card/96 py-1 shadow-[0_18px_36px_rgba(2,8,23,0.24)] backdrop-blur-xl"
+      : "w-40 overflow-hidden rounded-xl border border-border/60 bg-card/95 py-1 shadow-xl backdrop-blur-xl";
 
   return (
     <div
@@ -62,13 +70,19 @@ export function LanguageDropdown({
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            className={`inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt gap-1.5 text-xs font-medium ${open ? "border-accent/80 bg-accent/12 text-txt shadow-md" : ""} ${triggerClassName ?? ""}`}
+            className={triggerClassNameResolved}
             onPointerDown={(event) => event.stopPropagation()}
             aria-label={t?.("settings.language") ?? "Language"}
             data-testid="language-dropdown-trigger"
           >
             <span className="text-sm leading-none">{current.flag}</span>
-            <span className="hidden sm:inline uppercase tracking-widest opacity-80">
+            <span
+              className={
+                variant === "titlebar"
+                  ? "uppercase tracking-[0.14em] opacity-80"
+                  : "hidden sm:inline uppercase tracking-widest opacity-80"
+              }
+            >
               {current.id}
             </span>
             <ChevronDown
@@ -80,7 +94,7 @@ export function LanguageDropdown({
           align="end"
           side={menuPlacement === "top-end" ? "top" : "bottom"}
           sideOffset={4}
-          className="w-40 overflow-hidden rounded-xl border border-border/60 bg-card/95 py-1 shadow-xl backdrop-blur-xl"
+          className={contentClassName}
           style={
             variant === "companion"
               ? {
