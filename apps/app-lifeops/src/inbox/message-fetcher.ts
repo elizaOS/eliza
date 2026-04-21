@@ -297,8 +297,7 @@ function metadataForWorld(world: World | undefined): Record<string, unknown> {
 }
 
 function extractRoomSource(room: Room): string | null {
-  const record = room as unknown as Record<string, unknown>;
-  const source = record.source;
+  const source = (room as Room & { source?: unknown }).source;
   if (typeof source === "string" && source.trim().length > 0) {
     return normalizeConnectorSource(source.trim());
   }
@@ -307,8 +306,7 @@ function extractRoomSource(room: Room): string | null {
 
 function detectChannelType(room: Room | undefined): "dm" | "group" {
   if (!room) return "dm";
-  const record = room as unknown as Record<string, unknown>;
-  const type = record.type ?? record.roomType ?? record.room_type;
+  const type = room.type;
   if (typeof type === "string") {
     const lower = type.toLowerCase();
     if (lower.includes("dm") || lower.includes("direct")) return "dm";
