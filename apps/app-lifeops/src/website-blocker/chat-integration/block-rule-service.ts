@@ -7,12 +7,8 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
+import { blockWebsitesAction } from "../../actions/website-blocker.js";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
-import {
-  startSelfControlBlock,
-  stopSelfControlBlock,
-} from "../../website-blocker/engine.ts";
-import { syncWebsiteBlockerExpiryTask } from "../../website-blocker/service.ts";
 import {
   BLOCK_RULES_TABLE,
   type BlockRule,
@@ -184,7 +180,7 @@ export class BlockRuleWriter {
          ${sqlQuote(id)},
          ${sqlQuote(agentId)},
          ${sqlQuote(input.profile)},
-         ${sqlJsonArray(input.websites)}::jsonb,
+         ${sqlJsonArray(input.websites)},
          ${sqlQuote(input.gateType)},
          ${sqlText(input.gateTodoId ?? null)},
          ${sqlBigint(input.gateUntilMs ?? null)},
@@ -199,38 +195,29 @@ export class BlockRuleWriter {
 
     const message = makeSyntheticMessage(this.runtime, input.websites);
     await ensureSyntheticMessageContext(this.runtime, message);
-    const handlerOptions = computeHandlerOptionsForCreate(input);
+    const durationMinutes = computeHandlerOptionsForCreate(input);
     const result = await blockWebsitesAction.handler(
       this.runtime,
       message,
       undefined,
-      handlerOptions,
+      {
+        parameters: {
+          websites: input.websites,
+          durationMinutes,
+          confirmed: true,
+        },
+      },
     );
 
-    if (activationResult.success === false) {
+    if (result?.success === false) {
       // The rule is the source of truth. Activation failures
       // (missing admin permission, unsupported platform, no helper binary)
       // are logged but do not tear down the rule — the reconciler keeps
       // the lifecycle and a retry on rule creation will re-attempt
       // activation.
       logger.warn(
-        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${activationResult.error}`,
+        `[BlockRuleWriter] SelfControl activation did not complete for rule ${id}: ${result.text ?? "unknown error"}`,
       );
-    } else if (durationMinutes !== null) {
-      try {
-        const taskId = await syncWebsiteBlockerExpiryTask(this.runtime);
-        if (!taskId) {
-          await stopSelfControlBlock();
-          logger.warn(
-            `[BlockRuleWriter] SelfControl activation for rule ${id} rolled back because no automatic unblock task could be scheduled`,
-          );
-        }
-      } catch (error) {
-        await stopSelfControlBlock();
-        logger.warn(
-          `[BlockRuleWriter] SelfControl activation for rule ${id} rolled back because the automatic unblock task failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
     }
 
     logger.info(
