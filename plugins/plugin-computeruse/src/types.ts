@@ -95,6 +95,8 @@ export interface BrowserActionParams {
   tabId?: string;
   /** Numeric tab index alias from upstream callers */
   index?: number;
+  /** Snake-case alias for tab index */
+  tab_index?: number;
   /** Wait timeout in ms */
   timeout?: number;
 }
@@ -235,6 +237,7 @@ export interface TerminalActionParams {
   command?: string;
   cwd?: string;
   timeout?: number;
+  timeoutSeconds?: number;
   sessionId?: string;
   session_id?: string;
   text?: string;
