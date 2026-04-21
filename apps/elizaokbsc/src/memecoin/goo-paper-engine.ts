@@ -629,9 +629,23 @@ export function runPaperAgentCycle(
     }
   }
 
+  // Trim exited positions to keep only the most recent 30
+  const MAX_EXITED_POSITIONS = 30;
+  const activePosns = updated.positions.filter(p => p.state === "active");
+  const exitedPosns = updated.positions
+    .filter(p => p.state === "exited")
+    .sort((a, b) => Date.parse(b.exitAt ?? b.lastUpdatedAt) - Date.parse(a.exitAt ?? a.lastUpdatedAt))
+    .slice(0, MAX_EXITED_POSITIONS);
+  updated.positions = [...activePosns, ...exitedPosns];
+
+  // Trim trade history to most recent 50
+  const MAX_TRADE_HISTORY = 50;
+  if (updated.tradeHistory.length > MAX_TRADE_HISTORY) {
+    updated.tradeHistory = updated.tradeHistory.slice(-MAX_TRADE_HISTORY);
+  }
+
   // Recalculate stats
-  const activePositions = updated.positions.filter(p => p.state === "active");
-  updated.totalUnrealizedUsd = activePositions.reduce((sum, p) => sum + p.unrealizedPnlUsd, 0);
+  updated.totalUnrealizedUsd = activePosns.reduce((sum, p) => sum + p.unrealizedPnlUsd, 0);
   updated.totalPnlUsd = updated.totalRealizedUsd + updated.totalUnrealizedUsd;
   const allPositions = updated.positions.filter(p => p.state === "active" || p.state === "exited");
   const profitableCount = allPositions.filter(p => (p.realizedPnlUsd + p.unrealizedPnlUsd) > 0).length;
@@ -885,10 +899,34 @@ const ALL_STRATEGIES: StrategyId[] = [
 ];
 
 const MIN_ALIVE_AGENTS = 4;
+const MAX_TOTAL_AGENTS = 12;
 
 export interface RespawnResult {
   spawned: GooPaperAgent[];
+  pruned: number;
   reason: string;
+}
+
+/**
+ * Prune old dead/acquired agents when total count exceeds MAX_TOTAL_AGENTS,
+ * keeping alive agents and the most recently acquired/died ones.
+ */
+export function pruneDeadAgents(agents: GooPaperAgent[]): GooPaperAgent[] {
+  if (agents.length <= MAX_TOTAL_AGENTS) return agents;
+  const alive = agents.filter(a => a.chainState !== "dead" || a.acquiredByElizaOK);
+  const dead = agents
+    .filter(a => a.chainState === "dead" && !a.acquiredByElizaOK)
+    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt));
+  const acquired = agents
+    .filter(a => a.acquiredByElizaOK)
+    .sort((a, b) => Date.parse(b.acquiredAt ?? b.lastUpdatedAt) - Date.parse(a.acquiredAt ?? a.lastUpdatedAt));
+  const nonAcquiredAlive = agents.filter(a => a.chainState !== "dead" && !a.acquiredByElizaOK);
+  const slotsForDead = Math.max(0, MAX_TOTAL_AGENTS - nonAcquiredAlive.length - Math.min(4, acquired.length));
+  return [
+    ...nonAcquiredAlive,
+    ...acquired.slice(0, 4),
+    ...dead.slice(0, Math.max(0, slotsForDead)),
+  ];
 }
 
 /**
@@ -902,7 +940,7 @@ export function autoRespawnIfNeeded(
 ): RespawnResult {
   const alive = agents.filter(a => a.chainState !== "dead" && !a.acquiredByElizaOK);
   const deficit = MIN_ALIVE_AGENTS - alive.length;
-  if (deficit <= 0) return { spawned: [], reason: "" };
+  if (deficit <= 0) return { spawned: [], pruned: 0, reason: "" };
 
   const usedStrategies = new Set(alive.map(a => a.strategy.id));
   const unused = ALL_STRATEGIES.filter(s => !usedStrategies.has(s));
@@ -917,6 +955,7 @@ export function autoRespawnIfNeeded(
 
   return {
     spawned,
+    pruned: 0,
     reason: `Respawned ${spawned.length} agent(s) — arena alive count was ${alive.length}/${MIN_ALIVE_AGENTS}`,
   };
 }

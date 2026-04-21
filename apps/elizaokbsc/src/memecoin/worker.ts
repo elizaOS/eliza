@@ -22,6 +22,7 @@ import {
   autoRespawnIfNeeded,
   buildGooPaperSummary,
   loadPaperAgents,
+  pruneDeadAgents,
   runPaperAgentCycle,
   savePaperAgents,
   spawnDefaultAgentFleet,
@@ -428,6 +429,9 @@ export async function runElizaOkDiscoveryCycle(
       Object.assign(config.treasury, upgraded);
       setScoreWeights(absState.scoreWeightBoosts);
     }
+
+    // Prune old dead agents to prevent unbounded growth
+    gooAgents = pruneDeadAgents(gooAgents);
 
     // Auto-respawn: keep at least 4 alive agents in the arena
     const respawn = autoRespawnIfNeeded(gooAgents, 1.0);

@@ -507,9 +507,11 @@ function mergeLiveExecutedTrades(params: {
   const watchPositions = allMergedPositions
     .filter((position) => position.state === "watch")
     .sort((a, b) => b.currentScore - a.currentScore);
+  const MAX_EXITED = 50;
   const exitedPositions = allMergedPositions
     .filter((position) => position.state === "exited")
-    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt));
+    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt))
+    .slice(0, MAX_EXITED);
   const totalAllocatedUsd = activePositions.reduce(
     (sum, position) => sum + position.allocationUsd,
     0,
@@ -792,9 +794,11 @@ export function buildPortfolioLifecycle(params: {
   const watchPositions = allPositions
     .filter((position) => position.state === "watch")
     .sort((a, b) => b.currentScore - a.currentScore);
+  const MAX_EXITED = 50;
   const exitedPositions = allPositions
     .filter((position) => position.state === "exited")
-    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt));
+    .sort((a, b) => Date.parse(b.lastUpdatedAt) - Date.parse(a.lastUpdatedAt))
+    .slice(0, MAX_EXITED);
 
   const totalAllocatedUsd = activePositions.reduce(
     (sum, position) => sum + position.allocationUsd,
@@ -804,7 +808,8 @@ export function buildPortfolioLifecycle(params: {
     (sum, position) => sum + position.currentValueUsd,
     0,
   );
-  const totalRealizedPnlUsd = allPositions.reduce(
+  const keptPositions = [...activePositions, ...watchPositions, ...exitedPositions];
+  const totalRealizedPnlUsd = keptPositions.reduce(
     (sum, position) => sum + position.realizedPnlUsd,
     0,
   );
