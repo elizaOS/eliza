@@ -30,9 +30,7 @@ export function ChatBubble({
     <div
       className={cn(
         "relative whitespace-pre-wrap break-words",
-        tone === "user"
-          ? "border-l-2 border-accent/60 text-txt-strong"
-          : "text-txt",
+        tone === "user" ? "text-txt-strong" : "text-txt",
         sourceBorderClass ? `border-2 ${sourceBorderClass}` : null,
         className,
       )}
