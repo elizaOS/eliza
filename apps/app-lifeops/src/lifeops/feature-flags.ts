@@ -22,7 +22,8 @@ import {
 /**
  * SQL-backed FeatureFlagService.
  *
- * Reads & writes the `lifeops_features` table from `@elizaos/plugin-sql`.
+ * Reads & writes the `lifeops_features` table owned by `app-lifeops` and
+ * migrated via the plugin's `schema` export.
  * Compile-time defaults (`FEATURE_DEFAULTS`) are the authority when no row
  * exists. The runtime never writes a row with `source = 'default'` —
  * absence is the canonical representation of an unmodified default

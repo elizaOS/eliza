@@ -8,6 +8,7 @@
  * that already received indexes from the prior manual DDL path.
  */
 
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -16,6 +17,7 @@ import {
   pgTable,
   real,
   text,
+  timestamp,
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -341,6 +343,24 @@ export const lifeBlockRules = pgTable("life_block_rules", {
   releasedReason: text("released_reason"),
 });
 
+export const lifeopsFeaturesTable = pgTable("lifeops_features", {
+  featureKey: text("feature_key").primaryKey(),
+  enabled: boolean("enabled").notNull(),
+  source: text("source").notNull(),
+  enabledAt: timestamp("enabled_at", { withTimezone: true }),
+  enabledBy: uuid("enabled_by"),
+  metadata: jsonb("metadata")
+    .$type<Record<string, unknown>>()
+    .default(sql`'{}'::jsonb`)
+    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
@@ -355,9 +375,12 @@ export const lifeOpsSchema = {
   lifeScreenTimeSessions,
   lifeScreenTimeDaily,
   lifeScheduleInsights,
+  lifeScheduleObservations,
+  lifeScheduleMergedStates,
   lifeActivityEvents,
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeDossiers,
   lifeBlockRules,
+  lifeopsFeaturesTable,
 } as const;

@@ -360,9 +360,12 @@ export const bookTravelAction: Action = {
     "LOCK_IT_IN",
     "HOLD_AND_BOOK_FLIGHT",
     "QUEUE_TRAVEL_FOR_APPROVAL",
+    "BOOK_AFTER_APPROVAL",
+    "START_BOOKING_AFTER_APPROVAL",
+    "TRAVEL_APPROVAL_WORKFLOW",
   ],
   description:
-    "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
+    "Search, prepare, and approval-gate real travel booking. Use for flight or hotel booking requests that should become a real booking after explicit approval, with calendar sync once completed. This action still owns the turn when the owner is asking you to prepare the booking package now and hold it for approval, when they say you can start booking if it is good with them, or when some itinerary details still need a follow-up before the approval queue entry can be finalized.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, state, options, callback) => {
     if (!(await hasOwnerAccess(runtime, message))) {

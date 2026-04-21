@@ -337,6 +337,12 @@ export const ownerInboxAction: Action & {
     "RESPOND_TO_MESSAGE",
     "MISSED_CALL_FOLLOWUP",
     "GROUP_CHAT_HANDOFF",
+    "GROUP_CHAT_HANDOFF_POLICY",
+    "REPAIR_AND_RESCHEDULE_CALL",
+    "CONTEXTUAL_BUMP",
+    "BUMP_WITH_CONTEXT",
+    "EVENT_ASSET_CHECKLIST",
+    "OUTSTANDING_EVENT_ASSETS",
     "CROSS_CHANNEL_SEARCH",
     "SEARCH_ALL_CHANNELS",
     "SEARCH_EVERYWHERE",
@@ -387,6 +393,8 @@ export const ownerInboxAction: Action & {
     "subaction=cross_channel_search. If the channel, recipient, or participant " +
     "details are still missing but the request is clearly inbox-owned, still " +
     "select OWNER_INBOX and let it ask the minimum follow-up question. " +
+    "Outstanding 'what do I still owe before the event' questions about slides, bios, titles, portal assets, or pending drafts belong here even when the checklist might ultimately come back empty. " +
+    "Policies like 'if direct relaying gets messy, suggest a group chat handoff' and 'bump me again with context instead of starting over' belong here even when participant names, platforms, or the exact blocked event still need follow-up. " +
     "DO NOT use this action for explicit morning or night briefings such as " +
     "'run my morning check-in', 'give me my night check-in', 'morning review', " +
     "'morning brief', 'night brief', 'operating picture', 'command center', " +
