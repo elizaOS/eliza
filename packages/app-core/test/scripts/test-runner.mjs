@@ -13,6 +13,7 @@ const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
 const nodeCmd = resolveNodeCmd();
 const appRoot = path.join(repoRoot, "apps", "app");
 const elizaRoot = path.join(repoRoot, "eliza");
+const appCoreRoot = path.join(elizaRoot, "packages", "app-core");
 const cloudRoot = path.join(elizaRoot, "cloud");
 const stewardFiRoot = path.join(elizaRoot, "steward-fi");
 const unitShardCount = 1;
