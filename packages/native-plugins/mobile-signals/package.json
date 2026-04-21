@@ -26,6 +26,7 @@
     "android/build.gradle",
     "dist/",
     "ios/Sources/",
+    "scripts/validate-ios-screen-time.mjs",
     "*.podspec"
   ],
   "author": "elizaOS",
@@ -37,6 +38,8 @@
   "scripts": {
     "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
+    "test": "vitest run",
+    "validate:ios-screen-time": "node scripts/validate-ios-screen-time.mjs",
     "watch": "tsc --watch"
   },
   "devDependencies": {
@@ -46,7 +49,8 @@
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rimraf": "^6.0.0",
     "rollup": "^4.0.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0"

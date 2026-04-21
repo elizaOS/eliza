@@ -8,9 +8,24 @@ describe("MobileSignalsWeb Screen Time status", () => {
     const permissions = await plugin.checkPermissions();
     expect(permissions.screenTime).toEqual({
       supported: false,
+      requirements: {
+        entitlements: {
+          familyControls: "com.apple.developer.family-controls",
+          appAndWebsiteUsage:
+            "com.apple.developer.family-controls.app-and-website-usage",
+        },
+        frameworks: ["FamilyControls", "DeviceActivity"],
+        deviceActivityReportExtension: false,
+        deviceActivityMonitorExtension: false,
+      },
       entitlements: {
         familyControls: false,
         appAndWebsiteUsage: false,
+      },
+      provisioning: {
+        satisfied: false,
+        inspected: "not-inspectable",
+        reason: "Web fallback has no Family Controls or DeviceActivity access.",
       },
       authorization: {
         status: "unavailable",

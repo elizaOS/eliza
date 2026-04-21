@@ -18,6 +18,17 @@ interface BatteryLike {
   level: number;
 }
 
+const SCREEN_TIME_REQUIREMENTS = {
+  entitlements: {
+    familyControls: "com.apple.developer.family-controls",
+    appAndWebsiteUsage:
+      "com.apple.developer.family-controls.app-and-website-usage",
+  },
+  frameworks: ["FamilyControls", "DeviceActivity"],
+  deviceActivityReportExtension: false,
+  deviceActivityMonitorExtension: false,
+};
+
 function getPlatform(): MobileSignalsPlatform {
   if (typeof navigator === "undefined") {
     return "web";
@@ -33,9 +44,15 @@ function getPlatform(): MobileSignalsPlatform {
 function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
   return {
     supported: false,
+    requirements: SCREEN_TIME_REQUIREMENTS,
     entitlements: {
       familyControls: false,
       appAndWebsiteUsage: false,
+    },
+    provisioning: {
+      satisfied: false,
+      inspected: "not-inspectable",
+      reason,
     },
     authorization: {
       status: "unavailable",
