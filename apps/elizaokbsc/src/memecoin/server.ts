@@ -520,7 +520,7 @@ function renderCloudCallbackBridgeHtml(popupMode: boolean): string {
             window.close();
             return;
           }
-          window.location.href = "/dashboard?cloud_connected=1";
+          window.location.href = "/cloud/agents?cloud_connected=1";
         })
         .catch(function (error) {
           var message = error && error.message ? error.message : String(error);
@@ -6506,6 +6506,17 @@ function renderHtml(
         </div>
 
         <!-- ElizaCloud -->
+        ${cloudSession ? `
+        <div class="sb-section cloud-card" id="cloud-cta-card" style="border:1px solid rgba(0,199,210,.18);border-radius:8px;padding:10px">
+          <div class="sb-section__title" style="color:#00C7D2">&#x2601;&#xFE0F; ElizaCloud</div>
+          <div style="font-size:0.6rem;color:rgba(245,245,240,.7);margin:6px 0 4px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Status</span><strong style="color:#00E599">Connected</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Account</span><strong>${escapeHtml(cloudSession.displayName)}</strong></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px"><span>Credits</span><strong>${escapeHtml(cloudSession.credits)}</strong></div>
+          </div>
+          <a class="cloud-card__btn" href="/cloud/agents" style="margin-top:6px">Agents &rarr;</a>
+        </div>
+        ` : `
         <div class="sb-section cloud-card" id="cloud-cta-card" style="border:1px solid rgba(0,199,210,.18);border-radius:8px;padding:10px">
           <div class="sb-section__title" style="color:#00C7D2">&#x2601;&#xFE0F; ElizaCloud</div>
           <div class="cloud-card__banner">
@@ -6518,6 +6529,7 @@ function renderHtml(
           </div>
           <a class="cloud-card__btn" href="#" id="sidebar-cloud-btn">Connect &rarr;</a>
         </div>
+        `}
 
         <!-- Footer -->
         <div class="np-footer">
