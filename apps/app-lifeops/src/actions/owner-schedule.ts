@@ -44,6 +44,19 @@ function formatScheduleSummary(inspection: LifeOpsScheduleInspection): string {
   const { insight } = inspection;
   const lines = [
     `Schedule phase: ${insight.phase}.`,
+    insight.relativeTime.minutesSinceWake !== null
+      ? `Relative time: woke ${insight.relativeTime.minutesSinceWake} minutes ago; bedtime target ${
+          insight.relativeTime.bedtimeTargetAt ?? "unknown"
+        }${
+          insight.relativeTime.minutesUntilBedtimeTarget !== null
+            ? ` in ${insight.relativeTime.minutesUntilBedtimeTarget} minutes`
+            : ""
+        }.`
+      : insight.relativeTime.minutesUntilBedtimeTarget !== null
+        ? `Relative time: bedtime target ${
+            insight.relativeTime.bedtimeTargetAt ?? "unknown"
+          } in ${insight.relativeTime.minutesUntilBedtimeTarget} minutes.`
+        : "Relative time: still calibrating wake and bedtime anchors.",
     insight.isProbablySleeping
       ? insight.currentSleepStartedAt
         ? `Likely asleep since ${insight.currentSleepStartedAt} (${Math.round(insight.sleepConfidence * 100)}% confidence).`

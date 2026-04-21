@@ -659,6 +659,7 @@ function LockedSection({
   hint,
   owner,
   agent,
+  t,
 }: {
   title: string;
   hint: string;
@@ -699,6 +700,7 @@ function AccountBadge({ label }: { label: string | null | undefined }) {
 function CalendarColumn({
   workspace,
   timeZone,
+  t,
 }: {
   workspace: SideWorkspaceState;
   timeZone: string;
@@ -918,6 +920,7 @@ function CalendarColumn({
 function EmailColumn({
   workspace,
   timeZone,
+  t,
 }: {
   workspace: SideWorkspaceState;
   timeZone: string;

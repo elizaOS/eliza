@@ -25,7 +25,7 @@ export interface LegacyManifestEntry {
   description?: string;
   tags?: string[];
   category: string;
-  envKey?: string | null;
+  envKey?: string;
   configKeys: string[];
   version?: string;
   pluginParameters: Record<string, LegacyManifestParameter>;
@@ -77,7 +77,7 @@ function categoryFor(entry: RegistryEntry): string {
   return KIND_TO_LEGACY_CATEGORY[entry.kind];
 }
 
-function envKeyFor(entry: RegistryEntry): string | null {
+function envKeyFor(entry: RegistryEntry): string | undefined {
   if (entry.kind === "connector" && entry.auth) {
     const [first] = entry.auth.credentialKeys;
     if (first) return first;
@@ -87,7 +87,7 @@ function envKeyFor(entry: RegistryEntry): string | null {
       return key;
     }
   }
-  return null;
+  return undefined;
 }
 
 function fieldToLegacyParameter(

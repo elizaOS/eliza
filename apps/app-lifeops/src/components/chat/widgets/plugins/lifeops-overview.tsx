@@ -1188,6 +1188,23 @@ function ScheduleSection({
         : t("lifeopsoverview.mealPatternCalibrating", {
             defaultValue: "Meal pattern calibrating",
           });
+  const relativeLine =
+    schedule.relativeTime.minutesSinceWake !== null
+      ? t("lifeopsoverview.relativeWakeAndBedtime", {
+          defaultValue:
+            "Woke {{wakeMinutes}}m ago · bedtime in {{bedMinutes}}m",
+          wakeMinutes: schedule.relativeTime.minutesSinceWake,
+          bedMinutes:
+            schedule.relativeTime.minutesUntilBedtimeTarget ??
+            schedule.relativeTime.minutesSinceBedtimeTarget ??
+            "—",
+        })
+      : schedule.relativeTime.minutesUntilBedtimeTarget !== null
+        ? t("lifeopsoverview.relativeBedtimeOnly", {
+            defaultValue: "Bedtime in {{bedMinutes}}m",
+            bedMinutes: schedule.relativeTime.minutesUntilBedtimeTarget,
+          })
+        : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1206,6 +1223,9 @@ function ScheduleSection({
       </div>
       <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
         <div className="text-xs font-semibold text-txt">{sleepLine}</div>
+        {relativeLine ? (
+          <div className="mt-1 text-xs text-muted">{relativeLine}</div>
+        ) : null}
         <div className="mt-1 text-xs text-muted">{mealLine}</div>
         {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
           <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">

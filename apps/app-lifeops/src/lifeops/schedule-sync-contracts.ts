@@ -3,6 +3,7 @@ import type {
   LifeOpsScheduleMealLabel,
   LifeOpsSchedulePhase,
   LifeOpsScheduleSleepStatus,
+  LifeOpsRelativeTime,
 } from "@elizaos/shared/contracts/lifeops";
 
 export const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
@@ -47,6 +48,7 @@ export interface LifeOpsScheduleObservationSnapshot {
   effectiveDayKey: string;
   localDate: string;
   phase: LifeOpsSchedulePhase;
+  relativeTime: LifeOpsRelativeTime;
   sleepStatus: LifeOpsScheduleSleepStatus;
   isProbablySleeping: boolean;
   sleepConfidence: number;

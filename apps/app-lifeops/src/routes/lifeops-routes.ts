@@ -1200,12 +1200,14 @@ export async function handleLifeOpsRoutes(
       json(res, { ok: false, error: "text is required" }, 400);
       return true;
     }
+    const participantId = body.participantId.trim();
+    const text = body.text.trim();
     return runRoute(ctx, async (service) => {
       json(
         res,
         await service.sendXDirectMessage({
-          participantId: body.participantId,
-          text: body.text,
+          participantId,
+          text,
           confirmSend: body.confirmSend,
           mode: body.mode,
         }),

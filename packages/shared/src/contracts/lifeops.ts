@@ -1281,6 +1281,30 @@ export interface LifeOpsDayBoundary {
   confidence: number;
 }
 
+export type LifeOpsRelativeTimeAnchorSource =
+  | "sleep_cycle"
+  | "activity"
+  | "typical_sleep"
+  | "day_boundary";
+
+export interface LifeOpsRelativeTime {
+  localNowAt: string;
+  phase: LifeOpsSchedulePhase;
+  isProbablySleeping: boolean;
+  wakeAnchorAt: string | null;
+  wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null;
+  minutesSinceWake: number | null;
+  bedtimeTargetAt: string | null;
+  bedtimeTargetSource: LifeOpsRelativeTimeAnchorSource | null;
+  minutesUntilBedtimeTarget: number | null;
+  minutesSinceBedtimeTarget: number | null;
+  dayBoundaryStartAt: string;
+  dayBoundaryEndAt: string;
+  minutesSinceDayBoundaryStart: number;
+  minutesUntilDayBoundaryEnd: number;
+  confidence: number;
+}
+
 export type LifeOpsScheduleMealLabel = "breakfast" | "lunch" | "dinner";
 
 export type LifeOpsScheduleMealSource =
@@ -1301,6 +1325,7 @@ export interface LifeOpsScheduleInsight {
   timezone: string;
   inferredAt: string;
   phase: LifeOpsSchedulePhase;
+  relativeTime: LifeOpsRelativeTime;
   sleepStatus: LifeOpsScheduleSleepStatus;
   isProbablySleeping: boolean;
   sleepConfidence: number;

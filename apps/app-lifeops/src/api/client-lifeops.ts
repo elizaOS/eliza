@@ -341,7 +341,7 @@ declare module "@elizaos/app-core/api/client-base" {
     ): Promise<StartLifeOpsTelegramAuthResponse>;
     cancelTelegramAuth(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<void>;
+    ): Promise<LifeOpsTelegramConnectorStatus>;
     disconnectTelegramConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsTelegramConnectorStatus>;
@@ -1129,7 +1129,12 @@ ElizaClient.prototype.cancelTelegramAuth = async function (
   this: ElizaClient,
   data = { provider: "telegram" },
 ) {
-  return this.fetch("/api/lifeops/connectors/telegram/cancel", {
+  const params = new URLSearchParams();
+  if (data.side) {
+    params.set("side", data.side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/telegram/cancel${query}`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -1139,7 +1144,12 @@ ElizaClient.prototype.disconnectTelegramConnector = async function (
   this: ElizaClient,
   data = { provider: "telegram" },
 ) {
-  return this.fetch("/api/lifeops/connectors/telegram/disconnect", {
+  const params = new URLSearchParams();
+  if (data.side) {
+    params.set("side", data.side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/telegram/disconnect${query}`, {
     method: "POST",
     body: JSON.stringify(data),
   });
