@@ -625,9 +625,9 @@ function writeHtml(
     ${refreshScript}
     <script>
       window.setTimeout(() => {
-        try {
+        if (typeof window.close === "function") {
           window.close();
-        } catch {}
+        }
       }, 250);
     </script>
   </body>

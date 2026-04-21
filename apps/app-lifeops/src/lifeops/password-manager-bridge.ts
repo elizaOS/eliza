@@ -451,12 +451,8 @@ async function pipeToClipboard(
       if (settled) return;
       settled = true;
       if (err) {
-        try {
-          source.kill();
-        } catch {}
-        try {
-          sink.kill();
-        } catch {}
+        source.kill();
+        sink.kill();
         reject(err);
       } else {
         resolve();

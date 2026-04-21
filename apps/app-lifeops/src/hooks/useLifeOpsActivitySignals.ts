@@ -420,7 +420,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
           void startMobileSignals().catch(reportCaptureError);
         }
       })
-      .catch(() => {});
+      .catch(reportCaptureError);
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener(APP_RESUME_EVENT, handleResume);
@@ -438,7 +438,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
           emitCurrentState("runtime-ready");
           void startMobileSignals().catch(reportCaptureError);
         })
-        .catch(() => {});
+        .catch(reportCaptureError);
     }, RUNTIME_READY_POLL_MS);
     const pageHeartbeat = window.setInterval(() => {
       if (document.visibilityState === "visible") {
