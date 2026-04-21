@@ -1129,6 +1129,7 @@ type TrainingServiceCtor = new (options: {
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [
     "../services/training-service",
+    "@elizaos/app-training",
     "@elizaos/plugin-training",
   ] as const;
 

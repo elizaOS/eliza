@@ -25,7 +25,13 @@ import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
 
 const ACTION_NAME = "OWNER_SCREEN_TIME";
 
-type ScreenTimeSub = "summary" | "today" | "weekly" | "by_app" | "by_website";
+type ScreenTimeSub =
+  | "summary"
+  | "today"
+  | "weekly"
+  | "weekly_average_by_app"
+  | "by_app"
+  | "by_website";
 type ActivitySub = "activity_report" | "time_on_app" | "time_on_site";
 type Subaction = ScreenTimeSub | ActivitySub;
 
@@ -33,6 +39,7 @@ const SCREEN_TIME_SUBS: ReadonlySet<string> = new Set<ScreenTimeSub>([
   "summary",
   "today",
   "weekly",
+  "weekly_average_by_app",
   "by_app",
   "by_website",
 ]);
@@ -89,6 +96,7 @@ export const ownerScreenTimeAction: Action = {
   description:
     "Owner-only. Quantitative screen-time and activity analytics. " +
     "Subactions: summary (default rolling window), today (per-day breakdown), weekly (last N days, default 7), " +
+    "weekly_average_by_app (average per app per day across the window), " +
     "by_app (top apps by dwell time), by_website (top websites by dwell time), " +
     "activity_report (per-app focus minutes from macOS native tracker for the last N hours), " +
     "time_on_app (focus time for one specific app name or bundle id), " +
@@ -108,7 +116,7 @@ export const ownerScreenTimeAction: Action = {
     {
       name: "subaction",
       description:
-        "Required. One of: summary, today, weekly, by_app, by_website, activity_report, time_on_app, time_on_site.",
+        "Required. One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site.",
       required: true,
       schema: { type: "string" as const },
     },
@@ -206,6 +214,19 @@ export const ownerScreenTimeAction: Action = {
         },
       },
     ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "What's my weekly average per app?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Weekly average per app over the last 7 days (total 28h 10m): ...",
+          action: "OWNER_SCREEN_TIME",
+        },
+      },
+    ],
   ] as ActionExample[][],
 
   handler: async (
@@ -226,7 +247,7 @@ export const ownerScreenTimeAction: Action = {
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       const text =
-        "Missing or invalid subaction. Use one of: summary, today, weekly, by_app, by_website, activity_report, time_on_app, time_on_site.";
+        "Missing or invalid subaction. Use one of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site.";
       await callback?.({ text });
       return {
         text,

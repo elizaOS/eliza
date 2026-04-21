@@ -2137,6 +2137,51 @@ export interface LifeOpsGoalReview {
   };
 }
 
+export interface LifeOpsGoalExperienceLoopSuggestion {
+  sourceGoalId: string;
+  definitionId: string | null;
+  title: string;
+  detail: string;
+}
+
+export interface LifeOpsGoalExperienceLoopMatch {
+  goalId: string;
+  title: string;
+  description: string;
+  score: number;
+  status: LifeOpsGoalStatus;
+  reviewState: LifeOpsGoalReviewState;
+  linkedDefinitionCount: number;
+  completedLast7Days: number;
+  lastActivityAt: string | null;
+  explanation: string;
+  carryForwardSuggestions: LifeOpsGoalExperienceLoopSuggestion[];
+}
+
+export interface LifeOpsGoalExperienceLoop {
+  referenceGoalId: string | null;
+  referenceTitle: string;
+  similarGoals: LifeOpsGoalExperienceLoopMatch[];
+  suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[];
+  summary: string | null;
+}
+
+export interface LifeOpsWeeklyGoalReview {
+  generatedAt: string;
+  reviewWindow: "this_week";
+  summary: {
+    totalGoals: number;
+    onTrackCount: number;
+    atRiskCount: number;
+    needsAttentionCount: number;
+    idleCount: number;
+  };
+  onTrack: LifeOpsGoalReview[];
+  atRisk: LifeOpsGoalReview[];
+  needsAttention: LifeOpsGoalReview[];
+  idle: LifeOpsGoalReview[];
+}
+
 export interface LifeOpsDefinitionPerformanceWindow {
   scheduledCount: number;
   completedCount: number;

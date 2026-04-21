@@ -84,6 +84,7 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
     );
 
     expect(result?.success).toBe(true);
+    expect(result?.text).toBe("Approved.");
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         target: "telegram-room-frontier",
@@ -141,6 +142,7 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
     );
 
     expect(result?.success).toBe(true);
+    expect(result?.text).toBe("Approved.");
     expect(sendReplySpy).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({

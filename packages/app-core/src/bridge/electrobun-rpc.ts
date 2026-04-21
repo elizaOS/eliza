@@ -14,7 +14,7 @@ export interface ElectrobunRendererRpc {
 }
 
 interface DesktopBridgeWindow extends Window {
-  __MILADY_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
 }
 
 function getDesktopBridgeWindow(): DesktopBridgeWindow | null {
@@ -29,7 +29,7 @@ function getDesktopBridgeWindow(): DesktopBridgeWindow | null {
 }
 
 export function getElectrobunRendererRpc(): ElectrobunRendererRpc | undefined {
-  return getDesktopBridgeWindow()?.__MILADY_ELECTROBUN_RPC__;
+  return getDesktopBridgeWindow()?.__ELIZA_ELECTROBUN_RPC__;
 }
 
 export async function invokeDesktopBridgeRequest<T>(options: {

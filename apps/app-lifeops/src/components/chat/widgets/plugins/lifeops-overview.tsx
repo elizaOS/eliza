@@ -61,6 +61,7 @@ const NEXT_WINDOW_MS = 6 * 60 * 60 * 1000;
 type SnoozePreset = "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
 type OccurrenceAction = "complete" | "skip";
 type OccurrenceBucket = "now" | "next" | "upcoming";
+type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
 
 const SNOOZE_PRESETS: Array<{ preset: SnoozePreset; label: string }> = [
   { preset: "15m", label: "15 min" },
@@ -69,6 +70,23 @@ const SNOOZE_PRESETS: Array<{ preset: SnoozePreset; label: string }> = [
   { preset: "tonight", label: "Tonight" },
   { preset: "tomorrow_morning", label: "Tomorrow" },
 ];
+
+const LIFEOPS_LABEL_KEY: Record<string, string> = {
+  afternoon: "lifeopsoverview.label.afternoon",
+  breakfast: "lifeopsoverview.label.breakfast",
+  dinner: "lifeopsoverview.label.dinner",
+  evening: "lifeopsoverview.label.evening",
+  lunch: "lifeopsoverview.label.lunch",
+  morning: "lifeopsoverview.label.morning",
+  night: "lifeopsoverview.label.night",
+};
+
+function translateLifeOpsLabel(value: string, t: TranslateFn): string {
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, "_");
+  return t(LIFEOPS_LABEL_KEY[normalized] ?? value, {
+    defaultValue: humanizeLifeOpsLabel(value),
+  });
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -115,56 +133,102 @@ function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function cadenceLabel(cadence: LifeOpsCadence): string {
+function cadenceLabel(cadence: LifeOpsCadence, t: TranslateFn): string {
   switch (cadence.kind) {
     case "once":
-      return "One-off";
+      return t("lifeopsoverview.cadence.once", {
+        defaultValue: "One-off",
+      });
     case "daily":
-      return "Daily";
+      return t("lifeopsoverview.cadence.daily", {
+        defaultValue: "Daily",
+      });
     case "times_per_day":
       if (cadence.slots.length <= 1) {
-        return "Daily";
+        return t("lifeopsoverview.cadence.daily", {
+          defaultValue: "Daily",
+        });
       }
       if (cadence.slots.length === 2) {
-        return "Twice daily";
+        return t("lifeopsoverview.cadence.twiceDaily", {
+          defaultValue: "Twice daily",
+        });
       }
-      return `${cadence.slots.length}x daily`;
+      return t("lifeopsoverview.cadence.timesPerDay", {
+        defaultValue: "{{count}}x daily",
+        count: cadence.slots.length,
+      });
     case "interval":
       return cadence.everyMinutes >= 60 && cadence.everyMinutes % 60 === 0
-        ? `Every ${cadence.everyMinutes / 60}h`
-        : `Every ${cadence.everyMinutes}m`;
+        ? t("lifeopsoverview.cadence.everyHours", {
+            defaultValue: "Every {{count}}h",
+            count: cadence.everyMinutes / 60,
+          })
+        : t("lifeopsoverview.cadence.everyMinutes", {
+            defaultValue: "Every {{count}}m",
+            count: cadence.everyMinutes,
+          });
     case "weekly":
-      return cadence.weekdays.length <= 2 ? "Occasional" : "Weekly";
+      return cadence.weekdays.length <= 2
+        ? t("lifeopsoverview.cadence.occasional", {
+            defaultValue: "Occasional",
+          })
+        : t("lifeopsoverview.cadence.weekly", {
+            defaultValue: "Weekly",
+          });
   }
 }
 
-function cadenceDetail(cadence: LifeOpsCadence): string | null {
+function cadenceDetail(cadence: LifeOpsCadence, t: TranslateFn): string | null {
   switch (cadence.kind) {
     case "once":
       return formatDateTime(cadence.dueAt);
     case "daily":
-      return cadence.windows.length > 0 ? cadence.windows.join(", ") : null;
+      return cadence.windows.length > 0
+        ? cadence.windows
+            .map((windowLabel) => translateLifeOpsLabel(windowLabel, t))
+            .join(", ")
+        : null;
     case "times_per_day":
-      return cadence.slots.map((slot) => slot.label).join(" / ");
+      return cadence.slots
+        .map((slot) => translateLifeOpsLabel(slot.label, t))
+        .join(" / ");
     case "interval":
-      return cadence.windows.length > 0 ? cadence.windows.join(", ") : null;
+      return cadence.windows.length > 0
+        ? cadence.windows
+            .map((windowLabel) => translateLifeOpsLabel(windowLabel, t))
+            .join(", ")
+        : null;
     case "weekly":
-      return cadence.windows.length > 0 ? cadence.windows.join(", ") : null;
+      return cadence.windows.length > 0
+        ? cadence.windows
+            .map((windowLabel) => translateLifeOpsLabel(windowLabel, t))
+            .join(", ")
+        : null;
   }
 }
 
 function reviewStateLabel(
   reviewState: LifeOpsGoalDefinition["reviewState"],
+  t: TranslateFn,
 ): string {
   switch (reviewState) {
     case "needs_attention":
-      return "Needs attention";
+      return t("lifeopsoverview.reviewState.needsAttention", {
+        defaultValue: "Needs attention",
+      });
     case "on_track":
-      return "On track";
+      return t("lifeopsoverview.reviewState.onTrack", {
+        defaultValue: "On track",
+      });
     case "at_risk":
-      return "At risk";
+      return t("lifeopsoverview.reviewState.atRisk", {
+        defaultValue: "At risk",
+      });
     default:
-      return "Idle";
+      return t("lifeopsoverview.reviewState.idle", {
+        defaultValue: "Idle",
+      });
   }
 }
 
@@ -197,25 +261,53 @@ function descriptionForOccurrence(
   return description.length > 0 ? description : null;
 }
 
-function sectionSummary(section: LifeOpsOverviewSection): string {
+function sectionSummary(
+  section: LifeOpsOverviewSection,
+  t: TranslateFn,
+): string {
   const parts: string[] = [];
   if (section.summary.activeOccurrenceCount > 0) {
     parts.push(
-      `${section.summary.activeOccurrenceCount} open ${section.summary.activeOccurrenceCount === 1 ? "item" : "items"}`,
+      t("lifeopsoverview.summary.openItems", {
+        defaultValue: "{{count}} open {{itemLabel}}",
+        count: section.summary.activeOccurrenceCount,
+        itemLabel:
+          section.summary.activeOccurrenceCount === 1
+            ? t("lifeopsoverview.item", { defaultValue: "item" })
+            : t("lifeopsoverview.items", { defaultValue: "items" }),
+      }),
     );
   }
   if (section.summary.activeGoalCount > 0) {
     parts.push(
-      `${section.summary.activeGoalCount} active ${section.summary.activeGoalCount === 1 ? "goal" : "goals"}`,
+      t("lifeopsoverview.summary.activeGoals", {
+        defaultValue: "{{count}} active {{goalLabel}}",
+        count: section.summary.activeGoalCount,
+        goalLabel:
+          section.summary.activeGoalCount === 1
+            ? t("lifeopsoverview.goal", { defaultValue: "goal" })
+            : t("lifeopsoverview.goals", { defaultValue: "goals" }),
+      }),
     );
   }
   if (section.summary.activeReminderCount > 0) {
     parts.push(
-      `${section.summary.activeReminderCount} live ${section.summary.activeReminderCount === 1 ? "reminder" : "reminders"}`,
+      t("lifeopsoverview.summary.liveReminders", {
+        defaultValue: "{{count}} live {{reminderLabel}}",
+        count: section.summary.activeReminderCount,
+        reminderLabel:
+          section.summary.activeReminderCount === 1
+            ? t("lifeopsoverview.reminder", { defaultValue: "reminder" })
+            : t("lifeopsoverview.reminders", {
+                defaultValue: "reminders",
+              }),
+      }),
     );
   }
   if (parts.length === 0) {
-    return "No active items";
+    return t("lifeopsoverview.noActiveItems", {
+      defaultValue: "No active items",
+    });
   }
   return parts.join(" • ");
 }
@@ -311,31 +403,52 @@ function OccurrenceExplanationPanel({
 }: {
   explanation: LifeOpsOccurrenceExplanation;
 }) {
+  const { t } = useApp();
   const lastReminder = explanation.summary.lastReminderAt
     ? `${formatDateTime(explanation.summary.lastReminderAt) ?? explanation.summary.lastReminderAt} via ${
         explanation.summary.lastReminderChannel ?? "unknown"
       } (${explanation.summary.lastReminderOutcome ?? "unknown"})`
-    : "No reminder attempts yet";
+    : t("lifeopsoverview.noReminderAttemptsYet", {
+        defaultValue: "No reminder attempts yet",
+      });
 
   return (
-    <DetailPanel title="Why this is showing up">
+    <DetailPanel
+      title={t("lifeopsoverview.whyShowingUp", {
+        defaultValue: "Why this is showing up",
+      })}
+    >
       <div>{explanation.summary.whyVisible}</div>
       <div>
-        <span className="font-semibold text-txt">Original intent:</span>{" "}
+        <span className="font-semibold text-txt">
+          {t("lifeopsoverview.originalIntent", {
+            defaultValue: "Original intent:",
+          })}
+        </span>{" "}
         {explanation.summary.originalIntent}
       </div>
       <div>
-        <span className="font-semibold text-txt">Source:</span>{" "}
+        <span className="font-semibold text-txt">
+          {t("lifeopsoverview.source", { defaultValue: "Source:" })}
+        </span>{" "}
         {explanation.summary.source}
       </div>
       <div>
-        <span className="font-semibold text-txt">Last reminder:</span>{" "}
+        <span className="font-semibold text-txt">
+          {t("lifeopsoverview.lastReminder", {
+            defaultValue: "Last reminder:",
+          })}
+        </span>{" "}
         {lastReminder}
       </div>
       {explanation.definitionPerformance.totalScheduledCount > 0 ? (
         <>
           <div>
-            <span className="font-semibold text-txt">Performance:</span>{" "}
+            <span className="font-semibold text-txt">
+              {t("lifeopsoverview.performance", {
+                defaultValue: "Performance:",
+              })}
+            </span>{" "}
             {explanation.definitionPerformance.totalCompletedCount}/
             {explanation.definitionPerformance.totalScheduledCount} completed
             overall, current streak{" "}
@@ -343,7 +456,11 @@ function OccurrenceExplanationPanel({
             {explanation.definitionPerformance.bestOccurrenceStreak}
           </div>
           <div>
-            <span className="font-semibold text-txt">Last 7 days:</span>{" "}
+            <span className="font-semibold text-txt">
+              {t("lifeopsoverview.last7Days", {
+                defaultValue: "Last 7 days:",
+              })}
+            </span>{" "}
             {formatPercent(
               explanation.definitionPerformance.last7Days.completionRate,
             )}{" "}
@@ -363,19 +480,31 @@ function OccurrenceExplanationPanel({
       ) : null}
       {explanation.summary.lastActionSummary ? (
         <div>
-          <span className="font-semibold text-txt">Last action:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.lastAction", {
+              defaultValue: "Last action:",
+            })}
+          </span>{" "}
           {explanation.summary.lastActionSummary}
         </div>
       ) : null}
       {explanation.linkedGoal ? (
         <div>
-          <span className="font-semibold text-txt">Linked goal:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.linkedGoal", {
+              defaultValue: "Linked goal:",
+            })}
+          </span>{" "}
           {explanation.linkedGoal.goal.title}
         </div>
       ) : null}
       {explanation.reminderPlan && explanation.reminderPlan.steps.length > 0 ? (
         <div>
-          <span className="font-semibold text-txt">Reminders:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.remindersLabel", {
+              defaultValue: "Reminders:",
+            })}
+          </span>{" "}
           {explanation.reminderPlan.steps
             .map((step) => `${step.label} (${step.channel})`)
             .join(", ")}
@@ -386,12 +515,21 @@ function OccurrenceExplanationPanel({
 }
 
 function GoalReviewPanel({ review }: { review: LifeOpsGoalReview }) {
+  const { t } = useApp();
   return (
-    <DetailPanel title="Goal review">
+    <DetailPanel
+      title={t("lifeopsoverview.goalReview", {
+        defaultValue: "Goal review",
+      })}
+    >
       <div>{review.summary.explanation}</div>
       {typeof review.summary.progressScore === "number" ? (
         <div>
-          <span className="font-semibold text-txt">Progress signal:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.progressSignal", {
+              defaultValue: "Progress signal:",
+            })}
+          </span>{" "}
           {Math.round(review.summary.progressScore * 100)}%
           {typeof review.summary.confidence === "number"
             ? ` at ${Math.round(review.summary.confidence * 100)}% confidence`
@@ -400,18 +538,30 @@ function GoalReviewPanel({ review }: { review: LifeOpsGoalReview }) {
       ) : null}
       {review.summary.groundingSummary ? (
         <div>
-          <span className="font-semibold text-txt">Evaluation contract:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.evaluationContract", {
+              defaultValue: "Evaluation contract:",
+            })}
+          </span>{" "}
           {review.summary.groundingSummary}
         </div>
       ) : null}
       {review.summary.evidenceSummary ? (
         <div>
-          <span className="font-semibold text-txt">Evidence used:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.evidenceUsed", {
+              defaultValue: "Evidence used:",
+            })}
+          </span>{" "}
           {review.summary.evidenceSummary}
         </div>
       ) : null}
       <div>
-        <span className="font-semibold text-txt">Support structure:</span>{" "}
+        <span className="font-semibold text-txt">
+          {t("lifeopsoverview.supportStructure", {
+            defaultValue: "Support structure:",
+          })}
+        </span>{" "}
         {review.summary.linkedDefinitionCount} linked{" "}
         {review.summary.linkedDefinitionCount === 1
           ? "definition"
@@ -425,20 +575,32 @@ function GoalReviewPanel({ review }: { review: LifeOpsGoalReview }) {
       </div>
       {review.suggestions.length > 0 ? (
         <div>
-          <span className="font-semibold text-txt">Suggested next steps:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.suggestedNextSteps", {
+              defaultValue: "Suggested next steps:",
+            })}
+          </span>{" "}
           {review.suggestions.map((suggestion) => suggestion.title).join(" • ")}
         </div>
       ) : null}
       {review.summary.missingEvidence &&
       review.summary.missingEvidence.length > 0 ? (
         <div>
-          <span className="font-semibold text-txt">Missing evidence:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.missingEvidence", {
+              defaultValue: "Missing evidence:",
+            })}
+          </span>{" "}
           {review.summary.missingEvidence.join(" • ")}
         </div>
       ) : null}
       {review.summary.lastActivityAt ? (
         <div>
-          <span className="font-semibold text-txt">Last activity:</span>{" "}
+          <span className="font-semibold text-txt">
+            {t("lifeopsoverview.lastActivity", {
+              defaultValue: "Last activity:",
+            })}
+          </span>{" "}
           {formatDateTime(review.summary.lastActivityAt) ??
             review.summary.lastActivityAt}
         </div>
@@ -456,7 +618,40 @@ function SnoozeMenu({
   disabled: boolean;
   onSnooze: (occurrenceId: string, preset: SnoozePreset) => Promise<void>;
 }) {
+  const { t } = useApp();
   const [open, setOpen] = useState(false);
+  const presets = [
+    {
+      preset: "15m" as const,
+      label: t("lifeopsoverview.snooze.15m", {
+        defaultValue: "15 min",
+      }),
+    },
+    {
+      preset: "30m" as const,
+      label: t("lifeopsoverview.snooze.30m", {
+        defaultValue: "30 min",
+      }),
+    },
+    {
+      preset: "1h" as const,
+      label: t("lifeopsoverview.snooze.1h", {
+        defaultValue: "1 hour",
+      }),
+    },
+    {
+      preset: "tonight" as const,
+      label: t("lifeopsoverview.snooze.tonight", {
+        defaultValue: "Tonight",
+      }),
+    },
+    {
+      preset: "tomorrow_morning" as const,
+      label: t("lifeopsoverview.snooze.tomorrowMorning", {
+        defaultValue: "Tomorrow",
+      }),
+    },
+  ];
 
   if (!open) {
     return (
@@ -465,7 +660,9 @@ function SnoozeMenu({
         variant="ghost"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        aria-label="Snooze"
+        aria-label={t("lifeopsoverview.snoozeAction", {
+          defaultValue: "Snooze",
+        })}
         className="h-6 w-6 p-0"
       >
         <Clock className="h-3.5 w-3.5" />
@@ -475,7 +672,7 @@ function SnoozeMenu({
 
   return (
     <div className="flex flex-wrap gap-1">
-      {SNOOZE_PRESETS.map(({ preset, label }) => (
+      {presets.map(({ preset, label }) => (
         <Button
           key={preset}
           size="sm"
@@ -496,7 +693,7 @@ function SnoozeMenu({
         onClick={() => setOpen(false)}
         className="h-7 px-1.5 text-2xs text-muted"
       >
-        Cancel
+        {t("common.cancel", { defaultValue: "Cancel" })}
       </Button>
     </div>
   );
@@ -521,8 +718,9 @@ function OccurrenceRow({
   onSnooze: (occurrenceId: string, preset: SnoozePreset) => Promise<void>;
   onExplain: (occurrenceId: string) => Promise<void>;
 }) {
-  const cadence = cadenceLabel(occurrence.cadence);
-  const cadenceSecondary = cadenceDetail(occurrence.cadence);
+  const { t } = useApp();
+  const cadence = cadenceLabel(occurrence.cadence, t);
+  const cadenceSecondary = cadenceDetail(occurrence.cadence, t);
   const dueLabel =
     formatDateTime(occurrence.dueAt) ?? formatDateTime(occurrence.scheduledAt);
   const description = descriptionForOccurrence(occurrence);
@@ -549,22 +747,26 @@ function OccurrenceRow({
               {cadence}
             </Badge>
             {occurrence.state === "snoozed" ? (
-              <Badge
-                variant="secondary"
-                className="text-[10px]"
-                aria-label="Snoozed"
-              >
-                <Moon className="h-3 w-3" />
-              </Badge>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px]"
+                  aria-label={t("lifeopsoverview.snoozed", {
+                    defaultValue: "Snoozed",
+                  })}
+                >
+                  <Moon className="h-3 w-3" />
+                </Badge>
             ) : null}
             {occurrence.subjectType === "agent" ? (
-              <Badge
-                variant="secondary"
-                className="text-[10px]"
-                aria-label="Agent"
-              >
-                <Bot className="h-3 w-3" />
-              </Badge>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px]"
+                  aria-label={t("lifeopsoverview.agent", {
+                    defaultValue: "Agent",
+                  })}
+                >
+                  <Bot className="h-3 w-3" />
+                </Badge>
             ) : null}
           </div>
           {description ? (
@@ -584,7 +786,9 @@ function OccurrenceRow({
                   variant="outline"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "complete")}
-                  aria-label="Done"
+                  aria-label={t("lifeopsoverview.done", {
+                    defaultValue: "Done",
+                  })}
                   className="h-6 w-6 p-0"
                 >
                   <Check className="h-3.5 w-3.5" />
@@ -599,7 +803,9 @@ function OccurrenceRow({
                   variant="ghost"
                   disabled={actionPending}
                   onClick={() => void onAction(occurrence.id, "skip")}
-                  aria-label="Skip"
+                  aria-label={t("lifeopsoverview.skip", {
+                    defaultValue: "Skip",
+                  })}
                   className="h-6 w-6 p-0"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -611,7 +817,14 @@ function OccurrenceRow({
               variant="ghost"
               disabled={detailPending}
               onClick={() => void onExplain(occurrence.id)}
-              aria-label={isExpanded ? "Hide details" : "Show details"}
+              aria-label={t(
+                isExpanded
+                  ? "lifeopsoverview.hideDetails"
+                  : "lifeopsoverview.showDetails",
+                {
+                  defaultValue: isExpanded ? "Hide details" : "Show details",
+                },
+              )}
               className="h-6 w-6 p-0"
             >
               <Info className="h-3.5 w-3.5" />
@@ -639,9 +852,12 @@ function GoalRow({
   isExpanded: boolean;
   onReview: (goalId: string) => Promise<void>;
 }) {
+  const { t } = useApp();
   const cadence = isRecord(goal.cadence) ? goal.cadence : null;
   const cadenceText =
-    cadence && typeof cadence.kind === "string" ? cadence.kind : null;
+    cadence && typeof cadence.kind === "string"
+      ? translateLifeOpsLabel(cadence.kind, t)
+      : null;
   const goalMetadata = isRecord(goal.metadata) ? goal.metadata : null;
   const grounding =
     goalMetadata && isRecord(goalMetadata.goalGrounding)
@@ -658,8 +874,8 @@ function GoalRow({
       <div className="flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${reviewStateDotClass(goal.reviewState)}`}
-          aria-label={reviewStateLabel(goal.reviewState)}
-          title={reviewStateLabel(goal.reviewState)}
+          aria-label={reviewStateLabel(goal.reviewState, t)}
+          title={reviewStateLabel(goal.reviewState, t)}
         />
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {goal.title}
@@ -681,7 +897,14 @@ function GoalRow({
           variant="ghost"
           disabled={detailPending}
           onClick={() => void onReview(goal.id)}
-          aria-label={isExpanded ? "Hide review" : "Review"}
+          aria-label={t(
+            isExpanded
+              ? "lifeopsoverview.hideReview"
+              : "lifeopsoverview.review",
+            {
+              defaultValue: isExpanded ? "Hide review" : "Review",
+            },
+          )}
           className="h-6 w-6 p-0"
         >
           <Info className="h-3.5 w-3.5" />
@@ -693,6 +916,7 @@ function GoalRow({
 }
 
 function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
+  const { t } = useApp();
   const scheduledFor = formatDateTime(reminder.scheduledFor);
   const dueAt = formatDateTime(reminder.dueAt);
   const channelIcon = reminderChannelIcon(reminder.channel);
@@ -715,7 +939,14 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
       <div className="mt-1 text-xs text-muted">{reminder.stepLabel}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
         {scheduledFor ? <span>{scheduledFor}</span> : null}
-        {dueAt ? <span>Due {dueAt}</span> : null}
+        {dueAt ? (
+          <span>
+            {t("lifeopsoverview.dueAt", {
+              defaultValue: "Due {{time}}",
+              time: dueAt,
+            })}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -795,6 +1026,7 @@ function GoalSection({
   expandedGoalId: string | null;
   onReviewGoal: (goalId: string) => Promise<void>;
 }) {
+  const { t } = useApp();
   if (goals.length === 0) {
     return null;
   }
@@ -806,7 +1038,9 @@ function GoalSection({
           <Sparkles className="h-3.5 w-3.5" />
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          Goals
+          {t("lifeopsoverview.goalsHeading", {
+            defaultValue: "Goals",
+          })}
         </span>
         <Badge variant="secondary" className="text-[10px]">
           {goals.length}
@@ -846,6 +1080,7 @@ function DiscordPreviewRow({ preview }: { preview: LifeOpsDiscordDmPreview }) {
 }
 
 function DiscordMessagesGlance() {
+  const { t } = useApp();
   const connector = useDiscordConnector({ side: "owner" });
   const previews = connector.status?.dmInbox?.previews ?? [];
   if (!connector.status?.connected || previews.length === 0) {
@@ -861,7 +1096,9 @@ function DiscordMessagesGlance() {
           <MessageCircleMore className="h-3 w-3" />
         </span>
         <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-          Discord
+          {t("lifeopsoverview.discord", {
+            defaultValue: "Discord",
+          })}
         </span>
       </div>
       {unreadFirst.slice(0, MAX_DISCORD_PREVIEWS).map((preview) => (
@@ -879,6 +1116,7 @@ function ReminderSection({
 }: {
   reminders: LifeOpsActiveReminderView[];
 }) {
+  const { t } = useApp();
   if (reminders.length === 0) {
     return null;
   }
@@ -890,7 +1128,9 @@ function ReminderSection({
           <BellRing className="h-3.5 w-3.5" />
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          Reminders
+          {t("lifeopsoverview.remindersHeading", {
+            defaultValue: "Reminders",
+          })}
         </span>
       </div>
       {reminders.slice(0, MAX_SECTION_REMINDERS).map((reminder) => (
@@ -908,23 +1148,51 @@ function ScheduleSection({
 }: {
   schedule: LifeOpsScheduleInsight | null | undefined;
 }) {
+  const { t } = useApp();
   if (!schedule) {
     return null;
   }
 
   const sleepLine = schedule.isProbablySleeping
     ? schedule.currentSleepStartedAt
-      ? `Likely asleep since ${formatDateTime(schedule.currentSleepStartedAt)}`
-      : "Likely asleep now"
+      ? t("lifeopsoverview.likelyAsleepSince", {
+          defaultValue: "Likely asleep since {{time}}",
+          time:
+            formatDateTime(schedule.currentSleepStartedAt) ??
+            schedule.currentSleepStartedAt,
+        })
+      : t("lifeopsoverview.likelyAsleepNow", {
+          defaultValue: "Likely asleep now",
+        })
     : schedule.lastSleepEndedAt
-      ? `Last wake ${formatDateTime(schedule.lastSleepEndedAt)}${schedule.lastSleepDurationMinutes ? ` • ${schedule.lastSleepDurationMinutes}m asleep` : ""}`
-      : `Sleep ${humanizeLifeOpsLabel(schedule.sleepStatus)}`;
+      ? t("lifeopsoverview.lastWake", {
+          defaultValue: "Last wake {{time}}{{duration}}",
+          time: formatDateTime(schedule.lastSleepEndedAt) ?? schedule.lastSleepEndedAt,
+          duration: schedule.lastSleepDurationMinutes
+            ? ` • ${schedule.lastSleepDurationMinutes}m`
+            : "",
+        })
+      : t("lifeopsoverview.sleepStatus", {
+          defaultValue: "Sleep {{status}}",
+          status: translateLifeOpsLabel(schedule.sleepStatus, t),
+        });
   const mealLine =
     schedule.nextMealLabel && schedule.nextMealWindowStartAt
-      ? `Next ${schedule.nextMealLabel} window ${formatDateTime(schedule.nextMealWindowStartAt)}`
+      ? t("lifeopsoverview.nextMealWindow", {
+          defaultValue: "Next {{meal}} window {{time}}",
+          meal: translateLifeOpsLabel(schedule.nextMealLabel, t),
+          time:
+            formatDateTime(schedule.nextMealWindowStartAt) ??
+            schedule.nextMealWindowStartAt,
+        })
       : schedule.lastMealAt
-        ? `Last meal ${formatDateTime(schedule.lastMealAt)}`
-        : "Meal pattern calibrating";
+        ? t("lifeopsoverview.lastMeal", {
+            defaultValue: "Last meal {{time}}",
+            time: formatDateTime(schedule.lastMealAt) ?? schedule.lastMealAt,
+          })
+        : t("lifeopsoverview.mealPatternCalibrating", {
+            defaultValue: "Meal pattern calibrating",
+          });
 
   return (
     <div className="flex flex-col gap-2">
@@ -933,10 +1201,12 @@ function ScheduleSection({
           <Moon className="h-3.5 w-3.5" />
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          Schedule
+          {t("lifeopsoverview.scheduleHeading", {
+            defaultValue: "Schedule",
+          })}
         </span>
         <Badge variant="secondary" className="text-[10px]">
-          {humanizeLifeOpsLabel(schedule.phase)}
+          {translateLifeOpsLabel(schedule.phase, t)}
         </Badge>
       </div>
       <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
@@ -944,7 +1214,10 @@ function ScheduleSection({
         <div className="mt-1 text-xs text-muted">{mealLine}</div>
         {schedule.nextMealLabel && schedule.nextMealConfidence > 0 ? (
           <div className="mt-2 text-[11px] uppercase tracking-[0.08em] text-muted/80">
-            {Math.round(schedule.nextMealConfidence * 100)}% confidence
+            {t("lifeopsoverview.confidence", {
+              defaultValue: "{{count}}% confidence",
+              count: Math.round(schedule.nextMealConfidence * 100),
+            })}
           </div>
         ) : null}
       </div>
@@ -983,6 +1256,7 @@ function AgentOpsSection({
   onExplainOccurrence: (occurrenceId: string) => Promise<void>;
   onReviewGoal: (goalId: string) => Promise<void>;
 }) {
+  const { t } = useApp();
   if (!hasSectionContent(section)) {
     return null;
   }
@@ -994,7 +1268,9 @@ function AgentOpsSection({
           <Bot className="h-3.5 w-3.5" />
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
-          Agent ops
+          {t("lifeopsoverview.agentOpsHeading", {
+            defaultValue: "Agent ops",
+          })}
         </span>
         <Badge variant="secondary" className="text-[10px]">
           {section.summary.activeOccurrenceCount +
@@ -1002,7 +1278,7 @@ function AgentOpsSection({
             section.summary.activeReminderCount}
         </Badge>
       </div>
-      <p className="px-0.5 text-xs text-muted">{sectionSummary(section)}</p>
+      <p className="px-0.5 text-xs text-muted">{sectionSummary(section, t)}</p>
       {section.occurrences
         .slice(0, MAX_SECTION_OCCURRENCES)
         .map((occurrence) => (
@@ -1283,7 +1559,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   return (
     <WidgetSection
-      title="Glance"
+      title={t("lifeopsoverview.title", {
+        defaultValue: "Glance",
+      })}
       icon={<ListTodo className="h-4 w-4" />}
       action={
         <Button
@@ -1304,7 +1582,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         {hasAnyContent ? (
           <>
             <OccurrenceBucketBlock
-              title="Now"
+              title={t("lifeopsoverview.now", {
+                defaultValue: "Now",
+              })}
               icon={<ListTodo className="h-3 w-3" />}
               occurrences={ownerBuckets.now}
               actionState={actionState}
@@ -1316,7 +1596,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              title="Next"
+              title={t("lifeopsoverview.next", {
+                defaultValue: "Next",
+              })}
               icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.next}
               actionState={actionState}
@@ -1328,7 +1610,9 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              title="Upcoming"
+              title={t("lifeopsoverview.upcoming", {
+                defaultValue: "Upcoming",
+              })}
               icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.upcoming}
               actionState={actionState}
@@ -1367,7 +1651,15 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         ) : (
           <EmptyWidgetState
             icon={<CheckCircle2 className="h-8 w-8" />}
-            title={loading ? "Refreshing life ops…" : "No life ops yet"}
+            title={
+              loading
+                ? t("lifeopsoverview.refreshing", {
+                    defaultValue: "Refreshing life ops…",
+                  })
+                : t("lifeopsoverview.empty", {
+                    defaultValue: "No life ops yet",
+                  })
+            }
           />
         )}
         <GoogleGlanceSection timeZone={timeZone} />

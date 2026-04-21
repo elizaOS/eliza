@@ -124,3 +124,54 @@ describe("OWNER_INBOX routing", () => {
     });
   });
 });
+
+describe("INBOX standing policies", () => {
+  it("records a group-chat handoff policy instead of requiring a live pending item", async () => {
+    const result = await inboxAction.handler!(
+      {} as never,
+      message(
+        "If direct relaying gets messy here, suggest making a group chat handoff instead.",
+      ),
+      undefined,
+      {
+        parameters: {
+          subaction: "respond",
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("group-chat handoff");
+    expect(result.text).toContain("other people involved");
+    expect(result.data).toMatchObject({
+      actionName: "INBOX",
+      subaction: "respond",
+      policyRecorded: true,
+      policyType: "group_chat_handoff",
+    });
+  });
+
+  it("records a contextual bump policy instead of asking for a target item", async () => {
+    const result = await inboxAction.handler!(
+      {} as never,
+      message(
+        "If I still haven't answered about those three events, bump me again with context instead of starting over.",
+      ),
+      undefined,
+      {
+        parameters: {
+          subaction: "respond",
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("existing context attached");
+    expect(result.data).toMatchObject({
+      actionName: "INBOX",
+      subaction: "respond",
+      policyRecorded: true,
+      policyType: "contextual_bump",
+    });
+  });
+});

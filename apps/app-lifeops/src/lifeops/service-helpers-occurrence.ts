@@ -130,7 +130,11 @@ export function buildPerformanceWindow(
   };
 }
 
-export function computeOccurrenceStreaks(dueOccurrences: LifeOpsOccurrence[]): {
+type StreakOccurrence = Pick<LifeOpsOccurrence, "state">;
+
+export function computeOccurrenceStreaks(
+  dueOccurrences: readonly StreakOccurrence[],
+): {
   current: number;
   best: number;
 } {
@@ -150,6 +154,39 @@ export function computeOccurrenceStreaks(dueOccurrences: LifeOpsOccurrence[]): {
   let current = 0;
   for (let index = dueOccurrences.length - 1; index >= 0; index -= 1) {
     if (dueOccurrences[index]?.state !== "completed") {
+      break;
+    }
+    current += 1;
+  }
+
+  return {
+    current,
+    best: bestRun,
+  };
+}
+
+export function computeMissedOccurrenceStreak(
+  dueOccurrences: readonly StreakOccurrence[],
+): {
+  current: number;
+  best: number;
+} {
+  let currentRun = 0;
+  let bestRun = 0;
+  for (const occurrence of dueOccurrences) {
+    if (occurrence.state !== "completed") {
+      currentRun += 1;
+      if (currentRun > bestRun) {
+        bestRun = currentRun;
+      }
+    } else {
+      currentRun = 0;
+    }
+  }
+
+  let current = 0;
+  for (let index = dueOccurrences.length - 1; index >= 0; index -= 1) {
+    if (dueOccurrences[index]?.state === "completed") {
       break;
     }
     current += 1;

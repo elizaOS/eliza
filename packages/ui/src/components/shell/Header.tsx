@@ -2,13 +2,19 @@ import {
   InferenceCloudAlertButton,
   resolveCompanionInferenceNotice,
 } from "@elizaos/app-companion/ui";
+import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
 import { CloudStatusBadge } from "@elizaos/app-core/components/cloud/CloudStatusBadge";
 import { LanguageDropdown } from "@elizaos/app-core/components/shared/LanguageDropdown";
 import { ThemeToggle } from "@elizaos/app-core/components/shared/ThemeToggle";
+import { useBranding } from "@elizaos/app-core/config/branding";
 import { getTabGroups, type TabGroup } from "@elizaos/app-core/navigation";
+import {
+  isDetachedWindowShell,
+  resolveWindowShellRoute,
+} from "@elizaos/app-core/platform/window-shell";
 import { useApp } from "@elizaos/app-core/state";
 import { ListTodo, Menu, X } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import {
@@ -35,8 +41,20 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
   Knowledge: "nav.knowledge",
   Connectors: "nav.social",
   Apps: "nav.apps",
+  Automations: "nav.automations",
   Settings: "nav.settings",
   Heartbeats: "nav.heartbeats",
+};
+
+const NAV_DESCRIPTION_I18N_KEY: Record<string, string> = {
+  Chat: "nav.description.chat",
+  Apps: "nav.description.apps",
+  Character: "nav.description.character",
+  Wallet: "nav.description.wallet",
+  Browser: "nav.description.browser",
+  Stream: "nav.description.stream",
+  Automations: "nav.description.automations",
+  Settings: "nav.description.settings",
 };
 
 interface HeaderProps {
@@ -49,17 +67,27 @@ interface HeaderProps {
 }
 
 const HEADER_NAV_BUTTON_BASE_CLASSNAME =
-  "relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 md:px-3.5 xl:px-4";
+  "relative z-10 min-h-touch shrink-0 rounded-xl border border-transparent px-3 py-2.5 text-xs transition-all duration-200 after:pointer-events-none after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:rounded-full after:opacity-0 after:transition-opacity after:duration-200 md:px-3.5 md:after:left-3.5 md:after:right-3.5 xl:px-4 xl:after:left-4 xl:after:right-4";
 const HEADER_NAV_BUTTON_ACTIVE_CLASSNAME =
-  "border-accent/30 bg-accent/12 text-txt font-semibold shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]";
+  "border-transparent bg-transparent text-txt font-semibold shadow-none ring-0 hover:bg-transparent after:bg-accent/35 after:opacity-100";
 const HEADER_NAV_BUTTON_INACTIVE_CLASSNAME =
-  "text-muted hover:border-border/45 hover:bg-bg-hover/70 hover:text-txt";
+  "text-muted hover:bg-transparent hover:text-txt after:bg-accent/35 hover:after:opacity-100";
 const HEADER_MOBILE_NAV_BUTTON_BASE_CLASSNAME =
   "flex min-h-[48px] w-full rounded-xl border px-3 py-3 text-sm font-medium transition-all duration-200";
 const HEADER_MOBILE_NAV_BUTTON_ACTIVE_CLASSNAME =
   "border-accent/30 bg-accent/12 text-txt shadow-[0_2px_10px_rgba(3,5,10,0.08)] ring-1 ring-inset ring-accent/18 dark:shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14),0_0_14px_rgba(var(--accent-rgb),0.14)]";
 const HEADER_MOBILE_NAV_BUTTON_INACTIVE_CLASSNAME =
   "border-transparent bg-transparent text-txt hover:border-border/45 hover:bg-bg-hover/70";
+
+function shouldShowMacDesktopTitleBar(): boolean {
+  if (!isElectrobunRuntime()) return false;
+  if (typeof navigator === "undefined") return false;
+  if (!/Mac/i.test(navigator.userAgent)) return false;
+  if (/(iPhone|iPad|iPod)/i.test(navigator.userAgent)) return false;
+
+  const route = resolveWindowShellRoute();
+  return !isDetachedWindowShell(route);
+}
 
 export function Header({
   mobileLeft,
@@ -69,6 +97,7 @@ export function Header({
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
 }: HeaderProps) {
+  const branding = useBranding();
   const {
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -96,23 +125,16 @@ export function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuPortalContainer =
     typeof document !== "undefined" ? document.body : undefined;
+  const stopHeaderPointerPropagation = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadDropStatus();
   }, [loadDropStatus]);
-
-  // Close mobile menu on escape key
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMobileMenuOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   const streamingEnabled = useMemo(
     () =>
@@ -132,6 +154,20 @@ export function Header({
       null,
     [tab, tabGroups],
   );
+  const localizeTabGroup = useCallback(
+    (group: TabGroup) => ({
+      label: t(NAV_LABEL_I18N_KEY[group.label] ?? group.label, {
+        defaultValue: group.label,
+      }),
+      description:
+        group.description && NAV_DESCRIPTION_I18N_KEY[group.label]
+          ? t(NAV_DESCRIPTION_I18N_KEY[group.label], {
+              defaultValue: group.description,
+            })
+          : group.description,
+    }),
+    [t],
+  );
 
   // Outside the companion overlay the shell is always in desktop/native mode.
   // The mode-selector pill only appears inside the companion overlay header.
@@ -141,6 +177,20 @@ export function Header({
   const headerFrameClassName = "";
   const headerShellClassName =
     "border-transparent bg-transparent shadow-none ring-0 backdrop-blur-none";
+  const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
+
+  useEffect(() => {
+    if (!showMacDesktopTitleBar || typeof document === "undefined") {
+      return;
+    }
+
+    document.documentElement.classList.add("eliza-electrobun-custom-titlebar");
+    return () => {
+      document.documentElement.classList.remove(
+        "eliza-electrobun-custom-titlebar",
+      );
+    };
+  }, [showMacDesktopTitleBar]);
 
   const openCloudBilling = () => {
     setState("cloudDashboardView", "billing");
@@ -218,6 +268,29 @@ export function Header({
         style={{ WebkitUserSelect: "none", userSelect: "none" }}
         data-no-camera-drag="true"
       >
+        {showMacDesktopTitleBar ? (
+          <div className="px-2 pt-2" data-window-titlebar-container>
+            <div
+              className="pointer-events-auto"
+              data-window-titlebar="true"
+              data-testid="desktop-window-titlebar"
+            >
+              <div
+                className="grid min-h-11 w-full grid-cols-[var(--eliza-macos-titlebar-side-width,88px)_1fr_var(--eliza-macos-titlebar-side-width,88px)] items-center rounded-[18px] border border-border/50 bg-bg/82 px-2 shadow-[0_10px_28px_rgba(2,8,23,0.08)] backdrop-blur-xl"
+                data-window-titlebar-inner
+              >
+                <div aria-hidden="true" />
+                <div
+                  className="pointer-events-none truncate px-3 text-center text-sm font-medium text-txt/92"
+                  data-testid="desktop-window-titlebar-label"
+                >
+                  {branding.appName}
+                </div>
+                <div aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="py-1 ps-2 pe-2" data-header-toolbar-padding>
           <div
             className={`pointer-events-auto relative mx-auto w-full rounded-[20px] border bg-clip-padding transition-all sm:rounded-[22px] ${headerFrameClassName} ${headerShellClassName}`}
@@ -247,12 +320,14 @@ export function Header({
                       variant={tasksEventsPanelOpen ? "default" : "outline"}
                       className={HEADER_ICON_BUTTON_CLASSNAME}
                       onClick={onToggleTasksPanel}
+                      onPointerDown={stopHeaderPointerPropagation}
                       aria-label={t("taskseventspanel.Title", {
                         defaultValue: "Tasks & Events",
                       })}
                       aria-pressed={tasksEventsPanelOpen}
                       style={HEADER_BUTTON_STYLE}
                       data-testid="header-tasks-events-toggle"
+                      data-no-camera-drag="true"
                     >
                       <ListTodo className="pointer-events-none w-4 h-4" />
                     </Button>
@@ -288,9 +363,11 @@ export function Header({
                     variant="outline"
                     className={`sm:hidden ${HEADER_ICON_BUTTON_CLASSNAME}`}
                     onClick={() => setMobileMenuOpen(true)}
+                    onPointerDown={stopHeaderPointerPropagation}
                     aria-label={t("aria.openNavMenu")}
                     aria-expanded={mobileMenuOpen}
                     style={HEADER_BUTTON_STYLE}
+                    data-no-camera-drag="true"
                   >
                     <Menu className="pointer-events-none w-5 h-5" />
                   </Button>
@@ -298,13 +375,17 @@ export function Header({
               }
             >
               {showNavigationMenu ? (
-                <nav className="scrollbar-hide hidden flex-1 items-center justify-start gap-1.5 overflow-x-auto whitespace-nowrap sm:flex">
+                <nav
+                  className="scrollbar-hide hidden flex-1 items-center justify-start gap-1.5 overflow-x-auto whitespace-nowrap sm:flex"
+                  data-no-camera-drag="true"
+                >
                   {tabGroups.map((group: TabGroup) => {
                     const primaryTab = group.tabs[0];
                     const isActive = group.tabs.includes(tab);
+                    const localizedGroup = localizeTabGroup(group);
                     return (
                       <Button
-                        variant={isActive ? "default" : "ghost"}
+                        variant="ghost"
                         key={group.label}
                         data-testid={`header-nav-button-${primaryTab}`}
                         className={`${HEADER_NAV_BUTTON_BASE_CLASSNAME} ${
@@ -313,15 +394,17 @@ export function Header({
                             : HEADER_NAV_BUTTON_INACTIVE_CLASSNAME
                         }`}
                         onClick={() => setTab(primaryTab)}
-                        title={group.description}
+                        onPointerDown={stopHeaderPointerPropagation}
+                        title={localizedGroup.description}
                         style={HEADER_BUTTON_STYLE}
+                        data-no-camera-drag="true"
                       >
                         <group.icon className="pointer-events-none h-3.5 w-3.5 shrink-0" />
                         <span
                           data-testid={`header-nav-label-${primaryTab}`}
                           className="pointer-events-none inline"
                         >
-                          {t(NAV_LABEL_I18N_KEY[group.label] ?? group.label)}
+                          {localizedGroup.label}
                         </span>
                       </Button>
                     );
@@ -348,10 +431,7 @@ export function Header({
                   </div>
                   <DialogTitle className="truncate text-sm font-medium text-txt">
                     {activeTabGroup
-                      ? t(
-                          NAV_LABEL_I18N_KEY[activeTabGroup.label] ??
-                            activeTabGroup.label,
-                        )
+                      ? localizeTabGroup(activeTabGroup).label
                       : t("aria.navMenu")}
                   </DialogTitle>
                   <DialogDescription className="sr-only">
@@ -365,8 +445,10 @@ export function Header({
                   size="icon"
                   className={`shrink-0 ${HEADER_ICON_BUTTON_CLASSNAME}`}
                   onClick={() => setMobileMenuOpen(false)}
+                  onPointerDown={stopHeaderPointerPropagation}
                   aria-label={t("aria.closeNavMenu")}
                   style={HEADER_BUTTON_STYLE}
+                  data-no-camera-drag="true"
                 >
                   <X className="pointer-events-none h-4 w-4" />
                 </Button>
@@ -378,6 +460,7 @@ export function Header({
                   {tabGroups.map((group: TabGroup, index) => {
                     const primaryTab = group.tabs[0];
                     const isActive = group.tabs.includes(tab);
+                    const localizedGroup = localizeTabGroup(group);
                     return (
                       <Button
                         variant={isActive ? "default" : "ghost"}
@@ -391,19 +474,21 @@ export function Header({
                           ...HEADER_BUTTON_STYLE,
                           animationDelay: `${index * 50}ms`,
                         }}
+                        onPointerDown={stopHeaderPointerPropagation}
                         onClick={() => {
                           setTab(primaryTab);
                           setMobileMenuOpen(false);
                         }}
+                        data-no-camera-drag="true"
                       >
                         <group.icon className="pointer-events-none h-4 w-4 shrink-0" />
                         <div className="pointer-events-none flex-1 text-left">
                           <div className="font-medium">
-                            {t(NAV_LABEL_I18N_KEY[group.label] ?? group.label)}
+                            {localizedGroup.label}
                           </div>
-                          {group.description && (
+                          {localizedGroup.description && (
                             <div className="text-xs-tight text-muted mt-0.5">
-                              {group.description}
+                              {localizedGroup.description}
                             </div>
                           )}
                         </div>

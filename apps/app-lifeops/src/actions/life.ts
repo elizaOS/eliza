@@ -2383,6 +2383,70 @@ function describeReminderIntensity(
   return "normal";
 }
 
+function formatGoalExperienceLoopSummary(
+  experienceLoop:
+    | {
+        summary?: string | null;
+        similarGoals?: Array<{ title?: string }>;
+        suggestedCarryForward?: Array<{ title?: string }>;
+      }
+    | null
+    | undefined,
+): string | null {
+  if (!experienceLoop || !experienceLoop.summary) {
+    return null;
+  }
+  const similarGoalTitle = experienceLoop.similarGoals?.[0]?.title?.trim();
+  const carryForwardTitle =
+    experienceLoop.suggestedCarryForward?.[0]?.title?.trim();
+  const parts = [experienceLoop.summary.trim()];
+  if (similarGoalTitle) {
+    parts.push(`Closest match: "${similarGoalTitle}".`);
+  }
+  if (carryForwardTitle) {
+    parts.push(`Carry forward "${carryForwardTitle}" if it still fits.`);
+  }
+  return parts.join(" ");
+}
+
+function formatWeeklyGoalReview(args: {
+  summary: {
+    totalGoals: number;
+    onTrackCount: number;
+    atRiskCount: number;
+    needsAttentionCount: number;
+  };
+  onTrack: Array<{ goal: { title: string } }>;
+  atRisk: Array<{ goal: { title: string } }>;
+  needsAttention: Array<{ goal: { title: string } }>;
+}): string {
+  const parts = [
+    `Weekly goal review: ${args.summary.totalGoals} active ${args.summary.totalGoals === 1 ? "goal" : "goals"}, ${args.summary.onTrackCount} on track, ${args.summary.atRiskCount} at risk, ${args.summary.needsAttentionCount} needing attention.`,
+  ];
+  if (args.atRisk.length > 0) {
+    parts.push(
+      `Drifting: ${args.atRisk.slice(0, 3).map((review) => review.goal.title).join(", ")}.`,
+    );
+  }
+  if (args.needsAttention.length > 0) {
+    parts.push(
+      `Needs attention: ${args.needsAttention
+        .slice(0, 3)
+        .map((review) => review.goal.title)
+        .join(", ")}.`,
+    );
+  }
+  if (args.onTrack.length > 0) {
+    parts.push(
+      `On track: ${args.onTrack
+        .slice(0, 3)
+        .map((review) => review.goal.title)
+        .join(", ")}.`,
+    );
+  }
+  return parts.join(" ");
+}
+
 // ── Main action ───────────────────────────────────────
 
 export const lifeAction: Action & {
@@ -2417,7 +2481,7 @@ export const lifeAction: Action & {
     "setting one-off alarms or wake-up reminders like 'set an alarm for 7am' or 'wake me up at 7'; " +
     "helping the user actually set up follow-through when they say things like 'help me brush my teeth every day', 'i keep forgetting x', or 'help me actually do it'; " +
     "using LifeOps defaults for common routines when the user gives a natural window instead of an exact clock, like water reminders, stretch breaks, weekday-after-lunch Invisalign checks, twice-weekly shave reminders, or brushing when they wake up and before bed; " +
-    "marking items as complete, skipping, or snoozing them; reviewing goal progress; " +
+    "marking items as complete, skipping, or snoozing them; reviewing goal progress, weekly goal review, and carry-forward lessons from similar completed goals; " +
     "setting up phone/SMS escalation channels; adjusting reminder frequency or intensity; " +
     "querying an overview of active LifeOps items. " +
     "These are executable LifeOps items, not profile facts or bio updates. " +
@@ -3240,6 +3304,13 @@ export const lifeAction: Action & {
             title,
           },
         };
+        const experienceLoop = await service.buildGoalExperienceLoop({
+          title: goalDraft.request.title,
+          description: goalDraft.request.description,
+          successCriteria:
+            (goalDraft.request.successCriteria as Record<string, unknown> | undefined) ??
+            null,
+        });
         if (
           shouldRequireLifeCreateConfirmation({
             confirmed: createConfirmed,
@@ -3249,9 +3320,16 @@ export const lifeAction: Action & {
                 : undefined,
           })
         ) {
-          const fallback = evaluationSummary
-            ? `I can save "${goalDraft.request.title}" as a goal. Success looks like this: ${evaluationSummary} Confirm and I'll save it, or tell me what to change.`
-            : `I can save this goal as "${goalDraft.request.title}". Confirm and I'll save it, or tell me what to change.`;
+          const fallbackParts = [
+            evaluationSummary
+              ? `I can save "${goalDraft.request.title}" as a goal. Success looks like this: ${evaluationSummary} Confirm and I'll save it, or tell me what to change.`
+              : `I can save this goal as "${goalDraft.request.title}". Confirm and I'll save it, or tell me what to change.`,
+          ];
+          const experienceSummary =
+            formatGoalExperienceLoopSummary(experienceLoop);
+          if (experienceSummary) {
+            fallbackParts.push(experienceSummary);
+          }
           return {
             success: true,
             text: await renderLifeActionReply({
@@ -3260,16 +3338,18 @@ export const lifeAction: Action & {
               state,
               intent,
               scenario: "preview_goal",
-              fallback,
+              fallback: fallbackParts.join(" "),
               context: {
                 draft: goalDraft.request,
                 groundingSummary: evaluationSummary,
+                experienceLoop,
               },
             }),
             data: {
               actionName: "LIFE",
               deferred: true,
               lifeDraft: goalDraft,
+              experienceLoop,
               preview: {
                 title: goalDraft.request.title,
               },
@@ -3289,7 +3369,20 @@ export const lifeAction: Action & {
             originalIntent: goalDraft.intent || goalDraft.request.title,
           },
         });
-        const fallback = `Saved goal "${created.goal.title}".`;
+        const createdExperienceLoop = await service.buildGoalExperienceLoop({
+          goalId: created.goal.id,
+          title: created.goal.title,
+          description: created.goal.description,
+          successCriteria:
+            (created.goal.successCriteria as Record<string, unknown> | undefined) ??
+            null,
+        });
+        const experienceSummary = formatGoalExperienceLoopSummary(
+          createdExperienceLoop,
+        );
+        const fallback = experienceSummary
+          ? `Saved goal "${created.goal.title}". ${experienceSummary}`
+          : `Saved goal "${created.goal.title}".`;
         return {
           success: true,
           text: await renderLifeActionReply({
@@ -3304,9 +3397,13 @@ export const lifeAction: Action & {
                 title: created.goal.title,
                 cadence: created.goal.cadence,
               },
+              experienceLoop: createdExperienceLoop,
             },
           }),
-          data: toActionData(created),
+          data: toActionData({
+            ...created,
+            experienceLoop: createdExperienceLoop,
+          }),
         };
       }
 
@@ -3704,11 +3801,40 @@ export const lifeAction: Action & {
 
       if (operation === "review_goal") {
         const target = await resolveGoal(service, targetName, domain);
-        if (!target)
+        if (!target) {
+          const weeklyReview = await service.reviewGoalsForWeek();
+          if (weeklyReview.summary.totalGoals === 0) {
+            return {
+              success: false,
+              text: "I could not find any active goals to review.",
+            };
+          }
+          const fallback = formatWeeklyGoalReview(weeklyReview);
           return {
-            success: false,
-            text: "I could not find that goal to review.",
+            success: true,
+            text: await renderLifeActionReply({
+              runtime,
+              message,
+              state,
+              intent,
+              scenario: "weekly_goal_review",
+              fallback,
+              context: {
+                summary: weeklyReview.summary,
+                atRiskTitles: weeklyReview.atRisk
+                  .slice(0, 3)
+                  .map((review) => review.goal.title),
+                needsAttentionTitles: weeklyReview.needsAttention
+                  .slice(0, 3)
+                  .map((review) => review.goal.title),
+                onTrackTitles: weeklyReview.onTrack
+                  .slice(0, 3)
+                  .map((review) => review.goal.title),
+              },
+            }),
+            data: toActionData(weeklyReview),
           };
+        }
         const review = await service.reviewGoal(target.goal.id);
         return {
           success: true,

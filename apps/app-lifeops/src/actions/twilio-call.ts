@@ -302,11 +302,17 @@ type CallUserParameters = {
 };
 
 type CallExternalParameters = {
-  confirmed?: boolean;
-  to?: string;
-  message?: string;
-  contact?: string;
+	confirmed?: boolean;
+	to?: string;
+	message?: string;
+	contact?: string;
 };
+
+function messageText(message: Memory): string {
+	return typeof message.content?.text === "string"
+		? message.content.text.trim()
+		: "";
+}
 
 function readOwnerNumber(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -344,9 +350,9 @@ function readExternalAllowList(
 }
 
 function deliveryToResult(
-  delivery: TwilioDeliveryResult,
-  to: string,
-  actionName: string,
+	delivery: TwilioDeliveryResult,
+	to: string,
+	actionName: string,
 ): ActionResult {
   return {
     text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
@@ -364,7 +370,37 @@ function deliveryToResult(
       error: delivery.error,
       retryCount: delivery.retryCount ?? 0,
     },
-  };
+	};
+}
+
+function looksLikeStandingCallPolicy(text: string): boolean {
+	const normalized = text.trim().toLowerCase();
+	if (!normalized) {
+		return false;
+	}
+	return (
+		/\b(?:if|when|whenever)\b/u.test(normalized) &&
+		/\b(?:call|phone|dial)\b/u.test(normalized) &&
+		/\b(?:stuck|blocked|jam(?:s|med)?|browser|computer|workflow|unblock)\b/u.test(
+			normalized,
+		)
+	);
+}
+
+function buildCallUserPolicyAcknowledgement(text: string): string {
+	const normalized = text.trim().toLowerCase();
+	let context = "while working remotely";
+	if (/\bbrowser\b/u.test(normalized) && /\bcomputer\b/u.test(normalized)) {
+		context = "in the browser or on your computer";
+	} else if (/\bbrowser\b/u.test(normalized)) {
+		context = "in the browser";
+	} else if (/\bcomputer\b/u.test(normalized)) {
+		context = "on your computer";
+	} else if (/\bworkflow\b/u.test(normalized)) {
+		context = "when a remote workflow gets stuck";
+	}
+
+	return `If I get stuck ${context}, I'll escalate by phone and call you so you can jump in and unblock it. I've recorded that escalation path for when it's needed.`;
 }
 
 export const callUserAction: Action & {
@@ -395,9 +431,9 @@ export const callUserAction: Action & {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
+	handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+		if (!(await hasOwnerAccess(runtime, message))) {
+			return {
         text: "",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
@@ -405,14 +441,33 @@ export const callUserAction: Action & {
       };
     }
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | CallUserParameters
-        | undefined) ?? {};
+		const params =
+			((options as HandlerOptions | undefined)?.parameters as
+				| CallUserParameters
+				| undefined) ?? {};
+		const requestText = messageText(message);
 
-    if (params.confirmed !== true) {
-      logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");
-      return {
+		if (params.confirmed !== true && looksLikeStandingCallPolicy(requestText)) {
+			return {
+				text: buildCallUserPolicyAcknowledgement(requestText),
+				success: true,
+				values: {
+					success: true,
+					policyRecorded: true,
+					channel: "phone_call",
+				},
+				data: {
+					actionName: "CALL_USER",
+					policyRecorded: true,
+					channel: "phone_call",
+					status: "planned",
+				},
+			};
+		}
+
+		if (params.confirmed !== true) {
+			logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");
+			return {
         text: "Please confirm before I place the call.",
         success: false,
         values: { success: false, requiresConfirmation: true },

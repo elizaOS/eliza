@@ -29,6 +29,9 @@ import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { xReadAction } from "./actions/x-read.js";
 import { lifeAction } from "./actions/life.js";
 import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
+import { crossPlatformGatewayAction } from "./actions/cross-platform-gateway.js";
+import { chatThreadControlAction } from "./actions/chat-thread-control.js";
+import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
 // T9f — Morning/night check-in engine (plan §6.23).
 import {
   runMorningCheckinAction,
@@ -218,8 +221,11 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerInboxAction,
     ownerScheduleAction,
     xReadAction,
+    scheduleXDmReplyAction,
     lifeAction,
     updateOwnerProfileAction,
+    crossPlatformGatewayAction,
+    chatThreadControlAction,
     runMorningCheckinAction,
     runNightCheckinAction,
     relationshipAction,

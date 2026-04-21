@@ -94,9 +94,16 @@ export class TravelTimeService {
         `[TravelTimeService] event ${input.eventId} not found`,
       );
     }
+    return this.computeBufferForEvent(event, input.originAddress);
+  }
+
+  async computeBufferForEvent(
+    event: Pick<LifeOpsCalendarEvent, "location">,
+    originAddressInput?: string,
+  ): Promise<TravelBufferResult> {
     const destinationAddress = normalizeAddress(event.location);
     const originAddress =
-      normalizeAddress(input.originAddress) ??
+      normalizeAddress(originAddressInput) ??
       normalizeAddress(this.deps.defaultOriginAddress ?? null);
 
     if (!destinationAddress) {

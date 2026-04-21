@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import type { LifeOpsOwnerProfile } from "../owner-profile.js";
 import { readLifeOpsOwnerProfile } from "../owner-profile.js";
 
 /**
@@ -33,20 +34,9 @@ function normalizeTime(value: string | undefined | null): string | null {
 export async function resolveCheckinSchedule(
   runtime: IAgentRuntime,
 ): Promise<CheckinSchedule> {
-  const profile = (await readLifeOpsOwnerProfile(runtime)) as Record<
-    string,
-    unknown
-  >;
-  const morning =
-    typeof profile.morningCheckinTime === "string"
-      ? profile.morningCheckinTime
-      : null;
-  const night =
-    typeof profile.nightCheckinTime === "string"
-      ? profile.nightCheckinTime
-      : null;
+  const profile: LifeOpsOwnerProfile = await readLifeOpsOwnerProfile(runtime);
   return {
-    morningCheckinTime: normalizeTime(morning),
-    nightCheckinTime: normalizeTime(night),
+    morningCheckinTime: normalizeTime(profile.morningCheckinTime),
+    nightCheckinTime: normalizeTime(profile.nightCheckinTime),
   };
 }

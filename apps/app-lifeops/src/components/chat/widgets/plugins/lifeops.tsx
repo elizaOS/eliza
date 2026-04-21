@@ -10,6 +10,7 @@ import { CalendarDays, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "@elizaos/app-core/api";
+import { useApp } from "@elizaos/app-core/state";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";
 
 const GOOGLE_WIDGET_REFRESH_INTERVAL_MS = 15_000;
@@ -23,16 +24,6 @@ function capabilitySet(
 }
 
 function formatGoogleConnectorError(message: string | null): string | null {
-  if (!message) {
-    return null;
-  }
-  const normalized = message.trim().toLowerCase();
-  if (
-    normalized.includes("google connector needs re-authentication") ||
-    normalized.includes("insufficient authentication scopes")
-  ) {
-    return "Reconnect Google to refresh calendar and Gmail permissions.";
-  }
   return message;
 }
 
@@ -93,7 +84,13 @@ function CalendarRow({
   );
 }
 
-function GmailRow({ message }: { message: LifeOpsGmailMessageSummary }) {
+function GmailRow({
+  message,
+  replyNeededLabel,
+}: {
+  message: LifeOpsGmailMessageSummary;
+  replyNeededLabel: string;
+}) {
   return (
     <div className="flex items-center gap-2 px-0.5 py-0.5">
       <span className="min-w-0 flex-1 truncate text-2xs text-txt">
@@ -101,7 +98,7 @@ function GmailRow({ message }: { message: LifeOpsGmailMessageSummary }) {
       </span>
       {message.likelyReplyNeeded ? (
         <span className="shrink-0 text-3xs uppercase tracking-wider text-accent">
-          Reply
+          {replyNeededLabel}
         </span>
       ) : null}
     </div>
@@ -109,6 +106,7 @@ function GmailRow({ message }: { message: LifeOpsGmailMessageSummary }) {
 }
 
 export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
+  const { t } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({
     pollWhileDisconnected: false,
     side: "owner",
@@ -181,7 +179,9 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
         setFeedError(
           cause instanceof Error && cause.message.trim().length > 0
             ? cause.message.trim()
-            : "Google widget feeds failed to refresh.",
+            : t("lifeopsoverview.googleFeedsFailed", {
+                defaultValue: "Google widget feeds failed to refresh.",
+              }),
         );
       }
     })();
@@ -200,9 +200,22 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
     dataStatus?.connected === true && capabilities.has("google.gmail.triage");
   const calendarEvents = calendarFeed?.events ?? [];
   const gmailMessages = gmailFeed?.messages ?? [];
-  const connectorError = formatGoogleConnectorError(
-    ownerConnector.error ?? agentConnector.error ?? feedError ?? null,
-  );
+  const connectorError = useMemo(() => {
+    const message = ownerConnector.error ?? agentConnector.error ?? feedError ?? null;
+    if (!message) {
+      return null;
+    }
+    const normalized = message.trim().toLowerCase();
+    if (
+      normalized.includes("google connector needs re-authentication") ||
+      normalized.includes("insufficient authentication scopes")
+    ) {
+      return t("lifeopsoverview.reconnectGoogle", {
+        defaultValue: "Reconnect Google to refresh calendar and Gmail permissions.",
+      });
+    }
+    return message;
+  }, [agentConnector.error, feedError, ownerConnector.error, t]);
 
   if (!dataStatus?.connected) {
     return null;
@@ -214,10 +227,16 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
         <div className="flex flex-col gap-1">
           <GlanceHeading
             icon={<CalendarDays className="h-3 w-3" />}
-            title="Calendar"
+            title={t("lifeopsoverview.calendar", {
+              defaultValue: "Calendar",
+            })}
           />
           {connectorError ? null : calendarEvents.length === 0 ? (
-            <div className="px-0.5 text-3xs text-muted">No upcoming events</div>
+            <div className="px-0.5 text-3xs text-muted">
+              {t("lifeopsoverview.noUpcomingEvents", {
+                defaultValue: "No upcoming events",
+              })}
+            </div>
           ) : (
             calendarEvents
               .slice(0, GOOGLE_WIDGET_EVENT_LIMIT)
@@ -236,14 +255,28 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
         <div className="flex flex-col gap-1">
           <GlanceHeading
             icon={<Mail className="h-3 w-3" />}
-            title="Inbox"
+            title={t("lifeopsoverview.inbox", {
+              defaultValue: "Inbox",
+            })}
           />
           {connectorError ? null : gmailMessages.length === 0 ? (
-            <div className="px-0.5 text-3xs text-muted">No priority mail</div>
+            <div className="px-0.5 text-3xs text-muted">
+              {t("lifeopsoverview.noPriorityMail", {
+                defaultValue: "No priority mail",
+              })}
+            </div>
           ) : (
             gmailMessages
               .slice(0, GOOGLE_WIDGET_MESSAGE_LIMIT)
-              .map((message) => <GmailRow key={message.id} message={message} />)
+              .map((message) => (
+                <GmailRow
+                  key={message.id}
+                  message={message}
+                  replyNeededLabel={t("lifeopsoverview.replyNeeded", {
+                    defaultValue: "Reply",
+                  })}
+                />
+              ))
           )}
         </div>
       ) : null}

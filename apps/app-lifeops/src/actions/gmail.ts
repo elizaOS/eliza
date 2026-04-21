@@ -1035,6 +1035,9 @@ async function extractGmailPayloadWithLlm(args: {
     searchLikeSubaction
       ? "For this subaction, use queries for sender, subject, keyword, label, and time filters. Use Gmail search syntax even when the user speaks another language."
       : "For this subaction, leave queries, messageId, and replyNeededOnly empty unless the user explicitly provides them.",
+    subaction === "search"
+      ? "When the user asks who emailed them or whether anyone emailed within a time window, emit at least a time-window Gmail query like newer_than:1d instead of leaving queries empty."
+      : "Do not invent sender or time filters that are not supported by the request or recent context.",
     searchLikeSubaction
       ? "If the request already relies on recent context like 'that email' or 'send that reply', leave messageId and queries empty rather than inventing them."
       : "Preserve existing compose-draft fields unless the current user message clearly overrides them.",
@@ -1048,6 +1051,7 @@ async function extractGmailPayloadWithLlm(args: {
     "Examples:",
     ...(searchLikeSubaction
       ? [
+          '  fixed subaction search, request "who emailed me today" -> {"queries":["newer_than:1d"],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
           '  fixed subaction search, request "did Sarah email me this week" -> {"queries":["from:sarah newer_than:7d"],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
           '  fixed subaction needs_response, request "which emails need a reply about venue" -> {"queries":["venue"],"messageId":null,"replyNeededOnly":true,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
           '  fixed subaction read, request "read the latest email from finance" -> {"queries":["from:finance"],"messageId":null,"replyNeededOnly":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
