@@ -1106,6 +1106,10 @@ export class ComputerUseService extends Service {
         return "file_download";
       case "list_downloads":
         return "file_list_downloads";
+      case "list_directory":
+        return "directory_list";
+      default:
+        return `file_${action as string}`;
     }
   }
 
