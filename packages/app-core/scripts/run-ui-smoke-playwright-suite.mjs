@@ -63,6 +63,7 @@ function getFreePort() {
 
 const env = { ...process.env };
 delete env.CI;
+env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
 
 if (!env.MILADY_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();

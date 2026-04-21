@@ -28,6 +28,7 @@ describe("startup integration script drift", () => {
   it("keeps the website blocker smoke scripts wired to real files", () => {
     const startupCommand = expectScript("test:selfcontrol:startup");
     const e2eCommand = expectScript("test:selfcontrol:e2e");
+    const desktopCommand = expectScript("test:live:selfcontrol:desktop");
 
     expect(startupCommand).toContain(
       "eliza/apps/app-lifeops/test/selfcontrol-chat.live.e2e.test.ts",
@@ -38,13 +39,17 @@ describe("startup integration script drift", () => {
     expect(e2eCommand).toContain(
       "eliza/apps/app-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
     );
-    expect(e2eCommand).toContain(
+    expect(e2eCommand).not.toContain(
+      "eliza/apps/app-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
+    );
+    expect(desktopCommand).toContain(
       "eliza/apps/app-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
     );
 
     for (const relativePath of new Set([
       ...extractTestPaths(startupCommand),
       ...extractTestPaths(e2eCommand),
+      ...extractTestPaths(desktopCommand),
     ])) {
       expect(
         fs.existsSync(path.join(repoRoot, relativePath)),
@@ -60,6 +65,7 @@ describe("startup integration script drift", () => {
         [
           "bun run test:selfcontrol:e2e",
           "bun run test:selfcontrol:startup",
+          "bun run test:live:selfcontrol:desktop",
           "bun run test:startup:contract",
         ],
       ],

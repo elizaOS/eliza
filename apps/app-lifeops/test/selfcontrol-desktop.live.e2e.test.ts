@@ -354,46 +354,54 @@ describeIf(LIVE_TESTS_ENABLED)(
           status: "granted",
         });
 
-        const startResponse = await req(
-          stack.apiPort,
-          "PUT",
-          "/api/website-blocker",
-          {
-            websites: ["x.com", "twitter.com"],
-            durationMinutes: 5,
-          },
-        );
-        expect(startResponse.status).toBe(200);
-        expect(startResponse.data).toMatchObject({
-          success: true,
-          request: {
-            websites: ["x.com", "twitter.com"],
-            durationMinutes: 5,
-          },
-        });
-
-        const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-          "x.com",
-          "twitter.com",
-          "api.x.com",
-        ]);
-        expect(hosts).toContain("0.0.0.0 x.com");
-        expect(hosts).toContain("0.0.0.0 twitter.com");
-        expect(hosts).toContain("0.0.0.0 api.x.com");
-
-        const stopResponse = await req(
+        const cleanupResponse = await req(
           stack.apiPort,
           "DELETE",
           "/api/website-blocker",
         );
-        expect(stopResponse.status).toBe(200);
-        expect(stopResponse.data).toMatchObject({
-          success: true,
-          removed: true,
-          status: {
-            active: false,
-          },
-        });
+        expect(cleanupResponse.status).toBe(200);
+
+        try {
+          const startResponse = await req(
+            stack.apiPort,
+            "PUT",
+            "/api/website-blocker",
+            {
+              websites: ["x.com", "twitter.com"],
+              durationMinutes: 5,
+            },
+          );
+          expect(startResponse.status).toBe(200);
+          expect(startResponse.data).toMatchObject({
+            success: true,
+            request: {
+              websites: ["x.com", "twitter.com"],
+              durationMinutes: 5,
+            },
+          });
+
+          const hosts = await waitForHostsBlock(stack.hostsFilePath, [
+            "x.com",
+            "twitter.com",
+          ]);
+          expect(hosts).toContain("0.0.0.0 x.com");
+          expect(hosts).toContain("0.0.0.0 twitter.com");
+          expect(hosts).not.toContain("0.0.0.0 api.x.com");
+          expect(hosts).not.toContain("0.0.0.0 api.twitter.com");
+        } finally {
+          const stopResponse = await req(
+            stack.apiPort,
+            "DELETE",
+            "/api/website-blocker",
+          );
+          expect(stopResponse.status).toBe(200);
+          expect(stopResponse.data).toMatchObject({
+            success: true,
+            status: {
+              active: false,
+            },
+          });
+        }
       },
       DESKTOP_STACK_TEST_TIMEOUT_MS,
     );

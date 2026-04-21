@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
+let lifeOpsAppEnabled = true;
 
 const stubPlugins = [
   {
@@ -53,6 +54,127 @@ const stubPlugins = [
     validationWarnings: [],
     isActive: true,
   },
+];
+
+function stubCatalogApp({
+  name,
+  displayName,
+  description,
+  category = "utility",
+  capabilities = [],
+  heroImage = null,
+}) {
+  return {
+    name,
+    displayName,
+    description,
+    category,
+    launchType: "local",
+    launchUrl: null,
+    icon: null,
+    heroImage,
+    capabilities,
+    stars: 0,
+    repository: "",
+    latestVersion: null,
+    supports: { v0: false, v1: false, v2: true },
+    npm: {
+      package: name,
+      v0Version: null,
+      v1Version: null,
+      v2Version: null,
+    },
+  };
+}
+
+const stubCatalogApps = [
+  stubCatalogApp({
+    name: "@elizaos/app-lifeops",
+    displayName: "LifeOps",
+    description: "Run tasks, reminders, calendar, inbox, and connected workflows.",
+    capabilities: ["lifeops", "tasks", "calendar", "gmail"],
+    heroImage: "/app-heroes/lifeops.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-plugin-viewer",
+    displayName: "Plugin Viewer",
+    description: "Inspect installed plugins, connectors, and runtime feature flags.",
+    capabilities: ["plugins", "connectors", "viewer"],
+    heroImage: "/app-heroes/plugin-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-skills-viewer",
+    displayName: "Skills Viewer",
+    description: "Create, enable, review, and install custom agent skills.",
+    capabilities: ["skills", "viewer"],
+    heroImage: "/app-heroes/skills-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-training",
+    displayName: "Fine Tuning",
+    description: "Build datasets, inspect trajectories, and activate tuned models.",
+    capabilities: ["training", "fine-tuning", "datasets", "models"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-trajectory-viewer",
+    displayName: "Trajectory Viewer",
+    description: "Inspect LLM call history, prompts, and execution traces.",
+    capabilities: ["trajectories", "debug", "viewer"],
+    heroImage: "/app-heroes/trajectory-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-relationship-viewer",
+    displayName: "Relationship Viewer",
+    description: "Explore people, identities, and relationship graphs.",
+    capabilities: ["relationships", "graph", "viewer"],
+    heroImage: "/app-heroes/relationship-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-memory-viewer",
+    displayName: "Memory Viewer",
+    description: "Browse memory, fact, and extraction activity.",
+    capabilities: ["memory", "facts", "viewer"],
+    heroImage: "/app-heroes/memory-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-runtime-debugger",
+    displayName: "Runtime Debugger",
+    description: "Inspect runtime objects, plugin order, providers, and services.",
+    capabilities: ["runtime", "debug", "viewer"],
+    heroImage: "/app-heroes/runtime-debugger.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-database-viewer",
+    displayName: "Database Viewer",
+    description: "Inspect tables, media, vectors, and ad-hoc SQL.",
+    capabilities: ["database", "sql", "viewer"],
+    heroImage: "/app-heroes/database-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-log-viewer",
+    displayName: "Log Viewer",
+    description: "Search runtime and service logs.",
+    capabilities: ["logs", "debug", "viewer"],
+    heroImage: "/app-heroes/log-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-companion",
+    displayName: "Companion",
+    description: "The companion overlay shell for ambient agent presence.",
+    category: "social",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-shopify",
+    displayName: "Shopify",
+    description: "Manage Shopify store operations from the agent workspace.",
+    category: "platform",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-vincent",
+    displayName: "Vincent",
+    description: "Manage Vincent DeFi account access and trading context.",
+    category: "platform",
+  }),
 ];
 
 const stubMemoryStats = {
@@ -812,6 +934,20 @@ const server = http.createServer(async (req, res) => {
 
   if (
     req.method === "GET" &&
+    url.pathname === "/api/local-inference/routing"
+  ) {
+    sendJson(req, res, 200, {
+      registrations: [],
+      preferences: {
+        preferredProvider: {},
+        policy: {},
+      },
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
     url.pathname === "/api/local-inference/installed"
   ) {
     sendJson(req, res, 200, { models: [] });
@@ -957,10 +1093,36 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (
+    req.method === "GET" &&
+    (url.pathname === "/api/lifeops/browser/companions" ||
+      url.pathname === "/api/lifeops/browser/packages")
+  ) {
+    sendJson(req, res, 404, { error: "Not found" });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/app-state") {
+    sendJson(req, res, 200, { enabled: lifeOpsAppEnabled });
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/lifeops/app-state") {
+    const body = (await readJsonBody(req)) || {};
+    lifeOpsAppEnabled = body.enabled === true;
+    sendJson(req, res, 200, { enabled: lifeOpsAppEnabled });
+    return;
+  }
+
+  if (
     req.method === "POST" &&
     url.pathname === "/api/lifeops/activity-signals"
   ) {
     sendJson(req, res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/catalog/apps") {
+    sendJson(req, res, 200, stubCatalogApps);
     return;
   }
 
@@ -1028,7 +1190,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/api/apps/search")) {
-    sendJson(req, res, 200, []);
+    const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+    const results = query
+      ? stubCatalogApps.filter((app) =>
+          [app.name, app.displayName, app.description, app.category]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        )
+      : stubCatalogApps;
+    sendJson(req, res, 200, results);
     return;
   }
 
