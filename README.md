@@ -1,6 +1,7 @@
 <div align="center">
   <img src="apps/elizaokbsc/assets/avatar.png" alt="elizaOK" width="120" height="120" style="border-radius:50%;" />
   <h1>elizaOK</h1>
+  <p><em>Powered by <a href="https://github.com/elizaos/eliza">elizaOS v3.0</a></em></p>
   <p><strong>The Value Layer on BNB Chain</strong></p>
   <p>Alpha discovery, position building, and real value delivery through dedicated vaults &mdash; built on <a href="https://github.com/elizaos/eliza">elizaOS</a>.</p>
 </div>
