@@ -15,13 +15,13 @@
     "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
     "generate:types": "cd packages/@schemas && bunx buf lint && bunx buf generate",
-    "start": "bun run --cwd agent start",
+    "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun packages/app-core/src/entry.ts start",
     "dev": "bun scripts/dev.mjs",
-    "dev:agent": "bun run --cwd agent dev",
-    "harness": "bun run --cwd agent start",
+    "dev:agent": "bun run --cwd packages/agent dev",
+    "harness": "bun run --cwd packages/agent start",
     "dev:core": "bun run --cwd packages/typescript dev",
-    "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd agent start",
+    "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
     "build": "node scripts/run-with-python-shim.mjs turbo run build",
     "build:typescript": "turbo run build --filter=!@elizaos/python --filter=!@elizaos/rust --filter=!@elizaos/computeruse --filter=!@elizaos/computeruse-nodejs --filter=!@elizaos/computeruse-root --filter=!@mediar-ai/workflow",
     "build:client": "turbo run build --filter=@elizaos/client",
@@ -72,7 +72,8 @@
     "plugins/*/typescript",
     "plugins/plugin-sql/typescript",
     "plugins/plugin-ollama/typescript",
-    "plugins/plugin-local-ai/typescript"
+    "plugins/plugin-local-ai/typescript",
+    "cloud/packages/services/billing"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",
