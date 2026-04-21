@@ -64,6 +64,61 @@ export interface LifeOpsWorkflowService {
   ): Promise<LifeOpsWorkflowRun>;
 }
 
+export function matchesCalendarEventEndedFilters(
+  event: LifeOpsCalendarEvent,
+  filters: LifeOpsCalendarEventEndedFilters | undefined,
+): boolean {
+  if (!filters) return true;
+  if (
+    filters.calendarIds &&
+    filters.calendarIds.length > 0 &&
+    !filters.calendarIds.includes(event.calendarId)
+  ) {
+    return false;
+  }
+  if (filters.titleIncludesAny && filters.titleIncludesAny.length > 0) {
+    const title = event.title.toLowerCase();
+    if (
+      !filters.titleIncludesAny.some((needle) =>
+        title.includes(needle.toLowerCase()),
+      )
+    ) {
+      return false;
+    }
+  }
+  if (typeof filters.minDurationMinutes === "number") {
+    const durationMinutes =
+      (Date.parse(event.endAt) - Date.parse(event.startAt)) / 60_000;
+    if (
+      !Number.isFinite(durationMinutes) ||
+      durationMinutes < filters.minDurationMinutes
+    ) {
+      return false;
+    }
+  }
+  if (
+    filters.attendeeEmailIncludesAny &&
+    filters.attendeeEmailIncludesAny.length > 0
+  ) {
+    const attendees = Array.isArray(event.attendees) ? event.attendees : [];
+    const emails = attendees
+      .map((attendee) =>
+        attendee && typeof attendee === "object" && "email" in attendee
+          ? String((attendee as { email?: unknown }).email ?? "").toLowerCase()
+          : "",
+      )
+      .filter(Boolean);
+    if (
+      !filters.attendeeEmailIncludesAny.some((needle) =>
+        emails.some((email) => email.includes(needle.toLowerCase())),
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsWorkflowService> {
