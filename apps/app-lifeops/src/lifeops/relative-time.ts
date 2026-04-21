@@ -72,33 +72,59 @@ function localDayBoundary(args: {
   };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+// How far in the past we tolerate before rolling the target forward by a day.
+// 18h lets a post-midnight "bedtime was ~2h ago" answer survive, while still
+// advancing when the anchor is genuinely stale (e.g. multi-day-old wake).
+const BEDTIME_TARGET_MAX_PAST_MS = 18 * 60 * 60 * 1000;
+// Symmetric ceiling: the target should never be more than a day in the future,
+// otherwise it has rolled to "tomorrow night" when it should be "tonight".
+const BEDTIME_TARGET_MAX_FUTURE_MS = DAY_MS;
+
+/**
+ * Builds a UTC instant for a `typicalSleepHour`-style normalized local hour
+ * (in the canonical [12, 36) range) anchored on the sleep-day that `anchorMs`
+ * belongs to. When no wake anchor is given, the local date of `nowMs` is used.
+ * The result is then rolled ±24h so it represents "tonight's" bedtime relative
+ * to now: not more than ~18h in the past and not more than ~24h in the future.
+ */
 function localHourInstantMs(args: {
   timezone: string;
   nowMs: number;
   normalizedHour: number;
+  anchorMs?: number | null;
 }): number | null {
   if (!Number.isFinite(args.normalizedHour)) {
     return null;
   }
-  const nowParts = getZonedDateParts(new Date(args.nowMs), args.timezone);
+  const anchorParts = getZonedDateParts(
+    new Date(args.anchorMs ?? args.nowMs),
+    args.timezone,
+  );
   const wholeMinutes = Math.round(args.normalizedHour * 60);
   const dayDelta = Math.floor(wholeMinutes / (24 * 60));
   const minuteOfDay = ((wholeMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  for (let extraDays = 0; extraDays <= 2; extraDays += 1) {
-    const date = addDaysToLocalDate(nowParts, dayDelta + extraDays);
-    const candidate = buildUtcDateFromLocalParts(args.timezone, {
-      year: date.year,
-      month: date.month,
-      day: date.day,
-      hour: Math.floor(minuteOfDay / 60),
-      minute: minuteOfDay % 60,
-      second: 0,
-    }).getTime();
-    if (candidate >= args.nowMs - 60_000) {
-      return candidate;
-    }
+  const baseDate = addDaysToLocalDate(anchorParts, dayDelta);
+  let candidate = buildUtcDateFromLocalParts(args.timezone, {
+    year: baseDate.year,
+    month: baseDate.month,
+    day: baseDate.day,
+    hour: Math.floor(minuteOfDay / 60),
+    minute: minuteOfDay % 60,
+    second: 0,
+  }).getTime();
+  // Advance one day at a time until the target is no longer unreasonably far
+  // in the past — this handles stale wake anchors without clobbering a
+  // just-passed bedtime (e.g. 12:56 AM after an 11:30 PM target).
+  for (let step = 0; step < 14; step += 1) {
+    if (candidate >= args.nowMs - BEDTIME_TARGET_MAX_PAST_MS) break;
+    candidate += DAY_MS;
   }
-  return null;
+  for (let step = 0; step < 14; step += 1) {
+    if (candidate <= args.nowMs + BEDTIME_TARGET_MAX_FUTURE_MS) break;
+    candidate -= DAY_MS;
+  }
+  return candidate;
 }
 
 function sourceConfidence(
@@ -141,12 +167,18 @@ export function resolveLifeOpsRelativeTime(args: {
   const wakeAnchorMs = parseIsoMs(wakeAnchorAt);
   const currentSleepStartedMs = parseIsoMs(args.schedule.currentSleepStartedAt);
   const lastSleepStartedMs = parseIsoMs(args.schedule.lastSleepStartedAt);
+  // Anchor the bedtime target on the sleep-day (local date of the wake
+  // instant) rather than the calendar date of `now`. This makes "bedtime was
+  // ~90m ago" the correct answer when the user is up past midnight instead
+  // of flipping to tomorrow night's target.
+  const bedtimeAnchorMs = wakeAnchorMs ?? null;
   const typicalBedtimeMs =
     args.schedule.typicalSleepHour !== null
       ? localHourInstantMs({
           timezone: args.timezone,
           nowMs: args.nowMs,
           normalizedHour: args.schedule.typicalSleepHour,
+          anchorMs: bedtimeAnchorMs,
         })
       : null;
   const fallbackBedtimeMs =
@@ -162,6 +194,7 @@ export function resolveLifeOpsRelativeTime(args: {
             const hour = parts.hour + parts.minute / 60;
             return hour < 12 ? hour + 24 : hour;
           })(),
+          anchorMs: bedtimeAnchorMs,
         })
       : null;
   const bedtimeTargetMs =
