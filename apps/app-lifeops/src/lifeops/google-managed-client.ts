@@ -6,7 +6,7 @@ import type {
   LifeOpsGoogleConnectorReason,
   SendLifeOpsGmailMessageRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,

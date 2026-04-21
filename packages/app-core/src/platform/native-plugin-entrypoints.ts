@@ -4,6 +4,7 @@ import "@elizaos/capacitor-gateway";
 import "@elizaos/capacitor-llama";
 import "@elizaos/capacitor-location";
 import "@elizaos/capacitor-mobile-signals";
+import "@elizaos/capacitor-appblocker";
 import "@elizaos/capacitor-screencapture";
 import "@elizaos/capacitor-swabble";
 import "@elizaos/capacitor-talkmode";

@@ -121,7 +121,6 @@
     "./styles/brand-gold.css": "./src/styles/brand-gold.css",
     "./character-catalog": "./src/character-catalog.ts",
     "./test-support/test-helpers": "./src/test-support/test-helpers.ts",
-    "./test/helpers/*": "./test/helpers/*.ts",
     "./test/live-agent/helpers/*": "./test/live-agent/helpers/*.ts"
   },
   "peerDependencies": {
@@ -149,9 +148,11 @@
     "@elizaos/app-shopify": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@miladyai/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@radix-ui/react-checkbox": "^1.3.3",

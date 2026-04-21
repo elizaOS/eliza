@@ -13,7 +13,7 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "@elizaos/shared/runtime-env";
+} from "../config/runtime-env.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 

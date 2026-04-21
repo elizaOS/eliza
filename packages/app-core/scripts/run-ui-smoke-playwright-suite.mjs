@@ -29,20 +29,14 @@ const nodeCmd =
       ? "node.exe"
       : "node";
 
-const specGroups = [
-  [
-    "test/ui-smoke/apps-session.spec.ts",
-    "test/ui-smoke/browser-workspace.spec.ts",
-    "test/ui-smoke/titlebar-navigation.spec.ts",
-  ],
-  // ui-smoke.spec.ts, settings-chat-companion.spec.ts, computer-use.spec.ts
-  // expect settings-shell testId + specific capability toggles that have been
-  // refactored in the settings UI. They need to be updated to match the new
-  // UI structure (capability controls moved, switch interaction timing
-  // changed). Excluded from CI smoke until the test expectations are refreshed
-  // — tracked separately since fixing each needs per-test UI investigation
-  // that's out of scope for the module-resolution/build CI fix pass.
-  ["test/ui-smoke/cloud-wallet-import.spec.ts"],
+const specFiles = [
+  "test/ui-smoke/apps-session.spec.ts",
+  "test/ui-smoke/apps-session-direct-a.spec.ts",
+  "test/ui-smoke/apps-session-direct-b.spec.ts",
+  "test/ui-smoke/browser-workspace.spec.ts",
+  "test/ui-smoke/cloud-wallet-import.spec.ts",
+  "test/ui-smoke/ui-smoke.spec.ts",
+  "test/ui-smoke/settings-chat-companion.spec.ts",
 ];
 
 function getFreePort() {
@@ -87,10 +81,15 @@ env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.MILADY_UI_SMOKE_PORT;
 env.MILADY_PORT = env.MILADY_PORT || env.MILADY_UI_SMOKE_PORT;
 env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
 
-for (const specs of specGroups) {
+for (const spec of specFiles) {
   const result = spawnSync(
     nodeCmd,
-    [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", ...specs],
+    [
+      uiPlaywrightRunner,
+      "--config",
+      "playwright.ui-smoke.config.ts",
+      spec,
+    ],
     {
       cwd: repoRoot,
       env,

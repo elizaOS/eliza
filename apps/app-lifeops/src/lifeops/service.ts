@@ -37,58 +37,19 @@ import { withX } from "./service-mixin-x.js";
 import { withXRead } from "./service-mixin-x-read.js";
 
 /**
- * Main LifeOps service — assembled from domain mixins layered on top of
- * {@link LifeOpsServiceBase}.
- *
  * Mixin order follows dependency direction: Google auth → data layers
  * (Calendar, Gmail, Drive) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-export class LifeOpsServiceComposedBase extends withStatus(
-  withUnifiedInbox(
-    withHealth(
-      withDossier(
-        withScheduling(
-          withScreenTime(
-            withWhatsApp(
-              withRelationships(
-                withIMessage(
-                  withSignal(
-                    withDiscord(
-                      withTelegram(
-                        withXRead(
-                          withX(
-                            withGoals(
-                              withDefinitions(
-                                withWorkflows(
-                                  withSubscriptions(
-                                    withEmailUnsubscribe(
-                                      withBrowser(
-                                        withReminders(
-                                          withGmail(
-                                            withDrive(
-                                              withTravel(
-                                                withCalendar(
-                                                  withGoogle(
-                                                    LifeOpsServiceBase,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+class LifeOpsServiceComposed extends withX(
+  withGoals(
+    withDefinitions(
+      withWorkflows(
+        withBrowser(
+          withReminders(
+            withGmail(
+              withCalendar(
+                withGoogle(LifeOpsServiceBase),
               ),
             ),
           ),
@@ -98,4 +59,8 @@ export class LifeOpsServiceComposedBase extends withStatus(
   ),
 ) {}
 
-export class LifeOpsService extends LifeOpsServiceComposedBase {}
+/**
+ * Main LifeOps service — assembled from domain mixins layered on top of
+ * {@link LifeOpsServiceBase}.
+ */
+export class LifeOpsService extends LifeOpsServiceComposed {}

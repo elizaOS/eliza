@@ -166,17 +166,6 @@ async function persistOnboardingStyleVoice(args: {
   });
 }
 
-async function ensureOnboardedAgentRunning(
-  clientRef: ElizaClient,
-): Promise<void> {
-  const status = await clientRef.startAndWait(120_000);
-  if (status.state !== "running") {
-    throw new Error(
-      `Agent failed to reach running state after onboarding (state: ${status.state}).`,
-    );
-  }
-}
-
 export function buildOnboardingFeatureSubmitPayload(args: {
   onboardingFeatureTelegram: boolean;
   onboardingFeatureDiscord: boolean;

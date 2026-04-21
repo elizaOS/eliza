@@ -27,21 +27,29 @@ export const browserAction: Action = {
   description:
     "Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript, waits for conditions, and manages tabs.\n\n" +
     "Available actions:\n" +
-    "- open / connect: start or attach to the browser, optionally at a URL.\n" +
-    "- close: close the browser.\n" +
-    "- navigate: visit a URL.\n" +
-    "- click: click by selector, viewport coordinate, or visible text.\n" +
-    "- type: type text, optionally targeting a selector.\n" +
-    "- scroll: scroll the page.\n" +
-    "- screenshot: capture the browser viewport.\n" +
-    "- dom / get_dom: return page HTML.\n" +
-    "- clickables / get_clickables: list likely interactive elements.\n" +
-    "- execute: run JavaScript in the page context.\n" +
-    "- state / info / context: inspect browser state.\n" +
-    "- wait: wait for a selector, text, or timeout.\n" +
-    "- list_tabs / open_tab / close_tab / switch_tab: manage tabs.\n\n" +
-    "Why this exists: it gives the agent structured browser control without requiring raw desktop coordinates for every web interaction.",
-  descriptionCompressed: "Browser control: navigate, click, type, scroll, screenshot, DOM, JS exec, tabs.",
+    "- open: Launch browser, optionally navigate to url.\n" +
+    "- connect: Alias for open.\n" +
+    "- close: Close the browser.\n" +
+    "- navigate: Go to a URL. Requires url.\n" +
+    "- click: Click an element by CSS selector, coordinates, or text content.\n" +
+    "- type: Type text, optionally into a specific element by selector.\n" +
+    "- scroll: Scroll the page up or down. Optional direction and amount (pixels).\n" +
+    "- screenshot: Capture the browser viewport as a PNG.\n" +
+    "- dom: Get the first 5000 characters of page HTML.\n" +
+    "- get_dom: Alias for dom.\n" +
+    "- clickables: List up to 50 interactive elements (links, buttons, inputs) with selectors.\n" +
+    "- get_clickables: Alias for clickables.\n" +
+    "- execute: Run JavaScript code in the page context.\n" +
+    "- state: Get the current page URL and title.\n" +
+    "- info: Report whether the browser is open and its current page metadata.\n" +
+    "- context/get_context: Alias for the current page URL and title.\n" +
+    "- wait: Wait for a selector or text to appear.\n" +
+    "- list_tabs: List all open tabs.\n" +
+    "- open_tab: Open a new tab, optionally navigate to url.\n" +
+    "- close_tab: Close a tab by tabId.\n" +
+    "- switch_tab: Switch to a tab by tabId.\n\n" +
+    "Start by opening the browser, then navigate and interact. Use 'clickables' to discover interactive elements.",
+
   parameters: [
     {
       name: "action",
@@ -50,27 +58,10 @@ export const browserAction: Action = {
       schema: {
         type: "string",
         enum: [
-          "open",
-          "connect",
-          "close",
-          "navigate",
-          "click",
-          "type",
-          "scroll",
-          "screenshot",
-          "dom",
-          "get_dom",
-          "clickables",
-          "get_clickables",
-          "execute",
-          "state",
-          "info",
-          "context",
-          "wait",
-          "list_tabs",
-          "open_tab",
-          "close_tab",
-          "switch_tab",
+          "open", "connect", "close", "navigate", "click", "type", "scroll",
+          "screenshot", "dom", "get_dom", "clickables", "get_clickables", "execute", "state", "info",
+          "context", "get_context", "wait",
+          "list_tabs", "open_tab", "close_tab", "switch_tab",
         ],
       },
     },
@@ -123,22 +114,10 @@ export const browserAction: Action = {
       schema: { type: "string" },
     },
     {
-      name: "tab_index",
-      description: "Upstream alias for tabId/index.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "index",
-      description: "Upstream alias for tabId/tab_index.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
       name: "timeout",
-      description: "Timeout in milliseconds for wait.",
+      description: "Timeout in milliseconds for wait actions.",
       required: false,
-      schema: { type: "number" },
+      schema: { type: "number", default: 5000 },
     },
   ],
   validate: async (
@@ -176,23 +155,31 @@ export const browserAction: Action = {
     const result = await service.executeBrowserAction(params);
 
     if (callback) {
-      await callback({
-        text: result.success
-          ? result.content ?? result.message ?? "Browser action completed."
-          : `Browser action failed: ${result.error}`,
-        ...(result.screenshot
-          ? {
-              attachments: [
-                buildScreenshotAttachment({
-                  idPrefix: "browser-screenshot",
-                  screenshot: result.screenshot,
-                  title: "Browser Screenshot",
-                  description: "Browser viewport capture",
-                }),
-              ],
-            }
-          : {}),
-      });
+      if (result.screenshot) {
+        await callback({
+          text: result.content ?? "Browser screenshot captured.",
+          attachments: [
+            {
+              id: `browser-screenshot-${Date.now()}`,
+              url: `data:image/png;base64,${result.screenshot}`,
+              title: "Browser Screenshot",
+              source: "computeruse",
+              description: "Browser viewport capture",
+              contentType: "image" as const,
+            },
+          ],
+        });
+      } else {
+        await callback({
+          text: result.success
+            ? result.content ?? "Browser action completed."
+            : result.permissionDenied
+              ? `Browser action failed because ${result.permissionType} permission is missing.`
+              : result.approvalRequired
+                ? `Browser action is waiting for approval (${result.approvalId}).`
+                : `Browser action failed: ${result.error}`,
+        });
+      }
     }
 
     return result as unknown as any;

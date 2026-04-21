@@ -1452,7 +1452,7 @@ function commandExists(cmd: string): boolean {
   }
 }
 
-function sendJson(res: ServerResponse, status: number, data: object): void {
+function sendJson(res: ServerResponse, status: number, data: unknown): void {
   sendJsonResponse(res, data, status);
 }
 

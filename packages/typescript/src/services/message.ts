@@ -969,7 +969,18 @@ type ResolvedMessageOptions = {
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
+	onBeforeActionExecution?: MessageProcessingOptions["onBeforeActionExecution"];
 };
+
+async function invokeOnBeforeActionExecution(
+	opts: ResolvedMessageOptions,
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<void> {
+	if (opts.onBeforeActionExecution) {
+		await opts.onBeforeActionExecution({ runtime, message });
+	}
+}
 
 function normalizeShouldRespondModelType(
 	value: unknown,
@@ -2720,6 +2731,7 @@ export class DefaultMessageService implements IMessageService {
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
+					onBeforeActionExecution: options?.onBeforeActionExecution,
 				};
 
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
@@ -3570,20 +3582,7 @@ export class DefaultMessageService implements IMessageService {
 					}
 					pendingSimpleEmit = responseContent;
 				} else if (mode === "actions") {
-					// Surface the planner's text before action handlers run, so the
-					// user sees the agent's plan rather than silence. The full
-					// responseContent is already persisted as a memory above.
-					if (
-						callback &&
-						!isBenchmarkMode(state) &&
-						shouldEmitPlannerPreamble(runtime, responseContent)
-					) {
-						await callback({
-							...responseContent,
-							actions: [],
-						});
-					}
-
+					await invokeOnBeforeActionExecution(opts, runtime, message);
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
 					await runtime.processActions(
 						message,
@@ -4767,6 +4766,7 @@ export class DefaultMessageService implements IMessageService {
 				break;
 			}
 
+			await invokeOnBeforeActionExecution(opts, runtime, message);
 			await runtime.processActions(
 				message,
 				continuation.responseMessages,
@@ -4958,6 +4958,7 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
+		await invokeOnBeforeActionExecution(opts, runtime, message);
 		await runtime.processActions(
 			message,
 			continuation.responseMessages,
@@ -6418,6 +6419,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					actionContent.params = parsedStep.params;
 				}
 
+				await invokeOnBeforeActionExecution(opts, runtime, message);
 				await runtime.processActions(
 					message,
 					[

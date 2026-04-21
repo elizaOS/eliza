@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../../api";
 import type { WorkbenchTodo } from "../../../../api/client-types-config";
 import { useApp } from "../../../../state";
+import type { TranslateFn } from "../../../../types";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -13,10 +14,8 @@ import type {
 const TODO_REFRESH_INTERVAL_MS = 15_000;
 const MAX_VISIBLE_TODOS = 8;
 
-const fallbackTranslate = (
-  key: string,
-  vars?: { defaultValue?: string },
-): string => vars?.defaultValue ?? key;
+const fallbackTranslate: TranslateFn = (key, vars) =>
+  typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
 
 function sortTodosForWidget(todos: WorkbenchTodo[]): WorkbenchTodo[] {
   return [...todos].sort((left, right) => {

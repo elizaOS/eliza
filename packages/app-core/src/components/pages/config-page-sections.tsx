@@ -14,7 +14,8 @@ import {
   type JsonSchemaObject,
 } from "../../config";
 import { useApp } from "../../state";
-import type { ConfigUiHint } from "../../types";
+import type { ConfigUiHint, TranslateFn as AppTranslateFn } from "../../types";
+import { Button, Switch } from "@elizaos/ui";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -25,7 +26,7 @@ export type RpcProviderOption<T extends string> = {
 
 export type TranslateOptions = Record<string, unknown>;
 
-export type TranslateFn = (key: string, options?: TranslateOptions) => string;
+export type TranslateFn = AppTranslateFn;
 
 export type RpcFieldDefinition = {
   configKey: string;

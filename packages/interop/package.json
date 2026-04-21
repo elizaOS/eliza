@@ -20,9 +20,10 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "vitest run --pool=threads",
+    "test": "bun run test:ts && bun run test:python",
+    "test:ts": "vitest run --pool=threads",
     "test:watch": "vitest --pool=threads",
-    "test:python": "cd python && tmpdir=$(mktemp -d) && python3 -m venv \"$tmpdir\" && \"$tmpdir/bin/python\" -m pip install -e ../python -e '.[dev]' -q && \"$tmpdir/bin/python\" -m pytest tests/ -v -p no:anchorpy --asyncio-mode=auto; status=$?; rm -rf \"$tmpdir\"; exit $status",
+    "test:python": "if [ -d python ]; then cd python && tmpdir=$(mktemp -d) && python3 -m venv \"$tmpdir\" && \"$tmpdir/bin/python\" -m pip install -e ../../python pytest pytest-asyncio -q && PYTHONPATH=. \"$tmpdir/bin/python\" -m pytest tests/ -v -p no:anchorpy --asyncio-mode=auto; status=$?; rm -rf \"$tmpdir\"; exit $status; else echo 'Python tests skipped - no python directory'; fi",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"

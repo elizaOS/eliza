@@ -3,6 +3,8 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+
+import "./components/chat/chat-source-registration";
 import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 import {
   Button,
@@ -12,7 +14,6 @@ import {
   DrawerSheetTitle,
   ErrorBoundary,
 } from "@elizaos/ui";
-import { MessagesSquare } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -37,6 +38,10 @@ import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 import { ChatView } from "./components/pages/ChatView";
 import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
+import {
+  HeartbeatsDesktopShell,
+  HeartbeatsView,
+} from "./components/pages/HeartbeatsView";
 import { InventoryView } from "./components/pages/InventoryView";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";

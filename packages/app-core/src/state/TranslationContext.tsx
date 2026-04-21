@@ -23,8 +23,7 @@ import { loadUiLanguage, saveUiLanguage } from "./persistence";
 
 export interface TranslationContextValue {
   /** Translate a key, optionally with interpolation values. */
-  // biome-ignore lint/suspicious/noExplicitAny: translation interpolation values are intentionally open-ended.
-  t: (key: string, values?: Record<string, any>) => string;
+  t: (key: string, values?: Record<string, unknown>) => string;
   uiLanguage: UiLanguage;
   /** Change the UI language. Persists to localStorage and syncs to server. */
   setUiLanguage: (language: UiLanguage) => void;

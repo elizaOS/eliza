@@ -3,9 +3,8 @@
  *
  * Handles all /api/workbench/todos routes backed by AgentRuntime tasks.
  */
-import type http from "node:http";
-import { WORKBENCH_TODO_TAG } from "@elizaos/agent/api/workbench-helpers";
-import { type AgentRuntime, logger } from "@elizaos/core";
+import http from "node:http";
+import { type AgentRuntime, logger, type Task } from "@elizaos/core";
 import { ensureCompatApiAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
@@ -37,9 +36,7 @@ function asCompatObject(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function readCompatTaskMetadata(
-  task: Record<string, unknown>,
-): Record<string, unknown> {
+function readCompatTaskMetadata(task: Task): Record<string, unknown> {
   return asCompatObject(task.metadata) ?? {};
 }
 
@@ -71,7 +68,7 @@ function parseCompatNullableNumber(value: unknown): number | null {
   return null;
 }
 
-function readCompatTaskCompleted(task: Record<string, unknown>): boolean {
+function readCompatTaskCompleted(task: Task): boolean {
   const metadata = readCompatTaskMetadata(task);
 
   if (typeof metadata.isCompleted === "boolean") {
@@ -100,7 +97,7 @@ function normalizeCompatTodoTags(value: unknown, defaults: string[]): string[] {
 }
 
 function toTaskBackedWorkbenchTodo(
-  task: Record<string, unknown> | null | undefined,
+  task: Task | null | undefined,
 ): WorkbenchTodoResponse | null {
   if (!task) {
     return null;
@@ -195,12 +192,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
 
   let operation = "route";
   try {
-    const getTaskList = async () =>
-      (
-        (await runtime.getTasks({})) as unknown as Array<
-          Record<string, unknown>
-        >
-      ).map((task) => task as Record<string, unknown>);
+    const getTaskList = async (): Promise<Task[]> => await runtime.getTasks({});
 
     if (method === "GET" && pathname === "/api/workbench/todos") {
       operation = "list todos";
@@ -251,9 +243,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
 
       operation = "load created todo";
       const created = await runtime.getTask(taskId);
-      const todo = toTaskBackedWorkbenchTodo(
-        created as Record<string, unknown> | null,
-      );
+      const todo = toTaskBackedWorkbenchTodo(created);
       if (!todo) {
         sendJsonErrorResponse(res, 500, "Todo created but unavailable");
         return true;
@@ -277,10 +267,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
       }
 
       operation = "load todo for completion";
-      const todoTask = (await runtime.getTask(todoId)) as Record<
-        string,
-        unknown
-      > | null;
+      const todoTask = await runtime.getTask(todoId);
       const todo = toTaskBackedWorkbenchTodo(todoTask);
       if (!todoTask || !todo) {
         sendJsonErrorResponse(res, 404, "Todo not found");
@@ -320,10 +307,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
 
     if (method === "GET") {
       operation = "load todo";
-      const todoTask = (await runtime.getTask(todoId)) as Record<
-        string,
-        unknown
-      > | null;
+      const todoTask = await runtime.getTask(todoId);
       const todo = toTaskBackedWorkbenchTodo(todoTask);
       if (!todoTask || !todo) {
         sendJsonErrorResponse(res, 404, "Todo not found");
@@ -336,10 +320,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
 
     if (method === "DELETE") {
       operation = "load todo for deletion";
-      const todoTask = (await runtime.getTask(todoId)) as Record<
-        string,
-        unknown
-      > | null;
+      const todoTask = await runtime.getTask(todoId);
       if (!todoTask || !toTaskBackedWorkbenchTodo(todoTask)) {
         sendJsonErrorResponse(res, 404, "Todo not found");
         return true;
@@ -358,10 +339,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
       }
 
       operation = "load todo for update";
-      const todoTask = (await runtime.getTask(todoId)) as Record<
-        string,
-        unknown
-      > | null;
+      const todoTask = await runtime.getTask(todoId);
       const existingTodo = toTaskBackedWorkbenchTodo(todoTask);
       if (!todoTask || !existingTodo) {
         sendJsonErrorResponse(res, 404, "Todo not found");
@@ -421,9 +399,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
 
       operation = "load updated todo";
       const refreshed = await runtime.getTask(todoId);
-      const todo = toTaskBackedWorkbenchTodo(
-        refreshed as Record<string, unknown> | null,
-      );
+      const todo = toTaskBackedWorkbenchTodo(refreshed);
       if (!todo) {
         sendJsonErrorResponse(res, 500, "Todo updated but unavailable");
         return true;

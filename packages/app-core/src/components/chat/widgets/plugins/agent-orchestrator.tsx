@@ -26,7 +26,8 @@ import { client } from "../../../../api";
 import type { AppRunSummary } from "../../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../../hooks/useActivityEvents";
 import { useApp } from "../../../../state";
-import { getRunAttentionReasons } from "../../../apps/run-attention";
+import type { TranslateFn } from "../../../../types";
+import { getRunAttentionReasons } from "../../../apps/RunningAppsPanel";
 import { EmptyWidgetState, WidgetSection } from "../shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -133,10 +134,8 @@ const EVENT_TYPE_META: Record<string, EventTypeMeta> = {
   },
 };
 
-const fallbackTranslate = (
-  key: string,
-  vars?: { defaultValue?: string },
-): string => vars?.defaultValue ?? key;
+const fallbackTranslate: TranslateFn = (key, vars) =>
+  typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
 
 function formatIsoTime(value?: string | null): string {
   if (!value) return "unknown";

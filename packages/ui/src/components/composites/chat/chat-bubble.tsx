@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import { getChatSourceMeta } from "./chat-source";
+import { getChatSourceMeta, normalizeChatSourceKey } from "./chat-source";
 
 export type ChatBubbleTone = "assistant" | "user";
 
@@ -22,10 +22,7 @@ export function ChatBubble({
   className,
   ...props
 }: ChatBubbleProps) {
-  const normalizedSource =
-    typeof source === "string" && source.trim().toLowerCase() !== "app"
-      ? source
-      : undefined;
+  const normalizedSource = normalizeChatSourceKey(source) ?? undefined;
   const sourceBorderClass = normalizedSource
     ? getChatSourceMeta(normalizedSource).borderClassName
     : null;

@@ -30,7 +30,7 @@ export interface ApprovedAddressEntry {
 }
 
 export interface ApprovedAddressesConfig {
-  addresses: string[];
+  addresses: Array<string | ApprovedAddressEntry>;
   labels?: Record<string, string>;
   mode: "whitelist" | "blacklist";
 }

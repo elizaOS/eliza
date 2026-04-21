@@ -12,14 +12,8 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared/contracts/lifeops";
-import type {
-  StewardApprovalActionResponse,
-  StewardPendingApproval,
-  StewardTxRecord,
-} from "@elizaos/app-steward/types/steward";
-import type { ComponentType, ReactNode } from "react";
-import type { CodingAgentSession } from "../api/client-types-cloud";
+} from "@elizaos/app-lifeops/types";
+import type { ComponentType } from "react";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
@@ -392,7 +386,6 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
 const mirroredBrandKeys = new Set<string>();
 const mirroredElizaKeys = new Set<string>();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getProcessEnv = (): Record<string, string | undefined> | null => {
   try {
     // In Node/Bun, process.env is available. In browsers it isn't.

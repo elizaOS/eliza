@@ -134,8 +134,10 @@ function platformCopy(platform: string | null | undefined): PlatformCopy {
 
 function MobilePermissionsView() {
   const { t } = useApp();
-  const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
-    useBootConfig();
+  const {
+    appBlockerSettingsCard: AppBlockerSettingsCard,
+    websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
+  } = useBootConfig();
   return (
     <div className="space-y-6">
       <StreamingPermissionsSettingsView
@@ -149,6 +151,7 @@ function MobilePermissionsView() {
             "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
         })}
       />
+      {AppBlockerSettingsCard ? <AppBlockerSettingsCard mode="mobile" /> : null}
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
       ) : null}

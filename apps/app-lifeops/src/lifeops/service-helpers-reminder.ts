@@ -7,14 +7,14 @@ import type {
   LifeOpsReminderPlan,
   LifeOpsReminderPreferenceSetting,
   LifeOpsReminderUrgency,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_REMINDER_INTENSITIES,
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   requireNonEmptyString,
   normalizeOptionalString,

@@ -11,7 +11,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StewardVaultOverview } from "./StewardVaultOverview";
 
-vi.mock("@miladyai/ui", () => ({
+vi.mock("@elizaos/ui", () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...props}>
       {children}

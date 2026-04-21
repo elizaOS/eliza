@@ -30,19 +30,34 @@ import { detectEmbeddingPreset } from "./embedding-presets.js";
 // to prevent bundlers from hoisting the dynamic import to a static one.
 // The native module must remain a runtime-only import for desktop packaging.
 
-// biome-ignore lint/suspicious/noExplicitAny: dynamic llama.cpp import types
-type LlamaInstance = any;
-// biome-ignore lint/suspicious/noExplicitAny: dynamic llama.cpp import types
-type LlamaModelInstance = any;
-// biome-ignore lint/suspicious/noExplicitAny: dynamic llama.cpp import types
-type LlamaEmbeddingContextInstance = any;
+/** Structural type for the Llama runtime instance from node-llama-cpp. */
+interface LlamaInstance {
+  loadModel(opts: {
+    modelPath: string;
+    gpuLayers?: number | "auto" | "max";
+  }): Promise<LlamaModelInstance>;
+}
+
+/** Structural type for a loaded model from node-llama-cpp. */
+interface LlamaModelInstance {
+  createEmbeddingContext(): Promise<LlamaEmbeddingContextInstance>;
+  dispose(): Promise<void>;
+}
+
+/** Structural type for an embedding context from node-llama-cpp. */
+interface LlamaEmbeddingContextInstance {
+  getEmbeddingFor(input: string): Promise<{ vector: number[] }>;
+  dispose(): Promise<void>;
+}
 
 /**
  * Dynamically import node-llama-cpp at runtime.
  * Uses indirection to prevent bundlers from converting to static import.
  */
-// biome-ignore lint/suspicious/noExplicitAny: dynamic llama.cpp import types
-async function importNodeLlamaCpp(): Promise<any> {
+async function importNodeLlamaCpp(): Promise<{
+  getLlama(opts?: Record<string, unknown>): Promise<LlamaInstance>;
+  LlamaLogLevel: Record<string, unknown>;
+}> {
   // The string concatenation prevents static analysis by bundlers
   const moduleName = ["node", "llama", "cpp"].join("-");
   return import(moduleName);

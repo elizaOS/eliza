@@ -141,6 +141,9 @@ function createParams() {
 describe("useWalletState cloud wallet import", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    persistenceMock.loadBrowserEnabled.mockReturnValue(false);
+    persistenceMock.loadComputerUseEnabled.mockReturnValue(false);
+    persistenceMock.loadWalletEnabled.mockReturnValue(true);
     clientMock.updateWalletConfig.mockResolvedValue({ ok: true });
     clientMock.refreshCloudWallets.mockResolvedValue(
       createRefreshCloudWalletsResponse(),

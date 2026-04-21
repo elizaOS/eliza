@@ -79,8 +79,7 @@ import {
 } from "lucide-react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import type { JsonSchemaObject } from "../../config";
-import type { useApp } from "../../state";
-import type { ConfigUiHint } from "../../types";
+import type { ConfigUiHint, TranslateFn as AppTranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { autoLabel } from "../../utils/labels";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
@@ -534,7 +533,7 @@ export function iconImageSource(icon: string): string | null {
   return null;
 }
 
-export type TranslateFn = ReturnType<typeof useApp>["t"];
+export type TranslateFn = AppTranslateFn;
 
 function resolvePluginParamValue(
   plugin: Pick<PluginInfo, "parameters">,

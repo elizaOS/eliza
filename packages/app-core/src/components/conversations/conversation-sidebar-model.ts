@@ -1,4 +1,8 @@
 import { normalizeConnectorSource } from "@elizaos/shared/connectors";
+import type * as React from "react";
+
+import type { Conversation } from "../../api/client-types-chat";
+import type { TranslateFn } from "../../types";
 import { getChatSourceMeta } from "@elizaos/ui";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
@@ -20,11 +24,6 @@ const MAX_DAY_BUCKET_RANK = 10_000_000;
 const MAX_WEEK_BUCKET_RANK = 9_000_000;
 const MAX_MONTH_BUCKET_RANK = 8_000_000;
 const MAX_YEAR_BUCKET_RANK = 7_000_000;
-
-type TranslateFn = (
-  key: string,
-  options?: { defaultValue?: string } & Record<string, unknown>,
-) => string;
 
 export interface InboxChatSidebarRow {
   avatarUrl?: string;

@@ -2,7 +2,8 @@
  * @elizaos/plugin-computeruse
  *
  * Desktop automation plugin for elizaOS agents — screenshots, mouse/keyboard
- * control, browser CDP automation, and window management.
+ * control, browser CDP automation, terminal access, file operations, and
+ * window management.
  *
  * Deeply ported from coasty-ai/open-computer-use (Apache 2.0).
  *
@@ -32,8 +33,7 @@ export const computerUsePlugin: Plugin = {
   name: "@elizaos/plugin-computeruse",
   description:
     "Desktop automation — take screenshots, control mouse and keyboard, " +
-    "automate web browsers via CDP, manage desktop windows, read/write files, " +
-    "and execute terminal commands. " +
+    "automate web browsers via CDP, manage desktop windows, read/write files, and use a local terminal. " +
     "Ported from open-computer-use (Apache 2.0).",
 
   // biome-ignore lint/suspicious/noExplicitAny: ElizaOS Plugin type expects Service[] but our class uses static start()
@@ -68,10 +68,17 @@ export type {
   BrowserActionParams,
   WindowActionType,
   WindowActionParams,
+  FileActionType,
+  FileActionParams,
+  TerminalActionType,
+  TerminalActionParams,
   ComputerActionResult,
   BrowserActionResult,
   WindowActionResult,
+  FileActionResult,
+  TerminalActionResult,
   WindowInfo,
+  FileEntry,
   ScreenRegion,
   ScreenSize,
   PlatformCapabilities,
@@ -80,7 +87,11 @@ export type {
   ApprovalResolution,
   ApprovalSnapshot,
   ComputerUseConfig,
+  ComputerUseResult,
+  PermissionType,
+  ApprovalMode,
   BrowserState,
+  BrowserInfo,
   ClickableElement,
   BrowserTab,
   PendingApproval,

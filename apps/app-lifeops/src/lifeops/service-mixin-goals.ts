@@ -20,12 +20,12 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_GOAL_STATUSES,
   LIFEOPS_GOAL_SUGGESTION_KINDS,
   LIFEOPS_REVIEW_STATES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,
@@ -74,79 +74,33 @@ import {
   MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
 } from "./service-constants.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-const GOAL_EXPERIENCE_STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "with",
-  "that",
-  "this",
-  "from",
-  "your",
-  "want",
-  "goal",
-  "another",
-  "quarter",
-  "month",
-  "year",
-]);
-
-function stableUnique<T>(values: readonly T[]): T[] {
-  return [...new Set(values)];
+export interface LifeOpsGoalService {
+  deleteGoal(goalId: string): Promise<void>;
+  listGoals(): Promise<LifeOpsGoalRecord[]>;
+  getGoal(goalId: string): Promise<LifeOpsGoalRecord>;
+  createGoal(request: CreateLifeOpsGoalRequest): Promise<LifeOpsGoalRecord>;
+  updateGoal(
+    goalId: string,
+    request: UpdateLifeOpsGoalRequest,
+  ): Promise<LifeOpsGoalRecord>;
+  reviewGoal(goalId: string, now?: Date): Promise<LifeOpsGoalReview>;
+  explainOccurrence(
+    occurrenceId: string,
+  ): Promise<LifeOpsOccurrenceExplanation>;
+  getOverview(now?: Date): Promise<LifeOpsOverview>;
+  listChannelPolicies(): Promise<LifeOpsChannelPolicy[]>;
 }
 
-function tokenizeGoalText(value: string | null | undefined): string[] {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return [];
-  }
-  return stableUnique(
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter(
-        (token) =>
-          token.length >= 2 &&
-          !GOAL_EXPERIENCE_STOP_WORDS.has(token) &&
-          !/^\d{4}$/.test(token),
-      ),
-  );
-}
-
-function buildGoalSimilarityTokens(args: {
-  title: string;
-  description?: string | null;
-  successCriteria?: Record<string, unknown> | null;
-}): string[] {
-  return stableUnique([
-    ...tokenizeGoalText(args.title),
-    ...tokenizeGoalText(args.description ?? ""),
-    ...tokenizeGoalText(
-      args.successCriteria ? JSON.stringify(args.successCriteria) : "",
-    ),
-  ]);
-}
-
-/** @internal */
-export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  class LifeOpsGoalsServiceMixin extends Base {
-    async inspectSchedule(args?: {
-      now?: Date;
-      timezone?: string | null;
-    }) {
-      return inspectLifeOpsSchedule({
-        runtime: this.runtime,
-        repository: this.repository,
-        agentId: this.agentId(),
-        timezone:
-          normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone(),
-        now: args?.now,
-      });
-    }
-
+export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsGoalService> {
+  return class extends Base {
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -1358,7 +1312,5 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  }
-
-  return LifeOpsGoalsServiceMixin;
+  } as MixinClass<TBase, LifeOpsGoalService>;
 }

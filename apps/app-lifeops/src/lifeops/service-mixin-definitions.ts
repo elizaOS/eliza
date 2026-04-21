@@ -8,59 +8,87 @@ import type {
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { createLifeOpsTaskDefinition } from "./repository.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeOptionalString,
+  normalizeValidTimeZone,
+  normalizePriority,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import {
+  normalizeCadence,
+  normalizeWebsiteAccessPolicy,
+  normalizeProgressionRule,
+} from "./service-normalize-task.js";
+import {
+  normalizeWindowPolicyInput,
+} from "./service-normalize-connector.js";
+import {
+  normalizeOptionalRecord,
+  mergeMetadata,
+  normalizeReminderPlanDraft,
+  cloneRecord,
+  computeSnoozedUntil,
+} from "./service-helpers-misc.js";
+import {
+  computeDefinitionPerformance,
+} from "./service-helpers-occurrence.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   ROUTINE_SEED_TEMPLATES,
   type RoutineSeedTemplate,
 } from "./seed-routines.js";
-import {
-  cloneRecord,
-  computeSnoozedUntil,
-  mergeMetadata,
-  normalizeOptionalRecord,
-  normalizeReminderPlanDraft,
-} from "./service-helpers-misc.js";
-import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import {
-  fail,
-  normalizeEnumValue,
-  normalizeOptionalString,
-  normalizePriority,
-  normalizeValidTimeZone,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import { normalizeWindowPolicyInput } from "./service-normalize-connector.js";
-import {
-  normalizeCadence,
-  normalizeProgressionRule,
-  normalizeWebsiteAccessPolicy,
-} from "./service-normalize-task.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
-
-function resolveRoutineSeedKey(
-  metadata: Record<string, unknown> | null | undefined,
-): string | null {
-  const seedKey = metadata?.seedKey;
-  return typeof seedKey === "string" && seedKey.length > 0 ? seedKey : null;
+export interface LifeOpsDefinitionService {
+  listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
+  getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  createDefinition(
+    request: CreateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  checkAndOfferSeeding(): Promise<{
+    needsSeeding: boolean;
+    availableTemplates: RoutineSeedTemplate[];
+  }>;
+  markSeedingOffered(): Promise<void>;
+  applySeedRoutines(keys: string[], timezone?: string): Promise<string[]>;
+  updateDefinition(
+    definitionId: string,
+    request: UpdateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  deleteDefinition(definitionId: string): Promise<void>;
+  completeOccurrence(
+    occurrenceId: string,
+    request: CompleteLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  skipOccurrence(
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  snoozeOccurrence(
+    occurrenceId: string,
+    request: SnoozeLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
 }
 
-function buildRoutineSeedKey(templateKey: string): string {
-  return `${ROUTINE_SEED_METADATA_PREFIX}:${templateKey}`;
-}
-
-/** @internal */
 export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsDefinitionsServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsDefinitionService> {
+  return class extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
       const plans = await this.repository.listReminderPlansForOwners(
@@ -652,7 +680,5 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return view;
     }
-  }
-
-  return LifeOpsDefinitionsServiceMixin;
+  } as MixinClass<TBase, LifeOpsDefinitionService>;
 }

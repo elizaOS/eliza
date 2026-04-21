@@ -39,22 +39,7 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops";
-import type {
-  EmailUnsubscribeMethod,
-  EmailUnsubscribeRecord,
-  EmailUnsubscribeStatus,
-} from "./email-unsubscribe-types.js";
-import { refreshLifeOpsRelativeTime } from "./relative-time.js";
-import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "./schedule-sync-contracts.js";
-import { lifeOpsSchema } from "./schema.js";
+} from "@elizaos/app-lifeops/contracts";
 import {
   executeRawSql,
   parseJsonArray,

@@ -46,7 +46,7 @@ export const computerStateProvider: Provider = {
       `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
       `Window List: ${caps.windowList.available ? caps.windowList.tool : "unavailable"}`,
       `Terminal: ${caps.terminal.available ? caps.terminal.tool : "unavailable"}`,
-      `Filesystem: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
+      `File System: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
     ];
 
     if (approvals.pendingApprovals.length > 0) {
@@ -78,6 +78,7 @@ export const computerStateProvider: Provider = {
         capabilities: caps,
         screenSize: screen,
         recentActions: recent,
+        approvals,
       },
     };
   },

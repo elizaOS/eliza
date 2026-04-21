@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";
 import { useApp } from "../../state";
+import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 
 type MediaType = "all" | "image" | "video" | "audio";
@@ -24,11 +25,6 @@ interface MediaItem {
   source: string;
   createdAt: string;
 }
-
-type TranslateFn = (
-  key: string,
-  vars?: Record<string, string | number | boolean | null | undefined>,
-) => string;
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?|$)/i;
 const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv|ogv)(\?|$)/i;

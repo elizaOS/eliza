@@ -1,16 +1,16 @@
-import {
-  CodingAgentControlChip,
-  PtyConsoleBase,
-} from "@elizaos/app-task-coordinator";
-import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-} from "@elizaos/ui";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import { client } from "../../api/client";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import type { TranslateFn } from "../../types";
+import { getVrmPreviewUrl } from "../../state/vrm";
+
 import {
   type ChangeEvent,
   type DragEvent,
@@ -45,6 +45,9 @@ export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
+const fallbackTranslate: TranslateFn = (key, options) =>
+  typeof options?.defaultValue === "string" ? options.defaultValue : key;
+
 type ChatViewVariant = "default" | "game-modal";
 type InboxChatSelection = {
   avatarUrl?: string;
@@ -780,7 +783,7 @@ function InboxChatPanel({
   variant: ChatViewVariant;
 }) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? ((key: string) => key);
+  const t = app?.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState("");

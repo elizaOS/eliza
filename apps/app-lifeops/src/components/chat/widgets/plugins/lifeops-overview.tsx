@@ -1,14 +1,3 @@
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import {
-  EmptyWidgetState,
-  WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets/types";
-import { useApp } from "@elizaos/app-core/state";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -19,8 +8,7 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
-  LifeOpsScheduleInsight,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { Badge, Button } from "@elizaos/ui";
 import {
   Bell,
@@ -46,11 +34,15 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
-import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
-import { formatMinutesDuration } from "../../../../utils/format-duration.js";
-import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
-import { GoogleGlanceSection } from "./lifeops.js";
+import { client } from "../../../../api";
+import { isApiError } from "../../../../api/client-types-core";
+import { useLifeOpsAppState } from "../../../../hooks";
+import { useApp } from "../../../../state";
+import { EmptyWidgetState, WidgetSection } from "../shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "../types";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
 const MAX_SECTION_OCCURRENCES = 3;

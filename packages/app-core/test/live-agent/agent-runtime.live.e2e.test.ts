@@ -31,11 +31,8 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
-import { sleep, withTimeout } from "../../../../../test/helpers/test-utils";
-
-/** Matches the table name used by @elizaos/core personality module. */
-const USER_PREFS_TABLE = "user_personality_preferences";
-
+import { withTimeout, sleep } from "../../../../../test/helpers/test-utils";
+import { USER_PREFS_TABLE } from "../../../typescript/src/features/advanced-capabilities/personality/types.ts";
 import { startApiServer } from "@elizaos/agent/api/server";
 import { ensureAgentWorkspace } from "@elizaos/agent/providers/workspace";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
