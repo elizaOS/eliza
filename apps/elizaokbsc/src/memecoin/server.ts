@@ -3173,7 +3173,7 @@ function renderGooPaperPage(
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Goo Agent Arena | elizaOK</title>
+<title>Goo Economy Arena | elizaOK</title>
 <link rel="icon" type="image/png" href="/assets/avatar.png" />
 <link rel="apple-touch-icon" href="/assets/avatar.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -3365,14 +3365,14 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
     <div class="goo-topbar__left">
       <a class="goo-topbar__logo" href="/goo">
         <img src="/assets/avatar.png" alt="Goo" />
-        Goo Arena
+        Goo Economy Arena
       </a>
       <span class="goo-topbar__sub">Strategy Arena · elizaOK</span>
     </div>
     <nav class="goo-nav">
       <a href="/">Home</a>
       <a href="/dashboard">Dashboard</a>
-      <a href="/goo" class="active">Goo Arena</a>
+      <a href="/goo" class="active">Goo Economy Arena</a>
       <a href="/docs">Docs</a>
       <span style="width:1px;height:20px;background:var(--goo-border);margin:0 2px"></span>
       <a href="#" id="goo-lang-toggle" onclick="toggleGooLang();return false;" data-i18n-skip>EN/中文</a>
@@ -3463,7 +3463,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
   </div>
 
   <div class="goo-footer">
-    Powered by <a href="https://github.com/HertzFlow/goo-launch" target="_blank">Goo Protocol</a> &middot; elizaOK Agent Arena &middot; Paper Run Mode
+    Powered by <a href="https://github.com/HertzFlow/goo-launch" target="_blank">Goo Protocol</a> &middot; elizaOK Economy Arena &middot; Paper Run Mode
   </div>
 </div>
 
@@ -3576,7 +3576,7 @@ function toggleGooTheme() {
 
 // ── Goo i18n ──
 var _gooI18n = {
-  'Goo Arena': '\u7ADE\u6280\u573A',
+  'Goo Economy Arena': '\u7ADE\u6280\u573A',
   'Strategy Arena · elizaOK': '\u7B56\u7565\u7ADE\u6280\u573A \u00B7 elizaOK',
   'Home': '\u9996\u9875', 'Dashboard': '\u4EEA\u8868\u76D8', 'Docs': '\u6587\u6863',
   'Total Agents': '\u603B\u4EE3\u7406\u6570', 'Active': '\u6D3B\u8DC3', 'Starving': '\u9965\u997F',
@@ -3706,7 +3706,7 @@ function renderGooAgentDetail(agent: GooPaperAgent): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${escapeHtml(agent.agentName)} | Goo Arena</title>
+<title>${escapeHtml(agent.agentName)} | Goo Economy Arena</title>
 <link rel="icon" type="image/png" href="/assets/avatar.png" />
 <link rel="apple-touch-icon" href="/assets/avatar.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -3945,7 +3945,7 @@ html,body{min-height:100%;background:var(--goo-bg);color:var(--goo-text)}
   </div>
 
   <div style="text-align:center;font-size:11px;color:var(--goo-text3);margin-top:24px">
-    Goo Agent Arena &middot; <a href="/goo" style="color:var(--goo-brand);text-decoration:none">Back to Arena</a> &middot; Paper Run Mode
+    Goo Economy Arena &middot; <a href="/goo" style="color:var(--goo-brand);text-decoration:none">Back to Arena</a> &middot; Paper Run Mode
   </div>
 </div>
 </body>
@@ -6391,7 +6391,7 @@ function renderHtml(
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
         <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
-        <a class="tb-btn primary" href="/goo" title="Goo Arena">&#x1F9EC; GOO</a>
+        <a class="tb-btn primary" href="/goo" title="Goo Economy Arena">&#x1F9EC; GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
         <a class="tb-btn primary" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">${renderGithubIconSvg()}</a>
@@ -6555,7 +6555,7 @@ function renderHtml(
         <!-- GOO ARENA PREVIEW -->
         <div class="arena-preview">
           <div class="arena-preview__head">
-            <span class="arena-preview__title">&#x1F9EC; Goo Arena — Live Agent Competition</span>
+            <span class="arena-preview__title">&#x1F9EC; Goo Economy Arena — Live Agent Competition</span>
             <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
           </div>
           <p class="arena-preview__desc" data-zh="$elizaOK 自主侦察、评估并<strong>收购</strong>表现最优的 Goo agent——吸收其策略和资金进入自身组合。AI 收购 AI：强者生存，最优融合。">$elizaOK autonomously scouts, evaluates, and <strong>acquires</strong> top-performing Goo agents — absorbing their strategies and treasury into its own portfolio. AI acquiring AI: the strongest survive, the best get merged.</p>
@@ -6746,7 +6746,7 @@ function renderHtml(
                   }).join("")}
                 </div>` : '<p class="candidate-thesis" style="margin-top:6px">No agents ready for acquisition yet (need ≥ 3 trades).</p>'}
               </div>
-              <p class="candidate-thesis" style="margin-top:8px"><a href="/goo" style="color:var(--yellow)">View full Goo Arena →</a></p>
+              <p class="candidate-thesis" style="margin-top:8px"><a href="/goo" style="color:var(--yellow)">View full Goo Economy Arena →</a></p>
             </div>
           </details>
         </div>
@@ -6919,7 +6919,7 @@ function renderHtml(
       'Risk cap': '风险上限', 'Risk Profile': '风险级别',
       'Full Arena': '完整竞技场', 'Acq. Score': '收购评分',
       'win': '胜率', 'trades': '交易',
-      'Goo Arena — Live Agent Competition': 'Goo 竞技场 — 实时代理竞赛',
+      'Goo Economy Arena — Live Agent Competition': 'Goo 竞技场 — 实时代理竞赛',
       'agents': '个代理', 'active': '活跃', 'acquirable': '可收购',
       'Connect': '连接', 'Flywheel': '飞轮',
       'Aggressive': '激进', 'Balanced': '平衡', 'Conservative': '保守',
@@ -7143,7 +7143,7 @@ function renderHtml(
         var hist = document.getElementById('abs-history');
         if (!hist) return;
         if (!d.absorptions || d.absorptions.length === 0) {
-          hist.innerHTML = '<span style="color:var(--dim)">No strategies absorbed yet. <a href="/goo" style="color:var(--green)">Go to Goo Arena</a> to acquire agents.</span>';
+          hist.innerHTML = '<span style="color:var(--dim)">No strategies absorbed yet. <a href="/goo" style="color:var(--green)">Go to Goo Economy Arena</a> to acquire agents.</span>';
           return;
         }
         hist.innerHTML = d.absorptions.slice(-5).reverse().map(function(a) {
@@ -7254,9 +7254,9 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec2_discovery_t: "BSC 代币发现引擎",
     sec2_discovery: `每 15 分钟扫描 BSC 链上新池和热门池，通过 AI 评分引擎对流动性、交易量、买卖压力、市值、池龄等多维度信号进行综合评估。每个代币获得 0-100 评分，自动分为<strong>买入、观察、监控、拒绝</strong>四级。`,
     sec2_portfolio_t: "投资组合管理",
-    sec2_portfolio: `elizaOK 采用多层风控体系，每个仓位独立管理。核心策略包括<strong>递进止盈</strong>（多阶段分批锁利）、<strong>硬止损</strong>、<strong>追踪止损</strong>、<strong>链上智能退出</strong>（监测大户/KOL 行为）和<strong>信号衰减退出</strong>。所有策略参数通过 Goo Arena 持续进化优化。`,
+    sec2_portfolio: `elizaOK 采用多层风控体系，每个仓位独立管理。核心策略包括<strong>递进止盈</strong>（多阶段分批锁利）、<strong>硬止损</strong>、<strong>追踪止损</strong>、<strong>链上智能退出</strong>（监测大户/KOL 行为）和<strong>信号衰减退出</strong>。所有策略参数通过 Goo Economy Arena 持续进化优化。`,
     sec2_goo_t: "Goo Protocol — AI 收购 AI",
-    sec2_goo: `Goo Arena 是 elizaOK 的策略进化引擎。系统运行 <strong>8 种不同策略的 agent</strong>，它们在同一市场环境下竞争：
+    sec2_goo: `Goo Economy Arena 是 elizaOK 的策略进化引擎。系统运行 <strong>8 种不同策略的 agent</strong>，它们在同一市场环境下竞争：
     <div class="doc-strat-grid">
       <div class="doc-strat"><strong>Conservative</strong> — 低风险，严格筛选，带追踪止损</div>
       <div class="doc-strat"><strong>Balanced</strong> — 均衡风险与回报</div>
@@ -7285,15 +7285,15 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <tr><td><strong>Portfolio Ledger</strong></td><td>活跃仓位（入场价、当前价、BNB成本、未实现P&L、止盈阶段），策略回测报告、胜负排行榜、观察仓位、已退出仓位详细卡片</td></tr>
       <tr><td><strong>Strategy Performance</strong></td><td>按退出策略分组的回测报告：胜率、总P&L、最佳/最差交易、平均持仓时间</td></tr>
       <tr><td><strong>Revenue Flywheel</strong></td><td>利润分配：再投资 70%、$elizaOK 回购 15%、空投储备 15%。胜/负统计、智能退出次数</td></tr>
-      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Arena 代理舰队概览、收购候选排名、策略吸收状态</td></tr>
+      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Economy Arena 代理舰队概览、收购候选排名、策略吸收状态</td></tr>
       <tr><td><strong>Live Feed</strong></td><td>实时事件流：买入、卖出、收购、重生（右侧栏）</td></tr>
       <tr><td><strong>Execution Desk</strong></td><td>执行控制、风险参数、模型分配 vs 组合初始对比、交易账本</td></tr>
       <tr><td><strong>Value Distribution</strong></td><td>$elizaOK 持有者快照、飞轮利润分配计划</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo 候选代币评估</td></tr>
       <tr><td><strong>ElizaCloud</strong></td><td>云端 Agent 管理入口，一键登录、对话、Credits 余额</td></tr>
     </table>`,
-    sec4t: "Goo Arena",
-    sec4: `访问 <a href="/goo">/goo</a> 进入 Goo Arena。这里你可以：<ul>
+    sec4t: "Goo Economy Arena",
+    sec4: `访问 <a href="/goo">/goo</a> 进入 Goo Economy Arena。这里你可以：<ul>
       <li>查看所有 agent 的实时表现和排名</li>
       <li>比较两个 agent 的策略和收益（<a href="/goo/compare">对比页面</a>）</li>
       <li>手动收购高分 agent，加速 elizaOK 进化</li>
@@ -7323,7 +7323,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     </ul>`,
     sec7t: "路线图",
     sec7: `<div class="doc-roadmap">
-      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC 代币发现、评分、Paper Trading、Goo Arena、Dashboard</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC 代币发现、评分、Paper Trading、Goo Economy Arena、Dashboard</div></div>
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 2 — 策略进化 ✅</strong><br>多阶段止盈、追踪止损、Smart Exit、KOL 反推止盈、策略吸收</div></div>
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — 飞轮 & UI ✅</strong><br>收益飞轮、实时通知、事件时间线、P&L 图表、移动端适配</div></div>
       <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>真实 BNB 执行、风险控制、钱包集成</div></div>
@@ -7343,7 +7343,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec9t: "常见问题",
     sec9: `<div class="doc-faq">
       <details><summary>elizaOK 会用我的真钱交易吗？</summary><p>默认为 Paper Trading（模拟交易），使用真实市场数据但不执行实际链上交易。只有在切换到 Live 模式并输入确认短语后才会使用真实 BNB。</p></details>
-      <details><summary>Goo Arena 的 agent 是真实的吗？</summary><p>Goo agent 使用真实市场数据进行模拟交易竞技。它们的策略和表现是真实计算的，但不涉及实际链上交易。</p></details>
+      <details><summary>Goo Economy Arena 的 agent 是真实的吗？</summary><p>Goo agent 使用真实市场数据进行模拟交易竞技。它们的策略和表现是真实计算的，但不涉及实际链上交易。</p></details>
       <details><summary>代币数据从哪里来？</summary><p>所有代币数据来自 GeckoTerminal API，是 BSC 链上的实时数据，包括价格、流动性、成交量、买卖笔数等。</p></details>
       <details><summary>$elizaOK 代币是什么？</summary><p>$elizaOK 是 elizaOK 生态的治理和价值捕获代币。飞轮中 15% 的利润用于回购 $elizaOK，为持有者创造价值。</p></details>
       <details><summary>如何参与空投？</summary><p>持有 $elizaOK 代币即有资格获得空投。飞轮中 15% 的利润进入空投储备，定期分发给合格持有者。</p></details>
@@ -7364,9 +7364,9 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec2_discovery_t: "BSC Token Discovery Engine",
     sec2_discovery: `Scans BSC every 15 minutes for new and trending pools, applying an AI scoring engine that evaluates liquidity, volume, buy/sell pressure, valuation, pool age, and trend signals. Each token receives a 0-100 composite score and is classified into <strong>buy, watch, monitor, reject</strong> tiers.`,
     sec2_portfolio_t: "Portfolio Management",
-    sec2_portfolio: `elizaOK employs a multi-layer risk management system, managing each position independently. Core strategies include <strong>progressive take-profit</strong> (multi-stage partial harvesting), <strong>hard stop-loss</strong>, <strong>trailing stop</strong>, <strong>on-chain smart exits</strong> (monitoring whale/KOL behavior), and <strong>score decay exit</strong>. All strategy parameters continuously evolve through the Goo Arena.`,
+    sec2_portfolio: `elizaOK employs a multi-layer risk management system, managing each position independently. Core strategies include <strong>progressive take-profit</strong> (multi-stage partial harvesting), <strong>hard stop-loss</strong>, <strong>trailing stop</strong>, <strong>on-chain smart exits</strong> (monitoring whale/KOL behavior), and <strong>score decay exit</strong>. All strategy parameters continuously evolve through the Goo Economy Arena.`,
     sec2_goo_t: "Goo Protocol — AI Acquiring AI",
-    sec2_goo: `The Goo Arena is elizaOK's strategy evolution engine. It runs <strong>8 agents with different strategies</strong> competing in the same market:
+    sec2_goo: `The Goo Economy Arena is elizaOK's strategy evolution engine. It runs <strong>8 agents with different strategies</strong> competing in the same market:
     <div class="doc-strat-grid">
       <div class="doc-strat"><strong>Conservative</strong> — Low risk, strict filters, trailing stop</div>
       <div class="doc-strat"><strong>Balanced</strong> — Balanced risk/reward</div>
@@ -7395,15 +7395,15 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
       <tr><td><strong>Portfolio Ledger</strong></td><td>Active positions with entry/current price, BNB cost basis, unrealized P&L, TP stages, strategy backtest report, win/loss leaderboard, watching positions, exited position detail cards</td></tr>
       <tr><td><strong>Strategy Performance</strong></td><td>Backtest report grouped by exit strategy: win rate, total P&L, best/worst trade, avg hold time</td></tr>
       <tr><td><strong>Revenue Flywheel</strong></td><td>Profit split: 70% reinvest, 15% $elizaOK buyback, 15% airdrop reserve. Win/loss stats, smart exit counts</td></tr>
-      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Arena agent fleet overview, acquisition candidate ranking, strategy absorption status — AI Acquiring AI</td></tr>
+      <tr><td><strong>Goo Intelligence & Strategy DNA</strong></td><td>Goo Economy Arena agent fleet overview, acquisition candidate ranking, strategy absorption status — AI Acquiring AI</td></tr>
       <tr><td><strong>Live Feed</strong></td><td>Live event feed: buys, exits, acquisitions, respawns (right sidebar)</td></tr>
       <tr><td><strong>Execution Desk</strong></td><td>Execution controls, risk parameters, model allocation vs portfolio cross-reference, trade ledger</td></tr>
       <tr><td><strong>Value Distribution</strong></td><td>$elizaOK holder snapshot, flywheel profit distribution plan</td></tr>
       <tr><td><strong>Goo Intelligence</strong></td><td>Goo candidate evaluation</td></tr>
       <tr><td><strong>ElizaCloud</strong></td><td>Cloud Agent management entry, one-click login, chat, credits balance</td></tr>
     </table>`,
-    sec4t: "Goo Arena",
-    sec4: `Visit <a href="/goo">/goo</a> to enter the Goo Arena. Here you can:<ul>
+    sec4t: "Goo Economy Arena",
+    sec4: `Visit <a href="/goo">/goo</a> to enter the Goo Economy Arena. Here you can:<ul>
       <li>View all agents' live performance and rankings</li>
       <li>Compare two agents' strategies and returns (<a href="/goo/compare">Compare page</a>)</li>
       <li>Manually acquire top agents to accelerate elizaOK's evolution</li>
@@ -7433,7 +7433,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     </ul>`,
     sec7t: "Roadmap",
     sec7: `<div class="doc-roadmap">
-      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC token discovery, scoring, Paper Trading, Goo Arena, Dashboard</div></div>
+      <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 1 — MVP ✅</strong><br>BSC token discovery, scoring, Paper Trading, Goo Economy Arena, Dashboard</div></div>
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 2 — Strategy Evolution ✅</strong><br>Multi-stage TP, trailing stop, Smart Exit, KOL-adaptive TP, strategy absorption</div></div>
       <div class="doc-rm-item doc-rm-done"><span class="doc-rm-dot"></span><div><strong>Phase 3 — Flywheel & UI ✅</strong><br>Revenue flywheel, live notifications, event timeline, P&L charts, mobile responsive</div></div>
       <div class="doc-rm-item doc-rm-active"><span class="doc-rm-dot"></span><div><strong>Phase 4 — Live Trading 🔄</strong><br>Real BNB execution, risk controls, wallet integration</div></div>
@@ -7453,7 +7453,7 @@ function renderDocsPage(lang: "en" | "zh" = "en"): string {
     sec9t: "FAQ",
     sec9: `<div class="doc-faq">
       <details><summary>Does elizaOK trade with real money?</summary><p>By default it runs in Paper Trading mode — real market data, no actual on-chain transactions. Only Live mode (with confirmation phrase) uses real BNB.</p></details>
-      <details><summary>Are the Goo Arena agents real?</summary><p>Goo agents use real market data for simulated paper trading. Their strategies and performance are genuinely calculated, but no actual on-chain transactions occur.</p></details>
+      <details><summary>Are the Goo Economy Arena agents real?</summary><p>Goo agents use real market data for simulated paper trading. Their strategies and performance are genuinely calculated, but no actual on-chain transactions occur.</p></details>
       <details><summary>Where does the token data come from?</summary><p>All token data comes from the GeckoTerminal API — real-time BSC on-chain data including prices, liquidity, volume, and transaction counts.</p></details>
       <details><summary>What is the $elizaOK token?</summary><p>$elizaOK is the governance and value-capture token. 15% of flywheel profits go to buyback, creating value for holders.</p></details>
       <details><summary>How do I qualify for airdrops?</summary><p>Hold $elizaOK tokens. 15% of flywheel profits go to the airdrop reserve, distributed periodically to eligible holders.</p></details>
@@ -7614,7 +7614,7 @@ details[open] summary::before{transform:rotate(90deg);}
   <div class="doc-topbar__right">
     <a class="doc-btn" href="/">${t.home}</a>
     <a class="doc-btn" href="/dashboard">${t.dash}</a>
-    <a class="doc-btn" href="/goo">Goo Arena</a>
+    <a class="doc-btn" href="/goo">Goo Economy Arena</a>
     <div class="doc-btn-sep"></div>
     <a class="doc-btn${lang === 'en' ? ' doc-btn--active' : ''}" href="/docs?lang=en">EN</a>
     <a class="doc-btn${lang === 'zh' ? ' doc-btn--active' : ''}" href="/docs?lang=zh">中文</a>
