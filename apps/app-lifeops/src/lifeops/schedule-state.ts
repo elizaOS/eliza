@@ -673,6 +673,29 @@ function latestSnapshotValue<T>(
   return null;
 }
 
+function isFutureIsoAt(
+  value: string | null | undefined,
+  nowMs: number,
+): boolean {
+  const parsed = parseIsoMs(value);
+  return parsed !== null && parsed >= nowMs;
+}
+
+function pickFutureSnapshotValue(
+  observations: LifeOpsScheduleObservation[],
+  read: (snapshot: MergeObservationSnapshot) => string | null | undefined,
+  nowMs: number,
+): string | null {
+  for (const observation of observations) {
+    const snapshot = observationSnapshot(observation);
+    const value = snapshot ? read(snapshot) : null;
+    if (value && isFutureIsoAt(value, nowMs)) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function median(values: number[]): number | null {
   if (values.length === 0) {
     return null;
@@ -889,6 +912,54 @@ export function mergeScheduleObservations(args: {
       firstActiveAt,
     },
   });
+  const mealWindowStartFromObservation =
+    mealWindow && isFutureIsoAt(mealWindow.windowStartAt, nowMs)
+      ? mealWindow.windowStartAt
+      : null;
+  const mealWindowStartFromSnapshot =
+    mealWindowStartFromObservation === null
+      ? pickFutureSnapshotValue(
+          relevant,
+          (snapshot) => snapshot.nextMealWindowStartAt,
+          nowMs,
+        )
+      : null;
+  const mealWindowSource: "observation" | "snapshot" | null =
+    mealWindowStartFromObservation !== null
+      ? "observation"
+      : mealWindowStartFromSnapshot !== null
+        ? "snapshot"
+        : null;
+  const nextMealWindowStartAt =
+    mealWindowStartFromObservation ?? mealWindowStartFromSnapshot ?? null;
+  const nextMealLabel =
+    mealWindowSource === "observation"
+      ? (mealWindow?.mealLabel ?? null)
+      : mealWindowSource === "snapshot"
+        ? (latestSnapshotValue(
+            relevant,
+            (snapshot) => snapshot.nextMealLabel,
+          ) ?? null)
+        : null;
+  const nextMealWindowEndAt =
+    mealWindowSource === "observation"
+      ? (mealWindow?.windowEndAt ?? null)
+      : mealWindowSource === "snapshot"
+        ? (latestSnapshotValue(
+            relevant,
+            (snapshot) => snapshot.nextMealWindowEndAt,
+          ) ?? null)
+        : null;
+  const nextMealConfidence = roundConfidence(
+    mealWindowSource === "observation"
+      ? (mealWindow?.confidence ?? 0)
+      : mealWindowSource === "snapshot"
+        ? (latestSnapshotValue(
+            relevant,
+            (snapshot) => snapshot.nextMealConfidence,
+          ) ?? 0)
+        : 0,
+  );
   return {
     id: `lifeops-schedule-merged:${args.agentId}:${args.scope}:${args.timezone}`,
     agentId: args.agentId,
@@ -918,32 +989,10 @@ export function mergeScheduleObservations(args: {
     lastActiveAt,
     meals,
     lastMealAt,
-    nextMealLabel:
-      mealWindow?.mealLabel ??
-      latestSnapshotValue(relevant, (snapshot) => snapshot.nextMealLabel) ??
-      null,
-    nextMealWindowStartAt:
-      mealWindow?.windowStartAt ??
-      latestSnapshotValue(
-        relevant,
-        (snapshot) => snapshot.nextMealWindowStartAt,
-      ) ??
-      null,
-    nextMealWindowEndAt:
-      mealWindow?.windowEndAt ??
-      latestSnapshotValue(
-        relevant,
-        (snapshot) => snapshot.nextMealWindowEndAt,
-      ) ??
-      null,
-    nextMealConfidence: roundConfidence(
-      mealWindow?.confidence ??
-        latestSnapshotValue(
-          relevant,
-          (snapshot) => snapshot.nextMealConfidence,
-        ) ??
-        0,
-    ),
+    nextMealLabel,
+    nextMealWindowStartAt,
+    nextMealWindowEndAt,
+    nextMealConfidence,
     observationCount: relevant.length,
     deviceCount: new Set(relevant.map((observation) => observation.deviceId))
       .size,
