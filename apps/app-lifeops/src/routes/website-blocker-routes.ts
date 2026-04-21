@@ -68,12 +68,10 @@ async function resolveRequiredTasksForHost(
   const definitions: LifeOpsTaskDefinition[] =
     await repo.listActiveDefinitions(agentId);
 
-  const matchingDefinitions = definitions.filter(
-    (definition) =>
-      definition.websiteAccess &&
-      definition.websiteAccess.websites.some(
-        (website) => website.toLowerCase() === host,
-      ),
+  const matchingDefinitions = definitions.filter((definition) =>
+    definition.websiteAccess?.websites.some(
+      (website) => website.toLowerCase() === host,
+    ),
   );
 
   if (matchingDefinitions.length === 0) {
