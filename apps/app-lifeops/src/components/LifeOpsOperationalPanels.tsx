@@ -1,15 +1,15 @@
+import { Badge, Button, Textarea, useApp } from "@elizaos/app-core";
 import {
-  Badge,
-  Button,
-  Textarea,
-  useApp,
-} from "@elizaos/app-core";
-import {
-  type LifeOpsConnectorMode,
-  type LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
-import { Clock3, FileText, Loader2, RefreshCw, Send, Sparkles, UserRound, Wand2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+  Clock3,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Send,
+  Sparkles,
+  UserRound,
+  Wand2,
+} from "lucide-react";
+import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
 import { useLifeOpsStretchReminder } from "../hooks/useLifeOpsStretchReminder.js";
@@ -127,7 +127,9 @@ export function LifeOpsSchedulePanel() {
     merged?.relativeTime.minutesUntilBedtimeTarget !== undefined
       ? t("lifeopspanels.bedtimeFuture", {
           defaultValue: "in {{duration}}",
-          duration: formatMinutes(merged.relativeTime.minutesUntilBedtimeTarget),
+          duration: formatMinutes(
+            merged.relativeTime.minutesUntilBedtimeTarget,
+          ),
         })
       : merged?.relativeTime.minutesSinceBedtimeTarget !== null &&
           merged?.relativeTime.minutesSinceBedtimeTarget !== undefined
