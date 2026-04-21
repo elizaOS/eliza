@@ -17,6 +17,11 @@ const VALID_SCOPES = new Set<ConversationScope>([
   "automation-coordinator",
   "automation-workflow",
   "automation-workflow-draft",
+  "page-character",
+  "page-apps",
+  "page-wallet",
+  "page-browser",
+  "page-automations",
 ]);
 
 const VALID_AUTOMATION_TYPES = new Set(["coordinator_text", "n8n_workflow"]);
@@ -40,7 +45,8 @@ export function sanitizeConversationMetadata(
   }
 
   if (automationType && VALID_AUTOMATION_TYPES.has(automationType)) {
-    next.automationType = automationType as ConversationMetadata["automationType"];
+    next.automationType =
+      automationType as ConversationMetadata["automationType"];
   }
 
   const taskId = normalizeOptionalString(record.taskId);
@@ -58,7 +64,12 @@ export function sanitizeConversationMetadata(
   const draftId = normalizeOptionalString(record.draftId);
   if (draftId) next.draftId = draftId;
 
-  const sourceConversationId = normalizeOptionalString(record.sourceConversationId);
+  const pageId = normalizeOptionalString(record.pageId);
+  if (pageId) next.pageId = pageId;
+
+  const sourceConversationId = normalizeOptionalString(
+    record.sourceConversationId,
+  );
   if (sourceConversationId) next.sourceConversationId = sourceConversationId;
 
   const terminalBridgeConversationId = normalizeOptionalString(

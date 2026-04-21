@@ -8,11 +8,8 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { Button, Input } from "@elizaos/ui";
 import {
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
   FolderOpen,
-  MessageSquare,
   Plus,
   RefreshCw,
   X,
@@ -32,8 +29,16 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { ChatView } from "./ChatView.js";
+import { PageScopedChat } from "../chat/PageScopedChat.js";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
+
+const BROWSER_SYSTEM_ADDENDUM = `
+You are scoped to helping the user with the browser workspace on this page.
+You can read the currently open tabs and discuss what's on screen.
+When the user asks to open a URL, navigate, or click, coordinate via the browser steward.
+For requests unrelated to browsing, suggest the main chat.
+`;
 
 const POLL_INTERVAL_MS = 2_500;
 const LIFEOPS_BROWSER_POLL_INTERVAL_MS = 4_000;
@@ -135,6 +140,7 @@ function resolveBrowserWorkspaceSelection(
 
 export function BrowserWorkspaceView(): JSX.Element {
   const {
+    activeConversationId,
     getStewardPending,
     getStewardStatus,
     setActionNotice,
@@ -163,7 +169,6 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false);
   const [lifeOpsBrowserAvailable, setLifeOpsBrowserAvailable] = useState(false);
   const [lifeOpsBrowserLoading, setLifeOpsBrowserLoading] = useState(true);
   const [lifeOpsBrowserCompanions, setLifeOpsBrowserCompanions] = useState<
@@ -1231,50 +1236,21 @@ export function BrowserWorkspaceView(): JSX.Element {
           )}
         </div>
 
-        <aside
-          className={`flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200 ${
-            chatSidebarCollapsed ? "w-10" : "w-[24rem]"
-          }`}
-          data-testid="browser-workspace-chat-sidebar"
+        <RightSideChatPanel
+          storageKey="milady:chat-panel:browser"
+          defaultWidth={384}
+          minWidth={300}
+          maxWidth={720}
+          collapsedByDefault={false}
         >
-          <div className="flex h-10 items-center justify-between border-b border-border/30 px-2">
-            {chatSidebarCollapsed ? (
-              <button
-                type="button"
-                className="mx-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-                aria-label={t("browserworkspace.ExpandChat", {
-                  defaultValue: "Expand chat",
-                })}
-                onClick={() => setChatSidebarCollapsed(false)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {t("browserworkspace.ChatSidebar", { defaultValue: "Chat" })}
-                </div>
-                <button
-                  type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-                  aria-label={t("browserworkspace.CollapseChat", {
-                    defaultValue: "Collapse chat",
-                  })}
-                  onClick={() => setChatSidebarCollapsed(true)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
-
-          {chatSidebarCollapsed ? null : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <ChatView variant="default" hideTerminalPanel />
-            </div>
-          )}
-        </aside>
+          <PageScopedChat
+            scope="page-browser"
+            title="Browser assistant"
+            placeholder="Ask about the page, open a URL, or run the browser steward..."
+            systemAddendum={BROWSER_SYSTEM_ADDENDUM}
+            bridgeFromConversationId={activeConversationId}
+          />
+        </RightSideChatPanel>
       </div>
     </div>
   );

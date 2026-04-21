@@ -19,6 +19,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   "@elizaos/plugin-cron", // scheduled jobs and automation
+  "@elizaos/plugin-app-control", // launch, close, and list running Milady apps from agent chat
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)

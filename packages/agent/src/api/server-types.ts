@@ -23,6 +23,7 @@ export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
 } from "@elizaos/app-training/services/training-service-like";
+
 import type { TrainingServiceWithRuntime } from "@elizaos/app-training/services/training-service-like";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,12 @@ export type ConversationScope =
   | "general"
   | "automation-coordinator"
   | "automation-workflow"
-  | "automation-workflow-draft";
+  | "automation-workflow-draft"
+  | "page-character"
+  | "page-apps"
+  | "page-wallet"
+  | "page-browser"
+  | "page-automations";
 
 export type ConversationAutomationType = "coordinator_text" | "n8n_workflow";
 
@@ -45,6 +51,8 @@ export interface ConversationMetadata {
   workflowId?: string;
   workflowName?: string;
   draftId?: string;
+  /** Sub-entity id for page-scoped conversations (e.g. a character id). */
+  pageId?: string;
   sourceConversationId?: string;
   terminalBridgeConversationId?: string;
 }

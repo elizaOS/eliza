@@ -6,7 +6,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  NewActionButton,
   Select,
   SelectContent,
   SelectItem,
@@ -25,6 +24,7 @@ import {
   Plus,
   Search,
   Settings2,
+  Terminal as TerminalIcon,
   X,
 } from "lucide-react";
 import type React from "react";
@@ -38,6 +38,7 @@ import {
 } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { usePtySessions } from "../../state/PtySessionsContext";
 import {
   ALWAYS_ON_PLUGIN_IDS,
   iconImageSource,
@@ -50,6 +51,7 @@ import {
   buildConversationsSidebarModel,
   type ConversationsSidebarRow,
   ELIZA_SOURCE_SCOPE,
+  TERMINAL_SOURCE_SCOPE,
 } from "./conversation-sidebar-model";
 
 /**
@@ -58,6 +60,9 @@ import {
  * prefix so we can distinguish them from dashboard conversation UUIDs.
  */
 const INBOX_ID_PREFIX = "inbox:";
+
+/** Id namespace for PTY sessions surfaced under the Terminal channel. */
+const TERMINAL_ID_PREFIX = "terminal:";
 
 /** How often the inbox chat list refreshes while the sidebar is open. */
 const INBOX_CHATS_REFRESH_MS = 5_000;
@@ -91,7 +96,14 @@ function railMonogram(label: string): string {
   return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
 }
 
+function isTerminalRow(row: ConversationsSidebarRow): boolean {
+  return row.sourceKey === TERMINAL_SOURCE_SCOPE;
+}
+
 function renderRailIdentity(row: ConversationsSidebarRow) {
+  if (isTerminalRow(row)) {
+    return <TerminalIcon className="h-4 w-4" />;
+  }
   if (row.kind === "inbox" && typeof row.source === "string" && row.source) {
     return <ChatSourceIcon source={row.source} className="h-4 w-4" />;
   }
@@ -100,6 +112,7 @@ function renderRailIdentity(row: ConversationsSidebarRow) {
 }
 
 function rowListId(row: ConversationsSidebarRow): string {
+  if (isTerminalRow(row)) return `${TERMINAL_ID_PREFIX}${row.id}`;
   return row.kind === "inbox" ? `${INBOX_ID_PREFIX}${row.id}` : row.id;
 }
 
@@ -138,6 +151,7 @@ export function ConversationsSidebar({
     conversations,
     activeConversationId,
     activeInboxChat,
+    activeTerminalSessionId,
     unreadConversations,
     handleNewConversation,
     handleSelectConversation,
@@ -150,6 +164,7 @@ export function ConversationsSidebar({
     tab,
     t,
   } = useApp();
+  const { ptySessions } = usePtySessions();
 
   const [inboxChats, setInboxChats] = useState<InboxChatRow[]>([]);
   const [renameTarget, setRenameTarget] = useState<{
@@ -165,6 +180,8 @@ export function ConversationsSidebar({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const menuAnchorRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [sourceScope, setSourceScope] = useState(ELIZA_SOURCE_SCOPE);
   const [worldScope, setWorldScope] = useState(ALL_WORLDS_SCOPE);
@@ -265,11 +282,64 @@ export function ConversationsSidebar({
     }
   };
 
+  const spawnShellBusyRef = useRef(false);
+  const spawnShell = useCallback(async () => {
+    if (spawnShellBusyRef.current) return;
+    spawnShellBusyRef.current = true;
+    try {
+      const { sessionId } = await client.spawnShellSession();
+      setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", sessionId);
+      setTab("chat");
+    } catch (err) {
+      console.error("[ConversationsSidebar] spawnShellSession failed:", err);
+    } finally {
+      spawnShellBusyRef.current = false;
+    }
+  }, [setState, setTab]);
+
+  const selectTerminalSession = useCallback(
+    (sessionId: string) => {
+      setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", sessionId);
+      setTab("chat");
+      onClose?.();
+    },
+    [onClose, setState, setTab],
+  );
+
+  // When the Terminal channel is opened with no existing sessions,
+  // immediately spawn one so the channel is never empty.
+  useEffect(() => {
+    if (
+      sourceScope === TERMINAL_SOURCE_SCOPE &&
+      ptySessions.length === 0 &&
+      !activeTerminalSessionId
+    ) {
+      void spawnShell();
+    }
+  }, [sourceScope, ptySessions.length, activeTerminalSessionId, spawnShell]);
+
+  // If something outside the sidebar (AgentActivityBox click, error auto-
+  // promote) focuses a terminal session, switch the sidebar scope to match
+  // so the user sees the session list rather than a stale channel.
+  useEffect(() => {
+    if (activeTerminalSessionId && sourceScope !== TERMINAL_SOURCE_SCOPE) {
+      setSourceScope(TERMINAL_SOURCE_SCOPE);
+    }
+  }, [activeTerminalSessionId, sourceScope]);
+
   const handleRowSelect = (row: ConversationsSidebarRow) => {
     setConfirmDeleteId(null);
     setMenuConversation(null);
 
+    if (isTerminalRow(row)) {
+      selectTerminalSession(row.id);
+      return;
+    }
+
     if (row.kind === "inbox") {
+      setState("activeTerminalSessionId", null);
       setState("activeInboxChat", {
         avatarUrl: row.avatarUrl,
         canSend:
@@ -285,6 +355,7 @@ export function ConversationsSidebar({
       });
     } else {
       setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", null);
       void handleSelectConversation(row.id);
     }
 
@@ -319,6 +390,12 @@ export function ConversationsSidebar({
       void ensurePluginsLoaded();
     }
   }, [isManageConnectionsActive, ensurePluginsLoaded]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, [searchOpen]);
 
   const connectorPlugins = useMemo(
     () =>
@@ -372,8 +449,11 @@ export function ConversationsSidebar({
     return <IconComponent className="h-4 w-4" />;
   }, []);
 
+  const isTerminalScope = sidebarModel.sourceScope === TERMINAL_SOURCE_SCOPE;
+
   const showNewChatAction =
     tab === "chat" && sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE;
+  const showNewTerminalAction = tab === "chat" && isTerminalScope;
   const newChatAction = isGameModal ? (
     <Button
       variant="outline"
@@ -383,25 +463,84 @@ export function ConversationsSidebar({
       {t("conversations.newChat")}
     </Button>
   ) : (
-    <NewActionButton onClick={handleNewChat}>
-      {t("conversations.newChat")}
-    </NewActionButton>
+    <button
+      type="button"
+      onClick={handleNewChat}
+      className="inline-flex items-center gap-1 self-end bg-transparent p-0 text-xs font-medium text-muted hover:text-txt"
+    >
+      <Plus className="h-3.5 w-3.5" aria-hidden />
+      <span>
+        {t("conversations.newChatShort", { defaultValue: "New chat" })}
+      </span>
+    </button>
+  );
+  const newTerminalAction = (
+    <button
+      type="button"
+      onClick={() => void spawnShell()}
+      className="inline-flex items-center gap-1 self-end bg-transparent p-0 text-xs font-medium text-muted hover:text-txt"
+    >
+      <Plus className="h-3.5 w-3.5" aria-hidden />
+      <span>
+        {t("conversations.newTerminalShort", { defaultValue: "New terminal" })}
+      </span>
+    </button>
   );
 
-  const activeListId = activeInboxChat
-    ? `${INBOX_ID_PREFIX}${activeInboxChat.id}`
-    : activeConversationId;
+  const terminalRows = useMemo(() => {
+    if (!isTerminalScope) return [] as ConversationsSidebarRow[];
+    return ptySessions.map<ConversationsSidebarRow>((session) => ({
+      id: session.sessionId,
+      kind: "conversation",
+      sortKey: 0,
+      source: TERMINAL_SOURCE_SCOPE,
+      sourceKey: TERMINAL_SOURCE_SCOPE,
+      title: session.label,
+      updatedAtLabel: "",
+      worldKey: null,
+    }));
+  }, [isTerminalScope, ptySessions]);
+
+  const terminalListId = activeTerminalSessionId
+    ? `${TERMINAL_ID_PREFIX}${activeTerminalSessionId}`
+    : null;
+  const activeListId = isTerminalScope
+    ? terminalListId
+    : activeInboxChat
+      ? `${INBOX_ID_PREFIX}${activeInboxChat.id}`
+      : activeConversationId;
+
+  const displayRows = isTerminalScope ? terminalRows : sidebarModel.rows;
+  const displaySections = isTerminalScope
+    ? terminalRows.length > 0
+      ? [
+          {
+            count: terminalRows.length,
+            key: TERMINAL_SOURCE_SCOPE,
+            label: t("conversations.scopeTerminal", {
+              defaultValue: "Terminal",
+            }),
+            rows: terminalRows,
+          },
+        ]
+      : []
+    : sidebarModel.sections;
+
   const emptyStateLabel = searchQuery.trim()
     ? t("conversations.noMatchingChats", {
         defaultValue: "No matching chats",
       })
-    : sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE
-      ? t("conversations.noneApp", {
-          defaultValue: "No chats yet",
+    : isTerminalScope
+      ? t("conversations.noneTerminal", {
+          defaultValue: "Spawning a terminal…",
         })
-      : t("conversations.noneConnectors", {
-          defaultValue: "No chats in this view",
-        });
+      : sidebarModel.sourceScope === ELIZA_SOURCE_SCOPE
+        ? t("conversations.noneApp", {
+            defaultValue: "No chats yet",
+          })
+        : t("conversations.noneConnectors", {
+            defaultValue: "No chats in this view",
+          });
 
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
@@ -481,8 +620,45 @@ export function ConversationsSidebar({
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={undefined}
+        collapseButtonLeading={
+          !isManageConnectionsActive ? (
+            <Button
+              type="button"
+              variant="surface"
+              size="icon"
+              data-testid="chat-sidebar-search-toggle"
+              aria-label={t("conversations.searchChats", {
+                defaultValue: "Search chats",
+              })}
+              aria-pressed={searchOpen}
+              className={`h-11 w-11 rounded-sm border border-border/32 bg-card text-muted-strong shadow-sm transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:text-txt hover:shadow-md active:scale-95 ${
+                searchOpen ? "border-accent/50 text-txt" : ""
+              }`}
+              onClick={() => {
+                setSearchOpen((open) => {
+                  const next = !open;
+                  if (!next) {
+                    setSearchQuery("");
+                  }
+                  return next;
+                });
+              }}
+            >
+              <Search className="h-4 w-4" aria-hidden />
+            </Button>
+          ) : undefined
+        }
         collapsedRailAction={
-          showNewChatAction ? (
+          showNewTerminalAction ? (
+            <SidebarCollapsedActionButton
+              aria-label={t("conversations.newTerminal", {
+                defaultValue: "New terminal",
+              })}
+              onClick={() => void spawnShell()}
+            >
+              <Plus className="h-4 w-4" />
+            </SidebarCollapsedActionButton>
+          ) : showNewChatAction ? (
             <SidebarCollapsedActionButton
               aria-label={t("conversations.newChat")}
               onClick={handleNewChat}
@@ -491,14 +667,16 @@ export function ConversationsSidebar({
             </SidebarCollapsedActionButton>
           ) : undefined
         }
-        collapsedRailItems={sidebarModel.rows.map((row) => (
+        collapsedRailItems={displayRows.map((row) => (
           <SidebarContent.RailItem
             key={rowListId(row)}
             aria-label={row.title}
             title={row.title}
             active={rowListId(row) === activeListId}
             indicatorTone={
-              row.kind === "conversation" && unreadConversations.has(row.id)
+              row.kind === "conversation" &&
+              !isTerminalRow(row) &&
+              unreadConversations.has(row.id)
                 ? "accent"
                 : undefined
             }
@@ -516,7 +694,7 @@ export function ConversationsSidebar({
             </SidebarContent.SectionLabel>
           ) : undefined
         }
-        mobileMeta={mobile ? String(sidebarModel.rows.length) : undefined}
+        mobileMeta={mobile ? String(displayRows.length) : undefined}
         data-no-window-drag=""
         aria-label={t("conversations.chats")}
       >
@@ -532,7 +710,7 @@ export function ConversationsSidebar({
                             defaultValue: "Connectors",
                           })
                         : t("conversations.filterScope", {
-                            defaultValue: "Source",
+                            defaultValue: "Channels",
                           })}
                     </span>
                     <Button
@@ -587,13 +765,20 @@ export function ConversationsSidebar({
                       })}
                     </div>
                   ) : null}
-                  {!isManageConnectionsActive ? (
+                  {!isManageConnectionsActive && searchOpen ? (
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                       <input
+                        ref={searchInputRef}
                         type="text"
                         value={searchQuery}
                         onChange={(event) => setSearchQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            setSearchQuery("");
+                            setSearchOpen(false);
+                          }
+                        }}
                         placeholder={t("conversations.searchChats", {
                           defaultValue: "Search chats...",
                         })}
@@ -604,22 +789,26 @@ export function ConversationsSidebar({
                         spellCheck={false}
                         className="h-9 w-full rounded-sm border border-border/45 bg-card/55 pl-8 pr-8 text-sm text-txt placeholder:text-muted focus:border-accent/50 focus:outline-none"
                       />
-                      {searchQuery ? (
-                        <button
-                          type="button"
-                          onClick={() => setSearchQuery("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
-                          aria-label={t("common.clear", {
-                            defaultValue: "Clear",
-                          })}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSearchOpen(false);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
+                        aria-label={t("common.clear", {
+                          defaultValue: "Clear",
+                        })}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ) : null}
                   {!isManageConnectionsActive && showNewChatAction ? (
-                    <div>{newChatAction}</div>
+                    <div className="flex justify-end">{newChatAction}</div>
+                  ) : null}
+                  {!isManageConnectionsActive && showNewTerminalAction ? (
+                    <div className="flex justify-end">{newTerminalAction}</div>
                   ) : null}
                 </div>
 
@@ -718,7 +907,7 @@ export function ConversationsSidebar({
                   })
                 )}
               </div>
-            ) : sidebarModel.sections.length === 0 ? (
+            ) : displaySections.length === 0 ? (
               <SidebarContent.EmptyState
                 variant={isGameModal ? "game-modal" : "default"}
                 className={
@@ -728,16 +917,16 @@ export function ConversationsSidebar({
                 {emptyStateLabel}
               </SidebarContent.EmptyState>
             ) : (
-              <div className="space-y-4">
-                {sidebarModel.sections.map((section) => (
-                  <section key={section.key} className="space-y-2">
-                    <SidebarContent.SectionHeader>
-                      <SidebarContent.SectionLabel>
+              <div className="-mx-1.5 space-y-3">
+                {displaySections.map((section) => (
+                  <section key={section.key} className="space-y-0.5">
+                    <SidebarContent.SectionHeader className="mb-0 px-3 pt-1 pb-0.5">
+                      <SidebarContent.SectionLabel className="text-muted/80">
                         {section.label}
                       </SidebarContent.SectionLabel>
                     </SidebarContent.SectionHeader>
 
-                    <div className="space-y-2">
+                    <div className="space-y-0">
                       {section.rows.map((row) => {
                         const conversationId = rowListId(row);
                         return (
@@ -753,13 +942,18 @@ export function ConversationsSidebar({
                             isActive={conversationId === activeListId}
                             isConfirmingDelete={
                               row.kind === "conversation" &&
+                              !isTerminalRow(row) &&
                               confirmDeleteId === row.id
                             }
                             isUnread={
                               row.kind === "conversation" &&
+                              !isTerminalRow(row) &&
                               unreadConversations.has(row.id)
                             }
                             labels={{
+                              actions: t("conversations.actions", {
+                                defaultValue: "More actions",
+                              }),
                               delete: t("conversations.delete"),
                               deleteConfirm: t("conversations.deleteConfirm"),
                               deleteNo: t("conversations.deleteNo"),
@@ -769,11 +963,12 @@ export function ConversationsSidebar({
                             mobile={mobile}
                             onCancelDelete={() => setConfirmDeleteId(null)}
                             onConfirmDelete={() => {
-                              if (row.kind === "inbox") return;
+                              if (row.kind === "inbox" || isTerminalRow(row))
+                                return;
                               void handleConfirmDelete(row.id);
                             }}
                             onOpenActions={(event) => {
-                              if (row.kind === "inbox") {
+                              if (row.kind === "inbox" || isTerminalRow(row)) {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 return;
@@ -784,13 +979,15 @@ export function ConversationsSidebar({
                               });
                             }}
                             onRequestDeleteConfirm={() => {
-                              if (row.kind === "inbox") return;
+                              if (row.kind === "inbox" || isTerminalRow(row))
+                                return;
                               setMenuConversation(null);
                               setRenameTarget(null);
                               setConfirmDeleteId(row.id);
                             }}
                             onRequestRename={() => {
-                              if (row.kind === "inbox") return;
+                              if (row.kind === "inbox" || isTerminalRow(row))
+                                return;
                               openRenameDialog({
                                 id: row.id,
                                 title: row.title,
