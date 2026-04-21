@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.235",
+  "version": "2.0.0-alpha.237",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -98,6 +98,7 @@
     "./utils/desktop-workspace": "./src/utils/desktop-workspace.ts",
     "./utils/format": "./src/utils/format.ts",
     "./voice": "./src/voice/index.ts",
+    "./app-shell/task-coordinator-slots": "./src/app-shell/task-coordinator-slots.tsx",
     "./autonomy": "./src/autonomy/index.ts",
     "./chat": "./src/chat/index.ts",
     "./chat/coding-agent-session-state": "./src/chat/coding-agent-session-state.ts",

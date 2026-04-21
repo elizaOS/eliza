@@ -10,13 +10,7 @@ import {
 } from "@elizaos/app-core";
 import { ChatView } from "@elizaos/app-core/components/pages/ChatView";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
@@ -224,44 +218,6 @@ function selectPrimaryAgentGithubEntry(
 ): ManagedAgentGithubEntry | null {
   return entries.find((entry) => entry.github?.connected) ?? entries[0] ?? null;
 }
-
-/* ── Local fallback for AppWorkspaceChrome ─────────────────────────── */
-// TODO: replace with AppWorkspaceChrome from @elizaos/app-core when Stream B lands.
-interface AppWorkspaceChromeFallbackProps {
-  nav: ReactNode;
-  main: ReactNode;
-  chat?: ReactNode;
-  chatCollapsed?: boolean;
-  onToggleChat?: () => void;
-  chatDefaultCollapsed?: boolean;
-  testId?: string;
-}
-
-function AppWorkspaceChromeFallback({
-  nav,
-  main,
-  chat,
-  testId,
-}: AppWorkspaceChromeFallbackProps) {
-  return (
-    <div
-      className="flex h-full min-h-0 w-full overflow-hidden"
-      data-testid={testId}
-    >
-      {nav}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
-        {main}
-      </main>
-      {chat ? (
-        <aside className="flex w-72 shrink-0 flex-col border-l border-border/12">
-          {chat}
-        </aside>
-      ) : null}
-    </div>
-  );
-}
-
-/* ── Settings section ─────────────────────────────────────────────── */
 
 // Mirrors GithubSetupState from LifeOpsSettingsSection.
 type GithubSetup = {

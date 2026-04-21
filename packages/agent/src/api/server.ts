@@ -148,8 +148,6 @@ import {
   resolveBlueBubblesWebhookPath,
 } from "./bluebubbles-routes.js";
 import { handleBrowserWorkspaceRoutes } from "./browser-workspace-routes.js";
-// BSC trade helpers moved to @elizaos/app-steward. Kept for re-export only.
-// import { buildBscApproveUnsignedTx, ... } from "./bsc-trade.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {

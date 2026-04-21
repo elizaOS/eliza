@@ -15,7 +15,7 @@
  * reverse coupling we don't want. The widget is owned by the app shell; the
  * plugin just provides the backend capabilities it consumes.
  */
-import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
+
 import { Button } from "@elizaos/ui";
 import {
   Activity,
@@ -41,6 +41,7 @@ import {
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
+import { CodingAgentTasksPanel as AppCodingAgentTasksPanel } from "../../../app-shell/task-coordinator-slots.js";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useApp } from "../../../state";
 import type { TranslateFn } from "../../../types";
