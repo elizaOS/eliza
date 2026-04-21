@@ -16,7 +16,9 @@ describe("resolveWidgetsForSlot", () => {
 
     expect(widgetIds).toEqual(
       expect.arrayContaining([
-        "lifeops/lifeops.overview",
+        "lifeops/lifeops.calendar",
+        "lifeops/lifeops.inbox",
+        "lifeops/lifeops.automations",
         "agent-orchestrator/agent-orchestrator.apps",
         "agent-orchestrator/agent-orchestrator.activity",
       ]),
