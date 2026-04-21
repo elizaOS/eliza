@@ -11,7 +11,10 @@ import { req } from "../../../packages/app-core/test/helpers/http";
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const WATCH_DESKTOP_SUPPORTED = process.platform === "darwin";
+const CI_ENABLED = /^(1|true)$/i.test(process.env.CI ?? "");
+const WATCH_DESKTOP_SUPPORTED =
+  process.platform === "darwin" &&
+  (!CI_ENABLED || process.env.MILADY_LIVE_DESKTOP_WATCH_TEST === "1");
 const DESKTOP_STACK_TEST_TIMEOUT_MS =
   process.platform === "win32" ? 480_000 : 300_000;
 
@@ -407,9 +410,8 @@ describeIf(LIVE_TESTS_ENABLED)(
     );
 
     // The Vite-backed blocker flow is already covered by selfcontrol-dev on
-    // CI. The Electrobun watch-mode window remains flaky outside macOS: Linux
-    // can fail under Xvfb/CEF, and Windows can leave the dev build directory
-    // locked while Electrobun tries to replace it.
+    // CI. Hosted macOS runners can SIGTRAP after watch mode falls back from
+    // CEF to WKWebView, so CI opts into this heavier smoke explicitly.
     it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
       "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
       async () => {
