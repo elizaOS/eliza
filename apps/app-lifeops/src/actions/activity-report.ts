@@ -1,5 +1,5 @@
 /**
- * T8d — Activity tracker actions.
+ * Activity tracker actions.
  *
  * GET_ACTIVITY_REPORT — per-app time breakdown for the last N hours.
  * GET_TIME_ON_APP      — time spent on a specific app (by name or bundle id).
