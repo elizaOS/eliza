@@ -647,6 +647,21 @@ const IOS_BONJOUR_BLOCK = `\t<key>NSBonjourServices</key>
 \t\t<string>_elizaos-gw._tcp</string>
 \t</array>`;
 
+// Enables BGAppRefreshTask (and BGProcessingTask) from BackgroundTasks so the
+// MobileSignalsPlugin can poll HealthKit sleep/wake data while the app is
+// backgrounded. Without these keys the task never fires and wake detection
+// regresses to "next time the user foregrounds the app".
+const IOS_BACKGROUND_MODES_BLOCK = `\t<key>UIBackgroundModes</key>
+\t<array>
+\t\t<string>fetch</string>
+\t\t<string>processing</string>
+\t</array>`;
+
+const IOS_BGTASK_IDENTIFIERS_BLOCK = `\t<key>BGTaskSchedulerPermittedIdentifiers</key>
+\t<array>
+\t\t<string>ai.eliza.mobile-signals.sleep-refresh</string>
+\t</array>`;
+
 function replaceFileContent(filePath, replacements) {
   if (!fs.existsSync(filePath)) {
     return false;
@@ -766,6 +781,24 @@ function overlayIosNativeFiles() {
       changed = true;
     }
 
+    // Add UIBackgroundModes if missing
+    if (!plist.includes("UIBackgroundModes")) {
+      plist = plist.replace(
+        "</dict>",
+        `${IOS_BACKGROUND_MODES_BLOCK}\n</dict>`,
+      );
+      changed = true;
+    }
+
+    // Add BGTaskSchedulerPermittedIdentifiers if missing
+    if (!plist.includes("BGTaskSchedulerPermittedIdentifiers")) {
+      plist = plist.replace(
+        "</dict>",
+        `${IOS_BGTASK_IDENTIFIERS_BLOCK}\n</dict>`,
+      );
+      changed = true;
+    }
+
     if (changed) {
       fs.writeFileSync(plistPath, plist, "utf8");
       console.log(
@@ -807,6 +840,25 @@ function overlayIosNativeFiles() {
       path.join(targetAppDir, "AppDelegate.swift"),
     );
     console.log("[mobile-build] Copied iOS AppDelegate.swift.");
+  }
+
+  // -- Copy Fastlane config into the synced iOS project --
+  // CI runs `bundle exec fastlane ...` from apps/app/ios and expects the
+  // Gemfile + fastlane/ directory there. The canonical copies live in
+  // packages/app-core/platforms/ios/; sync them so both local dev and CI
+  // see the same signed-release tooling.
+  const srcFastlaneDir = path.join(iosPlatformSrc, "fastlane");
+  const targetFastlaneDir = path.join(appDir, "ios", "fastlane");
+  if (fs.existsSync(srcFastlaneDir)) {
+    fs.rmSync(targetFastlaneDir, { recursive: true, force: true });
+    fs.cpSync(srcFastlaneDir, targetFastlaneDir, { recursive: true });
+    console.log("[mobile-build] Copied iOS Fastlane config.");
+  }
+  const srcGemfile = path.join(iosPlatformSrc, "Gemfile");
+  const targetGemfile = path.join(appDir, "ios", "Gemfile");
+  if (fs.existsSync(srcGemfile)) {
+    fs.copyFileSync(srcGemfile, targetGemfile);
+    console.log("[mobile-build] Copied iOS Gemfile.");
   }
 
   // -- Patch xcconfigs to include CocoaPods settings --
@@ -1225,14 +1277,29 @@ async function buildIos() {
   );
 }
 
+export async function syncIosOverlay() {
+  overlayIosNativeFiles();
+}
+
 export async function main(target = process.argv[2]) {
-  if (target !== "android" && target !== "ios") {
-    console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
+  if (
+    target !== "android" &&
+    target !== "ios" &&
+    target !== "ios-overlay"
+  ) {
+    console.error(
+      "Usage: node scripts/run-mobile-build.mjs <android|ios|ios-overlay>",
+    );
     process.exit(1);
   }
 
   if (target === "android") {
     await buildAndroid();
+    return;
+  }
+
+  if (target === "ios-overlay") {
+    await syncIosOverlay();
     return;
   }
 
