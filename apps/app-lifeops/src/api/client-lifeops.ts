@@ -29,6 +29,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsIMessageMessagesRequest,
+  GetLifeOpsUnifiedInboxRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserCompanionAutoPairResponse,
   LifeOpsBrowserCompanionPackageStatus,
@@ -40,6 +41,8 @@ import type {
   LifeOpsBrowserSession,
   LifeOpsBrowserSettings,
   LifeOpsBrowserTabSummary,
+  LifeOpsCalendarEventMutationResult,
+  LifeOpsCalendarEventUpdate,
   LifeOpsCalendarFeed,
   LifeOpsCapabilitiesStatus,
   LifeOpsConnectorMode,
@@ -62,6 +65,7 @@ import type {
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsTelegramConnectorStatus,
+  LifeOpsUnifiedInbox,
   LifeOpsXConnectorStatus,
   OpenLifeOpsBrowserCompanionManagerResponse,
   OpenLifeOpsBrowserCompanionPackagePathResponse,
@@ -210,6 +214,14 @@ declare module "@elizaos/app-core/api/client-base" {
     createLifeOpsCalendarEvent(
       data: CreateLifeOpsCalendarEventRequest,
     ): Promise<{ event: LifeOpsCalendarFeed["events"][number] }>;
+    updateLifeOpsCalendarEvent(
+      eventId: string,
+      patch: LifeOpsCalendarEventUpdate,
+    ): Promise<LifeOpsCalendarEventMutationResult>;
+    deleteLifeOpsCalendarEvent(eventId: string): Promise<{ deleted: true }>;
+    getLifeOpsUnifiedInbox(
+      options?: GetLifeOpsUnifiedInboxRequest,
+    ): Promise<LifeOpsUnifiedInbox>;
     createLifeOpsGmailReplyDraft(
       data: CreateLifeOpsGmailReplyDraftRequest,
     ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
@@ -701,6 +713,47 @@ ElizaClient.prototype.createLifeOpsCalendarEvent = async function (
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+ElizaClient.prototype.updateLifeOpsCalendarEvent = async function (
+  this: ElizaClient,
+  eventId,
+  patch,
+) {
+  return this.fetch(
+    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
+};
+
+ElizaClient.prototype.deleteLifeOpsCalendarEvent = async function (
+  this: ElizaClient,
+  eventId,
+) {
+  return this.fetch(
+    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+};
+
+ElizaClient.prototype.getLifeOpsUnifiedInbox = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options.channels && options.channels.length > 0) {
+    params.set("channels", options.channels.join(","));
+  }
+  const query = params.toString();
+  return this.fetch(`/api/lifeops/inbox/unified${query ? `?${query}` : ""}`);
 };
 
 ElizaClient.prototype.createLifeOpsGmailReplyDraft = async function (
