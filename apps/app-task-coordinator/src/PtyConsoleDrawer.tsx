@@ -1,4 +1,4 @@
-import type { CodingAgentSession } from "@elizaos/app-core";
+import { type CodingAgentSession, useApp } from "@elizaos/app-core";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 import { PULSE_STATUSES, STATUS_DOT } from "./pty-status-dots";
 
@@ -22,6 +22,7 @@ export function PtyConsoleDrawer({
   onNewSession,
   onClose,
 }: PtyConsoleDrawerProps) {
+  const { t } = useApp();
   const isExpanded = activeSessionId != null;
   const hasSessions = sessions.length > 0;
 
@@ -47,13 +48,17 @@ export function PtyConsoleDrawer({
                   STATUS_DOT[s.status] ?? "bg-muted"
                 }${PULSE_STATUSES.has(s.status) ? " animate-pulse" : ""}`}
               />
-              <span className="truncate max-w-[120px]">
-                {s.label}
-              </span>
+              <span className="truncate max-w-[120px]">{s.label}</span>
               {s.status === "error" ? (
-                <span className="text-danger text-2xs">error</span>
+                <span className="text-danger text-2xs">
+                  {t("common.error", { defaultValue: "Error" })}
+                </span>
               ) : s.status === "blocked" ? (
-                <span className="text-warn text-2xs">blocked</span>
+                <span className="text-warn text-2xs">
+                  {t("codingagenttaskspanel.status.blocked", {
+                    defaultValue: "Blocked",
+                  })}
+                </span>
               ) : null}
             </button>
           );
@@ -64,9 +69,12 @@ export function PtyConsoleDrawer({
           type="button"
           onClick={onNewSession}
           className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-txt transition-colors cursor-pointer border-b-2 border-transparent"
-          aria-label="New terminal session"
+          aria-label={t("ptyconsolebase.NewTerminalSession", {
+            defaultValue: "New terminal session",
+          })}
         >
           <svg
+            aria-hidden="true"
             width="12"
             height="12"
             viewBox="0 0 24 24"
@@ -78,7 +86,13 @@ export function PtyConsoleDrawer({
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-          {!hasSessions && <span>Terminal</span>}
+          {!hasSessions && (
+            <span>
+              {t("ptyconsolebase.Terminal", {
+                defaultValue: "Terminal",
+              })}
+            </span>
+          )}
         </button>
 
         {/* Spacer */}
@@ -90,9 +104,12 @@ export function PtyConsoleDrawer({
             type="button"
             onClick={onClose}
             className="p-1 text-muted hover:text-txt transition-colors cursor-pointer"
-            aria-label="Collapse terminal"
+            aria-label={t("ptyconsolebase.CollapseTerminal", {
+              defaultValue: "Collapse terminal",
+            })}
           >
             <svg
+              aria-hidden="true"
               width="12"
               height="12"
               viewBox="0 0 24 24"

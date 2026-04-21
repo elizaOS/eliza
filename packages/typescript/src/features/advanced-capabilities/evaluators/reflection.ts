@@ -860,10 +860,12 @@ async function handler(
 
 		let existingRelationship = relationshipByPair.get(`${sourceId}|${target}`);
 		if (!existingRelationship) {
-			const [fromDb] = await runtime.getRelationshipsByPairs([
-				{ sourceEntityId: sourceId, targetEntityId: target },
-			]);
-			existingRelationship = fromDb ?? undefined;
+			const candidates = await runtime.getRelationships({
+				entityIds: [sourceId],
+			});
+			existingRelationship = candidates.find(
+				(r) => r.targetEntityId === target,
+			);
 			if (existingRelationship) {
 				relationshipByPair.set(`${sourceId}|${target}`, existingRelationship);
 			}

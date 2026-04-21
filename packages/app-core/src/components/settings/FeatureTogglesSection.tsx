@@ -8,60 +8,28 @@
  * deactivate them, which preserves the contract that Cloud is the source
  * of truth for managed entitlements (Commandment 4).
  *
- * Travel features (`travel.*`, `cloud.duffel`) get a Cloud-aware UX:
- *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud · 20%
- *    service fee" badge and a disabled switch (managed upstream).
+ * Travel features get a Cloud-aware UX:
+ *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud travel
+ *    billing" badge and a disabled switch (managed upstream).
  *  - Not Cloud-linked → "Sign in to Eliza Cloud to enable, or toggle on
- *    locally (requires your own Duffel API key)" hint, and the Sync
+ *    locally (requires your own travel-provider credentials)" hint, and
+ *    the Sync
  *    button switches to a "Sign in to Cloud" CTA wired into the existing
  *    `handleCloudLogin` flow from `useApp`.
  */
 
 import { Button, Switch } from "@elizaos/ui";
+import type {
+  LifeOpsFeatureFlagRowDto,
+  LifeOpsFeatureFlagsResponse,
+  LifeOpsFeatureFlagsSyncResponse,
+  LifeOpsFeatureToggleResponse,
+} from "@elizaos/app-lifeops/lifeops/feature-flags.types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
 
 type FeatureSource = "default" | "local" | "cloud";
-
-interface FeatureRowDto {
-  readonly featureKey: string;
-  readonly enabled: boolean;
-  readonly source: FeatureSource;
-  readonly description: string;
-  readonly costsMoney: boolean;
-  readonly enabledAt: string | null;
-  readonly enabledBy: string | null;
-  readonly packageId: string | null;
-}
-
-interface FeaturesResponse {
-  readonly features: ReadonlyArray<FeatureRowDto>;
-}
-
-interface SyncResponse extends FeaturesResponse {
-  readonly synced: number;
-}
-
-interface ToggleResponse {
-  readonly feature: FeatureRowDto;
-}
-
-/** Feature keys that are Cloud-default-on when the user is signed into
- *  Eliza Cloud. Mirrors `CLOUD_LINKED_DEFAULT_ON` in
- *  feature-flags.types.ts; duplicated here to avoid pulling the
- *  app-lifeops package into the React bundle. */
-const CLOUD_TRAVEL_KEYS: ReadonlySet<string> = new Set([
-  "travel.search_flight",
-  "travel.search_hotel",
-  "travel.book_flight",
-  "travel.book_hotel",
-  "cloud.duffel",
-]);
-
-function isCloudTravelKey(key: string): boolean {
-  return CLOUD_TRAVEL_KEYS.has(key);
-}
 
 function sourceBadge(source: FeatureSource): {
   label: string;
@@ -89,7 +57,7 @@ function sourceBadge(source: FeatureSource): {
 
 export function FeatureTogglesSection() {
   const { elizaCloudConnected, handleCloudLogin } = useApp();
-  const [features, setFeatures] = useState<FeatureRowDto[]>([]);
+  const [features, setFeatures] = useState<LifeOpsFeatureFlagRowDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -101,7 +69,9 @@ export function FeatureTogglesSection() {
     setLoading(true);
     setError(null);
     try {
-      const res = await client.fetch<FeaturesResponse>("/api/cloud/features");
+      const res = await client.fetch<LifeOpsFeatureFlagsResponse>(
+        "/api/cloud/features",
+      );
       setFeatures([...res.features]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -115,12 +85,12 @@ export function FeatureTogglesSection() {
   }, [load]);
 
   const handleToggle = useCallback(
-    async (feature: FeatureRowDto, next: boolean) => {
+    async (feature: LifeOpsFeatureFlagRowDto, next: boolean) => {
       if (feature.source === "cloud") return;
       setBusyKey(feature.featureKey);
       setError(null);
       try {
-        const res = await client.fetch<ToggleResponse>(
+        const res = await client.fetch<LifeOpsFeatureToggleResponse>(
           "/api/lifeops/features/toggle",
           {
             method: "POST",
@@ -149,7 +119,7 @@ export function FeatureTogglesSection() {
     setSyncedNote(null);
     setError(null);
     try {
-      const res = await client.fetch<SyncResponse>(
+      const res = await client.fetch<LifeOpsFeatureFlagsSyncResponse>(
         "/api/cloud/features/sync",
         { method: "POST" },
       );
@@ -234,12 +204,14 @@ export function FeatureTogglesSection() {
         <ul className="space-y-2">
           {features.map((feature) => {
             const badge = sourceBadge(feature.source);
-            const cloudTravel = isCloudTravelKey(feature.featureKey);
             const isCloudManaged = feature.source === "cloud";
             const isBusy = busyKey === feature.featureKey;
-            const showCloudFeeTag = cloudTravel && isCloudManaged;
+            const showCloudBillingTag =
+              feature.cloudDefaultOn && isCloudManaged;
             const showCloudHint =
-              cloudTravel && !elizaCloudConnected && !isCloudManaged;
+              feature.cloudDefaultOn &&
+              !elizaCloudConnected &&
+              !isCloudManaged;
             return (
               <li
                 key={feature.featureKey}
@@ -247,9 +219,7 @@ export function FeatureTogglesSection() {
               >
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold">
-                      {feature.featureKey}
-                    </span>
+                    <span className="text-xs font-semibold">{feature.label}</span>
                     <span
                       className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
                       title={
@@ -260,12 +230,12 @@ export function FeatureTogglesSection() {
                     >
                       {badge.label}
                     </span>
-                    {showCloudFeeTag && (
+                    {showCloudBillingTag && (
                       <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-                        Enabled via Eliza Cloud · 20% service fee
+                        Cloud-managed travel billing
                       </span>
                     )}
-                    {feature.costsMoney && !showCloudFeeTag && (
+                    {feature.costsMoney && !showCloudBillingTag && (
                       <span className="rounded border border-warn/40 bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
                         Costs money
                       </span>
@@ -283,7 +253,7 @@ export function FeatureTogglesSection() {
                   {showCloudHint && (
                     <p className="text-xs-tight text-muted">
                       Sign in to Eliza Cloud to enable, or toggle on locally
-                      (requires your own Duffel API key).
+                      (requires your own travel-provider credentials).
                     </p>
                   )}
                 </div>
@@ -293,7 +263,7 @@ export function FeatureTogglesSection() {
                   onCheckedChange={(value: boolean) =>
                     void handleToggle(feature, value)
                   }
-                  aria-label={`Toggle ${feature.featureKey}`}
+                  aria-label={`Toggle ${feature.label}`}
                 />
               </li>
             );

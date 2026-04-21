@@ -44,8 +44,8 @@ export function defaultModelSettings(): ModelSettings {
     anthropic: {
       apiKey: "",
       baseUrl: "",
-      smallModel: "claude-3-haiku-20240307",
-      largeModel: "claude-3-5-sonnet-20240620",
+      smallModel: "claude-haiku-4-5-20251001",
+      largeModel: "claude-sonnet-4-6",
     },
     google: {
       apiKey: "",

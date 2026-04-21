@@ -57,7 +57,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
-    anthropicLargeModel: "claude-sonnet-4-20250514",
+    anthropicLargeModel: "claude-sonnet-4-6",
 
     xaiApiKey: "",
     xaiBaseUrl: "https://api.x.ai/v1",

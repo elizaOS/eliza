@@ -44,7 +44,7 @@ class ModelProvider(str, Enum):
 DEFAULT_MODELS: dict[ModelProvider, str] = {
     ModelProvider.GROQ: "llama-3.1-8b-instant",
     ModelProvider.OPENAI: "gpt-5",
-    ModelProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
+    ModelProvider.ANTHROPIC: "claude-sonnet-4-6",
     ModelProvider.OLLAMA: "llama3.2:latest",
     ModelProvider.LOCALAI: "gpt-4",
     ModelProvider.OPENROUTER: "meta-llama/llama-3.1-8b-instruct",
@@ -76,11 +76,11 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "o1-mini",
     ],
     ModelProvider.ANTHROPIC: [
-        "claude-3-5-sonnet-20241022",
+        "claude-sonnet-4-6",
         "claude-3-5-haiku-20241022",
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
     ],
     ModelProvider.OLLAMA: [
         "llama3.2:latest",
@@ -120,7 +120,7 @@ SUPPORTED_MODELS: dict[ModelProvider, list[str]] = {
         "openai/gpt-5",
         "openai/o1-preview",
         # Anthropic through router
-        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-sonnet-4-6",
     ],
     ModelProvider.GOOGLE: [
         "gemini-2.0-flash-exp",
@@ -611,7 +611,7 @@ def get_default_config() -> ModelConfig:
     if os.getenv("ANTHROPIC_API_KEY"):
         return ModelConfig(
             provider=ModelProvider.ANTHROPIC,
-            model_name="claude-3-5-sonnet-20241022",
+            model_name="claude-sonnet-4-6",
         )
 
     # Check OpenRouter
@@ -668,7 +668,7 @@ PRESETS: dict[str, ModelConfig] = {
     ),
     "anthropic-best": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
-        model_name="claude-3-5-sonnet-20241022",
+        model_name="claude-sonnet-4-6",
     ),
 
     # Open-source via OpenRouter

@@ -1160,7 +1160,7 @@ export function ProviderModelSelectors({
               (getNestedValue(
                 mediaConfig as Record<string, unknown>,
                 "vision.anthropic.model",
-              ) as string) ?? "claude-sonnet-4-20250514"
+              ) as string) ?? "claude-sonnet-4-6"
             }
             onValueChange={(value: string) =>
               updateNestedValue("vision.anthropic.model", value)
@@ -1170,13 +1170,10 @@ export function ProviderModelSelectors({
               <SelectValue />
             </SettingsControls.SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude-sonnet-4-20250514">
+              <SelectItem value="claude-sonnet-4-6">
                 {t("mediasettingssection.ClaudeSonnet4")}
               </SelectItem>
-              <SelectItem value="claude-3-5-sonnet-20241022">
-                {t("mediasettingssection.Claude35Sonnet")}
-              </SelectItem>
-              <SelectItem value="claude-3-haiku-20240307">
+              <SelectItem value="claude-haiku-4-5-20251001">
                 {t("mediasettingssection.Claude3Haiku")}
               </SelectItem>
             </SelectContent>

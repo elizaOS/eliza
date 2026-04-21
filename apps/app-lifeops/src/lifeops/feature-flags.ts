@@ -32,9 +32,9 @@ import {
  * canonical representation of an unmodified default (Commandment 7).
  *
  * Cloud-link awareness: when a `CLOUD_AUTH` runtime service reports the
- * user is signed into Eliza Cloud, travel features and `cloud.duffel`
- * default to ON. The Cloud-side billing layer applies a 5% service fee;
- * the local code never recomputes that markup (Commandment 2).
+ * user is signed into Eliza Cloud, travel features and the cloud-managed
+ * travel-billing flag default to ON. The Cloud-side billing layer owns
+ * pricing; the local code never recomputes that markup (Commandment 2).
  */
 
 const SELECT_COLUMNS =
@@ -95,6 +95,7 @@ function rowToState(
     source: sourceText as FeatureFlagSource,
     enabledAt,
     enabledBy: enabledByText.length > 0 ? enabledByText : null,
+    label: def.label,
     description: def.description,
     costsMoney: def.costsMoney,
     metadata: parseJsonRecord(row.metadata),
@@ -113,6 +114,7 @@ function defaultState(
     source: "default",
     enabledAt: null,
     enabledBy: null,
+    label: def.label,
     description: def.description,
     costsMoney: def.costsMoney,
     metadata: {},

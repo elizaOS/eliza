@@ -137,7 +137,7 @@ def _pick_runtime_model(
             return requested
         if fallback and _is_anthropic_model(fallback):
             return fallback
-        return "claude-sonnet-4-20250514"
+        return "claude-sonnet-4-6"
 
     if backend == "openai":
         requested = _strip_model_prefix(requested)
@@ -348,8 +348,8 @@ Examples:
     parser.add_argument(
         "--orchestrator-model",
         type=str,
-        default="claude-sonnet-4-20250514",
-        help="Model for the orchestrating agent (default: claude-sonnet-4-20250514)",
+        default="claude-sonnet-4-6",
+        help="Model for the orchestrating agent (default: claude-sonnet-4-6)",
     )
 
     parser.add_argument(

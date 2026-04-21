@@ -24,8 +24,6 @@ export interface RateLimitResult {
 
 interface RateLimitEntry {
   timestamps: number[];
-  /** Window for this key; used by global cleanup so short-window sweeps do not trim long-window buckets. */
-  windowMs: number;
 }
 
 const buckets = new Map<string, RateLimitEntry>();
@@ -34,12 +32,12 @@ const buckets = new Map<string, RateLimitEntry>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1_000;
 let lastCleanup = Date.now();
 
-function cleanup(): void {
+function cleanup(windowMs: number): void {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
   lastCleanup = now;
+  const cutoff = now - windowMs;
   for (const [key, entry] of buckets) {
-    const cutoff = now - entry.windowMs;
     entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
     if (entry.timestamps.length === 0) buckets.delete(key);
   }
@@ -54,14 +52,12 @@ export function checkRateLimit(
   config: RateLimitConfig,
 ): RateLimitResult {
   const now = Date.now();
-  cleanup();
+  cleanup(config.windowMs);
 
   let entry = buckets.get(key);
   if (!entry) {
-    entry = { timestamps: [], windowMs: config.windowMs };
+    entry = { timestamps: [] };
     buckets.set(key, entry);
-  } else {
-    entry.windowMs = config.windowMs;
   }
 
   // Evict timestamps outside the sliding window.

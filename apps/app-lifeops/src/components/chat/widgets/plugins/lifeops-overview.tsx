@@ -1,3 +1,14 @@
+import { client } from "@elizaos/app-core/api";
+import { isApiError } from "@elizaos/app-core/api/client-types-core";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "@elizaos/app-core/components/chat/widgets/types";
+import { useApp } from "@elizaos/app-core/state";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -10,6 +21,7 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
+import { Badge, Button } from "@elizaos/ui";
 import {
   Bell,
   BellRing,
@@ -34,20 +46,8 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Badge, Button } from "@elizaos/ui";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
-import { useApp } from "@elizaos/app-core/state";
-import {
-  EmptyWidgetState,
-  WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets/types";
+import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
 import { GoogleGlanceSection } from "./lifeops.js";
 
@@ -62,14 +62,6 @@ type SnoozePreset = "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
 type OccurrenceAction = "complete" | "skip";
 type OccurrenceBucket = "now" | "next" | "upcoming";
 type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
-
-const SNOOZE_PRESETS: Array<{ preset: SnoozePreset; label: string }> = [
-  { preset: "15m", label: "15 min" },
-  { preset: "30m", label: "30 min" },
-  { preset: "1h", label: "1 hour" },
-  { preset: "tonight", label: "Tonight" },
-  { preset: "tomorrow_morning", label: "Tomorrow" },
-];
 
 const LIFEOPS_LABEL_KEY: Record<string, string> = {
   afternoon: "lifeopsoverview.label.afternoon",
@@ -747,26 +739,26 @@ function OccurrenceRow({
               {cadence}
             </Badge>
             {occurrence.state === "snoozed" ? (
-                <Badge
-                  variant="secondary"
-                  className="text-[10px]"
-                  aria-label={t("lifeopsoverview.snoozed", {
-                    defaultValue: "Snoozed",
-                  })}
-                >
-                  <Moon className="h-3 w-3" />
-                </Badge>
+              <Badge
+                variant="secondary"
+                className="text-[10px]"
+                aria-label={t("lifeopsoverview.snoozed", {
+                  defaultValue: "Snoozed",
+                })}
+              >
+                <Moon className="h-3 w-3" />
+              </Badge>
             ) : null}
             {occurrence.subjectType === "agent" ? (
-                <Badge
-                  variant="secondary"
-                  className="text-[10px]"
-                  aria-label={t("lifeopsoverview.agent", {
-                    defaultValue: "Agent",
-                  })}
-                >
-                  <Bot className="h-3 w-3" />
-                </Badge>
+              <Badge
+                variant="secondary"
+                className="text-[10px]"
+                aria-label={t("lifeopsoverview.agent", {
+                  defaultValue: "Agent",
+                })}
+              >
+                <Bot className="h-3 w-3" />
+              </Badge>
             ) : null}
           </div>
           {description ? (
@@ -874,6 +866,7 @@ function GoalRow({
       <div className="flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${reviewStateDotClass(goal.reviewState)}`}
+          role="img"
           aria-label={reviewStateLabel(goal.reviewState, t)}
           title={reviewStateLabel(goal.reviewState, t)}
         />
@@ -1167,7 +1160,9 @@ function ScheduleSection({
     : schedule.lastSleepEndedAt
       ? t("lifeopsoverview.lastWake", {
           defaultValue: "Last wake {{time}}{{duration}}",
-          time: formatDateTime(schedule.lastSleepEndedAt) ?? schedule.lastSleepEndedAt,
+          time:
+            formatDateTime(schedule.lastSleepEndedAt) ??
+            schedule.lastSleepEndedAt,
           duration: schedule.lastSleepDurationMinutes
             ? ` • ${schedule.lastSleepDurationMinutes}m`
             : "",

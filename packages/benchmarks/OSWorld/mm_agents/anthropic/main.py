@@ -30,7 +30,7 @@ API_RETRY_INTERVAL = 5
 class AnthropicAgent:
     def __init__(self,
                  platform: str = "Ubuntu",
-                 model: str = "claude-sonnet-4-5-20250929",
+                 model: str = "claude-sonnet-4-6",
                  provider: APIProvider = APIProvider.ANTHROPIC,
                  max_tokens: int = 4096,
                  api_key: str = os.environ.get("ANTHROPIC_API_KEY", None),

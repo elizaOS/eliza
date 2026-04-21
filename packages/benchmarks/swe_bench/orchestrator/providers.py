@@ -374,7 +374,7 @@ class ClaudeCodeProvider(BaseSWEBenchProvider):
         self,
         repo_manager: RepositoryManager,
         max_steps: int = 30,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         api_key: str | None = None,
         trace_hook: Callable[[str, str, dict[str, object]], Awaitable[None]] | None = None,
     ) -> None:

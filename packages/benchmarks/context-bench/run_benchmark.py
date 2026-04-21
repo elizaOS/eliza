@@ -117,7 +117,7 @@ async def anthropic_llm_query(context: str, question: str) -> str:
         client = anthropic.AsyncAnthropic()
         
         message = await client.messages.create(
-            model="claude-3-haiku-20240307",  # Use cheaper model for benchmark
+            model="claude-haiku-4-5-20251001",  # Use cheaper model for benchmark
             max_tokens=100,
             messages=[
                 {

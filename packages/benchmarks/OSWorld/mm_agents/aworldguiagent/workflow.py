@@ -53,7 +53,7 @@ class Worker:
         self.max_trajectory_length = max_trajectory_length
         self.enable_reflection = enable_reflection
         self.use_thinking = engine_params.get("model", "") in [
-            "claude-3-7-sonnet-20250219"
+            "claude-sonnet-4-6"
         ]
 
         self.generator_agent_config = AgentConfig(

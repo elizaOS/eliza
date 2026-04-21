@@ -1588,7 +1588,7 @@
   "onboarding.loginSessionExpired": "로그인 세션이 만료되었습니다. '다시 시작'을 클릭하고 다시 시도하세요.",
   "onboarding.loginWithAnthropic": "Claude로 로그인",
   "onboarding.loginWithOpenAI": "OpenAI로 로그인",
-  "onboarding.modelPlaceholder": "provider/model (예: anthropic/claude-3.5-sonnet)",
+  "onboarding.modelPlaceholder": "provider/model (예: anthropic/claude-sonnet-4-6)",
   "onboarding.networkError": "네트워크 오류 — 연결을 확인하고 다시 시도하세요.",
   "onboarding.neuralLinkTitle": "신경 링크",
   "onboarding.next": "다음",

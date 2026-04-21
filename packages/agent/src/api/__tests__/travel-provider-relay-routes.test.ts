@@ -7,9 +7,9 @@ vi.mock("../../cloud/validate-url.js", () => ({
 }));
 
 import {
-  type DuffelRelayRouteState,
-  handleDuffelRelayRoute,
-} from "../duffel-relay-routes.js";
+  type TravelProviderRelayRouteState,
+  handleTravelProviderRelayRoute,
+} from "../travel-provider-relay-routes.js";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -80,10 +80,10 @@ function makeRuntimeWithCloudAuth(apiKey: string) {
             getApiKey: () => apiKey,
           }
         : null,
-  } as unknown as DuffelRelayRouteState["runtime"];
+  } satisfies NonNullable<TravelProviderRelayRouteState["runtime"]>;
 }
 
-describe("duffel relay route", () => {
+describe("travel-provider relay route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -94,14 +94,16 @@ describe("duffel relay route", () => {
 
   it("returns 401 when no Eliza Cloud API key is available", async () => {
     const { res, readBody, getStatus } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
       runtime: undefined,
     };
-    const handled = await handleDuffelRelayRoute(
-      makeReq("/api/cloud/duffel/offer-requests", { data: {} }),
+    const handled = await handleTravelProviderRelayRoute(
+      makeReq("/api/cloud/travel-providers/provider-a/offer-requests", {
+        data: {},
+      }),
       res,
-      "/api/cloud/duffel/offer-requests",
+      "/api/cloud/travel-providers/provider-a/offer-requests",
       "POST",
       state,
     );
@@ -110,16 +112,19 @@ describe("duffel relay route", () => {
     expect(readBody<{ error: string }>().error).toMatch(/Eliza Cloud/);
   });
 
-  it("returns 404 for unknown duffel relay subpaths", async () => {
+  it("returns 404 for unknown travel-provider relay subpaths", async () => {
     const { res, readBody, getStatus } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
       runtime: makeRuntimeWithCloudAuth("k"),
     };
-    const handled = await handleDuffelRelayRoute(
-      makeReq("/api/cloud/duffel/totally-bogus", undefined),
+    const handled = await handleTravelProviderRelayRoute(
+      makeReq(
+        "/api/cloud/travel-providers/provider-a/totally-bogus",
+        undefined,
+      ),
       res,
-      "/api/cloud/duffel/totally-bogus",
+      "/api/cloud/travel-providers/provider-a/totally-bogus",
       "GET",
       state,
     );
@@ -151,7 +156,7 @@ describe("duffel relay route", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const { res, readBody, getStatus } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: {
         cloud: {
           baseUrl: "https://www.elizacloud.ai",
@@ -160,12 +165,12 @@ describe("duffel relay route", () => {
       },
       runtime: makeRuntimeWithCloudAuth("user-session-key"),
     };
-    const handled = await handleDuffelRelayRoute(
-      makeReq("/api/cloud/duffel/offer-requests", {
+    const handled = await handleTravelProviderRelayRoute(
+      makeReq("/api/cloud/travel-providers/provider-a/offer-requests", {
         data: { slices: [], passengers: [{ type: "adult" }] },
       }),
       res,
-      "/api/cloud/duffel/offer-requests",
+      "/api/cloud/travel-providers/provider-a/offer-requests",
       "POST",
       state,
     );
@@ -173,7 +178,7 @@ describe("duffel relay route", () => {
     expect(handled).toBe(true);
     expect(getStatus()).toBe(200);
     expect(capturedUrl).toBe(
-      "https://www.elizacloud.ai/api/v1/duffel/offer-requests",
+      "https://www.elizacloud.ai/api/v1/provider-a/offer-requests",
     );
     const headers = (capturedInit?.headers ?? {}) as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer user-session-key");
@@ -191,7 +196,7 @@ describe("duffel relay route", () => {
   it("forwards GET /offers/:id upstream and propagates upstream status on failure", async () => {
     const fetchMock = makeFetchMock(async (input) => {
       expect(String(input)).toBe(
-        "https://www.elizacloud.ai/api/v1/duffel/offers/off_xyz",
+        "https://www.elizacloud.ai/api/v1/provider-a/offers/off_xyz",
       );
       return new Response(
         JSON.stringify({ error: "insufficient_credits" }),
@@ -201,14 +206,17 @@ describe("duffel relay route", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const { res, readBody, getStatus } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
       runtime: makeRuntimeWithCloudAuth("k"),
     };
-    const handled = await handleDuffelRelayRoute(
-      makeReq("/api/cloud/duffel/offers/off_xyz", undefined),
+    const handled = await handleTravelProviderRelayRoute(
+      makeReq(
+        "/api/cloud/travel-providers/provider-a/offers/off_xyz",
+        undefined,
+      ),
       res,
-      "/api/cloud/duffel/offers/off_xyz",
+      "/api/cloud/travel-providers/provider-a/offers/off_xyz",
       "GET",
       state,
     );
@@ -229,7 +237,7 @@ describe("duffel relay route", () => {
               network: "base",
               payTo: "0xabc",
               scheme: "exact",
-              description: "Top up for flight booking",
+              description: "Top up for travel booking",
             },
           ],
         }),
@@ -246,14 +254,17 @@ describe("duffel relay route", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const { res, headers, readBody, getStatus } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
       runtime: makeRuntimeWithCloudAuth("k"),
     };
-    const handled = await handleDuffelRelayRoute(
-      makeReq("/api/cloud/duffel/offers/off_pay", undefined),
+    const handled = await handleTravelProviderRelayRoute(
+      makeReq(
+        "/api/cloud/travel-providers/provider-a/offers/off_pay",
+        undefined,
+      ),
       res,
-      "/api/cloud/duffel/offers/off_pay",
+      "/api/cloud/travel-providers/provider-a/offers/off_pay",
       "GET",
       state,
     );
@@ -269,11 +280,11 @@ describe("duffel relay route", () => {
 
   it("returns false (does not handle) for unrelated cloud paths", async () => {
     const { res } = makeResponseCollector();
-    const state: DuffelRelayRouteState = {
+    const state: TravelProviderRelayRouteState = {
       config: { cloud: { baseUrl: "https://www.elizacloud.ai" } },
       runtime: makeRuntimeWithCloudAuth("k"),
     };
-    const handled = await handleDuffelRelayRoute(
+    const handled = await handleTravelProviderRelayRoute(
       makeReq("/api/cloud/billing/summary", undefined),
       res,
       "/api/cloud/billing/summary",

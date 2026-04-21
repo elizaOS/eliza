@@ -29,9 +29,9 @@
   },
   "devDependencies": {
     "@types/node": "24.12.2",
-    "tsup": "8.5.1",
+    "tsup": "8.4.0",
     "typescript": "6.0.3",
-    "vitest": "3.2.4"
+    "vitest": "3.0.5"
   },
   "publishConfig": {
     "access": "public"

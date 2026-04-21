@@ -14,9 +14,9 @@ class HighScore:
 # per benchmark for cross-run delta comparisons.
 HIGH_SCORES: dict[str, HighScore] = {
     "realm": HighScore("GPT-4-Turbo", 82.1),
-    "context_bench": HighScore("claude-3-opus", 0.95),
+    "context_bench": HighScore("claude-opus-4-7", 0.95),
     "gaia": HighScore("Human Performance", 0.92),
-    "swe_bench": HighScore("SWE-bench Lite:OpenHands + Claude 3.5 Sonnet", 53.0),
+    "swe_bench": HighScore("SWE-bench Lite:OpenHands + Claude Sonnet 4.6", 53.0),
     "mint": HighScore("gpt-4-0613", 0.72),
     "vending_bench": HighScore("grok_4", 4694.15),
     "tau_bench": HighScore("gpt-5", 0.4735),
