@@ -553,7 +553,7 @@ async function launch() {
     desktopDevLogPath,
     desktopDevLogOptOut,
     childrenList: serviceLine,
-    elizaNamespace: process.env.ELIZA_NAMESPACE?.trim() || "eliza",
+    elizaNamespace: process.env.ELIZA_NAMESPACE?.trim() || "milady",
     elizaNamespaceUnset: !process.env.ELIZA_NAMESPACE?.trim(),
   });
   console.log(
@@ -594,7 +594,7 @@ async function launch() {
         ELIZA_HEADLESS: "1",
         ELIZA_PORT: String(uiDevPort),
         ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
         ...(rendererUrlForShell
           ? { ELIZA_RENDERER_URL: rendererUrlForShell }
           : {}),
@@ -631,7 +631,7 @@ async function launch() {
         ELIZA_PORT: String(uiDevPort),
         ELIZA_UI_PORT: String(uiDevPort),
         ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
       },
     );
     await waitForPort(uiDevPort);
@@ -663,7 +663,7 @@ async function launch() {
         : {
             ELIZA_API_PORT: apiPort,
             ELIZA_UI_PORT: String(uiDevPort),
-            ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "eliza",
+            ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? "milady",
             ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
           }),
     ELIZA_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
