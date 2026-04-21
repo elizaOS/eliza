@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.ts";
 import {
   ALL_FEATURE_KEYS,
@@ -8,6 +8,7 @@ import {
   resolveFeatureDefaults,
 } from "../src/lifeops/feature-flags.types.ts";
 import { parseX402Response } from "../src/lifeops/x402-payment-handler.ts";
+import { executeRawSql } from "../src/lifeops/sql.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 interface MockCloudAuth {
@@ -23,14 +24,14 @@ function withMockCloudAuth(
   runtime: IAgentRuntime,
   authenticated: boolean,
 ): IAgentRuntime {
-  const mockAuth: MockCloudAuth = {
+  const mockAuth = {
     isAuthenticated: () => authenticated,
-  };
+  } as Service & MockCloudAuth;
   const original = runtime.getService.bind(runtime);
   return new Proxy(runtime, {
     get(target, prop, receiver) {
       if (prop === "getService") {
-        return <T,>(serviceType: string): T | null => {
+        return <T extends Service>(serviceType: string): T | null => {
           if (serviceType === "CLOUD_AUTH") {
             return mockAuth as unknown as T;
           }
@@ -43,8 +44,9 @@ function withMockCloudAuth(
 }
 
 describe("LifeOps feature flag schema integration", () => {
-  let runtimeResult: Awaited<ReturnType<typeof createLifeOpsTestRuntime>> | null =
-    null;
+  let runtimeResult: Awaited<
+    ReturnType<typeof createLifeOpsTestRuntime>
+  > | null = null;
 
   afterEach(async () => {
     if (runtimeResult) {
@@ -60,7 +62,9 @@ describe("LifeOps feature flag schema integration", () => {
     const states = await service.list();
     expect(states).toHaveLength(ALL_FEATURE_KEYS.length);
     for (const state of states) {
-      expect(state.enabled).toBe(BASE_FEATURE_DEFAULTS[state.featureKey].enabled);
+      expect(state.enabled).toBe(
+        BASE_FEATURE_DEFAULTS[state.featureKey].enabled,
+      );
       expect(state.source).toBe("default");
     }
 
@@ -80,6 +84,23 @@ describe("LifeOps feature flag schema integration", () => {
     expect(roundTrip.source).toBe("local");
     expect(roundTrip.enabledBy).toBe(runtimeResult.runtime.agentId);
     expect(roundTrip.metadata).toEqual({ channel: "ntfy" });
+  });
+
+  it("rejects unknown persisted feature keys instead of skipping them", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    await executeRawSql(
+      runtimeResult.runtime,
+      `INSERT INTO lifeops_features (
+            feature_key, enabled, source, enabled_at, enabled_by, metadata, created_at, updated_at
+          ) VALUES (
+            'made_up.feature', TRUE, 'local', now(), NULL, '{}'::jsonb, now(), now()
+          )`,
+    );
+
+    const service = createFeatureFlagService(runtimeResult.runtime);
+    await expect(service.list()).rejects.toThrow(
+      /unknown feature_key from db: made_up\.feature/,
+    );
   });
 });
 
@@ -106,8 +127,9 @@ describe("resolveFeatureDefaults Cloud-link policy", () => {
 });
 
 describe("FeatureFlagService cloud-aware defaults", () => {
-  let runtimeResult: Awaited<ReturnType<typeof createLifeOpsTestRuntime>> | null =
-    null;
+  let runtimeResult: Awaited<
+    ReturnType<typeof createLifeOpsTestRuntime>
+  > | null = null;
 
   afterEach(async () => {
     if (runtimeResult) {

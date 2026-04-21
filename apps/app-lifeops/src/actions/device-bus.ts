@@ -246,7 +246,18 @@ export const publishDeviceIntentAction: Action & {
         | PublishDeviceIntentParameters
         | undefined) ?? {};
 
-    const kind = normalizeKind(params.kind) ?? "reminder";
+    const kind = normalizeKind(params.kind);
+    if (!kind) {
+      return {
+        text: "PUBLISH_DEVICE_INTENT requires an intent kind such as alarm, reminder, or block.",
+        success: false,
+        values: { success: false, error: "MISSING_KIND" },
+        data: {
+          actionName: "PUBLISH_DEVICE_INTENT",
+          error: "MISSING_KIND",
+        },
+      };
+    }
 
     const payload = coercePayload(params.payload);
 
@@ -308,10 +319,49 @@ export const publishDeviceIntentAction: Action & {
       };
     }
 
-    const data = (await response.json().catch(() => ({}))) as {
-      intentId?: string;
-      deliveredTo?: string[];
-    };
+    let data: { intentId?: string; deliveredTo?: string[] };
+    try {
+      data = (await response.json()) as {
+        intentId?: string;
+        deliveredTo?: string[];
+      };
+    } catch (error) {
+      logger.warn(
+        {
+          action: "PUBLISH_DEVICE_INTENT",
+          kind,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "[PUBLISH_DEVICE_INTENT] cloud returned invalid JSON",
+      );
+      return {
+        text: "",
+        success: false,
+        values: {
+          success: false,
+          error: "DEVICE_BUS_INVALID_RESPONSE",
+        },
+        data: {
+          actionName: "PUBLISH_DEVICE_INTENT",
+          error: "DEVICE_BUS_INVALID_RESPONSE",
+        },
+      };
+    }
+
+    if (typeof data.intentId !== "string" || data.intentId.trim().length === 0) {
+      return {
+        text: "",
+        success: false,
+        values: {
+          success: false,
+          error: "DEVICE_BUS_INVALID_RESPONSE",
+        },
+        data: {
+          actionName: "PUBLISH_DEVICE_INTENT",
+          error: "DEVICE_BUS_INVALID_RESPONSE",
+        },
+      };
+    }
 
     return {
       text: buildIntentResultText("Published", kind, payload),
@@ -319,12 +369,12 @@ export const publishDeviceIntentAction: Action & {
       values: {
         success: true,
         kind,
-        intentId: data.intentId ?? null,
+        intentId: data.intentId,
       },
       data: {
         actionName: "PUBLISH_DEVICE_INTENT",
         kind,
-        intentId: data.intentId ?? null,
+        intentId: data.intentId,
         deliveredTo: data.deliveredTo ?? [],
         payload,
       },

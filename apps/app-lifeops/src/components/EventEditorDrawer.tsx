@@ -40,14 +40,9 @@ function fromLocalInputValue(localValue: string): string | null {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export interface EventEditorDrawerProps {
   open: boolean;
   event: LifeOpsCalendarEvent | null;
-  goals?: LifeOpsGoalRecord[];
   onClose: () => void;
   onSaved?: (event: LifeOpsCalendarEvent) => void;
   onDeleted?: (eventId: string) => void;
@@ -65,7 +60,7 @@ export function EventEditorDrawer({
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [notes, setNotes] = useState("");
-  const [reminders, setReminders] = useState<string>(""); // comma-separated minutesBefore
+  const [reminders, setReminders] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -79,7 +74,6 @@ export function EventEditorDrawer({
     setStartAt(toLocalInputValue(event.startAt));
     setEndAt(toLocalInputValue(event.endAt));
     setNotes(event.description ?? "");
-    setLinkedGoalId("");
     setReminders("");
     setError(null);
   }, [event]);
@@ -319,7 +313,6 @@ export function EventEditorDrawer({
                 })}
               />
             </div>
-
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-border/12 px-5 py-4">

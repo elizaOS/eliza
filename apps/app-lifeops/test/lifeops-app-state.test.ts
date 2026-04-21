@@ -4,13 +4,15 @@ import {
   saveLifeOpsAppState,
 } from "../src/lifeops/app-state.js";
 
+type RuntimeCacheLike = NonNullable<Parameters<typeof loadLifeOpsAppState>[0]>;
+
 describe("lifeops app state", () => {
   test("defaults to enabled when nothing is cached", async () => {
-    const runtime = {
-      async getCache() {
+    const runtime: RuntimeCacheLike = {
+      async getCache<T>() {
         return null;
       },
-      async setCache() {
+      async setCache<T>() {
         throw new Error("should not be called");
       },
     };
@@ -21,11 +23,11 @@ describe("lifeops app state", () => {
   });
 
   test("respects explicit disabled state in cache", async () => {
-    const runtime = {
-      async getCache() {
-        return { enabled: false };
+    const runtime: RuntimeCacheLike = {
+      async getCache<T>() {
+        return { enabled: false } as T;
       },
-      async setCache() {
+      async setCache<T>() {
         throw new Error("should not be called");
       },
     };
@@ -37,11 +39,11 @@ describe("lifeops app state", () => {
 
   test("persists enabled state through the runtime cache", async () => {
     let cachedValue: unknown = null;
-    const runtime = {
-      async getCache() {
-        return cachedValue;
+    const runtime: RuntimeCacheLike = {
+      async getCache<T>() {
+        return cachedValue as T;
       },
-      async setCache(_key: string, value: unknown) {
+      async setCache<T>(_key: string, value: T) {
         cachedValue = value;
       },
     };
@@ -57,5 +59,33 @@ describe("lifeops app state", () => {
     await expect(loadLifeOpsAppState(runtime)).resolves.toEqual({
       enabled: true,
     });
+  });
+
+  test("rejects malformed cached state instead of treating it as enabled", async () => {
+    const runtime: RuntimeCacheLike = {
+      async getCache<T>() {
+        return { enabled: "false" } as T;
+      },
+      async setCache<T>() {
+        throw new Error("should not be called");
+      },
+    };
+
+    await expect(loadLifeOpsAppState(runtime)).rejects.toThrow(
+      /invalid cached app state/,
+    );
+  });
+
+  test("surfaces cache read failures", async () => {
+    const runtime: RuntimeCacheLike = {
+      async getCache<T>() {
+        throw new Error("cache offline");
+      },
+      async setCache<T>() {
+        throw new Error("should not be called");
+      },
+    };
+
+    await expect(loadLifeOpsAppState(runtime)).rejects.toThrow("cache offline");
   });
 });

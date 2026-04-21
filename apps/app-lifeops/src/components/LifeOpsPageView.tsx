@@ -1,4 +1,3 @@
-import type { LifeOpsOverview } from "@elizaos/app-lifeops/contracts";
 import {
   Button,
   type CloudOAuthConnection,
@@ -28,7 +27,6 @@ import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import {
   LifeOpsCapabilitiesPanel,
-  LifeOpsProfilePanel,
   LifeOpsSchedulePanel,
   LifeOpsStretchPanel,
   LifeOpsXPanel,
@@ -386,7 +384,6 @@ function LifeOpsSettingsSectionView({
         <LifeOpsSchedulePanel />
         <LifeOpsCapabilitiesPanel />
         <LifeOpsXPanel />
-        <LifeOpsProfilePanel />
         <LifeOpsStretchPanel />
       </div>
 

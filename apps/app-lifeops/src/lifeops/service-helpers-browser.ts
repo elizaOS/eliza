@@ -329,13 +329,6 @@ export function normalizePageForms(
   });
 }
 
-/**
- * Build a deterministic, template-based description of `value`, optionally
- * prefixed with `label`. This does NOT call an LLM — the `label` is used as a
- * tag, not a prompt. For true LLM summarization, callers should pass the
- * produced description into a `runtime.useModel(TEXT_LARGE, ...)` call at the
- * workflow step boundary.
- */
 export function describeWorkflowValue(value: unknown, label?: string): string {
   const prefix = label?.trim() ? `${label.trim()}: ` : "";
   if (isRecord(value) && Array.isArray(value.events)) {
@@ -363,9 +356,6 @@ export function describeWorkflowValue(value: unknown, label?: string): string {
   }
   return `${prefix}${JSON.stringify(value)}`;
 }
-
-/** @deprecated Misleading name \u2014 this does not invoke an LLM. Use `describeWorkflowValue` instead. */
-export const summarizeWorkflowValue = describeWorkflowValue;
 
 export function parseWorkflowSchedulerState(
   value: unknown,

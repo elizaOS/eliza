@@ -5,9 +5,9 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { describe, expect, it } from "vitest";
 import {
-  FALLBACK_FIXED_BUFFER_MINUTES,
   GOOGLE_DISTANCE_MATRIX_URL,
   TravelTimeService,
+  TravelTimeUnavailableError,
   type CalendarEventLookupLike,
   type TravelTimeFetch,
 } from "./service.js";
@@ -137,21 +137,23 @@ describe("TravelTimeService", () => {
     expect(result.destinationAddress).toBe("Tartine Bakery, San Francisco");
   });
 
-  it("returns fallback-fixed when GOOGLE_MAPS_API_KEY is absent", async () => {
+  it("fails explicitly when GOOGLE_MAPS_API_KEY is absent", async () => {
     const service = new TravelTimeService(runtime, {
       calendar: makeCalendar([makeEvent({})]),
       getApiKey: () => undefined,
     });
-    const result = await service.computeBuffer({
-      eventId: "evt-1",
-      originAddress: "100 Main St",
-    });
-    expect(result.method).toBe("fallback-fixed");
-    expect(result.bufferMinutes).toBe(FALLBACK_FIXED_BUFFER_MINUTES);
-    expect(result.reason).toContain("GOOGLE_MAPS_API_KEY");
+    await expect(
+      service.computeBuffer({
+        eventId: "evt-1",
+        originAddress: "100 Main St",
+      }),
+    ).rejects.toMatchObject({
+      name: "TravelTimeUnavailableError",
+      code: "MISSING_API_KEY",
+    } satisfies Partial<TravelTimeUnavailableError>);
   });
 
-  it("returns fallback-fixed when the Distance Matrix HTTP call errors", async () => {
+  it("fails explicitly when the Distance Matrix HTTP call errors", async () => {
     const fetchImpl: TravelTimeFetch = async () => ({
       ok: false,
       status: 500,
@@ -162,16 +164,18 @@ describe("TravelTimeService", () => {
       fetchImpl,
       getApiKey: () => "test-key",
     });
-    const result = await service.computeBuffer({
-      eventId: "evt-1",
-      originAddress: "100 Main St",
-    });
-    expect(result.method).toBe("fallback-fixed");
-    expect(result.bufferMinutes).toBe(FALLBACK_FIXED_BUFFER_MINUTES);
-    expect(result.reason).toContain("status 500");
+    await expect(
+      service.computeBuffer({
+        eventId: "evt-1",
+        originAddress: "100 Main St",
+      }),
+    ).rejects.toMatchObject({
+      name: "TravelTimeUnavailableError",
+      code: "DISTANCE_MATRIX_FAILED",
+    } satisfies Partial<TravelTimeUnavailableError>);
   });
 
-  it("returns fallback-fixed when Distance Matrix reports non-OK element status", async () => {
+  it("fails explicitly when Distance Matrix reports non-OK element status", async () => {
     const fetchImpl: TravelTimeFetch = async () => ({
       ok: true,
       status: 200,
@@ -185,12 +189,15 @@ describe("TravelTimeService", () => {
       fetchImpl,
       getApiKey: () => "test-key",
     });
-    const result = await service.computeBuffer({
-      eventId: "evt-1",
-      originAddress: "100 Main St",
-    });
-    expect(result.method).toBe("fallback-fixed");
-    expect(result.reason).toContain("ZERO_RESULTS");
+    await expect(
+      service.computeBuffer({
+        eventId: "evt-1",
+        originAddress: "100 Main St",
+      }),
+    ).rejects.toMatchObject({
+      name: "TravelTimeUnavailableError",
+      code: "INVALID_DISTANCE_MATRIX_RESPONSE",
+    } satisfies Partial<TravelTimeUnavailableError>);
   });
 
   it("throws when the event cannot be found", async () => {

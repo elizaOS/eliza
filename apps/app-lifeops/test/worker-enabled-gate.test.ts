@@ -1,11 +1,8 @@
 /**
- * Tests that the three lifeops task workers respect the `enabled` flag
- * stored in the runtime cache (via `loadLifeOpsAppState`). When LifeOps
- * is disabled via the UI toggle, each worker's `shouldRun` returns false
- * so the scheduler tick becomes a cheap no-op.
- *
- * When the cache is unreachable or throws, the workers fall back to
- * running (failing open so a transient cache issue doesn't halt LifeOps).
+ * Tests that LifeOps task workers respect the `enabled` flag stored in the
+ * runtime cache (via `loadLifeOpsAppState`). When LifeOps is disabled via
+ * the UI toggle, each worker's `shouldRun` returns false so the scheduler
+ * tick becomes a cheap no-op.
  */
 
 import type { IAgentRuntime, TaskWorker } from "@elizaos/core";
@@ -15,6 +12,10 @@ import { registerFollowupTrackerWorker } from "../src/followup/followup-tracker.
 import { registerLifeOpsTaskWorker } from "../src/lifeops/runtime.js";
 
 const APP_STATE_CACHE_KEY = "eliza:lifeops-app-state";
+const TASK = {
+  id: "00000000-0000-0000-0000-000000000004",
+  name: "test-lifeops-worker",
+} as Parameters<NonNullable<TaskWorker["shouldRun"]>>[1];
 
 type RegisterFn = (runtime: IAgentRuntime) => void;
 
@@ -58,6 +59,7 @@ function makeRuntime(opts: MakeRuntimeOpts = {}) {
 function describeSharedShouldRunContract(
   label: string,
   register: RegisterFn,
+  expectedWhenCacheThrows: boolean,
 ): void {
   describe(label, () => {
     test("shouldRun returns false when cache reports enabled: false", async () => {
@@ -66,7 +68,7 @@ function describeSharedShouldRunContract(
       });
       register(runtime);
       const worker = getRegistered();
-      await expect(worker.shouldRun?.(runtime)).resolves.toBe(false);
+      await expect(worker.shouldRun?.(runtime, TASK)).resolves.toBe(false);
     });
 
     test("shouldRun returns true when cache reports enabled: true", async () => {
@@ -75,7 +77,7 @@ function describeSharedShouldRunContract(
       });
       register(runtime);
       const worker = getRegistered();
-      await expect(worker.shouldRun?.(runtime)).resolves.toBe(true);
+      await expect(worker.shouldRun?.(runtime, TASK)).resolves.toBe(true);
     });
 
     test("shouldRun returns true when cache is missing (defaults to enabled)", async () => {
@@ -84,16 +86,20 @@ function describeSharedShouldRunContract(
       });
       register(runtime);
       const worker = getRegistered();
-      await expect(worker.shouldRun?.(runtime)).resolves.toBe(true);
+      await expect(worker.shouldRun?.(runtime, TASK)).resolves.toBe(true);
     });
 
-    test("shouldRun fails open to true when getCache throws", async () => {
+    test(`shouldRun returns ${String(
+      expectedWhenCacheThrows,
+    )} when getCache throws`, async () => {
       const { runtime, getRegistered } = makeRuntime({
         cacheError: "boom",
       });
       register(runtime);
       const worker = getRegistered();
-      await expect(worker.shouldRun?.(runtime)).resolves.toBe(true);
+      await expect(worker.shouldRun?.(runtime, TASK)).resolves.toBe(
+        expectedWhenCacheThrows,
+      );
     });
   });
 }
@@ -105,12 +111,15 @@ beforeEach(() => {
 describeSharedShouldRunContract(
   "registerLifeOpsTaskWorker (scheduler)",
   registerLifeOpsTaskWorker,
+  false,
 );
 describeSharedShouldRunContract(
   "registerProactiveTaskWorker (proactive agent)",
   registerProactiveTaskWorker,
+  true,
 );
 describeSharedShouldRunContract(
   "registerFollowupTrackerWorker (follow-up reconciler)",
   registerFollowupTrackerWorker,
+  true,
 );

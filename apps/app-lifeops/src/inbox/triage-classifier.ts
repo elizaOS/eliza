@@ -63,7 +63,13 @@ async function classifyBatch(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     rawResponse = typeof result === "string" ? result : "";
   } catch (error) {
-    logger.warn("[inbox-classifier] LLM classification failed:", String(error));
+    logger.warn(
+      {
+        src: "inbox-classifier",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[InboxTriageClassifier] LLM classification failed",
+    );
     throw new InboxTriageClassificationError(
       "Inbox classification model call failed.",
     );
@@ -199,7 +205,7 @@ function parseTriageJsonArray(raw: string): unknown[] {
   } catch (error) {
     logger.warn(
       { src: "inbox-classifier", error: String(error) },
-      "Failed to parse LLM classification JSON",
+      "[InboxTriageClassifier] failed to parse LLM classification JSON",
     );
     throw new InboxTriageClassificationError(
       "Inbox classification JSON parsing failed.",

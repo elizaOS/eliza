@@ -1,3 +1,5 @@
+import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
+
 /**
  * WS6 — Approval queue as first-class state. Type-only stub published by WS5
  * so background-job code can compile against the interface WS6 will
@@ -252,4 +254,3 @@ export interface ApprovalQueue {
   markExpired(id: string): Promise<ApprovalRequest>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
-import type { TravelBookingPayloadFields } from "./travel-booking.types.js";

@@ -43,33 +43,30 @@ const NONE_WINDOW: EnforcementWindow = {
 function safeGetLocalMinuteOfDay(now: Date, timezone: string): number {
   let hour = 0;
   let minute = 0;
-  try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const parts = fmt.formatToParts(now);
-    for (const part of parts) {
-      if (part.type === "hour") {
-        const parsed = Number.parseInt(part.value, 10);
-        // Intl emits "24" for midnight under hour12:false in some runtimes.
-        hour = Number.isFinite(parsed) ? parsed % 24 : 0;
-      } else if (part.type === "minute") {
-        const parsed = Number.parseInt(part.value, 10);
-        minute = Number.isFinite(parsed) ? parsed : 0;
-      }
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const parts = fmt.formatToParts(now);
+  for (const part of parts) {
+    if (part.type === "hour") {
+      const parsed = Number.parseInt(part.value, 10);
+      // Intl emits "24" for midnight under hour12:false in some runtimes.
+      hour = Number.isFinite(parsed) ? parsed % 24 : 0;
+    } else if (part.type === "minute") {
+      const parsed = Number.parseInt(part.value, 10);
+      minute = Number.isFinite(parsed) ? parsed : 0;
     }
-  } catch {
-    // Invalid timezone — fall back to UTC.
-    hour = now.getUTCHours();
-    minute = now.getUTCMinutes();
   }
   return hour * 60 + minute;
 }
 
-function windowContains(window: EnforcementWindow, minuteOfDay: number): boolean {
+function windowContains(
+  window: EnforcementWindow,
+  minuteOfDay: number,
+): boolean {
   if (window.kind === "none") return false;
   const { startMinute, endMinute } = window;
   if (startMinute === endMinute) return false;

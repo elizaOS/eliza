@@ -36,7 +36,7 @@ import {
   requireRecord,
 } from "./service-helpers-misc.js";
 import {
-  summarizeWorkflowValue,
+  describeWorkflowValue,
   parseWorkflowSchedulerState,
 } from "./service-helpers-browser.js";
 import { addMinutes } from "./time.js";
@@ -650,7 +650,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
               (step.sourceKey ? outputs[step.sourceKey] : steps.at(-1)?.value) ??
               null;
             value = {
-              text: summarizeWorkflowValue(sourceValue, step.prompt),
+              text: describeWorkflowValue(sourceValue, step.prompt),
             };
           } else {
             if (!definition.permissionPolicy.allowBrowserActions) {

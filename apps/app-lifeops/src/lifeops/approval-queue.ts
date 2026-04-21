@@ -91,6 +91,10 @@ const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "internal",
 ]);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function parseState(value: unknown): ApprovalRequestState {
   const text = toText(value);
   if (!VALID_STATES.has(text as ApprovalRequestState)) {
@@ -139,8 +143,362 @@ function parseOptionalText(value: unknown): string | null {
   return text === "" ? null : text;
 }
 
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`[ApprovalQueue] invalid ${label}: expected object`);
+  }
+  return value;
+}
+
+function requireStringField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (typeof record[field] !== "string") {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected string`,
+    );
+  }
+}
+
+function requireNullableStringField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (value !== null && typeof value !== "string") {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected string or null`,
+    );
+  }
+}
+
+function requireOptionalNullableStringField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (record[field] === undefined) {
+    return;
+  }
+  requireNullableStringField(record, field, label);
+}
+
+function requireStringArrayField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected string[]`,
+    );
+  }
+}
+
+function requireFiniteNumberField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected number`,
+    );
+  }
+}
+
+function requireNullableFiniteNumberField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (
+    value !== null &&
+    (typeof value !== "number" || !Number.isFinite(value))
+  ) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected number or null`,
+    );
+  }
+}
+
+function requireBooleanField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (typeof record[field] !== "boolean") {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected boolean`,
+    );
+  }
+}
+
+function requireOptionalRecordField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (value !== undefined && value !== null && !isRecord(value)) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.${field}: expected object or null`,
+    );
+  }
+}
+
+function requirePrimitiveRecordField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = requireRecord(record[field], `${label}.${field}`);
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      typeof entry !== "string" &&
+      typeof entry !== "number" &&
+      typeof entry !== "boolean"
+    ) {
+      throw new Error(
+        `[ApprovalQueue] invalid ${label}.${field}.${key}: expected string, number, or boolean`,
+      );
+    }
+  }
+}
+
+function requireTravelPassengers(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  const passengers = record.passengers;
+  if (passengers === undefined) {
+    return;
+  }
+  if (!Array.isArray(passengers)) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.passengers: expected array`,
+    );
+  }
+  passengers.forEach((passenger, index) => {
+    const passengerRecord = requireRecord(
+      passenger,
+      `${label}.passengers[${index}]`,
+    );
+    requireStringField(
+      passengerRecord,
+      "givenName",
+      `${label}.passengers[${index}]`,
+    );
+    requireStringField(
+      passengerRecord,
+      "familyName",
+      `${label}.passengers[${index}]`,
+    );
+    requireStringField(
+      passengerRecord,
+      "bornOn",
+      `${label}.passengers[${index}]`,
+    );
+    for (const field of [
+      "offerPassengerId",
+      "email",
+      "phoneNumber",
+      "title",
+      "gender",
+    ]) {
+      requireOptionalNullableStringField(
+        passengerRecord,
+        field,
+        `${label}.passengers[${index}]`,
+      );
+    }
+  });
+}
+
+function requireTravelCalendarSync(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  const value = record.calendarSync;
+  if (value === undefined || value === null) {
+    return;
+  }
+  const calendarSync = requireRecord(value, `${label}.calendarSync`);
+  requireBooleanField(calendarSync, "enabled", `${label}.calendarSync`);
+  for (const field of [
+    "calendarId",
+    "title",
+    "description",
+    "location",
+    "timeZone",
+  ]) {
+    requireOptionalNullableStringField(
+      calendarSync,
+      field,
+      `${label}.calendarSync`,
+    );
+  }
+}
+
+function requireTravelCost(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  const value = record.cost;
+  if (value === undefined || value === null) {
+    return;
+  }
+  const cost = requireRecord(value, `${label}.cost`);
+  requireFiniteNumberField(cost, "totalUsd", `${label}.cost`);
+  requireFiniteNumberField(cost, "creatorMarkupUsd", `${label}.cost`);
+  requireFiniteNumberField(cost, "platformFeeUsd", `${label}.cost`);
+  requireNullableFiniteNumberField(cost, "markupPercent", `${label}.cost`);
+}
+
+function requirePaymentRequired(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  const value = record.paymentRequired;
+  if (value === undefined || value === null) {
+    return;
+  }
+  const payment = requireRecord(value, `${label}.paymentRequired`);
+  for (const field of ["amount", "asset", "network", "payTo", "scheme"]) {
+    requireStringField(payment, field, `${label}.paymentRequired`);
+  }
+  requireNullableStringField(payment, "expiresAt", `${label}.paymentRequired`);
+  requireNullableStringField(
+    payment,
+    "description",
+    `${label}.paymentRequired`,
+  );
+}
+
+function validateApprovalPayload(
+  value: unknown,
+  label: string,
+): ApprovalPayload {
+  const record = requireRecord(value, label);
+  const action = parseAction(record.action);
+  switch (action) {
+    case "send_message":
+      requireStringField(record, "recipient", label);
+      requireStringField(record, "body", label);
+      requireNullableStringField(record, "replyToMessageId", label);
+      break;
+    case "send_email":
+      requireStringArrayField(record, "to", label);
+      requireStringArrayField(record, "cc", label);
+      requireStringArrayField(record, "bcc", label);
+      requireStringField(record, "subject", label);
+      requireStringField(record, "body", label);
+      requireNullableStringField(record, "threadId", label);
+      requireOptionalNullableStringField(record, "replyToMessageId", label);
+      break;
+    case "schedule_event":
+      requireStringField(record, "calendarId", label);
+      requireStringField(record, "title", label);
+      requireFiniteNumberField(record, "startsAtMs", label);
+      requireFiniteNumberField(record, "endsAtMs", label);
+      requireStringArrayField(record, "attendees", label);
+      requireNullableStringField(record, "location", label);
+      requireNullableStringField(record, "description", label);
+      break;
+    case "modify_event": {
+      requireStringField(record, "calendarId", label);
+      requireStringField(record, "eventId", label);
+      const patch = requireRecord(record.patch, `${label}.patch`);
+      requireNullableStringField(patch, "title", `${label}.patch`);
+      requireNullableFiniteNumberField(patch, "startsAtMs", `${label}.patch`);
+      requireNullableFiniteNumberField(patch, "endsAtMs", `${label}.patch`);
+      const attendees = patch.attendees;
+      if (
+        attendees !== null &&
+        (!Array.isArray(attendees) ||
+          attendees.some((entry) => typeof entry !== "string"))
+      ) {
+        throw new Error(
+          `[ApprovalQueue] invalid ${label}.patch.attendees: expected string[] or null`,
+        );
+      }
+      requireNullableStringField(patch, "location", `${label}.patch`);
+      requireNullableStringField(patch, "description", `${label}.patch`);
+      break;
+    }
+    case "cancel_event":
+      requireStringField(record, "calendarId", label);
+      requireStringField(record, "eventId", label);
+      requireBooleanField(record, "notifyAttendees", label);
+      break;
+    case "book_travel":
+      if (
+        record.kind !== "flight" &&
+        record.kind !== "hotel" &&
+        record.kind !== "ground"
+      ) {
+        throw new Error(`[ApprovalQueue] invalid ${label}.kind`);
+      }
+      requireStringField(record, "provider", label);
+      requireStringField(record, "itineraryRef", label);
+      requireFiniteNumberField(record, "totalCents", label);
+      requireStringField(record, "currency", label);
+      requireOptionalNullableStringField(record, "offerId", label);
+      requireOptionalNullableStringField(record, "offerRequestId", label);
+      if (
+        record.orderType !== undefined &&
+        record.orderType !== null &&
+        record.orderType !== "hold" &&
+        record.orderType !== "instant"
+      ) {
+        throw new Error(`[ApprovalQueue] invalid ${label}.orderType`);
+      }
+      requireOptionalRecordField(record, "search", label);
+      requireTravelPassengers(record, label);
+      requireTravelCalendarSync(record, label);
+      requireOptionalNullableStringField(record, "summary", label);
+      requireTravelCost(record, label);
+      requirePaymentRequired(record, label);
+      break;
+    case "make_call":
+      requireStringField(record, "to", label);
+      requireStringField(record, "script", label);
+      requireFiniteNumberField(record, "maxDurationSeconds", label);
+      break;
+    case "execute_workflow":
+      requireStringField(record, "workflowId", label);
+      requirePrimitiveRecordField(record, "input", label);
+      break;
+    case "spend_money":
+      requireStringField(record, "vendor", label);
+      requireFiniteNumberField(record, "amountCents", label);
+      requireStringField(record, "currency", label);
+      requireStringField(record, "memo", label);
+      break;
+  }
+  return record as unknown as ApprovalPayload;
+}
+
 function rowToRequest(row: Record<string, unknown>): ApprovalRequest {
-  const payload = parseJsonRecord(row.payload) as unknown as ApprovalPayload;
+  const action = parseAction(row.action);
+  const payload = validateApprovalPayload(
+    parseJsonRecord(row.payload),
+    `row ${toText(row.id)} payload`,
+  );
+  if (payload.action !== action) {
+    throw new Error(
+      `[ApprovalQueue] row ${toText(row.id)} payload action ${payload.action} does not match request action ${action}`,
+    );
+  }
   return {
     id: toText(row.id),
     createdAt: parseTimestamp(row.created_at),
@@ -148,7 +506,7 @@ function rowToRequest(row: Record<string, unknown>): ApprovalRequest {
     state: parseState(row.state),
     requestedBy: toText(row.requested_by),
     subjectUserId: toText(row.subject_user_id),
-    action: parseAction(row.action),
+    action,
     payload,
     channel: parseChannel(row.channel),
     reason: toText(row.reason),
@@ -180,9 +538,10 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
-    if (input.action !== input.payload.action) {
+    const payload = validateApprovalPayload(input.payload, "enqueue payload");
+    if (input.action !== payload.action) {
       throw new Error(
-        `[ApprovalQueue] payload action ${input.payload.action} does not match request action ${input.action}`,
+        `[ApprovalQueue] payload action ${payload.action} does not match request action ${input.action}`,
       );
     }
     const id = randomUUID();
@@ -197,7 +556,7 @@ export class PgApprovalQueue implements ApprovalQueue {
         ${sqlText(input.requestedBy)},
         ${sqlText(input.subjectUserId)},
         ${sqlText(input.action)},
-        ${sqlJson(input.payload)},
+        ${sqlJson(payload)},
         ${sqlText(input.channel)},
         ${sqlText(input.reason)},
         ${timestampLiteral(input.expiresAt)},

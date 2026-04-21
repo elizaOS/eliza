@@ -721,7 +721,7 @@ export function InventoryView() {
               variant="outline"
               size="sm"
               data-testid={`wallet-copy-${item.label.toLowerCase()}-address`}
-              className="h-11 w-full justify-start rounded-xl px-4 text-xs font-semibold shadow-sm"
+              className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
               onClick={() => void handleCopyAddress(item.address)}
             >
               <Copy className="h-4 w-4" />
@@ -734,7 +734,7 @@ export function InventoryView() {
             variant="outline"
             size="sm"
             data-testid="wallet-rpc-popup"
-            className="h-11 w-full justify-start rounded-xl px-4 text-xs font-semibold shadow-sm"
+            className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
             onClick={() => setWalletRpcOpen(true)}
           >
             <Settings className="h-4 w-4" />
@@ -750,7 +750,7 @@ export function InventoryView() {
             variant="outline"
             size="sm"
             data-testid="wallet-policies-popup"
-            className="h-11 w-full justify-start rounded-xl px-4 text-xs font-semibold shadow-sm"
+            className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
             onClick={() => setWalletPoliciesOpen(true)}
           >
             <Shield className="h-4 w-4" />
@@ -866,7 +866,7 @@ export function InventoryView() {
                               : `${label} — hidden (click to show)`
                         }
                         aria-disabled={disabled}
-                        className={`flex aspect-square items-center justify-center rounded-2xl border transition-colors ${
+                        className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
                           disabled
                             ? "cursor-pointer border-border/20 bg-bg/10 text-muted opacity-40 hover:opacity-60 hover:border-accent/30"
                             : isOn
@@ -912,9 +912,34 @@ export function InventoryView() {
         ) : undefined,
     },
   ];
-  const walletSubTabControls = (
-    <div className="mb-4 flex justify-end">
+  const walletContentHeader = (
+    <div className="flex flex-col gap-3 border-b border-border/24 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-accent/24 bg-accent/10 text-accent">
+          <Wallet className="h-5 w-5" aria-hidden />
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold text-txt-strong">
+            {t("settings.sections.wallet.label", {
+              defaultValue: "Wallet",
+            })}
+          </h1>
+          <p className="mt-0.5 max-w-2xl text-xs-tight text-muted">
+            {hasAnyAddress
+              ? t("wallet.workspace.connectedDescription", {
+                  defaultValue:
+                    "Review balances, approvals, transaction history, and wallet controls.",
+                })
+              : t("wallet.workspace.setupDescription", {
+                  defaultValue:
+                    "Connect a wallet before balances, approvals, and trading controls appear.",
+                })}
+          </p>
+        </div>
+      </div>
       <SegmentedControl
+        className="w-full sm:w-auto"
+        buttonClassName="h-9 px-3 text-xs"
         value={walletSubTab}
         onValueChange={(value: WalletSubTab) => setWalletSubTab(value)}
         items={walletSubTabItems}
@@ -931,12 +956,13 @@ export function InventoryView() {
       <PageLayout
         className="[&>div>div:first-child]:!pt-0"
         sidebar={walletSidebar}
+        contentHeader={walletContentHeader}
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         footer={<WidgetHost slot="wallet" className="py-3" />}
       >
-        {walletSubTabControls}
         <PagePanel.Loading
           variant="workspace"
+          className="min-h-[14rem] rounded-lg"
           heading={t("wallet.loadingBalances")}
         />
       </PageLayout>
@@ -948,10 +974,10 @@ export function InventoryView() {
       <PageLayout
         className="[&>div>div:first-child]:!pt-0"
         sidebar={walletSidebar}
+        contentHeader={walletContentHeader}
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         footer={<WidgetHost slot="wallet" className="py-3" />}
       >
-        {walletSubTabControls}
         <div className="grid gap-3">
           {walletError ? (
             <PagePanel.Notice tone="danger">{walletError}</PagePanel.Notice>
@@ -998,30 +1024,58 @@ export function InventoryView() {
           ) : null}
 
           {!hasAnyAddress && (
-            <PagePanel variant="workspace">
-              <div className="flex flex-col items-center gap-4 py-8">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10 text-accent">
-                  <Wallet className="h-6 w-6" />
+            <PagePanel variant="workspace" className="min-h-0 rounded-lg">
+              <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_15rem]">
+                <div className="flex min-w-0 gap-4 px-5 py-5 sm:px-6 sm:py-6">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 text-accent">
+                    <Wallet className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-txt-strong">
+                      {t("wallet.setup.title", {
+                        defaultValue: "Connect your wallet",
+                      })}
+                    </h2>
+                    <p className="mt-1 max-w-2xl text-xs-tight leading-relaxed text-muted">
+                      {t("wallet.setup.description", {
+                        defaultValue:
+                          "Connect via Eliza Cloud or configure wallet keys directly to start trading.",
+                      })}
+                    </p>
+                    <div className="mt-4 grid gap-2 text-xs-tight text-muted sm:grid-cols-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        <span>
+                          {t("wallet.setup.stepCloud", {
+                            defaultValue: "Import managed wallets",
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        <span>
+                          {t("wallet.setup.stepRpc", {
+                            defaultValue: "Configure chain RPC",
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        <span>
+                          {t("wallet.setup.stepPolicies", {
+                            defaultValue: "Review wallet policies",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <h3 className="text-sm font-semibold text-txt">
-                    {t("wallet.setup.title", {
-                      defaultValue: "Connect your wallet",
-                    })}
-                  </h3>
-                  <p className="mt-1 max-w-sm text-xs text-muted">
-                    {t("wallet.setup.description", {
-                      defaultValue:
-                        "Connect via Eliza Cloud or configure wallet keys directly to start trading.",
-                    })}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
+                <div className="flex flex-col justify-center gap-2 border-t border-border/24 px-5 py-4 md:border-l md:border-t-0">
                   {elizaCloudConnected ? (
                     <Button
                       variant="default"
                       size="sm"
-                      className="rounded-full px-5"
+                      className="h-9 justify-start rounded-md px-3 text-xs"
                       onClick={goToRpcSettings}
                     >
                       {t("wallet.setup.importFromCloud", {
@@ -1032,12 +1086,23 @@ export function InventoryView() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-full px-5"
+                    className="h-9 justify-start rounded-md border-border/36 bg-transparent px-3 text-xs shadow-none hover:bg-card/45"
                     onClick={goToRpcSettings}
                   >
                     <Settings className="mr-1.5 h-3.5 w-3.5" />
                     {t("wallet.setup.configureRpc", {
                       defaultValue: "Configure RPC",
+                    })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 justify-start rounded-md border-border/36 bg-transparent px-3 text-xs shadow-none hover:bg-card/45"
+                    onClick={() => setWalletPoliciesOpen(true)}
+                  >
+                    <Shield className="mr-1.5 h-3.5 w-3.5" />
+                    {t("settings.sections.walletpolicies.label", {
+                      defaultValue: "Wallet Policies",
                     })}
                   </Button>
                 </div>
@@ -1059,60 +1124,62 @@ export function InventoryView() {
           ) : null}
         </div>
 
-        <div className="mt-4">
-          {walletSubTab === "balances" ? (
-            <PagePanel variant="workspace">
-              {inventoryView === "tokens" ? (
-                <TokensTable
-                  t={t}
-                  walletLoading={walletLoading}
-                  walletBalances={walletBalances}
-                  visibleRows={filteredVisibleRows}
-                  visibleChainErrors={visibleChainErrors}
-                  showChainColumn={singleChainFocus === null}
-                  handleUntrackToken={handleUntrackToken}
-                />
-              ) : (
-                <NftGrid
-                  t={t}
-                  walletNftsLoading={walletNftsLoading}
-                  walletNfts={walletNfts}
-                  allNfts={filteredNfts}
-                />
-              )}
-            </PagePanel>
-          ) : (
-            <PagePanel variant="workspace">
-              {!stewardConnected ? (
-                <PagePanel.Empty
-                  variant="workspace"
-                  title={
-                    walletSubTab === "approvals"
-                      ? "No pending approvals"
-                      : "No transactions yet"
-                  }
-                />
-              ) : walletSubTab === "approvals" ? (
-                <ApprovalQueue
-                  embedded
-                  getStewardPending={getStewardPending}
-                  approveStewardTx={approveStewardTx}
-                  rejectStewardTx={rejectStewardTx}
-                  copyToClipboard={copyToClipboard}
-                  setActionNotice={setActionNotice}
-                  onPendingCountChange={handlePendingCountChange}
-                />
-              ) : (
-                <TransactionHistory
-                  embedded
-                  getStewardHistory={getStewardHistory}
-                  copyToClipboard={copyToClipboard}
-                  setActionNotice={setActionNotice}
-                />
-              )}
-            </PagePanel>
-          )}
-        </div>
+        {hasAnyAddress || walletSubTab !== "balances" ? (
+          <div className="mt-4">
+            {walletSubTab === "balances" ? (
+              <PagePanel variant="workspace" className="min-h-0 rounded-lg">
+                {inventoryView === "tokens" ? (
+                  <TokensTable
+                    t={t}
+                    walletLoading={walletLoading}
+                    walletBalances={walletBalances}
+                    visibleRows={filteredVisibleRows}
+                    visibleChainErrors={visibleChainErrors}
+                    showChainColumn={singleChainFocus === null}
+                    handleUntrackToken={handleUntrackToken}
+                  />
+                ) : (
+                  <NftGrid
+                    t={t}
+                    walletNftsLoading={walletNftsLoading}
+                    walletNfts={walletNfts}
+                    allNfts={filteredNfts}
+                  />
+                )}
+              </PagePanel>
+            ) : (
+              <PagePanel variant="workspace" className="min-h-0 rounded-lg">
+                {!stewardConnected ? (
+                  <PagePanel.Empty
+                    variant="workspace"
+                    title={
+                      walletSubTab === "approvals"
+                        ? "No pending approvals"
+                        : "No transactions yet"
+                    }
+                  />
+                ) : walletSubTab === "approvals" ? (
+                  <ApprovalQueue
+                    embedded
+                    getStewardPending={getStewardPending}
+                    approveStewardTx={approveStewardTx}
+                    rejectStewardTx={rejectStewardTx}
+                    copyToClipboard={copyToClipboard}
+                    setActionNotice={setActionNotice}
+                    onPendingCountChange={handlePendingCountChange}
+                  />
+                ) : (
+                  <TransactionHistory
+                    embedded
+                    getStewardHistory={getStewardHistory}
+                    copyToClipboard={copyToClipboard}
+                    setActionNotice={setActionNotice}
+                  />
+                )}
+              </PagePanel>
+            )}
+          </div>
+        ) : null}
       </PageLayout>
 
       {/* ── Wallet & RPC popup ── */}

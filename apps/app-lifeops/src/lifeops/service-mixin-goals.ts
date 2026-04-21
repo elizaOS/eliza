@@ -1,7 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type {
   CreateLifeOpsGoalRequest,
-  LifeOpsActiveReminderView,
   LifeOpsChannelPolicy,
   LifeOpsGoalDefinition,
   LifeOpsGoalExperienceLoop,
@@ -52,7 +51,6 @@ import {
   shouldDeliverReminderForIntensity,
 } from "./service-helpers-reminder.js";
 import {
-  computeDefinitionPerformance,
   summarizeOverviewSection,
 } from "./service-helpers-occurrence.js";
 import {
@@ -63,9 +61,6 @@ import {
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
-import {
-  inspectLifeOpsSchedule,
-} from "./schedule-insight.js";
 import { addMinutes } from "./time.js";
 import { getZonedDateParts } from "./time.js";
 import {
@@ -914,14 +909,15 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
           })
         : null;
       const semanticReview =
-        options.allowSemanticEvaluation && semanticEvidence
+        cachedSemanticReview ??
+        (options.allowSemanticEvaluation && semanticEvidence
           ? await evaluateGoalProgressWithLlm({
               runtime: this.runtime,
               evidence: semanticEvidence,
               goal: goalRecord.goal,
               nowIso: now.toISOString(),
             })
-          : cachedSemanticReview;
+          : null);
       const effectiveReviewState =
         semanticReview?.reviewState ?? derivedReviewState;
       const effectiveSummary: LifeOpsGoalReview["summary"] = {

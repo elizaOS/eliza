@@ -54,8 +54,6 @@ function GmailRow({
           onClick={onReply}
           className="shrink-0 rounded p-0.5 text-accent hover:bg-bg-accent/30"
           aria-label="Reply"
-          // TODO(stream-e): prefill composer with
-          // `Reply to "${message.subject}" from ${message.from}: `
         >
           <Send className="h-3 w-3" />
         </button>

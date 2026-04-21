@@ -59,7 +59,7 @@ export function TokensTable({
 
   if (walletLoading) {
     return (
-      <div className="flex min-h-[24rem] items-center justify-center px-6 py-10 text-center text-sm text-muted">
+      <div className="flex min-h-[14rem] items-center justify-center px-6 py-8 text-center text-sm text-muted">
         {t("wallet.loadingBalances")}
       </div>
     );
@@ -68,7 +68,7 @@ export function TokensTable({
   if (visibleRows.length === 0) {
     const showFundingCta = !walletBalances;
     return (
-      <div className="flex min-h-[24rem] flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex min-h-[14rem] flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center">
         <div className="max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">
             {walletBalances
