@@ -109,6 +109,18 @@ export interface MobileSignalsOpenSettingsResult {
   reason: string | null;
 }
 
+export interface MobileSignalsPermissionStatus {
+  status: "granted" | "denied" | "not-determined" | "not-applicable";
+  canRequest: boolean;
+  reason?: string;
+  screenTime: MobileSignalsScreenTimeStatus;
+  setupActions: MobileSignalsSetupAction[];
+  permissions: {
+    sleep: boolean;
+    biometrics: boolean;
+  };
+}
+
 export interface MobileSignalsScreenTimeStatus {
   supported: boolean;
   requirements: {
@@ -253,28 +265,8 @@ export interface AppBlockerPluginLike extends NativePlugin {
 }
 
 export interface MobileSignalsPluginLike extends NativePlugin {
-  checkPermissions(): Promise<{
-    status: "granted" | "denied" | "not-determined" | "not-applicable";
-    canRequest: boolean;
-    reason?: string;
-    screenTime: MobileSignalsScreenTimeStatus;
-    setupActions: MobileSignalsSetupAction[];
-    permissions: {
-      sleep: boolean;
-      biometrics: boolean;
-    };
-  }>;
-  requestPermissions(): Promise<{
-    status: "granted" | "denied" | "not-determined" | "not-applicable";
-    canRequest: boolean;
-    reason?: string;
-    screenTime: MobileSignalsScreenTimeStatus;
-    setupActions: MobileSignalsSetupAction[];
-    permissions: {
-      sleep: boolean;
-      biometrics: boolean;
-    };
-  }>;
+  checkPermissions(): Promise<MobileSignalsPermissionStatus>;
+  requestPermissions(): Promise<MobileSignalsPermissionStatus>;
   openSettings(options?: {
     target?: MobileSignalsSettingsTarget;
   }): Promise<MobileSignalsOpenSettingsResult>;
