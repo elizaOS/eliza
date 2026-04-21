@@ -37,7 +37,7 @@
 		"@types/node": "22.19.17",
 		"tsup": "8.4.0",
 		"typescript": "5.7.3",
-		"vitest": "3.0.5",
+		"vitest": "3.2.4",
 		"@biomejs/biome": "^2.3.11"
 	},
 	"publishConfig": {
