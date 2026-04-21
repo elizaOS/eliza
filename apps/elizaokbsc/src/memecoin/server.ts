@@ -4753,15 +4753,15 @@ function renderHtml(
     ...portfolioLifecycle.activePositions,
     ...portfolioLifecycle.exitedPositions,
   ].filter(p => p.initialAllocationUsd > 0);
-  const profitablePositions = allTradedPositions.filter(
-    p => (p.realizedPnlUsd + p.unrealizedPnlUsd) > 0,
-  );
-  const winRatePct = allTradedPositions.length
-    ? (profitablePositions.length / allTradedPositions.length) * 100
+  const profitableExited = portfolioLifecycle.exitedPositions.filter(p => p.initialAllocationUsd > 0 && p.realizedPnlUsd > 0);
+  const allExitedWithTrades = portfolioLifecycle.exitedPositions.filter(p => p.initialAllocationUsd > 0);
+  const winRatePct = allExitedWithTrades.length > 0
+    ? (profitableExited.length / allExitedWithTrades.length) * 100
     : null;
   const totalPnlUsd = portfolioLifecycle.totalRealizedPnlUsd + portfolioLifecycle.totalUnrealizedPnlUsd;
-  const roiPct = portfolioLifecycle.totalAllocatedUsd > 0
-    ? (totalPnlUsd / portfolioLifecycle.totalAllocatedUsd) * 100
+  const totalCapitalDeployed = allTradedPositions.reduce((sum, p) => sum + p.initialAllocationUsd, 0);
+  const roiPct = totalCapitalDeployed > 0
+    ? (totalPnlUsd / totalCapitalDeployed) * 100
     : 0;
   const tradeRecords = tradeLedger.records.filter(
     (record) => record.plannedBuyBnb > 0,
@@ -6628,7 +6628,7 @@ function renderHtml(
             ${paperAgents.sort((a, b) => b.acquisitionScore - a.acquisitionScore).map((agent, idx) => {
               const stateColor = agent.chainState === 'active' ? 'var(--green)' : agent.chainState === 'starving' ? 'var(--yellow)' : 'var(--red, #ef4444)';
               const pnlClass = agent.totalPnlUsd >= 0 ? 'g' : 'r';
-              const pnlSign = agent.totalPnlUsd >= 0 ? '+' : '';
+              const pnlSign = agent.totalPnlUsd >= 0 ? '+' : '-';
               const activePos = agent.positions.filter((p: any) => p.state === 'active').length;
               const barWidth = Math.min(100, agent.acquisitionScore);
               const isTop = idx === 0 && agent.acquisitionScore >= 40;
