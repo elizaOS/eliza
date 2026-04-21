@@ -243,7 +243,7 @@ export type ModelsConfig = {
   bedrockDiscovery?: BedrockDiscoveryConfig;
   /** Selected small model ID for fast tasks (e.g. "claude-haiku"). Set during onboarding. */
   small?: string;
-  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-5"). Set during onboarding. */
+  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-6"). Set during onboarding. */
   large?: string;
 };
 

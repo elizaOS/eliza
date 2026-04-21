@@ -212,8 +212,8 @@ function applySettings(runtime: AgentRuntime, config: ExtensionConfig, effective
 
   if (effectiveMode === "anthropic") {
     runtime.setSetting("ANTHROPIC_API_KEY", config.provider.anthropicApiKey ?? "", true);
-    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel ?? "claude-3-haiku-20240307");
-    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel ?? "claude-3-5-sonnet-20241022");
+    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel ?? "claude-haiku-4-5-20251001");
+    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel ?? "claude-sonnet-4-6");
   }
 
   if (effectiveMode === "xai") {

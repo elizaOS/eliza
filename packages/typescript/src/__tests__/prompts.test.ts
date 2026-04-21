@@ -66,6 +66,12 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain(
 				"REPLY means a direct chat reply in the current conversation only",
 			);
+			expect(messageHandlerTemplate).toContain(
+				"set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again",
+			);
+			expect(messageHandlerTemplate).toContain(
+				"if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false",
+			);
 		});
 
 		it("postCreationTemplate should contain required placeholders and examples", () => {

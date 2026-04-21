@@ -113,7 +113,7 @@ def create_mock_results() -> ContextBenchResults:
         ],
         comparison_to_leaderboard={
             "gpt-4-turbo": {"overall_diff": -0.143},
-            "claude-3-opus": {"overall_diff": -0.183},
+            "claude-opus-4-7": {"overall_diff": -0.183},
         },
         summary={
             "status": "good",

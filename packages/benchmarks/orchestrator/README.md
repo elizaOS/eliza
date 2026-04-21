@@ -107,7 +107,7 @@ Code matrix example:
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
   --benchmarks swe_bench_orchestrated \
   --provider anthropic \
-  --model claude-sonnet-4-20250514 \
+  --model claude-sonnet-4-6 \
   --extra '{"per_benchmark":{"swe_bench_orchestrated":{"matrix":true,"max_instances":3,"no_docker":true,"strict_capabilities":true}}}'
 ```
 

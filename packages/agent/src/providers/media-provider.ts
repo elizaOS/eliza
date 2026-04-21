@@ -1236,7 +1236,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
       throw new Error(`${this.name} API key is required`);
     }
     this.apiKey = config.apiKey;
-    this.model = config.model ?? "claude-sonnet-4-20250514";
+    this.model = config.model ?? "claude-sonnet-4-6";
   }
 
   async analyze(

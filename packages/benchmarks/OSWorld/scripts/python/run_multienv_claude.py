@@ -113,7 +113,7 @@ args = config()  # Get command line arguments first
 # Validate that model is specified to prevent accidental usage with empty model
 if not args.model or args.model.strip() == "":
     print("ERROR: Model must be specified. Use --model <model_name>")
-    print("Example: --model claude-sonnet-4-5-20250929")
+    print("Example: --model claude-sonnet-4-6")
     sys.exit(1)
 
 # Validate model support before proceeding

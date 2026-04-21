@@ -1588,7 +1588,7 @@
   "onboarding.loginSessionExpired": "Nag-expire ang login session. I-click ang 'Magsimula Muli' at subukan muli.",
   "onboarding.loginWithAnthropic": "Mag-login gamit ang Claude",
   "onboarding.loginWithOpenAI": "Mag-login gamit ang OpenAI",
-  "onboarding.modelPlaceholder": "provider/model (hal. anthropic/claude-3.5-sonnet)",
+  "onboarding.modelPlaceholder": "provider/model (hal. anthropic/claude-sonnet-4-6)",
   "onboarding.networkError": "Network error — i-check ang iyong koneksyon at subukan muli.",
   "onboarding.neuralLinkTitle": "Neural Link",
   "onboarding.next": "Susunod",

@@ -152,7 +152,7 @@ def _get_model_plugin(model_name: str) -> Plugin:
     if openrouter_key and not openai_key:
         os.environ["OPENAI_API_KEY"] = openrouter_key
         os.environ.setdefault("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
-        # OpenRouter uses full model names (e.g. "anthropic/claude-sonnet-4")
+        # OpenRouter uses full model names (e.g. "anthropic/claude-sonnet-4.6")
         os.environ.setdefault("OPENAI_SMALL_MODEL", model_name)
         os.environ.setdefault("OPENAI_LARGE_MODEL", model_name)
         logger.info("Model plugin: OpenRouter (%s)", model_name)
@@ -207,7 +207,7 @@ class SolanaElizaAgent:
 
     def __init__(
         self,
-        model_name: str = "anthropic/claude-sonnet-4",
+        model_name: str = "anthropic/claude-sonnet-4.6",
         max_messages: int = 50,
         run_index: int = 0,
         environment_config: str | None = None,
@@ -609,7 +609,7 @@ async def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    model_name = os.getenv("MODEL_NAME", "anthropic/claude-sonnet-4")
+    model_name = os.getenv("MODEL_NAME", "anthropic/claude-sonnet-4.6")
     max_messages = int(os.getenv("MAX_MESSAGES", "50"))
     run_index = int(os.getenv("RUN_INDEX", "0"))
     environment_config = os.getenv("ENVIRONMENT_CONFIG")

@@ -319,7 +319,7 @@ class AnthropicModelProvider {
 
   async handleTextGeneration(params: TextGenerationParams) {
     const response = await this.client.messages.create({
-      model: params.model || "claude-3-opus-20240229",
+      model: params.model || "claude-opus-4-7",
       messages: params.messages || [{ role: "user", content: params.prompt }],
       max_tokens: params.maxTokens || 1000,
       temperature: params.temperature,

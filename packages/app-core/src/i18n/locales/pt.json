@@ -1588,7 +1588,7 @@
   "onboarding.loginSessionExpired": "Sessão de login expirada. Clique em 'Recomeçar' e tente novamente.",
   "onboarding.loginWithAnthropic": "Login com Claude",
   "onboarding.loginWithOpenAI": "Login com OpenAI",
-  "onboarding.modelPlaceholder": "provider/model (ex.: anthropic/claude-3.5-sonnet)",
+  "onboarding.modelPlaceholder": "provider/model (ex.: anthropic/claude-sonnet-4-6)",
   "onboarding.networkError": "Erro de rede — verifique sua conexão e tente novamente.",
   "onboarding.neuralLinkTitle": "Link Neural",
   "onboarding.next": "Próximo",

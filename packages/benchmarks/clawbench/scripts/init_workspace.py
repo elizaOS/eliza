@@ -68,7 +68,7 @@ def main():
             print(f"[init] WARNING: Workspace file not found: {src}")
 
     # Generate openclaw.json from template with the selected model
-    DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250929"
+    DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
     CONFIG_DIR = Path("/config")
     template = CONFIG_DIR / "openclaw.json.template"
     if template.exists():

@@ -15,7 +15,7 @@ import autogen
 
 config_list = [
     {
-        "model": "claude-3-sonnet-20240229",
+        "model": "claude-sonnet-4-6",
         "api_key": os.getenv("ANTHROPIC_API_KEY"),
         "api_type": "anthropic",
     }
@@ -34,7 +34,7 @@ import autogen
 
 config_list = [
     {
-        "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        "model": "anthropic.claude-sonnet-4-6-v1:0",
         "aws_access_key":<accessKey>,
         "aws_secret_key":<secretKey>,
         "aws_session_token":<sessionTok>,
@@ -56,7 +56,7 @@ Install the `anthropic` package by running `pip install anthropic[vertex]`.
 import autogen
 config_list = [
     {
-        "model": "claude-3-5-sonnet-20240620-v1:0",
+        "model": "claude-sonnet-4-6-v1:0",
         "gcp_project_id": "dummy_project_id",
         "gcp_region": "us-west-2",
         "gcp_auth_token": "dummy_auth_token",
@@ -96,13 +96,13 @@ with optional_import_block():
 
 
 ANTHROPIC_PRICING_1k = {
-    "claude-3-7-sonnet-20250219": (0.003, 0.015),
-    "claude-3-5-sonnet-20241022": (0.003, 0.015),
+    "claude-sonnet-4-6": (0.003, 0.015),
+    "claude-sonnet-4-6": (0.003, 0.015),
     "claude-3-5-haiku-20241022": (0.0008, 0.004),
-    "claude-3-5-sonnet-20240620": (0.003, 0.015),
-    "claude-3-sonnet-20240229": (0.003, 0.015),
-    "claude-3-opus-20240229": (0.015, 0.075),
-    "claude-3-haiku-20240307": (0.00025, 0.00125),
+    "claude-sonnet-4-6": (0.003, 0.015),
+    "claude-sonnet-4-6": (0.003, 0.015),
+    "claude-opus-4-7": (0.015, 0.075),
+    "claude-haiku-4-5-20251001": (0.00025, 0.00125),
     "claude-2.1": (0.008, 0.024),
     "claude-2.0": (0.008, 0.024),
     "claude-instant-1.2": (0.008, 0.024),

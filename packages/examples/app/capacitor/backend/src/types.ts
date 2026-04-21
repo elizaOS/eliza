@@ -66,7 +66,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Anthropic
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
-    anthropicLargeModel: "claude-sonnet-4-20250514",
+    anthropicLargeModel: "claude-sonnet-4-6",
 
     // xAI (Grok via OpenAI-compatible API)
     xaiApiKey: "",

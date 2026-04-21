@@ -193,7 +193,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "toggle",
       "flight",
       "booking",
-      "duffel",
+      "travel provider",
       "push",
       "notification",
       "browser",

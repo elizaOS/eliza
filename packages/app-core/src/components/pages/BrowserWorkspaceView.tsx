@@ -37,6 +37,7 @@ import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBrid
 
 const POLL_INTERVAL_MS = 2_500;
 const LIFEOPS_BROWSER_POLL_INTERVAL_MS = 4_000;
+type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
 
 function isBrowserWorkspaceSessionMode(
   mode: BrowserWorkspaceSnapshot["mode"],
@@ -44,7 +45,10 @@ function isBrowserWorkspaceSessionMode(
   return mode === "cloud" || mode === "desktop";
 }
 
-function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
+function normalizeBrowserWorkspaceInputUrl(
+  rawUrl: string,
+  t: TranslateFn,
+): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
   if (trimmed === "about:blank") return trimmed;
@@ -57,10 +61,18 @@ function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error("Enter a valid http or https URL.");
+    throw new Error(
+      t("browserworkspace.InvalidUrl", {
+        defaultValue: "Enter a valid http or https URL.",
+      }),
+    );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https URLs are supported.");
+    throw new Error(
+      t("browserworkspace.UnsupportedProtocol", {
+        defaultValue: "Only http and https URLs are supported.",
+      }),
+    );
   }
   return parsed.toString();
 }
@@ -76,19 +88,33 @@ function readBrowserWorkspaceQueryParam(name: string): string | null {
   return value ? value : null;
 }
 
-function inferBrowserWorkspaceTitle(url: string): string {
-  if (url === "about:blank") return "New Tab";
+function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
+  if (url === "about:blank") {
+    return t("browserworkspace.NewTab", {
+      defaultValue: "New tab",
+    });
+  }
   try {
-    return new URL(url).hostname.replace(/^www\./, "") || "Browser";
+    return (
+      new URL(url).hostname.replace(/^www\./, "") ||
+      t("browserworkspace.Browser", {
+        defaultValue: "Browser",
+      })
+    );
   } catch {
-    return "Browser";
+    return t("browserworkspace.Browser", {
+      defaultValue: "Browser",
+    });
   }
 }
 
-function getBrowserWorkspaceTabLabel(tab: BrowserWorkspaceTab): string {
+function getBrowserWorkspaceTabLabel(
+  tab: BrowserWorkspaceTab,
+  t: TranslateFn,
+): string {
   const trimmedTitle = tab.title.trim();
   if (trimmedTitle && trimmedTitle !== "Browser") return trimmedTitle;
-  return inferBrowserWorkspaceTitle(tab.url);
+  return inferBrowserWorkspaceTitle(tab.url, t);
 }
 
 function getBrowserWorkspaceTabMonogram(label: string): string {
@@ -160,7 +186,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     const browseParam = readBrowserWorkspaceQueryParam("browse");
     try {
       initialBrowseUrlRef.current = browseParam
-        ? normalizeBrowserWorkspaceInputUrl(browseParam)
+        ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
         : null;
     } catch {
       initialBrowseUrlRef.current = null;
@@ -363,13 +389,17 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const openNewBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
-      const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
+      const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
-        throw new Error("Enter a URL to open.");
+        throw new Error(
+          t("browserworkspace.EnterUrlToOpen", {
+            defaultValue: "Enter a URL to open.",
+          }),
+        );
       }
       const request = {
         url,
-        title: inferBrowserWorkspaceTitle(url),
+        title: inferBrowserWorkspaceTitle(url, t),
         show: true,
       };
       const { tab } = await client.openBrowserWorkspaceTab(request);
@@ -378,7 +408,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace],
+    [loadWorkspace, t],
   );
 
   const activateBrowserWorkspaceTab = useCallback(
@@ -392,9 +422,13 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
-      const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
+      const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
-        throw new Error("Enter a URL to navigate.");
+        throw new Error(
+          t("browserworkspace.EnterUrlToNavigate", {
+            defaultValue: "Enter a URL to navigate.",
+          }),
+        );
       }
       if (!selectedTabId) {
         await openNewBrowserWorkspaceTab(url);
@@ -417,7 +451,13 @@ export function BrowserWorkspaceView(): JSX.Element {
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId, workspace.mode],
+    [
+      loadWorkspace,
+      openNewBrowserWorkspaceTab,
+      selectedTabId,
+      t,
+      workspace.mode,
+    ],
   );
 
   const registerBrowserWorkspaceIframe = useCallback(
@@ -606,8 +646,16 @@ export function BrowserWorkspaceView(): JSX.Element {
 
         setActionNoticeRef.current(
           openedManager
-            ? `Chrome is ready. Click Load unpacked and choose ${revealResponse.path}.`
-            : `The LifeOps Browser folder is ready at ${revealResponse.path}. Open chrome://extensions, click Load unpacked, and choose that folder.`,
+            ? t("browserworkspace.LifeOpsChromeReady", {
+                defaultValue:
+                  "Chrome is ready. Click Load unpacked and choose {{path}}.",
+                path: revealResponse.path,
+              })
+            : t("browserworkspace.LifeOpsFolderReady", {
+                defaultValue:
+                  "The LifeOps Browser folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
+                path: revealResponse.path,
+              }),
           "success",
           6_000,
         );
@@ -640,7 +688,10 @@ export function BrowserWorkspaceView(): JSX.Element {
           }),
         });
         setActionNoticeRef.current(
-          `Revealed the LifeOps Browser folder at ${response.path}.`,
+          t("browserworkspace.LifeOpsFolderRevealed", {
+            defaultValue: "Revealed the LifeOps Browser folder at {{path}}.",
+            path: response.path,
+          }),
           "success",
           4_000,
         );
@@ -662,7 +713,10 @@ export function BrowserWorkspaceView(): JSX.Element {
           },
         );
         setActionNoticeRef.current(
-          "Opened Chrome extensions. Click Load unpacked and choose the LifeOps Browser folder.",
+          t("browserworkspace.LifeOpsOpenedChromeExtensions", {
+            defaultValue:
+              "Opened Chrome extensions. Click Load unpacked and choose the LifeOps Browser folder.",
+          }),
           "success",
           4_000,
         );
@@ -691,7 +745,9 @@ export function BrowserWorkspaceView(): JSX.Element {
       async () => {
         await loadLifeOpsBrowserState({ silent: true });
         setActionNoticeRef.current(
-          "Refreshed LifeOps Browser connection status.",
+          t("browserworkspace.LifeOpsRefreshSuccess", {
+            defaultValue: "Refreshed LifeOps Browser connection status.",
+          }),
           "success",
           3_000,
         );
@@ -713,7 +769,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           const active = tab.id === selectedTabId;
           const tabHasSessionFocus =
             workspace.mode === "web" ? tab.visible : active;
-          const label = getBrowserWorkspaceTabLabel(tab);
+          const label = getBrowserWorkspaceTabLabel(tab, t);
           const activate = () =>
             void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
               await activateBrowserWorkspaceTab(tab.id);
@@ -885,27 +941,61 @@ export function BrowserWorkspaceView(): JSX.Element {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                          LifeOps Browser
+                          {t("browserworkspace.LifeOpsTitle", {
+                            defaultValue: "LifeOps Browser",
+                          })}
                         </div>
                         <div className="text-lg font-semibold text-txt">
                           {lifeOpsBrowserConnected
-                            ? "Your browser is connected"
+                            ? t("browserworkspace.LifeOpsConnectedTitle", {
+                                defaultValue: "Your browser is connected",
+                              })
                             : lifeOpsBrowserLoading
-                              ? "Checking your browser connection"
-                              : "Use your real browser here"}
+                              ? t("browserworkspace.LifeOpsCheckingTitle", {
+                                  defaultValue:
+                                    "Checking your browser connection",
+                                })
+                              : t("browserworkspace.LifeOpsUseRealBrowser", {
+                                  defaultValue: "Use your real browser here",
+                                })}
                         </div>
                         <div className="max-w-xl text-sm leading-relaxed text-muted">
                           {lifeOpsBrowserConnected
-                            ? `LifeOps Browser is active in ${primaryLifeOpsBrowserCompanion?.browser === "safari" ? "Safari" : "Chrome"} / ${primaryLifeOpsBrowserCompanion?.profileLabel ?? "Default"}. Use that real browser profile for Discord, Google, and other sites that do not belong inside an embed.`
-                            : "Install the LifeOps Browser extension in this Chrome profile so LifeOps can see and control your real tabs instead of falling back to embedded browsing."}
+                            ? t(
+                                "browserworkspace.LifeOpsConnectedDescription",
+                                {
+                                  defaultValue:
+                                    "LifeOps Browser is active in {{browser}} / {{profile}}. Use that real browser profile for Discord, Google, and other sites that do not belong inside an embed.",
+                                  browser:
+                                    primaryLifeOpsBrowserCompanion?.browser ===
+                                    "safari"
+                                      ? "Safari"
+                                      : "Chrome",
+                                  profile:
+                                    primaryLifeOpsBrowserCompanion?.profileLabel ??
+                                    t("browserworkspace.DefaultProfile", {
+                                      defaultValue: "Default",
+                                    }),
+                                },
+                              )
+                            : t("browserworkspace.LifeOpsInstallDescription", {
+                                defaultValue:
+                                  "Install the LifeOps Browser extension in this Chrome profile so LifeOps can see and control your real tabs instead of falling back to embedded browsing.",
+                              })}
                         </div>
                       </div>
                       <div className="rounded-full border border-border/24 bg-bg/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
                         {lifeOpsBrowserConnected
-                          ? "Connected"
+                          ? t("common.connected", {
+                              defaultValue: "Connected",
+                            })
                           : lifeOpsBrowserLoading
-                            ? "Checking"
-                            : "Install"}
+                            ? t("browserworkspace.Checking", {
+                                defaultValue: "Checking",
+                              })
+                            : t("browserworkspace.Install", {
+                                defaultValue: "Install",
+                              })}
                       </div>
                     </div>
 
@@ -917,7 +1007,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                           disabled={busyAction !== null}
                         >
                           <Plus className="mr-1.5 h-4 w-4" />
-                          Open blank tab here
+                          {t("browserworkspace.OpenBlankTabHere", {
+                            defaultValue: "Open blank tab here",
+                          })}
                         </Button>
                       ) : (
                         <Button
@@ -925,7 +1017,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                           onClick={() => void installLifeOpsBrowserExtension()}
                           disabled={busyAction !== null}
                         >
-                          Install LifeOps Browser
+                          {t("browserworkspace.InstallLifeOpsBrowser", {
+                            defaultValue: "Install LifeOps Browser",
+                          })}
                         </Button>
                       )}
                       <Button
@@ -946,7 +1040,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                           disabled={busyAction !== null}
                         >
                           <FolderOpen className="mr-1.5 h-4 w-4" />
-                          Open extension folder
+                          {t("browserworkspace.OpenExtensionFolder", {
+                            defaultValue: "Open extension folder",
+                          })}
                         </Button>
                       ) : null}
                       {!lifeOpsBrowserConnected ? (
@@ -956,7 +1052,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                           onClick={() => void openLifeOpsChromeExtensions()}
                           disabled={busyAction !== null}
                         >
-                          Open Chrome extensions
+                          {t("browserworkspace.OpenChromeExtensions", {
+                            defaultValue: "Open Chrome extensions",
+                          })}
                         </Button>
                       ) : null}
                     </div>
@@ -964,7 +1062,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                     {lifeOpsBrowserPackageStatus?.chromeBuildPath ? (
                       <div className="mt-4 rounded-2xl bg-bg/70 px-3 py-2 text-[11px] text-muted">
                         <div className="font-semibold uppercase tracking-[0.14em] text-muted">
-                          Chrome Build
+                          {t("browserworkspace.ChromeBuild", {
+                            defaultValue: "Chrome Build",
+                          })}
                         </div>
                         <div className="mt-1 truncate font-mono text-txt/85">
                           {lifeOpsBrowserPackageStatus.chromeBuildPath}
@@ -1007,7 +1107,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                   ref={(iframe) =>
                     registerBrowserWorkspaceIframe(tab.id, iframe)
                   }
-                  title={getBrowserWorkspaceTabLabel(tab)}
+                  title={getBrowserWorkspaceTabLabel(tab, t)}
                   src={tab.url}
                   loading="eager"
                   sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
@@ -1088,7 +1188,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                   <img
                     alt={
                       selectedTab
-                        ? getBrowserWorkspaceTabLabel(selectedTab)
+                        ? getBrowserWorkspaceTabLabel(selectedTab, t)
                         : t("browserworkspace.SessionPreview", {
                             defaultValue: "Browser session preview",
                           })
@@ -1116,7 +1216,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               {selectedTab ? (
                 <div className="border-t border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
                   <div className="truncate font-medium text-txt">
-                    {getBrowserWorkspaceTabLabel(selectedTab)}
+                    {getBrowserWorkspaceTabLabel(selectedTab, t)}
                   </div>
                   <div className="truncate">{selectedTab.url}</div>
                   <div className="mt-1">

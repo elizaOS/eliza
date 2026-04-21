@@ -378,14 +378,18 @@ function useAutomationsViewController() {
         return automationData;
       } catch (error) {
         setAutomationsError(
-          error instanceof Error ? error.message : "Failed to load automations",
+          error instanceof Error
+            ? error.message
+            : t("automations.loadFailed", {
+                defaultValue: "Failed to load automations.",
+              }),
         );
         return null;
       } finally {
         setAutomationsLoaded(true);
         setAutomationsLoading(false);
       }
-    }, []);
+    }, [t]);
 
   const createWorkbenchTask = useCallback(
     async (data: {
@@ -401,14 +405,18 @@ function useAutomationsViewController() {
         return res.task;
       } catch (error) {
         setTaskError(
-          error instanceof Error ? error.message : "Failed to create task",
+          error instanceof Error
+            ? error.message
+            : t("automations.taskCreateFailed", {
+                defaultValue: "Failed to create task.",
+              }),
         );
         return null;
       } finally {
         setTaskSaving(false);
       }
     },
-    [refreshAutomations],
+    [refreshAutomations, t],
   );
 
   const updateWorkbenchTask = useCallback(
@@ -428,14 +436,18 @@ function useAutomationsViewController() {
         return res.task;
       } catch (error) {
         setTaskError(
-          error instanceof Error ? error.message : "Failed to update task",
+          error instanceof Error
+            ? error.message
+            : t("automations.taskUpdateFailed", {
+                defaultValue: "Failed to update task.",
+              }),
         );
         return null;
       } finally {
         setTaskSaving(false);
       }
     },
-    [refreshAutomations],
+    [refreshAutomations, t],
   );
 
   const deleteWorkbenchTask = useCallback(
@@ -448,14 +460,18 @@ function useAutomationsViewController() {
         return true;
       } catch (error) {
         setTaskError(
-          error instanceof Error ? error.message : "Failed to delete task",
+          error instanceof Error
+            ? error.message
+            : t("automations.taskDeleteFailed", {
+                defaultValue: "Failed to delete task.",
+              }),
         );
         return false;
       } finally {
         setTaskSaving(false);
       }
     },
-    [refreshAutomations],
+    [refreshAutomations, t],
   );
 
   const saveFormAsTemplate = useCallback(() => {
@@ -654,7 +670,11 @@ function useAutomationsViewController() {
   const onSubmitTask = async () => {
     const name = taskFormName.trim();
     if (!name) {
-      setFormError("Name is required");
+      setFormError(
+        t("automations.nameRequired", {
+          defaultValue: "Name is required.",
+        }),
+      );
       return;
     }
     setFormError(null);
@@ -707,8 +727,12 @@ function useAutomationsViewController() {
 
   const onDeleteTask = async (taskId: string) => {
     const confirmed = await confirmDesktopAction({
-      title: "Delete Task",
-      message: "Are you sure you want to delete this task?",
+      title: t("automations.taskDeleteTitle", {
+        defaultValue: "Delete task",
+      }),
+      message: t("automations.taskDeleteMessage", {
+        defaultValue: "Are you sure you want to delete this task?",
+      }),
       confirmLabel: t("triggersview.Delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
@@ -767,13 +791,23 @@ function useAutomationsViewController() {
     editorMode === "trigger"
       ? editingId
         ? t("heartbeatsview.editTitle", {
-            name: form.displayName.trim() || "Task",
+            name:
+              form.displayName.trim() ||
+              t("automations.taskLabel", {
+                defaultValue: "Task",
+              }),
             defaultValue: "Edit {{name}}",
           })
-        : "New Schedule"
+        : t("automations.newSchedule", {
+            defaultValue: "New schedule",
+          })
       : editingTaskId
-        ? "Edit Coordinator"
-        : "New Coordinator";
+        ? t("automations.editCoordinator", {
+            defaultValue: "Edit coordinator",
+          })
+        : t("automations.newCoordinator", {
+            defaultValue: "New coordinator",
+          });
 
   const editorEnabled =
     editingId != null
@@ -883,20 +917,32 @@ function FilterTabs() {
     label: string;
     count: number;
   }> = [
-    { key: "all", label: "All", count: allItems.length },
+    {
+      key: "all",
+      label: t("automations.filter.all", {
+        defaultValue: "All",
+      }),
+      count: allItems.length,
+    },
     {
       key: "coordinator",
-      label: "Coordinator",
+      label: t("automations.filter.coordinator", {
+        defaultValue: "Coordinator",
+      }),
       count: allItems.filter((item) => item.type === "coordinator_text").length,
     },
     {
       key: "workflows",
-      label: "Workflows",
+      label: t("automations.filter.workflows", {
+        defaultValue: "Workflows",
+      }),
       count: allItems.filter((item) => item.type === "n8n_workflow").length,
     },
     {
       key: "scheduled",
-      label: "Scheduled",
+      label: t("automations.filter.scheduled", {
+        defaultValue: "Scheduled",
+      }),
       count: allItems.filter((item) => item.schedules.length > 0).length,
     },
   ];
@@ -965,42 +1011,72 @@ function getWorkflowTemplates(
     {
       id: "slack-discord-bridge",
       icon: Share2,
-      title: "Slack \u2194 Discord Bridge",
-      description: "Cross-post messages between Slack and Discord channels.",
-      seedPrompt:
-        "Whenever a message is posted in the #announcements channel in Slack, forward it to the #general channel in Discord.",
+      title: t("automations.templates.slackDiscord.title", {
+        defaultValue: "Slack ↔ Discord Bridge",
+      }),
+      description: t("automations.templates.slackDiscord.desc", {
+        defaultValue: "Cross-post messages between Slack and Discord channels.",
+      }),
+      seedPrompt: t("automations.templates.slackDiscord.prompt", {
+        defaultValue:
+          "Whenever a message is posted in the #announcements channel in Slack, forward it to the #general channel in Discord.",
+      }),
     },
     {
       id: "rss-to-summary",
       icon: Rss,
-      title: "RSS to Summary",
-      description: "Poll an RSS feed and summarize new articles via email.",
-      seedPrompt:
-        "Check my RSS feed https://example.com/feed.xml every hour. For each new article, generate a 3-sentence summary and email it to me.",
+      title: t("automations.templates.rssSummary.title", {
+        defaultValue: "RSS to Summary",
+      }),
+      description: t("automations.templates.rssSummary.desc", {
+        defaultValue: "Poll an RSS feed and summarize new articles by email.",
+      }),
+      seedPrompt: t("automations.templates.rssSummary.prompt", {
+        defaultValue:
+          "Check my RSS feed https://example.com/feed.xml every hour. For each new article, generate a 3-sentence summary and email it to me.",
+      }),
     },
     {
       id: "calendar-to-slack",
       icon: Calendar,
-      title: "Calendar to Slack",
-      description: "Post your day's agenda to Slack each morning.",
-      seedPrompt:
-        "Every weekday at 8am, read today's events from my Google Calendar and post a formatted agenda to my #daily-standup channel in Slack.",
+      title: t("automations.templates.calendarSlack.title", {
+        defaultValue: "Calendar to Slack",
+      }),
+      description: t("automations.templates.calendarSlack.desc", {
+        defaultValue: "Post your day's agenda to Slack each morning.",
+      }),
+      seedPrompt: t("automations.templates.calendarSlack.prompt", {
+        defaultValue:
+          "Every weekday at 8am, read today's events from my Google Calendar and post a formatted agenda to my #daily-standup channel in Slack.",
+      }),
     },
     {
       id: "github-issue-triage",
       icon: GitBranch,
-      title: "GitHub Issue Triage",
-      description: "Auto-classify and label new GitHub issues.",
-      seedPrompt:
-        "When a new issue is opened on my GitHub repo, classify it (bug/feature/question/docs), add the matching label, and post a welcoming comment.",
+      title: t("automations.templates.githubTriage.title", {
+        defaultValue: "GitHub Issue Triage",
+      }),
+      description: t("automations.templates.githubTriage.desc", {
+        defaultValue: "Auto-classify and label new GitHub issues.",
+      }),
+      seedPrompt: t("automations.templates.githubTriage.prompt", {
+        defaultValue:
+          "When a new issue is opened on my GitHub repo, classify it (bug/feature/question/docs), add the matching label, and post a welcoming comment.",
+      }),
     },
     {
       id: "email-to-notion",
       icon: FileText,
-      title: "Email \u2192 Notion",
-      description: "Turn tagged emails into Notion pages.",
-      seedPrompt:
-        "When I receive a Gmail message labeled 'Task', extract the key details and create a new page in my Notion 'Inbox' database with the subject as the title and body as content.",
+      title: t("automations.templates.emailNotion.title", {
+        defaultValue: "Email → Notion",
+      }),
+      description: t("automations.templates.emailNotion.desc", {
+        defaultValue: "Turn tagged emails into Notion pages.",
+      }),
+      seedPrompt: t("automations.templates.emailNotion.prompt", {
+        defaultValue:
+          "When I receive a Gmail message labeled 'Task', extract the key details and create a new page in my Notion 'Inbox' database with the subject as the title and body as content.",
+      }),
     },
   ];
 }
@@ -1215,20 +1291,26 @@ function TaskForm() {
 
       <div className="space-y-3">
         <div>
-          <FieldLabel>Name</FieldLabel>
+          <FieldLabel>{t("common.name", { defaultValue: "Name" })}</FieldLabel>
           <Input
             value={taskFormName}
             onChange={(event) => setTaskFormName(event.target.value)}
-            placeholder="Coordinator automation name..."
+            placeholder={t("automations.coordinatorNamePlaceholder", {
+              defaultValue: "Coordinator automation name...",
+            })}
             autoFocus
           />
         </div>
         <div>
-          <FieldLabel>Description</FieldLabel>
+          <FieldLabel>
+            {t("common.description", { defaultValue: "Description" })}
+          </FieldLabel>
           <Textarea
             value={taskFormDescription}
             onChange={(event) => setTaskFormDescription(event.target.value)}
-            placeholder="What should the coordinator do..."
+            placeholder={t("automations.coordinatorDescriptionPlaceholder", {
+              defaultValue: "What should the coordinator do...",
+            })}
             rows={4}
           />
         </div>
@@ -1241,7 +1323,13 @@ function TaskForm() {
           disabled={taskSaving || !taskFormName.trim()}
           onClick={() => void onSubmitTask()}
         >
-          {editingTaskId ? "Save Coordinator" : "Create Coordinator"}
+          {editingTaskId
+            ? t("automations.saveCoordinator", {
+                defaultValue: "Save coordinator",
+              })
+            : t("automations.createCoordinator", {
+                defaultValue: "Create coordinator",
+              })}
         </Button>
         {editingTaskId && (
           <Button
@@ -2105,7 +2193,13 @@ function WorkflowAutomationDetailPane({
                 disabled={busy}
                 onClick={() => void onToggleWorkflowActive(automation)}
               >
-                {automation.workflow.active ? "Deactivate" : "Activate"}
+                {automation.workflow.active
+                  ? t("automations.n8n.deactivate", {
+                      defaultValue: "Deactivate",
+                    })
+                  : t("automations.n8n.activate", {
+                      defaultValue: "Activate",
+                    })}
               </Button>
               <Button
                 variant="outline"
@@ -2114,7 +2208,9 @@ function WorkflowAutomationDetailPane({
                 disabled={busy}
                 onClick={() => void onDeleteWorkflow(automation)}
               >
-                Delete Workflow
+                {t("automations.n8n.deleteWorkflow", {
+                  defaultValue: "Delete workflow",
+                })}
               </Button>
             </div>
           )}
@@ -2726,12 +2822,16 @@ function AutomationsLayout() {
       await ctx.refreshAutomations();
     } catch (error) {
       setPageNotice(
-        error instanceof Error ? error.message : "Failed to start local n8n.",
+        error instanceof Error
+          ? error.message
+          : t("automations.n8n.startFailed", {
+              defaultValue: "Failed to start local automations.",
+            }),
       );
     } finally {
       setWorkflowOpsBusy(false);
     }
-  }, [ctx]);
+  }, [ctx, t]);
 
   const handleToggleWorkflowActive = useCallback(
     async (item: AutomationItem) => {
@@ -2751,13 +2851,15 @@ function AutomationsLayout() {
         setPageNotice(
           error instanceof Error
             ? error.message
-            : "Failed to update workflow state.",
+            : t("automations.n8n.updateStateFailed", {
+                defaultValue: "Failed to update workflow state.",
+              }),
         );
       } finally {
         setWorkflowBusyId(null);
       }
     },
-    [ctx],
+    [ctx, t],
   );
 
   const handleDeleteWorkflow = useCallback(
@@ -2766,9 +2868,16 @@ function AutomationsLayout() {
         return;
       }
       const confirmed = await confirmDesktopAction({
-        title: "Delete Workflow",
-        message: `Delete ${item.title}?`,
-        confirmLabel: "Delete Workflow",
+        title: t("automations.n8n.deleteWorkflow", {
+          defaultValue: "Delete workflow",
+        }),
+        message: t("automations.n8n.deleteConfirmWorkflow", {
+          defaultValue: 'Delete "{{name}}"? This cannot be undone.',
+          name: item.title,
+        }),
+        confirmLabel: t("automations.n8n.deleteWorkflow", {
+          defaultValue: "Delete workflow",
+        }),
         cancelLabel: t("common.cancel"),
         type: "warning",
       });
@@ -2781,7 +2890,11 @@ function AutomationsLayout() {
         await ctx.refreshAutomations();
       } catch (error) {
         setPageNotice(
-          error instanceof Error ? error.message : "Failed to delete workflow.",
+          error instanceof Error
+            ? error.message
+            : t("automations.n8n.deleteFailed", {
+                defaultValue: "Failed to delete workflow.",
+              }),
         );
       } finally {
         setWorkflowBusyId(null);
@@ -2797,12 +2910,18 @@ function AutomationsLayout() {
       contentIdentity="automations"
       collapseButtonTestId="automations-sidebar-collapse-toggle"
       expandButtonTestId="automations-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse automations"
-      expandButtonAriaLabel="Expand automations"
+      collapseButtonAriaLabel={t("automations.collapse", {
+        defaultValue: "Collapse automations",
+      })}
+      expandButtonAriaLabel={t("automations.expand", {
+        defaultValue: "Expand automations",
+      })}
       header={null}
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label="New coordinator automation"
+          aria-label={t("automations.newTaskButton", {
+            defaultValue: "+ New task",
+          })}
           onClick={handleOpenCreateTask}
         >
           <Plus className="h-4 w-4" />
@@ -2828,8 +2947,12 @@ function AutomationsLayout() {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search automations"
-              aria-label="Search automations"
+              placeholder={t("automations.searchPlaceholder", {
+                defaultValue: "Search automations",
+              })}
+              aria-label={t("automations.searchPlaceholder", {
+                defaultValue: "Search automations",
+              })}
               autoComplete="off"
               spellCheck={false}
               className="w-full rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5 text-sm text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"

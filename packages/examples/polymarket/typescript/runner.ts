@@ -57,7 +57,7 @@ const POLYGON_CHAIN_ID = 137;
 const PROVIDER_OPTIONS = ["openai", "anthropic", "gemini", "groq", "grok"] as const;
 const DEFAULT_LLM_MODELS: Record<LlmProvider, string> = {
   openai: "gpt-5",
-  anthropic: "claude-sonnet-4-20250514",
+  anthropic: "claude-sonnet-4-6",
   gemini: "gemini-2.5-pro-preview-03-25",
   groq: "llama-3.3-70b-versatile",
   grok: "grok-3",

@@ -506,7 +506,7 @@ interface DuffelRequest {
   method: "GET" | "POST";
   /** Path on api.duffel.com (e.g. "/air/offer_requests"). */
   directPath: string;
-  /** Path on the local cloud relay (e.g. "/api/cloud/duffel/offer-requests"). */
+  /** Path on the local cloud relay (e.g. "/api/cloud/travel-providers/duffel/offer-requests"). */
   cloudRelayPath: string;
   body?: unknown;
   operation: string;
@@ -644,7 +644,7 @@ export async function searchFlights(
     config: resolvedConfig,
     method: "POST",
     directPath: "/air/offer_requests?return_offers=true",
-    cloudRelayPath: "/api/cloud/duffel/offer-requests",
+    cloudRelayPath: "/api/cloud/travel-providers/duffel/offer-requests",
     body: requestBody,
     operation: "offer_request",
   });
@@ -684,7 +684,7 @@ export async function getOffer(
     config: resolvedConfig,
     method: "GET",
     directPath: `/air/offers/${encodeURIComponent(id.trim())}`,
-    cloudRelayPath: `/api/cloud/duffel/offers/${encodeURIComponent(id.trim())}`,
+    cloudRelayPath: `/api/cloud/travel-providers/duffel/offers/${encodeURIComponent(id.trim())}`,
     operation: "offer_retrieve",
   });
 
@@ -734,7 +734,7 @@ export async function createOrder(
     config: resolvedConfig,
     method: "POST",
     directPath: "/air/orders",
-    cloudRelayPath: "/api/cloud/duffel/orders",
+    cloudRelayPath: "/api/cloud/travel-providers/duffel/orders",
     body: { data },
     operation: "order_create",
   });
@@ -755,7 +755,7 @@ export async function getOrder(
     config: resolvedConfig,
     method: "GET",
     directPath: `/air/orders/${encodeURIComponent(orderId.trim())}`,
-    cloudRelayPath: `/api/cloud/duffel/orders/${encodeURIComponent(orderId.trim())}`,
+    cloudRelayPath: `/api/cloud/travel-providers/duffel/orders/${encodeURIComponent(orderId.trim())}`,
     operation: "order_retrieve",
   });
 
@@ -785,7 +785,7 @@ export async function createPayment(
     config: resolvedConfig,
     method: "POST",
     directPath: "/air/payments",
-    cloudRelayPath: "/api/cloud/duffel/payments",
+    cloudRelayPath: "/api/cloud/travel-providers/duffel/payments",
     body: {
       data: {
         order_id: args.orderId.trim(),

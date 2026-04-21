@@ -29,7 +29,7 @@ class AppBenchmarkConfig:
     """Configuration for running elizaOS app benchmarks."""
 
     app_root: str = ""
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6"
     provider: str = "anthropic"
     timeout_seconds: int = 120
     server_mode: bool = False
@@ -295,7 +295,7 @@ APP_EVAL_ADAPTER: dict[str, Any] = {
     "required_env": [],
     "default_timeout_seconds": 120,
     "default_extra_config": {
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "provider": "anthropic",
     },
 }
