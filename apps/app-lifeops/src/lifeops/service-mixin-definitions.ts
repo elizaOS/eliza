@@ -52,6 +52,19 @@ import type {
   MixinClass,
 } from "./service-mixin-core.js";
 
+const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
+
+function resolveRoutineSeedKey(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const seedKey = metadata?.seedKey;
+  return typeof seedKey === "string" && seedKey.length > 0 ? seedKey : null;
+}
+
+function buildRoutineSeedKey(templateKey: string): string {
+  return `${ROUTINE_SEED_METADATA_PREFIX}:${templateKey}`;
+}
+
 export interface LifeOpsDefinitionService {
   listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
   getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;

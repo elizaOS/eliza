@@ -1029,7 +1029,7 @@ function isWebsiteAccessGrantActive(
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsReminderService> {
-  return class extends Base {
+  return class LifeOpsRemindersServiceMixin extends Base {
     protected emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
