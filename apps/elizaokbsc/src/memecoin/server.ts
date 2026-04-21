@@ -3691,13 +3691,16 @@ function renderGooAgentDetail(agent: GooPaperAgent): string {
     const ppnl = p.unrealizedPnlUsd ?? 0;
     const cls = ppnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
     const gain = p.entryPriceUsd > 0 ? ((p.currentPriceUsd - p.entryPriceUsd) / p.entryPriceUsd * 100) : 0;
+    const sizeVal = p.allocationUsd ?? p.sizeUsd ?? 0;
+    const entryDate = p.entryAt ?? p.entryTime ?? p.lastUpdatedAt ?? '';
+    const dateStr = entryDate ? new Date(entryDate).toLocaleDateString() : 'n/a';
     return `<tr style="animation:slideUp .3s ease-out ${idx * 0.03}s both">
       <td><span style="font-weight:600;color:var(--goo-brand)">${escapeHtml(p.tokenSymbol)}</span></td>
       <td style="font-size:11px;color:var(--goo-text3)">${p.state.toUpperCase()}</td>
-      <td>${fmtUsd(p.sizeUsd)}</td>
+      <td>${fmtUsd(sizeVal)}</td>
       <td>${gain >= 0 ? '+' : ''}${gain.toFixed(1)}%</td>
       <td class="${cls}" style="font-weight:600">${ppnl >= 0 ? '+' : ''}${fmtUsd(ppnl)}</td>
-      <td style="font-size:10px;color:var(--goo-text3)">${new Date(p.entryTime).toLocaleDateString()}</td>
+      <td style="font-size:10px;color:var(--goo-text3)">${dateStr}</td>
     </tr>`;
   };
 
@@ -6765,7 +6768,7 @@ function renderHtml(
 
           <details class="panel-accord" id="goo-section">
             <summary class="panel-accord__sum">
-              <span class="panel-accord__title">&#x1F9EC; Goo Intelligence &amp; Strategy DNA</span>
+              <span class="panel-accord__title"><span class="arena-title-avatar"><img src="/assets/goo-economy-logo.png" alt="Goo" /></span> Goo Economy Intelligence &amp; Strategy DNA</span>
               <span class="panel-accord__meta">${escapeHtml(gooFoldSummary)}</span>
               <span class="panel-accord__arr">&#x25BE;</span>
             </summary>
@@ -6913,7 +6916,7 @@ function renderHtml(
       'System Health': '系统健康', 'Reserve': '储备', 'ElizaCloud': 'ElizaCloud',
       'Full Discovery Report': '完整发现报告', 'scanned': '已扫描', 'buy-ready': '买入就绪',
       'avg': '平均', 'Portfolio Ledger': '投资账本', 'active': '活跃', 'watch': '观察',
-      'Revenue Flywheel': '收益飞轮', 'Goo Intelligence & Strategy DNA': 'Goo 智能 & 策略 DNA', 'profit': '利润',
+      'Revenue Flywheel': '收益飞轮', 'Goo Economy Intelligence & Strategy DNA': 'Goo Economy 智能 & 策略 DNA', 'profit': '利润',
       'cycles': '周期', 'smart exits': '智能退出', 'Total Profit': '总利润',
       'Reinvested': '再投资', '$elizaOK Buyback': '$elizaOK 回购',
       'Airdrop Reserve': '空投储备', 'Flywheel Cycles': '飞轮周期',
@@ -6926,7 +6929,7 @@ function renderHtml(
       'Value Distribution': '价值分配', 'holders': '持有者', 'recipients': '接收者',
       'Eligible Holders': '合格持有者', 'Value Pool': '价值池', 'Readiness Checks': '就绪检查',
       'Eligible Recipients': '合格接收者', 'Distribution Ledger': '分配账本',
-      'Goo Intelligence': 'Goo 情报', 'reviewed': '已审核', 'priority': '优先', 'ready': '就绪',
+      'Goo Economy Intelligence': 'Goo Economy 情报', 'reviewed': '已审核', 'priority': '优先', 'ready': '就绪',
       'Token Explorer': '代币浏览', 'found': '个发现',
       'candidates/': '候选代币/', 'portfolio/': '投资组合/',
       'Scheduler / Execution': '调度 / 执行', 'Last scan': '上次扫描',
@@ -7822,6 +7825,12 @@ a{color:var(--yellow);text-decoration:none;}
 .bt-badge{display:inline-block;background:rgba(246,231,15,.12);color:var(--yellow);font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
 .bt-badge--live{background:rgba(34,197,94,.15);color:var(--green);animation:bt-pulse 2s infinite;}
 @keyframes bt-pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.bt-logo-avatar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;overflow:hidden;position:relative;vertical-align:middle;margin-right:4px;}
+.bt-logo-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;position:relative;z-index:1;}
+.bt-logo-avatar::before{content:'';position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(var(--yellow),var(--green),var(--cyan),var(--yellow));animation:bt-glow-spin 3s linear infinite;z-index:0;}
+.bt-logo-avatar::after{content:'';position:absolute;inset:0;border-radius:50%;box-shadow:0 0 12px 4px rgba(246,231,15,.3);animation:bt-glow-pulse 2s ease-in-out infinite;z-index:0;}
+@keyframes bt-glow-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes bt-glow-pulse{0%,100%{box-shadow:0 0 8px 2px rgba(246,231,15,.2)}50%{box-shadow:0 0 18px 6px rgba(246,231,15,.45)}}
 .bt-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px;}
 .bt-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;}
 .bt-kpi span{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;}
@@ -7857,7 +7866,7 @@ table.bt-table{width:100%;border-collapse:collapse;font-size:11px;}
 <body>
 <div class="bt-wrap">
   <div class="bt-topbar">
-    <h1>&#x1F4C8; Strategy Backtest <span class="bt-badge--live">LIVE</span></h1>
+    <h1><span class="bt-logo-avatar"><img src="/assets/avatar.png" alt="elizaOK" /></span> Strategy Backtest <span class="bt-badge--live">LIVE</span></h1>
     <nav class="bt-topbar__nav">
       <a href="/">Home</a>
       <a href="/dashboard">Dashboard</a>
