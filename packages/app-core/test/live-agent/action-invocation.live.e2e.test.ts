@@ -399,7 +399,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "Send a telegram message to Jane saying I'm running 10 minutes late.",
           );
-          expectAnySelectedAction(h, ["CROSS_CHANNEL_SEND", "SEND_MESSAGE"]);
+          expectAnySelectedAction(h, ["OWNER_SEND_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -408,19 +408,19 @@ describe("Action Invocation E2E", () => {
     itIf(canRunLiveTests)(
       "signal request triggers OWNER_SEND_MESSAGE",
       async () => {
-        if (!requireAction("CROSS_CHANNEL_SEND")) return;
+        if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send("Send a Signal message to Priya saying thanks for the review.");
-          expectAnySelectedAction(h, ["CROSS_CHANNEL_SEND", "SEND_MESSAGE"]);
+          expectAnySelectedAction(h, ["OWNER_SEND_MESSAGE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
     );
 
     itIf(canRunLiveTests)(
-      "email draft request triggers CROSS_CHANNEL_SEND",
+      "signal draft request triggers OWNER_SEND_MESSAGE",
       async () => {
-        if (!requireAction("CROSS_CHANNEL_SEND")) return;
+        if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
           await h.send(
             "Send a Signal message to Priya saying thanks for the review.",

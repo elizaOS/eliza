@@ -225,8 +225,8 @@ describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not be
       // obviously-wrong context (a bogus action, a throwaway user turn, no
       // side-effect arrays) and assert the predicate REJECTS it — i.e.
       // returns a non-empty error string. A predicate that passes on this
-      // input is a LARP: it would also pass on any real scenario run, so
-      // the "assertion" is doing no work. This still doesn't execute the
+      // input is a no-op check: it would also pass on any real scenario run,
+      // so the "assertion" is doing no work. This still doesn't execute the
       // scenario; it only proves the predicate can say "no".
       const bogusCtx = {
         actionsCalled: [
