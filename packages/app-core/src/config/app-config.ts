@@ -140,7 +140,7 @@ export interface AppConfig {
  */
 export function resolveAppBranding(appConfig: AppConfig): BrandingConfig {
   return {
-    ...defaults,
+    ...DEFAULT_BRANDING,
     appName: appConfig.appName,
     orgName: appConfig.orgName,
     repoName: appConfig.repoName,
