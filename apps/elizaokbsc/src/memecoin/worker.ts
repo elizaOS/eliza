@@ -246,7 +246,7 @@ export async function runElizaOkDiscoveryCycle(
     for (const ev of portfolioLifecycle.timeline) {
       const key = `${ev.runId}-${ev.tokenAddress}-${ev.type}`;
       if (prevTimestamps.has(key)) continue;
-      if (ev.type === "promoted") {
+      if (ev.type === "promoted" || ev.type === "entered") {
         pushNotification({
           type: "trade_buy",
           severity: "info",
@@ -259,6 +259,13 @@ export async function runElizaOkDiscoveryCycle(
           type: isSmartExit ? "smart_exit" : "trade_sell",
           severity: isSmartExit ? "warning" : "info",
           title: `BSC EXIT: ${ev.tokenSymbol}`,
+          detail: ev.detail,
+        });
+      } else if (ev.type === "watched") {
+        pushNotification({
+          type: "trade_buy",
+          severity: "info",
+          title: `WATCH: ${ev.tokenSymbol}`,
           detail: ev.detail,
         });
       }

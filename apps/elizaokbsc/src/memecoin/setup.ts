@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getDiscoveryConfig } from "./config";
 import { loadPaperAgents, savePaperAgents, spawnDefaultAgentFleet, buildGooPaperSummary } from "./goo-paper-engine";
-import { setLatestSnapshot, setPaperAgents, setPaperSummary } from "./store";
+import { pushNotification, setLatestSnapshot, setPaperAgents, setPaperSummary } from "./store";
 import { ensureDiscoveryTask, runElizaOkDiscoveryCycle } from "./worker";
 
 export async function setupElizaOkDiscovery(
@@ -29,6 +29,14 @@ export async function setupElizaOkDiscovery(
     if (agents.length === 0) {
       agents = spawnDefaultAgentFleet(1.0);
       await savePaperAgents(config.reportsDir, agents);
+      for (const a of agents) {
+        pushNotification({
+          type: "respawn",
+          severity: "info",
+          title: `Agent spawned: ${a.agentName}`,
+          detail: `Strategy: ${a.strategy.label} | Treasury: ${a.treasuryBnb.toFixed(2)} BNB`,
+        });
+      }
       runtime.logger.info(
         { count: agents.length },
         "ElizaOK: Spawned default Goo agent fleet at startup",
