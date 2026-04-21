@@ -1,28 +1,35 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "ignoreDeprecations": "5.0",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "outDir": "./dist",
-    "rootDir": "./typescript",
-    "types": ["node", "bun-types"],
-    "noEmit": false,
-    "declaration": true,
-    "allowImportingTsExtensions": false,
-    "composite": false,
-    "paths": {
-      "@elizaos/core": ["../typescript/dist/index.node.d.ts"]
-    }
-  },
-  "include": ["typescript/**/*.ts"],
-  "exclude": [
-    "typescript/**/*.test.ts",
-    "typescript/**/__tests__/**",
-    "node_modules",
-    "dist"
-  ]
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"ignoreDeprecations": "6.0",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"outDir": "./dist",
+		"rootDir": "./typescript",
+		"types": [
+			"node",
+			"bun-types"
+		],
+		"noEmit": false,
+		"declaration": true,
+		"allowImportingTsExtensions": false,
+		"composite": false,
+		"paths": {
+			"@elizaos/core": [
+				"../typescript/dist/index.node.d.ts"
+			]
+		}
+	},
+	"include": [
+		"typescript/**/*.ts"
+	],
+	"exclude": [
+		"typescript/**/*.test.ts",
+		"typescript/**/__tests__/**",
+		"node_modules",
+		"dist"
+	]
 }

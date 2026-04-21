@@ -10,7 +10,7 @@
 		"declarationMap": true,
 		"outDir": "./dist",
 		"rootDir": "./src",
-		"lib": ["ES2022"],
+		"lib": ["ES2022", "DOM"],
 		"types": ["node"]
 	},
 	"include": ["src/**/*"],

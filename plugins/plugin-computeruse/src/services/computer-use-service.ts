@@ -1,32 +1,26 @@
-/**
- * ComputerUseService — long-lived service managing desktop automation,
- * browser control, screenshots, files, terminal access, and window control.
- */
-
+import os from "node:os";
+import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { ApprovalManager } from "../approval/approval-manager.js";
-import { normalizeComputerUseParams } from "../normalization.js";
-import {
-  browserWait,
-  clickBrowser,
-  closeBrowser,
-  closeBrowserTab,
-  executeBrowser,
-  getBrowserClickables,
-  getBrowserContext,
-  getBrowserDom,
-  getBrowserInfo,
-  getBrowserState,
-  isBrowserAvailable,
-  listBrowserTabs,
-  navigateBrowser,
-  openBrowser,
-  openBrowserTab,
-  screenshotBrowser,
-  scrollBrowser,
-  switchBrowserTab,
-  typeBrowser,
-} from "../platform/browser.js";
+import type {
+  ActionHistoryEntry,
+  ApprovalMode,
+  ApprovalResolution,
+  ApprovalSnapshot,
+  BrowserActionParams,
+  BrowserActionResult,
+  ComputerActionResult,
+  ComputerUseConfig,
+  ComputerUseResult,
+  DesktopActionParams,
+  FileActionParams,
+  FileActionResult,
+  PlatformCapabilities,
+  ScreenSize,
+  TerminalActionParams,
+  TerminalActionResult,
+  WindowActionParams,
+  WindowActionResult,
+} from "../types.js";
 import {
   ComputerUseApprovalManager,
   isApprovalMode,
@@ -48,88 +42,82 @@ import {
   deleteDirectory,
   deleteFile,
   editFile,
-  fileDownload,
   fileExists,
-  fileListDownloads,
-  fileUpload,
   listDirectory,
   readFile,
   writeFile,
-} from "../platform/files.js";
-import { commandExists, currentPlatform } from "../platform/helpers.js";
-import { permissionDeniedResultFromError } from "../platform/permissions.js";
+} from "../platform/file-ops.js";
+import { classifyPermissionDeniedError } from "../platform/permissions.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import {
   clearTerminal,
+  closeAllTerminalSessions,
   closeTerminal,
   connectTerminal,
-  executeCommand,
   executeTerminal,
   readTerminal,
   typeTerminal,
 } from "../platform/terminal.js";
 import {
-  arrangeWindows,
   closeWindow,
   focusWindow,
   getScreenSize,
   listWindows,
   maximizeWindow,
   minimizeWindow,
-  moveWindow,
   restoreWindow,
   switchWindow,
 } from "../platform/windows-list.js";
-import type {
-  ActionHistoryEntry,
-  BrowserActionParams,
-  BrowserActionResult,
-  BrowserTab,
-  ComputerActionResult,
-  ComputerUseConfig,
-  ComputerUseResult,
-  DesktopActionParams,
-  FileActionParams,
-  FileActionResult,
-  FileEntry,
-  PermissionType,
-  PlatformCapabilities,
-  ScreenSize,
-  TerminalActionParams,
-  TerminalActionResult,
-  WindowActionParams,
-  WindowActionResult,
-  WindowInfo,
-} from "../types.js";
+import {
+  clickBrowser,
+  closeBrowser,
+  closeBrowserTab,
+  executeBrowser,
+  getBrowserClickables,
+  getBrowserContext,
+  getBrowserDom,
+  getBrowserInfo,
+  getBrowserState,
+  isBrowserAvailable,
+  listBrowserTabs,
+  navigateBrowser,
+  openBrowser,
+  openBrowserTab,
+  screenshotBrowser,
+  scrollBrowser,
+  setBrowserRuntimeOptions,
+  switchBrowserTab,
+  typeBrowser,
+  waitBrowser,
+} from "../platform/browser.js";
+import { commandExists, currentPlatform } from "../platform/helpers.js";
 
 const MAX_RECENT_ACTIONS = 10;
 
-type ApprovalSnapshot = {
-  mode: string;
-  pendingCount: number;
-  pendingApprovals: Array<{
-    id: string;
-    command: string;
-    parameters: Record<string, unknown>;
-    requestedAt: string;
-  }>;
-};
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyData(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
 
 export class ComputerUseService extends Service {
   static serviceType = "computeruse";
 
   capabilityDescription =
-    "Desktop automation — screenshots, mouse/keyboard control, browser CDP, terminal, files, and window management";
+    "Desktop automation, screenshots, browser control, file operations, terminal access, window management, and approval-gated local actions";
 
   private capabilities!: PlatformCapabilities;
   private recentActions: ActionHistoryEntry[] = [];
   private screenSize: ScreenSize = { width: 1920, height: 1080 };
-  private readonly approvalManager = new ApprovalManager({ mode: "full_control" });
+  private approvalManager = new ComputerUseApprovalManager();
   private cuConfig: ComputerUseConfig = {
     screenshotAfterAction: true,
     actionTimeoutMs: 10000,
     maxRecentActions: MAX_RECENT_ACTIONS,
     approvalMode: "full_control",
+    browserHeadless: false,
   };
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -146,63 +134,153 @@ export class ComputerUseService extends Service {
     }
 
     logger.info(
-      `[computeruse] Service started — platform=${currentPlatform()} screen=${instance.screenSize.width}x${instance.screenSize.height} approval=${instance.approvalManager.getMode()}`,
+      `[computeruse] Service started on ${currentPlatform()} (${instance.screenSize.width}x${instance.screenSize.height}) approval=${instance.getApprovalMode()}`,
     );
-
-    if (!instance.capabilities.screenshot.available) {
-      logger.warn(`[computeruse] Screenshot not available: ${instance.capabilities.screenshot.tool}`);
-    }
-    if (!instance.capabilities.computerUse.available) {
-      logger.warn(`[computeruse] Mouse/keyboard not available: ${instance.capabilities.computerUse.tool}`);
-    }
 
     return instance;
   }
 
   async stop(): Promise<void> {
-    this.approvalManager.cancelAllPendingApprovals("service stopped");
+    this.approvalManager.cancelAll("computer-use service stopped");
+    closeAllTerminalSessions();
     try {
       await closeBrowser();
     } catch {
-      /* ignore */
+      // ignore browser shutdown failures
     }
     logger.info("[computeruse] Service stopped");
   }
 
-  async executeDesktopAction(rawParams: DesktopActionParams): Promise<ComputerActionResult> {
-    const params = this.normalizeDesktopParams(rawParams);
-    const entry: ActionHistoryEntry = {
-      action: params.action,
-      timestamp: Date.now(),
-      params: this.toRecord(params),
-      success: false,
-    };
-
-    if (params.action === "detect_elements" || params.action === "ocr") {
-      return this.completeFailure(entry, {
-        success: false,
-        error: `${params.action} is not available on local machines. Use screenshots plus model analysis instead.`,
-      });
+  async executeCommand(
+    command: string,
+    parameters: Record<string, unknown> = {},
+  ): Promise<ComputerUseResult> {
+    switch (command) {
+      case "screenshot":
+      case "click":
+      case "click_with_modifiers":
+      case "double_click":
+      case "right_click":
+      case "mouse_move":
+      case "type":
+      case "key_press":
+      case "key_combo":
+      case "scroll":
+      case "drag":
+      case "detect_elements":
+      case "ocr":
+        return this.executeDesktopAction({
+          ...(parameters as unknown as DesktopActionParams),
+          action: this.mapDesktopCommandToAction(command),
+        });
+      case "browser_open":
+      case "browser_connect":
+      case "browser_close":
+      case "browser_navigate":
+      case "browser_click":
+      case "browser_type":
+      case "browser_scroll":
+      case "browser_screenshot":
+      case "browser_dom":
+      case "browser_get_dom":
+      case "browser_clickables":
+      case "browser_get_clickables":
+      case "browser_execute":
+      case "browser_state":
+      case "browser_info":
+      case "browser_get_context":
+      case "browser_wait":
+      case "browser_list_tabs":
+      case "browser_open_tab":
+      case "browser_close_tab":
+      case "browser_switch_tab":
+        return this.executeBrowserAction({
+          ...(parameters as unknown as BrowserActionParams),
+          action: this.mapBrowserCommandToAction(command),
+        });
+      case "list_windows":
+      case "switch_to_window":
+      case "arrange_windows":
+      case "move_window":
+      case "minimize_window":
+      case "maximize_window":
+      case "restore_window":
+      case "close_window":
+        return this.executeWindowAction({
+          ...(parameters as unknown as WindowActionParams),
+          action: this.mapWindowCommandToAction(command),
+        });
+      case "file_read":
+      case "file_write":
+      case "file_edit":
+      case "file_append":
+      case "file_delete":
+      case "file_exists":
+      case "directory_list":
+      case "directory_delete":
+      case "file_upload":
+      case "file_download":
+      case "file_list_downloads":
+        return this.executeFileAction({
+          ...(parameters as unknown as FileActionParams),
+          action: this.mapFileCommandToAction(command),
+        });
+      case "terminal_connect":
+      case "terminal_execute":
+      case "terminal_read":
+      case "terminal_type":
+      case "terminal_clear":
+      case "terminal_close":
+      case "execute_command":
+        return this.executeTerminalAction({
+          ...(parameters as unknown as TerminalActionParams),
+          action: this.mapTerminalCommandToAction(command),
+        });
+      default:
+        return {
+          success: false,
+          error: `Unknown computer-use command: ${command}`,
+        };
     }
+  }
 
-    const approval = await this.awaitApproval(this.desktopCommandName(params.action), this.toRecord(params));
-    if (approval) {
-      return this.completeFailure(entry, approval);
-    }
+  async executeDesktopAction(
+    rawParams: DesktopActionParams,
+  ): Promise<ComputerActionResult> {
+    const params = this.normalizeDesktopActionParams(rawParams);
+    const entry = this.createEntry(params.action, this.toParamsRecord(params));
 
     try {
       const approvalError = await this.awaitApproval(
-        this.getDesktopCommandName(params),
+        this.desktopApprovalCommand(params.action),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        this.pushAction(entry);
-        return { success: false, error: approvalError };
+        return this.failEntry(entry, { success: false, error: approvalError });
+      }
+
+      if (params.action === "detect_elements") {
+        return this.failEntry(entry, {
+          success: false,
+          error:
+            "Element detection is not available on local machines. Use a screenshot plus model reasoning instead.",
+        });
+      }
+
+      if (params.action === "ocr") {
+        return this.failEntry(entry, {
+          success: false,
+          error:
+            "OCR is not available on local machines. Use a screenshot plus model reasoning instead.",
+        });
       }
 
       switch (params.action) {
         case "screenshot":
-          break;
+          return this.succeedEntry(entry, {
+            success: true,
+            screenshot: this.captureScreenshotBase64(),
+          });
         case "click":
           this.requireCoordinate(params.coordinate, "click");
           desktopClick(params.coordinate[0], params.coordinate[1]);
@@ -216,10 +294,6 @@ export class ComputerUseService extends Service {
             params.button ?? "left",
             params.clicks ?? 1,
           );
-          break;
-        case "click_with_modifiers":
-          this.requireCoordinate(params);
-          desktopClickWithModifiers(params.coordinate![0], params.coordinate![1], params.modifiers ?? []);
           break;
         case "double_click":
           this.requireCoordinate(params.coordinate, "double_click");
@@ -257,85 +331,81 @@ export class ComputerUseService extends Service {
           );
           break;
         case "drag":
-          if (!params.startCoordinate) {
-            throw new Error("startCoordinate is required for drag action");
-          }
-          this.requireCoordinate(params);
+          this.requireCoordinate(params.startCoordinate, "drag");
+          this.requireCoordinate(params.coordinate, "drag");
           desktopDrag(
             params.startCoordinate[0],
             params.startCoordinate[1],
-            params.coordinate![0],
-            params.coordinate![1],
+            params.coordinate[0],
+            params.coordinate[1],
           );
           break;
       }
 
-      let screenshot: string | undefined;
-      if (params.action === "screenshot" || this.cuConfig.screenshotAfterAction) {
+      const result: ComputerActionResult = { success: true };
+      if (this.shouldCaptureAfterDesktopAction(params.action)) {
         try {
-          screenshot = captureScreenshot().toString("base64");
-        } catch (err) {
-          if (params.action === "screenshot") {
-            return this.completeFailure(entry, this.resultFromError(err));
-          }
-          logger.warn(`[computeruse] Screenshot capture failed after action: ${String(err)}`);
+          result.screenshot = this.captureScreenshotBase64();
+        } catch (error) {
+          logger.warn(
+            `[computeruse] Post-action screenshot failed: ${errorMessage(error)}`,
+          );
         }
       }
-
-      entry.success = true;
-      this.pushAction(entry);
-      return {
-        success: true,
-        screenshot,
-        message:
-          params.action === "screenshot"
-            ? "Screenshot captured."
-            : `Desktop action ${params.action} completed.`,
-      };
-    } catch (err) {
-      return this.completeFailure(entry, this.resultFromError(err));
+      return this.succeedEntry(entry, result);
+    } catch (error) {
+      const permissionError = classifyPermissionDeniedError(error, {
+        permissionType:
+          params.action === "screenshot" ? "screen_recording" : "accessibility",
+        operation: params.action,
+      });
+      if (permissionError) {
+        return this.failEntry(entry, {
+          success: false,
+          error: permissionError.message,
+          permissionDenied: true,
+          permissionType: permissionError.permissionType,
+        });
+      }
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
     }
   }
 
-  async executeBrowserAction(rawParams: BrowserActionParams): Promise<BrowserActionResult> {
-    const params = this.normalizeBrowserParams(rawParams);
-    const entry: ActionHistoryEntry = {
-      action: `browser_${params.action}`,
-      timestamp: Date.now(),
-      params: this.toRecord(params),
-      success: false,
-    };
-
-    const approval = await this.awaitApproval(
-      this.browserCommandName(params.action),
-      this.toRecord(params),
+  async executeBrowserAction(
+    rawParams: BrowserActionParams,
+  ): Promise<BrowserActionResult> {
+    const params = this.normalizeBrowserActionParams(rawParams);
+    const entry = this.createEntry(
+      `browser_${params.action}`,
+      this.toParamsRecord(params),
     );
-    if (approval) {
-      return this.completeFailure(entry, approval);
-    }
 
     try {
       const approvalError = await this.awaitApproval(
-        this.getBrowserCommandName(params),
+        this.browserApprovalCommand(params.action),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        this.pushAction(entry);
-        return { success: false, error: approvalError };
+        return this.failEntry(entry, { success: false, error: approvalError });
       }
-
-      let result: BrowserActionResult;
 
       switch (params.action) {
         case "open":
         case "connect": {
           const state = await openBrowser(params.url);
-          result = {
+          return this.succeedEntry(entry, {
             success: true,
-            content: `Opened browser: ${state.url} — ${state.title}`,
+            url: state.url,
+            title: state.title,
+            isOpen: true,
+            is_open: true,
             data: state,
-          };
-          break;
+            content: stringifyData(state),
+            message: `Opened browser: ${state.url}`,
+          });
         }
         case "close":
           await closeBrowser();
@@ -346,14 +416,21 @@ export class ComputerUseService extends Service {
             message: "Browser closed.",
           });
         case "navigate": {
-          if (!params.url) throw new Error("url is required for navigate action");
-          const state = await navigateBrowser(params.url);
-          result = {
+          const url = this.requireIdentifier(
+            params.url,
+            "url is required for navigate",
+          );
+          const state = await navigateBrowser(url);
+          return this.succeedEntry(entry, {
             success: true,
-            content: `Navigated to: ${state.url} — ${state.title}`,
+            url: state.url,
+            title: state.title,
+            isOpen: true,
+            is_open: true,
             data: state,
-          };
-          break;
+            content: stringifyData(state),
+            message: `Navigated to ${state.url}`,
+          });
         }
         case "click":
           await clickBrowser(params.selector, params.coordinate, params.text);
@@ -372,16 +449,27 @@ export class ComputerUseService extends Service {
           });
         case "scroll":
           await scrollBrowser(params.direction ?? "down", params.amount ?? 300);
-          result = { success: true, content: `Scrolled ${params.direction ?? "down"}.` };
-          break;
-        case "screenshot":
-          result = { success: true, screenshot: await screenshotBrowser() };
-          break;
+          return this.succeedEntry(entry, {
+            success: true,
+            message: `Scrolled browser ${params.direction ?? "down"}.`,
+          });
+        case "screenshot": {
+          const screenshot = await screenshotBrowser();
+          return this.succeedEntry(entry, {
+            success: true,
+            screenshot,
+            frontendScreenshot: screenshot,
+            message: "Captured browser screenshot.",
+          });
+        }
         case "dom":
         case "get_dom": {
-          const html = await getBrowserDom();
-          result = { success: true, content: html };
-          break;
+          const content = await getBrowserDom();
+          return this.succeedEntry(entry, {
+            success: true,
+            content,
+            message: "Fetched browser DOM.",
+          });
         }
         case "clickables":
         case "get_clickables": {
@@ -395,46 +483,29 @@ export class ComputerUseService extends Service {
             message: "Fetched browser clickables.",
           });
         }
-        case "execute":
-          if (!params.code) throw new Error("code is required for execute action");
-          result = { success: true, content: await executeBrowser(params.code) };
-          break;
-        case "state": {
-          const state = await getBrowserState();
-          result = {
-            success: true,
-            content: `URL: ${state.url}\nTitle: ${state.title}`,
-            data: state,
-          };
-          break;
-        }
-        case "info": {
-          const info = await getBrowserInfo();
-          result = info.success
-            ? { success: true, content: JSON.stringify(info, null, 2), data: info }
-            : { success: false, error: info.error ?? "Browser is not open." };
-          break;
-        }
-        case "context":
-        case "get_context": {
-          const state = await getBrowserContext();
-          result = {
-            success: true,
-            content: `URL: ${state.url}\nTitle: ${state.title}`,
-            data: state,
-          };
-          break;
-        }
-        case "wait": {
-          const waitResult = await browserWait(
-            params.selector,
-            params.waitForText ?? params.text,
-            params.timeout ?? 5000,
+        case "execute": {
+          const code = this.requireIdentifier(
+            params.code,
+            "code is required for browser execute",
           );
-          result = waitResult.success
-            ? { success: true, content: waitResult.message ?? "Wait completed." }
-            : { success: false, error: waitResult.error ?? "Browser wait failed." };
-          break;
+          const content = await executeBrowser(code);
+          return this.succeedEntry(entry, {
+            success: true,
+            content,
+            message: "Executed browser JavaScript.",
+          });
+        }
+        case "state": {
+          const data = await getBrowserState();
+          return this.succeedEntry(entry, {
+            success: true,
+            url: data.url,
+            title: data.title,
+            isOpen: true,
+            is_open: true,
+            data,
+            content: stringifyData(data),
+          });
         }
         case "info": {
           const info = await getBrowserInfo();
@@ -486,248 +557,307 @@ export class ComputerUseService extends Service {
         }
         case "open_tab": {
           const tab = await openBrowserTab(params.url);
-          result = { success: true, data: tab, content: `Opened tab: ${tab.url}` };
-          break;
+          return this.succeedEntry(entry, {
+            success: true,
+            data: tab,
+            content: stringifyData(tab),
+            message: `Opened tab ${tab.id}.`,
+          });
         }
         case "close_tab": {
-          const tabId = params.tabId ?? this.indexToTabId(params.index);
-          if (!tabId) throw new Error("tabId or index is required for close_tab");
+          const tabId = this.requireIdentifier(
+            params.tabId,
+            "tabId is required for close_tab",
+          );
           await closeBrowserTab(tabId);
-          result = { success: true, content: `Closed tab ${tabId}.` };
-          break;
+          return this.succeedEntry(entry, {
+            success: true,
+            message: `Closed tab ${tabId}.`,
+          });
         }
         case "switch_tab": {
-          const tabId = params.tabId ?? this.indexToTabId(params.index);
-          if (!tabId) throw new Error("tabId or index is required for switch_tab");
+          const tabId = this.requireIdentifier(
+            params.tabId,
+            "tabId is required for switch_tab",
+          );
           const state = await switchBrowserTab(tabId);
-          result = { success: true, content: `Switched to tab: ${state.url}`, data: state };
-          break;
+          return this.succeedEntry(entry, {
+            success: true,
+            url: state.url,
+            title: state.title,
+            isOpen: true,
+            is_open: true,
+            data: state,
+            content: stringifyData(state),
+            message: `Switched to tab ${tabId}.`,
+          });
         }
       }
-
-      entry.success = result.success;
-      this.pushAction(entry);
-      return result;
-    } catch (err) {
-      return this.completeFailure(entry, this.resultFromError(err));
+    } catch (error) {
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
     }
   }
 
-  async executeWindowAction(rawParams: WindowActionParams): Promise<WindowActionResult> {
-    const params = this.normalizeWindowParams(rawParams);
-    const entry: ActionHistoryEntry = {
-      action: `window_${params.action}`,
-      timestamp: Date.now(),
-      params: this.toRecord(params),
-      success: false,
-    };
-
-    const approval = await this.awaitApproval(
-      this.windowCommandName(params.action),
-      this.toRecord(params),
+  async executeWindowAction(
+    rawParams: WindowActionParams,
+  ): Promise<WindowActionResult> {
+    const params = this.normalizeWindowActionParams(rawParams);
+    const entry = this.createEntry(
+      `window_${params.action}`,
+      this.toParamsRecord(params),
     );
-    if (approval) {
-      return this.completeFailure(entry, approval);
-    }
 
     try {
       const approvalError = await this.awaitApproval(
-        this.getWindowCommandName(params),
+        this.windowApprovalCommand(params.action),
         this.toParamsRecord(params),
       );
       if (approvalError) {
-        this.pushAction(entry);
-        return { success: false, error: approvalError };
+        return this.failEntry(entry, { success: false, error: approvalError });
       }
 
       switch (params.action) {
         case "list": {
           const windows = listWindows();
-          entry.success = true;
-          this.pushAction(entry);
-          return { success: true, windows, message: `${windows.length} visible windows.` };
-        }
-        case "focus": {
-          const target = this.requireWindowTarget(params, "focus");
-          focusWindow(target);
-          break;
-        }
-        case "switch": {
-          const target = this.requireWindowTarget(params, "switch");
-          switchWindow(target);
-          break;
-        }
-        case "arrange": {
-          entry.success = true;
-          this.pushAction(entry);
-          return arrangeWindows(params.arrangement);
-        }
-        case "move": {
-          entry.success = true;
-          this.pushAction(entry);
-          return moveWindow(params.x, params.y);
-        }
-        case "minimize": {
-          const target = this.requireWindowTarget(params, "minimize");
-          minimizeWindow(target);
-          break;
-        }
-        case "maximize": {
-          const target = this.requireWindowTarget(params, "maximize");
-          maximizeWindow(target);
-          break;
-        }
-        case "restore": {
-          const target = this.requireWindowTarget(params, "restore");
-          restoreWindow(target);
-          break;
-        }
-        case "close": {
-          const target = this.requireWindowTarget(params, "close");
-          closeWindow(target);
-          break;
-        }
-        default:
-          throw new Error(`Unknown window action: ${params.action}`);
-      }
-
-      entry.success = true;
-      this.pushAction(entry);
-      return { success: true, message: `Window ${params.action} completed.` };
-    } catch (err) {
-      return this.completeFailure(entry, this.resultFromError(err));
-    }
-  }
-
-  async executeFileAction(rawParams: FileActionParams): Promise<FileActionResult> {
-    const { action, command, params } = this.normalizeFileAction(rawParams);
-    const entry: ActionHistoryEntry = {
-      action: command,
-      timestamp: Date.now(),
-      params: { ...params },
-      success: false,
-    };
-
-    const approval = await this.awaitApproval(command, params);
-    if (approval) {
-      return this.completeFailure(entry, approval);
-    }
-
-    try {
-      let output: unknown;
-      switch (action) {
-        case "read":
-          output = await readFile({ path: String(params.path ?? ""), encoding: String(params.encoding ?? "utf-8") });
-          break;
-        case "write":
-          output = await writeFile({ path: String(params.path ?? ""), content: String(params.content ?? "") });
-          break;
-        case "edit":
-          output = await editFile({
-            path: String(params.path ?? ""),
-            old_text: String(params.old_text ?? params.oldText ?? ""),
-            new_text: String(params.new_text ?? params.newText ?? ""),
+          return this.succeedEntry(entry, {
+            success: true,
+            windows,
+            count: windows.length,
           });
-          break;
-        case "append":
-          output = await appendFile({ path: String(params.path ?? ""), content: String(params.content ?? "") });
-          break;
-        case "delete":
-          output = await deleteFile({ path: String(params.path ?? "") });
-          break;
-        case "exists":
-          output = await fileExists({ path: String(params.path ?? "") });
-          break;
-        case "list_directory":
-          output = await listDirectory({ path: String(params.path ?? "") });
-          break;
-        case "delete_directory":
-          output = await deleteDirectory({ path: String(params.path ?? "") });
-          break;
-        case "upload":
-          output = await fileUpload({ path: String(params.path ?? ""), content: String(params.content ?? "") });
-          break;
-        case "download":
-          output = await fileDownload({
-            path: String(params.path ?? ""),
-            encoding: String(params.encoding ?? "utf-8"),
+        }
+        case "focus":
+          focusWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Focused window.",
           });
-          break;
-        case "list_downloads":
-          output = await fileListDownloads({ path: String(params.path ?? "") });
-          break;
-        default:
-          throw new Error(`Unknown file action: ${action}`);
-      }
-
-      const result = this.mapFileActionResult(output);
-      entry.success = result.success;
-      this.pushAction(entry);
-      return result;
-    } catch (err) {
-      return this.completeFailure(entry, this.resultFromError(err));
-    }
-  }
-
-  async executeTerminalAction(rawParams: TerminalActionParams): Promise<TerminalActionResult> {
-    const { action, command, params } = this.normalizeTerminalAction(rawParams);
-    const entry: ActionHistoryEntry = {
-      action: command,
-      timestamp: Date.now(),
-      params: { ...params },
-      success: false,
-    };
-
-    const approval = await this.awaitApproval(command, params);
-    if (approval) {
-      return this.completeFailure(entry, approval);
-    }
-
-    try {
-      let output: unknown;
-      switch (action) {
-        case "connect":
-          output = connectTerminal({ cwd: this.asString(params.cwd) });
-          break;
-        case "execute":
-          output = await executeTerminal({
-            command: this.asString(params.command) ?? "",
-            timeout: this.asNumber(params.timeout),
-            session_id: this.resolveSessionId(params),
+        case "switch":
+          switchWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Switched window.",
           });
-          break;
-        case "read":
-          output = readTerminal({ session_id: this.resolveSessionId(params) });
-          break;
-        case "type":
-          output = typeTerminal({
-            text: this.asString(params.text) ?? "",
-            session_id: this.resolveSessionId(params),
+        case "arrange":
+          return this.succeedEntry(entry, {
+            success: true,
+            message:
+              "Window arrangement is a parity no-op on the local runtime unless handled by the platform window manager.",
           });
-          break;
-        case "clear":
-          output = clearTerminal({ session_id: this.resolveSessionId(params) });
-          break;
+        case "move":
+          return this.succeedEntry(entry, {
+            success: true,
+            message:
+              "Window move is a parity no-op on the local runtime unless handled by the platform window manager.",
+          });
+        case "minimize":
+          minimizeWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Window minimized.",
+          });
+        case "maximize":
+          maximizeWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Window maximized.",
+          });
+        case "restore":
+          restoreWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Window restored.",
+          });
         case "close":
-          output = closeTerminal({ session_id: this.resolveSessionId(params) });
-          break;
-        case "execute_command":
-          output = await executeCommand({
-            command: this.asString(params.command) ?? "",
-            timeout: this.asNumber(params.timeout),
-            session_id: this.resolveSessionId(params),
+          closeWindow(this.requireWindowTarget(params));
+          return this.succeedEntry(entry, {
+            success: true,
+            message: "Window closed.",
           });
-          break;
-        default:
-          throw new Error(`Unknown terminal action: ${action}`);
+      }
+    } catch (error) {
+      const permissionError = classifyPermissionDeniedError(error, {
+        permissionType: "accessibility",
+        operation: params.action,
+      });
+      if (permissionError) {
+        return this.failEntry(entry, {
+          success: false,
+          error: permissionError.message,
+          permissionDenied: true,
+          permissionType: permissionError.permissionType,
+        });
+      }
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  async executeFileAction(
+    rawParams: FileActionParams,
+  ): Promise<FileActionResult> {
+    const params = this.normalizeFileActionParams(rawParams);
+    const entry = this.createEntry(
+      `file_${params.action}`,
+      this.toParamsRecord(params),
+    );
+
+    try {
+      const approvalError = await this.awaitApproval(
+        this.fileApprovalCommand(params.action),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      const result = this.mapTerminalActionResult(output);
-      entry.success = result.success;
-      this.pushAction(entry);
-      return result;
-    } catch (err) {
-      return this.completeFailure(entry, this.resultFromError(err));
+      const targetPath =
+        params.action === "list_downloads"
+          ? this.defaultDownloadsPath()
+          : this.requireIdentifier(params.path, "path is required for file action");
+
+      switch (params.action) {
+        case "read":
+        case "download":
+          return this.finishFileEntry(
+            entry,
+            await readFile(targetPath, this.normalizeEncoding(params.encoding)),
+          );
+        case "write":
+        case "upload":
+          if (typeof params.content !== "string") {
+            throw new Error("content is required for file write");
+          }
+          return this.finishFileEntry(
+            entry,
+            await writeFile(targetPath, params.content),
+          );
+        case "edit":
+          if (typeof params.old_text !== "string") {
+            throw new Error("old_text is required for file edit");
+          }
+          if (typeof params.new_text !== "string") {
+            throw new Error("new_text is required for file edit");
+          }
+          return this.finishFileEntry(
+            entry,
+            await editFile(targetPath, params.old_text, params.new_text),
+          );
+        case "append":
+          if (typeof params.content !== "string") {
+            throw new Error("content is required for file append");
+          }
+          return this.finishFileEntry(
+            entry,
+            await appendFile(targetPath, params.content),
+          );
+        case "delete":
+          return this.finishFileEntry(entry, await deleteFile(targetPath));
+        case "exists":
+          return this.finishFileEntry(entry, await fileExists(targetPath));
+        case "list":
+        case "list_downloads":
+          return this.finishFileEntry(entry, await listDirectory(targetPath));
+        case "delete_directory":
+          return this.finishFileEntry(
+            entry,
+            await deleteDirectory(targetPath),
+          );
+      }
+    } catch (error) {
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  async executeTerminalAction(
+    rawParams: TerminalActionParams,
+  ): Promise<TerminalActionResult> {
+    const params = this.normalizeTerminalActionParams(rawParams);
+    const entry = this.createEntry(
+      `terminal_${params.action}`,
+      this.toParamsRecord(params),
+    );
+
+    try {
+      const approvalError = await this.awaitApproval(
+        this.terminalApprovalCommand(params.action),
+        this.toParamsRecord(params),
+      );
+      if (approvalError) {
+        return this.failEntry(entry, { success: false, error: approvalError });
+      }
+
+      switch (params.action) {
+        case "connect":
+          return this.finishTerminalEntry(
+            entry,
+            await connectTerminal(params.cwd),
+          );
+        case "execute":
+          return this.finishTerminalEntry(
+            entry,
+            await executeTerminal({
+              command: this.requireIdentifier(
+                params.command,
+                "command is required for terminal execute",
+              ),
+              timeoutSeconds:
+                params.timeout ??
+                Math.max(1, Math.ceil(this.cuConfig.actionTimeoutMs / 1000)),
+              sessionId: params.sessionId,
+              cwd: params.cwd,
+            }),
+          );
+        case "read":
+          return this.finishTerminalEntry(
+            entry,
+            await readTerminal(params.sessionId),
+          );
+        case "type":
+          return this.finishTerminalEntry(
+            entry,
+            await typeTerminal(
+              this.requireIdentifier(params.text, "text is required for terminal type"),
+            ),
+          );
+        case "clear":
+          return this.finishTerminalEntry(
+            entry,
+            await clearTerminal(params.sessionId),
+          );
+        case "close":
+          return this.finishTerminalEntry(
+            entry,
+            await closeTerminal(params.sessionId),
+          );
+        case "execute_command":
+          return this.finishTerminalEntry(
+            entry,
+            await executeTerminal({
+              command: this.requireIdentifier(
+                params.command,
+                "command is required for execute_command",
+              ),
+              timeoutSeconds:
+                params.timeout ??
+                Math.max(1, Math.ceil(this.cuConfig.actionTimeoutMs / 1000)),
+              sessionId: params.sessionId,
+              cwd: params.cwd,
+            }),
+          );
+      }
+    } catch (error) {
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
     }
   }
 
@@ -747,391 +877,8 @@ export class ComputerUseService extends Service {
     return this.screenSize;
   }
 
-  getApprovalSnapshot(): ApprovalSnapshot {
-    const pendingApprovals = this.approvalManager.listPendingApprovals().map((approval) => ({
-      id: approval.id,
-      command: approval.command,
-      parameters: { ...approval.parameters },
-      requestedAt: approval.requestedAt.toISOString(),
-    }));
-
-    return {
-      mode: this.approvalManager.getMode(),
-      pendingCount: pendingApprovals.length,
-      pendingApprovals,
-    };
-  }
-
-  resolveApproval(
-    id: string,
-    approved: boolean,
-    reason?: string,
-  ): {
-    id: string;
-    command: string;
-    approved: boolean;
-    cancelled: boolean;
-    mode: string;
-    requestedAt: string;
-    resolvedAt: string;
-    reason?: string;
-  } | null {
-    const resolution = this.approvalManager.resolvePendingApproval(id, approved, reason);
-    if (!resolution) {
-      return null;
-    }
-
-    return {
-      id: resolution.id,
-      command: resolution.command,
-      approved: resolution.approved,
-      cancelled: resolution.cancelled,
-      mode: resolution.mode,
-      requestedAt: resolution.requestedAt.toISOString(),
-      resolvedAt: resolution.resolvedAt.toISOString(),
-      reason: resolution.reason,
-    };
-  }
-
-  private normalizeDesktopParams(rawParams: DesktopActionParams): DesktopActionParams {
-    const normalized = normalizeComputerUseParams(
-      String(rawParams.action ?? "screenshot"),
-      rawParams as unknown as Record<string, unknown>,
-    );
-
-    return {
-      action: String(normalized.action ?? rawParams.action ?? "screenshot") as DesktopActionParams["action"],
-      coordinate: this.asPoint(normalized.coordinate),
-      startCoordinate: this.asPoint(normalized.startCoordinate),
-      modifiers: this.asStringArray(normalized.modifiers),
-      text: this.asString(normalized.text),
-      key: this.asString(normalized.key),
-      scrollDirection: this.asScrollDirection(normalized.scrollDirection),
-      scrollAmount: this.asNumber(normalized.scrollAmount),
-    };
-  }
-
-  private normalizeBrowserParams(rawParams: BrowserActionParams): BrowserActionParams {
-    const rawAction = String(rawParams.action ?? "state");
-    const command = rawAction.startsWith("browser_") ? rawAction : `browser_${rawAction}`;
-    const normalized = normalizeComputerUseParams(
-      command,
-      rawParams as unknown as Record<string, unknown>,
-    );
-
-    return {
-      action: this.canonicalBrowserAction(String(normalized.action ?? rawAction)),
-      url: this.asString(normalized.url),
-      selector: this.asString(normalized.selector),
-      coordinate: this.asPoint(normalized.coordinate),
-      text: this.asString(normalized.text),
-      code: this.asString(normalized.code),
-      waitForText: this.asString(normalized.waitForText),
-      waitForTextGone: this.asString(normalized.waitForTextGone),
-      direction: this.asBrowserDirection(normalized.direction),
-      amount: this.asNumber(normalized.amount),
-      tabId: this.asString(normalized.tabId),
-      index: this.asNumber(normalized.index),
-      timeout: this.asNumber(normalized.timeout),
-    };
-  }
-
-  private normalizeWindowParams(rawParams: WindowActionParams): WindowActionParams {
-    const rawAction = String(rawParams.action ?? "list");
-    const command = this.windowCommandName(this.canonicalWindowAction(rawAction));
-    const normalized = normalizeComputerUseParams(
-      command,
-      rawParams as unknown as Record<string, unknown>,
-    );
-
-    return {
-      action: this.canonicalWindowAction(String(normalized.action ?? rawAction)),
-      windowId: this.asString(normalized.windowId),
-      windowTitle: this.asString(normalized.windowTitle),
-      appName: this.asString(normalized.appName),
-      title: this.asString(normalized.title),
-      window: this.asString(normalized.window),
-      arrangement: this.asString(normalized.arrangement),
-      x: this.asNumber(normalized.x),
-      y: this.asNumber(normalized.y),
-    };
-  }
-
-  private normalizeFileAction(rawParams: FileActionParams): {
-    action: string;
-    command: string;
-    params: Record<string, unknown>;
-  } {
-    const rawAction = String(rawParams.action ?? "read");
-    const mapping: Record<string, { action: string; command: string }> = {
-      read: { action: "read", command: "file_read" },
-      file_read: { action: "read", command: "file_read" },
-      write: { action: "write", command: "file_write" },
-      file_write: { action: "write", command: "file_write" },
-      edit: { action: "edit", command: "file_edit" },
-      file_edit: { action: "edit", command: "file_edit" },
-      append: { action: "append", command: "file_append" },
-      file_append: { action: "append", command: "file_append" },
-      delete: { action: "delete", command: "file_delete" },
-      file_delete: { action: "delete", command: "file_delete" },
-      exists: { action: "exists", command: "file_exists" },
-      file_exists: { action: "exists", command: "file_exists" },
-      list_directory: { action: "list_directory", command: "directory_list" },
-      directory_list: { action: "list_directory", command: "directory_list" },
-      delete_directory: { action: "delete_directory", command: "directory_delete" },
-      directory_delete: { action: "delete_directory", command: "directory_delete" },
-      upload: { action: "upload", command: "file_upload" },
-      file_upload: { action: "upload", command: "file_upload" },
-      download: { action: "download", command: "file_download" },
-      file_download: { action: "download", command: "file_download" },
-      list_downloads: { action: "list_downloads", command: "file_list_downloads" },
-      file_list_downloads: { action: "list_downloads", command: "file_list_downloads" },
-    };
-    const resolved = mapping[rawAction] ?? mapping.read;
-    const normalized = normalizeComputerUseParams(
-      resolved.command,
-      rawParams as unknown as Record<string, unknown>,
-    );
-    normalized.action = resolved.action;
-
-    return { action: resolved.action, command: resolved.command, params: normalized };
-  }
-
-  private normalizeTerminalAction(rawParams: TerminalActionParams): {
-    action: string;
-    command: string;
-    params: Record<string, unknown>;
-  } {
-    const rawAction = String(rawParams.action ?? "terminal_execute");
-    const mapping: Record<string, { action: string; command: string }> = {
-      connect: { action: "connect", command: "terminal_connect" },
-      terminal_connect: { action: "connect", command: "terminal_connect" },
-      execute: { action: "execute", command: "terminal_execute" },
-      terminal_execute: { action: "execute", command: "terminal_execute" },
-      read: { action: "read", command: "terminal_read" },
-      terminal_read: { action: "read", command: "terminal_read" },
-      type: { action: "type", command: "terminal_type" },
-      terminal_type: { action: "type", command: "terminal_type" },
-      clear: { action: "clear", command: "terminal_clear" },
-      terminal_clear: { action: "clear", command: "terminal_clear" },
-      close: { action: "close", command: "terminal_close" },
-      terminal_close: { action: "close", command: "terminal_close" },
-      execute_command: { action: "execute_command", command: "execute_command" },
-    };
-    const resolved = mapping[rawAction] ?? mapping.terminal_execute;
-    const normalized = normalizeComputerUseParams(
-      resolved.command,
-      rawParams as unknown as Record<string, unknown>,
-    );
-    normalized.action = resolved.action;
-
-    return { action: resolved.action, command: resolved.command, params: normalized };
-  }
-
-  private canonicalBrowserAction(action: string): BrowserActionParams["action"] {
-    switch (action) {
-      case "browser_open":
-      case "browser_connect":
-        return "open";
-      case "browser_navigate":
-        return "navigate";
-      case "browser_click":
-        return "click";
-      case "browser_type":
-        return "type";
-      case "browser_scroll":
-        return "scroll";
-      case "browser_screenshot":
-        return "screenshot";
-      case "browser_dom":
-        return "dom";
-      case "browser_get_dom":
-        return "get_dom";
-      case "browser_get_clickables":
-        return "get_clickables";
-      case "browser_state":
-        return "state";
-      case "browser_info":
-        return "info";
-      case "browser_get_context":
-        return "get_context";
-      case "browser_wait":
-        return "wait";
-      case "browser_list_tabs":
-        return "list_tabs";
-      case "browser_open_tab":
-        return "open_tab";
-      case "browser_close_tab":
-        return "close_tab";
-      case "browser_switch_tab":
-        return "switch_tab";
-      default:
-        return action as BrowserActionParams["action"];
-    }
-  }
-
-  private canonicalWindowAction(action: string): WindowActionParams["action"] {
-    switch (action) {
-      case "switch_to_window":
-        return "switch";
-      case "focus_window":
-        return "focus";
-      case "arrange_windows":
-        return "arrange";
-      case "move_window":
-        return "move";
-      case "minimize_window":
-        return "minimize";
-      case "maximize_window":
-        return "maximize";
-      case "restore_window":
-        return "restore";
-      case "close_window":
-        return "close";
-      default:
-        return action as WindowActionParams["action"];
-    }
-  }
-
-  private desktopCommandName(action: DesktopActionParams["action"]): string {
-    switch (action) {
-      case "key":
-        return "key_press";
-      default:
-        return action;
-    }
-  }
-
-  private browserCommandName(action: BrowserActionParams["action"]): string {
-    switch (action) {
-      case "open":
-      case "connect":
-        return "browser_open";
-      case "navigate":
-        return "browser_navigate";
-      case "click":
-        return "browser_click";
-      case "type":
-        return "browser_type";
-      case "scroll":
-        return "browser_scroll";
-      case "screenshot":
-        return "browser_screenshot";
-      case "dom":
-        return "browser_dom";
-      case "get_dom":
-        return "browser_get_dom";
-      case "clickables":
-      case "get_clickables":
-        return "browser_get_clickables";
-      case "execute":
-        return "browser_execute";
-      case "state":
-        return "browser_state";
-      case "info":
-        return "browser_info";
-      case "context":
-      case "get_context":
-        return "browser_get_context";
-      case "wait":
-        return "browser_wait";
-      case "list_tabs":
-        return "browser_list_tabs";
-      case "open_tab":
-        return "browser_open_tab";
-      case "close_tab":
-        return "browser_close_tab";
-      case "switch_tab":
-        return "browser_switch_tab";
-      default:
-        return `browser_${action}`;
-    }
-  }
-
-  private windowCommandName(action: WindowActionParams["action"]): string {
-    switch (action) {
-      case "list":
-        return "list_windows";
-      case "focus":
-        return "focus_window";
-      case "switch":
-        return "switch_to_window";
-      case "arrange":
-        return "arrange_windows";
-      case "move":
-        return "move_window";
-      case "minimize":
-        return "minimize_window";
-      case "maximize":
-        return "maximize_window";
-      case "restore":
-        return "restore_window";
-      case "close":
-        return "close_window";
-      default:
-        return action;
-    }
-  }
-
-  private async awaitApproval(
-    command: string,
-    params: Record<string, unknown>,
-  ): Promise<ComputerUseResult | null> {
-    if (this.approvalManager.shouldAutoApprove(command)) {
-      return null;
-    }
-
-    if (this.approvalManager.isDenyAll()) {
-      return {
-        success: false,
-        error: `Command ${command} denied because computer-use approval mode is off.`,
-        message: "Computer use approvals are disabled in off mode.",
-      };
-    }
-
-    const resolution = await this.approvalManager.requestApproval(command, params);
-    if (resolution.approved) {
-      return null;
-    }
-
-    return {
-      success: false,
-      error: resolution.reason ?? `Approval denied for ${command}.`,
-      message: resolution.cancelled
-        ? `Approval for ${command} was cancelled.`
-        : `Approval denied for ${command}.`,
-    };
-  }
-
-  private completeFailure<TResult extends ComputerUseResult>(
-    entry: ActionHistoryEntry,
-    result: TResult,
-  ): TResult {
-    entry.success = false;
-    this.pushAction(entry);
-    return result;
-  }
-
-  private resultFromError(err: unknown): ComputerUseResult {
-    const permission = permissionDeniedResultFromError(err);
-    if (permission) {
-      return {
-        success: false,
-        error: permission.error,
-        permissionDenied: true,
-        permissionType: this.mapPermissionType(permission.permissionType),
-        message: permission.details ?? permission.error,
-      };
-    }
-
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-
-  private mapPermissionType(permissionType: string): PermissionType {
-    return permissionType === "screen_recording" ? "screen-recording" : "accessibility";
+  getApprovalMode(): ApprovalMode {
+    return this.approvalManager.getMode();
   }
 
   setApprovalMode(mode: ApprovalMode): ApprovalMode {
@@ -1242,116 +989,382 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private requireWindowTarget(params: WindowActionParams, action: string): string {
-    const target =
+  private desktopApprovalCommand(action: DesktopActionParams["action"]): string {
+    return action === "key" ? "key_press" : action;
+  }
+
+  private browserApprovalCommand(action: BrowserActionParams["action"]): string {
+    switch (action) {
+      case "open":
+        return "browser_open";
+      case "connect":
+        return "browser_connect";
+      case "close":
+        return "browser_close";
+      case "navigate":
+        return "browser_navigate";
+      case "click":
+        return "browser_click";
+      case "type":
+        return "browser_type";
+      case "scroll":
+        return "browser_scroll";
+      case "screenshot":
+        return "browser_screenshot";
+      case "dom":
+        return "browser_get_dom";
+      case "clickables":
+        return "browser_get_clickables";
+      case "execute":
+        return "browser_execute";
+      case "state":
+        return "browser_state";
+      case "info":
+        return "browser_info";
+      case "context":
+        return "browser_get_context";
+      case "wait":
+        return "browser_wait";
+      case "list_tabs":
+        return "browser_list_tabs";
+      case "open_tab":
+        return "browser_open_tab";
+      case "close_tab":
+        return "browser_close_tab";
+      case "switch_tab":
+        return "browser_switch_tab";
+      case "get_dom":
+        return "browser_get_dom";
+      case "get_clickables":
+        return "browser_get_clickables";
+    }
+  }
+
+  private windowApprovalCommand(action: WindowActionParams["action"]): string {
+    switch (action) {
+      case "list":
+        return "list_windows";
+      case "focus":
+      case "switch":
+        return "switch_to_window";
+      case "arrange":
+        return "arrange_windows";
+      case "move":
+        return "move_window";
+      case "minimize":
+        return "minimize_window";
+      case "maximize":
+        return "maximize_window";
+      case "restore":
+        return "restore_window";
+      case "close":
+        return "close_window";
+    }
+  }
+
+  private fileApprovalCommand(action: FileActionParams["action"]): string {
+    switch (action) {
+      case "read":
+        return "file_read";
+      case "write":
+        return "file_write";
+      case "edit":
+        return "file_edit";
+      case "append":
+        return "file_append";
+      case "delete":
+        return "file_delete";
+      case "exists":
+        return "file_exists";
+      case "list":
+        return "directory_list";
+      case "delete_directory":
+        return "directory_delete";
+      case "upload":
+        return "file_upload";
+      case "download":
+        return "file_download";
+      case "list_downloads":
+        return "file_list_downloads";
+    }
+  }
+
+  private terminalApprovalCommand(action: TerminalActionParams["action"]): string {
+    switch (action) {
+      case "connect":
+        return "terminal_connect";
+      case "execute":
+        return "terminal_execute";
+      case "read":
+        return "terminal_read";
+      case "type":
+        return "terminal_type";
+      case "clear":
+        return "terminal_clear";
+      case "close":
+        return "terminal_close";
+      case "execute_command":
+        return "execute_command";
+    }
+  }
+
+  private mapDesktopCommandToAction(command: string): DesktopActionParams["action"] {
+    switch (command) {
+      case "key_press":
+        return "key";
+      default:
+        return command as DesktopActionParams["action"];
+    }
+  }
+
+  private mapBrowserCommandToAction(command: string): BrowserActionParams["action"] {
+    const value = command.replace(/^browser_/, "");
+    switch (value) {
+      case "get_dom":
+        return "get_dom";
+      case "get_clickables":
+        return "get_clickables";
+      case "get_context":
+        return "context";
+      default:
+        return value as BrowserActionParams["action"];
+    }
+  }
+
+  private mapWindowCommandToAction(command: string): WindowActionParams["action"] {
+    switch (command) {
+      case "list_windows":
+        return "list";
+      case "switch_to_window":
+        return "switch";
+      case "arrange_windows":
+        return "arrange";
+      case "move_window":
+        return "move";
+      case "minimize_window":
+        return "minimize";
+      case "maximize_window":
+        return "maximize";
+      case "restore_window":
+        return "restore";
+      case "close_window":
+        return "close";
+      default:
+        return "list";
+    }
+  }
+
+  private mapFileCommandToAction(command: string): FileActionParams["action"] {
+    switch (command) {
+      case "file_read":
+        return "read";
+      case "file_write":
+        return "write";
+      case "file_edit":
+        return "edit";
+      case "file_append":
+        return "append";
+      case "file_delete":
+        return "delete";
+      case "file_exists":
+        return "exists";
+      case "directory_list":
+        return "list";
+      case "directory_delete":
+        return "delete_directory";
+      case "file_upload":
+        return "upload";
+      case "file_download":
+        return "download";
+      case "file_list_downloads":
+        return "list_downloads";
+      default:
+        return "read";
+    }
+  }
+
+  private mapTerminalCommandToAction(
+    command: string,
+  ): TerminalActionParams["action"] {
+    switch (command) {
+      case "terminal_connect":
+        return "connect";
+      case "terminal_execute":
+        return "execute";
+      case "terminal_read":
+        return "read";
+      case "terminal_type":
+        return "type";
+      case "terminal_clear":
+        return "clear";
+      case "terminal_close":
+        return "close";
+      case "execute_command":
+        return "execute_command";
+      default:
+        return "connect";
+    }
+  }
+
+  private async awaitApproval(
+    command: string,
+    parameters: Record<string, unknown>,
+  ): Promise<string | null> {
+    if (this.approvalManager.shouldAutoApprove(command)) {
+      return null;
+    }
+    if (this.approvalManager.isDenyAll()) {
+      return `Computer use is paused. "${command}" was blocked by approval mode "${this.approvalManager.getMode()}".`;
+    }
+    const decision = await this.approvalManager.requestApproval(
+      command,
+      parameters,
+    );
+    if (decision.approved) {
+      return null;
+    }
+    if (decision.cancelled) {
+      return decision.reason
+        ? `Computer-use approval cancelled: ${decision.reason}`
+        : `Computer-use approval cancelled for "${command}".`;
+    }
+    return decision.reason
+      ? `Computer-use approval rejected: ${decision.reason}`
+      : `Computer-use approval rejected for "${command}".`;
+  }
+
+  private captureScreenshotBase64(): string {
+    return captureScreenshot().toString("base64");
+  }
+
+  private shouldCaptureAfterDesktopAction(
+    action: DesktopActionParams["action"],
+  ): boolean {
+    return action !== "screenshot" && action !== "detect_elements" && action !== "ocr"
+      ? this.cuConfig.screenshotAfterAction
+      : false;
+  }
+
+  private createEntry(
+    action: string,
+    params: Record<string, unknown>,
+  ): ActionHistoryEntry {
+    return {
+      action,
+      timestamp: Date.now(),
+      params,
+      success: false,
+    };
+  }
+
+  private succeedEntry<T extends { success: boolean }>(
+    entry: ActionHistoryEntry,
+    result: T,
+  ): T {
+    entry.success = true;
+    this.pushAction(entry);
+    return result;
+  }
+
+  private failEntry<T extends { success: boolean }>(
+    entry: ActionHistoryEntry,
+    result: T,
+  ): T {
+    entry.success = false;
+    this.pushAction(entry);
+    return result;
+  }
+
+  private finishFileEntry(
+    entry: ActionHistoryEntry,
+    result: FileActionResult,
+  ): FileActionResult {
+    const normalized: FileActionResult = {
+      ...result,
+      isFile: result.isFile ?? result.is_file,
+      isDirectory: result.isDirectory ?? result.is_directory,
+      is_file: result.is_file ?? result.isFile,
+      is_directory: result.is_directory ?? result.isDirectory,
+    };
+    return normalized.success
+      ? this.succeedEntry(entry, normalized)
+      : this.failEntry(entry, normalized);
+  }
+
+  private finishTerminalEntry(
+    entry: ActionHistoryEntry,
+    result: TerminalActionResult,
+  ): TerminalActionResult {
+    const normalized: TerminalActionResult = {
+      ...result,
+      exitCode: result.exitCode ?? result.exit_code,
+      exit_code: result.exit_code ?? result.exitCode,
+      sessionId: result.sessionId ?? result.session_id,
+      session_id: result.session_id ?? result.sessionId,
+    };
+    return normalized.success
+      ? this.succeedEntry(entry, normalized)
+      : this.failEntry(entry, normalized);
+  }
+
+  private requireCoordinate(
+    coordinate: [number, number] | undefined,
+    action: string,
+  ): asserts coordinate is [number, number] {
+    if (!coordinate || coordinate.length < 2) {
+      throw new Error(`coordinate [x, y] is required for ${action}`);
+    }
+  }
+
+  private requireIdentifier(
+    value: string | undefined,
+    message: string,
+  ): string {
+    if (!value) {
+      throw new Error(message);
+    }
+    return value;
+  }
+
+  private requireWindowTarget(params: WindowActionParams): string {
+    return (
       params.windowId ??
       params.windowTitle ??
-      params.title ??
-      params.window ??
-      params.appName;
-    if (!target) {
-      throw new Error(`windowId, windowTitle, title, window, or appName is required for ${action}`);
+      this.requireIdentifier(undefined, "windowId or windowTitle is required")
+    );
+  }
+
+  private normalizeEncoding(
+    value: string | BufferEncoding | undefined,
+  ): BufferEncoding {
+    switch (String(value ?? "utf8").toLowerCase()) {
+      case "ascii":
+        return "ascii";
+      case "base64":
+        return "base64";
+      case "hex":
+        return "hex";
+      case "latin1":
+      case "binary":
+        return "latin1";
+      case "ucs2":
+      case "ucs-2":
+      case "utf16le":
+      case "utf-16le":
+        return "utf16le";
+      default:
+        return "utf8";
     }
-    return target;
   }
 
-  private resolveSessionId(params: Record<string, unknown>): string | undefined {
-    return this.asString(params.session_id) ?? this.asString(params.sessionId);
+  private defaultDownloadsPath(): string {
+    return path.join(os.homedir(), "Downloads");
   }
 
-  private indexToTabId(index: number | undefined): string | undefined {
-    return Number.isFinite(index) ? String(index) : undefined;
-  }
-
-  private asString(value: unknown): string | undefined {
-    return typeof value === "string" && value.length > 0 ? value : undefined;
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return {};
-    }
-    return value as Record<string, unknown>;
-  }
-
-  private asNumber(value: unknown): number | undefined {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-    return undefined;
-  }
-
-  private asPoint(value: unknown): [number, number] | undefined {
-    if (!Array.isArray(value) || value.length < 2) {
-      return undefined;
-    }
-
-    const x = this.asNumber(value[0]);
-    const y = this.asNumber(value[1]);
-    if (x === undefined || y === undefined) {
-      return undefined;
-    }
-
-    return [x, y];
-  }
-
-  private asStringArray(value: unknown): string[] | undefined {
-    if (!Array.isArray(value)) {
-      return undefined;
-    }
-
-    const items = value.filter((item): item is string => typeof item === "string" && item.length > 0);
-    return items.length > 0 ? items : undefined;
-  }
-
-  private asScrollDirection(value: unknown): DesktopActionParams["scrollDirection"] {
-    return value === "up" || value === "down" || value === "left" || value === "right"
-      ? value
-      : undefined;
-  }
-
-  private asBrowserDirection(value: unknown): BrowserActionParams["direction"] {
-    return value === "up" || value === "down" ? value : undefined;
-  }
-
-  private toRecord<T extends object>(value: T): Record<string, unknown> {
-    return { ...value } as Record<string, unknown>;
-  }
-
-  private mapFileActionResult(output: unknown): FileActionResult {
-    const data = this.asRecord(output);
-    return {
-      success: data.success === true,
-      message: this.asString(data.message),
-      error: this.asString(data.error),
-      path: this.asString(data.path),
-      content: this.asString(data.content),
-      exists: data.exists === true,
-      isFile: data.is_file === true || data.isFile === true,
-      isDirectory: data.is_directory === true || data.isDirectory === true,
-      size: this.asNumber(data.size),
-      count: this.asNumber(data.count),
-      items: Array.isArray(data.items) ? (data.items as FileEntry[]) : undefined,
-    };
-  }
-
-  private mapTerminalActionResult(output: unknown): TerminalActionResult {
-    const data = this.asRecord(output);
-    return {
-      success: data.success === true,
-      message: this.asString(data.message),
-      error: this.asString(data.error),
-      sessionId: this.asString(data.session_id) ?? this.asString(data.sessionId),
-      cwd: this.asString(data.cwd),
-      output: this.asString(data.output),
-      exitCode: this.asNumber(data.exit_code) ?? this.asNumber(data.exitCode),
-    };
+  private toParamsRecord(value: object): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+    );
   }
 
   private pushAction(entry: ActionHistoryEntry): void {
@@ -1393,15 +1406,19 @@ export class ComputerUseService extends Service {
     }
 
     const approvalMode = getSetting("COMPUTER_USE_APPROVAL_MODE");
-    if (
-      approvalMode === "full_control" ||
-      approvalMode === "smart_approve" ||
-      approvalMode === "approve_all" ||
-      approvalMode === "off"
-    ) {
+    if (approvalMode && isApprovalMode(approvalMode)) {
       this.cuConfig.approvalMode = approvalMode;
       this.approvalManager.setMode(approvalMode);
     }
+
+    const browserHeadless = getSetting("COMPUTER_USE_BROWSER_HEADLESS");
+    if (browserHeadless !== undefined) {
+      this.cuConfig.browserHeadless =
+        browserHeadless === "true" || browserHeadless === "1";
+    }
+    setBrowserRuntimeOptions({
+      headless: this.cuConfig.browserHeadless ?? false,
+    });
   }
 
   private detectCapabilities(): PlatformCapabilities {
@@ -1411,37 +1428,53 @@ export class ComputerUseService extends Service {
       computerUse: { available: false, tool: "none" },
       windowList: { available: false, tool: "none" },
       browser: { available: false, tool: "none" },
-      terminal: { available: true, tool: os === "win32" ? "PowerShell" : "/bin/bash" },
-      fileSystem: { available: true, tool: "Node.js fs" },
+      terminal: { available: false, tool: "none" },
+      fileSystem: { available: true, tool: "node:fs" },
     };
 
-    if (os === "darwin") {
+    if (osName === "darwin") {
       caps.screenshot = { available: true, tool: "screencapture (built-in)" };
-    } else if (os === "linux") {
-      if (commandExists("import")) caps.screenshot = { available: true, tool: "ImageMagick import" };
-      else if (commandExists("scrot")) caps.screenshot = { available: true, tool: "scrot" };
-      else if (commandExists("gnome-screenshot")) caps.screenshot = { available: true, tool: "gnome-screenshot" };
-      else caps.screenshot = { available: false, tool: "none (install ImageMagick, scrot, or gnome-screenshot)" };
-    } else if (os === "win32") {
-      caps.screenshot = { available: true, tool: "PowerShell System.Drawing" };
-    }
-
-    if (os === "darwin") {
       caps.computerUse = commandExists("cliclick")
         ? { available: true, tool: "cliclick" }
-        : { available: true, tool: "AppleScript/Swift (limited)" };
-    } else if (os === "linux") {
+        : {
+            available: true,
+            tool: "AppleScript / Swift fallbacks (mouse_move requires cliclick)",
+          };
+      caps.windowList = {
+        available: true,
+        tool: "AppleScript System Events",
+      };
+    } else if (osName === "linux") {
+      if (commandExists("import")) {
+        caps.screenshot = { available: true, tool: "ImageMagick import" };
+      } else if (commandExists("scrot")) {
+        caps.screenshot = { available: true, tool: "scrot" };
+      } else if (commandExists("gnome-screenshot")) {
+        caps.screenshot = { available: true, tool: "gnome-screenshot" };
+      } else {
+        caps.screenshot = {
+          available: false,
+          tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
+        };
+      }
+
       caps.computerUse = commandExists("xdotool")
         ? { available: true, tool: "xdotool" }
         : { available: false, tool: "none (install xdotool)" };
 
-    if (os === "darwin") {
-      caps.windowList = { available: true, tool: "AppleScript System Events" };
-    } else if (os === "linux") {
-      if (commandExists("wmctrl")) caps.windowList = { available: true, tool: "wmctrl" };
-      else if (commandExists("xdotool")) caps.windowList = { available: true, tool: "xdotool" };
-      else caps.windowList = { available: false, tool: "none (install wmctrl or xdotool)" };
-    } else if (os === "win32") {
+      if (commandExists("wmctrl")) {
+        caps.windowList = { available: true, tool: "wmctrl" };
+      } else if (commandExists("xdotool")) {
+        caps.windowList = { available: true, tool: "xdotool" };
+      } else {
+        caps.windowList = {
+          available: false,
+          tool: "none (install wmctrl or xdotool)",
+        };
+      }
+    } else if (osName === "win32") {
+      caps.screenshot = { available: true, tool: "PowerShell System.Drawing" };
+      caps.computerUse = { available: true, tool: "PowerShell user32.dll" };
       caps.windowList = { available: true, tool: "PowerShell Get-Process" };
     }
 

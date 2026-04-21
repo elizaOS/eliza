@@ -26,7 +26,11 @@ import { withReminders } from "./service-mixin-reminders.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
 import { withSignal } from "./service-mixin-signal.js";
-import { withStatus } from "./service-mixin-status.js";
+import type { Constructor } from "./service-mixin-core.js";
+import {
+  type StatusMixinDependencies,
+  withStatus,
+} from "./service-mixin-status.js";
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withTravel } from "./service-mixin-travel.js";
@@ -41,23 +45,43 @@ import { withXRead } from "./service-mixin-x-read.js";
  * (Calendar, Gmail, Drive) → business logic (Reminders, Browser, Workflows,
  * Definitions, Goals) → connectors (X, Telegram, Discord, Signal).
  */
-class LifeOpsServiceComposed extends withX(
-  withGoals(
-    withDefinitions(
-      withWorkflows(
-        withBrowser(
-          withReminders(
-            withGmail(
-              withCalendar(
-                withGoogle(LifeOpsServiceBase),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
+const LIFEOPS_BASE = withGoogle(LifeOpsServiceBase);
+const LIFEOPS_WITH_DATA = withDrive(withGmail(withCalendar(LIFEOPS_BASE)));
+const LIFEOPS_WITH_BUSINESS = withGoals(
+  withDefinitions(
+    withWorkflows(withBrowser(withReminders(LIFEOPS_WITH_DATA))),
   ),
-) {}
+);
+const LIFEOPS_WITH_X = withX(LIFEOPS_WITH_BUSINESS);
+const LIFEOPS_WITH_RELATIONS = withDossier(
+  withRelationships(LIFEOPS_WITH_X),
+);
+const LIFEOPS_WITH_DOMAIN = withEmailUnsubscribe(
+  withHealth(LIFEOPS_WITH_RELATIONS),
+);
+const LIFEOPS_WITH_X_READ = withXRead(LIFEOPS_WITH_DOMAIN);
+const LIFEOPS_WITH_CONNECTORS = withWhatsApp(
+  withSignal(
+    withDiscord(withTelegram(withIMessage(LIFEOPS_WITH_X_READ))),
+  ),
+);
+const LIFEOPS_WITH_TRAVEL = withTravel(LIFEOPS_WITH_CONNECTORS);
+const LIFEOPS_WITH_SCHEDULING = withScheduling(LIFEOPS_WITH_TRAVEL);
+const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_SCHEDULING);
+// TypeScript loses track of constraint satisfaction past ~6 chained generic
+// mixins, so we cast explicitly. The runtime composition has every method
+// `withStatus` depends on (getScheduleMergedState from withScheduling,
+// getBrowserSettings/listBrowserCompanions from withBrowser,
+// getXConnectorStatus from withX, getHealthConnectorStatus from withHealth).
+type LifeOpsSubsCtor = typeof LIFEOPS_WITH_SUBS;
+const LIFEOPS_WITH_STATUS = withStatus(
+  LIFEOPS_WITH_SUBS as LifeOpsSubsCtor & Constructor<StatusMixinDependencies>,
+);
+const LIFEOPS_COMPOSED = withUnifiedInbox(
+  withScreenTime(LIFEOPS_WITH_STATUS),
+);
+
+class LifeOpsServiceComposed extends LIFEOPS_COMPOSED {}
 
 /**
  * Main LifeOps service — assembled from domain mixins layered on top of

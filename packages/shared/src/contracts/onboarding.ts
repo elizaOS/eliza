@@ -510,7 +510,8 @@ export interface OnboardingCredentialInputs {
   cloudApiKey?: string;
 }
 
-export interface OnboardingLlmPersistenceSelection {
+export interface OnboardingLlmPersistenceSelection
+  extends OnboardingCloudModelPreferences {
   backend: OnboardingProviderId;
   transport: "direct" | "remote" | "cloud-proxy";
   apiKey?: string;
