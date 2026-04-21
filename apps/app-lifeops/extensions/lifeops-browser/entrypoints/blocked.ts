@@ -9,7 +9,7 @@
 const POLL_INTERVAL_MS = 30_000;
 
 interface RequiredTask {
-  id: string;
+  id?: string;
   title: string;
   completed: boolean;
 }

@@ -1,16 +1,20 @@
-import { Badge, Button } from "@elizaos/app-core";
+import { Button } from "@elizaos/app-core";
 import {
+  Bell,
   Camera,
-  Eye,
+  Heart,
+  MapPin,
   Mic,
   Monitor,
-  Bell,
-  MapPin,
-  Heart,
   ShieldCheck,
-  ExternalLink,
 } from "lucide-react";
 import { useMemo } from "react";
+
+declare global {
+  interface Window {
+    openSystemPreferences?: (id: string) => void;
+  }
+}
 
 type PermissionStatus = "granted" | "denied" | "unknown";
 
@@ -111,41 +115,17 @@ function iosPermissions(): PermissionEntry[] {
   ];
 }
 
-function statusBadge(status: PermissionStatus) {
-  switch (status) {
-    case "granted":
-      return (
-        <Badge variant="secondary" className="text-2xs text-ok">
-          Granted
-        </Badge>
-      );
-    case "denied":
-      return (
-        <Badge variant="outline" className="text-2xs text-danger">
-          Not Granted
-        </Badge>
-      );
-    case "unknown":
-      return (
-        <Badge variant="outline" className="text-2xs text-muted">
-          Unknown
-        </Badge>
-      );
-  }
-}
-
 function PermissionRow({ entry }: { entry: PermissionEntry }) {
   const canOpenSystemPreferences =
     typeof window !== "undefined" &&
-    typeof (window as unknown as Record<string, unknown>)
-      .openSystemPreferences === "function";
+    typeof window.openSystemPreferences === "function";
 
   const handleGrant = () => {
-    if (typeof window !== "undefined") {
-      const win = window as unknown as Record<string, unknown>;
-      if (typeof win.openSystemPreferences === "function") {
-        (win.openSystemPreferences as (id: string) => void)(entry.id);
-      }
+    if (
+      typeof window !== "undefined" &&
+      typeof window.openSystemPreferences === "function"
+    ) {
+      window.openSystemPreferences(entry.id);
     }
   };
 
@@ -162,8 +142,7 @@ function PermissionRow({ entry }: { entry: PermissionEntry }) {
       : entry.status === "denied"
         ? "Denied"
         : "Check in System Settings";
-  const buttonLabel =
-    entry.status === "unknown" ? "Open Settings" : "Enable";
+  const buttonLabel = entry.status === "unknown" ? "Open Settings" : "Enable";
 
   return (
     <div className="flex items-center justify-between gap-4 py-3">

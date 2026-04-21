@@ -251,7 +251,7 @@ function toUserBrowserActions(
           kind: "click",
           label: `${playbook.serviceName}: click ${step.text}`,
           url: null,
-          selector: null,
+          selector: companionSelectorForClickTextStep(playbook, step),
           text: step.text,
           accountAffecting: true,
           requiresConfirmation: step.destructive ?? false,
@@ -296,6 +296,29 @@ function toUserBrowserActions(
     }
   }
   return actions;
+}
+
+function companionSelectorForClickTextStep(
+  playbook: LifeOpsSubscriptionPlaybook,
+  step: Extract<SubscriptionAutomationStep, { kind: "click_text" }>,
+): string {
+  const clickText = step.text.trim().toLowerCase();
+  if (clickText === "cancel subscription") {
+    const selector = playbook.companionSelectors?.cancel;
+    if (selector) {
+      return selector;
+    }
+  }
+  if (clickText === "confirm cancellation") {
+    const selector = playbook.companionSelectors?.confirm;
+    if (selector) {
+      return selector;
+    }
+  }
+  fail(
+    400,
+    `${playbook.serviceName} companion playbook is missing a selector for "${step.text}"`,
+  );
 }
 
 function browserResultText(result: BrowserActionResult): string {

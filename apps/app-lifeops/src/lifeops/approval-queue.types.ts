@@ -1,24 +1,5 @@
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
-/**
- * Approval queue contracts shared by the queue implementation, actions, and
- * background planner.
- *
- * State machine (strict — no fallback transitions, no implicit re-entry):
- *
- *   pending  ──approve──▶ approved ──markExecuting──▶ executing ──markDone──▶ done
- *      │                       │                            │
- *      │                       └────────reject──────────────┤
- *      │                                                    │
- *      └──reject──▶ rejected                                │
- *      │                                                    │
- *      └──markExpired/purgeExpired──▶ expired               │
- *
- * Invalid transitions throw `ApprovalStateTransitionError`. Callers MUST
- * handle it — there is no defensive fallback.
- */
-
-/** Lifecycle states an approval request can occupy. */
 export type ApprovalRequestState =
   | "pending"
   | "approved"
@@ -27,7 +8,6 @@ export type ApprovalRequestState =
   | "rejected"
   | "expired";
 
-/** Closed enum of action kinds that can be queued for approval. */
 export type ApprovalAction =
   | "send_message"
   | "send_email"
@@ -39,7 +19,6 @@ export type ApprovalAction =
   | "execute_workflow"
   | "spend_money";
 
-/** Channel through which the underlying action will be carried out. */
 export type ApprovalChannel =
   | "telegram"
   | "discord"
@@ -52,7 +31,6 @@ export type ApprovalChannel =
   | "phone"
   | "internal";
 
-/** Action-specific payload. Discriminated by `ApprovalAction`. */
 export type ApprovalPayload =
   | {
       action: "send_message";

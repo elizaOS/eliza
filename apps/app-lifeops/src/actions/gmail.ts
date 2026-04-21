@@ -1,3 +1,19 @@
+import {
+  extractActionResultsFromState,
+  extractRecentMessageEntriesFromState,
+  extractStateDataRecords,
+  hasContextSignalForKey,
+  renderGroundedActionReply,
+  summarizeActiveTrajectory,
+  summarizeRecentActionHistory,
+} from "@elizaos/agent/actions";
+import type {
+  CreateLifeOpsGmailBatchReplyDraftsRequest,
+  CreateLifeOpsGmailReplyDraftRequest,
+  LifeOpsGmailBatchReplySendItem,
+  SendLifeOpsGmailBatchReplyRequest,
+  SendLifeOpsGmailReplyRequest,
+} from "@elizaos/app-lifeops/contracts";
 import type {
   Action,
   ActionExample,
@@ -13,24 +29,8 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type {
-  CreateLifeOpsGmailBatchReplyDraftsRequest,
-  CreateLifeOpsGmailReplyDraftRequest,
-  LifeOpsGmailBatchReplySendItem,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailReplyRequest,
-} from "@elizaos/app-lifeops/contracts";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { hasContextSignalForKey } from "@elizaos/agent/actions";
-import {
-  extractActionResultsFromState,
-  extractRecentMessageEntriesFromState,
-  extractStateDataRecords,
-  renderGroundedActionReply,
-  summarizeActiveTrajectory,
-  summarizeRecentActionHistory,
-} from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   detailArray,
@@ -782,9 +782,9 @@ function latestGmailMessageTargetContext(
   return null;
 }
 
-function gmailComposeDraftFromMessageEntry(
-  entry: { content?: unknown },
-): GmailComposeDraft | null {
+function gmailComposeDraftFromMessageEntry(entry: {
+  content?: unknown;
+}): GmailComposeDraft | null {
   const content =
     entry.content && typeof entry.content === "object"
       ? (entry.content as Record<string, unknown>)
@@ -895,9 +895,9 @@ async function buildGmailPlanningContext(args: {
   message: Memory;
   state: State | undefined;
 }): Promise<GmailPlanningContext> {
-  const recentConversation = (
-    await collectGmailConversationContext(args)
-  ).join("\n");
+  const recentConversation = (await collectGmailConversationContext(args)).join(
+    "\n",
+  );
   const currentMessage = messageText(args.message).trim();
   const timeZone = resolveDefaultTimeZone();
   const now = new Date();
@@ -1649,23 +1649,6 @@ function normalizeBatchSendItems(
   return normalized.length > 0 ? normalized : undefined;
 }
 
-// `suppressPostActionContinuation` is a local feature flag the runtime
-// reads via a wider Action shape than the npm `@elizaos/core@alpha`
-// dist-tag's exported type — the published type hasn't caught up yet
-// so tsc rejects the property when compiled against node_modules on CI
-// (local resolves via paths map to the newer eliza/ source and accepts
-// it natively).
-//
-// We used to end this declaration with
-// `} satisfies Action & { suppressPostActionContinuation?: boolean }`,
-// but `satisfies` keeps the inferred literal type on the `const`. When
-// the Docker CI Smoke build walks `packages/agent` with
-// `declaration: true`, TypeScript tries to emit a portable `.d.ts`
-// and fails with TS2742 because the inferred literal transitively
-// references `@bufbuild/protobuf` types that are not in this package's
-// direct dependency graph. An explicit type annotation on the binding
-// makes `gmailAction` widen to the declared type, so tsc only has to
-// emit the (portable) declared shape in the `.d.ts`.
 export const gmailAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -1762,9 +1745,7 @@ export const gmailAction: Action & {
       false;
     const holdReplyForApproval =
       detailBoolean(details, "holdForApproval") ??
-      (detailBoolean(details, "confirmSend") === false
-        ? true
-        : undefined) ??
+      (detailBoolean(details, "confirmSend") === false ? true : undefined) ??
       llmPlan.holdForApproval ??
       false;
     const hasStructuredComposeSignal = Boolean(
@@ -2290,7 +2271,9 @@ export const gmailAction: Action & {
         const fallback = formatGmailReplyDraft(draft);
         if (holdReplyForApproval) {
           if (pendingReplyApproval?.approvalTaskId) {
-            await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+            await runtime.deleteTask(
+              pendingReplyApproval.approvalTaskId as never,
+            );
           }
           const approvalTaskId = await enqueueGmailReplyApprovalRequest({
             runtime,
@@ -2324,7 +2307,9 @@ export const gmailAction: Action & {
           });
         }
         if (pendingReplyApproval?.approvalTaskId) {
-          await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+          await runtime.deleteTask(
+            pendingReplyApproval.approvalTaskId as never,
+          );
           await clearPendingGmailReplyApproval(runtime, message.roomId);
         }
         return respond({
@@ -2508,7 +2493,9 @@ export const gmailAction: Action & {
           confirmSend: sendConfirmed || !pendingReplyApproval,
         } satisfies SendLifeOpsGmailReplyRequest);
         if (pendingReplyApproval?.approvalTaskId) {
-          await runtime.deleteTask(pendingReplyApproval.approvalTaskId as never);
+          await runtime.deleteTask(
+            pendingReplyApproval.approvalTaskId as never,
+          );
         }
         await clearPendingGmailReplyApproval(runtime, message.roomId);
         const fallback = "Gmail reply sent.";
@@ -2790,7 +2777,9 @@ export const gmailAction: Action & {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Drafted reply to Sarah saying you will review it tomorrow." },
+        content: {
+          text: "Drafted reply to Sarah saying you will review it tomorrow.",
+        },
       },
     ],
     [
@@ -2814,7 +2803,9 @@ export const gmailAction: Action & {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Sent the confirmed reply to the latest email from finance." },
+        content: {
+          text: "Sent the confirmed reply to the latest email from finance.",
+        },
       },
     ],
   ] as ActionExample[][],

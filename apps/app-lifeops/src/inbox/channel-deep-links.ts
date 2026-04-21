@@ -1,24 +1,12 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 
-// ---------------------------------------------------------------------------
-// Per-connector deep link generation
-// ---------------------------------------------------------------------------
-
-/**
- * Builds a clickable deep link to a specific message or conversation on its
- * native platform. Falls back to a generic channel description when metadata
- * is insufficient.
- */
 export async function buildDeepLink(
   runtime: IAgentRuntime,
   source: string,
   opts: {
     roomId?: string;
-    entityId?: string;
     messageId?: string;
-    /** Pre-resolved room metadata (avoids an extra DB fetch). */
     roomMeta?: Record<string, unknown>;
-    /** Pre-resolved world metadata. */
     worldMeta?: Record<string, unknown>;
   },
 ): Promise<string | null> {
@@ -49,10 +37,6 @@ export async function buildDeepLink(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Discord
-// ---------------------------------------------------------------------------
-
 function buildDiscordLink(
   room: Record<string, unknown>,
   world: Record<string, unknown>,
@@ -62,16 +46,11 @@ function buildDiscordLink(
   const channelId = str(room.channelId);
   if (!channelId) return null;
 
-  // DM channels have no serverId
   const base = serverId
     ? `https://discord.com/channels/${serverId}/${channelId}`
     : `https://discord.com/channels/@me/${channelId}`;
   return messageId ? `${base}/${messageId}` : base;
 }
-
-// ---------------------------------------------------------------------------
-// Telegram
-// ---------------------------------------------------------------------------
 
 function buildTelegramLink(
   room: Record<string, unknown>,
@@ -86,7 +65,6 @@ function buildTelegramLink(
       : `https://t.me/${username}`;
   }
   if (chatId) {
-    // Private groups use numeric IDs with -100 prefix stripped
     const normalized = chatId.replace(/^-100/, "");
     return messageId
       ? `https://t.me/c/${normalized}/${messageId}`
@@ -95,22 +73,13 @@ function buildTelegramLink(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Signal
-// ---------------------------------------------------------------------------
-
 function buildSignalLink(room: Record<string, unknown>): string | null {
-  // Signal doesn't support message-level deep links
   const phoneNumber = str(room.phoneNumber) || str(room.identifier);
   if (phoneNumber) {
     return `signal://signal.me/#p/${phoneNumber}`;
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// iMessage / BlueBubbles
-// ---------------------------------------------------------------------------
 
 function buildIMessageLink(room: Record<string, unknown>): string | null {
   const handle =
@@ -121,10 +90,6 @@ function buildIMessageLink(room: Record<string, unknown>): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// WhatsApp
-// ---------------------------------------------------------------------------
-
 function buildWhatsAppLink(room: Record<string, unknown>): string | null {
   const phoneNumber =
     str(room.phoneNumber) || str(room.jid)?.replace(/@.*$/, "");
@@ -133,10 +98,6 @@ function buildWhatsAppLink(room: Record<string, unknown>): string | null {
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Slack
-// ---------------------------------------------------------------------------
 
 function buildSlackLink(
   room: Record<string, unknown>,
@@ -148,16 +109,11 @@ function buildSlackLink(
   if (!teamId || !channelId) return null;
 
   if (messageId) {
-    // Slack message links use the ts format (e.g. p1234567890123456)
     const ts = messageId.startsWith("p") ? messageId.slice(1) : messageId;
     return `https://app.slack.com/client/${teamId}/${channelId}/thread/${channelId}-${ts}`;
   }
   return `slack://channel?team=${teamId}&id=${channelId}`;
 }
-
-// ---------------------------------------------------------------------------
-// Gmail
-// ---------------------------------------------------------------------------
 
 function buildGmailLink(
   room: Record<string, unknown>,
@@ -169,10 +125,6 @@ function buildGmailLink(
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Metadata helpers
-// ---------------------------------------------------------------------------
 
 async function fetchRoomMeta(
   runtime: IAgentRuntime,
@@ -216,23 +168,12 @@ function str(value: unknown): string | null {
   return null;
 }
 
-/**
- * Resolve a human-friendly channel name from room metadata.
- */
-export async function resolveChannelName(
-  runtime: IAgentRuntime,
+export function resolveChannelName(
   source: string,
-  roomId?: string,
+  roomName?: string,
   senderName?: string,
-): Promise<string> {
-  if (roomId) {
-    try {
-      const room = await runtime.getRoom(roomId as UUID);
-      if (room?.name) return room.name;
-    } catch {
-      // fall through
-    }
-  }
+): string {
+  if (roomName) return roomName;
   if (senderName) return `${senderName} (${source})`;
   return source;
 }

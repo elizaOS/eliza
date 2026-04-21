@@ -11,13 +11,6 @@ const CONFIG: ResolvedManagedGoogleCloudConfig = {
   siteUrl: "https://cloud.example.test",
 };
 
-/**
- * The cloud Managed Google routes live at /api/v1/milady/google/*. Historically
- * this client used an `eliza/google/*` prefix that 404s in production and was
- * swallowed by the Milady backend as "disconnected", making live connections
- * invisible in the LifeOps UI. These tests pin the URL prefix so that regression
- * cannot happen again.
- */
 describe("GoogleManagedClient URL prefixes", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
   let capturedUrls: string[];
@@ -33,11 +26,16 @@ describe("GoogleManagedClient URL prefixes", () => {
   beforeEach(() => {
     capturedUrls = [];
     nextBody = { ok: true };
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as URL | Request).toString();
-      capturedUrls.push(url);
-      return jsonResponse(nextBody);
-    });
+    fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : (input as URL | Request).toString();
+        capturedUrls.push(url);
+        return jsonResponse(nextBody);
+      });
   });
 
   afterEach(() => {
@@ -100,7 +98,11 @@ describe("GoogleManagedClient URL prefixes", () => {
 
     nextBody = { messages: [], syncedAt: "" };
     await client.getGmailTriage({ side: "owner", maxResults: 10 });
-    await client.getGmailSearch({ side: "owner", query: "foo", maxResults: 10 });
+    await client.getGmailSearch({
+      side: "owner",
+      query: "foo",
+      maxResults: 10,
+    });
 
     nextBody = {
       message: {
@@ -142,9 +144,9 @@ describe("GoogleManagedClient URL prefixes", () => {
     });
 
     for (const url of capturedUrls) {
-      expect(url.startsWith("https://cloud.example.test/api/v1/milady/google/")).toBe(
-        true,
-      );
+      expect(
+        url.startsWith("https://cloud.example.test/api/v1/milady/google/"),
+      ).toBe(true);
       expect(url).not.toContain("/eliza/google/");
     }
 
@@ -158,11 +160,7 @@ describe("GoogleManagedClient URL prefixes", () => {
     ]);
   });
 
-  it("accepts a null-role cloud connection: the client relays side verbatim to the cloud, which is the behavior that lets a dashboard-created connection surface as owner", async () => {
-    // The cloud's generic adapter treats rows lacking miladyGoogleSide
-    // (legacy/dashboard-created connections) as connectionRole="owner".
-    // This client must pass side=owner unchanged so that resolution works for
-    // those rows; otherwise the LifeOps UI will still show "not connected".
+  it("passes side=owner unchanged for null-role cloud connections", async () => {
     nextBody = {
       provider: "google",
       side: "owner",

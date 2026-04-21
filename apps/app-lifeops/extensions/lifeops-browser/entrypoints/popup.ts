@@ -32,34 +32,39 @@ type FormRefs = {
   clearButton: HTMLButtonElement;
 };
 
-function requireElement<T extends HTMLElement>(selector: string): T {
+type ElementConstructor<T extends HTMLElement> = { new (): T };
+
+function requireElement<T extends HTMLElement>(
+  selector: string,
+  elementConstructor: ElementConstructor<T>,
+): T {
   const element = document.querySelector(selector);
-  if (!(element instanceof HTMLElement)) {
+  if (!(element instanceof elementConstructor)) {
     throw new Error(`Missing element ${selector}`);
   }
-  return element as T;
+  return element;
 }
 
 function getFormRefs(): FormRefs {
   return {
-    apiBaseUrl: requireElement<HTMLInputElement>("#apiBaseUrl"),
-    autoPairButton: requireElement<HTMLButtonElement>("#autoPair"),
-    browser: requireElement<HTMLSelectElement>("#browser"),
-    companionId: requireElement<HTMLInputElement>("#companionId"),
-    pairingToken: requireElement<HTMLInputElement>("#pairingToken"),
-    profileId: requireElement<HTMLInputElement>("#profileId"),
-    profileLabel: requireElement<HTMLInputElement>("#profileLabel"),
-    label: requireElement<HTMLInputElement>("#label"),
-    pairingJson: requireElement<HTMLTextAreaElement>("#pairingJson"),
-    statusBadge: requireElement<HTMLElement>("#statusBadge"),
-    statusTitle: requireElement<HTMLElement>("#statusTitle"),
-    statusDetail: requireElement<HTMLElement>("#statusDetail"),
-    statusChecklist: requireElement<HTMLUListElement>("#statusChecklist"),
-    summary: requireElement<HTMLElement>("#summary"),
-    saveButton: requireElement<HTMLButtonElement>("#save"),
-    importButton: requireElement<HTMLButtonElement>("#import"),
-    syncButton: requireElement<HTMLButtonElement>("#sync"),
-    clearButton: requireElement<HTMLButtonElement>("#clear"),
+    apiBaseUrl: requireElement("#apiBaseUrl", HTMLInputElement),
+    autoPairButton: requireElement("#autoPair", HTMLButtonElement),
+    browser: requireElement("#browser", HTMLSelectElement),
+    companionId: requireElement("#companionId", HTMLInputElement),
+    pairingToken: requireElement("#pairingToken", HTMLInputElement),
+    profileId: requireElement("#profileId", HTMLInputElement),
+    profileLabel: requireElement("#profileLabel", HTMLInputElement),
+    label: requireElement("#label", HTMLInputElement),
+    pairingJson: requireElement("#pairingJson", HTMLTextAreaElement),
+    statusBadge: requireElement("#statusBadge", HTMLElement),
+    statusTitle: requireElement("#statusTitle", HTMLElement),
+    statusDetail: requireElement("#statusDetail", HTMLElement),
+    statusChecklist: requireElement("#statusChecklist", HTMLUListElement),
+    summary: requireElement("#summary", HTMLElement),
+    saveButton: requireElement("#save", HTMLButtonElement),
+    importButton: requireElement("#import", HTMLButtonElement),
+    syncButton: requireElement("#sync", HTMLButtonElement),
+    clearButton: requireElement("#clear", HTMLButtonElement),
   };
 }
 

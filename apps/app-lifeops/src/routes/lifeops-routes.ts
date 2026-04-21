@@ -3,7 +3,6 @@ import type http from "node:http";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -65,6 +64,7 @@ import {
   LIFEOPS_INBOX_CHANNELS,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/app-lifeops/contracts";
+import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -293,42 +293,43 @@ function parsePositiveIntegerQuery(
   return parsed;
 }
 
+function isOneOf<T extends string>(
+  value: string,
+  values: readonly T[],
+): value is T {
+  return values.some((allowed) => allowed === value);
+}
+
 function parseConnectorModeQuery(
   value: string | null,
 ): LifeOpsConnectorMode | undefined {
-  if (value === null || value.trim() === "") {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
     return undefined;
   }
-  if (
-    !LIFEOPS_CONNECTOR_MODES.includes(
-      value as (typeof LIFEOPS_CONNECTOR_MODES)[number],
-    )
-  ) {
+  if (!isOneOf(normalized, LIFEOPS_CONNECTOR_MODES)) {
     throw new LifeOpsServiceError(
       400,
       `mode must be one of: ${LIFEOPS_CONNECTOR_MODES.join(", ")}`,
     );
   }
-  return value as LifeOpsConnectorMode;
+  return normalized;
 }
 
 function parseConnectorSideQuery(
   value: string | null,
 ): LifeOpsConnectorSide | undefined {
-  if (value === null || value.trim() === "") {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
     return undefined;
   }
-  if (
-    !LIFEOPS_CONNECTOR_SIDES.includes(
-      value as (typeof LIFEOPS_CONNECTOR_SIDES)[number],
-    )
-  ) {
+  if (!isOneOf(normalized, LIFEOPS_CONNECTOR_SIDES)) {
     throw new LifeOpsServiceError(
       400,
       `side must be one of: ${LIFEOPS_CONNECTOR_SIDES.join(", ")}`,
     );
   }
-  return value as LifeOpsConnectorSide;
+  return normalized;
 }
 
 function parseConnectorSideInput(
@@ -390,19 +391,17 @@ function parseActivitySignalStates(
   if (rawValues.length === 0) {
     return null;
   }
-  const invalid = rawValues.find(
-    (value) =>
-      !LIFEOPS_ACTIVITY_SIGNAL_STATES.includes(
-        value as (typeof LIFEOPS_ACTIVITY_SIGNAL_STATES)[number],
-      ),
-  );
-  if (invalid) {
-    throw new LifeOpsServiceError(
-      400,
-      `state must be one of: ${LIFEOPS_ACTIVITY_SIGNAL_STATES.join(", ")}`,
-    );
+  const states: Array<(typeof LIFEOPS_ACTIVITY_SIGNAL_STATES)[number]> = [];
+  for (const value of rawValues) {
+    if (!isOneOf(value, LIFEOPS_ACTIVITY_SIGNAL_STATES)) {
+      throw new LifeOpsServiceError(
+        400,
+        `state must be one of: ${LIFEOPS_ACTIVITY_SIGNAL_STATES.join(", ")}`,
+      );
+    }
+    states.push(value);
   }
-  return rawValues as Array<(typeof LIFEOPS_ACTIVITY_SIGNAL_STATES)[number]>;
+  return states;
 }
 
 async function runRoute(
@@ -661,8 +660,9 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } =
-      await import("../lifeops/feature-flags.types.js");
+    const { isLifeOpsFeatureKey } = await import(
+      "../lifeops/feature-flags.types.js"
+    );
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -671,8 +671,9 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } =
-      await import("../lifeops/feature-flags.js");
+    const { createFeatureFlagService } = await import(
+      "../lifeops/feature-flags.js"
+    );
     const service = createFeatureFlagService(ctx.state.runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
@@ -922,19 +923,17 @@ export async function handleLifeOpsRoutes(
           .split(",")
           .map((value) => value.trim().toLowerCase())
           .filter((value) => value.length > 0);
-        const invalid = parsed.find(
-          (value) =>
-            !LIFEOPS_INBOX_CHANNELS.includes(
-              value as (typeof LIFEOPS_INBOX_CHANNELS)[number],
-            ),
-        );
-        if (invalid) {
-          throw new LifeOpsServiceError(
-            400,
-            `channels must be a comma-separated subset of: ${LIFEOPS_INBOX_CHANNELS.join(", ")}`,
-          );
+        const parsedChannels: LifeOpsInboxChannel[] = [];
+        for (const value of parsed) {
+          if (!isOneOf(value, LIFEOPS_INBOX_CHANNELS)) {
+            throw new LifeOpsServiceError(
+              400,
+              `channels must be a comma-separated subset of: ${LIFEOPS_INBOX_CHANNELS.join(", ")}`,
+            );
+          }
+          parsedChannels.push(value);
         }
-        channels = parsed as LifeOpsInboxChannel[];
+        channels = parsedChannels;
       }
       const request: GetLifeOpsUnifiedInboxRequest = { limit, channels };
       json(res, await service.getUnifiedInbox(request));

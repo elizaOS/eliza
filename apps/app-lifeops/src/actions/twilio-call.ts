@@ -1,13 +1,13 @@
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -35,12 +35,9 @@ function coerceBool(value: unknown): boolean {
   return false;
 }
 
-// E.164: leading +, 1-15 digits total, first digit non-zero.
 const E164_RE = /^\+[1-9]\d{1,14}$/;
 
-// All-5s placeholder (the classic "555" fake number, with common punctuation).
-const PLACEHOLDER_555_RE =
-  /^\+?1?[-\s]?\(?5{3}\)?[-\s]?5{3}[-\s]?5{4}$/;
+const PLACEHOLDER_555_RE = /^\+?1?[-\s]?\(?5{3}\)?[-\s]?5{3}[-\s]?5{4}$/;
 
 function isE164(value: string): boolean {
   return E164_RE.test(value);
@@ -66,8 +63,6 @@ function invalidPhoneResult(
       : `I need a valid phone number in E.164 format (e.g. +15551234567) to place the call. Please confirm the number for ${subject}.`;
   return {
     text,
-    // success: false — the call was not placed because the phone number is
-    // invalid. Both top-level success and values.success reflect the failure.
     success: false,
     values: { success: false, error: errorCode, to, contact: contact ?? null },
     data: { actionName, error: errorCode, to, contact: contact ?? null },
@@ -90,7 +85,10 @@ export const twilioCallAction: Action = {
     "calls, not for calendar-only rescheduling or advice. Always drafts first; the " +
     "caller must pass confirmed: true to actually dial.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     if (!readTwilioCredentialsFromEnv()) return false;
     return hasAdminAccess(runtime, message);
   },
@@ -98,7 +96,8 @@ export const twilioCallAction: Action = {
   parameters: [
     {
       name: "to",
-      description: "Destination phone number in E.164 format (e.g. +15551234567).",
+      description:
+        "Destination phone number in E.164 format (e.g. +15551234567).",
       required: true,
       schema: { type: "string" as const },
     },
@@ -205,7 +204,12 @@ export const twilioCallAction: Action = {
       );
     }
     if (!isE164(to)) {
-      return invalidPhoneResult(to, undefined, ACTION_NAME, "INVALID_PHONE_NUMBER");
+      return invalidPhoneResult(
+        to,
+        undefined,
+        ACTION_NAME,
+        "INVALID_PHONE_NUMBER",
+      );
     }
     if (!messageBody) {
       return {
@@ -303,10 +307,10 @@ type CallUserParameters = {
 };
 
 type CallExternalParameters = {
-	confirmed?: boolean;
-	to?: string;
-	message?: string;
-	contact?: string;
+  confirmed?: boolean;
+  to?: string;
+  message?: string;
+  contact?: string;
 };
 
 type PendingCallDraft = {
@@ -318,7 +322,10 @@ type PendingCallDraft = {
 };
 
 function normalizeLookup(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function getPendingCallCacheKey(roomId: string, actionName: string): string {
@@ -428,7 +435,8 @@ async function resolveExternalCallRecipient(args: {
   }
 
   const candidates = relationships.filter(
-    (relationship) => typeof relationship.phone === "string" && relationship.phone,
+    (relationship) =>
+      typeof relationship.phone === "string" && relationship.phone,
   );
   for (const relationship of candidates) {
     const lookupValues = [
@@ -495,9 +503,9 @@ function normalizePhoneAllowListKey(value: string): string {
 }
 
 function deliveryToResult(
-	delivery: TwilioDeliveryResult,
-	to: string,
-	actionName: string,
+  delivery: TwilioDeliveryResult,
+  to: string,
+  actionName: string,
 ): ActionResult {
   return {
     text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
@@ -515,37 +523,37 @@ function deliveryToResult(
       error: delivery.error,
       retryCount: delivery.retryCount ?? 0,
     },
-	};
+  };
 }
 
 function looksLikeStandingCallPolicy(text: string): boolean {
-	const normalized = text.trim().toLowerCase();
-	if (!normalized) {
-		return false;
-	}
-	return (
-		/\b(?:if|when|whenever)\b/u.test(normalized) &&
-		/\b(?:call|phone|dial)\b/u.test(normalized) &&
-		/\b(?:stuck|blocked|jam(?:s|med)?|browser|computer|workflow|unblock)\b/u.test(
-			normalized,
-		)
-	);
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    /\b(?:if|when|whenever)\b/u.test(normalized) &&
+    /\b(?:call|phone|dial)\b/u.test(normalized) &&
+    /\b(?:stuck|blocked|jam(?:s|med)?|browser|computer|workflow|unblock)\b/u.test(
+      normalized,
+    )
+  );
 }
 
 function buildCallUserPolicyAcknowledgement(text: string): string {
-	const normalized = text.trim().toLowerCase();
-	let context = "while working remotely";
-	if (/\bbrowser\b/u.test(normalized) && /\bcomputer\b/u.test(normalized)) {
-		context = "in the browser or on your computer";
-	} else if (/\bbrowser\b/u.test(normalized)) {
-		context = "in the browser";
-	} else if (/\bcomputer\b/u.test(normalized)) {
-		context = "on your computer";
-	} else if (/\bworkflow\b/u.test(normalized)) {
-		context = "when a remote workflow gets stuck";
-	}
+  const normalized = text.trim().toLowerCase();
+  let context = "while working remotely";
+  if (/\bbrowser\b/u.test(normalized) && /\bcomputer\b/u.test(normalized)) {
+    context = "in the browser or on your computer";
+  } else if (/\bbrowser\b/u.test(normalized)) {
+    context = "in the browser";
+  } else if (/\bcomputer\b/u.test(normalized)) {
+    context = "on your computer";
+  } else if (/\bworkflow\b/u.test(normalized)) {
+    context = "when a remote workflow gets stuck";
+  }
 
-	return `If I get stuck ${context}, I'll escalate by phone and call you so you can jump in and unblock it. I've recorded that escalation path for when it's needed.`;
+  return `If I get stuck ${context}, I'll escalate by phone and call you so you can jump in and unblock it. I've recorded that escalation path for when it's needed.`;
 }
 
 export const callUserAction: Action & {
@@ -572,13 +580,16 @@ export const callUserAction: Action & {
     "Place an outbound phone call to the agent owner via Twilio. Use this when the assistant is blocked and needs real-time help from the owner, or when the owner explicitly asks to be called. Standing policies like 'if you get stuck in the browser or on my computer, call me' belong here on the first turn; this action can record the escalation path and return a confirmation/intervention request instead of dialing immediately when confirmation is still required.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
   },
 
-	handler: async (runtime, message, _state, options): Promise<ActionResult> => {
-		if (!(await hasOwnerAccess(runtime, message))) {
-			return {
+  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
         text: "",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
@@ -771,7 +782,10 @@ export const callExternalAction: Action & {
     "Place an outbound phone call to a third party via Twilio. Use this for approved booking, reschedule, outage, support, or escalation calls to vendors or counterparties. Examples: 'call the dentist and reschedule my appointment', 'phone my cable company and ask about the outage', 'call the airline', or 'call the hotel to rebook'. This action can draft the call, ask which saved contact to use, and then require confirmation before dialing. If the user wants a real phone call to a third party, prefer this action over OWNER_CALENDAR, LIFE, or OWNER_SEND_MESSAGE. The recipient must appear in the configured allow-list before the actual call is placed.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
   },
 
@@ -858,7 +872,8 @@ export const callExternalAction: Action & {
           actionName: "CALL_EXTERNAL",
           requiresConfirmation: true,
           to,
-          matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
+          matchedRelationshipId:
+            resolvedRecipient.matchedRelationshipId ?? null,
           approvalTaskId,
         },
       };
@@ -882,7 +897,8 @@ export const callExternalAction: Action & {
           actionName: "CALL_EXTERNAL",
           reason: "disallowed-recipient",
           to,
-          matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
+          matchedRelationshipId:
+            resolvedRecipient.matchedRelationshipId ?? null,
         },
       };
     }

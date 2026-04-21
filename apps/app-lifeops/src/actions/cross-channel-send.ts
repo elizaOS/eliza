@@ -29,7 +29,6 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security";
 import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
@@ -55,6 +54,7 @@ import {
   readXPosterCredentialsFromEnv,
   sendXDm,
 } from "../lifeops/x-poster.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { recentConversationTexts } from "./life-recent-context.js";
 
 const ACTION_NAME = "OWNER_SEND_MESSAGE";
@@ -781,7 +781,7 @@ export const crossChannelSendAction: Action & {
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasAdminAccess(runtime, message),
+    hasLifeOpsAccess(runtime, message),
 
   parameters: [
     {
@@ -837,6 +837,7 @@ export const crossChannelSendAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Draft email to alice@example.com:\n\nSubject: Meeting notes\n\n"Here are the notes from today."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
         },
       },
     ],
@@ -846,6 +847,7 @@ export const crossChannelSendAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Draft sms to +15551234567:\n\n"I\'ll be 10 minutes late."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
         },
       },
     ],
@@ -855,6 +857,7 @@ export const crossChannelSendAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Draft twilio_voice to +15551234567:\n\n"The build is done."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
         },
       },
     ],
@@ -864,6 +867,17 @@ export const crossChannelSendAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Draft telegram to Alice:\n\n"On my way."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
+        },
+      },
+    ],
+    [
+      { name: "{{name1}}", content: { text: "Send Priya a Signal message: thanks for the review" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Draft signal to Priya:\n\n"Thanks for the review."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
         },
       },
     ],
@@ -873,6 +887,7 @@ export const crossChannelSendAction: Action & {
         name: "{{agentName}}",
         content: {
           text: 'Draft discord to bob:\n\n"Standup in 5."\n\nSay "send it" to dispatch.',
+          action: ACTION_NAME,
         },
       },
     ],
@@ -884,9 +899,9 @@ export const crossChannelSendAction: Action & {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admin may send messages.",
+        text: "Permission denied: only the owner may send messages.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },
