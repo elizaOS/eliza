@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getTabGroupsMock,
   isElectrobunRuntimeMock,
+  useMediaQueryMock,
   useAppMock,
   useBrandingMock,
 } = vi.hoisted(() => ({
   getTabGroupsMock: vi.fn(),
   isElectrobunRuntimeMock: vi.fn(),
+  useMediaQueryMock: vi.fn(),
   useAppMock: vi.fn(),
   useBrandingMock: vi.fn(),
 }));
@@ -42,7 +44,7 @@ vi.mock("@elizaos/app-core/config/branding", () => ({
 }));
 
 vi.mock("@elizaos/app-core/hooks", () => ({
-  useMediaQuery: () => false,
+  useMediaQuery: (query: string) => useMediaQueryMock(query),
 }));
 
 vi.mock("@elizaos/app-core/navigation", () => ({
@@ -90,6 +92,7 @@ describe("Header", () => {
     useBrandingMock.mockReset();
     isElectrobunRuntimeMock.mockReset();
     getTabGroupsMock.mockReset();
+    useMediaQueryMock.mockReset();
 
     Object.defineProperty(window.navigator, "userAgent", {
       configurable: true,
@@ -100,6 +103,7 @@ describe("Header", () => {
     useAppMock.mockReturnValue(buildUseAppState());
     useBrandingMock.mockReturnValue({ appName: "Milady" });
     isElectrobunRuntimeMock.mockReturnValue(false);
+    useMediaQueryMock.mockReturnValue(false);
     getTabGroupsMock.mockReturnValue([
       {
         description: "Chat",
@@ -125,7 +129,11 @@ describe("Header", () => {
 
     render(<Header hideCloudCredits />);
 
-    expect(screen.getByTestId("desktop-window-titlebar")).toBeTruthy();
+    const titlebar = screen.getByTestId("desktop-window-titlebar");
+    expect(titlebar).toBeTruthy();
+    expect(
+      titlebar.closest("header")?.hasAttribute("data-no-camera-drag"),
+    ).toBe(false);
     expect(
       document.documentElement.classList.contains(
         "eliza-electrobun-custom-titlebar",
@@ -155,5 +163,67 @@ describe("Header", () => {
     render(<Header hideCloudCredits />);
 
     expect(screen.queryByTestId("desktop-window-titlebar")).toBeNull();
+  });
+
+  it("renders the bottom navigation on mobile without desktop chrome controls", () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    render(<Header hideCloudCredits />);
+
+    expect(screen.getByTestId("header-mobile-bottom-nav")).toBeTruthy();
+    expect(screen.queryByTestId("header-language-dropdown")).toBeNull();
+    expect(screen.queryByTestId("header-theme-toggle")).toBeNull();
+    expect(
+      document.documentElement.classList.contains("eliza-mobile-bottom-nav"),
+    ).toBe(true);
+  });
+
+  it("keeps desktop titlebar buttons out of drag handling and clickable", () => {
+    const setTab = vi.fn();
+    const outerPointerDown = vi.fn();
+    isElectrobunRuntimeMock.mockReturnValue(true);
+    useAppMock.mockReturnValue(buildUseAppState({ setTab, tab: "chat" }));
+    getTabGroupsMock.mockReturnValue([
+      {
+        description: "Chat",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Chat",
+        tabs: ["chat"],
+      },
+      {
+        description: "Apps",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Apps",
+        tabs: ["apps"],
+      },
+      {
+        description: "Settings",
+        icon: () => <svg aria-hidden="true" />,
+        label: "Settings",
+        tabs: ["settings"],
+      },
+    ]);
+
+    render(
+      <div onPointerDown={outerPointerDown}>
+        <Header hideCloudCredits />
+      </div>,
+    );
+
+    const appsButton = screen.getByTestId("header-nav-button-apps");
+    expect(appsButton.getAttribute("data-no-camera-drag")).toBe("true");
+    fireEvent.pointerDown(appsButton);
+    expect(outerPointerDown).not.toHaveBeenCalled();
+    fireEvent.click(appsButton);
+    expect(setTab).toHaveBeenCalledWith("apps");
+
+    const settingsButton = screen.getByTestId("header-settings-button");
+    expect(settingsButton.getAttribute("data-no-camera-drag")).toBe("true");
+    fireEvent.pointerDown(settingsButton);
+    expect(outerPointerDown).not.toHaveBeenCalled();
+    fireEvent.click(settingsButton);
+    expect(setTab).toHaveBeenCalledWith("settings");
   });
 });

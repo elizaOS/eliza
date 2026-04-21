@@ -23,6 +23,7 @@ import {
   savePersistedActivePackUrl,
   useApp,
 } from "../../state";
+import { LANGUAGES } from "../shared/LanguageDropdown";
 
 function supportsDirectoryUpload(): boolean {
   if (typeof document === "undefined") return false;
@@ -45,7 +46,9 @@ export function AppearanceSettingsSection() {
     onboardingStyle,
     themeId,
     setThemeId,
+    setUiLanguage,
     uiTheme,
+    uiLanguage,
     setUiTheme,
     t,
   } = useApp();
@@ -264,6 +267,41 @@ export function AppearanceSettingsSection() {
   /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="space-y-6">
+      <section className="space-y-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+          {t("settings.language", { defaultValue: "Language" })}
+        </h3>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {LANGUAGES.map((language) => {
+            const isActive = uiLanguage === language.id;
+
+            return (
+              <button
+                key={language.id}
+                type="button"
+                onClick={() => setUiLanguage(language.id)}
+                className={selectableTileClass(isActive)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none">
+                    {language.flag}
+                  </span>
+                  <span className="text-xs font-medium text-txt">
+                    {language.label}
+                  </span>
+                </div>
+                <span className="text-2xs uppercase tracking-[0.18em] text-muted">
+                  {language.id}
+                </span>
+                {isActive ? (
+                  <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Light / Dark mode */}
       <section className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">

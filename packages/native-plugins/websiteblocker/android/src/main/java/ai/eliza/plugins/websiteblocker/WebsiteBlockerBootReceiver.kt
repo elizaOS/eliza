@@ -27,7 +27,7 @@ class WebsiteBlockerBootReceiver : BroadcastReceiver() {
                 this.action = WebsiteBlockerVpnService.ACTION_START
                 putStringArrayListExtra(
                     WebsiteBlockerVpnService.EXTRA_WEBSITES,
-                    ArrayList(savedBlock.websites),
+                    ArrayList(savedBlock.requestedWebsites),
                 )
                 putExtra(
                     WebsiteBlockerVpnService.EXTRA_ENDS_AT,

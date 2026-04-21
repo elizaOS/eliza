@@ -4,6 +4,7 @@ import type {
   MobileSignalsPermissionStatus,
   MobileSignalsPlatform,
   MobileSignalsPlugin,
+  MobileSignalsScreenTimeStatus,
   MobileSignalsSnapshot,
   MobileSignalsSnapshotResult,
   MobileSignalsStartOptions,
@@ -17,6 +18,17 @@ interface BatteryLike {
   level: number;
 }
 
+const SCREEN_TIME_REQUIREMENTS = {
+  entitlements: {
+    familyControls: "com.apple.developer.family-controls",
+    appAndWebsiteUsage:
+      "com.apple.developer.family-controls.app-and-website-usage",
+  },
+  frameworks: ["FamilyControls", "DeviceActivity"],
+  deviceActivityReportExtension: false,
+  deviceActivityMonitorExtension: false,
+};
+
 function getPlatform(): MobileSignalsPlatform {
   if (typeof navigator === "undefined") {
     return "web";
@@ -27,6 +39,31 @@ function getPlatform(): MobileSignalsPlatform {
     return "ios";
   }
   return "web";
+}
+
+function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
+  return {
+    supported: false,
+    requirements: SCREEN_TIME_REQUIREMENTS,
+    entitlements: {
+      familyControls: false,
+      appAndWebsiteUsage: false,
+    },
+    provisioning: {
+      satisfied: false,
+      inspected: "not-inspectable",
+      reason,
+    },
+    authorization: {
+      status: "unavailable",
+      canRequest: false,
+    },
+    reportAvailable: false,
+    coarseSummaryAvailable: false,
+    thresholdEventsAvailable: false,
+    rawUsageExportAvailable: false,
+    reason,
+  };
 }
 
 async function getBatterySnapshot(): Promise<{
@@ -97,6 +134,9 @@ function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
     idleTimeSeconds: null,
     onBattery: null,
     healthSource: "healthkit",
+    screenTime: buildScreenTimeStatus(
+      "Web fallback has no Family Controls or DeviceActivity access.",
+    ),
     permissions: {
       sleep: false,
       biometrics: false,
@@ -134,6 +174,9 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      screenTime: buildScreenTimeStatus(
+        "Web fallback has no Family Controls or DeviceActivity access.",
+      ),
       permissions: {
         sleep: false,
         biometrics: false,
@@ -226,3 +269,7 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     };
   }
 }
+
+export const __internal = {
+  buildScreenTimeStatus,
+};

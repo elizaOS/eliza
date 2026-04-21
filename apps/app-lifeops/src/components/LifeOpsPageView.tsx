@@ -1,18 +1,12 @@
-import { Button, PagePanel } from "@elizaos/app-core";
-import { client, type CloudOAuthConnection } from "@elizaos/app-core";
-import { isWebPlatform } from "@elizaos/app-core";
-import { useApp } from "@elizaos/app-core";
-import { openExternalUrl } from "@elizaos/app-core";
 import {
-  LIFEOPS_GITHUB_CALLBACK_EVENT,
-  type LifeOpsGithubCallbackDetail,
-} from "../events/index.js";
-import {
-  consumeQueuedLifeOpsGithubCallback,
-  dispatchLifeOpsGithubCallbackFromWindowMessage,
-  drainLifeOpsGithubCallbacks,
-} from "../platform/lifeops-github.js";
-import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
+  Button,
+  type CloudOAuthConnection,
+  client,
+  isWebPlatform,
+  openExternalUrl,
+  PagePanel,
+  useApp,
+} from "@elizaos/app-core";
 import {
   CalendarDays,
   ChevronDown,
@@ -21,15 +15,35 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  LIFEOPS_GITHUB_CALLBACK_EVENT,
+  type LifeOpsGithubCallbackDetail,
+} from "../events/index.js";
+import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
+import {
+  consumeQueuedLifeOpsGithubCallback,
+  dispatchLifeOpsGithubCallbackFromWindowMessage,
+  drainLifeOpsGithubCallbacks,
+} from "../platform/lifeops-github.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
+import {
+  LifeOpsProfilePanel,
+  LifeOpsSchedulePanel,
+  LifeOpsStretchPanel,
+  LifeOpsXPanel,
+} from "./LifeOpsOperationalPanels";
 import { LifeOpsWorkspaceView } from "./LifeOpsWorkspaceView";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
 
 const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/milady/lifeops/github-complete";
 const LIFEOPS_GITHUB_RETURN_URL = "elizaos://lifeops";
+
+type TranslateFn = (
+  key: string,
+  options?: Record<string, unknown> & { defaultValue?: string },
+) => string;
 
 function buildOwnerGithubRedirectUrl(): string {
   const params = new URLSearchParams();
@@ -52,14 +66,21 @@ function openWebOauthPopup(): Window | null {
   return window.open("", "elizaos-lifeops-github");
 }
 
-function describeGithubCallback(detail: LifeOpsGithubCallbackDetail): {
+function describeGithubCallback(
+  detail: LifeOpsGithubCallbackDetail,
+  t: TranslateFn,
+): {
   message: string;
   tone: "success" | "error";
   durationMs: number;
 } {
   if (detail.status === "error") {
     return {
-      message: detail.message?.trim() || "GitHub setup did not complete.",
+      message:
+        detail.message?.trim() ||
+        t("lifeopspage.githubSetupIncomplete", {
+          defaultValue: "GitHub setup did not complete.",
+        }),
       tone: "error",
       durationMs: 5000,
     };
@@ -67,7 +88,9 @@ function describeGithubCallback(detail: LifeOpsGithubCallbackDetail): {
 
   if (detail.target === "owner") {
     return {
-      message: "LifeOps GitHub connected through Eliza Cloud.",
+      message: t("lifeopspage.githubConnectedCloud", {
+        defaultValue: "LifeOps GitHub connected through Eliza Cloud.",
+      }),
       tone: "success",
       durationMs: 3600,
     };
@@ -76,8 +99,13 @@ function describeGithubCallback(detail: LifeOpsGithubCallbackDetail): {
   if (detail.bindingMode === "shared-owner") {
     return {
       message: detail.restarted
-        ? "Agent is using the LifeOps GitHub account and the cloud runtime is restarting."
-        : "Agent is using the LifeOps GitHub account.",
+        ? t("lifeopspage.agentUsingOwnerGithubRestarting", {
+            defaultValue:
+              "Agent is using the LifeOps GitHub account and the cloud runtime is restarting.",
+          })
+        : t("lifeopspage.agentUsingOwnerGithub", {
+            defaultValue: "Agent is using the LifeOps GitHub account.",
+          }),
       tone: "success",
       durationMs: 4200,
     };
@@ -88,20 +116,32 @@ function describeGithubCallback(detail: LifeOpsGithubCallbackDetail): {
     : "";
   return {
     message: detail.restarted
-      ? `Agent GitHub${githubHandle} connected and the cloud runtime is restarting.`
-      : `Agent GitHub${githubHandle} connected.`,
+      ? t("lifeopspage.agentGithubConnectedRestarting", {
+          defaultValue:
+            "Agent GitHub{{githubHandle}} connected and the cloud runtime is restarting.",
+          githubHandle,
+        })
+      : t("lifeopspage.agentGithubConnected", {
+          defaultValue: "Agent GitHub{{githubHandle}} connected.",
+          githubHandle,
+        }),
     tone: "success",
     durationMs: 4200,
   };
 }
 
-function readGithubIdentity(connection: {
-  displayName?: string | null;
-  username?: string | null;
-  email?: string | null;
-} | null): string {
+function readGithubIdentity(
+  connection: {
+    displayName?: string | null;
+    username?: string | null;
+    email?: string | null;
+  } | null,
+  t: TranslateFn,
+): string {
   if (!connection) {
-    return "Not linked";
+    return t("lifeopspage.notLinked", {
+      defaultValue: "Not linked",
+    });
   }
   const displayName =
     typeof connection.displayName === "string" &&
@@ -109,14 +149,22 @@ function readGithubIdentity(connection: {
       ? connection.displayName.trim()
       : null;
   const username =
-    typeof connection.username === "string" && connection.username.trim().length > 0
+    typeof connection.username === "string" &&
+    connection.username.trim().length > 0
       ? `@${connection.username.trim()}`
       : null;
   const email =
     typeof connection.email === "string" && connection.email.trim().length > 0
       ? connection.email.trim()
       : null;
-  return displayName ?? username ?? email ?? "Not linked";
+  return (
+    displayName ??
+    username ??
+    email ??
+    t("lifeopspage.notLinked", {
+      defaultValue: "Not linked",
+    })
+  );
 }
 
 function selectPrimaryOwnerGithubConnection(
@@ -142,9 +190,8 @@ export function LifeOpsPageView() {
     backendConnection,
     elizaCloudConnected,
     setActionNotice,
-    setState,
-    setTab,
     startupCoordinator,
+    t,
   } = useApp();
   const [ownerGithubConnections, setOwnerGithubConnections] = useState<
     CloudOAuthConnection[]
@@ -218,19 +265,24 @@ export function LifeOpsPageView() {
         agentsResult.status === "rejected"
       ) {
         setGithubError(
-          "Some GitHub cloud details are still unavailable. You can still connect accounts.",
+          t("lifeopspage.githubDetailsPartial", {
+            defaultValue:
+              "Some GitHub cloud details are still unavailable. You can still connect accounts.",
+          }),
         );
       }
     } catch (cause) {
       setGithubError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "GitHub connection details failed to load.",
+          : t("lifeopspage.githubDetailsLoadFailed", {
+              defaultValue: "GitHub connection details failed to load.",
+            }),
       );
     } finally {
       setGithubLoading(false);
     }
-  }, [appEnabled, elizaCloudConnected]);
+  }, [appEnabled, elizaCloudConnected, t]);
 
   useEffect(() => {
     void loadGithub();
@@ -271,23 +323,20 @@ export function LifeOpsPageView() {
               message:
                 cause instanceof Error
                   ? cause.message
-                  : "Failed to link GitHub to this agent.",
+                  : t("lifeopspage.githubLinkFailed", {
+                      defaultValue: "Failed to link GitHub to this agent.",
+                    }),
             };
           }
         }
 
-        const notice = describeGithubCallback(resolvedDetail);
+        const notice = describeGithubCallback(resolvedDetail, t);
         setActionNotice(notice.message, notice.tone, notice.durationMs);
         await loadGithub();
       })();
     },
-    [loadGithub, setActionNotice],
+    [loadGithub, setActionNotice, t],
   );
-
-  const openCloudAgents = useCallback(() => {
-    setState("cloudDashboardView", "overview");
-    setTab("settings");
-  }, [setState, setTab]);
 
   const handleSetLifeOpsEnabled = useCallback(
     async (nextEnabled: boolean) => {
@@ -299,7 +348,13 @@ export function LifeOpsPageView() {
           setGithubError(null);
         }
         setActionNotice(
-          nextEnabled ? "LifeOps enabled." : "LifeOps disabled.",
+          nextEnabled
+            ? t("lifeopspage.enabled", {
+                defaultValue: "LifeOps enabled.",
+              })
+            : t("lifeopspage.disabled", {
+                defaultValue: "LifeOps disabled.",
+              }),
           "success",
           3600,
         );
@@ -307,20 +362,24 @@ export function LifeOpsPageView() {
         setActionNotice(
           cause instanceof Error
             ? cause.message
-            : "Failed to update the LifeOps app state.",
+            : t("lifeopspage.updateStateFailed", {
+                defaultValue: "Failed to update the LifeOps app state.",
+              }),
           "error",
           4200,
         );
       }
     },
-    [lifeOpsApp, setActionNotice],
+    [lifeOpsApp, setActionNotice, t],
   );
 
   const handleConnectOwnerGithub = useCallback(async () => {
     const popup = openWebOauthPopup();
     if (isWebPlatform() && !popup) {
       setActionNotice(
-        "Popup blocked. Please allow popups and try again.",
+        t("lifeopspage.popupBlocked", {
+          defaultValue: "Popup blocked. Please allow popups and try again.",
+        }),
         "error",
         4200,
       );
@@ -338,21 +397,28 @@ export function LifeOpsPageView() {
         await openExternalUrl(response.authUrl);
       }
       setActionNotice(
-        "Finish GitHub authorization in your browser, then return here.",
+        t("lifeopspage.finishGithubAuth", {
+          defaultValue:
+            "Finish GitHub authorization in your browser, then return here.",
+        }),
         "info",
         5000,
       );
     } catch (cause) {
       popup?.close();
       setActionNotice(
-        cause instanceof Error ? cause.message : "Failed to start GitHub setup.",
+        cause instanceof Error
+          ? cause.message
+          : t("lifeopspage.startGithubSetupFailed", {
+              defaultValue: "Failed to start GitHub setup.",
+            }),
         "error",
         4200,
       );
     } finally {
       setOwnerGithubBusy(false);
     }
-  }, [setActionNotice]);
+  }, [setActionNotice, t]);
 
   const handleDisconnectOwnerGithub = useCallback(
     async (connectionId: string) => {
@@ -362,11 +428,21 @@ export function LifeOpsPageView() {
         setOwnerGithubConnections((current) =>
           current.filter((connection) => connection.id !== connectionId),
         );
-        setActionNotice("LifeOps GitHub disconnected.", "success", 3200);
+        setActionNotice(
+          t("lifeopspage.githubDisconnected", {
+            defaultValue: "LifeOps GitHub disconnected.",
+          }),
+          "success",
+          3200,
+        );
         await loadGithub();
       } catch (cause) {
         setActionNotice(
-          cause instanceof Error ? cause.message : "Failed to disconnect GitHub.",
+          cause instanceof Error
+            ? cause.message
+            : t("lifeopspage.disconnectGithubFailed", {
+                defaultValue: "Failed to disconnect GitHub.",
+              }),
           "error",
           4200,
         );
@@ -374,7 +450,7 @@ export function LifeOpsPageView() {
         setDisconnectingOwnerConnectionId(null);
       }
     },
-    [loadGithub, setActionNotice],
+    [loadGithub, setActionNotice, t],
   );
 
   const handleConnectAgentGithub = useCallback(
@@ -382,7 +458,9 @@ export function LifeOpsPageView() {
       const popup = openWebOauthPopup();
       if (isWebPlatform() && !popup) {
         setActionNotice(
-          "Popup blocked. Please allow popups and try again.",
+          t("lifeopspage.popupBlocked", {
+            defaultValue: "Popup blocked. Please allow popups and try again.",
+          }),
           "error",
           4200,
         );
@@ -402,7 +480,10 @@ export function LifeOpsPageView() {
           await openExternalUrl(response.data.authorizeUrl);
         }
         setActionNotice(
-          "Finish GitHub authorization in your browser, then return here.",
+          t("lifeopspage.finishGithubAuth", {
+            defaultValue:
+              "Finish GitHub authorization in your browser, then return here.",
+          }),
           "info",
           5000,
         );
@@ -411,7 +492,9 @@ export function LifeOpsPageView() {
         setActionNotice(
           cause instanceof Error
             ? cause.message
-            : "Failed to start agent GitHub setup.",
+            : t("lifeopspage.startAgentGithubSetupFailed", {
+                defaultValue: "Failed to start agent GitHub setup.",
+              }),
           "error",
           4200,
         );
@@ -419,7 +502,7 @@ export function LifeOpsPageView() {
         setBusyAgentGithubId(null);
       }
     },
-    [setActionNotice],
+    [setActionNotice, t],
   );
 
   useEffect(() => {
@@ -468,13 +551,21 @@ export function LifeOpsPageView() {
               : entry,
           ),
         );
-        setActionNotice("Agent GitHub disconnected.", "success", 3200);
+        setActionNotice(
+          t("lifeopspage.agentGithubDisconnected", {
+            defaultValue: "Agent GitHub disconnected.",
+          }),
+          "success",
+          3200,
+        );
         await loadGithub();
       } catch (cause) {
         setActionNotice(
           cause instanceof Error
             ? cause.message
-            : "Failed to disconnect agent GitHub.",
+            : t("lifeopspage.disconnectAgentGithubFailed", {
+                defaultValue: "Failed to disconnect agent GitHub.",
+              }),
           "error",
           4200,
         );
@@ -482,7 +573,7 @@ export function LifeOpsPageView() {
         setBusyAgentGithubId(null);
       }
     },
-    [loadGithub, setActionNotice],
+    [loadGithub, setActionNotice, t],
   );
 
   const primaryOwnerGithubConnection = useMemo(
@@ -496,16 +587,28 @@ export function LifeOpsPageView() {
   const ownerGithubSetup = useMemo(
     () => ({
       identity: elizaCloudConnected
-        ? readGithubIdentity(primaryOwnerGithubConnection)
-        : "Cloud required",
+        ? readGithubIdentity(primaryOwnerGithubConnection, t)
+        : t("lifeopspage.cloudRequired", {
+            defaultValue: "Cloud required",
+          }),
       status: elizaCloudConnected
         ? primaryOwnerGithubConnection
           ? "1 / 1"
           : githubLoading
-            ? "Loading"
+            ? t("common.loading", {
+                defaultValue: "Loading",
+              })
             : "0 / 1"
-        : "Cloud required",
-      connectLabel: primaryOwnerGithubConnection ? "Reconnect" : "Connect",
+        : t("lifeopspage.cloudRequired", {
+            defaultValue: "Cloud required",
+          }),
+      connectLabel: primaryOwnerGithubConnection
+        ? t("common.reconnect", {
+            defaultValue: "Reconnect",
+          })
+        : t("common.connect", {
+            defaultValue: "Connect",
+          }),
       connectDisabled: ownerGithubBusy || !elizaCloudConnected,
       disconnectDisabled:
         disconnectingOwnerConnectionId === primaryOwnerGithubConnection?.id,
@@ -528,30 +631,50 @@ export function LifeOpsPageView() {
       handleDisconnectOwnerGithub,
       ownerGithubBusy,
       primaryOwnerGithubConnection,
+      t,
     ],
   );
   const agentGithubSetup = useMemo(
     () => ({
       identity: elizaCloudConnected
         ? primaryAgentGithubEntry?.github?.connected
-          ? readGithubIdentity({
-              displayName: primaryAgentGithubEntry.github.githubDisplayName,
-              username: primaryAgentGithubEntry.github.githubUsername,
-              email: primaryAgentGithubEntry.github.githubEmail,
-            })
-          : primaryAgentGithubEntry?.agent.agent_name ?? "No cloud agent"
-        : "Cloud required",
+          ? readGithubIdentity(
+              {
+                displayName: primaryAgentGithubEntry.github.githubDisplayName,
+                username: primaryAgentGithubEntry.github.githubUsername,
+                email: primaryAgentGithubEntry.github.githubEmail,
+              },
+              t,
+            )
+          : (primaryAgentGithubEntry?.agent.agent_name ??
+            t("lifeopspage.noCloudAgent", {
+              defaultValue: "No cloud agent",
+            }))
+        : t("lifeopspage.cloudRequired", {
+            defaultValue: "Cloud required",
+          }),
       status: elizaCloudConnected
         ? primaryAgentGithubEntry?.github?.connected
           ? "1 / 1"
           : primaryAgentGithubEntry
             ? "0 / 1"
             : githubLoading
-              ? "Loading"
-              : "No cloud agent"
-        : "Cloud required",
-      connectLabel:
-        primaryAgentGithubEntry?.github?.connected ? "Reconnect" : "Connect",
+              ? t("common.loading", {
+                  defaultValue: "Loading",
+                })
+              : t("lifeopspage.noCloudAgent", {
+                  defaultValue: "No cloud agent",
+                })
+        : t("lifeopspage.cloudRequired", {
+            defaultValue: "Cloud required",
+          }),
+      connectLabel: primaryAgentGithubEntry?.github?.connected
+        ? t("common.reconnect", {
+            defaultValue: "Reconnect",
+          })
+        : t("common.connect", {
+            defaultValue: "Connect",
+          }),
       connectDisabled:
         !primaryAgentGithubEntry ||
         busyAgentGithubId === primaryAgentGithubEntry.agent.agent_id,
@@ -584,6 +707,7 @@ export function LifeOpsPageView() {
       handleConnectAgentGithub,
       handleDisconnectAgentGithub,
       primaryAgentGithubEntry,
+      t,
     ],
   );
 
@@ -596,25 +720,32 @@ export function LifeOpsPageView() {
       data-testid="lifeops-shell"
     >
       <div className="space-y-4">
-        <PagePanel.Header heading="LifeOps" className="px-0 py-0 sm:px-0" />
+        <PagePanel.Header
+          heading={t("nav.lifeops", {
+            defaultValue: "LifeOps",
+          })}
+          className="px-0 py-0 sm:px-0"
+        />
 
         {lifeOpsApp.error ? (
-          <PagePanel.Notice tone="danger">
-            {lifeOpsApp.error}
-          </PagePanel.Notice>
+          <PagePanel.Notice tone="danger">{lifeOpsApp.error}</PagePanel.Notice>
         ) : null}
 
         {lifeOpsApp.loading ? (
           <PagePanel.Loading
             variant="surface"
-            heading="Loading LifeOps app state"
+            heading={t("lifeopspage.loadingState", {
+              defaultValue: "Loading LifeOps app state",
+            })}
           />
         ) : null}
 
         {appEnabled && !runtimeReady ? (
           <PagePanel.Loading
             variant="surface"
-            heading="Waiting for LifeOps runtime"
+            heading={t("lifeopspage.waitingRuntime", {
+              defaultValue: "Waiting for LifeOps runtime",
+            })}
           />
         ) : null}
       </div>
@@ -623,12 +754,16 @@ export function LifeOpsPageView() {
         <section className="space-y-5 rounded-3xl border border-border/16 bg-card/18 px-4 py-6 sm:px-6 sm:py-7">
           <div className="space-y-2">
             <div className="text-base font-semibold text-txt">
-              Your personal assistant for calendar, email, and routines
+              {t("lifeopspage.enableTitle", {
+                defaultValue:
+                  "Your personal assistant for calendar, email, and routines",
+              })}
             </div>
             <div className="text-sm leading-relaxed text-muted">
-              Enable LifeOps to let the agent triage email, manage your
-              calendar, and keep your goals and reminders on track. You pick
-              which accounts and permissions to connect after turning it on.
+              {t("lifeopspage.enableDescription", {
+                defaultValue:
+                  "Enable LifeOps to let the agent triage email, manage your calendar, and keep your goals and reminders on track. You pick which accounts and permissions to connect after turning it on.",
+              })}
             </div>
           </div>
 
@@ -636,19 +771,32 @@ export function LifeOpsPageView() {
             <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
               <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <div>
-                <div className="text-sm font-medium text-txt">Gmail triage</div>
+                <div className="text-sm font-medium text-txt">
+                  {t("lifeopspage.gmailTitle", {
+                    defaultValue: "Gmail triage",
+                  })}
+                </div>
                 <div className="text-xs text-muted">
-                  Spot replies that need you and draft responses for review.
+                  {t("lifeopspage.gmailDescription", {
+                    defaultValue:
+                      "Spot replies that need you and draft responses for review.",
+                  })}
                 </div>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
               <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <div>
-                <div className="text-sm font-medium text-txt">Calendar</div>
+                <div className="text-sm font-medium text-txt">
+                  {t("lifeopspage.calendarTitle", {
+                    defaultValue: "Calendar",
+                  })}
+                </div>
                 <div className="text-xs text-muted">
-                  See today and the week ahead. Create events without leaving
-                  the app.
+                  {t("lifeopspage.calendarDescription", {
+                    defaultValue:
+                      "See today and the week ahead. Create events without leaving the app.",
+                  })}
                 </div>
               </div>
             </li>
@@ -656,20 +804,31 @@ export function LifeOpsPageView() {
               <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <div>
                 <div className="text-sm font-medium text-txt">
-                  Goals &amp; reminders
+                  {t("lifeopspage.goalsTitle", {
+                    defaultValue: "Goals & reminders",
+                  })}
                 </div>
                 <div className="text-xs text-muted">
-                  Track habits, goals, and routines with gentle follow-ups.
+                  {t("lifeopspage.goalsDescription", {
+                    defaultValue:
+                      "Track habits, goals, and routines with gentle follow-ups.",
+                  })}
                 </div>
               </div>
             </li>
             <li className="flex items-start gap-3 rounded-2xl bg-bg/36 px-3 py-3">
               <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
               <div>
-                <div className="text-sm font-medium text-txt">Messaging</div>
+                <div className="text-sm font-medium text-txt">
+                  {t("lifeopspage.messagingTitle", {
+                    defaultValue: "Messaging",
+                  })}
+                </div>
                 <div className="text-xs text-muted">
-                  Connect Signal, Discord, Telegram, or iMessage so the agent
-                  can reach you.
+                  {t("lifeopspage.messagingDescription", {
+                    defaultValue:
+                      "Connect Signal, Discord, Telegram, or iMessage so the agent can reach you.",
+                  })}
                 </div>
               </div>
             </li>
@@ -682,10 +841,18 @@ export function LifeOpsPageView() {
               onClick={() => void handleSetLifeOpsEnabled(true)}
               disabled={lifeOpsApp.loading || lifeOpsApp.saving}
             >
-              {lifeOpsApp.saving ? "Enabling…" : "Enable LifeOps"}
+              {lifeOpsApp.saving
+                ? t("lifeopspage.enabling", {
+                    defaultValue: "Enabling…",
+                  })
+                : t("lifeopspage.enable", {
+                    defaultValue: "Enable LifeOps",
+                  })}
             </Button>
             <span className="text-xs text-muted">
-              You can disable LifeOps at any time.
+              {t("lifeopspage.disableHint", {
+                defaultValue: "You can disable LifeOps at any time.",
+              })}
             </span>
           </div>
         </section>
@@ -701,9 +868,16 @@ export function LifeOpsPageView() {
               aria-expanded={setupOpen}
             >
               <div>
-                <div className="text-sm font-semibold text-txt">Setup</div>
+                <div className="text-sm font-semibold text-txt">
+                  {t("lifeopspage.setupTitle", {
+                    defaultValue: "Setup",
+                  })}
+                </div>
                 <div className="mt-0.5 text-xs text-muted">
-                  Connect Google, GitHub, and messaging accounts.
+                  {t("lifeopspage.setupDescription", {
+                    defaultValue:
+                      "Connect Google, GitHub, and messaging accounts.",
+                  })}
                 </div>
               </div>
               <ChevronDown
@@ -721,6 +895,12 @@ export function LifeOpsPageView() {
                   githubError={githubError}
                 />
                 <MessagingConnectorGrid />
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <LifeOpsSchedulePanel />
+                  <LifeOpsXPanel />
+                  <LifeOpsProfilePanel />
+                  <LifeOpsStretchPanel />
+                </div>
               </div>
             ) : null}
           </section>
@@ -740,7 +920,9 @@ export function LifeOpsPageView() {
             onClick={() => void handleSetLifeOpsEnabled(false)}
             disabled={lifeOpsApp.loading || lifeOpsApp.saving}
           >
-            Disable LifeOps
+            {t("lifeopspage.disable", {
+              defaultValue: "Disable LifeOps",
+            })}
           </Button>
         </div>
       ) : null}

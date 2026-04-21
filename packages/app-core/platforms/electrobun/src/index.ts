@@ -32,8 +32,8 @@ import { setApplicationMenuActionHandler } from "./application-menu-action-regis
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
-import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
@@ -314,11 +314,11 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
                 process.env as Record<string, string | undefined>,
                 port,
               )
-            : resolveHeartbeatMenuApiBase() ??
+            : (resolveHeartbeatMenuApiBase() ??
               resolveInitialApiBase(
                 process.env as Record<string, string | undefined>,
               ) ??
-              apiBase;
+              apiBase);
           if (base) {
             pushApiBaseToRenderer(currentWindow, base, apiToken);
           }
@@ -470,10 +470,11 @@ const MAC_TRAFFIC_LIGHTS_Y = 12;
 /** Left inset of the drag strip so it clears the traffic lights. */
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
- * Top drag strip height == right/bottom/BR overlay thickness (points).
- * `0` → native derives depth from `window.screen` (HiDPI / ultrawide); positive pins.
+ * Native titlebar drag height. The native layer keeps resize bands thin
+ * separately and only installs drag views in safe title/empty zones so
+ * titlebar buttons continue to receive clicks.
  */
-const MAC_NATIVE_DRAG_REGION_HEIGHT = 0;
+const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
 /**
  * Vibrancy, shadow, traffic lights, and native chrome layout. Re-calls native
@@ -518,10 +519,19 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
 
   alignChrome();
   setTimeout(alignChrome, 120);
+  const chromeRefreshTimer = setInterval(alignChrome, 1000);
 
   win.on("resize", alignChrome);
+  win.on("focus", alignChrome);
+  win.on("blur", () => {
+    alignChrome();
+    setTimeout(alignChrome, 80);
+    setTimeout(alignChrome, 240);
+    setTimeout(alignChrome, 700);
+  });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
   win.on("move", alignChrome);
+  win.on("close", () => clearInterval(chromeRefreshTimer));
 
   // WKWebView is often inserted or reordered after first layout; restack native
   // views so drag/resize strips stay hit-testable above the page.
@@ -671,6 +681,15 @@ function sendToActiveRenderer(message: string, payload?: unknown): void {
       message,
     );
   }
+}
+
+function shouldRestoreWindowBeforeMenuAction(
+  action: string | undefined,
+): boolean {
+  if (!action || action.startsWith("focus-window:")) {
+    return false;
+  }
+  return action !== "quit";
 }
 
 /**
@@ -1512,7 +1531,7 @@ async function setupUpdater(): Promise<void> {
     const handleApplicationMenuAction = async (
       action: string | undefined,
     ): Promise<void> => {
-      if (!currentWindow && action && !action.startsWith("focus-window:")) {
+      if (!currentWindow && shouldRestoreWindowBeforeMenuAction(action)) {
         await restoreWindow();
       }
       if (action === "check-for-updates") {
