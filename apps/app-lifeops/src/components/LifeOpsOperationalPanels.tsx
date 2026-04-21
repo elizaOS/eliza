@@ -151,11 +151,12 @@ export function LifeOpsCapabilitiesPanel() {
               ? `${status.summary.workingCount}/${status.summary.totalCount} working`
               : t("common.loading", { defaultValue: "Loading" })}
           </div>
-          <div className="mt-1 text-xs text-muted">
-            {status
-              ? `${status.summary.degradedCount} degraded · ${status.summary.blockedCount} blocked`
-              : " "}
-          </div>
+          {status ? (
+            <div className="mt-1 text-xs text-muted">
+              {status.summary.degradedCount} degraded ·{" "}
+              {status.summary.blockedCount} blocked
+            </div>
+          ) : null}
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
@@ -166,11 +167,11 @@ export function LifeOpsCapabilitiesPanel() {
           <div className="mt-1 text-sm font-semibold text-txt">
             {primary?.summary ?? "—"}
           </div>
-          <div className="mt-1 text-xs text-muted">
-            {status?.relativeTime
-              ? `Computed ${formatDateTime(status.relativeTime.computedAt)}`
-              : " "}
-          </div>
+          {status?.relativeTime ? (
+            <div className="mt-1 text-xs text-muted">
+              Computed {formatDateTime(status.relativeTime.computedAt)}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -319,14 +320,16 @@ export function LifeOpsSchedulePanel() {
                 ? `Last started ${formatDateTime(merged.lastSleepStartedAt)}`
                 : "—"}
           </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged?.wakeAt
-              ? `Wake target ${formatDateTime(merged.wakeAt)}`
-              : " "}
-            {merged?.lastSleepDurationMinutes
-              ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
-              : ""}
-          </div>
+          {merged?.wakeAt || merged?.lastSleepDurationMinutes ? (
+            <div className="mt-1 text-xs text-muted">
+              {merged?.wakeAt
+                ? `Wake target ${formatDateTime(merged.wakeAt)}`
+                : null}
+              {merged?.lastSleepDurationMinutes
+                ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
+                : null}
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 text-xs">
@@ -466,13 +469,13 @@ export function LifeOpsXPanel() {
           })}
         />
         <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-muted">
-            {x.lastPost?.postId
-              ? ` Last post ${x.lastPost.postId}.`
-              : x.lastPost
-                ? ` Last post status ${x.lastPost.status}.`
-                : ""}
-          </div>
+          {x.lastPost ? (
+            <div className="text-xs text-muted">
+              {x.lastPost.postId
+                ? `Last post ${x.lastPost.postId}.`
+                : `Last post status ${x.lastPost.status}.`}
+            </div>
+          ) : null}
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"

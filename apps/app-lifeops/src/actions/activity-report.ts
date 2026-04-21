@@ -42,11 +42,46 @@ function resolveWindowMs(windowHours: number | undefined): number {
   return Math.round(clamped * 60 * 60 * 1000);
 }
 
-function getParams<T>(options: HandlerOptions | undefined): T {
-  const params = (options as HandlerOptions | undefined)?.parameters as
-    | T
-    | undefined;
-  return params ?? ({} as T);
+function getParameterRecord(
+  options: HandlerOptions | undefined,
+): Record<string, unknown> {
+  const parameters = options?.parameters;
+  return parameters && typeof parameters === "object" ? parameters : {};
+}
+
+function getActivityReportParams(
+  options: HandlerOptions | undefined,
+): ActivityReportParams {
+  const params = getParameterRecord(options);
+  return {
+    windowHours:
+      typeof params.windowHours === "number" ? params.windowHours : undefined,
+  };
+}
+
+function getTimeOnAppParams(
+  options: HandlerOptions | undefined,
+): TimeOnAppParams {
+  const params = getParameterRecord(options);
+  return {
+    appNameOrBundleId:
+      typeof params.appNameOrBundleId === "string"
+        ? params.appNameOrBundleId
+        : undefined,
+    windowHours:
+      typeof params.windowHours === "number" ? params.windowHours : undefined,
+  };
+}
+
+function getTimeOnSiteParams(
+  options: HandlerOptions | undefined,
+): TimeOnSiteParams {
+  const params = getParameterRecord(options);
+  return {
+    domain: typeof params.domain === "string" ? params.domain : undefined,
+    windowHours:
+      typeof params.windowHours === "number" ? params.windowHours : undefined,
+  };
 }
 
 function formatMinutes(totalMs: number): number {
@@ -96,13 +131,17 @@ export const getActivityReportAction: Action = {
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
-    const params = getParams<ActivityReportParams>(options);
+    const params = getActivityReportParams(options);
     const windowMs = resolveWindowMs(params.windowHours);
 
     if (!isSupportedPlatform()) {
       const text =
         "Activity tracking is macOS-only. No data available on this platform.";
-      await callback?.({ text, source: "action", action: "GET_ACTIVITY_REPORT" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "GET_ACTIVITY_REPORT",
+      });
       return {
         text,
         success: true,
@@ -175,7 +214,7 @@ export const getTimeOnAppAction: Action = {
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
-    const params = getParams<TimeOnAppParams>(options);
+    const params = getTimeOnAppParams(options);
     const target = (params.appNameOrBundleId ?? "").trim();
     if (!target) {
       const text = "Specify an app name or bundle id.";
@@ -227,7 +266,8 @@ export const getTimeOnAppAction: Action = {
   parameters: [
     {
       name: "appNameOrBundleId",
-      description: "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari').",
+      description:
+        "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari').",
       schema: { type: "string" as const },
     },
     {
@@ -271,7 +311,7 @@ export const getTimeOnSiteAction: Action = {
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
-    const params = getParams<TimeOnSiteParams>(options);
+    const params = getTimeOnSiteParams(options);
     const rawDomain = (params.domain ?? "").trim();
     const domain = rawDomain ? normalizeDomain(rawDomain) : "";
     if (!domain) {

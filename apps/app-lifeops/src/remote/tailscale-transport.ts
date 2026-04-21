@@ -1,17 +1,5 @@
-// Tailscale transport for the remote-session data plane.
-//
-// Shells out to the `tailscale` CLI to:
-// 1. Discover whether this node is on a tailnet (`tailscale status --json`).
-// 2. Resolve the tailnet-facing hostname + IPv4 (`tailscale ip -4`).
-// 3. Publish a local HTTPS endpoint to the tailnet via `tailscale serve`.
-//
-// Intentionally narrow. No retries, no background supervision, no policy —
-// RemoteSessionService owns lifecycle; this module owns the CLI surface.
-
-import { spawn, type SpawnOptions } from "node:child_process";
+import { type SpawnOptions, spawn } from "node:child_process";
 import { logger } from "@elizaos/core";
-
-// ---------- Types ----------
 
 export type RemoteTransport = "tailscale" | "cloud" | "local";
 
@@ -31,7 +19,6 @@ export interface ReservedPort {
   magicDNSUrl: string;
 }
 
-// Shape of the subset of `tailscale status --json` we depend on.
 interface TailscaleStatusJson {
   BackendState?: string;
   CurrentTailnet?: {
@@ -45,9 +32,6 @@ interface TailscaleStatusJson {
   };
 }
 
-// Pluggable process runner — real implementation uses child_process.spawn,
-// tests inject a fake. Keeping the seam narrow avoids leaking Node internals
-// into the public surface while still letting us exercise parsing logic.
 export interface ProcessRunner {
   run(
     command: string,
@@ -62,8 +46,6 @@ export interface ProcessResult {
   stderr: string;
 }
 
-// ---------- Defaults ----------
-
 const TAILSCALE_BIN = "tailscale";
 const INSTALL_INSTRUCTIONS =
   "Install Tailscale from https://tailscale.com/download and ensure the `tailscale` CLI is on PATH.";
@@ -77,7 +59,8 @@ class DefaultProcessRunner implements ProcessRunner {
     return new Promise((resolve, reject) => {
       const spawnOptions: SpawnOptions = {
         detached: options.detached === true,
-        stdio: options.detached === true ? "ignore" : ["ignore", "pipe", "pipe"],
+        stdio:
+          options.detached === true ? "ignore" : ["ignore", "pipe", "pipe"],
       };
       const child = spawn(command, Array.from(args), spawnOptions);
 
@@ -154,7 +137,7 @@ export async function getTailscaleStatus(): Promise<TailscaleStatus> {
   }
 
   const self = parsed.Self;
-  if (!self || !self.HostName) {
+  if (!self?.HostName) {
     return { available: false, reason: "tailscale-self-node-missing" };
   }
 
@@ -188,12 +171,7 @@ export async function reserveServerPort(
     );
   }
 
-  const args = [
-    "serve",
-    "--bg",
-    "https:/",
-    `https://localhost:${port}`,
-  ];
+  const args = ["serve", "--bg", "https:/", `https://localhost:${port}`];
   const argsForeground = ["serve", "https:/", `https://localhost:${port}`];
   const chosenArgs = options.background === true ? args : argsForeground;
 
@@ -240,7 +218,11 @@ export async function releasePort(port: number): Promise<void> {
 export function selectRemoteTransport(
   envValue: string | undefined,
 ): RemoteTransport {
-  if (envValue === "tailscale" || envValue === "cloud" || envValue === "local") {
+  if (
+    envValue === "tailscale" ||
+    envValue === "cloud" ||
+    envValue === "local"
+  ) {
     return envValue;
   }
   return "local";

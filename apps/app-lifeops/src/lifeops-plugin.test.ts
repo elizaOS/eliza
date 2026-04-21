@@ -1,36 +1,7 @@
-/**
- * SHAPE-ONLY TESTS — this file does NOT execute any route handler; it verifies
- * plugin SHAPE only.
- *
- * Scope verified:
- *   - `lifeopsPlugin` is a correctly shaped Plugin object (name, routes[]).
- *   - Every registered route has `rawPath: true`, a valid HTTP method, and a
- *     function handler.
- *   - A hard-coded list of expected static/dynamic paths is present.
- *   - Every `method === ... && pathname === ...` branch discovered by regex in
- *     `routes/lifeops-routes.ts` has a matching registered route (a "no route
- *     was forgotten" contract check).
- *   - The handler for `/api/lifeops/app-state` delegates to the
- *     `handleLifeOpsRoutes` mock (delegation wiring only).
- *
- * Explicitly NOT verified:
- *   - Route handler business logic (the underlying handler modules are
- *     `vi.mock`ed at the top of the file).
- *   - Auth / permissions / input validation on any route.
- *   - End-to-end HTTP behavior against a real server.
- *
- * Regressions that would slip past this file (add a real-HTTP integration
- * test elsewhere if you care about these):
- *   - A handler throwing on valid input.
- *   - An auth check that silently returns 200 instead of 401/403.
- *   - A response body whose shape changes incompatibly.
- *   - A regex-discovered route that exists but is wired to the wrong handler.
- */
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
-// Stub the heavy handler modules and their dependencies
 vi.mock("./routes/lifeops-routes", () => ({
   handleLifeOpsRoutes: vi.fn(async () => {}),
 }));
@@ -51,7 +22,9 @@ function routeKey(type: string, path: string): string {
 }
 
 function readExactLifeOpsRouteKeys(): Set<string> {
-  const sourcePath = fileURLToPath(new URL("./routes/lifeops-routes.ts", import.meta.url));
+  const sourcePath = fileURLToPath(
+    new URL("./routes/lifeops-routes.ts", import.meta.url),
+  );
   const source = fs.readFileSync(sourcePath, "utf8");
   const matches = source.matchAll(
     /method === "([A-Z]+)"[\s\S]{0,160}?pathname === "([^"]+)"/g,
@@ -65,33 +38,34 @@ function readExactLifeOpsRouteKeys(): Set<string> {
   return keys;
 }
 
+async function loadRoutes() {
+  const { lifeopsPlugin } = await import("./routes/plugin");
+  return lifeopsPlugin.routes ?? [];
+}
+
 describe("lifeopsPlugin shape", () => {
   it("exports a valid Plugin with routes", async () => {
     const { lifeopsPlugin } = await import("./routes/plugin");
     expect(lifeopsPlugin.name).toBe("@elizaos/app-lifeops-routes");
-    expect(lifeopsPlugin.routes).toBeDefined();
-    expect(lifeopsPlugin.routes!.length).toBeGreaterThanOrEqual(80);
+    expect(lifeopsPlugin.routes?.length).toBeGreaterThanOrEqual(80);
   });
 
   it("all routes have rawPath: true", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
-    for (const route of lifeopsPlugin.routes!) {
-      expect((route as Record<string, unknown>).rawPath).toBe(true);
+    for (const route of await loadRoutes()) {
+      expect(route.rawPath).toBe(true);
     }
   });
 
   it("all routes have valid type and handler", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
     const validTypes = new Set(["GET", "POST", "PUT", "DELETE", "PATCH"]);
-    for (const route of lifeopsPlugin.routes!) {
+    for (const route of await loadRoutes()) {
       expect(validTypes.has(route.type)).toBe(true);
       expect(typeof route.handler).toBe("function");
     }
   });
 
   it("includes expected static LifeOps routes", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
-    const paths = lifeopsPlugin.routes!.map((r) => r.path);
+    const paths = (await loadRoutes()).map((r) => r.path);
 
     expect(paths).toContain("/api/lifeops/app-state");
     expect(paths).toContain("/api/lifeops/calendar/feed");
@@ -109,8 +83,7 @@ describe("lifeopsPlugin shape", () => {
   });
 
   it("includes expected dynamic LifeOps routes", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
-    const paths = lifeopsPlugin.routes!.map((r) => r.path);
+    const paths = (await loadRoutes()).map((r) => r.path);
 
     expect(paths).toContain("/api/lifeops/definitions/:id");
     expect(paths).toContain("/api/lifeops/goals/:id");
@@ -120,53 +93,54 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/browser/sessions/:id");
     expect(paths).toContain("/api/lifeops/browser/sessions/:id/progress");
     expect(paths).toContain("/api/lifeops/occurrences/:id/complete");
-    expect(paths).toContain("/api/lifeops/website-access/callbacks/:key/resolve");
+    expect(paths).toContain(
+      "/api/lifeops/website-access/callbacks/:key/resolve",
+    );
   });
 
   it("includes website-blocker routes", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
-    const paths = lifeopsPlugin.routes!.map((r) => r.path);
+    const paths = (await loadRoutes()).map((r) => r.path);
 
     expect(paths).toContain("/api/website-blocker");
     expect(paths).toContain("/api/website-blocker/status");
   });
 
   it("Google callback and success routes are public", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
+    const routes = await loadRoutes();
 
-    const callbackRoute = lifeopsPlugin.routes!.find(
+    const callbackRoute = routes.find(
       (r) => r.path === "/api/lifeops/connectors/google/callback",
     );
-    const successRoute = lifeopsPlugin.routes!.find(
+    const successRoute = routes.find(
       (r) => r.path === "/api/lifeops/connectors/google/success",
     );
 
     expect(callbackRoute).toBeDefined();
-    expect((callbackRoute as Record<string, unknown>).public).toBe(true);
+    expect(callbackRoute?.public).toBe(true);
     expect(successRoute).toBeDefined();
-    expect((successRoute as Record<string, unknown>).public).toBe(true);
+    expect(successRoute?.public).toBe(true);
   });
 
   it("handlers delegate to the underlying handler modules", async () => {
     const { handleLifeOpsRoutes } = await import("./routes/lifeops-routes");
-    const { lifeopsPlugin } = await import("./routes/plugin");
 
-    const route = lifeopsPlugin.routes!.find(
+    const route = (await loadRoutes()).find(
       (r) => r.path === "/api/lifeops/app-state" && r.type === "GET",
     );
-    expect(route).toBeDefined();
+    if (!route) {
+      throw new Error("Missing app-state route");
+    }
 
     const req = { method: "GET", url: "/api/lifeops/app-state" };
     const res = { statusCode: 0, setHeader: vi.fn(), end: vi.fn() };
-    await route!.handler(req, res, null);
+    await route.handler(req, res, null);
 
     expect(handleLifeOpsRoutes).toHaveBeenCalled();
   });
 
   it("registers every exact-path LifeOps handler route", async () => {
-    const { lifeopsPlugin } = await import("./routes/plugin");
     const registered = new Set(
-      lifeopsPlugin.routes!
+      (await loadRoutes())
         .filter((route) => route.path.startsWith("/api/lifeops/"))
         .map((route) => routeKey(route.type, route.path)),
     );

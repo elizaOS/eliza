@@ -1,20 +1,5 @@
-/**
- * LifeOps plugin — registers LifeOps and website-blocker routes with the
- * elizaOS runtime plugin route system.
- *
- * Unlike Vincent/Shopify/Steward (which have a handful of routes each),
- * LifeOps has 60+ routes with many dynamic segments. Rather than
- * duplicating every path pattern, we register a small set of catch-all
- * entries per HTTP method and delegate to the existing monolithic
- * `handleLifeOpsRoutes` / `handleWebsiteBlockerRoutes` handlers.
- *
- * The plugin route bridge in runtime-plugin-routes.ts matches exact path
- * segments, so we register one route per (method × prefix) combination.
- * Each handler builds the LifeOpsRouteContext or WebsiteBlockerRouteContext
- * that the underlying handlers expect, then delegates.
- */
-
 import type http from "node:http";
+import { TLSSocket } from "node:tls";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
@@ -26,11 +11,6 @@ import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
-
-// ---------------------------------------------------------------------------
-// Context builders — bridge plugin route (req, res, runtime) to the context
-// objects the LifeOps handlers expect.
-// ---------------------------------------------------------------------------
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -55,7 +35,7 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   const headers = req.headers ?? {};
   const protocol =
     firstHeaderValue(headers["x-forwarded-proto"]) ??
-    (((req.socket as { encrypted?: boolean } | undefined)?.encrypted ?? false)
+    (req.socket instanceof TLSSocket && req.socket.encrypted
       ? "https"
       : "http");
   const host =

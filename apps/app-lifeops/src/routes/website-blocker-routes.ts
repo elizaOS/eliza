@@ -1,18 +1,18 @@
+import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type {
+  LifeOpsOccurrence,
+  LifeOpsTaskDefinition,
+} from "@elizaos/app-lifeops/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
-  isWebsiteBlockedByPolicy,
   getSelfControlStatus,
+  isWebsiteBlockedByPolicy,
   parseSelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.ts";
 import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type {
-  LifeOpsOccurrence,
-  LifeOpsTaskDefinition,
-} from "@elizaos/app-lifeops/contracts";
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 
 type WebsiteBlockerRequestBody = {
   websites?: string[] | string;
@@ -44,7 +44,7 @@ function buildBlockRequest(
 }
 
 interface RequiredTaskInfo {
-  id: string;
+  id?: string;
   title: string;
   completed: boolean;
 }
@@ -57,18 +57,10 @@ interface WebsiteBlockerHostResponse {
   websites: string[];
 }
 
-/**
- * Lazy-import the LifeOps repository to resolve which definitions gate
- * access to a specific host and whether their current occurrences are
- * completed. The import is dynamic so the route file does not create a
- * hard dependency on the LifeOps database tables existing.
- */
 async function resolveRequiredTasksForHost(
   runtime: IAgentRuntime,
   host: string,
 ): Promise<{ groupKey: string | null; requiredTasks: RequiredTaskInfo[] }> {
-  // Dynamic import avoids a hard compile-time dependency on the LifeOps
-  // repository module, which may not be present in all deployments.
   const { LifeOpsRepository } = await import("../lifeops/repository.js");
   const repo = new LifeOpsRepository(runtime);
 
@@ -89,9 +81,6 @@ async function resolveRequiredTasksForHost(
   }
 
   const firstMatchingDefinition = matchingDefinitions[0];
-  if (!firstMatchingDefinition) {
-    return { groupKey: null, requiredTasks: [] };
-  }
   const groupKey = firstMatchingDefinition.websiteAccess?.groupKey ?? null;
   const requiredTasks: RequiredTaskInfo[] = [];
 
@@ -99,7 +88,6 @@ async function resolveRequiredTasksForHost(
     const occurrences: LifeOpsOccurrence[] =
       await repo.listOccurrencesForDefinition(agentId, definition.id);
 
-    // Find the most recent non-expired occurrence to check completion status
     const currentOccurrence = occurrences
       .filter(
         (occurrence) =>
@@ -111,11 +99,14 @@ async function resolveRequiredTasksForHost(
         return rightTime - leftTime;
       })[0];
 
-    requiredTasks.push({
-      id: currentOccurrence?.id ?? definition.id,
+    const task: RequiredTaskInfo = {
       title: definition.title,
       completed: currentOccurrence?.state === "completed",
-    });
+    };
+    if (currentOccurrence) {
+      task.id = currentOccurrence.id;
+    }
+    requiredTasks.push(task);
   }
 
   return { groupKey, requiredTasks };
@@ -144,15 +135,13 @@ export async function handleWebsiteBlockerRoutes(
     }
 
     const status = await getSelfControlStatus();
-    const blockedWebsites = status.blockedWebsites ?? status.websites;
-    const allowedWebsites = status.allowedWebsites ?? [];
     const hostBlocked =
       status.active &&
       isWebsiteBlockedByPolicy(
         {
-          blockedWebsites,
-          allowedWebsites,
-          matchMode: status.matchMode ?? "exact",
+          blockedWebsites: status.blockedWebsites,
+          allowedWebsites: status.allowedWebsites,
+          matchMode: status.matchMode,
         },
         queriedHost,
       );
@@ -162,7 +151,7 @@ export async function handleWebsiteBlockerRoutes(
       host: queriedHost,
       groupKey: null,
       requiredTasks: [],
-      websites: status.active ? blockedWebsites : [],
+      websites: status.active ? status.blockedWebsites : [],
     };
 
     if (hostBlocked && runtime) {

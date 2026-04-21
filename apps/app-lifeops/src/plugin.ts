@@ -1,20 +1,6 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { manageLifeOpsBrowserAction } from "./action.ts";
 import {
-  blockAppsAction,
-  getAppBlockStatusAction,
-  unblockAppsAction,
-} from "./actions/app-blocker.js";
-import { calendarAction } from "./actions/calendar.js";
-import { gmailAction } from "./actions/gmail.js";
-import { inboxAction } from "./actions/inbox.js";
-import {
-  blockWebsitesAction,
-  getWebsiteBlockStatusAction,
-  requestWebsiteBlockingPermissionAction,
-  unblockWebsitesAction,
-} from "./actions/website-blocker.js";
-import {
   getSelfControlStatus,
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
@@ -37,11 +23,9 @@ import {
 } from "./actions/checkin.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { crossPlatformGatewayAction } from "./actions/cross-platform-gateway.js";
 import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
-import { toggleLifeOpsFeatureAction } from "./actions/feature-toggle.js";
 import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
@@ -94,40 +78,10 @@ import {
   releaseBlockAction,
 } from "./website-blocker/chat-integration/index.js";
 
-import { screenTimeAction } from "./actions/screen-time.js";
-import {
-  getActivityReportAction,
-  getTimeOnAppAction,
-  getTimeOnSiteAction,
-} from "./actions/activity-report.js";
-
-import { remoteDesktopAction } from "./actions/remote-desktop.js";
-import { revokeRemoteSessionAction } from "./actions/revoke-remote-session.js";
-import { listRemoteSessionsAction } from "./actions/list-remote-sessions.js";
-
 import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
-
-import { calendlyAction } from "./actions/calendly.js";
-import {
-  checkAvailabilityAction,
-  proposeMeetingTimesAction,
-  schedulingAction,
-  updateMeetingPreferencesAction,
-} from "./actions/scheduling.js";
-
-import { generateDossierAction } from "./dossier/action.js";
-import { computeTravelBufferAction } from "./travel-time/action.js";
-
-import {
-  fetchBrowserActivityAction,
-  registerBrowserSessionAction,
-} from "./actions/browser-extension.js";
 
 import {
   FOLLOWUP_TRACKER_TASK_NAME,
-  listOverdueFollowupsAction,
-  markFollowupDoneAction,
-  setFollowupThresholdAction,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
 
@@ -255,24 +209,14 @@ const rawAppLifeOpsPlugin: Plugin = {
   actions: [
     manageLifeOpsBrowserAction,
     ownerWebsiteBlockAction,
-    blockWebsitesAction,
-    getWebsiteBlockStatusAction,
-    requestWebsiteBlockingPermissionAction,
-    unblockWebsitesAction,
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
     releaseBlockAction,
     ownerAppBlockAction,
-    blockAppsAction,
-    unblockAppsAction,
-    getAppBlockStatusAction,
     ownerCalendarAction,
-    calendarAction,
-    gmailAction,
     ownerInboxAction,
     xReadAction,
     scheduleXDmReplyAction,
-    inboxAction,
     approveRequestAction,
     rejectRequestAction,
     lifeAction,
@@ -282,17 +226,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     runNightCheckinAction,
     relationshipAction,
     ownerScreenTimeAction,
-    screenTimeAction,
-    getActivityReportAction,
-    getTimeOnAppAction,
-    getTimeOnSiteAction,
     twilioCallAction,
     callUserAction,
     callExternalAction,
     ownerRemoteDesktopAction,
-    remoteDesktopAction,
-    revokeRemoteSessionAction,
-    listRemoteSessionsAction,
     lifeOpsComputerUseAction,
     ownerScheduleAction,
     crossChannelSendAction,
@@ -303,23 +240,11 @@ const rawAppLifeOpsPlugin: Plugin = {
     requestFieldFillAction,
     addAutofillWhitelistAction,
     listAutofillWhitelistAction,
-    calendlyAction,
-    proposeMeetingTimesAction,
-    checkAvailabilityAction,
-    updateMeetingPreferencesAction,
-    schedulingAction,
-    listOverdueFollowupsAction,
-    markFollowupDoneAction,
-    setFollowupThresholdAction,
     dossierAction,
-    generateDossierAction,
-    computeTravelBufferAction,
     healthAction,
     subscriptionsAction,
     emailUnsubscribeAction,
     chatThreadControlAction,
-    registerBrowserSessionAction,
-    fetchBrowserActivityAction,
   ],
   providers: [
     lifeOpsBrowserProvider,

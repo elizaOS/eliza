@@ -1,24 +1,14 @@
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { broadcastIntent } from "../lifeops/intent-sync.js";
-
-/**
- * Cross-device intent bus agent-side action.
- *
- * Publishes an intent (alarm, reminder, block, ...) to the cloud device-bus
- * service so that every paired device for this owner can realize it.
- *
- * Graceful degradation: if the cloud URL is not configured we return a
- * structured failure — this is not a stub, it is an explicit absence.
- */
 
 const DEVICE_BUS_URL_ENV = "MILADY_DEVICE_BUS_URL";
 const DEVICE_BUS_TOKEN_ENV = "MILADY_DEVICE_BUS_TOKEN";
@@ -74,9 +64,7 @@ function normalizeKind(kind: string | undefined): KnownKind | string | null {
   return lower;
 }
 
-function coercePayload(
-  payload: unknown,
-): DeviceIntentPayload {
+function coercePayload(payload: unknown): DeviceIntentPayload {
   return payload && typeof payload === "object"
     ? (payload as DeviceIntentPayload)
     : {};
@@ -114,7 +102,9 @@ function readPayloadNumber(
   return null;
 }
 
-function mapLocalIntentKind(kind: string): "routine_reminder" | "attention_request" {
+function mapLocalIntentKind(
+  kind: string,
+): "routine_reminder" | "attention_request" {
   if (kind === "block") {
     return "attention_request";
   }
@@ -143,7 +133,8 @@ async function publishLocalFallbackIntent(args: {
       "summary",
     ]) ?? title;
   const actionUrl =
-    readPayloadString(args.payload, ["actionUrl", "url", "deepLink"]) ?? undefined;
+    readPayloadString(args.payload, ["actionUrl", "url", "deepLink"]) ??
+    undefined;
   const expiresInMinutes = readPayloadNumber(args.payload, [
     "expiresInMinutes",
     "durationMinutes",
@@ -224,7 +215,10 @@ export const publishDeviceIntentAction: Action & {
     "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, updated-ID interventions, cancellation-fee warnings, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn, even when the exact reservation, workflow, or event still needs a follow-up question. Do not use this for generic contextual bumps about unanswered events, group-chat handoff policies, or inbox coordination unless the owner explicitly asks for phone/desktop/mobile delivery; those belong to OWNER_INBOX or LIFE. Do not use this for scheduling preferences like protected sleep windows or no-call meeting hours; those belong to OWNER_CALENDAR.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     return hasOwnerAccess(runtime, message);
   },
 
@@ -348,7 +342,10 @@ export const publishDeviceIntentAction: Action & {
       };
     }
 
-    if (typeof data.intentId !== "string" || data.intentId.trim().length === 0) {
+    if (
+      typeof data.intentId !== "string" ||
+      data.intentId.trim().length === 0
+    ) {
       return {
         text: "",
         success: false,

@@ -116,10 +116,10 @@ describeSharedShouldRunContract(
 describeSharedShouldRunContract(
   "registerProactiveTaskWorker (proactive agent)",
   registerProactiveTaskWorker,
-  true,
+  false,
 );
 describeSharedShouldRunContract(
   "registerFollowupTrackerWorker (follow-up reconciler)",
   registerFollowupTrackerWorker,
-  true,
+  false,
 );

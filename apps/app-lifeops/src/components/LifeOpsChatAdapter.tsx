@@ -1,12 +1,3 @@
-/**
- * LifeOpsChatAdapter — bridges LifeOps selections into the chat composer.
- *
- * Listens for milady:chat:prefill events and forwards them to the
- * ChatComposerContext so the composer textarea is seeded.
- * Also exposes postToChat() for non-React callers and
- * useLifeOpsChatAdapter() for inline selection context banners.
- */
-
 import { useChatComposer } from "@elizaos/app-core";
 import { type ReactNode, useEffect } from "react";
 import {
@@ -16,11 +7,9 @@ import {
 
 export interface PrefillChatDetail {
   text: string;
-  /** If true the textarea content is selected so the user can overwrite. */
   select?: boolean;
 }
 
-/** Dispatch a prefill event. Use this from outside React trees. */
 export function postToChat(text: string): void {
   window.dispatchEvent(
     new CustomEvent<PrefillChatDetail>("milady:chat:prefill", {
@@ -29,11 +18,6 @@ export function postToChat(text: string): void {
   );
 }
 
-/**
- * Hook — call inside a component that is a descendant of ChatComposerCtx.
- * Listens for milady:chat:prefill and forwards the text to setChatInput.
- * Returns a contextual placeholder derived from the active selection.
- */
 export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
   placeholder: string | null;
 } {
@@ -76,10 +60,6 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
   return { placeholder };
 }
 
-/**
- * LifeOpsChatAdapter component — wraps the chat slot.
- * Reads SelectionContext and shows a context banner when something is selected.
- */
 export function LifeOpsChatAdapter({ children }: { children: ReactNode }) {
   const { selection } = useLifeOpsSelection();
   const { placeholder } = useLifeOpsChatAdapter(selection);
@@ -99,7 +79,6 @@ export function LifeOpsChatAdapter({ children }: { children: ReactNode }) {
   );
 }
 
-/** Build a reply-prefill string from a message summary. */
 export function buildReplyPrefill(opts: {
   channel: string;
   sender: string;

@@ -375,8 +375,13 @@ export function registerFollowupTrackerWorker(runtime: IAgentRuntime): void {
       try {
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
         return state.enabled;
-      } catch {
-        return true;
+      } catch (error) {
+        logger.warn(
+          `[followup-tracker] loadLifeOpsAppState failed; skipping follow-up tick because LifeOps toggle state is unknown: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return false;
       }
     },
     execute: (rt, options) =>
