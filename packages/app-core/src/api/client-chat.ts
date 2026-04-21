@@ -149,6 +149,11 @@ declare module "./client-base" {
         worldId?: string;
         /** User-facing server/world label for selectors and section headers. */
         worldLabel: string;
+        /**
+         * Normalized room kind — "DM" for 1:1 direct messages. Optional
+         * because not every connector tags rooms.
+         */
+        roomType?: string;
         title: string;
         avatarUrl?: string;
         lastMessageText: string;
