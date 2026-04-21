@@ -1,0 +1,38 @@
+{
+  "id": "plugin-manager",
+  "name": "Plugin Manager",
+  "description": "Dynamic plugin management for agents. Load and unload plugins at runtime",
+  "npmName": "@elizaos/plugin-plugin-manager",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "plugin-manager",
+    "manager"
+  ],
+  "config": {
+    "API_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Key",
+      "help": "API key for the service",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Package",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

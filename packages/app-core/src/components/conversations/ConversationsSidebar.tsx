@@ -40,10 +40,8 @@ import { client } from "../../api";
 import { useApp } from "../../state";
 import {
   ALWAYS_ON_PLUGIN_IDS,
-  connectorDisplayName,
   iconImageSource,
   resolveIcon,
-  VISIBLE_CONNECTOR_IDS,
 } from "../pages/plugin-list-utils";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
@@ -328,7 +326,7 @@ export function ConversationsSidebar({
         (p) =>
           p.category === "connector" &&
           !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
-          VISIBLE_CONNECTOR_IDS.has(p.id),
+          p.visible !== false,
       ),
     [plugins],
   );
@@ -684,7 +682,7 @@ export function ConversationsSidebar({
                           </SidebarContent.ItemIcon>
                           <SidebarContent.ItemBody>
                             <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                              {connectorDisplayName(plugin)}
+                              {plugin.name}
                             </span>
                           </SidebarContent.ItemBody>
                         </SidebarContent.ItemButton>

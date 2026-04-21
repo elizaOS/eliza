@@ -1,0 +1,37 @@
+{
+  "id": "simple-voice",
+  "name": "Simple Voice",
+  "description": "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents",
+  "npmName": "@elizaos/plugin-simple-voice",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "text-to-speech",
+    "sam",
+    "retro",
+    "1980s",
+    "simple-voice",
+    "simple",
+    "voice"
+  ],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Mic",
+    "group": "voice",
+    "groupOrder": 3,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://github.com/ai16z/eliza#readme",
+    "repository": "https://github.com/ai16z/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "voice"
+}
