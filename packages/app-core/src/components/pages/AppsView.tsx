@@ -120,15 +120,17 @@ export function AppsView() {
           serverAppsResult.reason,
         );
       }
-      // Static catalog (registry SoT) — internal tool apps + curated apps.
-      // Falls back to the legacy hardcoded list if the catalog endpoint is
-      // unavailable, so the UI never goes empty during a backend hiccup.
+      // Internal tool apps are client-owned navigation surfaces. The registry
+      // augments them with curated apps, but it must not be able to hide them.
       let catalogApps: RegistryAppInfo[];
       try {
-        catalogApps = await client.listCatalogApps();
+        catalogApps = [
+          ...getInternalToolApps(),
+          ...(await client.listCatalogApps()),
+        ];
       } catch (catalogErr) {
         console.warn(
-          "[AppsView] Failed to load catalog apps; using legacy fallback:",
+          "[AppsView] Failed to load catalog apps; using internal tools:",
           catalogErr,
         );
         catalogApps = getInternalToolApps();

@@ -243,6 +243,12 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
+      if (response.headersSent || response.writableEnded) {
+        if (!response.writableEnded) {
+          response.end();
+        }
+        return;
+      }
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
