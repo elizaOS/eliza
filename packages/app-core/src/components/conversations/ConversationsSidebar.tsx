@@ -494,19 +494,24 @@ export function ConversationsSidebar({
       });
     }
     return Array.from(groups.values())
-      .map((group) => ({
-        ...group,
-        icon: (
-          <ChatSourceIcon
-            source={group.key}
-            className="h-3.5 w-3.5"
-            decorative
-          />
-        ),
-        rows: [...group.rows].sort(
-          (left, right) => right.sortKey - left.sortKey,
-        ),
-      }))
+      .map((group) => {
+        const Brand = getBrandIcon(group.key);
+        return {
+          ...group,
+          icon: Brand ? (
+            <Brand className="h-3.5 w-3.5" />
+          ) : (
+            <ChatSourceIcon
+              source={group.key}
+              className="h-3.5 w-3.5"
+              decorative
+            />
+          ),
+          rows: [...group.rows].sort(
+            (left, right) => right.sortKey - left.sortKey,
+          ),
+        };
+      })
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [connectorsModel.rows]);
 
