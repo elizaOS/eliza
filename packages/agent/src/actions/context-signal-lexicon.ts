@@ -7,6 +7,7 @@ export type ContextSignalKey =
   | "calendar"
   | "draft_edit"
   | "gmail"
+  | "link_entity"
   | "lifeops"
   | "lifeops_cadence"
   | "lifeops_complete"
@@ -87,6 +88,13 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     keywordKeys: {
       strong: "contextSignal.gmail.strong",
       weak: "contextSignal.gmail.weak",
+    },
+  },
+  link_entity: {
+    contextLimit: 10,
+    keywordKeys: {
+      strong: "contextSignal.search_entity.strong",
+      weak: "contextSignal.search_entity.weak",
     },
   },
   lifeops: {

@@ -24,7 +24,7 @@ import type {
   TriageEntry,
   TriageResult,
 } from "../inbox/types.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 

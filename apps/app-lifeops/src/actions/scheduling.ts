@@ -28,7 +28,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import {
   LifeOpsService,

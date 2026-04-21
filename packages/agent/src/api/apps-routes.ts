@@ -36,7 +36,7 @@ async function streamAppHero(
   res: unknown,
   absolutePath: string,
   contentType: string,
-  error: (response: unknown, message: string, status?: number) => void,
+  error: (response: any, message: string, status?: number) => void,
 ): Promise<void> {
   let data: Buffer;
   try {

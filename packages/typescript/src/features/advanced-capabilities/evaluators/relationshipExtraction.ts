@@ -57,7 +57,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? false,
-	examples: (spec.examples ?? []) as EvaluationExample[],
+	examples: (spec.examples ?? []) as unknown as EvaluationExample[],
 
 	validate: async (
 		_runtime: IAgentRuntime,

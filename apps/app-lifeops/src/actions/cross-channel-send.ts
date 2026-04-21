@@ -24,7 +24,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
@@ -327,7 +327,7 @@ const CHANNEL_DISPATCHERS: Record<
   }),
   discord: async ({ runtime, channel, target, body }) => {
     try {
-      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      await dispatchViaRuntimeSendHandler(runtime, "discord", target, body);
       return buildDispatchSuccess({ channel, target, body });
     } catch (error) {
       return buildDispatchFailure({
@@ -340,7 +340,7 @@ const CHANNEL_DISPATCHERS: Record<
   },
   signal: async ({ runtime, channel, target, body }) => {
     try {
-      await dispatchViaRuntimeSendHandler(runtime, channel, target, body);
+      await dispatchViaRuntimeSendHandler(runtime, "signal", target, body);
       return buildDispatchSuccess({ channel, target, body });
     } catch (error) {
       return buildDispatchFailure({
@@ -477,7 +477,7 @@ const CHANNEL_DISPATCHERS: Record<
         encodeURIComponent(url),
         encodeURIComponent(paramString),
       ].join("&");
-      const signingKey = `${encodeURIComponent(credentials.apiSecret)}&${encodeURIComponent(credentials.accessSecret)}`;
+      const signingKey = `${encodeURIComponent(credentials.apiSecretKey)}&${encodeURIComponent(credentials.accessTokenSecret)}`;
       const signature = createHmac("sha1", signingKey)
         .update(signatureBase)
         .digest("base64");

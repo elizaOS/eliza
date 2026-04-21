@@ -5,7 +5,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import { Badge, Button, SegmentedControl } from "@elizaos/app-core";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
-import { Copy, ExternalLink, Github } from "lucide-react";
+import { Copy, ExternalLink, GitBranch } from "lucide-react";
 import { useCallback, useState } from "react";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
@@ -203,7 +203,7 @@ function GithubRow({
     <div className="space-y-2 border-t border-border/12 pt-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-          <Github className="h-4 w-4 shrink-0" />
+          <GitBranch className="h-4 w-4 shrink-0" />
           <span>GitHub</span>
         </div>
         <div className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">

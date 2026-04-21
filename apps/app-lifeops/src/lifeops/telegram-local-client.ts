@@ -2,7 +2,7 @@ import {
   defaultTelegramAccountDeviceModel,
   defaultTelegramAccountSystemVersion,
   loadTelegramAccountSessionString,
-} from "@elizaos/plugin-telegram/account-auth-service";
+} from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";
 import type {
   LifeOpsTelegramDialogSummary,
   VerifyLifeOpsTelegramConnectorResponse,
@@ -51,6 +51,21 @@ export interface TelegramDialogLike {
   } | null;
   entity?: Record<string, unknown> | null;
   inputEntity?: unknown;
+}
+
+export interface TelegramMessageSearchResult {
+  id: string;
+  chatId: string | null;
+  target: string | null;
+  text: string | null;
+  sentAt: string | null;
+  outbound: boolean;
+}
+
+export interface TelegramReadReceiptResult {
+  messageId: string;
+  read: boolean;
+  readCount: number | null;
 }
 
 export interface TelegramLocalClientDeps {
@@ -367,5 +382,109 @@ export async function verifyTelegramLocalConnector(args: {
         messageId,
       },
     };
+  });
+}
+
+export async function searchTelegramMessages(args: {
+  tokenRef: string;
+  query: string;
+  scope?: string;
+  limit?: number;
+  deps?: TelegramLocalClientDeps;
+}): Promise<TelegramMessageSearchResult[]> {
+  const deps = args.deps ?? {};
+  const query = args.query.trim();
+  if (query.length === 0) {
+    return [];
+  }
+
+  const limit = normalizeRecentLimit(args.limit);
+  return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
+    const dialogs = Array.from(await client.getDialogs({ limit: MAX_RECENT_LIMIT }));
+    const scopedDialogs =
+      typeof args.scope === "string" && args.scope.trim().length > 0
+        ? dialogs.filter((dialog) =>
+            collectDialogAliases(dialog).some(
+              (alias) => alias === normalizeLookup(args.scope ?? ""),
+            ),
+          )
+        : dialogs;
+
+    const results: TelegramMessageSearchResult[] = [];
+    for (const dialog of scopedDialogs) {
+      const entity = dialog.inputEntity ?? dialog.entity ?? dialog;
+      const messages = await client.getMessages(entity, { search: query, limit });
+      for (const message of messages) {
+        results.push({
+          id: serializeTelegramId(message.id) || `${normalizeDialogTitle(dialog)}:${results.length}`,
+          chatId: serializeTelegramId(dialog.id) || null,
+          target: normalizeDialogTitle(dialog),
+          text:
+            typeof message.message === "string" && message.message.trim().length > 0
+              ? message.message.trim()
+              : null,
+          sentAt: toIsoDate(message.date),
+          outbound: message.out === true,
+        });
+      }
+    }
+
+    return results.slice(0, limit);
+  });
+}
+
+export async function getTelegramReadReceipts(args: {
+  tokenRef: string;
+  target: string;
+  messageIds: string[];
+  deps?: TelegramLocalClientDeps;
+}): Promise<TelegramReadReceiptResult[]> {
+  const deps = args.deps ?? {};
+  const requested = new Set(
+    args.messageIds
+      .map((messageId) => messageId.trim())
+      .filter((messageId) => messageId.length > 0),
+  );
+  if (requested.size === 0) {
+    return [];
+  }
+
+  return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
+    const dialogs = Array.from(await client.getDialogs({ limit: MAX_RECENT_LIMIT }));
+    const entity = await resolveTelegramTarget(client, args.target, dialogs);
+    const messages = await client.getMessages(entity, {
+      search: "",
+      limit: Math.max(requested.size * 2, MAX_RECENT_LIMIT),
+    });
+
+    const receipts: TelegramReadReceiptResult[] = [];
+    for (const message of messages) {
+      const messageId = serializeTelegramId(message.id);
+      if (!requested.has(messageId)) {
+        continue;
+      }
+
+      receipts.push({
+        messageId,
+        read:
+          message.mentioned === true ||
+          (typeof message.readCount === "number" && message.readCount > 0),
+        readCount:
+          typeof message.readCount === "number" && Number.isFinite(message.readCount)
+            ? message.readCount
+            : null,
+      });
+    }
+
+    return args.messageIds.map((messageId) => {
+      const found = receipts.find((receipt) => receipt.messageId === messageId);
+      return (
+        found ?? {
+          messageId,
+          read: false,
+          readCount: null,
+        }
+      );
+    });
   });
 }
