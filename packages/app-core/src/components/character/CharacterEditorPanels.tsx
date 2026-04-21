@@ -677,53 +677,22 @@ export function CharacterExamplesPanel({
                   className="flex items-center gap-3"
                 >
                   <GripIconSvg />
-                </div>
-                {convo.examples.map((msg, mi) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                    key={`msg-${ci}-${mi}`}
-                    className="flex items-center gap-3"
+                  <span
+                    className={`w-12 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
                   >
-                    <span
-                      className={`w-12 shrink-0 pr-1 text-right text-[0.5rem] font-semibold uppercase tracking-[0.06em] ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
-                    >
-                      {msg.name === "{{user1}}" ? "user" : "agent"}
-                    </span>
-                    <Input
-                      value={msg.content?.text ?? ""}
-                      aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
-                      onChange={(e) => {
-                        const updated = [...normalizedMessageExamples];
-                        const convoClone = {
-                          examples: [...updated[ci].examples],
-                        };
-                        convoClone.examples[mi] = {
-                          ...convoClone.examples[mi],
-                          content: { text: e.target.value },
-                        };
-                        updated[ci] = convoClone;
-                        handleFieldEdit("messageExamples", updated);
-                      }}
-                      className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
-                    />
-                  </div>
-                ))}
-                <div className="mt-0.5 ml-[3.75rem] flex items-center justify-between">
-                  <button
-                    type="button"
-                    className={inlineAddBtn}
-                    onClick={() => {
-                      const agentName =
-                        typeof d.name === "string" && d.name.trim()
-                          ? d.name.trim()
-                          : "Agent";
+                    {msg.name === "{{user1}}" ? "user" : "agent"}
+                  </span>
+                  <Input
+                    value={msg.content?.text ?? ""}
+                    aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
+                    onChange={(e) => {
                       const updated = [...normalizedMessageExamples];
                       const convoClone = {
-                        examples: [
-                          ...updated[ci].examples,
-                          { name: "{{user1}}", content: { text: "" } },
-                          { name: agentName, content: { text: "" } },
-                        ],
+                        examples: [...updated[ci].examples],
+                      };
+                      convoClone.examples[mi] = {
+                        ...convoClone.examples[mi],
+                        content: { text: e.target.value },
                       };
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);

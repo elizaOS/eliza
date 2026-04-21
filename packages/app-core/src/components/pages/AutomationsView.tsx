@@ -3161,25 +3161,6 @@ function AutomationsLayout() {
               />
             )
           ) : activeSubpage === "node-catalog" ? (
-            <AutomationNodeCatalogPane nodes={automationNodes} />
-          ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
-            <WorkflowAutomationDetailPane
-              key={resolvedSelectedItem.id}
-              automation={resolvedSelectedItem}
-              nodes={automationNodes}
-              n8nStatus={n8nStatus}
-              workflowFetchError={workflowFetchError}
-              workflowBusyId={workflowBusyId}
-              workflowOpsBusy={workflowOpsBusy}
-              onConversationResolved={setActiveWorkflowConversation}
-              onDeleteWorkflow={handleDeleteWorkflow}
-              onRefreshWorkflows={handleRefreshWorkflows}
-              onStartLocalN8n={handleStartLocalN8n}
-              onToggleWorkflowActive={handleToggleWorkflowActive}
-              onWorkflowMutated={handleWorkflowMutated}
-            />
-          )
-        ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
@@ -3227,8 +3208,9 @@ function AutomationsLayout() {
                 Select an automation
               </h3>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
 
       <WorkflowTemplatesModal
         open={templatesModalOpen}
