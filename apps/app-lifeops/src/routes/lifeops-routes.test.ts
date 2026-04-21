@@ -1,33 +1,7 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { LifeOpsService } from "../lifeops/service.js";
 import { handleLifeOpsRoutes, type LifeOpsRouteContext } from "./lifeops-routes.js";
-
-const serviceSpies = vi.hoisted(() => ({
-  getXDmDigest: vi.fn(),
-  syncBrowserCompanion: vi.fn(),
-}));
-
-vi.mock("../lifeops/service.js", () => {
-  class LifeOpsServiceError extends Error {
-    status: number;
-
-    constructor(status: number, message: string) {
-      super(message);
-      this.name = "LifeOpsServiceError";
-      this.status = status;
-    }
-  }
-
-  class LifeOpsService {
-    getXDmDigest = serviceSpies.getXDmDigest;
-    syncBrowserCompanion = serviceSpies.syncBrowserCompanion;
-  }
-
-  return {
-    LifeOpsService,
-    LifeOpsServiceError,
-  };
-});
 
 const runtime = {
   agentId: "00000000-0000-0000-0000-000000000000",
@@ -77,8 +51,7 @@ function createContext(
 }
 
 afterEach(() => {
-  serviceSpies.getXDmDigest.mockReset();
-  serviceSpies.syncBrowserCompanion.mockReset();
+  vi.restoreAllMocks();
 });
 
 describe("LifeOps route validation", () => {
@@ -204,6 +177,10 @@ describe("LifeOps route validation", () => {
   });
 
   it("rejects X DM digest limits above the route maximum before service dispatch", async () => {
+    const getXDmDigest = vi.spyOn(
+      LifeOpsService.prototype,
+      "getXDmDigest",
+    );
     const { context, error, json } = createContext(
       "GET",
       "/api/lifeops/x/dms/digest?limit=101",
@@ -217,7 +194,7 @@ describe("LifeOps route validation", () => {
       400,
     );
     expect(json).not.toHaveBeenCalled();
-    expect(serviceSpies.getXDmDigest).not.toHaveBeenCalled();
+    expect(getXDmDigest).not.toHaveBeenCalled();
   });
 
   it("rejects browser auto-pair requests from unrelated origins before reading a body", async () => {
@@ -273,6 +250,10 @@ describe("LifeOps route validation", () => {
   });
 
   it("requires browser companion auth headers before sync dispatch", async () => {
+    const syncBrowserCompanion = vi.spyOn(
+      LifeOpsService.prototype,
+      "syncBrowserCompanion",
+    );
     const { context, error, json, readJsonBody } = createContext(
       "POST",
       "/api/lifeops/browser/companions/sync",
@@ -287,7 +268,7 @@ describe("LifeOps route validation", () => {
       401,
     );
     expect(readJsonBody).toHaveBeenCalledOnce();
-    expect(serviceSpies.syncBrowserCompanion).not.toHaveBeenCalled();
+    expect(syncBrowserCompanion).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
   });
 });
