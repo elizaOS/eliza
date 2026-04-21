@@ -3688,7 +3688,7 @@ function renderGooAgentDetail(agent: GooPaperAgent): string {
   const closedPositions = agent.positions.filter(p => p.state !== 'active');
 
   const posRow = (p: any, idx: number) => {
-    const ppnl = p.unrealizedPnlUsd ?? 0;
+    const ppnl = p.state === 'exited' ? (p.realizedPnlUsd ?? 0) : (p.unrealizedPnlUsd ?? 0);
     const cls = ppnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
     const gain = p.entryPriceUsd > 0 ? ((p.currentPriceUsd - p.entryPriceUsd) / p.entryPriceUsd * 100) : 0;
     const sizeVal = p.allocationUsd ?? p.sizeUsd ?? 0;
@@ -7701,6 +7701,7 @@ sections.forEach(function(s) { observer.observe(s); });
 function renderBacktestPage(
   agents: GooPaperAgent[],
   snapshot: any,
+  bnbPrice: number = 600,
 ): string {
   const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const fmtBnb = (v: number) => v.toFixed(4);
@@ -7749,7 +7750,8 @@ function renderBacktestPage(
     const pnlCls = a.totalPnlUsd >= 0 ? 'bt-pos' : 'bt-neg';
     const statColor: Record<string, string> = { active:'#00C7D2', starving:'#ca8a04', dying:'#ea580c', dead:'#D1D5DB' };
     const initialBnb = a.initialTreasuryBnb || 1;
-    const roi = ((a.treasuryBnb + (a.flywheel?.totalProfitBnb ?? 0) - initialBnb) / initialBnb) * 100;
+    const agentInvestedUsd = initialBnb * bnbPrice;
+    const roi = agentInvestedUsd > 0 ? (a.totalPnlUsd / agentInvestedUsd) * 100 : 0;
     const activePos = a.positions.filter(p => p.state === 'active').length;
     const exitedPos = a.positions.filter(p => p.state === 'exited').length;
     const maxDrawdown = a.worstTradeUsd < 0 ? a.worstTradeUsd : 0;
@@ -9478,8 +9480,9 @@ Guidelines:
   if (pathname === "/backtest") {
     const agents = getPaperAgents();
     const snapshot = getLatestSnapshot();
+    const bnbPx = getBnbPriceUsd() || 600;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(renderBacktestPage(agents, snapshot));
+    res.end(renderBacktestPage(agents, snapshot, bnbPx));
     return;
   }
 
