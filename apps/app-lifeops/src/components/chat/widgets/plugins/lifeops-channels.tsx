@@ -3,9 +3,11 @@ import type { TriggerSummary } from "@elizaos/app-core/api/client";
 import {
   EmptyWidgetState,
   WidgetSection,
-  type ChatSidebarWidgetDefinition,
-  type ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets";
+} from "@elizaos/app-core/components/chat/widgets/shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "@elizaos/app-core/components/chat/widgets/types";
 import { useApp } from "@elizaos/app-core/state";
 import type {
   LifeOpsCalendarEvent,
