@@ -3385,6 +3385,7 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
     <nav class="goo-nav">
       <a href="/">Home</a>
       <a href="/dashboard">Dashboard</a>
+      <a href="/backtest">Backtest</a>
       <a href="/goo" class="active">Goo Economy Arena</a>
       <a href="/docs">Docs</a>
       <span style="width:1px;height:20px;background:var(--goo-border);margin:0 2px"></span>
@@ -6439,6 +6440,7 @@ function renderHtml(
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
         <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
+        <a class="tb-btn primary" href="/backtest" title="Strategy Backtest">&#x1F4C8; BACKTEST</a>
         <a class="tb-btn primary tb-btn--goo" href="/goo" title="Goo Economy Arena"><img src="/assets/goo-economy-logo.png" alt="Goo" class="tb-goo-icon" /> GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
@@ -6500,6 +6502,7 @@ function renderHtml(
           <button class="qa-btn" data-nav="flywheel"><span class="qa-btn__icon">&#x1F504;</span>FLYWHEEL</button>
           <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
           <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon"><img src="/assets/goo-economy-logo.png" alt="Goo" style="width:14px;height:14px;border-radius:50%;vertical-align:middle" /></span>GOO</button>
+          <button class="qa-btn" onclick="window.location='/backtest'"><span class="qa-btn__icon">&#x1F4C8;</span>BACKTEST</button>
         </div>
 
         <!-- ElizaCloud -->
@@ -7689,6 +7692,249 @@ var observer = new IntersectionObserver(function(entries) {
 }, { rootMargin: '-20% 0px -60% 0px' });
 sections.forEach(function(s) { observer.observe(s); });
 </script></body></html>`;
+}
+
+/* ─── Strategy Backtest Page ──────────────────────────────────────── */
+function renderBacktestPage(
+  agents: GooPaperAgent[],
+  snapshot: any,
+): string {
+  const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtBnb = (v: number) => v.toFixed(4);
+
+  const sorted = [...agents].sort((a, b) => b.acquisitionScore - a.acquisitionScore);
+  const totalTrades = agents.reduce((s, a) => s + a.totalTradesCount, 0);
+  const totalPnl = agents.reduce((s, a) => s + a.totalPnlUsd, 0);
+  const avgWinRate = agents.length > 0 ? agents.reduce((s, a) => s + a.winRate, 0) / agents.length : 0;
+  const bestAgent = sorted[0];
+  const worstAgent = sorted[sorted.length - 1];
+  const totalFlywheelBnb = agents.reduce((s, a) => s + (a.flywheel?.totalProfitBnb ?? 0), 0);
+
+  const strategyGroups = new Map<string, { label: string; agents: GooPaperAgent[] }>();
+  for (const a of agents) {
+    const key = a.strategy.id;
+    if (!strategyGroups.has(key)) strategyGroups.set(key, { label: a.strategy.label, agents: [] });
+    strategyGroups.get(key)!.agents.push(a);
+  }
+
+  const strategyRows = Array.from(strategyGroups.entries()).map(([id, group]) => {
+    const ga = group.agents;
+    const trades = ga.reduce((s, a) => s + a.totalTradesCount, 0);
+    const wins = ga.reduce((s, a) => s + a.winCount, 0);
+    const losses = ga.reduce((s, a) => s + a.lossCount, 0);
+    const pnl = ga.reduce((s, a) => s + a.totalPnlUsd, 0);
+    const wr = trades > 0 ? (wins / (wins + losses || 1)) * 100 : 0;
+    const treasury = ga.reduce((s, a) => s + a.treasuryBnb, 0);
+    const avgScore = ga.reduce((s, a) => s + a.acquisitionScore, 0) / ga.length;
+    const best = ga.reduce((s, a) => Math.max(s, a.bestTradeUsd), 0);
+    const worst = ga.reduce((s, a) => Math.min(s, a.worstTradeUsd), 0);
+    const pnlCls = pnl >= 0 ? 'bt-pos' : 'bt-neg';
+    return `<tr>
+      <td><strong>${escapeHtml(group.label)}</strong><br/><span class="bt-dim">${ga.length} agent${ga.length > 1 ? 's' : ''}</span></td>
+      <td>${trades}</td>
+      <td><span class="bt-pos">${wins}</span> / <span class="bt-neg">${losses}</span></td>
+      <td>${wr.toFixed(1)}%</td>
+      <td class="${pnlCls}">${pnl >= 0 ? '+' : '-'}${fmtUsd(pnl)}</td>
+      <td>${fmtBnb(treasury)}</td>
+      <td class="bt-pos">+${fmtUsd(best)}</td>
+      <td class="bt-neg">-${fmtUsd(Math.abs(worst))}</td>
+      <td>${avgScore.toFixed(0)}</td>
+    </tr>`;
+  }).join('');
+
+  const agentRows = sorted.map((a, i) => {
+    const pnlCls = a.totalPnlUsd >= 0 ? 'bt-pos' : 'bt-neg';
+    const statColor: Record<string, string> = { active:'#00C7D2', starving:'#ca8a04', dying:'#ea580c', dead:'#D1D5DB' };
+    const initialBnb = a.initialTreasuryBnb || 1;
+    const roi = ((a.treasuryBnb + (a.flywheel?.totalProfitBnb ?? 0) - initialBnb) / initialBnb) * 100;
+    const activePos = a.positions.filter(p => p.state === 'active').length;
+    const exitedPos = a.positions.filter(p => p.state === 'exited').length;
+    const maxDrawdown = a.worstTradeUsd < 0 ? a.worstTradeUsd : 0;
+    return `<tr>
+      <td><strong>#${i + 1}</strong></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="bt-dot" style="background:${statColor[a.chainState] || '#888'}"></span>
+          <div><strong>${escapeHtml(a.agentName)}</strong><br/><span class="bt-dim">${escapeHtml(a.strategy.label)}</span></div>
+        </div>
+      </td>
+      <td style="color:${statColor[a.chainState]}">${a.chainState.toUpperCase()}</td>
+      <td>${a.totalTradesCount}</td>
+      <td>${a.winRate.toFixed(1)}%</td>
+      <td class="${pnlCls}">${a.totalPnlUsd >= 0 ? '+' : '-'}${fmtUsd(a.totalPnlUsd)}</td>
+      <td class="${roi >= 0 ? 'bt-pos' : 'bt-neg'}">${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%</td>
+      <td>${fmtBnb(a.treasuryBnb)}</td>
+      <td>${a.acquisitionScore}/100</td>
+      <td>${activePos}/${exitedPos}</td>
+    </tr>`;
+  }).join('');
+
+  const tradeLogRows = sorted.flatMap(a => a.tradeHistory.map(t => ({
+    ...t, agentName: a.agentName, strategy: a.strategy.label,
+  }))).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)).slice(0, 50).map(t => {
+    const sideCls = t.side === 'buy' ? 'bt-buy' : 'bt-sell';
+    const pnlCls = t.pnlUsd >= 0 ? 'bt-pos' : 'bt-neg';
+    const time = new Date(t.timestamp);
+    const timeStr = `${time.getMonth()+1}/${time.getDate()} ${time.toTimeString().slice(0,5)}`;
+    return `<tr>
+      <td class="bt-dim">${timeStr}</td>
+      <td><span class="${sideCls}">${t.side.toUpperCase()}</span></td>
+      <td>${escapeHtml(t.tokenSymbol)}</td>
+      <td>${escapeHtml((t as any).agentName)}</td>
+      <td>${fmtUsd(t.amountUsd)}</td>
+      <td class="${pnlCls}">${t.pnlUsd >= 0 ? '+' : '-'}${fmtUsd(t.pnlUsd)}</td>
+      <td class="bt-dim">${escapeHtml(t.reason)}</td>
+    </tr>`;
+  }).join('');
+
+  const riskParams = sorted.map(a => `<tr>
+    <td><strong>${escapeHtml(a.agentName)}</strong></td>
+    <td>${escapeHtml(a.strategy.label)}</td>
+    <td>${a.strategy.minScore}</td>
+    <td>${a.strategy.maxPositions}</td>
+    <td>${a.strategy.buyPct}%</td>
+    <td>${a.strategy.stopLossPct}%</td>
+    <td>${a.strategy.takeProfitRules.map(r => r.label).join(', ')}</td>
+    <td>${a.strategy.trailingStopEnabled ? `${a.strategy.trailingStopPct}%` : 'Off'}</td>
+    <td>${a.strategy.exitOnHolderDrop ? `${a.strategy.holderDropThreshold}` : 'Off'}</td>
+    <td>${a.strategy.exitOnKolExit ? `Min ${a.strategy.minKolCount}` : 'Off'}</td>
+  </tr>`).join('');
+
+  const runDuration = agents.length > 0 ? Date.now() - Date.parse(agents[0].createdAt) : 0;
+  const durationStr = runDuration > 86400000 ? `${(runDuration / 86400000).toFixed(1)}d` :
+    runDuration > 3600000 ? `${(runDuration / 3600000).toFixed(1)}h` : `${(runDuration / 60000).toFixed(0)}m`;
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Strategy Backtest | elizaOK</title>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@100..800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a09;--surface:rgba(18,18,16,.85);--border:rgba(246,231,15,.1);--text:#f5f5f0;--dim:rgba(245,245,240,.45);--yellow:#F6E70F;--green:#22c55e;--red:#ef4444;--cyan:#00C7D2;--orange:#f97316;}
+body{background:var(--bg);color:var(--text);font-family:'Martian Mono',monospace;min-height:100vh;}
+a{color:var(--yellow);text-decoration:none;}
+.bt-wrap{max-width:1200px;margin:0 auto;padding:24px 20px 40px;}
+.bt-topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 0 20px;border-bottom:1px solid var(--border);margin-bottom:24px;}
+.bt-topbar h1{font-size:16px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.bt-topbar__nav{display:flex;gap:12px;font-size:11px;}
+.bt-topbar__nav a{color:var(--dim);padding:4px 10px;border-radius:6px;transition:all .2s;}
+.bt-topbar__nav a:hover,.bt-topbar__nav a.active{color:var(--text);background:rgba(246,231,15,.08);}
+.bt-badge{display:inline-block;background:rgba(246,231,15,.12);color:var(--yellow);font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+.bt-badge--live{background:rgba(34,197,94,.15);color:var(--green);animation:bt-pulse 2s infinite;}
+@keyframes bt-pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.bt-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px;}
+.bt-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;}
+.bt-kpi span{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px;}
+.bt-kpi strong{font-size:18px;font-weight:700;display:block;}
+.bt-section{margin-bottom:28px;}
+.bt-section h2{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.bt-table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);background:var(--surface);}
+table.bt-table{width:100%;border-collapse:collapse;font-size:11px;}
+.bt-table th{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;}
+.bt-table td{padding:8px 12px;border-bottom:1px solid rgba(246,231,15,.04);vertical-align:middle;}
+.bt-table tbody tr:hover{background:rgba(246,231,15,.03);}
+.bt-table tbody tr:last-child td{border-bottom:none;}
+.bt-pos{color:var(--green);}
+.bt-neg{color:var(--red);}
+.bt-dim{color:var(--dim);font-size:10px;}
+.bt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block;}
+.bt-buy{color:var(--cyan);font-weight:600;font-size:10px;}
+.bt-sell{color:var(--orange);font-weight:600;font-size:10px;}
+.bt-method{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;font-size:11px;line-height:1.7;}
+.bt-method h3{font-size:12px;font-weight:600;margin-bottom:8px;color:var(--yellow);}
+.bt-method ul{padding-left:18px;color:var(--dim);}
+.bt-method li{margin-bottom:4px;}
+.bt-method li strong{color:var(--text);}
+.bt-footer{text-align:center;padding:20px;font-size:10px;color:var(--dim);border-top:1px solid var(--border);margin-top:20px;}
+@media(max-width:768px){
+  .bt-summary{grid-template-columns:repeat(2,1fr);}
+  .bt-topbar{flex-direction:column;gap:12px;align-items:flex-start;}
+  .bt-kpi strong{font-size:14px;}
+}
+</style>
+<meta http-equiv="refresh" content="60"/>
+</head>
+<body>
+<div class="bt-wrap">
+  <div class="bt-topbar">
+    <h1>&#x1F4C8; Strategy Backtest <span class="bt-badge--live">LIVE</span></h1>
+    <nav class="bt-topbar__nav">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/backtest" class="active">Backtest</a>
+      <a href="/goo">Goo Arena</a>
+      <a href="/docs">Docs</a>
+    </nav>
+  </div>
+
+  <div class="bt-method">
+    <h3>Methodology</h3>
+    <p>elizaOK runs <strong>${agents.length} parallel agents</strong> with distinct strategy configurations against <strong>live BSC market data</strong> from GeckoTerminal. Each agent starts with <strong>1.0 BNB</strong> treasury and independently scans, scores, enters, manages, and exits positions using real-time on-chain metrics. This is a live forward-test (paper trading) — not simulated historical replay.</p>
+    <ul>
+      <li><strong>Data source:</strong> GeckoTerminal BSC new_pools + trending_pools, enriched with GMGN holder/KOL/whale data</li>
+      <li><strong>Scoring:</strong> 0-100 composite score (liquidity, volume, buy/sell ratio, FDV, pool age, KOL holdings, holder distribution)</li>
+      <li><strong>Execution:</strong> Paper execution at discovery FDV — each agent manages positions independently</li>
+      <li><strong>Risk management:</strong> Per-strategy stop-loss, multi-stage take-profit, trailing stop, smart exit (holder attrition, KOL exits, whale dumps)</li>
+      <li><strong>Duration:</strong> ${durationStr} elapsed · scans every 15 minutes</li>
+    </ul>
+  </div>
+
+  <div class="bt-summary">
+    <div class="bt-kpi"><span>Strategies</span><strong>${strategyGroups.size}</strong></div>
+    <div class="bt-kpi"><span>Agents</span><strong>${agents.length}</strong></div>
+    <div class="bt-kpi"><span>Total Trades</span><strong>${totalTrades}</strong></div>
+    <div class="bt-kpi"><span>Avg Win Rate</span><strong>${avgWinRate.toFixed(1)}%</strong></div>
+    <div class="bt-kpi"><span>Total P&L</span><strong class="${totalPnl >= 0 ? 'bt-pos' : 'bt-neg'}">${totalPnl >= 0 ? '+' : '-'}${fmtUsd(totalPnl)}</strong></div>
+    <div class="bt-kpi"><span>Flywheel Profit</span><strong>${fmtBnb(totalFlywheelBnb)} BNB</strong></div>
+    <div class="bt-kpi"><span>Run Duration</span><strong>${durationStr}</strong></div>
+    <div class="bt-kpi"><span>Best Agent</span><strong style="font-size:12px">${bestAgent ? escapeHtml(bestAgent.agentName) : 'n/a'}</strong></div>
+  </div>
+
+  <div class="bt-section">
+    <h2>&#x1F3AF; Strategy Comparison</h2>
+    <div class="bt-table-wrap"><table class="bt-table">
+      <thead><tr>
+        <th>Strategy</th><th>Trades</th><th>W / L</th><th>Win Rate</th><th>P&L</th><th>Treasury</th><th>Best</th><th>Worst</th><th>Acq. Score</th>
+      </tr></thead>
+      <tbody>${strategyRows || '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--dim)">Waiting for first cycle...</td></tr>'}</tbody>
+    </table></div>
+  </div>
+
+  <div class="bt-section">
+    <h2>&#x1F3C6; Agent Leaderboard</h2>
+    <div class="bt-table-wrap"><table class="bt-table">
+      <thead><tr>
+        <th>Rank</th><th>Agent</th><th>Status</th><th>Trades</th><th>Win Rate</th><th>P&L</th><th>ROI</th><th>Treasury</th><th>Score</th><th>Pos (A/E)</th>
+      </tr></thead>
+      <tbody>${agentRows || '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--dim)">Waiting for first cycle...</td></tr>'}</tbody>
+    </table></div>
+  </div>
+
+  <div class="bt-section">
+    <h2>&#x2699;&#xFE0F; Risk Parameters Matrix</h2>
+    <div class="bt-table-wrap"><table class="bt-table">
+      <thead><tr>
+        <th>Agent</th><th>Strategy</th><th>Min Score</th><th>Max Pos.</th><th>Buy Size</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing Stop</th><th>Holder Exit</th><th>KOL Exit</th>
+      </tr></thead>
+      <tbody>${riskParams}</tbody>
+    </table></div>
+  </div>
+
+  <div class="bt-section">
+    <h2>&#x1F4DD; Trade Log (Latest ${Math.min(50, sorted.flatMap(a => a.tradeHistory).length)})</h2>
+    <div class="bt-table-wrap"><table class="bt-table">
+      <thead><tr>
+        <th>Time</th><th>Side</th><th>Token</th><th>Agent</th><th>Amount</th><th>P&L</th><th>Reason</th>
+      </tr></thead>
+      <tbody>${tradeLogRows || '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--dim)">No trades yet. Agents will trade on the next discovery cycle.</td></tr>'}</tbody>
+    </table></div>
+  </div>
+
+  <div class="bt-footer">
+    elizaOK Strategy Backtest Engine &middot; Live Paper Trading &middot; Powered by <a href="https://github.com/HertzFlow/goo-launch">Goo Economy</a> &middot; Auto-refresh 60s
+  </div>
+</div>
+</body></html>`;
 }
 
 /* ─── Agent Compare Page ─────────────────────────────────────────── */
@@ -9217,6 +9463,14 @@ Guidelines:
       ...(cloudSession ? { "set-cookie": serializeElizaCloudSession(cloudSession) } : {}),
     });
     res.end(renderAirdropPage(snapshot, cloudSession, distributionPlan, distributionExecution, distributionLedger));
+    return;
+  }
+
+  if (pathname === "/backtest") {
+    const agents = getPaperAgents();
+    const snapshot = getLatestSnapshot();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(renderBacktestPage(agents, snapshot));
     return;
   }
 
