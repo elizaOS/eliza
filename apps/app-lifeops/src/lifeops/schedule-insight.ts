@@ -624,6 +624,12 @@ export async function inspectLifeOpsSchedule(args: {
   };
 }
 
+export const __internal = {
+  windowsFromActivityEvents,
+  firstActiveAfterWake,
+  ACTIVITY_EVENT_MAX_WINDOW_MS,
+};
+
 export async function refreshLifeOpsScheduleInsight(args: {
   runtime: IAgentRuntime;
   repository: LifeOpsRepository;
