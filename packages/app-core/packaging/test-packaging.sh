@@ -81,20 +81,20 @@ bold "╚═══════════════════════�
 echo ""
 
 # ── 1. PyPI Package ──────────────────────────────────────────────────────────
-bold "1. PyPI Package (milady)"
+bold "1. PyPI Package (elizaos-app)"
 check_file "pyproject.toml" "$SCRIPT_DIR/pypi/pyproject.toml"
-check_file "milady/__init__.py" "$SCRIPT_DIR/pypi/milady/__init__.py"
-check_file "milady/__main__.py" "$SCRIPT_DIR/pypi/milady/__main__.py"
-check_file "milady/cli.py" "$SCRIPT_DIR/pypi/milady/cli.py"
-check_file "milady/loader.py" "$SCRIPT_DIR/pypi/milady/loader.py"
-check_file "milady/py.typed" "$SCRIPT_DIR/pypi/milady/py.typed"
+check_file "elizaos_app/__init__.py" "$SCRIPT_DIR/pypi/elizaos_app/__init__.py"
+check_file "elizaos_app/__main__.py" "$SCRIPT_DIR/pypi/elizaos_app/__main__.py"
+check_file "elizaos_app/cli.py" "$SCRIPT_DIR/pypi/elizaos_app/cli.py"
+check_file "elizaos_app/loader.py" "$SCRIPT_DIR/pypi/elizaos_app/loader.py"
+check_file "elizaos_app/py.typed" "$SCRIPT_DIR/pypi/elizaos_app/py.typed"
 check_file "README.md" "$SCRIPT_DIR/pypi/README.md"
 
 # Validate Python syntax
 if command -v python3 &>/dev/null; then
   check "Python syntax valid" python3 -c "
 import ast, sys, pathlib
-for f in pathlib.Path('$SCRIPT_DIR/pypi/milady').glob('*.py'):
+for f in pathlib.Path('$SCRIPT_DIR/pypi/elizaos_app').glob('*.py'):
     ast.parse(f.read_text())
 "
   # Validate pyproject.toml is parseable
@@ -111,19 +111,19 @@ tomllib.loads(pathlib.Path('$SCRIPT_DIR/pypi/pyproject.toml').read_text())
   fi
 
   # Import test (in subprocess to avoid polluting this env)
-  check "milady module importable" python3 -c "
+  check "elizaos_app module importable" python3 -c "
 import sys; sys.path.insert(0, '$SCRIPT_DIR/pypi')
-import milady
-assert milady.__version__, 'No version'
-assert hasattr(milady, 'run'), 'Missing run'
-assert hasattr(milady, 'ensure_runtime'), 'Missing ensure_runtime'
-assert hasattr(milady, 'get_version'), 'Missing get_version'
+import elizaos_app
+assert elizaos_app.__version__, 'No version'
+assert hasattr(elizaos_app, 'run'), 'Missing run'
+assert hasattr(elizaos_app, 'ensure_runtime'), 'Missing ensure_runtime'
+assert hasattr(elizaos_app, 'get_version'), 'Missing get_version'
 "
 
   # Loader unit tests
   check "Version parser" python3 -c "
 import sys; sys.path.insert(0, '$SCRIPT_DIR/pypi')
-from milady.loader import _parse_version
+from elizaos_app.loader import _parse_version
 assert _parse_version('v22.12.0') == (22, 12, 0)
 assert _parse_version('v18.0.0') == (18, 0, 0)
 assert _parse_version('v1.2.3-nightly') == (1, 2, 3)
@@ -132,7 +132,7 @@ assert _parse_version('not-a-version') is None
 
   check "Node detection" python3 -c "
 import sys; sys.path.insert(0, '$SCRIPT_DIR/pypi')
-from milady.loader import _find_node, _get_node_version
+from elizaos_app.loader import _find_node, _get_node_version
 node = _find_node()
 assert node, 'Node not found'
 ver = _get_node_version(node)
@@ -146,23 +146,23 @@ echo ""
 
 # ── 2. Homebrew Formula & Cask ─────────────────────────────────────────────────
 bold "2. Homebrew Formula & Cask"
-check_file "milady.rb" "$SCRIPT_DIR/homebrew/milady.rb"
-check_file "milady.cask.rb" "$SCRIPT_DIR/homebrew/milady.cask.rb"
+check_file "elizaos-app.rb" "$SCRIPT_DIR/homebrew/elizaos-app.rb"
+check_file "elizaos-app.cask.rb" "$SCRIPT_DIR/homebrew/elizaos-app.cask.rb"
 
 # Validate Ruby syntax
 if command -v ruby &>/dev/null; then
-  check "Formula Ruby syntax valid" ruby -c "$SCRIPT_DIR/homebrew/milady.rb"
-  check "Cask Ruby syntax valid" ruby -c "$SCRIPT_DIR/homebrew/milady.cask.rb"
+  check "Formula Ruby syntax valid" ruby -c "$SCRIPT_DIR/homebrew/elizaos-app.rb"
+  check "Cask Ruby syntax valid" ruby -c "$SCRIPT_DIR/homebrew/elizaos-app.cask.rb"
 else
   skip "Ruby syntax check" "ruby not available"
 fi
 
 # Check formula has real SHA256 (not placeholder)
-check "Formula SHA256 is not placeholder" bash -c "! grep -q PLACEHOLDER '$SCRIPT_DIR/homebrew/milady.rb'"
-check "Has url field" grep -q 'url "https://' "$SCRIPT_DIR/homebrew/milady.rb"
-check "Has sha256 field" grep -q 'sha256 "' "$SCRIPT_DIR/homebrew/milady.rb"
-check "Depends on node" grep -q 'depends_on "node' "$SCRIPT_DIR/homebrew/milady.rb"
-check "Has test block" grep -q 'test do' "$SCRIPT_DIR/homebrew/milady.rb"
+check "Formula SHA256 is not placeholder" bash -c "! grep -q PLACEHOLDER '$SCRIPT_DIR/homebrew/elizaos-app.rb'"
+check "Has url field" grep -q 'url "https://' "$SCRIPT_DIR/homebrew/elizaos-app.rb"
+check "Has sha256 field" grep -q 'sha256 "' "$SCRIPT_DIR/homebrew/elizaos-app.rb"
+check "Depends on node" grep -q 'depends_on "node' "$SCRIPT_DIR/homebrew/elizaos-app.rb"
+check "Has test block" grep -q 'test do' "$SCRIPT_DIR/homebrew/elizaos-app.rb"
 
 echo ""
 
@@ -178,9 +178,9 @@ check_file "debian/source/format" "$SCRIPT_DIR/debian/source/format"
 
 check "rules is executable" test -x "$SCRIPT_DIR/debian/rules"
 check "postinst is executable" test -x "$SCRIPT_DIR/debian/postinst"
-check "Control has Package field" grep -q "^Package: milady" "$SCRIPT_DIR/debian/control"
+check "Control has Package field" grep -q "^Package: elizaos-app" "$SCRIPT_DIR/debian/control"
 check "Control has Depends" grep -q "Depends:" "$SCRIPT_DIR/debian/control"
-check "Changelog has version" grep -q "milady (" "$SCRIPT_DIR/debian/changelog"
+check "Changelog has version" grep -q "elizaos-app (" "$SCRIPT_DIR/debian/changelog"
 check "Compat level 13" grep -q "debhelper-compat (= 13)" "$SCRIPT_DIR/debian/control"
 check "Source format 3.0 quilt" grep -q "3.0 (quilt)" "$SCRIPT_DIR/debian/source/format"
 
@@ -200,44 +200,44 @@ elif command -v python3 &>/dev/null; then
   skip "YAML syntax valid" "pyyaml not installed"
 fi
 
-check "Has name field" grep -q "^name: milady" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Has name field" grep -q "^name: elizaos-app" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has version field" grep -q "^version:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has confinement set" grep -q "^confinement:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has base" grep -q "^base: core22" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has apps section" grep -q "^apps:" "$SCRIPT_DIR/snap/snapcraft.yaml"
-check "Has node part" grep -q "node:" "$SCRIPT_DIR/snap/snapcraft.yaml"
-check "Has milady part" grep -q "milady:" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Has node part" grep -q "^  node:" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Has elizaos-app part" grep -q "^  elizaos-app:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 
 echo ""
 
 # ── 5. Flatpak Package ──────────────────────────────────────────────────────
 bold "5. Flatpak Package"
-check_file "Flatpak manifest" "$SCRIPT_DIR/flatpak/ai.milady.Milady.yml"
-check_file "Desktop entry" "$SCRIPT_DIR/flatpak/ai.milady.Milady.desktop"
-check_file "Metainfo XML" "$SCRIPT_DIR/flatpak/ai.milady.Milady.metainfo.xml"
+check_file "Flatpak manifest" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check_file "Desktop entry" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
+check_file "Metainfo XML" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
 
 # Validate YAML
 if python_has_module yaml; then
   check "Manifest YAML valid" python3 -c "
 import yaml, pathlib
-yaml.safe_load(pathlib.Path('$SCRIPT_DIR/flatpak/ai.milady.Milady.yml').read_text())
+yaml.safe_load(pathlib.Path('$SCRIPT_DIR/flatpak/ai.elizaos.App.yml').read_text())
 "
 elif command -v python3 &>/dev/null; then
   skip "Manifest YAML valid" "pyyaml not installed"
 fi
 
-check "SHA256 not placeholder (x64)" bash -c "! grep -q PLACEHOLDER_SHA256_X64 '$SCRIPT_DIR/flatpak/ai.milady.Milady.yml'"
-check "SHA256 not placeholder (arm64)" bash -c "! grep -q PLACEHOLDER_SHA256_ARM64 '$SCRIPT_DIR/flatpak/ai.milady.Milady.yml'"
-check "Has app-id" grep -q "^app-id: ai.milady.Milady" "$SCRIPT_DIR/flatpak/ai.milady.Milady.yml"
-check "Has runtime" grep -q "runtime: org.freedesktop" "$SCRIPT_DIR/flatpak/ai.milady.Milady.yml"
-check "Desktop entry has Exec" grep -q "^Exec=" "$SCRIPT_DIR/flatpak/ai.milady.Milady.desktop"
-check "Metainfo has app-id" grep -q "ai.milady.Milady" "$SCRIPT_DIR/flatpak/ai.milady.Milady.metainfo.xml"
+check "SHA256 not placeholder (x64)" bash -c "! grep -q PLACEHOLDER_SHA256_X64 '$SCRIPT_DIR/flatpak/ai.elizaos.App.yml'"
+check "SHA256 not placeholder (arm64)" bash -c "! grep -q PLACEHOLDER_SHA256_ARM64 '$SCRIPT_DIR/flatpak/ai.elizaos.App.yml'"
+check "Has app-id" grep -q "^app-id: ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check "Has runtime" grep -q "runtime: org.freedesktop" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check "Desktop entry has Exec" grep -q "^Exec=" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
+check "Metainfo has app-id" grep -q "ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
 
 echo ""
 
 # ── 6. CI/CD Workflow ────────────────────────────────────────────────────────
 bold "6. CI/CD Workflow"
-WORKFLOW="$(dirname "$SCRIPT_DIR")/.github/workflows/publish-packages.yml"
+WORKFLOW="$REPO_ROOT/.github/workflows/publish-packages.yml"
 check_file "publish-packages.yml" "$WORKFLOW"
 
 if python_has_module yaml; then
@@ -253,7 +253,7 @@ check "Has release trigger" grep -q "release:" "$WORKFLOW"
 check "Has workflow_dispatch" grep -q "workflow_dispatch:" "$WORKFLOW"
 check "Has PyPI job" grep -q "publish-pypi:" "$WORKFLOW"
 # Homebrew is handled by the standalone update-homebrew.yml workflow
-check "Has Homebrew job" test -f ".github/workflows/update-homebrew.yml"
+check "Has Homebrew job" test -f "$REPO_ROOT/.github/workflows/update-homebrew.yml"
 check "Has Snap job" grep -q "publish-snap:" "$WORKFLOW"
 check "Has Debian job" grep -q "build-deb:" "$WORKFLOW"
 check "Has Flatpak job" grep -q "build-flatpak:" "$WORKFLOW"
