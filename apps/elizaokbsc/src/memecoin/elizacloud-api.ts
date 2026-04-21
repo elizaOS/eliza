@@ -548,14 +548,14 @@ function parseCharacterModel(
     (typeof character["model"] === "string" && character["model"]) ||
     findNestedModel(character) ||
     "";
-  if (!id || !model.trim()) {
+  if (!id) {
     return null;
   }
   return {
     id,
     name,
-    model: model.trim(),
-    modelProvider,
+    model: model.trim() || "gpt-4o",
+    modelProvider: modelProvider || "openai",
   };
 }
 
