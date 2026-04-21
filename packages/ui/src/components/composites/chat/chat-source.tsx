@@ -42,6 +42,13 @@ const SOURCE_META: Record<string, ChatSourceMeta> = {
     badgeClassName: "border-accent/30 bg-accent/10 text-accent",
     borderClassName: "border-accent/60",
     iconClassName: "text-accent",
+    Icon: MessagesSquare,
+    label: "Messages",
+  },
+  terminal: {
+    badgeClassName: "border-accent/30 bg-accent/10 text-accent",
+    borderClassName: "border-accent/60",
+    iconClassName: "text-accent",
     Icon: TerminalSquare,
     label: "Terminal",
   },

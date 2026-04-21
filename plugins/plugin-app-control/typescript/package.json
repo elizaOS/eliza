@@ -1,0 +1,46 @@
+{
+	"name": "@elizaos/plugin-app-control",
+	"version": "2.0.0-alpha.1",
+	"description": "App control plugin for Milady agents — launch, close, and list running apps via the local dashboard API.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"test": "vitest run",
+		"clean": "rm -rf dist .turbo node_modules",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "alpha",
+		"@elizaos/shared": "workspace:*"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "alpha"
+	},
+	"devDependencies": {
+		"@types/node": "22.10.9",
+		"tsup": "8.4.0",
+		"typescript": "5.7.3",
+		"vitest": "3.0.2",
+		"@biomejs/biome": "^2.3.11"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

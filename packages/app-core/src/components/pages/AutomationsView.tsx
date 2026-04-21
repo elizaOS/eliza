@@ -74,6 +74,8 @@ import {
   getAutomationBridgeConversationId,
   resolveAutomationConversation,
 } from "./automation-conversations";
+import { PageScopedChat } from "../chat/PageScopedChat";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   buildCreateRequest,
@@ -90,6 +92,10 @@ import {
   toneForLastStatus,
   validateForm,
 } from "./heartbeat-utils";
+import {
+  type VisualizeWorkflowEventDetail,
+  VISUALIZE_WORKFLOW_EVENT,
+} from "./workflow-graph-events";
 
 type AutomationFilter = "all" | "coordinator" | "workflows" | "scheduled";
 type AutomationSubpage = "list" | "node-catalog";
@@ -106,6 +112,17 @@ const COORDINATOR_SYSTEM_ADDENDUM =
   "You are in a workflow-specific automation room for a coordinator " +
   "automation. Focus only on this automation. Use the linked terminal " +
   "conversation only when it directly informs the automation.";
+const AUTOMATIONS_SYSTEM_ADDENDUM = `
+You are scoped to helping the user with automations on this page.
+Tools available:
+- CREATE_CRON, UPDATE_CRON, DELETE_CRON, LIST_CRONS, RUN_CRON — manage scheduled tasks.
+- n8n workflow actions (via plugin-n8n-workflow) — create/activate/deactivate/delete workflows.
+
+When creating or modifying a workflow, narrate the plan before calling the action.
+When the user asks to visualize a workflow or see the graph, emit the workflow id to the UI so the graph can render — just include the workflow name or id in your response text.
+For requests unrelated to automations, suggest the main chat.
+`;
+
 const NODE_CLASS_ORDER = [
   "agent",
   "action",
@@ -2599,6 +2616,22 @@ function AutomationsLayout() {
     ],
   );
 
+  // Event consumer for agent-driven graph focus
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { workflowId } = (event as CustomEvent<VisualizeWorkflowEventDetail>).detail;
+      const match = filteredItems.find(
+        (item) =>
+          item.workflowId === workflowId || item.id === workflowId,
+      );
+      if (match) {
+        selectItem(match);
+      }
+    };
+    window.addEventListener(VISUALIZE_WORKFLOW_EVENT, handler);
+    return () => window.removeEventListener(VISUALIZE_WORKFLOW_EVENT, handler);
+  }, [filteredItems, selectItem]);
+
   const findAutomationForConversation = useCallback(
     (
       data: AutomationListResponse | null,
@@ -3074,8 +3107,9 @@ function AutomationsLayout() {
   );
 
   return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
     <PageLayout
-      className="h-full bg-transparent"
+      className="h-full min-w-0 flex-1 bg-transparent"
       data-testid="automations-shell"
       sidebar={automationsSidebar}
       contentInnerClassName="mx-auto w-full max-w-[96rem]"
@@ -3221,6 +3255,21 @@ function AutomationsLayout() {
         }}
       />
     </PageLayout>
+    <RightSideChatPanel
+      storageKey="milady:chat-panel:automations"
+      defaultWidth={384}
+      minWidth={300}
+      maxWidth={720}
+    >
+      <PageScopedChat
+        scope="page-automations"
+        title="Automations assistant"
+        placeholder="Ask to create, edit, activate, or visualize automations..."
+        systemAddendum={AUTOMATIONS_SYSTEM_ADDENDUM}
+        bridgeFromConversationId={activeConversationId}
+      />
+    </RightSideChatPanel>
+    </div>
   );
 }
 

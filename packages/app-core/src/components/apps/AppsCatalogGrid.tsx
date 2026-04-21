@@ -86,7 +86,7 @@ export function AppsCatalogGrid({
                 <div className="h-px flex-1 bg-border/30" />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {section.apps.map((app) => {
                   const isActive = activeAppNames.has(app.name);
                   const isFavorite = favoriteAppNames.has(app.name);
@@ -111,11 +111,11 @@ export function AppsCatalogGrid({
                       >
                         <AppHero
                           app={app}
-                          className="aspect-[5/4] transition-transform duration-300 group-hover:scale-[1.02]"
+                          className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
                         />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-4 pe-12">
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                            <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
                               {displayName}
                             </div>
                           </div>

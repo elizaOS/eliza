@@ -26,8 +26,11 @@ import type {
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsIMessageMessagesRequest,
+  GetLifeOpsUnifiedInboxRequest,
+  LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsInboxChannel,
   ProcessLifeOpsRemindersRequest,
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
@@ -55,6 +58,7 @@ import type {
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
+  LIFEOPS_INBOX_CHANNELS,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   loadLifeOpsAppState,
@@ -177,6 +181,8 @@ const LIFEOPS_RATE_LIMITS = {
   gmail_draft: { maxRequests: 20, windowMs: 60_000 },
   gmail_send: { maxRequests: 5, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
+  calendar_update: { maxRequests: 20, windowMs: 60_000 },
+  calendar_delete: { maxRequests: 10, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
@@ -216,6 +222,12 @@ function rateLimitRequest(
       break;
     case "calendar_create":
       config = LIFEOPS_RATE_LIMITS.calendar_create;
+      break;
+    case "calendar_update":
+      config = LIFEOPS_RATE_LIMITS.calendar_update;
+      break;
+    case "calendar_delete":
+      config = LIFEOPS_RATE_LIMITS.calendar_delete;
       break;
     default:
       config = LIFEOPS_RATE_LIMITS.default;
@@ -934,6 +946,82 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, { event: await service.createCalendarEvent(url, body) }, 201);
+    });
+  }
+
+  const calendarEventMatch = pathname.match(
+    /^\/api\/lifeops\/calendar\/events\/([^/]+)$/,
+  );
+  if (calendarEventMatch) {
+    const eventId = decodeMatchedPathComponent(
+      ctx,
+      calendarEventMatch,
+      1,
+      res,
+      "event id",
+    );
+    if (!eventId) return true;
+    if (method === "PATCH") {
+      if (rateLimitRequest(ctx, "calendar_update")) return true;
+      const body = await readJsonBody<LifeOpsCalendarEventUpdate>(req, res);
+      if (!body) return true;
+      return runRoute(ctx, async (service) => {
+        const event = await service.updateCalendarEvent(url, {
+          eventId,
+          title: body.title,
+          description: body.notes,
+          startAt: body.startAt,
+          endAt: body.endAt,
+        });
+        json(res, { event });
+      });
+    }
+    if (method === "DELETE") {
+      if (rateLimitRequest(ctx, "calendar_delete")) return true;
+      return runRoute(ctx, async (service) => {
+        await service.deleteCalendarEvent(url, { eventId });
+        json(res, { deleted: true });
+      });
+    }
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/inbox/unified") {
+    return runRoute(ctx, async (service) => {
+      const rawLimit = url.searchParams.get("limit");
+      let limit: number | undefined;
+      if (rawLimit !== null) {
+        const parsed = Number.parseInt(rawLimit, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          throw new LifeOpsServiceError(
+            400,
+            "limit must be a positive integer",
+          );
+        }
+        limit = parsed;
+      }
+      const rawChannels = url.searchParams.get("channels");
+      let channels: LifeOpsInboxChannel[] | undefined;
+      if (rawChannels !== null && rawChannels.trim().length > 0) {
+        const parsed = rawChannels
+          .split(",")
+          .map((value) => value.trim().toLowerCase())
+          .filter((value) => value.length > 0);
+        const invalid = parsed.find(
+          (value) =>
+            !LIFEOPS_INBOX_CHANNELS.includes(
+              value as (typeof LIFEOPS_INBOX_CHANNELS)[number],
+            ),
+        );
+        if (invalid) {
+          throw new LifeOpsServiceError(
+            400,
+            `channels must be a comma-separated subset of: ${LIFEOPS_INBOX_CHANNELS.join(", ")}`,
+          );
+        }
+        channels = parsed as LifeOpsInboxChannel[];
+      }
+      const request: GetLifeOpsUnifiedInboxRequest = { limit, channels };
+      json(res, await service.getUnifiedInbox(request));
     });
   }
 

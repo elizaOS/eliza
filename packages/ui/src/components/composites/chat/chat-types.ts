@@ -1,6 +1,7 @@
 export type ChatVariant = "default" | "game-modal";
 
 export interface ChatLabelSet {
+  actions?: string;
   agentStarting?: string;
   agentVoiceOff?: string;
   agentVoiceOn?: string;

@@ -1,6 +1,6 @@
 import {
   CodingAgentControlChip,
-  PtyConsoleDrawer,
+  PtyConsoleBase,
 } from "@elizaos/app-task-coordinator";
 import {
   ChatAttachmentStrip,
@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { CodingAgentSession } from "../../api/client";
 import { client } from "../../api/client";
 import type {
   ConversationMessage,
@@ -60,8 +61,6 @@ interface ChatViewProps {
   variant?: ChatViewVariant;
   /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
-  /** Hide the always-visible terminal/PTY panel (used in embedded overlays). */
-  hideTerminalPanel?: boolean;
 }
 
 function normalizeInboxChatSelection(
@@ -106,7 +105,6 @@ function normalizeInboxChatSelection(
 export function ChatView({
   variant = "default",
   onPtySessionClick,
-  hideTerminalPanel = false,
 }: ChatViewProps) {
   const app = useApp();
   const isGameModal = variant === "game-modal";
@@ -115,6 +113,7 @@ export function ChatView({
     agentStatus,
     activeConversationId,
     activeInboxChat,
+    activeTerminalSessionId,
     characterData,
     chatFirstTokenReceived,
     companionMessageCutoffTs,
@@ -177,19 +176,25 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
-  const [ptyDrawerSessionId, setPtyDrawerSessionId] = useState<string | null>(
-    null,
+
+  const focusTerminalSession = useCallback(
+    (sessionId: string) => {
+      setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", sessionId);
+    },
+    [setState],
   );
 
-  // Auto-expand terminal when a session hits error or blocked status
+  // Route a problem session into the Terminal channel so the user sees it.
   useEffect(() => {
+    if (activeTerminalSessionId) return;
     const problemSession = ptySessions.find(
       (s) => s.status === "error" || s.status === "blocked",
     );
-    if (problemSession && ptyDrawerSessionId !== problemSession.sessionId) {
-      setPtyDrawerSessionId(problemSession.sessionId);
+    if (problemSession) {
+      focusTerminalSession(problemSession.sessionId);
     }
-  }, [ptySessions, ptyDrawerSessionId]);
+  }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
 
   // ── Coding agent preflight ──────────────────────────────────────
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
@@ -503,32 +508,6 @@ export function ChatView({
       />
     );
 
-  const handleNewShellSession = useCallback(async () => {
-    try {
-      const { sessionId } = await client.spawnShellSession();
-      setPtyDrawerSessionId(sessionId);
-    } catch (err) {
-      console.error("[ChatView] Failed to spawn shell session:", err);
-    }
-  }, []);
-
-  const drawerProps = {
-    activeSessionId: ptyDrawerSessionId,
-    sessions: ptySessions,
-    onSessionClick: (id: string) =>
-      setPtyDrawerSessionId((prev) => (prev === id ? null : id)),
-    onNewSession: handleNewShellSession,
-    onClose: () => setPtyDrawerSessionId(null),
-  };
-
-  const terminalPanelNode = isGameModal ? (
-    <div className="pointer-events-auto">
-      <PtyConsoleDrawer {...drawerProps} />
-    </div>
-  ) : (
-    <PtyConsoleDrawer {...drawerProps} />
-  );
-
   const auxiliaryNode = (
     <>
       {shareIngestNotice ? (
@@ -602,11 +581,7 @@ export function ChatView({
           <CodingAgentControlChip />
           <AgentActivityBox
             sessions={ptySessions}
-            onSessionClick={
-              onPtySessionClick ??
-              ((id) =>
-                setPtyDrawerSessionId((prev) => (prev === id ? null : id)))
-            }
+            onSessionClick={onPtySessionClick ?? focusTerminalSession}
           />
         </>
       }
@@ -685,6 +660,20 @@ export function ChatView({
     </ChatComposerShell>
   );
 
+  // ── Terminal-channel branch ──────────────────────────────────────
+  if (activeTerminalSessionId) {
+    return (
+      <TerminalChannelPanel
+        activeSessionId={activeTerminalSessionId}
+        sessions={ptySessions}
+        onClose={() => setState("activeTerminalSessionId", null)}
+        loadingLabel={t("terminal.starting", {
+          defaultValue: "Starting terminal\u2026",
+        })}
+      />
+    );
+  }
+
   // ── Inbox-chat branch ────────────────────────────────────────────
   if (inboxChat) {
     return (
@@ -703,12 +692,7 @@ export function ChatView({
       composerHeight={composerHeight}
       imageDragOver={imageDragOver}
       messagesRef={messagesRef}
-      footerStack={
-        <>
-          {auxiliaryNode}
-          {hideTerminalPanel ? null : terminalPanelNode}
-        </>
-      }
+      footerStack={auxiliaryNode}
       composer={composerNode}
       onDragOver={(event) => {
         event.preventDefault();
@@ -719,6 +703,55 @@ export function ChatView({
     >
       {messagesContent}
     </ChatThreadLayout>
+  );
+}
+
+/**
+ * Full-window terminal view rendered when the Terminal channel is
+ * active. Keeps every PTY session pane mounted under the hood so
+ * tabbing between sessions preserves their buffers/state. Spawning is
+ * owned by the sidebar — this component only displays what the
+ * orchestrator has already registered, and waits for the live session
+ * list to catch up when activeSessionId is set but not yet present.
+ */
+export function TerminalChannelPanel({
+  activeSessionId,
+  sessions,
+  onClose,
+  loadingLabel,
+}: {
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  loadingLabel: string;
+}) {
+  const hasActiveSession = sessions.some(
+    (s) => s.sessionId === activeSessionId,
+  );
+
+  if (!hasActiveSession) {
+    return (
+      <div
+        data-testid="terminal-channel-loading"
+        className="flex flex-1 items-center justify-center text-xs text-muted"
+      >
+        {loadingLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="terminal-channel-panel"
+      className="flex flex-1 min-h-0 min-w-0 flex-col"
+    >
+      <PtyConsoleBase
+        activeSessionId={activeSessionId}
+        sessions={sessions}
+        onClose={onClose}
+        variant="full"
+      />
+    </div>
   );
 }
 
@@ -753,6 +786,7 @@ function InboxChatPanel({
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inboxTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastRenderedMessageKeyRef = useRef<string | null>(null);
   const transportSource =
     activeInboxChat.transportSource ?? activeInboxChat.source;
@@ -923,53 +957,67 @@ function InboxChatPanel({
           />
         )}
       </div>
-      <div className="bg-bg-hover/40 px-5 py-3">
-        {activeInboxChat.canSend === false ? (
-          <div className="text-xs-tight leading-5 text-muted">
-            {t("inboxview.ReadOnlyReplyHint", {
+      {activeInboxChat.canSend === false ? (
+        <div className="bg-bg-hover/40 px-5 py-3 text-xs-tight leading-5 text-muted">
+          {t("inboxview.ReadOnlyReplyHint", {
+            defaultValue:
+              "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+            source: sourceLabel,
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
+            {t("inboxview.AgentSendWarning", {
               defaultValue:
-                "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+                "This message will be sent as your agent in {{source}}.",
               source: sourceLabel,
             })}
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <textarea
-              value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
-              onKeyDown={handleReplyKeyDown}
+          <ChatComposerShell variant="default">
+            <ChatComposer
+              variant="default"
+              textareaRef={inboxTextareaRef}
+              chatInput={replyText}
+              chatPendingImagesCount={0}
+              isComposerLocked={sending}
+              isAgentStarting={false}
+              chatSending={sending}
+              voice={inertVoiceState}
+              agentVoiceEnabled={false}
+              showAgentVoiceToggle={false}
+              t={t}
+              hideAttachButton
               placeholder={t("inboxview.ReplyPlaceholder", {
                 defaultValue: "Reply in {{source}}",
                 source: sourceLabel,
               })}
-              disabled={sending}
-              rows={2}
-              className="min-h-[72px] w-full resize-y rounded-xl border border-border/50 bg-bg px-3 py-2 text-sm text-txt outline-none transition focus:border-accent/55"
+              onAttachImage={() => {}}
+              onChatInputChange={setReplyText}
+              onKeyDown={handleReplyKeyDown}
+              onSend={() => void handleReplySend()}
+              onStop={() => {}}
+              onStopSpeaking={() => {}}
+              onToggleAgentVoice={() => {}}
             />
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs-tight text-muted">
-                {replyError
-                  ? replyError
-                  : t("inboxview.ReplyHint", {
-                      defaultValue:
-                        "Sent through the connected {{source}} account on this device.",
-                      source: sourceLabel,
-                    })}
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleReplySend()}
-                disabled={sending || replyText.trim().length === 0}
-                className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {sending
-                  ? t("inboxview.Sending", { defaultValue: "Sending…" })
-                  : t("inboxview.Send", { defaultValue: "Send" })}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          </ChatComposerShell>
+          {replyError ? (
+            <div className="px-1 text-xs-tight text-danger">{replyError}</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
+
+const inertVoiceState = {
+  assistantTtsQuality: undefined,
+  captureMode: "idle" as const,
+  interimTranscript: "",
+  isListening: false,
+  isSpeaking: false,
+  startListening: () => {},
+  stopListening: () => {},
+  supported: false,
+  toggleListening: () => {},
+};
