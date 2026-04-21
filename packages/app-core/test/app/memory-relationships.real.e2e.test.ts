@@ -45,6 +45,8 @@ const LIVE_BROWSER = resolveLiveBrowserExecutable();
 const CHROME_PATH = LIVE_BROWSER.executablePath;
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_BROWSER_SUITE_ENABLED =
+  process.env.MILADY_LIVE_BROWSER_SUITE === "1";
 const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
@@ -117,7 +119,9 @@ let liveStack: StartedStack | null = null;
 let uiUrl = DEFAULT_UI_URL;
 let apiUrl = DEFAULT_API_URL;
 
-const describeLive = describeIf(LIVE_TESTS_ENABLED && CHROME_AVAILABLE);
+const describeLive = describeIf(
+  LIVE_TESTS_ENABLED && LIVE_BROWSER_SUITE_ENABLED && CHROME_AVAILABLE,
+);
 
 if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
   console.info(

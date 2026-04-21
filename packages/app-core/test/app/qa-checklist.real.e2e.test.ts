@@ -56,6 +56,8 @@ const LIVE_BROWSER = resolveLiveBrowserExecutable();
 const CHROME_PATH = LIVE_BROWSER.executablePath;
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_BROWSER_SUITE_ENABLED =
+  process.env.MILADY_LIVE_BROWSER_SUITE === "1";
 const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
@@ -72,7 +74,10 @@ const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   : null;
 const REQUIRE_STRICT_TTS_ASSERTIONS = ELEVENLABS_API_KEY.length > 0;
 const CAN_RUN =
-  LIVE_TESTS_ENABLED && CHROME_AVAILABLE && LIVE_PROVIDER !== null;
+  LIVE_TESTS_ENABLED &&
+  LIVE_BROWSER_SUITE_ENABLED &&
+  CHROME_AVAILABLE &&
+  LIVE_PROVIDER !== null;
 const PROFILE_FILTER = new Set(
   (process.env.ELIZA_LIVE_PROFILE ?? "")
     .split(",")

@@ -41,6 +41,7 @@
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts"
   },
   "dependencies": {
+    "@capacitor/core": "8.3.1",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
