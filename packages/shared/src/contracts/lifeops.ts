@@ -1718,6 +1718,77 @@ export interface LifeOpsNextCalendarEventContext {
   >;
 }
 
+export interface LifeOpsCalendarEventReminderOverride {
+  minutesBefore: number;
+}
+
+export interface LifeOpsCalendarEventUpdate {
+  title?: string;
+  startAt?: string;
+  endAt?: string;
+  notes?: string;
+  reminders?: LifeOpsCalendarEventReminderOverride[];
+}
+
+export interface LifeOpsCalendarEventMutationResult {
+  event: LifeOpsCalendarEvent;
+}
+
+export const LIFEOPS_INBOX_CHANNELS = [
+  "gmail",
+  "discord",
+  "telegram",
+  "signal",
+  "imessage",
+  "whatsapp",
+  "sms",
+] as const;
+export type LifeOpsInboxChannel = (typeof LIFEOPS_INBOX_CHANNELS)[number];
+
+export interface LifeOpsUnifiedMessageSender {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface LifeOpsUnifiedMessageSourceRef {
+  channel: LifeOpsInboxChannel;
+  externalId: string;
+}
+
+export interface LifeOpsUnifiedMessage {
+  /** Channel-prefixed, globally unique identifier. */
+  id: string;
+  channel: LifeOpsInboxChannel;
+  sender: LifeOpsUnifiedMessageSender;
+  /** Gmail-style subject; `null` for chat channels. */
+  subject: string | null;
+  snippet: string;
+  /** ISO-8601 timestamp. */
+  receivedAt: string;
+  unread: boolean;
+  deepLink: string | null;
+  sourceRef: LifeOpsUnifiedMessageSourceRef;
+}
+
+export interface LifeOpsUnifiedInboxChannelCount {
+  total: number;
+  unread: number;
+}
+
+export interface LifeOpsUnifiedInbox {
+  messages: LifeOpsUnifiedMessage[];
+  channelCounts: Record<LifeOpsInboxChannel, LifeOpsUnifiedInboxChannelCount>;
+  fetchedAt: string;
+}
+
+export interface GetLifeOpsUnifiedInboxRequest {
+  /** Cap on the total number of messages returned. Defaults to 100. */
+  limit?: number;
+  /** If omitted, all connected channels are included. */
+  channels?: LifeOpsInboxChannel[];
+}
+
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
   "connected",
   "disconnected",

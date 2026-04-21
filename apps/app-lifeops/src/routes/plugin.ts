@@ -126,6 +126,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/gmail/search" },
   { type: "GET", path: "/api/lifeops/gmail/needs-response" },
   { type: "POST", path: "/api/lifeops/calendar/events" },
+  { type: "GET", path: "/api/lifeops/inbox/unified" },
   { type: "POST", path: "/api/lifeops/gmail/reply-drafts" },
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-drafts" },
   { type: "POST", path: "/api/lifeops/gmail/reply-send" },
@@ -213,6 +214,9 @@ const LIFEOPS_STATIC_ROUTES: Array<{
 // ---------------------------------------------------------------------------
 
 const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+  // /api/lifeops/calendar/events/:eventId
+  { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
+  { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
   // /api/lifeops/definitions/:id
   { type: "GET", path: "/api/lifeops/definitions/:id" },
   { type: "PUT", path: "/api/lifeops/definitions/:id" },
