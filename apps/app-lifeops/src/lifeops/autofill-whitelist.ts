@@ -1,16 +1,7 @@
 /**
- * Agent-side copy of the autofill whitelist logic.
- *
- * Kept in sync with the browser extension's `autofill/whitelist.ts`. The
- * default list is duplicated intentionally — the extension reads its JSON
- * via an `import ... with { type: "json" }`, and we do not want the agent
- * process to reach into `apps/browser-extension-lifeops/` at runtime (that
- * would couple build boundaries in a way the project explicitly avoids).
- *
- * If the two lists drift, the source of truth for the extension's own
- * behavior remains the JSON file; the agent-side list is used for the
- * initial refusal decision that keeps credentials safe even if the
- * extension is unreachable.
+ * Agent-side autofill refusal list. This is the first gate before a request is
+ * sent to the browser companion, so unsafe domains are rejected even if the
+ * companion is unreachable.
  */
 
 export const DEFAULT_AUTOFILL_WHITELIST: readonly string[] = [

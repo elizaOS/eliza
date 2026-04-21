@@ -231,15 +231,11 @@ export class ApprovalNotFoundError extends Error {
 }
 
 /**
- * Queue interface. WS6 implementations MUST:
+ * Queue interface. Implementations must:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).
  *  - Treat `purgeExpired` as idempotent.
- *
- * WS5 callers use `enqueue` only. Convenience overload: `enqueue(req)` may
- * also be invoked as the minimal `Promise<id>` form called out in the task
- * spec — the `id` is read from the returned `ApprovalRequest`.
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;

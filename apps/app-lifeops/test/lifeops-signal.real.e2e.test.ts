@@ -419,6 +419,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/pair",
+        {},
       );
       expect(pairResponse.status).toBe(201);
       expect(pairResponse.data.provider).toBe("signal");
@@ -456,6 +457,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/stop",
+        {},
       );
       expect(stopResponse.status).toBe(200);
       expect(stopResponse.data.state).toBe("idle");
@@ -464,6 +466,7 @@ describe("Real E2E: LifeOps Signal", () => {
         routeServer.port,
         "POST",
         "/api/lifeops/connectors/signal/disconnect",
+        {},
       );
       expect(disconnectResponse.status).toBe(200);
       expect(disconnectResponse.data.connected).toBe(false);

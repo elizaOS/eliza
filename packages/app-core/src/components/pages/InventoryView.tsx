@@ -913,7 +913,7 @@ export function InventoryView() {
     },
   ];
   const walletContentHeader = (
-    <div className="flex flex-col gap-3 border-b border-border/24 pb-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-4 flex flex-col gap-3 border-b border-border/24 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-accent/24 bg-accent/10 text-accent">
           <Wallet className="h-5 w-5" aria-hidden />
@@ -956,10 +956,10 @@ export function InventoryView() {
       <PageLayout
         className="[&>div>div:first-child]:!pt-0"
         sidebar={walletSidebar}
-        contentHeader={walletContentHeader}
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         footer={<WidgetHost slot="wallet" className="py-3" />}
       >
+        {walletContentHeader}
         <PagePanel.Loading
           variant="workspace"
           className="min-h-[14rem] rounded-lg"
@@ -974,10 +974,10 @@ export function InventoryView() {
       <PageLayout
         className="[&>div>div:first-child]:!pt-0"
         sidebar={walletSidebar}
-        contentHeader={walletContentHeader}
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         footer={<WidgetHost slot="wallet" className="py-3" />}
       >
+        {walletContentHeader}
         <div className="grid gap-3">
           {walletError ? (
             <PagePanel.Notice tone="danger">{walletError}</PagePanel.Notice>

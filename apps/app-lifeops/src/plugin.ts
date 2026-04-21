@@ -216,11 +216,6 @@ async function recordTaskInitFailure(
  * subsystem reports as "unavailable". The failure is surfaced via the
  * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
  * via logger.error so ops tooling can alert on it.
- *
- * Prior docs in REMEDIATION_LOG.md item #8 stated that this path should
- * "abort init after bounded retries" — that claim is NOT currently enforced
- * because aborting here would orphan an already-loaded plugin. Do not read
- * REMEDIATION_LOG #8 as a live contract; read this comment instead.
  */
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
@@ -465,7 +460,6 @@ export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export const lifeOpsBrowserPlugin = appLifeOpsPlugin;
 
-// T9f — Morning/night check-in engine (plan §6.23).
 export {
   runMorningCheckinAction,
   runNightCheckinAction,
@@ -492,7 +486,6 @@ export type {
   OverdueDigest,
   OverdueFollowup,
 } from "./followup/index.js";
-// Follow-up tracker (T7c)
 export {
   computeOverdueFollowups,
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
