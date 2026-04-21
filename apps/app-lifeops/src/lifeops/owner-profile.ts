@@ -1,11 +1,11 @@
-import type { IAgentRuntime, Task } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import type { IAgentRuntime, Task } from "@elizaos/core";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
   resolveLifeOpsTaskIntervalMs,
-} from "./runtime.js";
+} from "./scheduler-task.js";
 
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 export const OWNER_NAME_MAX_LENGTH = 60;
@@ -330,9 +330,7 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
   if (Array.isArray(patch.blackoutWindows)) {
     out.blackoutWindows = patch.blackoutWindows
       .map(normalizeBlackoutWindow)
-      .filter(
-        (w): w is LifeOpsMeetingPreferencesBlackout => w !== null,
-      );
+      .filter((w): w is LifeOpsMeetingPreferencesBlackout => w !== null);
   }
   return out;
 }

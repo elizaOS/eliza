@@ -1,16 +1,9 @@
 import fs from "node:fs";
 import type http from "node:http";
+import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
-import {
-  checkRateLimit,
-  type RateLimitConfig,
-} from "@elizaos/agent/api";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
-import {
-  LIFEOPS_ACTIVITY_SIGNAL_STATES,
-  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
-} from "@elizaos/shared/contracts/lifeops";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -58,6 +51,10 @@ import type {
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
   VerifyLifeOpsTelegramConnectorRequest,
+} from "@elizaos/shared/contracts/lifeops";
+import {
+  LIFEOPS_ACTIVITY_SIGNAL_STATES,
+  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   loadLifeOpsAppState,
@@ -1192,7 +1189,10 @@ export async function handleLifeOpsRoutes(
       mode?: LifeOpsConnectorMode;
     }>(req, res);
     if (!body) return true;
-    if (typeof body.participantId !== "string" || body.participantId.trim().length === 0) {
+    if (
+      typeof body.participantId !== "string" ||
+      body.participantId.trim().length === 0
+    ) {
       json(res, { ok: false, error: "participantId is required" }, 400);
       return true;
     }
@@ -1915,6 +1915,12 @@ export async function handleLifeOpsRoutes(
           refresh,
         }),
       });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/capabilities") {
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getCapabilityStatus());
     });
   }
 

@@ -119,6 +119,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
 }> = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
+  { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
@@ -279,7 +280,9 @@ const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
 
-function lifeOpsRouteHandler(): Route["handler"] {
+type PluginRouteHandler = NonNullable<Route["handler"]>;
+
+function lifeOpsRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -296,7 +299,7 @@ function lifeOpsRouteHandler(): Route["handler"] {
   };
 }
 
-function websiteBlockerRouteHandler(): Route["handler"] {
+function websiteBlockerRouteHandler(): PluginRouteHandler {
   return async (
     req: unknown,
     res: unknown,
@@ -322,7 +325,7 @@ const lifeOpsPluginRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         ...(r.public ? ({ public: true } as const) : {}),
-        handler: lifeOpsRouteHandler()!,
+        handler: lifeOpsRouteHandler(),
       }) as Route,
   ),
   // Dynamic LifeOps routes
@@ -332,7 +335,7 @@ const lifeOpsPluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
-        handler: lifeOpsRouteHandler()!,
+        handler: lifeOpsRouteHandler(),
       }) as Route,
   ),
   // Website blocker routes
@@ -342,7 +345,7 @@ const lifeOpsPluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
-        handler: websiteBlockerRouteHandler()!,
+        handler: websiteBlockerRouteHandler(),
       }) as Route,
   ),
 ];

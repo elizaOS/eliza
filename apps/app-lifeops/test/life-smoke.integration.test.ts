@@ -209,6 +209,12 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
       title: "Call Mom every week",
       details: {
         cadence: { kind: "weekly" },
+        successCriteria: {
+          summary: "Call Mom at least once every calendar week.",
+          metric: "weekly_call_completed",
+          target: { callsPerWeek: 1 },
+          evidenceSignals: ["manual_checkin"],
+        },
         supportStrategy: {
           approach: "weekly_nudge",
           message: "Have you called Mom this week?",

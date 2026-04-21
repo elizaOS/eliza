@@ -10,14 +10,25 @@
  */
 import crypto from "node:crypto";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { approveRequestAction } from "../src/actions/approval.js";
 import {
   createApprovalQueue,
   PgApprovalQueue,
 } from "../src/lifeops/approval-queue.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
-import { createLifeOpsTestRuntime, type RealTestRuntimeResult } from "./helpers/runtime.js";
+import {
+  createLifeOpsTestRuntime,
+  type RealTestRuntimeResult,
+} from "./helpers/runtime.js";
 
 describe("approval executor — argument routing to LifeOpsService methods (dispatch mocked)", () => {
   let runtime: AgentRuntime;
@@ -66,7 +77,10 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
     const sendSpy = vi
       .spyOn(LifeOpsService.prototype, "sendTelegramMessage")
       .mockResolvedValue({ ok: true });
-    const markExecutingSpy = vi.spyOn(PgApprovalQueue.prototype, "markExecuting");
+    const markExecutingSpy = vi.spyOn(
+      PgApprovalQueue.prototype,
+      "markExecuting",
+    );
     const markDoneSpy = vi.spyOn(PgApprovalQueue.prototype, "markDone");
     vi.spyOn(runtime, "useModel").mockResolvedValue(
       JSON.stringify({
@@ -84,11 +98,12 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("Approved.");
+    expect(result?.text).toBe("Approved and sent telegram message.");
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         target: "telegram-room-frontier",
-        message: "Sorry I missed you earlier. Thursday at 2pm works if that helps.",
+        message:
+          "Sorry I missed you earlier. Thursday at 2pm works if that helps.",
       }),
     );
     // State-machine assertions — the part this test can honestly verify.
@@ -124,7 +139,10 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
     const sendReplySpy = vi
       .spyOn(LifeOpsService.prototype, "sendGmailReply")
       .mockResolvedValue({ ok: true });
-    const markExecutingSpy = vi.spyOn(PgApprovalQueue.prototype, "markExecuting");
+    const markExecutingSpy = vi.spyOn(
+      PgApprovalQueue.prototype,
+      "markExecuting",
+    );
     const markDoneSpy = vi.spyOn(PgApprovalQueue.prototype, "markDone");
     vi.spyOn(runtime, "useModel").mockResolvedValue(
       JSON.stringify({
@@ -135,19 +153,22 @@ describe("approval executor — argument routing to LifeOpsService methods (disp
 
     const result = await approveRequestAction.handler?.(
       runtime,
-      ownerMessage(`Yes, approve ${request.id} and send the Gmail reply.`) as never,
+      ownerMessage(
+        `Yes, approve ${request.id} and send the Gmail reply.`,
+      ) as never,
       undefined,
       undefined as never,
       async () => {},
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("Approved.");
+    expect(result?.text).toBe("Approved and sent the Gmail reply.");
     expect(sendReplySpy).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({
         messageId: "gmail-frontier-message",
-        bodyText: "Sorry I missed your call. Thursday at 2pm works if that helps.",
+        bodyText:
+          "Sorry I missed your call. Thursday at 2pm works if that helps.",
         confirmSend: true,
       }),
     );

@@ -1,33 +1,27 @@
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import type {
   Action,
   ActionExample,
-  ActionResult,
-  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
-import type {
-  ApprovalQueue,
-  ApprovalRequest,
-} from "../lifeops/approval-queue.types.js";
+import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
-import {
-  PaymentRequiredError,
-  type X402PaymentRequirement,
-} from "../lifeops/x402-payment-handler.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import type {
   TravelBookingPassenger,
   TravelCalendarSyncPlan,
 } from "../lifeops/travel-booking.types.js";
+import {
+  PaymentRequiredError,
+  type X402PaymentRequirement,
+} from "../lifeops/x402-payment-handler.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -91,9 +85,7 @@ function normalizePassenger(
   };
 }
 
-function normalizePassengers(
-  value: unknown,
-): TravelBookingPassenger[] {
+function normalizePassengers(value: unknown): TravelBookingPassenger[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -103,12 +95,12 @@ function normalizePassengers(
         ? normalizePassenger(passenger as BookTravelPassengerInput)
         : null,
     )
-    .filter((passenger): passenger is TravelBookingPassenger => passenger !== null);
+    .filter(
+      (passenger): passenger is TravelBookingPassenger => passenger !== null,
+    );
 }
 
-function normalizeCalendarSync(
-  value: unknown,
-): TravelCalendarSyncPlan | null {
+function normalizeCalendarSync(value: unknown): TravelCalendarSyncPlan | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -139,21 +131,21 @@ function mergePlans(
   const normalizedPassengers = normalizePassengers(params.passengers);
   const extractedPassengers = normalizePassengers(extracted.passengers);
   const passengers =
-    normalizedPassengers.length > 0 ? normalizedPassengers : extractedPassengers;
+    normalizedPassengers.length > 0
+      ? normalizedPassengers
+      : extractedPassengers;
   return {
     offerId: trimToNull(params.offerId) ?? extracted.offerId,
     origin: trimToNull(params.origin) ?? extracted.origin,
     destination: trimToNull(params.destination) ?? extracted.destination,
-    departureDate:
-      trimToNull(params.departureDate) ?? extracted.departureDate,
+    departureDate: trimToNull(params.departureDate) ?? extracted.departureDate,
     returnDate: trimToNull(params.returnDate) ?? extracted.returnDate,
     passengerCount:
       typeof params.passengerCount === "number" && params.passengerCount > 0
         ? Math.floor(params.passengerCount)
         : extracted.passengerCount,
     passengers,
-    calendarSync:
-      normalizeCalendarSync(params.calendarSync) ??
+    calendarSync: normalizeCalendarSync(params.calendarSync) ??
       normalizeCalendarSync(extracted.calendarSync) ?? {
         enabled: true,
         calendarId: "primary",
@@ -222,6 +214,7 @@ async function extractBookTravelPlanWithLlm(args: {
 
   let parsed: Record<string, unknown> | null = null;
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     parsed = parseJSONObjectFromText(
       typeof raw === "string" ? raw : "",
@@ -269,12 +262,13 @@ function buildMissingInfoText(missing: string[]): string {
 }
 
 function buildApprovalText(request: ApprovalRequest): string {
-  const payload = request.payload.action === "book_travel" ? request.payload : null;
+  const payload =
+    request.payload.action === "book_travel" ? request.payload : null;
   const route = payload?.summary?.trim() || "this itinerary";
   const total =
     typeof payload?.totalCents === "number" && payload.totalCents > 0
       ? `${(payload.totalCents / 100).toFixed(2)} ${payload.currency}`
-      : payload?.currency ?? "the quoted total";
+      : (payload?.currency ?? "the quoted total");
   const orderType =
     payload?.orderType === "hold"
       ? "hold then pay"
@@ -282,77 +276,6 @@ function buildApprovalText(request: ApprovalRequest): string {
         ? "book immediately"
         : "book";
   return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
-}
-
-export async function executeApprovedBookTravel(args: {
-  runtime: IAgentRuntime;
-  queue: ApprovalQueue;
-  request: ApprovalRequest;
-  callback?: HandlerCallback;
-}): Promise<ActionResult> {
-  if (args.request.payload.action !== "book_travel") {
-    throw new Error("executeApprovedBookTravel received a non-travel request");
-  }
-  const payload = args.request.payload;
-  if (payload.kind !== "flight") {
-    throw new Error(`Unsupported travel kind: ${payload.kind}`);
-  }
-  if (!payload.offerId && !payload.search) {
-    throw new Error("Approved travel booking is missing offer/search context");
-  }
-  const passengers = Array.isArray(payload.passengers) ? payload.passengers : [];
-  if (passengers.length === 0) {
-    throw new Error("Approved travel booking is missing passenger details");
-  }
-
-  await args.queue.markExecuting(args.request.id);
-  const service = new LifeOpsService(args.runtime);
-  const booked = await service.bookFlightItinerary(INTERNAL_URL, {
-    offerId: payload.offerId ?? null,
-    search: payload.search ?? null,
-    passengers,
-    calendarSync: payload.calendarSync ?? null,
-  });
-  const done = await args.queue.markDone(args.request.id);
-
-  const route = payload.summary?.trim() || `${booked.offer.id}`;
-  const bookingReference = booked.order.bookingReference
-    ? ` Booking reference: ${booked.order.bookingReference}.`
-    : "";
-  const paymentText = booked.payment
-    ? ` Payment ${booked.payment.id} captured for ${booked.payment.amount} ${booked.payment.currency}.`
-    : "";
-  const calendarText = booked.calendarEvent
-    ? ` Synced to calendar as "${booked.calendarEvent.title}".`
-    : "";
-  const text = `Booked ${route}.${bookingReference}${paymentText}${calendarText}`.trim();
-
-  if (args.callback) {
-    await args.callback({ text });
-  }
-
-  return {
-    text,
-    success: true,
-    values: {
-      success: true,
-      requestId: done.id,
-      bookingReference: booked.order.bookingReference,
-      orderId: booked.order.id,
-      paymentId: booked.payment?.id ?? null,
-      calendarEventId: booked.calendarEvent?.id ?? null,
-    },
-    data: {
-      actionName: "BOOK_TRAVEL",
-      requestId: done.id,
-      state: done.state,
-      bookingReference: booked.order.bookingReference,
-      orderId: booked.order.id,
-      paymentId: booked.payment?.id ?? null,
-      calendarEventId: booked.calendarEvent?.id ?? null,
-      offerId: booked.offer.id,
-    },
-  };
 }
 
 export const bookTravelAction: Action = {
@@ -445,24 +368,42 @@ export const bookTravelAction: Action = {
     }
 
     const service = new LifeOpsService(runtime);
+    let search: {
+      origin: string;
+      destination: string;
+      departureDate: string;
+      returnDate?: string;
+      passengers: number;
+    } | null = null;
+    if (!merged.offerId) {
+      const { origin, destination, departureDate } = merged;
+      if (!origin || !destination || !departureDate) {
+        throw new Error(
+          "BOOK_TRAVEL validated fields are unexpectedly missing",
+        );
+      }
+      search = {
+        origin,
+        destination,
+        departureDate,
+        returnDate: merged.returnDate ?? undefined,
+        passengers: merged.passengerCount ?? merged.passengers.length,
+      };
+    }
+
     let prepared: Awaited<ReturnType<typeof service.prepareFlightBooking>>;
     try {
       prepared = await service.prepareFlightBooking({
         offerId: merged.offerId,
-        search: merged.offerId
-          ? null
-          : {
-              origin: merged.origin!,
-              destination: merged.destination!,
-              departureDate: merged.departureDate!,
-              returnDate: merged.returnDate ?? undefined,
-              passengers: merged.passengerCount ?? merged.passengers.length,
-            },
+        search,
         passengers: merged.passengers,
         calendarSync: merged.calendarSync,
       });
     } catch (err) {
-      if (!(err instanceof PaymentRequiredError) || err.requirements.length === 0) {
+      if (
+        !(err instanceof PaymentRequiredError) ||
+        err.requirements.length === 0
+      ) {
         throw err;
       }
       // Surface the x402 payment-required signal as part of the approval

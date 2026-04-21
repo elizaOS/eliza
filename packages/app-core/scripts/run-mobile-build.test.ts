@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyIosAppIdentity,
+  isCapacitorPlatformReady,
   resolveIosBuildTarget,
   resolvePlatformTemplateRoot,
   shouldRunIosPodInstall,
@@ -84,6 +86,21 @@ describe("run-mobile-build", () => {
         "ios",
         "App",
         "App",
+        "Base.lproj",
+        "LaunchScreen.storyboard",
+      ),
+      "launch-screen\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App",
         "WebsiteBlockerContentExtension",
         "ActionRequestHandler.swift",
       ),
@@ -127,6 +144,18 @@ describe("run-mobile-build", () => {
         "app-core",
         "platforms",
         "android",
+        "gradlew",
+      ),
+      "android-gradlew\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
         "build.gradle",
       ),
       "android-root\n",
@@ -159,6 +188,7 @@ describe("run-mobile-build", () => {
     expect(iosCopied).toEqual([
       path.join("App", "Podfile"),
       path.join("App", "App.xcodeproj", "project.pbxproj"),
+      path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
       path.join("App", "App", "MiladyIntentPlugin.swift"),
       path.join(
         "App",
@@ -175,6 +205,7 @@ describe("run-mobile-build", () => {
       ),
     ]);
     expect(androidCopied).toContain("build.gradle");
+    expect(androidCopied).toContain("gradlew");
     expect(androidCopied).toContain(path.join("app", "capacitor.build.gradle"));
     expect(
       fs.readFileSync(path.join(appDir, "ios", "App", "Podfile"), "utf8"),
@@ -191,6 +222,19 @@ describe("run-mobile-build", () => {
         "utf8",
       ),
     ).toBe("intent-plugin\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "Base.lproj",
+          "LaunchScreen.storyboard",
+        ),
+        "utf8",
+      ),
+    ).toBe("launch-screen\n");
     expect(
       fs.readFileSync(
         path.join(
@@ -234,11 +278,116 @@ describe("run-mobile-build", () => {
       fs.readFileSync(path.join(appDir, "android", "build.gradle"), "utf8"),
     ).toBe("android-root\n");
     expect(
+      fs.readFileSync(path.join(appDir, "android", "gradlew"), "utf8"),
+    ).toBe("android-gradlew\n");
+    expect(
       fs.readFileSync(
         path.join(appDir, "android", "app", "capacitor.build.gradle"),
         "utf8",
       ),
     ).toBe("android-capacitor\n");
+  });
+
+  it("repairs an incomplete generated iOS platform from shipped templates", () => {
+    const repoRoot = makeTempDir();
+    const appDir = path.join(repoRoot, "apps", "app");
+    const iosAppDir = path.join(appDir, "ios", "App");
+
+    writeFile(
+      path.join(iosAppDir, "App.xcworkspace", "contents.xcworkspacedata"),
+      "",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "Podfile",
+      ),
+      "ios-podfile\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App.xcodeproj",
+        "project.pbxproj",
+      ),
+      "ios-project\n",
+    );
+
+    expect(isCapacitorPlatformReady("ios", { appDirValue: appDir })).toBe(
+      false,
+    );
+
+    const copied = syncPlatformTemplateFiles("ios", {
+      repoRootValue: repoRoot,
+      appDirValue: appDir,
+      log: () => {},
+    });
+
+    expect(copied).toContain(path.join("App", "Podfile"));
+    expect(copied).toContain(
+      path.join("App", "App.xcodeproj", "project.pbxproj"),
+    );
+    expect(isCapacitorPlatformReady("ios", { appDirValue: appDir })).toBe(true);
+  });
+
+  it("repairs an incomplete generated Android platform from shipped templates", () => {
+    const repoRoot = makeTempDir();
+    const appDir = path.join(repoRoot, "apps", "app");
+
+    writeFile(path.join(appDir, "android", "settings.gradle"), "partial\n");
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "gradlew",
+      ),
+      "android-gradlew\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "app",
+        "build.gradle",
+      ),
+      "android-app\n",
+    );
+
+    expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
+      false,
+    );
+
+    const copied = syncPlatformTemplateFiles("android", {
+      repoRootValue: repoRoot,
+      appDirValue: appDir,
+      log: () => {},
+    });
+
+    expect(copied).toContain("gradlew");
+    expect(copied).toContain(path.join("app", "build.gradle"));
+    expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
+      true,
+    );
   });
 
   it("keeps shipped platform templates on app-local capacitor packages", () => {
@@ -324,6 +473,87 @@ describe("run-mobile-build", () => {
   it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {
     expect(shouldRunIosPodInstall([path.join("App", "Podfile")])).toBe(true);
     expect(shouldRunIosPodInstall(["build.gradle"])).toBe(false);
+  });
+
+  it("applies the configured iOS bundle identity to app, extension, and app group files", () => {
+    const appDir = makeTempDir();
+    const iosAppRoot = path.join(appDir, "ios", "App");
+    const projectPath = path.join(
+      iosAppRoot,
+      "App.xcodeproj",
+      "project.pbxproj",
+    );
+    const appEntitlements = path.join(iosAppRoot, "App", "App.entitlements");
+    const extensionEntitlements = path.join(
+      iosAppRoot,
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    );
+    const extensionHandler = path.join(
+      iosAppRoot,
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    );
+
+    writeFile(
+      projectPath,
+      [
+        "DEVELOPMENT_TEAM = 25877RY2EH;",
+        "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+        "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+      ].join("\n"),
+    );
+    writeFile(appEntitlements, "<string>group.ai.elizaos.app</string>\n");
+    writeFile(extensionEntitlements, "<string>group.ai.elizaos.app</string>\n");
+    writeFile(
+      extensionHandler,
+      'static let appGroupIdentifier = "group.ai.elizaos.app"\n',
+    );
+
+    const changed = applyIosAppIdentity({
+      appDirValue: appDir,
+      appId: "com.example.milady",
+      appGroup: "group.com.example.milady",
+      developmentTeam: "ABCDE12345",
+      log: () => {},
+    });
+
+    expect(changed).toEqual(
+      expect.arrayContaining([
+        path.join("App.xcodeproj", "project.pbxproj"),
+        path.join("App", "App.entitlements"),
+        path.join(
+          "App",
+          "WebsiteBlockerContentExtension",
+          "WebsiteBlockerContentExtension.entitlements",
+        ),
+        path.join(
+          "App",
+          "WebsiteBlockerContentExtension",
+          "ActionRequestHandler.swift",
+        ),
+      ]),
+    );
+    expect(fs.readFileSync(projectPath, "utf8")).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = com.example.milady;",
+    );
+    expect(fs.readFileSync(projectPath, "utf8")).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = com.example.milady.WebsiteBlockerContentExtension;",
+    );
+    expect(fs.readFileSync(projectPath, "utf8")).toContain(
+      "DEVELOPMENT_TEAM = ABCDE12345;",
+    );
+    expect(fs.readFileSync(appEntitlements, "utf8")).toContain(
+      "group.com.example.milady",
+    );
+    expect(fs.readFileSync(extensionEntitlements, "utf8")).toContain(
+      "group.com.example.milady",
+    );
+    expect(fs.readFileSync(extensionHandler, "utf8")).toContain(
+      "group.com.example.milady",
+    );
   });
 
   it("uses a device iOS build target when llama.cpp ships a device framework", () => {

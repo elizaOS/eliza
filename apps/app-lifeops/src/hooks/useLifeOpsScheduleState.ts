@@ -1,6 +1,6 @@
 import { client } from "@elizaos/app-core/api";
-import type { LifeOpsScheduleMergedState } from "../lifeops/schedule-sync-contracts.js";
 import { useCallback, useEffect, useState } from "react";
+import type { LifeOpsScheduleMergedState } from "../lifeops/schedule-sync-contracts.js";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -12,6 +12,8 @@ function formatError(cause: unknown, fallback: string): string {
 export interface UseLifeOpsScheduleStateOptions {
   timezone?: string | null;
   scope?: "local" | "cloud" | "effective";
+  refreshIntervalMs?: number;
+  refreshOnWindowFocus?: boolean;
 }
 
 export function useLifeOpsScheduleState(
@@ -21,54 +23,72 @@ export function useLifeOpsScheduleState(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await client.getLifeOpsScheduleMergedState({
-        timezone: options.timezone ?? undefined,
-        scope: options.scope,
-        refresh: false,
-      });
-      setState(response.mergedState);
-      setError(null);
-    } catch (cause) {
-      setError(formatError(cause, "LifeOps schedule state failed to load."));
-    } finally {
-      setLoading(false);
-    }
-  }, [options.scope, options.timezone]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
+  const load = useCallback(
+    async (forceRefresh: boolean, isCancelled?: () => boolean) => {
       setLoading(true);
       try {
         const response = await client.getLifeOpsScheduleMergedState({
           timezone: options.timezone ?? undefined,
           scope: options.scope,
-          refresh: false,
+          refresh: forceRefresh,
         });
-        if (cancelled) {
+        if (isCancelled?.()) {
           return;
         }
         setState(response.mergedState);
         setError(null);
       } catch (cause) {
-        if (cancelled) {
+        if (isCancelled?.()) {
           return;
         }
         setError(formatError(cause, "LifeOps schedule state failed to load."));
       } finally {
-        if (!cancelled) {
+        if (!isCancelled?.()) {
           setLoading(false);
         }
       }
-    })();
+    },
+    [options.scope, options.timezone],
+  );
+
+  const refresh = useCallback(async () => {
+    await load(true);
+  }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void load(false, () => cancelled);
 
     return () => {
       cancelled = true;
     };
-  }, [options.scope, options.timezone]);
+  }, [load]);
+
+  useEffect(() => {
+    const intervalMs = options.refreshIntervalMs ?? 60_000;
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void load(false);
+    }, intervalMs);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [load, options.refreshIntervalMs]);
+
+  useEffect(() => {
+    if (options.refreshOnWindowFocus === false) {
+      return;
+    }
+    const handleFocus = () => {
+      void load(false);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [load, options.refreshOnWindowFocus]);
 
   return {
     state,

@@ -54,14 +54,14 @@ describe("Integration: X DM inbound", () => {
     await rm(oauthDir, { recursive: true, force: true });
   });
 
-  it("connector status reports dmInbound: false when x.read is not granted", async () => {
+  it("connector status reports dmInbound: false when x.dm.read is not granted", async () => {
     runtime = await createLifeOpsTestRuntime();
     const service = new LifeOpsService(runtime.runtime);
     const status = await service.getXConnectorStatus();
     expect(status.dmInbound).toBe(false);
   });
 
-  it("connector status reports dmInbound: true when x.read is granted", async () => {
+  it("connector status reports dmInbound: true when x.dm.read is granted", async () => {
     runtime = await createLifeOpsTestRuntime();
     const service = new LifeOpsService(runtime.runtime);
     await service.repository.upsertConnectorGrant(
@@ -70,7 +70,7 @@ describe("Integration: X DM inbound", () => {
         provider: "x",
         identity: {},
         grantedScopes: [],
-        capabilities: ["x.read"],
+        capabilities: ["x.read", "x.dm.read"],
         tokenRef: null,
         mode: "local",
         metadata: {},
@@ -101,7 +101,7 @@ describe("Integration: X DM inbound", () => {
           provider: "x",
           identity: {},
           grantedScopes: [],
-          capabilities: ["x.read", "x.write"],
+          capabilities: ["x.read", "x.write", "x.dm.read"],
           tokenRef: null,
           mode: "local",
           metadata: {},
@@ -137,7 +137,7 @@ describe("Integration: X DM inbound", () => {
           provider: "x",
           identity: {},
           grantedScopes: [],
-          capabilities: ["x.read", "x.write"],
+          capabilities: ["x.read", "x.write", "x.dm.read"],
           tokenRef: null,
           mode: "local",
           metadata: {},
