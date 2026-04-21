@@ -21,9 +21,26 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeApiBaseUrl(value: unknown): string {
+function normalizeApiBaseUrl(value: unknown): string | null {
   const trimmed = normalizeString(value).replace(/\/+$/, "");
-  return trimmed || LEGACY_LIFEOPS_API_BASE_URL;
+  if (!trimmed) {
+    return LEGACY_LIFEOPS_API_BASE_URL;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+export function isValidApiBaseUrl(value: unknown): value is string {
+  return normalizeApiBaseUrl(value) !== null;
 }
 
 function shouldAutofillApiBaseUrl(value: unknown): boolean {
@@ -170,10 +187,21 @@ export function normalizeCompanionConfig(
     return null;
   }
   const apiBaseUrl = normalizeApiBaseUrl(input.apiBaseUrl);
+  if (!apiBaseUrl) {
+    return null;
+  }
   const companionId = normalizeString(input.companionId);
   const pairingToken = normalizeString(input.pairingToken);
+  const browserInput = normalizeString(input.browser);
   const browser =
-    normalizeString(input.browser) === "safari" ? "safari" : "chrome";
+    browserInput.length === 0
+      ? "chrome"
+      : browserInput === "safari" || browserInput === "chrome"
+        ? browserInput
+        : null;
+  if (!browser) {
+    return null;
+  }
   const profileId = normalizeString(input.profileId) || "default";
   const profileLabel = normalizeString(input.profileLabel) || profileId;
   const label =

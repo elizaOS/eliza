@@ -101,13 +101,13 @@ describe("normalizeCompanionConfig", () => {
     expect(config?.apiBaseUrl).toBe("https://lifeops.example.com/api");
   });
 
-  it("coerces unknown browser values to chrome and preserves safari", () => {
-    const chromeLike = normalizeCompanionConfig({
+  it("rejects unknown browser values and preserves safari", () => {
+    const invalid = normalizeCompanionConfig({
       companionId: "c",
       pairingToken: "t",
       browser: "firefox" as unknown as "chrome",
     });
-    expect(chromeLike?.browser).toBe("chrome");
+    expect(invalid).toBeNull();
 
     const safari = normalizeCompanionConfig({
       companionId: "c",
@@ -115,6 +115,23 @@ describe("normalizeCompanionConfig", () => {
       browser: "safari",
     });
     expect(safari?.browser).toBe("safari");
+  });
+
+  it("rejects invalid API base URLs", () => {
+    expect(
+      normalizeCompanionConfig({
+        companionId: "c",
+        pairingToken: "t",
+        apiBaseUrl: "not a url",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeCompanionConfig({
+        companionId: "c",
+        pairingToken: "t",
+        apiBaseUrl: "javascript:alert(1)",
+      }),
+    ).toBeNull();
   });
 
   it("auto-generates a label when none is provided", () => {
