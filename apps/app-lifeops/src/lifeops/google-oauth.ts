@@ -565,12 +565,41 @@ async function fetchGoogleUserInfo(
     },
   });
   if (!response.ok) {
-    return {};
+    throw new GoogleOAuthError(502, await readGoogleErrorMessage(response));
   }
   const parsed = (await response.json()) as unknown;
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {};
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new GoogleOAuthError(
+      502,
+      "Google userinfo returned an invalid payload.",
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function readGoogleIdentityEmail(identity: Record<string, unknown>): string | null {
+  const value = identity.email ?? identity.emailAddress ?? identity.primaryEmail;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const email = value.trim();
+  return email.length > 0 ? email : null;
+}
+
+function requireGoogleIdentity(
+  identity: Record<string, unknown>,
+): Record<string, unknown> {
+  const email = readGoogleIdentityEmail(identity);
+  if (!email) {
+    throw new GoogleOAuthError(
+      502,
+      "Google identity payload did not include an email address.",
+    );
+  }
+  return {
+    ...identity,
+    email,
+  };
 }
 
 async function exchangeGoogleToken(
@@ -770,6 +799,7 @@ export async function completeGoogleConnectorOAuth(args: {
   if (Object.keys(identity).length === 0) {
     identity = await fetchGoogleUserInfo(token.access_token);
   }
+  identity = requireGoogleIdentity(identity);
 
   const tokenRef = buildGoogleTokenRef(
     session.agentId,

@@ -81,7 +81,7 @@ function isMockRemoteDesktopEnabled(): boolean {
       normalized === "fixture"
     );
   }
-  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+  return false;
 }
 
 // ---------------------------------------------------------------------------

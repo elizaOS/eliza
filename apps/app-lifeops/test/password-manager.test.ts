@@ -120,6 +120,7 @@ import { passwordManagerAction } from "../src/actions/password-manager.js";
 import { spawn as mockedSpawn } from "node:child_process";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
+const ORIGINAL_ENV = { ...process.env };
 
 function makeRuntime() {
   return {
@@ -143,10 +144,13 @@ function makeMessage() {
 beforeEach(() => {
   execFileBehaviors.length = 0;
   clearPasswordManagerBackendCache();
+  delete process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND;
+  delete process.env.MILADY_BENCHMARK_USE_MOCKS;
   vi.clearAllMocks();
 });
 
 afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
   vi.restoreAllMocks();
 });
 
@@ -163,6 +167,22 @@ describe("detectPasswordManagerBackend", () => {
     );
     const backend = await detectPasswordManagerBackend();
     expect(backend).toBe("1password");
+  });
+
+  test("does not enable fixture backend from benchmark mock mode", async () => {
+    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+
+    const backend = await detectPasswordManagerBackend();
+
+    expect(backend).toBe("none");
+  });
+
+  test("enables fixture backend only from explicit password-manager test env", async () => {
+    process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND = "fixture";
+
+    const backend = await detectPasswordManagerBackend();
+
+    expect(backend).toBe("fixture");
   });
 });
 
