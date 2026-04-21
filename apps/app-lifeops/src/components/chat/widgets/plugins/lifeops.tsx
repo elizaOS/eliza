@@ -1,3 +1,5 @@
+import { client } from "@elizaos/app-core/api";
+import { useApp } from "@elizaos/app-core/state";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -9,8 +11,6 @@ import type {
 import { CalendarDays, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";
 
 const GOOGLE_WIDGET_REFRESH_INTERVAL_MS = 15_000;
@@ -21,10 +21,6 @@ function capabilitySet(
   status: LifeOpsGoogleConnectorStatus | null,
 ): Set<LifeOpsGoogleCapability> {
   return new Set(status?.grantedCapabilities ?? []);
-}
-
-function formatGoogleConnectorError(message: string | null): string | null {
-  return message;
 }
 
 function formatEventTime(
@@ -189,7 +185,7 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
     return () => {
       active = false;
     };
-  }, [dataStatus, timeZone]);
+  }, [dataStatus, t, timeZone]);
 
   const capabilities = useMemo(() => capabilitySet(dataStatus), [dataStatus]);
   const showCalendar =
@@ -201,7 +197,8 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
   const calendarEvents = calendarFeed?.events ?? [];
   const gmailMessages = gmailFeed?.messages ?? [];
   const connectorError = useMemo(() => {
-    const message = ownerConnector.error ?? agentConnector.error ?? feedError ?? null;
+    const message =
+      ownerConnector.error ?? agentConnector.error ?? feedError ?? null;
     if (!message) {
       return null;
     }
@@ -211,7 +208,8 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
       normalized.includes("insufficient authentication scopes")
     ) {
       return t("lifeopsoverview.reconnectGoogle", {
-        defaultValue: "Reconnect Google to refresh calendar and Gmail permissions.",
+        defaultValue:
+          "Reconnect Google to refresh calendar and Gmail permissions.",
       });
     }
     return message;
@@ -241,11 +239,7 @@ export function GoogleGlanceSection({ timeZone }: { timeZone: string }) {
             calendarEvents
               .slice(0, GOOGLE_WIDGET_EVENT_LIMIT)
               .map((event) => (
-                <CalendarRow
-                  key={event.id}
-                  event={event}
-                  timeZone={timeZone}
-                />
+                <CalendarRow key={event.id} event={event} timeZone={timeZone} />
               ))
           )}
         </div>

@@ -178,7 +178,7 @@ Engine-Specific Arguments
 Pass additional arguments to the underlying engine CLI using -- separator:
 
 # Pass copilot-specific arguments
-ralphy --copilot --model "claude-opus-4.5" --prd PRD.md -- --allow-all-tools --allow-all-urls --stream on
+ralphy --copilot --model "claude-opus-4-7" --prd PRD.md -- --allow-all-tools --allow-all-urls --stream on
 
 # Pass claude-specific arguments  
 ralphy --claude "add feature" -- --no-permissions-prompt

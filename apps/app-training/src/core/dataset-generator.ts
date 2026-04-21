@@ -317,7 +317,7 @@ export function createAnthropicTeacher(
   runtime?: IAgentRuntime,
 ): TeacherModel {
   return {
-    name: "anthropic/claude-sonnet-4",
+    name: "anthropic/claude-sonnet-4.6",
     async generate(systemPrompt: string, userPrompt: string): Promise<string> {
       return await withStandaloneTrajectory(
         runtime,
@@ -325,7 +325,7 @@ export function createAnthropicTeacher(
           source: "training",
           metadata: {
             provider: "anthropic",
-            model: "claude-sonnet-4-20250514",
+            model: "claude-sonnet-4-6",
             purpose: "teacher",
           },
         },
@@ -341,7 +341,7 @@ export function createAnthropicTeacher(
                 "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
+                model: "claude-sonnet-4-6",
                 max_tokens: 4096,
                 temperature: 1,
                 system: systemPrompt,
@@ -364,8 +364,8 @@ export function createAnthropicTeacher(
           const text = data.content[0]?.text ?? "";
           logTeacherCall({
             runtime,
-            model: "anthropic/claude-sonnet-4",
-            modelVersion: "claude-sonnet-4-20250514",
+            model: "anthropic/claude-sonnet-4.6",
+            modelVersion: "claude-sonnet-4-6",
             systemPrompt,
             userPrompt,
             response: text,

@@ -53,10 +53,8 @@ class Worker(BaseModule):
         self.temperature = engine_params_for_orchestrator.get("temperature", 0.0)
         self.tool_config = engine_params_for_orchestrator.get("tool_config", "")
         self.use_thinking = engine_params_for_orchestrator.get("model", "") in [
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            "claude-3-7-sonnet-20250219",
-            "claude-sonnet-4-5-20250929",
+            "claude-opus-4-7",
+            "claude-sonnet-4-6",
         ]
         self.engine_params_for_orchestrator = engine_params_for_orchestrator
         self.engine_params_for_memoryer = engine_params_for_memoryer

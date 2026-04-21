@@ -29,5 +29,5 @@ ralphy --opencode --prd PRD.md
 
 ## Later: Antigravity Auth (ausgeklammert)
 
-Falls du später große Modelle (Claude Opus 4.5, Gemini 3 Pro) nutzen willst:
+Falls du später große Modelle (Claude Opus 4.7, Gemini 3 Pro) nutzen willst:
 → Siehe [opencode-antigravity-auth](https://github.com/NoeFabris/opencode-antigravity-auth)

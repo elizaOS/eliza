@@ -827,16 +827,16 @@ class LMMEngineAWSBedrock(LMMEngine):
 
         # Claude model mapping for AWS Bedrock
         self.claude_model_map = {
-            "claude-opus-4": "anthropic.claude-opus-4-20250514-v1:0",
-            "claude-sonnet-4": "anthropic.claude-sonnet-4-20250514-v1:0",
-            "claude-3-7-sonnet": "anthropic.claude-3-7-sonnet-20250219-v1:0",
-            "claude-3-5-sonnet": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "claude-3-5-sonnet-20241022": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "claude-3-5-sonnet-20240620": "anthropic.claude-3-5-sonnet-20240620-v1:0",
+            "claude-opus-4-7": "anthropic.claude-opus-4-7",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v2:0",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v2:0",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
             "claude-3-5-haiku": "anthropic.claude-3-5-haiku-20241022-v1:0",
-            "claude-3-haiku": "anthropic.claude-3-haiku-20240307-v1:0",
-            "claude-3-sonnet": "anthropic.claude-3-sonnet-20240229-v1:0",
-            "claude-3-opus": "anthropic.claude-3-opus-20240229-v1:0",
+            "claude-haiku-4-5-20251001": "anthropic.claude-haiku-4-5-20251001-v1:0",
+            "claude-sonnet-4-6": "anthropic.claude-sonnet-4-6-v1:0",
+            "claude-opus-4-7": "anthropic.claude-opus-4-7-v1:0",
         }
 
         # Get the actual Bedrock model ID

@@ -469,7 +469,7 @@ export function paramsToSchema(
         } else if (keyUpper.includes("IMAGE")) {
           hint.placeholder = "e.g., dall-e-3, gpt-4o";
         } else {
-          hint.placeholder = "e.g., gpt-4o, claude-sonnet-4-20250514";
+          hint.placeholder = "e.g., gpt-4o, claude-sonnet-4-6";
         }
       }
     }

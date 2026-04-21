@@ -41,7 +41,7 @@ WORKSPACE_DIR = SANDBOX_DIR / "workspace"
 OPENCLAW_URL = os.getenv("OPENCLAW_URL", "http://localhost:18790")
 OPENCLAW_TOKEN = os.getenv("OPENCLAW_GATEWAY_TOKEN", "sandbox-token-12345")
 MOCK_TOOLS_URL = os.getenv("MOCK_TOOLS_URL", "http://localhost:3001")
-CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4-5-20250929")
+CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
 
 
 def load_scenario(name: str) -> dict | None:

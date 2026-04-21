@@ -57,5 +57,5 @@ jobs:
 
           # Claude CLI arguments for model and allowed tools
           claude_args: |
-            --model claude-opus-4-5-20251101
+            --model claude-opus-4-7
             --allowedTools "Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)"

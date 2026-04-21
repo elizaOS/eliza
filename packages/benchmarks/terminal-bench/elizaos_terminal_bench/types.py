@@ -252,7 +252,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
         "file_operations": 77.2,
         "scripting": 64.8,
     },
-    "Claude Code + Claude 3.5 Sonnet": {
+    "Claude Code + Claude Sonnet 4.6": {
         "overall": 58.2,
         "code_compilation": 65.1,
         "system_admin": 54.3,
@@ -268,7 +268,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
         "file_operations": 65.3,
         "scripting": 54.1,
     },
-    "Aider + Claude 3.5 Sonnet": {
+    "Aider + Claude Sonnet 4.6": {
         "overall": 47.5,
         "code_compilation": 53.2,
         "system_admin": 42.8,

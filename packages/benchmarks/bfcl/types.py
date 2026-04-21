@@ -259,8 +259,8 @@ LEADERBOARD_SCORES: dict[str, BaselineScore] = {
         java=0.87,
         javascript=0.88,
     ),
-    "claude-3-opus": BaselineScore(
-        model_name="Claude 3 Opus",
+    "claude-opus-4-7": BaselineScore(
+        model_name="Claude Opus 4.7",
         overall=0.852,
         ast=0.882,
         exec=0.821,
@@ -274,8 +274,8 @@ LEADERBOARD_SCORES: dict[str, BaselineScore] = {
         java=0.83,
         javascript=0.84,
     ),
-    "claude-3-sonnet": BaselineScore(
-        model_name="Claude 3 Sonnet",
+    "claude-sonnet-4-6": BaselineScore(
+        model_name="Claude Sonnet 4.6",
         overall=0.823,
         ast=0.854,
         exec=0.792,

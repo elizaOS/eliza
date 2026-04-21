@@ -90,7 +90,7 @@ PROVIDER_CONFIGS: dict[ModelProvider, ProviderConfig] = {
         base_url_env="ANTHROPIC_BASE_URL",
         default_base_url="https://api.anthropic.com",
         small_model="claude-3-5-haiku-latest",
-        large_model="claude-sonnet-4-20250514",
+        large_model="claude-sonnet-4-6",
         priority=85,
     ),
     ModelProvider.GOOGLE_GENAI: ProviderConfig(
@@ -200,9 +200,9 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
     ),
     
     # Anthropic models
-    "anthropic/claude-sonnet-4": ModelConfig(
+    "anthropic/claude-sonnet-4.6": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
-        model_id="claude-sonnet-4-20250514",
+        model_id="claude-sonnet-4-6",
         display_name="Claude Sonnet 4 (Anthropic)",
         max_tokens=8192,
         cost_per_1k_tokens=0.003,
@@ -214,10 +214,10 @@ SUPPORTED_MODELS: dict[str, ModelConfig] = {
         max_tokens=8192,
         cost_per_1k_tokens=0.001,
     ),
-    "anthropic/claude-3-opus": ModelConfig(
+    "anthropic/claude-opus-4.7": ModelConfig(
         provider=ModelProvider.ANTHROPIC,
-        model_id="claude-3-opus-20240229",
-        display_name="Claude 3 Opus (Anthropic)",
+        model_id="claude-opus-4-7",
+        display_name="Claude Opus 4.7 (Anthropic)",
         max_tokens=4096,
         cost_per_1k_tokens=0.015,
     ),

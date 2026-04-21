@@ -6,6 +6,19 @@ import {
 	validateActionRegex as coreValidateActionRegex,
 } from "../../../validation/keywords.ts";
 
+/**
+ * Read the recent-messages memory array that `recentMessagesProvider` writes
+ * into `state.data.providers.RECENT_MESSAGES.data.recentMessages`.
+ *
+ * Inlined from @elizaos/shared to avoid a cross-package type import that
+ * breaks tsc declaration emit (rootDir constraint).
+ */
+function getRecentMessagesData(state: State | undefined): Memory[] {
+	const messages =
+		state?.data?.providers?.RECENT_MESSAGES?.data?.recentMessages;
+	return Array.isArray(messages) ? (messages as Memory[]) : [];
+}
+
 const IGNORED_PLUGIN_NAME_TOKENS = new Set([
 	"app",
 	"core",

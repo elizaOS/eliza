@@ -38,7 +38,7 @@ load_dotenv(Path(__file__).parent.parent.parent / "eliza" / ".env", override=Fal
 
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-7")
 
 
 def run_typescript_skill(code: str, agent_pubkey: str, blockhash: str,
@@ -110,7 +110,7 @@ class ElizaExplorer:
     Phase 2 (LLM via Eliza runtime): calls runtime.message_service.handle_message().
     """
 
-    def __init__(self, model_name: str = "claude-opus-4-6", max_messages: int = 50,
+    def __init__(self, model_name: str = "claude-opus-4-7", max_messages: int = 50,
                  run_index: int = 0, environment_config: str | None = None,
                  code_file: str | None = None):
         self.model_name = model_name
@@ -305,7 +305,7 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s",
                         force=True, handlers=[logging.StreamHandler(sys.stdout)])
 
-    model_name = os.getenv("MODEL_NAME", "claude-opus-4-6")
+    model_name = os.getenv("MODEL_NAME", "claude-opus-4-7")
     max_messages = int(os.getenv("MAX_MESSAGES", "50"))
     run_index = int(os.getenv("RUN_INDEX", "0"))
     environment_config = os.getenv("ENVIRONMENT_CONFIG")

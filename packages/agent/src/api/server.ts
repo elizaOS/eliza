@@ -188,7 +188,7 @@ import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
-import { handleDuffelRelayRoute } from "./duffel-relay-routes.js";
+import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
@@ -3755,17 +3755,17 @@ async function handleRequest(
     );
     if (featuresHandled) return;
 
-    // Duffel travel relay — must run before the generic cloud passthrough
-    // so the upstream Duffel + billing path is hit, not the bare cloud
-    // proxy that would land on /api/v1/duffel/* with no markup logic.
-    const duffelHandled = await handleDuffelRelayRoute(
+    // Travel-provider relay — must run before the generic cloud
+    // passthrough so provider-specific billing paths are hit instead of
+    // the bare Cloud proxy.
+    const travelProviderHandled = await handleTravelProviderRelayRoute(
       req,
       res,
       pathname,
       method,
       { config: state.config, runtime: state.runtime },
     );
-    if (duffelHandled) return;
+    if (travelProviderHandled) return;
 
     const billingHandled = await handleCloudBillingRoute(
       req,

@@ -27,6 +27,10 @@ import {
   CLOUD_LINKED_DEFAULT_ON,
   isLifeOpsFeatureKey,
   type FeatureFlagState,
+  isCloudLinkedDefaultOnFeatureKey,
+  type LifeOpsFeatureFlagRowDto,
+  type LifeOpsFeatureFlagsResponse,
+  type LifeOpsFeatureFlagsSyncResponse,
   type LifeOpsFeatureKey,
 } from "@elizaos/app-lifeops/lifeops/feature-flags.types";
 import { createFeatureFlagService } from "@elizaos/app-lifeops/lifeops/feature-flags";
@@ -151,28 +155,19 @@ async function fetchCloudFeatures(
   return { status: 200, rows: parseCloudFeatures(payload), error: null };
 }
 
-interface FeatureRowDto {
-  readonly featureKey: LifeOpsFeatureKey;
-  readonly enabled: boolean;
-  readonly source: FeatureFlagState["source"];
-  readonly description: string;
-  readonly costsMoney: boolean;
-  readonly enabledAt: string | null;
-  readonly enabledBy: string | null;
-  readonly packageId: string | null;
-}
-
-function toRowDto(state: FeatureFlagState): FeatureRowDto {
+function toRowDto(state: FeatureFlagState): LifeOpsFeatureFlagRowDto {
   const packageId = state.metadata.packageId;
   return {
     featureKey: state.featureKey,
     enabled: state.enabled,
     source: state.source,
+    label: state.label,
     description: state.description,
     costsMoney: state.costsMoney,
     enabledAt: state.enabledAt ? state.enabledAt.toISOString() : null,
     enabledBy: state.enabledBy,
     packageId: typeof packageId === "string" ? packageId : null,
+    cloudDefaultOn: isCloudLinkedDefaultOnFeatureKey(state.featureKey),
   };
 }
 
@@ -187,7 +182,8 @@ async function handleGet(
   const service = createFeatureFlagService(state.runtime as IAgentRuntime);
   const list = await service.list();
   const rows = list.map(toRowDto);
-  sendJson(res, { features: rows }, 200);
+  const response: LifeOpsFeatureFlagsResponse = { features: rows };
+  sendJson(res, response, 200);
 }
 
 async function handleSync(
@@ -212,8 +208,8 @@ async function handleSync(
   // into Eliza Cloud, so we upsert rows for every feature in
   // CLOUD_LINKED_DEFAULT_ON that did not come back explicitly disabled
   // from upstream. This keeps `source = 'cloud'` audit-correct (the row
-  // was created by a Cloud sync) and surfaces the 5% service-fee tag in
-  // the UI, while still letting an explicit upstream `enabled: false`
+  // was created by a Cloud sync) and surfaces the Cloud-managed billing UI,
+  // while still letting an explicit upstream `enabled: false`
   // win for users on a plan that excludes a given capability.
   const promotedKeys = new Set<LifeOpsFeatureKey>();
   for (const featureKey of CLOUD_LINKED_DEFAULT_ON) {
@@ -240,9 +236,13 @@ async function handleSync(
     `[cloud-features] synced ${remote.rows.length} feature(s) from Eliza Cloud (${promotedKeys.size} promoted by Cloud-default policy)`,
   );
   const list = await service.list();
+  const response: LifeOpsFeatureFlagsSyncResponse = {
+    synced: remote.rows.length,
+    features: list.map(toRowDto),
+  };
   sendJson(
     res,
-    { synced: remote.rows.length, features: list.map(toRowDto) },
+    response,
     200,
   );
 }

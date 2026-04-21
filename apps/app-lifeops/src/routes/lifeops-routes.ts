@@ -574,6 +574,7 @@ export async function handleLifeOpsRoutes(
         featureKey: next.featureKey,
         enabled: next.enabled,
         source: next.source,
+        label: next.label,
         description: next.description,
         costsMoney: next.costsMoney,
         enabledAt: next.enabledAt ? next.enabledAt.toISOString() : null,

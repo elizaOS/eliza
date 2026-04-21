@@ -225,7 +225,7 @@ export interface SessionOrigin {
 export interface SessionModelOverride {
 	/** Provider name override (e.g., "anthropic", "openai") */
 	provider?: string;
-	/** Model name override (e.g., "claude-3-opus", "gpt-5") */
+	/** Model name override (e.g., "claude-opus-4-7", "gpt-5") */
 	model?: string;
 	/** Authentication profile override */
 	authProfile?: string;

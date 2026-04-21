@@ -16,7 +16,7 @@ from elizaos.types.plugin import Plugin
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-7")
 
 
 async def _anthropic_text_handler(runtime: "IAgentRuntime", params: dict) -> str:

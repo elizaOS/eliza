@@ -17,10 +17,10 @@
         "o4-mini": {"input": "1.1$", "output": "4.40$"}
       },
       "anthropic": {
-        "claude-opus-4-20250514": {"input": "15$", "output": "75$"},
-        "claude-sonnet-4-20250514": {"input": "3$", "output": "15$"},
-        "claude-3-7-sonnet-20250219": {"input": "3$", "output": "15$"},
-        "claude-3-5-sonnet-20241022": {"input": "3$", "output": "15$"},
+        "claude-opus-4-7": {"input": "15$", "output": "75$"},
+        "claude-sonnet-4-6": {"input": "3$", "output": "15$"},
+        "claude-sonnet-4-6": {"input": "3$", "output": "15$"},
+        "claude-sonnet-4-6": {"input": "3$", "output": "15$"},
         "claude-3-5-haiku-20241022": {"input": "0.8$", "output": "4$"}
       },
       "qwen": {
@@ -73,14 +73,14 @@
         "gpt-4o-mini-2024-07-18": {"input": "0.15$", "output": "0.60$"},
         "o4-mini": {"input": "0.55$", "output": "2.20$"},
         "o3": {"input": "2.00$", "output": "8.00$"},
-        "claude-opus-4-20250514": {"input": "15.00$", "output": "75.00$"},
-        "claude-sonnet-4-20250514": {"input": "3.00$", "output": "15.00$"},
-        "claude-3-7-sonnet-latest": {"input": "3.00$", "output": "15.00$"},
-        "claude-3-5-sonnet-20241022": {"input": "3.00$", "output": "15.00$"},
-        "claude-3-5-sonnet-20240620": {"input": "3.00$", "output": "15.00$"},
+        "claude-opus-4-7": {"input": "15.00$", "output": "75.00$"},
+        "claude-sonnet-4-6": {"input": "3.00$", "output": "15.00$"},
+        "claude-sonnet-4-6": {"input": "3.00$", "output": "15.00$"},
+        "claude-sonnet-4-6": {"input": "3.00$", "output": "15.00$"},
+        "claude-sonnet-4-6": {"input": "3.00$", "output": "15.00$"},
         "claude-3-5-haiku-20241022": {"input": "0.80$", "output": "4.00$"},
-        "claude-3-opus-20240229": {"input": "15.00$", "output": "75.00$"},
-        "claude-3-haiku-20240307": {"input": "0.25$", "output": "1.25$"},
+        "claude-opus-4-7": {"input": "15.00$", "output": "75.00$"},
+        "claude-haiku-4-5-20251001": {"input": "0.25$", "output": "1.25$"},
         "gemini-2.5-pro-preview-03-25": {"input": "1.25$", "output": "10.00$"},
         "gemini-2.5-flash-lite": {"input": "0.10$", "output": "0.40$"},
         "gemini-2.5-flash-preview-05-20": {"input": "0.30$", "output": "2.50$"},
@@ -105,10 +105,10 @@
         "gemini-1.5-flash": {"input": "0.075$", "output": "0.30$"}
       },
       "bedrock": {
-        "Claude-Opus-4": {"input": "15.00$", "output": "75.00$"},
+        "Claude-Opus-4.7": {"input": "15.00$", "output": "75.00$"},
         "Claude-Sonnet-4": {"input": "3.00$", "output": "15.00$"},
-        "Claude-Sonnet-3.7": {"input": "3.00$", "output": "15.00$"},
-        "Claude-Sonnet-3.5": {"input": "3.00$", "output": "15.00$"}
+        "Claude-Sonnet-4.6": {"input": "3.00$", "output": "15.00$"},
+        "Claude-Sonnet-4.6": {"input": "3.00$", "output": "15.00$"}
       },
       "openrouter": {
         "openai/gpt-5": {"input": "1.25$", "output": "10$"},
@@ -125,8 +125,8 @@
         "x-ai/grok-4": {"input": "3$", "output": "15$"},
         "x-ai/grok-3": {"input": "3$", "output": "15$"},
         "x-ai/grok-3-mini": {"input": "0.3$", "output": "0.5$"},
-        "anthropic/claude-opus-4": {"input": "15$", "output": "75$"},
-        "anthropic/claude-sonnet-4": {"input": "3$", "output": "15$"},
+        "anthropic/claude-opus-4.7": {"input": "15$", "output": "75$"},
+        "anthropic/claude-sonnet-4.6": {"input": "3$", "output": "15$"},
         "google/gemini-2.5-flash": {"input": "0.3$", "output": "2.5$"},
         "google/gemini-2.5-pro": {"input": "1.25$", "output": "10$"}
       },

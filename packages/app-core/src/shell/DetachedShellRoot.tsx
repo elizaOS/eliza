@@ -131,6 +131,7 @@ export function DetachedShellRoot({
     onboardingLoading,
     retryStartup,
     startupError,
+    t,
   } = useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
@@ -156,7 +157,9 @@ export function DetachedShellRoot({
         href="#detached-main"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-2 focus:bg-bg focus:text-txt"
       >
-        Skip to content
+        {t("detachedshell.SkipToContent", {
+          defaultValue: "Skip to content",
+        })}
       </a>
       <main
         id="detached-main"

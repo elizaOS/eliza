@@ -282,7 +282,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
         "multi_hop_3": 0.78,
         "overall": 0.94,
     },
-    "claude-3-opus": {
+    "claude-opus-4-7": {
         "niah_4k": 0.99,
         "niah_8k": 0.98,
         "niah_16k": 0.97,
@@ -294,7 +294,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
         "multi_hop_3": 0.81,
         "overall": 0.95,
     },
-    "claude-3-sonnet": {
+    "claude-sonnet-4-6": {
         "niah_4k": 0.98,
         "niah_8k": 0.96,
         "niah_16k": 0.94,

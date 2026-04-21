@@ -21,13 +21,13 @@
  * cannot be revoked locally, only by removing the Cloud package.
  *
  * Cloud-default policy:
- *  - When the user is signed into Eliza Cloud, travel features and
- *    `cloud.duffel` flip ON by default. Cost is metered Cloud-side with
- *    a 5% service fee; the local code never recomputes that markup
+ *  - When the user is signed into Eliza Cloud, travel features and the
+ *    cloud-managed travel-billing flag flip ON by default. Cost is
+ *    metered Cloud-side; the local code never recomputes that markup
  *    (Commandment 2).
  *  - Without Cloud, paid features stay OFF until the user opts in
- *    locally (which then requires them to bring their own Duffel API
- *    key via `MILADY_DUFFEL_DIRECT=1` + `DUFFEL_API_KEY`).
+ *    locally (which then requires them to bring their own travel-provider
+ *    API credentials via `MILADY_DUFFEL_DIRECT=1` + `DUFFEL_API_KEY`).
  */
 
 export type LifeOpsFeatureKey =
@@ -48,6 +48,8 @@ export interface FeatureFlagDefault {
   /** Compile-time baseline — applies until a row overrides it. May be
    *  flipped by `resolveFeatureDefaults` based on Cloud-link state. */
   readonly enabled: boolean;
+  /** Short user-facing label shown in settings and confirmations. */
+  readonly label: string;
   /** One-line user-facing description shown in the settings UI. */
   readonly description: string;
   /**
@@ -71,70 +73,80 @@ export const BASE_FEATURE_DEFAULTS: Readonly<
 > = {
   "travel.search_flight": {
     enabled: true,
+    label: "Search flights",
     description:
-      "Search Duffel flight inventory (read-only). Required for itinerary planning.",
+      "Search flight inventory through the configured travel provider (read-only). Required for itinerary planning.",
     costsMoney: false,
   },
   "travel.search_hotel": {
     enabled: true,
+    label: "Search hotels",
     description:
-      "Search Duffel Stays hotel inventory (read-only). Required for trip planning.",
+      "Search hotel inventory through the configured travel provider (read-only). Required for trip planning.",
     costsMoney: false,
   },
   "travel.book_flight": {
     enabled: false,
+    label: "Book flights",
     description:
-      "Place real flight bookings via Duffel. Each booking still requires explicit approval.",
+      "Place real flight bookings through the configured travel provider. Each booking still requires explicit approval.",
     costsMoney: true,
   },
   "travel.book_hotel": {
     enabled: false,
+    label: "Book hotels",
     description:
-      "Place real hotel bookings via Duffel Stays. Each booking still requires explicit approval.",
+      "Place real hotel bookings through the configured travel provider. Each booking still requires explicit approval.",
     costsMoney: true,
   },
   "notifications.push": {
     enabled: false,
+    label: "Push notifications",
     description:
       "Send push notifications via Ntfy. Requires NTFY_BASE_URL configuration.",
     costsMoney: false,
   },
   "cross_channel.escalate": {
     enabled: false,
+    label: "Cross-channel escalation",
     description:
       "Escalate unanswered messages across channels (e.g. Telegram → SMS → call).",
     costsMoney: true,
   },
   "browser.automation": {
     enabled: false,
+    label: "Browser automation",
     description:
       "Allow Eliza to drive the browser extension (form fills, navigation, clicks).",
     costsMoney: false,
   },
   "email.draft": {
     enabled: true,
+    label: "Draft emails",
     description: "Draft email replies in your inbox without sending them.",
     costsMoney: false,
   },
   "email.send": {
     enabled: false,
+    label: "Send emails",
     description:
       "Send drafted emails on your behalf (still gated by approval queue).",
     costsMoney: false,
   },
   "cloud.duffel": {
     enabled: false,
+    label: "Cloud travel billing",
     description:
-      "Use Eliza Cloud's managed Duffel billing instead of bringing your own DUFFEL_API_KEY.",
+      "Use Eliza Cloud's managed travel-provider billing instead of bringing your own provider API credentials.",
     costsMoney: true,
   },
 };
 
 /**
  * Feature keys that default to ON when the user is signed into Eliza
- * Cloud. The 5% service fee is applied Cloud-side (Commandment 2/4 — no
- * client math), so flipping these on locally is purely a default-policy
- * decision: it does not change billing.
+ * Cloud. Service fees are applied Cloud-side (Commandment 2/4 — no client
+ * math), so flipping these on locally is purely a default-policy decision:
+ * it does not change billing.
  */
 export const CLOUD_LINKED_DEFAULT_ON: ReadonlySet<LifeOpsFeatureKey> = new Set([
   "travel.search_flight",
@@ -144,6 +156,12 @@ export const CLOUD_LINKED_DEFAULT_ON: ReadonlySet<LifeOpsFeatureKey> = new Set([
   "cloud.duffel",
 ]);
 
+export function isCloudLinkedDefaultOnFeatureKey(
+  key: LifeOpsFeatureKey,
+): boolean {
+  return CLOUD_LINKED_DEFAULT_ON.has(key);
+}
+
 export interface ResolveFeatureDefaultsArgs {
   readonly cloudLinked: boolean;
 }
@@ -152,9 +170,9 @@ export interface ResolveFeatureDefaultsArgs {
  * Resolve effective compile-time defaults for the given Cloud-link state.
  *
  *  - `cloudLinked: true`  → travel + `cloud.duffel` ON, billed via
- *    Eliza Cloud at the Cloud-side 5% service fee.
+ *    Eliza Cloud's managed travel-provider billing.
  *  - `cloudLinked: false` → baseline (paid features OFF) until the user
- *    opts in locally and supplies their own Duffel API key.
+ *    opts in locally and supplies their own travel-provider credentials.
  */
 export function resolveFeatureDefaults(
   args: ResolveFeatureDefaultsArgs,
@@ -187,9 +205,36 @@ export interface FeatureFlagState {
   readonly source: FeatureFlagSource;
   readonly enabledAt: Date | null;
   readonly enabledBy: string | null;
+  readonly label: string;
   readonly description: string;
   readonly costsMoney: boolean;
   readonly metadata: Readonly<Record<string, unknown>>;
+}
+
+export interface LifeOpsFeatureFlagRowDto {
+  readonly featureKey: LifeOpsFeatureKey;
+  readonly enabled: boolean;
+  readonly source: FeatureFlagSource;
+  readonly label: string;
+  readonly description: string;
+  readonly costsMoney: boolean;
+  readonly enabledAt: string | null;
+  readonly enabledBy: string | null;
+  readonly packageId: string | null;
+  readonly cloudDefaultOn: boolean;
+}
+
+export interface LifeOpsFeatureFlagsResponse {
+  readonly features: ReadonlyArray<LifeOpsFeatureFlagRowDto>;
+}
+
+export interface LifeOpsFeatureFlagsSyncResponse
+  extends LifeOpsFeatureFlagsResponse {
+  readonly synced: number;
+}
+
+export interface LifeOpsFeatureToggleResponse {
+  readonly feature: LifeOpsFeatureFlagRowDto;
 }
 
 export interface FeatureToggleRequest {
@@ -259,7 +304,7 @@ function buildFeatureDisabledMessage(
     return `${base} Enable it via Settings → Features.`;
   }
   if (!args.cloudLinked) {
-    return `${base} The simplest path is to sign in to Eliza Cloud — travel features turn on automatically with a 5% service fee. Or enable it locally via Settings → Features (requires your own Duffel API key).`;
+    return `${base} The simplest path is to sign in to Eliza Cloud so managed travel billing turns on automatically. Or enable it locally via Settings → Features (requires your own travel-provider API credentials).`;
   }
   return `${base} Enable it via Settings → Features or sign up for the matching Eliza Cloud package.`;
 }

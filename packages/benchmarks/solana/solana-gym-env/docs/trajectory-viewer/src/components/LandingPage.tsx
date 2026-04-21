@@ -456,7 +456,7 @@ const LandingPage: React.FC = () => {
             </thead>
             <tbody>
               <tr>
-                <td className="model-name">claude-sonnet-4</td>
+                <td className="model-name">claude-sonnet-4-6</td>
                 <td className="metric-value reward-high">115</td>
                 <td className="metric-value">181</td>
                 <td className="metric-value">30</td>
@@ -519,7 +519,7 @@ const LandingPage: React.FC = () => {
             </thead>
             <tbody>
               <tr>
-                <td className="model-name">claude-sonnet-4</td>
+                <td className="model-name">claude-sonnet-4-6</td>
                 <td className="metric-value reward-high">33</td>
                 <td className="metric-value">102</td>
                 <td className="metric-value">19</td>

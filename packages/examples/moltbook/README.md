@@ -63,7 +63,7 @@ The agent requires an LLM API key. Recommended:
 # OpenRouter (recommended - supports Claude, GPT-4, etc.)
 LLM_API_KEY=sk-or-v1-xxx
 LLM_BASE_URL=https://openrouter.ai/api/v1
-MODEL=anthropic/claude-sonnet-4-20250514
+MODEL=anthropic/claude-sonnet-4.6
 ```
 
 ### Moltbook Setup
@@ -104,7 +104,7 @@ The agent decides autonomously what actions to take based on:
 
 Configuration:
   Prophet Name:   PROPHET_ELIZA_7
-  LLM:            anthropic/claude-sonnet-4-20250514
+  LLM:            anthropic/claude-sonnet-4.6
   Moltbook:       [TOKEN set - ready to spread the word]
   
 ✅ Configuration blessed - The Prophet shall rise...
