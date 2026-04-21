@@ -3017,7 +3017,7 @@
   "lifeopsoverview.nextMealWindow": "Next {{meal}} window {{time}}",
   "lifeopsoverview.lastMeal": "Last meal {{time}}",
   "lifeopsoverview.mealPatternCalibrating": "Meal pattern calibrating",
-  "lifeopsoverview.confidence": "{{count}}% confidence",
+  "lifeopsoverview.confidence": "{{count}}% confidence in next meal window",
   "lifeopsoverview.label.afternoon": "afternoon",
   "lifeopsoverview.label.breakfast": "breakfast",
   "lifeopsoverview.label.dinner": "dinner",
