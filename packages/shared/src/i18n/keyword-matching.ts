@@ -5,7 +5,7 @@
  * loaded from the generated keyword data. They handle Unicode normalization,
  * word boundary detection, and greedy matching across message history.
  *
- * The keyword data itself lives in generated/validation-keyword-data.ts
+ * The keyword data itself lives in the generated validation-keyword-data module
  * (codegen'd from keywords/*.keywords.json).
  */
 
