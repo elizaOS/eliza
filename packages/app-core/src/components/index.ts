@@ -61,6 +61,7 @@ export * from "./pages/LogsPageView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryViewerView";
+export * from "./phone-companion/index";
 export * from "./pages/PluginsPageView";
 export * from "./pages/PluginsView";
 export * from "./pages/RelationshipsView";
