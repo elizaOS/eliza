@@ -547,9 +547,16 @@ export const relationshipAction: Action & {
         await callback?.({ text });
         return {
           text,
-          success: true,
+          success: false,
+          values: {
+            success: false,
+            error: "PLANNER_SHOULDACT_FALSE",
+            noop: true,
+            suggestedSubaction: subaction,
+          },
           data: {
             noop: true,
+            error: "PLANNER_SHOULDACT_FALSE",
             suggestedSubaction: subaction,
           },
         };
@@ -909,7 +916,7 @@ export const relationshipAction: Action & {
     {
       name: "channel",
       description:
-        "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, x_dm).",
+        "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
       schema: { type: "string" as const },
     },
     {

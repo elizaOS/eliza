@@ -34,6 +34,7 @@ export interface RemoteDesktopSession {
   endedAt?: string;
   expiresAt?: string;
   error?: string;
+  mockMode?: boolean;
 }
 
 export interface RemoteDesktopConfig {
@@ -425,6 +426,7 @@ export async function startRemoteSession(
         backend,
         status: "active",
         accessUrl: `vnc://127.0.0.1:${resolved.vncPort}/mock/${id}`,
+        mockMode: true,
       };
       const expiryTimer = scheduleExpiry(id, durationMs);
       sessions.set(id, {

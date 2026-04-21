@@ -52,17 +52,6 @@ describe("final-checks", () => {
     expect(res.status).toBe("passed");
   });
 
-  it("selectedAction accepts canonical owner umbrella actions for legacy delegates", async () => {
-    const ctx = ctxWith({
-      actionsCalled: [{ actionName: "OWNER_INBOX" }],
-    });
-    const res = await runFinalCheck(
-      { type: "selectedAction", actionName: ["INBOX", "CROSS_CHANNEL_SEND"] },
-      { runtime, ctx },
-    );
-    expect(res.status).toBe("passed");
-  });
-
   it("memoryWriteOccurred passes on matching table", async () => {
     const ctx = ctxWith({
       memoryWrites: [{ table: "messages", content: { text: "hi" } }],
@@ -184,6 +173,28 @@ describe("final-checks", () => {
     expect(res.status).toBe("passed");
   });
 
+  it("draftExists treats x-dm and x_dm as the same channel", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "OWNER_SEND_MESSAGE",
+          result: {
+            success: true,
+            data: {
+              channel: "x_dm",
+              draft: true,
+            },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      { type: "draftExists", channel: "x-dm", expected: true },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
   it("messageDelivered passes on captured connector dispatch", async () => {
     const ctx = ctxWith({
       connectorDispatches: [
@@ -205,7 +216,7 @@ describe("final-checks", () => {
     const ctx = ctxWith({
       actionsCalled: [
         {
-          actionName: "CROSS_CHANNEL_SEND",
+          actionName: "OWNER_SEND_MESSAGE",
           result: {
             success: true,
             data: { channel: "sms", status: "sent" },

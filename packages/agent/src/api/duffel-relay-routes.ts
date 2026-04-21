@@ -18,6 +18,17 @@
  *   4. The relay forwards the response unchanged. No business logic
  *      executes locally (commandment 2).
  *
+ * x402 / HTTP 402 handling:
+ *   The Cloud billing layer emits HTTP 402 with a `WWW-Authenticate:
+ *   x402 ...` header (and a JSON body containing `paymentRequirements`)
+ *   when the user's credit balance can't cover a metered call — see
+ *   https://www.x402.org. This relay forwards 402 responses verbatim:
+ *   status code, the `WWW-Authenticate` header, and the raw body. That
+ *   lets the lifeops Duffel adapter parse the payment requirements via
+ *   `parseX402Response` and surface them to the user. We do not collapse
+ *   the body to JSON in the 402 path because the spec allows
+ *   non-JSON-typed payloads.
+ *
  * Routes:
  *   POST /api/cloud/duffel/offer-requests   → /api/v1/duffel/offer-requests
  *   GET  /api/cloud/duffel/offers/:id       → /api/v1/duffel/offers/:id
@@ -191,7 +202,35 @@ export async function handleDuffelRelayRoute(
     signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
   });
 
+  if (upstreamResponse.status === 402) {
+    await forward402(res, upstreamResponse);
+    return true;
+  }
+
   const payload = await readJsonResponse(upstreamResponse);
   sendJson(res, payload, upstreamResponse.status);
   return true;
+}
+
+/**
+ * Forward a Cloud-side 402 verbatim. We preserve `WWW-Authenticate`
+ * (the x402 header form) and `Content-Type` so the local lifeops
+ * adapter's `parseX402Response` can read whichever envelope the Cloud
+ * billing layer chose to emit. The body is streamed as raw text — we
+ * intentionally do NOT re-encode through `sendJson`.
+ */
+async function forward402(
+  res: http.ServerResponse,
+  upstream: Response,
+): Promise<void> {
+  const wwwAuth = upstream.headers.get("www-authenticate");
+  const contentType =
+    upstream.headers.get("content-type") ?? "application/json";
+  const bodyText = await upstream.text();
+  res.statusCode = 402;
+  res.setHeader("Content-Type", contentType);
+  if (wwwAuth) {
+    res.setHeader("WWW-Authenticate", wwwAuth);
+  }
+  res.end(bodyText);
 }

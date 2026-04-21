@@ -29,6 +29,23 @@ export interface RecentWin {
   readonly completedAt: string | null;
 }
 
+export interface HabitSummary {
+  readonly definitionId: string;
+  readonly title: string;
+  readonly kind: "habit" | "routine";
+  readonly currentOccurrenceStreak: number;
+  readonly bestOccurrenceStreak: number;
+  readonly missedOccurrenceStreak: number;
+  readonly pauseUntil: string | null;
+  readonly isPaused: boolean;
+}
+
+export interface CheckinCollectorErrors {
+  readonly overdueTodos: string | null;
+  readonly todaysMeetings: string | null;
+  readonly yesterdaysWins: string | null;
+}
+
 export interface CheckinReport {
   readonly reportId: string;
   readonly kind: CheckinKind;
@@ -37,6 +54,9 @@ export interface CheckinReport {
   readonly overdueTodos: readonly OverdueTodo[];
   readonly todaysMeetings: readonly MeetingEntry[];
   readonly yesterdaysWins: readonly RecentWin[];
+  readonly habitSummaries: readonly HabitSummary[];
+  readonly habitEscalationLevel: EscalationLevel;
+  readonly collectorErrors: CheckinCollectorErrors;
 }
 
 export interface RunCheckinRequest {

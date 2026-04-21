@@ -9,17 +9,21 @@ import {
   StatusDot,
   Textarea,
 } from "@elizaos/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { N8nWorkflow, TriggerSummary } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
   DURATION_UNITS,
+  durationToMs,
   durationUnitLabel,
   formFromTrigger,
   localizedExecutionStatus,
+  nextRunsForCron,
+  nextRunsForInterval,
   type TranslateFn,
   type TriggerFormState,
+  validateCronExpression,
 } from "./heartbeat-utils";
 
 // ── Props ──────────────────────────────────────────────────────────
@@ -100,6 +104,10 @@ export function HeartbeatForm({
   saveFormAsTemplate,
   loadTriggerRuns,
 }: HeartbeatFormProps) {
+  const cronInvalid =
+    form.triggerType === "cron" &&
+    !validateCronExpression(form.cronExpression).ok;
+
   return (
     <div className="w-full px-4 pb-8 pt-0 sm:px-5 sm:pb-8 sm:pt-1 lg:px-7 lg:pb-8 lg:pt-1 xl:px-8">
       {templateNotice && (
@@ -296,24 +304,14 @@ export function HeartbeatForm({
           )}
 
           {form.triggerType === "cron" && (
-            <div>
-              <FieldLabel variant="form">
-                {t("triggersview.CronExpression5F")}
-              </FieldLabel>
-              <Input
-                variant="form"
-                className="font-mono"
-                value={form.cronExpression}
-                onChange={(event) =>
-                  setField("cronExpression", event.target.value)
-                }
-                placeholder="*/15 * * * *"
-              />
-              <div className="mt-2 text-xs-tight text-muted">
-                {t("triggersview.minuteHourDayMont")}
-              </div>
-            </div>
+            <CronInputSection
+              form={form}
+              setField={setField}
+              t={t}
+            />
           )}
+
+          <SchedulePreview form={form} t={t} />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
@@ -360,7 +358,8 @@ export function HeartbeatForm({
               className="h-10 px-6 text-sm text-white shadow-sm hover:text-white dark:text-white dark:hover:text-white"
               disabled={
                 triggersSaving ||
-                (form.kind === "workflow" && !form.workflowId)
+                (form.kind === "workflow" && !form.workflowId) ||
+                cronInvalid
               }
               onClick={() => void onSubmit()}
             >
@@ -554,6 +553,166 @@ function TriggerKindSection({
               </FormSelect>
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Cron input with inline validation + example chips ─────────────
+
+const CRON_EXAMPLES = [
+  { expr: "0 9 * * 1-5", labelKey: "triggers.cronExample.weekdaysNine" },
+  { expr: "*/15 * * * *", labelKey: "triggers.cronExample.every15min" },
+  { expr: "0 0 1 * *", labelKey: "triggers.cronExample.monthly" },
+] as const;
+
+function CronInputSection({
+  form,
+  setField,
+  t,
+}: {
+  form: TriggerFormState;
+  setField: <K extends keyof TriggerFormState>(
+    key: K,
+    value: TriggerFormState[K],
+  ) => void;
+  t: TranslateFn;
+}) {
+  const cronErrorId = "cron-expression-error";
+  const validationResult = validateCronExpression(form.cronExpression);
+  const isInvalid = !validationResult.ok;
+
+  return (
+    <div>
+      <FieldLabel variant="form">
+        {t("triggersview.CronExpression5F")}
+      </FieldLabel>
+      <Input
+        variant="form"
+        className="font-mono"
+        value={form.cronExpression}
+        onChange={(event) => setField("cronExpression", event.target.value)}
+        placeholder="*/15 * * * *"
+        aria-invalid={isInvalid}
+        aria-describedby={isInvalid ? cronErrorId : undefined}
+      />
+      {isInvalid ? (
+        <p
+          id={cronErrorId}
+          className="mt-1.5 text-xs font-medium text-danger"
+          role="alert"
+        >
+          {t("triggers.cronError")} {validationResult.message}
+        </p>
+      ) : (
+        <div className="mt-2 text-xs-tight text-muted">
+          {t("triggersview.minuteHourDayMont")}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted">
+          {t("triggers.cronExampleHint")}
+        </span>
+        {CRON_EXAMPLES.map(({ expr, labelKey }) => (
+          <Button
+            key={expr}
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 py-0 text-xs font-mono"
+            onClick={() => setField("cronExpression", expr)}
+          >
+            {t(labelKey)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Schedule preview ("Next runs: …") ────────────────────────────
+
+function SchedulePreview({
+  form,
+  t,
+}: {
+  form: TriggerFormState;
+  t: TranslateFn;
+}) {
+  const preview = useMemo(() => {
+    const now = new Date();
+
+    if (form.triggerType === "interval") {
+      const value = Number(form.durationValue);
+      if (!Number.isFinite(value) || value <= 0) {
+        return { kind: "error" as const, message: t("triggers.scheduleIntervalError") };
+      }
+      const intervalMs = durationToMs(value, form.durationUnit);
+      const dates = nextRunsForInterval(intervalMs, 3, now);
+      return { kind: "dates" as const, dates };
+    }
+
+    if (form.triggerType === "once") {
+      const raw = form.scheduledAtIso.trim();
+      if (!raw || !Number.isFinite(Date.parse(raw))) return null;
+      const date = new Date(raw);
+      const isPast = date.getTime() <= now.getTime();
+      return { kind: "once" as const, date, isPast };
+    }
+
+    if (form.triggerType === "cron") {
+      const result = validateCronExpression(form.cronExpression);
+      if (!result.ok) return null;
+      const dates = nextRunsForCron(form.cronExpression, 3, now);
+      if (dates.length === 0) return null;
+      return { kind: "dates" as const, dates };
+    }
+
+    return null;
+  }, [
+    form.triggerType,
+    form.durationValue,
+    form.durationUnit,
+    form.scheduledAtIso,
+    form.cronExpression,
+    t,
+  ]);
+
+  if (!preview) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-sm"
+    >
+      {preview.kind === "error" ? (
+        <p className="text-xs font-medium text-danger">{preview.message}</p>
+      ) : preview.kind === "once" ? (
+        <div>
+          {preview.isPast && (
+            <p className="mb-1 text-xs font-medium text-warning">
+              {t("triggers.scheduleOnceInPast")}
+            </p>
+          )}
+          <p className="text-xs text-muted">
+            {t("triggers.scheduleOnceLabel", {
+              time: formatDateTime(preview.date),
+            })}
+          </p>
+        </div>
+      ) : (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+            {t("triggers.schedulePreviewTitle")}
+          </p>
+          <ul className="space-y-0.5">
+            {preview.dates.map((date) => (
+              <li key={date.getTime()} className="text-xs text-txt/80 before:mr-1.5 before:content-['•']">
+                {formatDateTime(date)}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

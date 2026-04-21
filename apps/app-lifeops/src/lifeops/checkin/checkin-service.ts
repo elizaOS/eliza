@@ -1,10 +1,15 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { executeRawSql, sqlQuote, toText } from "../sql.js";
+import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
+import {
+  computeMissedOccurrenceStreak,
+  computeOccurrenceStreaks,
+} from "../service-helpers-occurrence.js";
 import type {
   CheckinKind,
   CheckinReport,
   EscalationLevel,
+  HabitSummary,
   MeetingEntry,
   OverdueTodo,
   RecentWin,
@@ -17,8 +22,10 @@ import type {
  * and tracks acknowledgement state for tone escalation.
  *
  * CQRS: read methods return typed shapes; write methods return void or an id.
- * Graceful degradation: if an upstream collector source is missing (e.g. no
- * meetings table yet), the collector logs once per process and returns [].
+ * Graceful degradation: if an upstream collector source is missing, the
+ * collector logs once per process and records the error message in
+ * `CheckinReport.collectorErrors.<field>` so callers can distinguish empty
+ * data from an unavailable source.
  */
 
 export const CHECKIN_REPORTS_TABLE = "life_checkin_reports";
@@ -38,27 +45,6 @@ export function __resetCheckinMissingSourceLog(): void {
   loggedMissingSources.clear();
 }
 
-async function ensureCheckinTable(runtime: IAgentRuntime): Promise<void> {
-  await executeRawSql(
-    runtime,
-    `CREATE TABLE IF NOT EXISTS ${CHECKIN_REPORTS_TABLE} (
-       id TEXT PRIMARY KEY,
-       agent_id TEXT NOT NULL,
-       kind TEXT NOT NULL,
-       generated_at TEXT NOT NULL,
-       generated_at_ms BIGINT NOT NULL,
-       escalation_level INTEGER NOT NULL,
-       payload_json TEXT NOT NULL,
-       acknowledged_at TEXT
-     )`,
-  );
-  await executeRawSql(
-    runtime,
-    `CREATE INDEX IF NOT EXISTS idx_life_checkin_reports_agent_time
-       ON ${CHECKIN_REPORTS_TABLE}(agent_id, generated_at_ms DESC)`,
-  );
-}
-
 function newReportId(): string {
   const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
     .crypto;
@@ -66,16 +52,192 @@ function newReportId(): string {
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+interface CollectorResult<T> {
+  readonly rows: T[];
+  readonly error: string | null;
+}
+
+type HabitCollectorRow = {
+  definition_id: unknown;
+  definition_title: unknown;
+  definition_kind: unknown;
+  definition_metadata_json: unknown;
+  occurrence_state: unknown;
+  occurrence_due_at: unknown;
+  occurrence_updated_at: unknown;
+};
+
+type HabitOccurrence = {
+  state: string;
+  dueAtMs: number;
+  updatedAtMs: number;
+};
+
+function asFiniteMs(value: string | null | undefined): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolvePausedUntil(
+  metadata: Record<string, unknown>,
+  now: Date,
+): string | null {
+  const rawPauseUntil = metadata.pauseUntil;
+  if (typeof rawPauseUntil !== "string") {
+    return null;
+  }
+  const pauseUntil = rawPauseUntil.trim();
+  if (!pauseUntil) {
+    return null;
+  }
+  const pauseUntilMs = Date.parse(pauseUntil);
+  if (!Number.isFinite(pauseUntilMs) || pauseUntilMs <= now.getTime()) {
+    return null;
+  }
+  return new Date(pauseUntilMs).toISOString();
+}
+
+function buildHabitSummary(args: {
+  definitionId: string;
+  title: string;
+  kind: "habit" | "routine";
+  metadata: Record<string, unknown>;
+  occurrences: HabitOccurrence[];
+  now: Date;
+}): HabitSummary {
+  const pauseUntil = resolvePausedUntil(args.metadata, args.now);
+  const dueOccurrences = args.occurrences
+    .filter((occurrence) => occurrence.dueAtMs <= args.now.getTime())
+    .sort((left, right) => {
+      if (left.dueAtMs !== right.dueAtMs) {
+        return left.dueAtMs - right.dueAtMs;
+      }
+      return left.updatedAtMs - right.updatedAtMs;
+    });
+  const streakInput = dueOccurrences.map((occurrence) => ({
+    state: occurrence.state,
+  }));
+  const completedStreak = computeOccurrenceStreaks(streakInput);
+  const missedStreak = computeMissedOccurrenceStreak(streakInput);
+  return {
+    definitionId: args.definitionId,
+    title: args.title,
+    kind: args.kind,
+    currentOccurrenceStreak: pauseUntil ? 0 : completedStreak.current,
+    bestOccurrenceStreak: completedStreak.best,
+    missedOccurrenceStreak: pauseUntil ? 0 : missedStreak.current,
+    pauseUntil,
+    isPaused: pauseUntil !== null,
+  };
+}
+
+async function collectHabitSummaries(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<
+  CollectorResult<readonly HabitSummary[]> & { pausedDefinitionIds: Set<string> }
+> {
+  const agentId = String(runtime.agentId);
+  try {
+    const definitionRows = await executeRawSql(
+      runtime,
+      `SELECT id AS definition_id,
+              title AS definition_title,
+              kind AS definition_kind,
+              metadata_json AS definition_metadata_json
+         FROM life_task_definitions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND kind IN ('habit', 'routine')
+          AND status IN ('active', 'paused')
+        ORDER BY title ASC`,
+    );
+    if (definitionRows.length === 0) {
+      return { rows: [], error: null, pausedDefinitionIds: new Set() };
+    }
+
+    const occurrencesRows = await executeRawSql(
+      runtime,
+      `SELECT definition_id,
+              state AS occurrence_state,
+              due_at AS occurrence_due_at,
+              updated_at AS occurrence_updated_at
+         FROM life_task_occurrences
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND definition_id IN (${definitionRows.map((row) => sqlQuote(toText(row.definition_id))).join(", ")})
+        ORDER BY definition_id ASC, due_at ASC, updated_at ASC`,
+    );
+
+    const occurrencesByDefinitionId = new Map<string, HabitOccurrence[]>();
+    for (const row of occurrencesRows as HabitCollectorRow[]) {
+      const definitionId = toText(row.definition_id);
+      const dueAtMs = asFiniteMs(toText(row.occurrence_due_at));
+      const updatedAtMs = asFiniteMs(toText(row.occurrence_updated_at));
+      if (!definitionId || dueAtMs === null || updatedAtMs === null) {
+        continue;
+      }
+      const current = occurrencesByDefinitionId.get(definitionId);
+      const nextOccurrence: HabitOccurrence = {
+        state: toText(row.occurrence_state),
+        dueAtMs,
+        updatedAtMs,
+      };
+      if (current) {
+        current.push(nextOccurrence);
+      } else {
+        occurrencesByDefinitionId.set(definitionId, [nextOccurrence]);
+      }
+    }
+
+    const summaries: HabitSummary[] = [];
+    const pausedDefinitionIds = new Set<string>();
+    for (const row of definitionRows as HabitCollectorRow[]) {
+      const definitionId = toText(row.definition_id);
+      const title = toText(row.definition_title);
+      const kind = toText(row.definition_kind);
+      const metadata = parseJsonRecord(row.definition_metadata_json);
+      if (!definitionId || !title || (kind !== "habit" && kind !== "routine")) {
+        continue;
+      }
+      const summary = buildHabitSummary({
+        definitionId,
+        title,
+        kind,
+        metadata,
+        occurrences: occurrencesByDefinitionId.get(definitionId) ?? [],
+        now,
+      });
+      if (summary.isPaused) {
+        pausedDefinitionIds.add(definitionId);
+      }
+      summaries.push(summary);
+    }
+
+    return { rows: summaries, error: null, pausedDefinitionIds };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logMissingOnce(
+      "habit-summaries",
+      `habit summaries collector unavailable: ${message}`,
+    );
+    return { rows: [], error: message, pausedDefinitionIds: new Set() };
+  }
+}
+
 async function collectOverdueTodos(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<OverdueTodo[]> {
+  pausedDefinitionIds: ReadonlySet<string>,
+): Promise<CollectorResult<OverdueTodo>> {
   const agentId = String(runtime.agentId);
   const nowIso = now.toISOString();
   try {
     const rows = await executeRawSql(
       runtime,
       `SELECT occ.id AS id,
+              occ.definition_id AS definition_id,
               COALESCE(def.title, '') AS title,
               occ.due_at AS due_at
          FROM life_task_occurrences occ
@@ -87,26 +249,36 @@ async function collectOverdueTodos(
         ORDER BY occ.due_at ASC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      dueAt: row.due_at == null ? null : toText(row.due_at),
-    }));
+    return {
+      rows: rows.flatMap((row) => {
+        const definitionId = toText(row.definition_id);
+        if (definitionId && pausedDefinitionIds.has(definitionId)) {
+          return [];
+        }
+        return [
+          {
+            id: toText(row.id),
+            title: toText(row.title) || "(untitled)",
+            dueAt: row.due_at == null ? null : toText(row.due_at),
+          },
+        ];
+      }),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "overdue-todos",
-      `overdue-todos collector unavailable (life_task_occurrences not ready): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `overdue-todos collector unavailable (life_task_occurrences not ready): ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
 async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<MeetingEntry[]> {
+): Promise<CollectorResult<MeetingEntry>> {
   const agentId = String(runtime.agentId);
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
@@ -123,27 +295,29 @@ async function collectTodaysMeetings(
         ORDER BY start_at ASC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      startAt: toText(row.start_at),
-      endAt: toText(row.end_at),
-    }));
+    return {
+      rows: rows.map((row) => ({
+        id: toText(row.id),
+        title: toText(row.title) || "(untitled)",
+        startAt: toText(row.start_at),
+        endAt: toText(row.end_at),
+      })),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "todays-meetings",
-      `meetings collector unavailable (life_calendar_events not ready): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `meetings collector unavailable (life_calendar_events not ready): ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
 async function collectYesterdaysWins(
   runtime: IAgentRuntime,
   now: Date,
-): Promise<RecentWin[]> {
+): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
   const startOfYesterday = new Date(now);
   startOfYesterday.setDate(startOfYesterday.getDate() - 1);
@@ -165,19 +339,22 @@ async function collectYesterdaysWins(
         ORDER BY occ.updated_at DESC
         LIMIT 50`,
     );
-    return rows.map((row) => ({
-      id: toText(row.id),
-      title: toText(row.title) || "(untitled)",
-      completedAt: row.completed_at == null ? null : toText(row.completed_at),
-    }));
+    return {
+      rows: rows.map((row) => ({
+        id: toText(row.id),
+        title: toText(row.title) || "(untitled)",
+        completedAt:
+          row.completed_at == null ? null : toText(row.completed_at),
+      })),
+      error: null,
+    };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "yesterdays-wins",
-      `yesterdays-wins collector unavailable: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `yesterdays-wins collector unavailable: ${message}`,
     );
-    return [];
+    return { rows: [], error: message };
   }
 }
 
@@ -186,6 +363,14 @@ function clampEscalation(count: number): EscalationLevel {
   if (count === 1) return 1;
   if (count === 2) return 2;
   return 3;
+}
+
+function resolveHabitEscalationLevel(summaries: readonly HabitSummary[]): EscalationLevel {
+  const maxMissedStreak = summaries.reduce(
+    (max, summary) => Math.max(max, summary.missedOccurrenceStreak),
+    0,
+  );
+  return clampEscalation(maxMissedStreak);
 }
 
 export class CheckinService {
@@ -204,7 +389,6 @@ export class CheckinService {
   }
 
   async getEscalationLevel(now: Date = new Date()): Promise<EscalationLevel> {
-    await ensureCheckinTable(this.runtime);
     const agentId = String(this.runtime.agentId);
     const windowStartMs = now.getTime() - ACK_WINDOW_MS;
     const rows = await executeRawSql(
@@ -232,7 +416,6 @@ export class CheckinService {
         "[CheckinService] recordCheckinAcknowledgement: reportId is required",
       );
     }
-    await ensureCheckinTable(this.runtime);
     const agentId = String(this.runtime.agentId);
     await executeRawSql(
       this.runtime,
@@ -247,22 +430,32 @@ export class CheckinService {
     kind: CheckinKind,
     request: RunCheckinRequest,
   ): Promise<CheckinReport> {
-    await ensureCheckinTable(this.runtime);
     const now = request.now ?? new Date();
+    const habitCollector = await collectHabitSummaries(this.runtime, now);
     const [overdueTodos, todaysMeetings, yesterdaysWins] = await Promise.all([
-      collectOverdueTodos(this.runtime, now),
+      collectOverdueTodos(this.runtime, now, habitCollector.pausedDefinitionIds),
       collectTodaysMeetings(this.runtime, now),
       collectYesterdaysWins(this.runtime, now),
     ]);
     const escalationLevel = await this.getEscalationLevel(now);
+    const habitEscalationLevel = resolveHabitEscalationLevel(
+      habitCollector.rows,
+    );
     const report: CheckinReport = {
       reportId: newReportId(),
       kind,
       generatedAt: now.toISOString(),
       escalationLevel,
-      overdueTodos,
-      todaysMeetings,
-      yesterdaysWins,
+      overdueTodos: overdueTodos.rows,
+      todaysMeetings: todaysMeetings.rows,
+      yesterdaysWins: yesterdaysWins.rows,
+      habitSummaries: habitCollector.rows,
+      habitEscalationLevel,
+      collectorErrors: {
+        overdueTodos: overdueTodos.error,
+        todaysMeetings: todaysMeetings.error,
+        yesterdaysWins: yesterdaysWins.error,
+      },
     };
     await this.persistReport(report, now);
     return report;
@@ -277,6 +470,8 @@ export class CheckinService {
       overdueTodos: report.overdueTodos,
       todaysMeetings: report.todaysMeetings,
       yesterdaysWins: report.yesterdaysWins,
+      habitSummaries: report.habitSummaries,
+      habitEscalationLevel: report.habitEscalationLevel,
     }).replace(/'/g, "''");
     await executeRawSql(
       this.runtime,

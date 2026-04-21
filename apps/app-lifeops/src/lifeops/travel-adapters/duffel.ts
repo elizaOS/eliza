@@ -1,5 +1,9 @@
 import { logger } from "@elizaos/core";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+import {
+  PaymentRequiredError,
+  parseX402Response,
+} from "../x402-payment-handler.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -137,6 +141,12 @@ export interface DuffelOffer {
  * server-side (commandment 2 — no client-side math) and the local code
  * forwards it to the UI for display. In direct mode all values are zero
  * because no markup is charged.
+ *
+ * `markupPercent` is a *display-only* derived field: it equals
+ * `platformFeeUsd / totalUsd`, computed once at the boundary so UI
+ * components don't repeat the division. The pricing decision itself is
+ * still Cloud-side — this is the same pattern as a "discount %" badge
+ * derived from a server-supplied price.
  */
 export interface DuffelCallCost {
   /** Net cost charged to the user's Cloud credit balance, in USD. */
@@ -145,6 +155,10 @@ export interface DuffelCallCost {
   creatorMarkupUsd: number;
   /** Eliza Cloud platform fee portion, in USD. */
   platformFeeUsd: number;
+  /** Display-only ratio of platform fee to total (e.g. 0.2 for 20%).
+   *  Derived from server values, never used for pricing. Null when
+   *  totalUsd is zero (direct mode or free call). */
+  markupPercent: number | null;
   /** Whether the call was metered (true in cloud mode, false in direct mode). */
   metered: boolean;
 }
@@ -153,6 +167,7 @@ const DIRECT_MODE_COST: DuffelCallCost = {
   totalUsd: 0,
   creatorMarkupUsd: 0,
   platformFeeUsd: 0,
+  markupPercent: null,
   metered: false,
 };
 
@@ -468,10 +483,15 @@ function readRelayCost(envelope: unknown): DuffelCallCost {
       "Duffel cloud relay returned malformed _meta.cost. Refusing to proceed without billing receipt.",
     );
   }
+  const totalUsd = cost.total_usd;
+  const platformFeeUsd = cost.platform_fee_usd;
+  const markupPercent =
+    totalUsd > 0 ? platformFeeUsd / totalUsd : null;
   return {
-    totalUsd: cost.total_usd,
+    totalUsd,
     creatorMarkupUsd: cost.creator_markup_usd,
-    platformFeeUsd: cost.platform_fee_usd,
+    platformFeeUsd,
+    markupPercent,
     metered: true,
   };
 }
@@ -526,6 +546,34 @@ async function duffelFetch<T>(args: DuffelRequest): Promise<DuffelFetchResult<T>
     );
     span.failure({ error, errorKind: "network_error" });
     throw new Error(`Duffel ${operation} failed: ${msg}`);
+  }
+
+  if (response.status === 402 && isCloud) {
+    // x402 payment-required: surface as a typed PaymentRequiredError so
+    // the action layer can route the user to the wallet top-up flow
+    // rather than treating this as a generic HTTP failure. The Cloud
+    // billing layer emits 402 only when the user's credit balance can't
+    // cover the call — see docs/cloud-travel-billing.md.
+    const requirements = await parseX402Response(response);
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "duffel",
+        operation,
+        mode: config.mode,
+        statusCode: 402,
+        requirementCount: requirements?.length ?? 0,
+      },
+      `[lifeops-travel] Duffel ${operation} returned 402 payment-required`,
+    );
+    span.failure({ statusCode: 402, errorKind: "payment_required" });
+    if (!requirements || requirements.length === 0) {
+      throw new PaymentRequiredError(
+        [],
+        `Duffel ${operation} requires payment but the upstream did not advertise any payment options.`,
+      );
+    }
+    throw new PaymentRequiredError(requirements);
   }
 
   if (!response.ok) {

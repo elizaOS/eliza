@@ -1,3 +1,4 @@
+import { asRecord } from "@elizaos/shared/type-guards";
 import type {
   BabylonActivityItem,
   BabylonAgentStatus,
@@ -62,12 +63,6 @@ export interface BabylonAgentSummaryEnvelope {
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 export function summarizeBabylonActivity(item: BabylonActivityItem): string {

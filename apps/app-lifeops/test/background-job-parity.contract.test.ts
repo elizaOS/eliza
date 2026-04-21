@@ -345,46 +345,55 @@ describe("background-job-parity: followup tracker", () => {
 });
 
 describe("background-job-parity: lifeops scheduler", () => {
-  test("executeLifeOpsSchedulerTask invokes planJob before scheduled work", async () => {
+  test("executeLifeOpsSchedulerTask does NOT invoke the LLM planner with an empty snapshot", async () => {
+    // Prior behavior (LARP): this function called planJob every tick with a
+    // hardcoded jobKind and an empty snapshot, wasting tokens for a result
+    // that was never used. The call was removed. This test guards against
+    // that regression.
+    //
+    // The mock harness here does not back a real runtime database adapter,
+    // so `processScheduledWork` (invoked inside the scheduler task) will
+    // reject with "runtime database adapter unavailable". That is expected —
+    // we still require that NO planner dispatch was logged and no approvals
+    // enqueued. An uncaught reject of anything other than the DB-adapter
+    // error would be a real regression and fail the test.
     const { runtime, queue } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
     resetPlannerDispatchLog(runtime);
 
-    // The inner `processScheduledWork` touches real adapters; we guard by
-    // stubbing the service to a no-op via the LifeOpsService constructor
-    // falling back to empty reminder / workflow runs when the DB is absent.
-    // For this contract, we only need to observe the planner call.
-    try {
-      await executeLifeOpsSchedulerTask(runtime);
-    } catch {
-      // processScheduledWork may fail in this mock harness — the planner
-      // call must still have landed on the dispatch log.
-    }
+    await expect(executeLifeOpsSchedulerTask(runtime)).rejects.toThrow(
+      /runtime database adapter unavailable/,
+    );
 
     const log = readPlannerDispatchLog(runtime);
     const scheduler = log.filter((d) => d.jobKind === "meeting_reminder");
-    expect(scheduler.length).toBeGreaterThan(0);
-    // noop -> nothing enqueued
+    expect(scheduler).toHaveLength(0);
+    // No enqueues either.
     expect(queue.enqueued).toHaveLength(0);
   });
 
-  test("executeLifeOpsSchedulerTask forwards explicit now into planner input", async () => {
+  test("executeLifeOpsSchedulerTask does NOT call useModel (planner is gone until snapshot is populated)", async () => {
+    // Pre-fix: the scheduler ticked the LLM planner with an empty snapshot
+    // every minute, burning tokens without influencing dispatch. Post-fix:
+    // the scheduler does NOT talk to the LLM at all. When a real planner
+    // integration arrives, it MUST first populate a meaningful snapshot —
+    // callers adding `useModel` usage back here should update this test
+    // only after that snapshot exists, not by reverting the guard.
+    //
+    // Same DB-adapter-unavailable caveat as the test above: the scheduler
+    // reaches `processScheduledWork`, which rejects because the mock runtime
+    // has no real adapter. That rejection is expected and asserted; the
+    // load-bearing check is that `useModel` was never called en route.
     const fixedNow = "2026-04-19T20:45:00.000Z";
     const { runtime, useModelCalls } = makeRuntime({
       plannerResponse: noopPlannerResponse("no reminders due"),
     });
 
-    try {
-      const result = await executeLifeOpsSchedulerTask(runtime, { now: fixedNow });
-      expect(result.now).toBe(fixedNow);
-    } catch {
-      // The mock harness does not implement the full LifeOps persistence stack.
-      // Even when scheduled work crashes, the planner prompt must still carry
-      // the explicit logical clock.
-    }
+    await expect(
+      executeLifeOpsSchedulerTask(runtime, { now: fixedNow }),
+    ).rejects.toThrow(/runtime database adapter unavailable/);
 
-    expect(useModelCalls.length).toBeGreaterThan(0);
-    expect(JSON.stringify(useModelCalls)).toContain(fixedNow);
+    expect(useModelCalls).toHaveLength(0);
   });
 });

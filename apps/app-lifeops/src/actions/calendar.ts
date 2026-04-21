@@ -28,6 +28,11 @@ import {
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../lifeops/time.js";
+import {
+  computeCreateEventTravelBuffer,
+  type CreateEventTravelIntent,
+  resolveCreateEventTravelIntent,
+} from "../travel-time/calendar-create.js";
 import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
@@ -191,6 +196,18 @@ const CALENDAR_DETAIL_ALIASES = {
   newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
   description: ["desc", "summary", "body"],
   location: ["place", "venue"],
+  travelOriginAddress: [
+    "traveloriginaddress",
+    "travel_origin_address",
+    "travelorigin",
+    "travel_origin",
+    "originaddress",
+    "origin_address",
+    "departureaddress",
+    "departure_address",
+    "fromaddress",
+    "from_address",
+  ],
 } as const;
 
 function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
@@ -1754,6 +1771,7 @@ export async function extractCalendarPlanWithLlm(
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
+    "When the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.",
     "Preserve names, places, and keywords in their original language or script when useful.",
     "Convert time constraints into concise searchable dates or windows even if the user phrases them in another language.",
     "Focus on people, places, flights, itinerary, appointments, and explicit dates.",
@@ -1769,6 +1787,7 @@ export async function extractCalendarPlanWithLlm(
     '  "schedule a meeting with Alex at 3pm" → {"subaction":"create_event","shouldAct":true,"response":null,"title":"Meeting with Alex"}',
     '  "meetings with Sarah this week" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["Sarah","this week"]}',
     '  "find my return flight" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["return flight"]}',
+    '  "can you search my calendar and tell me if i have any flights to denver?" → {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flights to denver","denver"]}',
     '  "what do I have while I\'m in Tokyo" → {"subaction":"trip_window","shouldAct":true,"response":null,"queries":["tokyo"],"tripLocation":"Tokyo"}',
     '  "rename my meeting to standup" → {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup"}',
     '  "delete the team meeting tomorrow" → {"subaction":"delete_event","shouldAct":true,"response":null,"queries":["team meeting"]}',
@@ -1898,10 +1917,12 @@ async function recoverCalendarSearchQueriesWithLlm(args: {
     "- Queries should be short people, places, trip labels, flight labels, appointment names, or other event lookup phrases.",
     "- Do not return generic filler like calendar, event, schedule, search, what, tell me, or do i have.",
     "- When the user is only asking for the agenda on a date or date range and there is no separate search target, return an empty array.",
+    "- When the request asks about flights to a place, include the place name as its own query as well as the flight phrase.",
     "- The user may speak in any language.",
     "",
     "Examples:",
     '  "do i have any flights to denver" -> {"queries":["flights to denver","denver"]}',
+    '  "can you search my calendar and tell me if i have any flights to denver?" -> {"queries":["flights to denver","denver"]}',
     '  "puedes buscar si tengo un vuelo a denver" -> {"queries":["vuelo a denver","denver"]}',
     '  "what event do i have on March 5" -> {"queries":[]}',
     "",
@@ -2018,6 +2039,7 @@ type CreateEventRequestBuildResult = {
     | "tomorrow_evening"
     | undefined;
   request: CreateLifeOpsCalendarEventRequest;
+  travelIntent: CreateEventTravelIntent | null;
 };
 
 function parseCreateEventDurationValue(value: unknown): number | undefined {
@@ -2134,11 +2156,16 @@ function buildCreateEventRequest(
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
       : fallbackDuration;
+  const travelIntent = resolveCreateEventTravelIntent({
+    details: args.details,
+    extractedDetails: args.extractedDetails,
+  });
 
   return {
     title,
     resolvedStartAt,
     resolvedWindowPreset,
+    travelIntent,
     request: {
       mode:
         (detailString(args.details, "mode") as
@@ -2291,6 +2318,8 @@ async function inferCreateEventDetails(
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
     "When the user gives a concrete day or date without an exact time-of-day, use the calendar context to infer a plausible open startAt in the calendar timezone. Avoid obvious overlaps with nearby events. If the calendar context is unavailable or the timing is ambiguous, leave startAt empty.",
     "Only use windowPreset for explicit 'tomorrow morning|afternoon|evening' phrasing — never as a fallback for arbitrary dates.",
+    "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
+    "Leave travelOriginAddress empty unless the request explicitly names the origin or departure place.",
     "",
     "<response>",
     "  <title>event title</title>",
@@ -2301,6 +2330,7 @@ async function inferCreateEventDetails(
     "  <durationMinutes>number if implied</durationMinutes>",
     "  <windowPreset>tomorrow_morning|tomorrow_afternoon|tomorrow_evening</windowPreset>",
     "  <timeZone>IANA timezone if stated</timeZone>",
+    "  <travelOriginAddress>optional origin address for travel-time calculation</travelOriginAddress>",
     "  <isShortPreparation>true|false</isShortPreparation>",
     "</response>",
     "",
@@ -2442,6 +2472,7 @@ async function repairCreateEventDetails(
     "The latest user request is authoritative, but preserve the existing event subject, people, and places unless the user changed them.",
     "Use the calendar context below to ground any timing repair.",
     "Use the exact failure reason to correct only the broken fields.",
+    "If the request includes travel time or commute language, preserve travelOriginAddress when it was recoverable.",
     "Return XML only. No prose. Leave fields empty when unchanged or unknown.",
     "",
     "<response>",
@@ -2453,6 +2484,7 @@ async function repairCreateEventDetails(
     "  <durationMinutes>number if implied</durationMinutes>",
     "  <windowPreset>tomorrow_morning|tomorrow_afternoon|tomorrow_evening</windowPreset>",
     "  <timeZone>IANA timezone if stated</timeZone>",
+    "  <travelOriginAddress>optional origin address for travel-time calculation</travelOriginAddress>",
     "</response>",
     "",
     `Current timezone: ${timeZone}`,
@@ -3180,14 +3212,23 @@ export const calendarAction: Action & {
           calendarContext,
           planningTimeZone,
         );
-        const { title, resolvedStartAt, resolvedWindowPreset, request } =
-          buildCreateEventRequest({
-            details,
-            extractedDetails,
-            explicitTitle,
-            inferredTitle,
-            intent,
-          });
+        const createEventBuild = buildCreateEventRequest({
+          details,
+          extractedDetails,
+          explicitTitle,
+          inferredTitle,
+          intent,
+        });
+        const {
+          title,
+          resolvedStartAt,
+          resolvedWindowPreset,
+          request,
+        } = createEventBuild;
+        let travelIntent = createEventBuild.travelIntent;
+        const calendarLookup = {
+          getCalendarFeed: service.getCalendarFeed.bind(service),
+        };
         if (!title) {
           return respond({
             success: false,
@@ -3285,6 +3326,7 @@ export const calendarAction: Action & {
                 "Retrying calendar create-event after repair extraction",
               );
               requestToCreate = repaired.request;
+              travelIntent = repaired.travelIntent ?? travelIntent;
               event = await service.createCalendarEvent(
                 INTERNAL_URL,
                 requestToCreate,
@@ -3296,19 +3338,54 @@ export const calendarAction: Action & {
             throw error;
           }
         }
-        const fallback = `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
-          event,
-          {
-            includeTimeZoneName: true,
-          },
-        )}.`;
+        const travelBuffer = travelIntent
+          ? await computeCreateEventTravelBuffer({
+              runtime,
+              calendar: calendarLookup,
+              event: {
+                id: event.id,
+                location: event.location ?? "",
+              },
+              travelIntent,
+            })
+          : null;
+        const travelContext = travelBuffer
+          ? {
+              travelOriginAddress: travelBuffer.originAddress,
+              travelDestinationAddress: travelBuffer.destinationAddress,
+              travelBufferMinutes: travelBuffer.bufferMinutes,
+              travelBufferMethod: travelBuffer.method,
+              ...(travelBuffer.reason
+                ? { travelBufferReason: travelBuffer.reason }
+                : {}),
+              travelTime: travelBuffer,
+            }
+          : null;
+        const fallback = travelBuffer
+          ? `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
+              event,
+              {
+                includeTimeZoneName: true,
+              },
+            )} with a ${travelBuffer.bufferMinutes}-minute travel buffer.`
+          : `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
+              event,
+              {
+                includeTimeZoneName: true,
+              },
+            )}.`;
         return respond({
           success: true,
           text: await renderReply("created_event", fallback, {
             event,
             request: requestToCreate,
+            ...(travelContext ?? {}),
           }),
-          data: toActionData(event),
+          data: toActionData({
+            ...event,
+            ...(travelContext ?? {}),
+            request: requestToCreate,
+          }),
         });
       }
 

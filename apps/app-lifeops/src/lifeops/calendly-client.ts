@@ -277,6 +277,24 @@ async function fetchEventInvitees(
   }));
 }
 
+async function fetchEventTypeDurationMinutes(
+  creds: CalendlyCredentials,
+  eventTypeUri: string,
+): Promise<number> {
+  const response = await calendlyRequest<{
+    resource: CalendlyRawEventType;
+  }>(creds, eventTypeUri);
+  const duration = Number(response.resource?.duration);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new CalendlyError(
+      `Calendly event type ${eventTypeUri} did not return a usable duration`,
+      0,
+      response,
+    );
+  }
+  return duration;
+}
+
 export async function getCalendlyAvailability(
   creds: CalendlyCredentials,
   eventTypeUri: string,
@@ -289,16 +307,21 @@ export async function getCalendlyAvailability(
   });
   if (opts.timezone) query.set("timezone", opts.timezone);
 
-  const response = await calendlyRequest<{
-    collection: CalendlyRawAvailabilitySlot[];
-  }>(creds, `/event_type_available_times?${query.toString()}`);
+  const [response, durationMinutes] = await Promise.all([
+    calendlyRequest<{ collection: CalendlyRawAvailabilitySlot[] }>(
+      creds,
+      `/event_type_available_times?${query.toString()}`,
+    ),
+    fetchEventTypeDurationMinutes(creds, eventTypeUri),
+  ]);
 
+  const durationMs = durationMinutes * 60 * 1000;
   const byDate = new Map<string, Array<{ startTime: string; endTime: string }>>();
   for (const slot of response.collection ?? []) {
     if (slot.status !== "available") continue;
     const start = new Date(slot.start_time);
     const dateKey = toDateKey(start, opts.timezone);
-    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const end = new Date(start.getTime() + durationMs);
     const entry = byDate.get(dateKey) ?? [];
     entry.push({ startTime: slot.start_time, endTime: end.toISOString() });
     byDate.set(dateKey, entry);
@@ -331,9 +354,14 @@ function toDateKey(date: Date, timezone?: string): string {
 export async function createCalendlySingleUseLink(
   creds: CalendlyCredentials,
   eventTypeUri: string,
-): Promise<{ bookingUrl: string; expiresAt: string }> {
+): Promise<{ bookingUrl: string; expiresAt: string | null }> {
   const response = await calendlyRequest<{
-    resource: { booking_url: string; owner: string; owner_type: string };
+    resource: {
+      booking_url: string;
+      owner: string;
+      owner_type: string;
+      expires_at?: string | null;
+    };
   }>(creds, "/scheduling_links", {
     method: "POST",
     body: JSON.stringify({
@@ -342,7 +370,10 @@ export async function createCalendlySingleUseLink(
       owner_type: "EventType",
     }),
   });
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt =
+    typeof response.resource.expires_at === "string"
+      ? response.resource.expires_at
+      : null;
   return {
     bookingUrl: response.resource.booking_url,
     expiresAt,

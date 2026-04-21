@@ -107,9 +107,11 @@ function fail(
   };
 }
 
-// Validation terminates the turn cleanly: success: true at the ActionResult
-// level (so the orchestrator does not retry), but values.success: false so
-// downstream consumers see the logical failure. Carries descriptive text.
+// Validation terminates the turn cleanly with descriptive text. Both the
+// top-level success flag and values.success are false, so callers that check
+// either one see a consistent logical failure. Orchestrators should treat the
+// presence of a structured `error` code as "do not retry" rather than inferring
+// completion from success:true.
 function validationTerminate(
   error: string,
   text: string,
@@ -117,7 +119,7 @@ function validationTerminate(
 ): ActionResult {
   return {
     text,
-    success: true,
+    success: false,
     values: { success: false, error, ...extra },
     data: { actionName: ACTION_NAME, error, ...extra },
   };

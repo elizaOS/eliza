@@ -153,6 +153,7 @@ export async function enqueueIfSensitive(
 // ---------------------------------------------------------------------------
 
 const DISPATCH_LOG_KEY = Symbol.for("milady.lifeops.background-planner.log");
+const DISPATCH_LOG_MAX_ENTRIES = 200;
 
 interface DispatchLogHolder {
   [DISPATCH_LOG_KEY]?: PlannerDispatchResult[];
@@ -161,7 +162,8 @@ interface DispatchLogHolder {
 /**
  * Record a planner dispatch decision on the runtime object so the contract
  * test can inspect every invocation without racing against the real
- * approval queue or LLM.
+ * approval queue or LLM. Bounded to DISPATCH_LOG_MAX_ENTRIES to prevent the
+ * log from growing unbounded on long-lived runtimes.
  */
 export function recordPlannerDispatch(
   runtime: IAgentRuntime,
@@ -170,6 +172,9 @@ export function recordPlannerDispatch(
   const holder = runtime as unknown as DispatchLogHolder;
   const log = holder[DISPATCH_LOG_KEY] ?? [];
   log.push(result);
+  if (log.length > DISPATCH_LOG_MAX_ENTRIES) {
+    log.splice(0, log.length - DISPATCH_LOG_MAX_ENTRIES);
+  }
   holder[DISPATCH_LOG_KEY] = log;
 }
 

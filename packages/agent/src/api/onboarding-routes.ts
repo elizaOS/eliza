@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared/type-guards";
 import type { ElizaConfig } from "../config/config.js";
 import { configFileExists, loadElizaConfig } from "../config/config.js";
 import {
@@ -242,12 +243,6 @@ export interface OnboardingServerState {
   chatUserId: UUID | null;
   chatConnectionReady: unknown;
   chatConnectionPromise: Promise<void> | null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 // ---------------------------------------------------------------------------

@@ -460,6 +460,8 @@ describe("BOOK_TRAVEL approval execution", () => {
     });
     expect(pending).toHaveLength(1);
     expect(pending[0]?.payload.action).toBe("book_travel");
+    expect(String(queued?.text ?? "")).toContain("Queued travel approval for");
+    expect(String(queued?.text ?? "")).not.toContain(pending[0]!.id);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/air/offer_requests"))).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/air/offers/off_test_123"))).toBe(true);
 

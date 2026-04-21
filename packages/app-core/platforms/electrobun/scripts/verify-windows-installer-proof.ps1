@@ -1,6 +1,14 @@
 param(
-  [string]$ArtifactsDir = (Join-Path $PSScriptRoot "..\\artifacts"),
-  [string]$BuildDir = (Join-Path $PSScriptRoot "..\\build"),
+  [string]$ArtifactsDir = $(
+    if ($env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR) { $env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR) { $env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR }
+    else { Join-Path $PSScriptRoot "..\\artifacts" }
+  ),
+  [string]$BuildDir = $(
+    if ($env:MILADY_TEST_WINDOWS_BUILD_DIR) { $env:MILADY_TEST_WINDOWS_BUILD_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_BUILD_DIR) { $env:ELIZA_TEST_WINDOWS_BUILD_DIR }
+    else { Join-Path $PSScriptRoot "..\\build" }
+  ),
   [string]$ProofInstallDir = "C:\\mi-proof",
   [string]$OutputDir = (Join-Path $PSScriptRoot "..\\artifacts\\windows-installer-proof"),
   [int]$BackendPort = 2138,
@@ -14,7 +22,7 @@ function Stop-MiladyProcesses() {
     Where-Object {
       $_.ProcessName -in @("launcher", "bun") -or
       $_.ProcessName -like "Milady*" -or
-      $_.ProcessName -like "Milady-Setup*"
+      $_.ProcessName -like "ElizaOSApp-Setup*"
     } |
     Stop-Process -Force
 }
@@ -71,7 +79,7 @@ try {
   Stop-MiladyProcesses
   Remove-Item $ProofInstallDir -Recurse -Force -ErrorAction SilentlyContinue
 
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
   if (-not $installer) {
@@ -80,7 +88,7 @@ try {
       Select-Object -First 1
   }
   if (-not $installer) {
-    throw "No canonical installer found in $resolvedArtifactsDir (Milady-Setup-*.exe / Eliza-Setup-*.exe)."
+    throw "No canonical installer found in $resolvedArtifactsDir (ElizaOSApp-Setup-*.exe / Eliza-Setup-*.exe)."
   }
 
   $summary.installer = $installer.FullName
@@ -131,7 +139,7 @@ try {
     }
 
     $candidate = Get-ChildItem -Path $root -Recurse -File -Filter "*.lnk" -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match "Milady" } |
+      Where-Object { $_.Name -match "Milady|Eliza" } |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
     if ($candidate) {
@@ -141,7 +149,7 @@ try {
   }
 
   if (-not $shortcut) {
-    throw "Start Menu shortcut containing 'Milady' was not found."
+    throw "Start Menu shortcut containing 'Milady' or 'Eliza' was not found."
   }
 
   $summary.startMenuShortcut = $shortcut.FullName

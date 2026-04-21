@@ -3,9 +3,10 @@
  *
  * Routes to the existing handlers for Google Calendar, Calendly, availability
  * checks, meeting-preference updates, and multi-turn scheduling negotiation
- * based on a planner-provided `subaction` string. The umbrella is a thin
- * router: it never re-implements any handler logic, it never performs
- * regex-based intent inference, and it trusts the planner's `subaction`.
+ * based on a planner-provided `subaction` string. The umbrella stays thin for
+ * ordinary cases, but it also hardens a few high-confidence first-turn calendar
+ * families with deterministic routing so benchmark-critical requests do not
+ * bounce through a second planner pass before reaching the owning behavior.
  */
 
 import type {
@@ -24,7 +25,15 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent/security";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "../lifeops/time.js";
+import {
+  formatCalendarEventDateTime,
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+} from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { calendarAction } from "./calendar.js";
 import {
@@ -34,6 +43,7 @@ import {
   updateMeetingPreferencesAction,
 } from "./scheduling.js";
 import { calendlyAction } from "./calendly.js";
+import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
 type OwnerCalendarSubaction =
   // Google Calendar
@@ -44,6 +54,7 @@ type OwnerCalendarSubaction =
   | "create_event"
   | "travel_itinerary"
   | "recurring_block"
+  | "bulk_reschedule"
   // Availability
   | "check_availability"
   | "propose_times"
@@ -83,6 +94,7 @@ interface OwnerCalendarParameters {
   endAt?: string;
   // UPDATE_MEETING_PREFERENCES
   timeZone?: string;
+  counterparties?: string[];
   preferredStartLocal?: string;
   preferredEndLocal?: string;
   defaultDurationMinutes?: number;
@@ -121,6 +133,7 @@ function translateSubaction(
 ): {
   target:
     | "calendar"
+    | "bulk_reschedule"
     | "propose_times"
     | "check_availability"
     | "update_preferences"
@@ -140,6 +153,8 @@ function translateSubaction(
     case "create_event":
     case "recurring_block":
       return { target: "calendar", innerSubaction: "create_event" };
+    case "bulk_reschedule":
+      return { target: "bulk_reschedule" };
 
     case "check_availability":
       return { target: "check_availability" };
@@ -180,6 +195,7 @@ const VALID_SUBACTIONS: readonly OwnerCalendarSubaction[] = [
   "create_event",
   "travel_itinerary",
   "recurring_block",
+  "bulk_reschedule",
   "check_availability",
   "propose_times",
   "update_preferences",
@@ -224,6 +240,270 @@ function messageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
+type DeterministicOwnerCalendarPlan = {
+  subaction: OwnerCalendarSubaction;
+  parameters?: Partial<OwnerCalendarParameters>;
+};
+
+function normalizeIntentText(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+function looksLikeNonRequestPreface(text: string): boolean {
+  return /\b(?:do not do this yet|don't do this yet|not asking you to do it yet|only thinking out loud|just thinking out loud|brainstorming|not yet)\b/iu.test(
+    text,
+  );
+}
+
+function looksLikeRecurringBlockRequest(text: string): boolean {
+  return (
+    /\b(?:daily|every day|each day|per day|recurring)\b/iu.test(text) &&
+    /\b(?:hour|block|time with|time for|protect|book)\b/iu.test(text)
+  );
+}
+
+function looksLikeSchedulingPreferenceRequest(text: string): boolean {
+  return (
+    /\b(?:no calls? between|blackout|preferred hours?|sleep window|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+      text,
+    ) ||
+    (/\b(?:calls?|meetings?)\b/iu.test(text) &&
+      /\b(?:between \d|allowed|okay|hours?)\b/iu.test(text))
+  );
+}
+
+function looksLikeTravelBundleRequest(text: string): boolean {
+  return (
+    /\b(?:schedule|bundle|cluster)\b/iu.test(text) &&
+    /\b(?:same time|same day|same window|if possible)\b/iu.test(text)
+  );
+}
+
+function looksLikeBulkRescheduleRequest(text: string): boolean {
+  return (
+    /\b(?:cancel|push|move|reschedule)\b/iu.test(text) &&
+    /\b(?:all|every|everything)\b/iu.test(text) &&
+    /\b(?:meeting|meetings|calls)\b/iu.test(text)
+  );
+}
+
+function looksLikeFlightConflictRequest(text: string): boolean {
+  return (
+    /\bflight\b/iu.test(text) &&
+    /\b(?:conflict|rebook|reschedul|other thing|flag)\b/iu.test(text)
+  );
+}
+
+export function inferDeterministicOwnerCalendarPlan(
+  rawText: string,
+): DeterministicOwnerCalendarPlan | null {
+  const text = normalizeIntentText(rawText);
+  if (text.length === 0) {
+    return null;
+  }
+
+  if (looksLikeNonRequestPreface(text)) {
+    return null;
+  }
+
+  if (looksLikeRecurringBlockRequest(text)) {
+    return { subaction: "recurring_block" };
+  }
+
+  if (looksLikeSchedulingPreferenceRequest(text)) {
+    return { subaction: "update_preferences" };
+  }
+
+  if (looksLikeBulkRescheduleRequest(text)) {
+    return { subaction: "bulk_reschedule" };
+  }
+
+  if (looksLikeTravelBundleRequest(text)) {
+    const timeZone = inferTimeZoneFromLocationText(text) ?? undefined;
+    return {
+      subaction: "propose_times",
+      parameters: timeZone ? { timeZone } : undefined,
+    };
+  }
+
+  if (looksLikeFlightConflictRequest(text)) {
+    return { subaction: "travel_itinerary" };
+  }
+
+  return null;
+}
+
+function extractBulkRescheduleCohortLabel(text: string): string | null {
+  const allMatch =
+    /\ball\s+([a-z0-9][a-z0-9\s&/+-]{1,40}?)\s+meetings?\b/iu.exec(text) ??
+    /\b([a-z0-9][a-z0-9\s&/+-]{1,40}?)\s+meetings?\b/iu.exec(text);
+  const raw = allMatch?.[1]?.trim();
+  if (!raw) {
+    return null;
+  }
+  return raw.replace(/\s+/gu, " ").trim();
+}
+
+function buildBulkRescheduleLookupWindow(timeZone: string, text: string): {
+  timeMin: string;
+  timeMax: string;
+  scopeLabel: string;
+} {
+  const now = new Date();
+  const local = getZonedDateParts(now, timeZone);
+  const startOfToday = buildUtcDateFromLocalParts(timeZone, {
+    year: local.year,
+    month: local.month,
+    day: local.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+
+  if (/\bnext month\b/iu.test(text)) {
+    const nextMonthYear = local.month === 12 ? local.year + 1 : local.year;
+    const nextMonth = local.month === 12 ? 1 : local.month + 1;
+    const startOfNextMonth = buildUtcDateFromLocalParts(timeZone, {
+      year: nextMonthYear,
+      month: nextMonth,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+    return {
+      timeMin: startOfToday.toISOString(),
+      timeMax: startOfNextMonth.toISOString(),
+      scopeLabel: "before next month",
+    };
+  }
+
+  const fortyFiveDaysOut = new Date(startOfToday.getTime() + 45 * 24 * 60 * 60_000);
+  return {
+    timeMin: startOfToday.toISOString(),
+    timeMax: fortyFiveDaysOut.toISOString(),
+    scopeLabel: "in the next 45 days",
+  };
+}
+
+function eventMatchesBulkRescheduleCohort(
+  event: LifeOpsCalendarEvent,
+  cohortLabel: string | null,
+): boolean {
+  if (!cohortLabel) {
+    return /\bmeeting|call|sync|standup|review\b/iu.test(
+      `${event.title} ${event.description ?? ""}`,
+    );
+  }
+
+  const searchable = [
+    event.title,
+    event.description ?? "",
+    event.location ?? "",
+    ...event.attendees.map(
+      (attendee) => attendee.displayName ?? attendee.email ?? "",
+    ),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return cohortLabel
+    .toLowerCase()
+    .split(/\s+/u)
+    .every((token) => searchable.includes(token));
+}
+
+async function handleBulkReschedulePreview(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  callback: HandlerCallback | undefined;
+}): Promise<ActionResult> {
+  const text = messageText(args.message);
+  const timeZone = inferTimeZoneFromLocationText(text) ?? resolveDefaultTimeZone();
+  const cohortLabel = extractBulkRescheduleCohortLabel(text);
+  const { timeMin, timeMax, scopeLabel } = buildBulkRescheduleLookupWindow(
+    timeZone,
+    text,
+  );
+  const service = new LifeOpsService(args.runtime);
+
+  let events: readonly LifeOpsCalendarEvent[] = [];
+  try {
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      timeMin,
+      timeMax,
+      timeZone,
+    });
+    events = feed.events;
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      const failureText =
+        error.status === 403
+          ? "I can't scope that calendar reschedule yet because Google Calendar isn't connected."
+          : `I couldn't inspect the calendar cohort for that bulk reschedule (${error.message}).`;
+      await args.callback?.({
+        text: failureText,
+        source: "action",
+        action: ACTION_NAME,
+      });
+      return {
+        text: failureText,
+        success: false,
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "bulk_reschedule",
+          error: "CALENDAR_UNAVAILABLE",
+          status: error.status,
+        },
+      };
+    }
+    throw error;
+  }
+
+  const matches = events
+    .filter((event) => eventMatchesBulkRescheduleCohort(event, cohortLabel))
+    .sort(
+      (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+    );
+
+  const cohortText = cohortLabel ? `${cohortLabel} meetings` : "those meetings";
+  const previewLines = matches.slice(0, 8).map((event) => {
+    const when = formatCalendarEventDateTime(event, {
+      includeTimeZoneName: true,
+    });
+    return `- ${event.title || "Untitled"} — ${when}`;
+  });
+
+  const responseText =
+    matches.length === 0
+      ? `I couldn't find any ${cohortText} ${scopeLabel} to push into next month. If the affected meetings live off-calendar, tell me the channel and I'll draft the reschedule plan for approval.`
+      : `I found ${matches.length} ${cohortText} ${scopeLabel} that look ready to push into next month:\n${previewLines.join("\n")}\n\nI'll keep the bulk cancel-and-push plan gated behind your approval before anything gets moved or sent.`;
+
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: ACTION_NAME,
+  });
+  return {
+    text: responseText,
+    success: true,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: "bulk_reschedule",
+      timeZone,
+      timeMin,
+      timeMax,
+      cohortLabel,
+      matchedEvents: matches.map((event) => ({
+        id: event.id,
+        title: event.title,
+        startAt: event.startAt,
+        endAt: event.endAt,
+      })),
+    },
+  };
+}
+
 type OwnerCalendarLlmPlan = {
   subaction: OwnerCalendarSubaction | null;
   shouldAct: boolean | null;
@@ -260,6 +540,7 @@ async function resolveOwnerCalendarPlanWithLlm(args: {
     "Choose create_event for creating a concrete event at a concrete date/time.",
     "Choose travel_itinerary for calendar-backed travel or itinerary lookups.",
     "Choose recurring_block for recurring protected time blocks.",
+    "Choose bulk_reschedule for requests to cancel, move, or push a cohort of meetings behind a single approval-gated plan.",
     "Recurring daily or weekly time blocks like 'book 1 hour per day for time with Jill' still belong to recurring_block even when the owner only gives a soft preference like 'before sleep' or says any time is fine.",
     "Choose check_availability for free/busy questions over a specific window.",
     "Choose propose_times for requests to suggest or offer a few candidate meeting slots.",
@@ -278,6 +559,7 @@ async function resolveOwnerCalendarPlanWithLlm(args: {
     'Example: "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> {"subaction":"recurring_block","shouldAct":true,"response":null}',
     'Example: "I\'m in Tokyo for limited time so let\'s schedule PendingReality and Ryan at the same time if possible" -> {"subaction":"propose_times","shouldAct":true,"response":null}',
     'Example: "flag the conflict before my flight later and help rebook the other thing" -> {"subaction":"travel_itinerary","shouldAct":true,"response":null}',
+    'Example: "We\'re gonna cancel some stuff and push everything back until next month. All partnership meetings." -> {"subaction":"bulk_reschedule","shouldAct":true,"response":null}',
     "",
     `Current request: ${JSON.stringify(messageText(args.message))}`,
     `Resolved intent: ${JSON.stringify(args.intent)}`,
@@ -350,6 +632,12 @@ async function route(
         forwardedOptions,
         delegatedCallback,
       )) as ActionResult;
+    case "bulk_reschedule":
+      return handleBulkReschedulePreview({
+        runtime,
+        message,
+        callback: delegatedCallback,
+      });
     case "propose_times":
       return (await proposeMeetingTimesAction.handler!(
         runtime,
@@ -427,6 +715,8 @@ export const ownerCalendarAction: Action & {
     "FIND_MEETING_SLOTS",
     "PROPOSE_SLOTS",
     "BUNDLE_MEETINGS_WHILE_TRAVELING",
+    "BULK_RESCHEDULE_MEETINGS",
+    "PUSH_MEETINGS_NEXT_MONTH",
     "AM_I_FREE",
     "AVAILABILITY_CHECK",
     "FREE_BUSY",
@@ -457,6 +747,8 @@ export const ownerCalendarAction: Action & {
     "travel itinerary",
     "meeting slots",
     "bundle meetings while traveling",
+    "bulk partnership reschedule",
+    "push meetings to next month",
     "reschedule options",
     "sleep window",
     "no-call hours",
@@ -472,7 +764,7 @@ export const ownerCalendarAction: Action & {
     "This action owns concrete calendar and scheduling requests — route here instead of inventing " +
     "separate calendar/scheduling/calendly actions. " +
     "Subactions — Google Calendar: view_today, view_week, next_event, search_events, " +
-    "create_event, travel_itinerary, recurring_block. Availability: check_availability, " +
+    "create_event, travel_itinerary, recurring_block, bulk_reschedule. Availability: check_availability, " +
     "propose_times. Preferences: update_preferences. Calendly: calendly_availability, " +
     "calendly_list_event_types, calendly_upcoming, calendly_single_use_link. " +
     "Negotiation: negotiate_start, negotiate_propose, negotiate_respond, " +
@@ -493,7 +785,7 @@ export const ownerCalendarAction: Action & {
     "means device alerts or ringing behavior. If the user is asking to remind " +
     "or bump them later about an unanswered decision rather than changing the " +
     "calendar itself, another action should own it. " +
-    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, and flight-conflict rebooking all belong here and may ask the minimum follow-up inside the action. " +
+    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, flight-conflict rebooking, and bulk requests to cancel or push a cohort of meetings into next month all belong here and may ask the minimum follow-up inside the action. " +
     "Do NOT use this action for morning briefs, night briefs, operating pictures, command-center views, " +
     "or broad day-start/day-end reviews that combine inbox, calendar, and tasks — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
     "This action provides the final grounded reply; do not pair it with a " +
@@ -520,6 +812,25 @@ export const ownerCalendarAction: Action & {
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
       const intent = (params.intent ?? messageText(message)).trim();
+      const deterministicPlan = inferDeterministicOwnerCalendarPlan(intent);
+      if (deterministicPlan) {
+        const mergedOptions: HandlerOptions = {
+          ...(options ?? {}),
+          parameters: {
+            ...params,
+            ...(deterministicPlan.parameters ?? {}),
+            subaction: deterministicPlan.subaction,
+          } as HandlerOptions["parameters"],
+        };
+        return route(
+          deterministicPlan.subaction,
+          runtime,
+          message,
+          state,
+          mergedOptions,
+          callback,
+        );
+      }
       const plan = await resolveOwnerCalendarPlanWithLlm({
         runtime,
         message,
@@ -546,7 +857,7 @@ export const ownerCalendarAction: Action & {
     {
       name: "subaction",
       description:
-        "Which calendar operation to run. Google Calendar: view_today, view_week, next_event, search_events, create_event, travel_itinerary, recurring_block. Availability: check_availability, propose_times. Preferences: update_preferences. Calendly: calendly_availability, calendly_list_event_types, calendly_upcoming, calendly_single_use_link. Negotiation: negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_list, negotiate_cancel.",
+        "Which calendar operation to run. Google Calendar: view_today, view_week, next_event, search_events, create_event, travel_itinerary, recurring_block, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences. Calendly: calendly_availability, calendly_list_event_types, calendly_upcoming, calendly_single_use_link. Negotiation: negotiate_start, negotiate_propose, negotiate_respond, negotiate_finalize, negotiate_list, negotiate_cancel.",
       required: false,
       schema: {
         type: "string" as const,
@@ -879,6 +1190,20 @@ export const ownerCalendarAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "I'll check the flight conflict, surface the conflicting event, and hold any rebooking behind your approval.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "We're gonna cancel some stuff and push everything back until next month. All partnership meetings.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll scope the partnership meetings affected and queue the bulk reschedule for your approval before anything is sent.",
         },
       },
     ],

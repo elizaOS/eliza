@@ -57,7 +57,7 @@ export interface SendPushRequest {
 }
 
 export interface SendPushResult {
-  messageId: string;
+  messageId: string | null;
   deliveredAt: string;
 }
 
@@ -137,7 +137,9 @@ export async function sendPush(
     id?: string;
     time?: number;
   };
-  const messageId = data.id ?? `ntfy-${Date.now()}`;
+  const messageId = typeof data.id === "string" && data.id.length > 0
+    ? data.id
+    : null;
   const deliveredAt = data.time
     ? new Date(data.time * 1000).toISOString()
     : new Date().toISOString();

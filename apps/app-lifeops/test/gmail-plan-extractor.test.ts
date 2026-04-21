@@ -12,44 +12,38 @@ function message(text: string): Memory {
   } as Memory;
 }
 
-describe("extractGmailPlanWithLlm", () => {
-  it("stops after the intent pass for reply-only clarifications", async () => {
-    const useModel = vi.fn().mockResolvedValue(
-      JSON.stringify({
-        subaction: null,
-        shouldAct: false,
-        response: "What do you want to do in Gmail?",
-      }),
-    );
-
-    const plan = await extractGmailPlanWithLlm(
-      {
-        useModel,
-        logger: { warn: vi.fn() },
-        getMemories: vi.fn().mockResolvedValue([]),
-      } as never,
-      message("can you help me with my email?"),
-      undefined,
-      "can you help me with my email?",
-    );
-
-    expect(useModel).toHaveBeenCalledTimes(1);
-    expect(plan).toEqual({
-      subaction: null,
-      queries: [],
-      response: "What do you want to do in Gmail?",
-      shouldAct: false,
-    });
-  });
-
-  it("skips payload extraction for triage", async () => {
-    const useModel = vi.fn().mockResolvedValue(
-      JSON.stringify({
-        subaction: "triage",
-        shouldAct: true,
-        response: null,
-      }),
-    );
+/**
+ * This file does NOT verify LLM behavior; it verifies the parse/normalize
+ * path downstream of a mocked model response. `useModel` is stubbed, so
+ * anything the extractor merely passes through from the stubbed JSON is
+ * tautological and not worth asserting here.
+ *
+ * Only tests that exercise real branching or field-forcing logic in
+ * `extractGmailPlanWithLlm` (skipping the payload pass, forcing defaults,
+ * etc.) belong in this file. Tests that asserted equality with the mock's
+ * own output have been removed.
+ */
+describe("extractGmailPlanWithLlm — downstream normalization (LLM mocked)", () => {
+  it("skips the payload-extraction pass for triage subactions", async () => {
+    // Real logic under test: `shouldExtractGmailPayload(subaction)` must return
+    // false for "triage", so the extractor returns after a single LLM call
+    // instead of running the second payload-extraction pass. The mock is
+    // configured to throw on any call after the first; if the branch ever
+    // regresses the second call will blow up.
+    const useModel = vi
+      .fn()
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          subaction: "triage",
+          shouldAct: true,
+          response: null,
+        }),
+      )
+      .mockRejectedValue(
+        new Error(
+          "payload-extraction pass should not run for triage subaction",
+        ),
+      );
 
     const plan = await extractGmailPlanWithLlm(
       {
@@ -63,51 +57,20 @@ describe("extractGmailPlanWithLlm", () => {
     );
 
     expect(useModel).toHaveBeenCalledTimes(1);
-    expect(plan).toEqual({
-      subaction: "triage",
-      queries: [],
-      response: undefined,
-      shouldAct: true,
-      replyNeededOnly: undefined,
-    });
+    // Payload-pass-only fields must be absent/empty because that pass was
+    // skipped — the only interesting assertion here.
+    expect(plan.queries).toEqual([]);
+    expect(plan.replyNeededOnly).toBeUndefined();
+    expect(plan.subaction).toBe("triage");
+    expect(plan.shouldAct).toBe(true);
   });
 
-  it("runs a second pass to extract search queries", async () => {
-    const useModel = vi
-      .fn()
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          subaction: "search",
-          shouldAct: true,
-          response: null,
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          queries: ["from:suran newer_than:1d"],
-        }),
-      );
-
-    const plan = await extractGmailPlanWithLlm(
-      {
-        useModel,
-        logger: { warn: vi.fn() },
-        getMemories: vi.fn().mockResolvedValue([]),
-      } as never,
-      message("did Suran email me today"),
-      undefined,
-      "did Suran email me today",
-    );
-
-    expect(useModel).toHaveBeenCalledTimes(2);
-    expect(plan).toMatchObject({
-      subaction: "search",
-      shouldAct: true,
-      queries: ["from:suran newer_than:1d"],
-    });
-  });
-
-  it("forces replyNeededOnly for needs_response even when the payload pass omits it", async () => {
+  it("forces replyNeededOnly=true for needs_response even when the payload pass omits it", async () => {
+    // Real logic under test: lines ~1099-1101 in gmail.ts — after the payload
+    // pass returns, if subaction is "needs_response" and the LLM did NOT
+    // include replyNeededOnly, the extractor must force it to true. The
+    // payload-pass mock below deliberately omits replyNeededOnly; if this
+    // defaulting logic regresses, `plan.replyNeededOnly` will be undefined.
     const useModel = vi
       .fn()
       .mockResolvedValueOnce(
@@ -120,6 +83,7 @@ describe("extractGmailPlanWithLlm", () => {
       .mockResolvedValueOnce(
         JSON.stringify({
           queries: ["venue"],
+          // replyNeededOnly intentionally omitted
         }),
       );
 
@@ -135,52 +99,8 @@ describe("extractGmailPlanWithLlm", () => {
     );
 
     expect(useModel).toHaveBeenCalledTimes(2);
-    expect(plan).toMatchObject({
-      subaction: "needs_response",
-      shouldAct: true,
-      queries: ["venue"],
-      replyNeededOnly: true,
-    });
-  });
-
-  it("extracts outbound email fields in the payload pass", async () => {
-    const useModel = vi
-      .fn()
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          subaction: "send_message",
-          shouldAct: true,
-          response: null,
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          to: ["zo@iqlabs.dev"],
-          subject: "hello anon",
-          bodyText: "how are you doing today?",
-        }),
-      );
-
-    const plan = await extractGmailPlanWithLlm(
-      {
-        useModel,
-        logger: { warn: vi.fn() },
-        getMemories: vi.fn().mockResolvedValue([]),
-      } as never,
-      message(
-        "send an email to zo@iqlabs.dev, subject hello anon, body how are you doing today?",
-      ),
-      undefined,
-      "send an email to zo@iqlabs.dev, subject hello anon, body how are you doing today?",
-    );
-
-    expect(useModel).toHaveBeenCalledTimes(2);
-    expect(plan).toMatchObject({
-      subaction: "send_message",
-      shouldAct: true,
-      to: ["zo@iqlabs.dev"],
-      subject: "hello anon",
-      bodyText: "how are you doing today?",
-    });
+    expect(plan.subaction).toBe("needs_response");
+    // The LLM omitted replyNeededOnly; the extractor must default it to true.
+    expect(plan.replyNeededOnly).toBe(true);
   });
 });

@@ -52,7 +52,12 @@ export interface LifeOpsSubscriptionPlaybook {
   phoneOnlyMarkers: string[];
   chatOnlyMarkers: string[];
   cancellationMarkers: string[];
-  steps: SubscriptionAutomationStep[];
+  /**
+   * Concrete browser automation steps. When undefined, the service has no
+   * real click-flow implemented — the caller must report a
+   * `PLAYBOOK_NOT_IMPLEMENTED` failure rather than pretend to cancel.
+   */
+  steps?: SubscriptionAutomationStep[];
   companionSelectors?: {
     cancel?: string;
     confirm?: string;
@@ -60,6 +65,14 @@ export interface LifeOpsSubscriptionPlaybook {
 }
 
 const FIXTURE_BASE_URL_ENV = "MILADY_SUBSCRIPTION_FIXTURE_BASE_URL";
+
+/**
+ * Error-code prefix used by the subscriptions mixin and action when a
+ * playbook is registered (we know the management URL) but no concrete
+ * click-flow has been implemented yet. Shared with the action so callers
+ * can pattern-match structured failures instead of parsing free text.
+ */
+export const PLAYBOOK_NOT_IMPLEMENTED_ERROR = "PLAYBOOK_NOT_IMPLEMENTED";
 
 function configuredFixtureBaseUrl(): string | null {
   const value = process.env[FIXTURE_BASE_URL_ENV]?.trim();
@@ -149,10 +162,11 @@ function definePlaybook(
     chatOnlyMarkers: partial.chatOnlyMarkers ?? [],
     cancellationMarkers:
       partial.cancellationMarkers ?? GENERIC_CANCELLATION_MARKERS,
-    steps: partial.steps ?? [
-      { kind: "open", url: managementUrl },
-      { kind: "screenshot", label: `${partial.key}-opened` },
-    ],
+    // No default steps: opening the management URL + a screenshot is NOT a
+    // cancellation. Services without an explicit click-flow are handled by
+    // the caller as PLAYBOOK_NOT_IMPLEMENTED so we don't silently report
+    // fake success. See service-mixin-subscriptions.ts.
+    steps: partial.steps,
     companionSelectors: partial.companionSelectors,
   };
 }

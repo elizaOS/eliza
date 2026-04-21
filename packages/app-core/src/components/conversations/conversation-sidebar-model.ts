@@ -74,20 +74,25 @@ function sourceLabel(source: string): string {
   return getChatSourceMeta(source).label;
 }
 
-function normalizeWorldLabel(chat: InboxChatSidebarRow): string {
+function normalizeWorldLabel(
+  chat: InboxChatSidebarRow,
+  t?: TranslateFn,
+): string {
   const trimmed = chat.worldLabel?.trim();
   if (trimmed) {
     return trimmed;
   }
-  return "Unknown world";
+  return t?.("conversations.scopeUnknownWorld", {
+    defaultValue: "Unknown world",
+  }) ?? "Unknown world";
 }
 
-function worldKey(chat: InboxChatSidebarRow): string {
+function worldKey(chat: InboxChatSidebarRow, t?: TranslateFn): string {
   const trimmedWorldId = chat.worldId?.trim();
   if (trimmedWorldId) {
     return trimmedWorldId;
   }
-  return `${UNKNOWN_WORLD_KEY}:${normalizeWorldLabel(chat).toLowerCase()}`;
+  return `${UNKNOWN_WORLD_KEY}:${normalizeWorldLabel(chat, t).toLowerCase()}`;
 }
 
 function buildConversationRows(
@@ -122,7 +127,7 @@ function buildInboxRows(
   return inboxChats
     .map((chat) => {
       const isoDate = new Date(chat.lastMessageAt).toISOString();
-      const normalizedWorldLabel = normalizeWorldLabel(chat);
+      const normalizedWorldLabel = normalizeWorldLabel(chat, t);
       const normalizedSource = normalizeConnectorSource(chat.source);
       return {
         avatarUrl: chat.avatarUrl,
@@ -136,7 +141,7 @@ function buildInboxRows(
         title: chat.title,
         updatedAtLabel: formatRelativeTime(isoDate, t),
         ...(chat.worldId ? { worldId: chat.worldId } : {}),
-        worldKey: worldKey(chat),
+        worldKey: worldKey(chat, t),
         worldLabel: normalizedWorldLabel,
       };
     })
@@ -280,10 +285,19 @@ function buildSections(
     if (row.kind === "inbox") {
       if (sourceScope === ALL_CONNECTORS_SOURCE_SCOPE) {
         key = `${row.sourceKey}:${row.worldKey ?? "unknown"}`;
-        label = `${sourceLabel(row.sourceKey)} • ${row.worldLabel ?? "Unknown world"}`;
+        label = `${sourceLabel(row.sourceKey)} • ${
+          row.worldLabel ??
+          t("conversations.scopeUnknownWorld", {
+            defaultValue: "Unknown world",
+          })
+        }`;
       } else {
         key = row.worldKey ?? `${UNKNOWN_WORLD_KEY}:unknown`;
-        label = row.worldLabel ?? "Unknown world";
+        label =
+          row.worldLabel ??
+          t("conversations.scopeUnknownWorld", {
+            defaultValue: "Unknown world",
+          });
       }
     }
 

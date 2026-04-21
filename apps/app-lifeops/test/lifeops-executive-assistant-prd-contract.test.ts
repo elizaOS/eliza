@@ -1,3 +1,21 @@
+/**
+ * LINT-STYLE FIXTURE INVARIANTS (not a behavioral contract).
+ *
+ * Every assertion in this file checks the SHAPE of scenario/catalog
+ * fixtures — not the BEHAVIOR of the scenarios themselves. It does not
+ * execute any scenario. It does not call any LifeOps handler. A passing
+ * run of this file only proves the fixtures have the right JSON shape
+ * at the time the assertions ran.
+ *
+ * For real behavioral contract enforcement, co-locate behavioral tests
+ * with the module they exercise and run them through the scenario
+ * runner (see packages/scenario-runner/).
+ *
+ * Do NOT rename this to drop "contract" from the filename until the
+ * tests actually enforce behavior — the grep history / imports across
+ * the tree reference this filename. Renaming the describe() block is
+ * allowed and preferred.
+ */
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -170,7 +188,7 @@ function countCheckTypes(
   return counts;
 }
 
-describe("LifeOps executive-assistant transcript contracts", () => {
+describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not behavioral)", () => {
   it("keeps the transcript catalog and executable suite in lockstep", async () => {
     const [catalog, scenarioFiles] = await Promise.all([
       loadCatalog(),
@@ -203,10 +221,26 @@ describe("LifeOps executive-assistant transcript contracts", () => {
       const firstCustomCheck = (scenario.finalChecks ?? []).find(
         (check) => check.type === "custom",
       );
-      const firstCheckResult = await firstCustomCheck?.predicate?.({
-        actionsCalled: [],
-        turns: [],
-      });
+      // Stronger-than-nothing predicate sanity check: feed the predicate an
+      // obviously-wrong context (a bogus action, a throwaway user turn, no
+      // side-effect arrays) and assert the predicate REJECTS it — i.e.
+      // returns a non-empty error string. A predicate that passes on this
+      // input is a LARP: it would also pass on any real scenario run, so
+      // the "assertion" is doing no work. This still doesn't execute the
+      // scenario; it only proves the predicate can say "no".
+      const bogusCtx = {
+        actionsCalled: [
+          { actionName: "WRONG_ACTION", parameters: {} } as unknown,
+        ],
+        turns: [{ role: "user", content: { text: "random" } } as unknown],
+        approvalRequests: [],
+        connectorDispatches: [],
+        memoryWrites: [],
+        stateTransitions: [],
+      };
+      const bogusResult = await firstCustomCheck?.predicate?.(
+        bogusCtx as Parameters<NonNullable<ScenarioFinalCheck["predicate"]>>[0],
+      );
 
       expect(scenario.id).toBe(catalogScenario.id);
       expect(scenario.domain).toBe("executive-assistant");
@@ -220,7 +254,14 @@ describe("LifeOps executive-assistant transcript contracts", () => {
       expect(scenarioSource).not.toContain("NotYetImplemented");
       expect(typeof firstTurn?.assertTurn).toBe("function");
       expect(firstCustomCheck?.type).toBe("custom");
-      expect(String(firstCheckResult ?? "")).not.toContain("NotYetImplemented");
+      // A functioning predicate must produce a non-empty string error when
+      // given bogus context. `undefined` / "" would mean the predicate
+      // rubber-stamps anything.
+      expect(
+        typeof bogusResult === "string" && bogusResult.length > 0,
+        `${catalogScenario.id}: first custom predicate accepted an obviously-wrong context (WRONG_ACTION, random text) — predicate is a no-op. Result was: ${JSON.stringify(bogusResult)}`,
+      ).toBe(true);
+      expect(String(bogusResult ?? "")).not.toContain("NotYetImplemented");
       expect(catalogScenario.integrations.length).toBeGreaterThan(0);
       expect(catalogScenario.providers.length).toBeGreaterThan(0);
       expect(catalogScenario.actions.length).toBeGreaterThan(0);

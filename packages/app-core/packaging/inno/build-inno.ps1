@@ -115,7 +115,7 @@ if ([string]::IsNullOrWhiteSpace($normalizedChannel)) {
 
 $isccPath = Get-IsccPath -PreferredPath $CompilerPath
 $templatePath = Join-Path $PSScriptRoot "ElizaOSApp.iss"
-$iconPath = Join-Path $PSScriptRoot "..\..\apps\app\electrobun\assets\appIcon.ico"
+$iconPath = Join-Path $PSScriptRoot "..\..\platforms\electrobun\assets\appIcon.ico"
 
 if (-not (Test-Path $templatePath)) {
   throw "Inno Setup template not found: $templatePath"
@@ -140,9 +140,9 @@ $sourceDir = if ((Split-Path -Leaf $launcherParent) -eq "bin") {
 } else {
   $launcherParent
 }
-$elizaosDistEntry = Join-Path $sourceDir "Resources\app\elizaos-app-dist\entry.js"
+$elizaosDistEntry = Join-Path $sourceDir "Resources\app\eliza-dist\entry.js"
 if (-not (Test-Path $elizaosDistEntry)) {
-  throw "Packaged app directory does not contain Resources\app\elizaos-app-dist\entry.js: $sourceDir"
+  throw "Packaged app directory does not contain Resources\app\eliza-dist\entry.js: $sourceDir"
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null

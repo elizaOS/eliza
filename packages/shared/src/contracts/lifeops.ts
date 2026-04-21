@@ -1834,6 +1834,12 @@ export type LifeOpsTelegramAuthState =
 
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
+  /**
+   * `connected` here means credentials are present in env; it does NOT imply
+   * a live network probe has been performed. A live send can still fail if
+   * the token has been revoked upstream. Callers that need true liveness
+   * must catch errors from the actual send/receive methods.
+   */
   connected: boolean;
   /**
    * Inbound is always true for WhatsApp. Messages arrive via webhook push and
@@ -2129,6 +2135,51 @@ export interface LifeOpsGoalReview {
     groundingSummary?: string | null;
     semanticReviewedAt?: string | null;
   };
+}
+
+export interface LifeOpsGoalExperienceLoopSuggestion {
+  sourceGoalId: string;
+  definitionId: string | null;
+  title: string;
+  detail: string;
+}
+
+export interface LifeOpsGoalExperienceLoopMatch {
+  goalId: string;
+  title: string;
+  description: string;
+  score: number;
+  status: LifeOpsGoalStatus;
+  reviewState: LifeOpsGoalReviewState;
+  linkedDefinitionCount: number;
+  completedLast7Days: number;
+  lastActivityAt: string | null;
+  explanation: string;
+  carryForwardSuggestions: LifeOpsGoalExperienceLoopSuggestion[];
+}
+
+export interface LifeOpsGoalExperienceLoop {
+  referenceGoalId: string | null;
+  referenceTitle: string;
+  similarGoals: LifeOpsGoalExperienceLoopMatch[];
+  suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[];
+  summary: string | null;
+}
+
+export interface LifeOpsWeeklyGoalReview {
+  generatedAt: string;
+  reviewWindow: "this_week";
+  summary: {
+    totalGoals: number;
+    onTrackCount: number;
+    atRiskCount: number;
+    needsAttentionCount: number;
+    idleCount: number;
+  };
+  onTrack: LifeOpsGoalReview[];
+  atRisk: LifeOpsGoalReview[];
+  needsAttention: LifeOpsGoalReview[];
+  idle: LifeOpsGoalReview[];
 }
 
 export interface LifeOpsDefinitionPerformanceWindow {

@@ -676,12 +676,39 @@ export function extractPlannerProviderNames(
 	}
 
 	if (Array.isArray(rawProviders)) {
-		return rawProviders
-			.map((providerName) => String(providerName).trim())
-			.filter(
-				(providerName): providerName is string =>
-					providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
-			);
+		return rawProviders.flatMap((providerName) => {
+			if (typeof providerName !== "string") {
+				const normalized = String(providerName).trim();
+				return normalized.length > 0 && isStructuredPlannerIdentifier(normalized)
+					? [normalized]
+					: [];
+			}
+
+			const trimmedProvider = providerName.trim();
+			if (!trimmedProvider) {
+				return [];
+			}
+			if (
+				(trimmedProvider.startsWith("[") && trimmedProvider.endsWith("]")) ||
+				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
+			) {
+				try {
+					const parsedJson = JSON.parse(trimmedProvider) as unknown;
+					if (Array.isArray(parsedJson)) {
+						return parsedJson
+							.map((entry) => String(entry).trim())
+							.filter(
+								(entry): entry is string =>
+									entry.length > 0 && isStructuredPlannerIdentifier(entry),
+							);
+					}
+				} catch {
+					// Fall through to structured token parsing below.
+				}
+			}
+
+			return extractStructuredProviderList(trimmedProvider);
+		});
 	}
 
 	return [];
@@ -1123,6 +1150,9 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
 		["CREATE_REMINDER", "LIFE"],
 		["SET_REMINDER_RULE", "LIFE"],
+		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
+		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
 		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
 		["FLAG_CONFLICT", "OWNER_CALENDAR"],
 		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
@@ -1149,6 +1179,363 @@ const PLANNER_PROVIDER_ALIASES = new Map(
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
 );
+
+const ACTION_OWNERSHIP_STOPWORDS = new Set([
+	"a",
+	"an",
+	"and",
+	"are",
+	"as",
+	"at",
+	"be",
+	"because",
+	"can",
+	"could",
+	"do",
+	"for",
+	"from",
+	"get",
+	"go",
+	"here",
+	"i",
+	"if",
+	"in",
+	"into",
+	"is",
+	"it",
+	"just",
+	"let",
+	"me",
+	"my",
+	"now",
+	"of",
+	"on",
+	"or",
+	"our",
+	"please",
+	"so",
+	"that",
+	"the",
+	"them",
+	"this",
+	"to",
+	"up",
+	"we",
+	"when",
+	"with",
+	"you",
+	"your",
+]);
+
+const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
+	/\b(?:if|when)\b/iu,
+	/\b(?:upload|send over|send|attach)\b/iu,
+	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
+	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
+	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
+	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
+	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
+	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
+];
+
+const ACTION_METADATA_FUTURE_HINTS = /\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
+
+type ActionOwnershipSuggestion = {
+	actionName: string;
+	score: number;
+	secondBestScore: number;
+	reasons: string[];
+};
+
+type ActionOwnershipCandidate = {
+	actionName: string;
+	score: number;
+	reasons: string[];
+};
+
+function tokenizeOwnershipText(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^a-z0-9]+/u)
+		.map((token) => token.trim())
+		.filter(
+			(token) =>
+				token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
+		);
+}
+
+function buildTokenSet(text: string): Set<string> {
+	return new Set(tokenizeOwnershipText(text));
+}
+
+function exampleContentText(action: Action): string[] {
+	return (action.examples ?? []).flatMap((example) =>
+		example.flatMap((turn) => {
+			const text =
+				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
+			return text.length > 0 ? [text] : [];
+		}),
+	);
+}
+
+function splitActionMetadataText(value: string): string[] {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		return [];
+	}
+	return trimmed
+		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
+		.map((chunk) => chunk.trim())
+		.filter((chunk) => chunk.length > 0);
+}
+
+function actionMetadataTexts(action: Action): string[] {
+	return [
+		action.name,
+		action.description,
+		action.descriptionCompressed,
+		...(action.tags ?? []),
+		...(action.similes ?? []),
+		...exampleContentText(action),
+	]
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim().length > 0,
+		)
+		.flatMap((value) => splitActionMetadataText(value));
+}
+
+function scoreActionOwnershipMatch(
+	messageText: string,
+	action: Action,
+): { score: number; reasons: string[] } {
+	const messageTokens = buildTokenSet(messageText);
+	if (messageTokens.size === 0) {
+		return { score: 0, reasons: [] };
+	}
+
+	let score = 0;
+	const reasons: string[] = [];
+	let bestExampleScore = 0;
+	const normalizedMessage = messageText.toLowerCase();
+	const actionMetadataBlob = actionMetadataTexts(action).join(" ").toLowerCase();
+
+	for (const chunk of actionMetadataTexts(action)) {
+		const chunkTokens = buildTokenSet(chunk);
+		if (chunkTokens.size === 0) {
+			continue;
+		}
+		const overlap = [...messageTokens].filter((token) => chunkTokens.has(token));
+		if (overlap.length === 0) {
+			continue;
+		}
+		const normalizedChunk = chunk.toLowerCase();
+		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
+		if (
+			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
+				normalizedChunk,
+			)
+		) {
+			score -= overlap.length * 1.25 + overlapRatio;
+			if (overlap.length >= 2) {
+				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
+			}
+			continue;
+		}
+		score += overlap.length * 1.25 + overlapRatio;
+		if (overlap.length >= 2) {
+			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
+		}
+
+		if (
+			normalizedChunk.length > 12 &&
+			(normalizedMessage.includes(normalizedChunk) ||
+				normalizedChunk.includes(normalizedMessage))
+		) {
+			score += 3;
+			reasons.push("phrase");
+		}
+
+		const exampleTokens = tokenizeOwnershipText(chunk);
+		if (exampleTokens.length >= 3) {
+			const exampleOverlap = overlap.length / exampleTokens.length;
+			if (exampleOverlap > bestExampleScore) {
+				bestExampleScore = exampleOverlap;
+			}
+		}
+	}
+
+	if (bestExampleScore >= 0.6) {
+		score += 4;
+		reasons.push("example");
+	}
+
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		) &&
+		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
+			actionMetadataBlob,
+		)
+	) {
+		score += 4;
+		reasons.push("schedule-policy");
+	}
+
+	if (
+		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText)) &&
+		ACTION_METADATA_FUTURE_HINTS.test(
+			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
+				.filter(Boolean)
+				.join(" "),
+		)
+	) {
+		score += 2;
+		reasons.push("workflow");
+	}
+
+	return { score, reasons };
+}
+
+function findDirectOwnedActionSuggestion(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageText: string,
+): ActionOwnershipSuggestion | null {
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		)
+	) {
+		const ownerCalendarAction = (runtime.actions ?? []).find((action) => {
+			const normalizedName = normalizeActionIdentifier(action.name);
+			if (normalizedName === normalizeActionIdentifier("OWNER_CALENDAR")) {
+				return true;
+			}
+			return (action.similes ?? []).some(
+				(simile) =>
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("UPDATE_MEETING_PREFERENCES") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("NO_CALL_HOURS") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("PROTECT_SLEEP"),
+			);
+		});
+		if (ownerCalendarAction) {
+			return {
+				actionName: ownerCalendarAction.name,
+				score: 100,
+				secondBestScore: 0,
+				reasons: ["direct:schedule-policy"],
+			};
+		}
+	}
+
+	return null;
+}
+
+export function suggestOwnedActionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+): ActionOwnershipSuggestion | null {
+	const messageText =
+		typeof message.content?.text === "string" ? message.content.text.trim() : "";
+	if (
+		messageText.length === 0 ||
+		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText))
+	) {
+		return null;
+	}
+
+	const directSuggestion = findDirectOwnedActionSuggestion(runtime, messageText);
+	if (directSuggestion) {
+		return directSuggestion;
+	}
+
+	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
+		.filter((action) => {
+			const normalized = normalizeActionIdentifier(action.name);
+			return (
+				normalized.length > 0 &&
+				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
+				normalized !== normalizeActionIdentifier("IGNORE") &&
+				normalized !== normalizeActionIdentifier("STOP")
+			);
+		})
+		.map((action) => ({
+			actionName: action.name,
+			...scoreActionOwnershipMatch(messageText, action),
+		}))
+		.filter((candidate) => candidate.score > 0)
+		.sort((left, right) => right.score - left.score);
+
+	if (ranked.length === 0) {
+		return null;
+	}
+
+	const best = ranked[0];
+	const secondBestScore = ranked[1]?.score ?? 0;
+	if (best.score < 8 || best.score - secondBestScore < 1.5) {
+		return null;
+	}
+
+	return {
+		actionName: best.actionName,
+		score: best.score,
+		secondBestScore,
+		reasons: best.reasons,
+	};
+}
+
+function findOwnedActionCorrectionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): ActionOwnershipSuggestion | null {
+	const currentAction = responseContent?.actions?.find(
+		(actionName) =>
+			typeof actionName === "string" &&
+			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+				normalizeActionIdentifier(actionName),
+			) &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("IGNORE") &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("STOP"),
+	);
+	if (!currentAction) {
+		return null;
+	}
+
+	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
+	if (!suggestion) {
+		return null;
+	}
+
+	if (
+		normalizeActionIdentifier(suggestion.actionName) ===
+		normalizeActionIdentifier(currentAction)
+	) {
+		return null;
+	}
+
+	const currentActionDef = (runtime.actions ?? []).find(
+		(action) =>
+			normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier(currentAction),
+	);
+	const currentScore = currentActionDef
+		? scoreActionOwnershipMatch(
+				typeof message.content?.text === "string" ? message.content.text : "",
+				currentActionDef,
+			).score
+		: 0;
+	if (suggestion.score - currentScore < 4) {
+		return null;
+	}
+
+	return suggestion;
+}
 
 function hasNonPassiveAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
@@ -1249,8 +1636,11 @@ function buildActionRescuePrompt(basePrompt: string, draftReply: string): string
 The previous draft stayed in prose-only mode or selected only passive reply actions.
 Re-evaluate the turn using the same available actions and providers already in context above.
 If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
-Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
-Missing details like the exact time, participant list, portal login, file arrival, or itinerary specifics are not a reason to fall back to REPLY when a listed action can own the follow-up.
+	Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
+	Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
+	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
+	Exact examples that must not stay in REPLY: "When I send over the deck, upload it to the portal for me." -> LIFEOPS_COMPUTER_USE; "If the only ID on file is expired, ask me for an updated copy so the workflow can continue." -> PUBLISH_DEVICE_INTENT; "If missing this could trigger a cancellation fee, warn me clearly and offer to handle it now." -> PUBLISH_DEVICE_INTENT.
+	If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
 Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
@@ -1267,6 +1657,8 @@ Rules:
 - Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
 - If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
 - If the right action still needs clarification, choose that action anyway.
+- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
+- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, and call-me-if-stuck escalations must choose the owning action on this turn.
 - Choose REPLY only when no listed action owns the request.
 - Do not invent action names.
 
@@ -1503,7 +1895,9 @@ async function shouldUseKnowledgeProviders(
 	}
 }
 
-function buildRuntimeActionLookup(runtime: IAgentRuntime): Map<string, Action> {
+function buildRuntimeActionLookup(
+	runtime: Pick<IAgentRuntime, "actions">,
+): Map<string, Action> {
 	const actionMap = new Map<string, Action>();
 
 	for (const action of runtime.actions ?? []) {
@@ -1610,13 +2004,12 @@ export function shouldEmitPlannerPreamble(
 			: "";
 	if (firstAction.length === 0) return false;
 
-	const resolvedAction = (runtime.actions ?? []).find(
-		(action) =>
-			normalizeActionIdentifier(action.name) === firstAction &&
-			action.suppressPostActionContinuation === true,
+	const resolvedAction = resolveRuntimeAction(
+		buildRuntimeActionLookup(runtime),
+		firstAction,
 	);
 	if (resolvedAction) {
-		return false;
+		return resolvedAction.suppressPostActionContinuation !== true;
 	}
 
 	return (
@@ -1624,6 +2017,52 @@ export function shouldEmitPlannerPreamble(
 		firstAction !== normalizeActionIdentifier("IGNORE") &&
 		firstAction !== normalizeActionIdentifier("STOP")
 	);
+}
+
+export function stripReplyWhenActionOwnsTurn(
+	runtime: Pick<IAgentRuntime, "actions" | "logger">,
+	actions: readonly string[] | null | undefined,
+): string[] {
+	if (!actions || actions.length <= 1) {
+		return Array.isArray(actions) ? [...actions] : [];
+	}
+
+	const normalizedReply = normalizeActionIdentifier("REPLY");
+	const hasReply = actions.some(
+		(action) => normalizeActionIdentifier(action) === normalizedReply,
+	);
+	if (!hasReply) {
+		return [...actions];
+	}
+
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const ownedActions = actions.filter((action) => {
+		const normalized = normalizeActionIdentifier(action);
+		if (!normalized || normalized === normalizedReply) {
+			return false;
+		}
+		return (
+			resolveRuntimeAction(actionLookup, action)
+				?.suppressPostActionContinuation === true
+		);
+	});
+	if (ownedActions.length === 0) {
+		return [...actions];
+	}
+
+	const filtered = actions.filter(
+		(action) => normalizeActionIdentifier(action) !== normalizedReply,
+	);
+	runtime.logger.info(
+		{
+			src: "service:message",
+			originalActions: actions,
+			filteredActions: filtered,
+			replySuppressedBy: ownedActions,
+		},
+		"Dropped REPLY because another selected action already owns the turn",
+	);
+	return filtered.length > 0 ? filtered : ["REPLY"];
 }
 
 function callbackTextPreview(content: Content | null | undefined): string {
@@ -5056,10 +5495,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				}
 			}
 
-			if (
-				!overrides?.providerFollowup &&
-				shouldAttemptActionRescue(runtime, message, state, responseContent)
-			) {
+				if (
+					!overrides?.providerFollowup &&
+					shouldAttemptActionRescue(runtime, message, state, responseContent)
+				) {
 				const actionRescuePrompt = buildActionRescuePrompt(
 					prompt,
 					String(responseContent.text || ""),
@@ -5211,12 +5650,33 @@ Output ONLY the continuation, starting immediately after the last character abov
 							"Recovered primary action after passive reply draft",
 						);
 						responseContent.actions = rescuedActions;
+						}
 					}
 				}
-			}
 
-			// Action parameter repair (Python parity):
-			// If the model selected actions with missing or invalid params, do a
+				if (!hasNonPassiveAction(responseContent)) {
+					const metadataSuggestion = suggestOwnedActionFromMetadata(
+						runtime,
+						message,
+					);
+					if (metadataSuggestion) {
+						runtime.logger.info(
+							{
+								src: "service:message",
+								originalActions: responseContent.actions ?? [],
+								suggestedAction: metadataSuggestion.actionName,
+								score: metadataSuggestion.score,
+								secondBestScore: metadataSuggestion.secondBestScore,
+								reasons: metadataSuggestion.reasons,
+							},
+							"Recovered primary action from action metadata after passive reply draft",
+						);
+						responseContent.actions = [metadataSuggestion.actionName];
+					}
+				}
+
+				// Action parameter repair (Python parity):
+				// If the model selected actions with missing or invalid params, do a
 			// second pass asking for ONLY a corrected <params> block.
 			const actionByName = new Map<string, Action>();
 			for (const action of runtime.actions) {
@@ -5224,6 +5684,26 @@ Output ONLY the continuation, starting immediately after the last character abov
 				if (normalizedName) {
 					actionByName.set(normalizedName, action);
 				}
+			}
+
+			const metadataCorrection = findOwnedActionCorrectionFromMetadata(
+				runtime,
+				message,
+				responseContent,
+			);
+			if (metadataCorrection) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						originalActions: responseContent.actions ?? [],
+						suggestedAction: metadataCorrection.actionName,
+						score: metadataCorrection.score,
+						secondBestScore: metadataCorrection.secondBestScore,
+						reasons: metadataCorrection.reasons,
+					},
+					"Corrected routed action from action metadata",
+				);
+				responseContent.actions = [metadataCorrection.actionName];
 			}
 
 			const collectParameterValidationIssues = (
@@ -5352,6 +5832,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 			) {
 				responseContent.providers = ["CONTEXT_BENCH"];
 			}
+			responseContent.actions = stripReplyWhenActionOwnsTurn(
+				runtime,
+				responseContent.actions,
+			);
 			// Suppress any direct planner answer; the REPLY action should generate final output.
 			if (responseContent.actions.some((a) => a.toUpperCase() === "REPLY")) {
 				responseContent.text = "";
@@ -5360,6 +5844,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// LLM terminal-control ambiguity handling
 		if (responseContent.actions && responseContent.actions.length > 1) {
+			responseContent.actions = stripReplyWhenActionOwnsTurn(
+				runtime,
+				responseContent.actions,
+			);
 			const isIgnore = (a: unknown) =>
 				typeof a === "string" && a.toUpperCase() === "IGNORE";
 			const isStop = (a: unknown) =>

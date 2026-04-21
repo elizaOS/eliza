@@ -23,23 +23,31 @@ html.eliza-electrobun-frameless {
    * on Apple Silicon macOS (was 56px — still overlapped the lights).
    */
   --eliza-macos-frame-left-inset: 78px;
-}
-
-html.eliza-electrobun-frameless body {
-  -webkit-app-region: drag;
-}
-
-/*
- * Header chrome: use `pe-*` + `py-*` in Header.tsx (not `px-*`) so Tailwind does
- * not emit `padding-inline`, which would fight this longhand in some builds.
- */
-html.eliza-electrobun-frameless header [data-header-toolbar-padding] {
-  padding-inline-start: max(
+  --eliza-macos-titlebar-height: 2.75rem;
+  --eliza-macos-titlebar-side-width: max(
     env(safe-area-inset-left, 0px),
     var(--eliza-macos-frame-left-inset)
   );
-  /* Keep end padding aligned with former `px-2` (0.5rem) */
-  padding-inline-end: 0.5rem;
+}
+
+html.eliza-electrobun-frameless:not(.eliza-electrobun-custom-titlebar) body {
+  -webkit-app-region: drag;
+}
+
+html.eliza-electrobun-frameless [data-window-titlebar="true"] {
+  -webkit-app-region: drag;
+}
+
+html.eliza-electrobun-frameless [data-window-titlebar-inner] {
+  min-height: calc(
+    max(env(safe-area-inset-top, 0px), 0px) +
+    var(--eliza-macos-titlebar-height)
+  );
+}
+
+html.eliza-electrobun-frameless header [data-header-toolbar-padding] {
+  padding-top: 0.25rem;
+  padding-inline: 0.5rem;
 }
 
 html.eliza-electrobun-frameless a,

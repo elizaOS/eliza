@@ -652,6 +652,81 @@ export function applyExtensionlessJsExportAliases(pkgPath) {
 }
 
 /**
+ * Some upstream @elizaos packages (notably @elizaos/agent and @elizaos/ui)
+ * publish exports maps where glob subpath targets still carry the source
+ * extension before the .js / .d.ts suffix — e.g. "./packages/agent/src/runtime/*.ts.js".
+ * That breaks Bun resolution because the on-disk files are "*.js" / "*.d.ts".
+ *
+ * The bug originates in eliza's prepare-package-dist.mjs `replaceSourceExtension`
+ * helper (it appends ".js" instead of replacing the source extension when the
+ * relative path contains a "*"). Rather than wait for upstream republish, we
+ * rewrite every export value matching /\*\.(ts|tsx|mts|cts)\.(js|d\.ts)$/
+ * back to its correct dist form.
+ */
+function rewriteTsTsxJsGlobValue(value) {
+  if (typeof value !== "string") return { value, changed: false };
+  // Replace `*.ts.js` / `*.tsx.js` / `*.mts.js` / `*.cts.js` → `*.js`
+  // and `*.ts.d.ts` / `*.tsx.d.ts` etc. → `*.d.ts`.
+  const next = value
+    .replace(/\*\.(?:ts|tsx|mts|cts)\.js$/, "*.js")
+    .replace(/\*\.(?:ts|tsx|mts|cts)\.d\.ts$/, "*.d.ts");
+  return { value: next, changed: next !== value };
+}
+
+function rewriteTsTsxJsGlobConditions(node) {
+  if (typeof node === "string") {
+    return rewriteTsTsxJsGlobValue(node);
+  }
+  if (Array.isArray(node)) {
+    let changed = false;
+    const next = node.map((entry) => {
+      const result = rewriteTsTsxJsGlobConditions(entry);
+      if (result.changed) changed = true;
+      return result.value;
+    });
+    return { value: next, changed };
+  }
+  if (node && typeof node === "object") {
+    let changed = false;
+    const next = {};
+    for (const [k, v] of Object.entries(node)) {
+      const result = rewriteTsTsxJsGlobConditions(v);
+      if (result.changed) changed = true;
+      next[k] = result.value;
+    }
+    return { value: next, changed };
+  }
+  return { value: node, changed: false };
+}
+
+export function applyTsTsxJsGlobFix(pkgPath) {
+  if (!existsSync(pkgPath)) return false;
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+  const exportsField = pkg.exports;
+  if (
+    !exportsField ||
+    typeof exportsField !== "object" ||
+    Array.isArray(exportsField)
+  ) {
+    return false;
+  }
+
+  let patched = false;
+  for (const [key, value] of Object.entries(exportsField)) {
+    const result = rewriteTsTsxJsGlobConditions(value);
+    if (result.changed) {
+      exportsField[key] = result.value;
+      patched = true;
+    }
+  }
+
+  if (!patched) return false;
+
+  writeFileAtomic(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  return true;
+}
+
+/**
  * @noble/hashes@2.x removed several legacy direct entry points that ethers@6
  * still imports (sha256, sha512, ripemd160). Recreate those shims so Bun can
  * resolve the package without downgrading the whole tree.
@@ -787,6 +862,25 @@ export function patchExtensionlessJsExports(root, pkgName, log = console.log) {
       patched = true;
       log(
         `[patch-deps] Patched ${pkgName} exports: added extensionless aliases for .js subpaths.`,
+      );
+    }
+  }
+  return patched;
+}
+
+/**
+ * Patch all copies of pkgName so any glob export target carrying a stray source
+ * extension before .js/.d.ts is rewritten to the actual emitted dist path.
+ * Workaround for the upstream prepare-package-dist.mjs glob bug.
+ */
+export function patchTsTsxJsGlobs(root, pkgName, log = console.log) {
+  const candidates = findPackageJsonPaths(root, pkgName);
+  let patched = false;
+  for (const pkgPath of candidates) {
+    if (applyTsTsxJsGlobFix(pkgPath)) {
+      patched = true;
+      log(
+        `[patch-deps] Patched ${pkgName} exports: rewrote *.ts.js / *.ts.d.ts glob targets to *.js / *.d.ts.`,
       );
     }
   }

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
@@ -193,7 +193,16 @@ export async function evaluateGoalProgressWithLlm(args: {
     return repairedParsed
       ? buildSemanticEvaluationResult(repairedParsed, args.nowIso)
       : null;
-  } catch {
+  } catch (error) {
+    logger.warn(
+      {
+        boundary: "lifeops",
+        component: "goal-semantic-evaluator",
+        goalId: args.goal?.id ?? null,
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      "[goal-semantic-evaluator] evaluation failed; returning null",
+    );
     return null;
   }
 }

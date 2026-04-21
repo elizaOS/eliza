@@ -115,15 +115,24 @@ export function ApprovalsPanel({
   }
   if (state.requests.length === 0) {
     return (
-      <div className="p-4 text-sm text-muted-foreground">
-        No approval requests.
+      <div className="flex flex-col gap-2 p-4">
+        <h2 className="text-lg font-semibold">Pending approvals</h2>
+        <p className="text-sm text-muted-foreground">
+          Nothing needs your approval right now. When the agent is about to take
+          an action that requires your sign-off, it will show up here.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <h2 className="text-lg font-semibold">Pending approvals</h2>
+      <div>
+        <h2 className="text-lg font-semibold">Pending approvals</h2>
+        <p className="text-xs text-muted-foreground">
+          The agent is waiting for you before it runs these actions.
+        </p>
+      </div>
       <ul className="flex flex-col gap-2">
         {state.requests.map((request) => (
           <li
@@ -145,9 +154,14 @@ export function ApprovalsPanel({
               </span>
             </div>
             <p className="text-sm">{request.reason}</p>
-            <pre className="max-h-32 overflow-auto rounded bg-muted p-2 text-xs">
-              {JSON.stringify(request.payload, null, 2)}
-            </pre>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">
+                Show technical details
+              </summary>
+              <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted p-2">
+                {JSON.stringify(request.payload, null, 2)}
+              </pre>
+            </details>
             {request.state === "pending" && (
               <div className="flex gap-2">
                 <Button
@@ -157,7 +171,7 @@ export function ApprovalsPanel({
                     void resolve(request.id, "approve");
                   }}
                 >
-                  Approve
+                  {busyId === request.id ? "Approving…" : "Approve"}
                 </Button>
                 <Button
                   size="sm"
@@ -167,7 +181,7 @@ export function ApprovalsPanel({
                     void resolve(request.id, "reject");
                   }}
                 >
-                  Reject
+                  {busyId === request.id ? "Rejecting…" : "Reject"}
                 </Button>
               </div>
             )}

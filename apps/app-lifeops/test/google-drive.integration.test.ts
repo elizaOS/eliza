@@ -35,14 +35,13 @@ const TEST_SPREADSHEET_ID =
   process.env.GOOGLE_SHEETS_TEST_SPREADSHEET_ID?.trim() ?? "";
 
 describe("Integration: google-drive client", () => {
-  it("skips when GOOGLE_OAUTH_TEST_TOKEN is absent", () => {
-    if (LIVE_CREDS_AVAILABLE) {
-      // Nothing to assert when we have creds — the live tests below do the work.
-      return;
-    }
-    // When creds are absent this test documents the skip.
-    expect(ACCESS_TOKEN).toBe("");
-  });
+  it.skipIf(LIVE_CREDS_AVAILABLE)(
+    "documents that live google-drive tests are skipped when GOOGLE_OAUTH_TEST_TOKEN is absent",
+    () => {
+      expect(ACCESS_TOKEN).toBe("");
+      expect(LIVE_CREDS_AVAILABLE).toBe(false);
+    },
+  );
 
   itIf(LIVE_CREDS_AVAILABLE)(
     "listDriveFiles returns a non-null response with a files array",

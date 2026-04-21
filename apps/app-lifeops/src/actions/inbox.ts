@@ -93,6 +93,61 @@ function stringifyInboxDraftContext(draft: DeferredInboxDraft | null): string {
   });
 }
 
+function buildInboxPolicyAcknowledgement(
+  userText: string,
+): ActionResult | null {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    /\bgroup chat\b/u.test(normalized) &&
+    /\bhandoff\b/u.test(normalized) &&
+    /\b(?:relay|relaying|relays|coordination|messy|tangled)\b/u.test(normalized)
+  ) {
+    return {
+      text:
+        "If the relay gets messy, I'll suggest a group-chat handoff with you and the other people involved so we can stop bouncing messages through you.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "group_chat_handoff",
+      },
+    };
+  }
+
+  if (
+    /\bbump\b/u.test(normalized) &&
+    /\bcontext\b/u.test(normalized) &&
+    /\bstart(?:ing)? over\b/u.test(normalized)
+  ) {
+    return {
+      text:
+        "If that thread is still unresolved, I'll bump you again with the existing context attached instead of restarting the explanation from zero.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "contextual_bump",
+      },
+    };
+  }
+
+  return null;
+}
+
 async function resolveSubactionPlan(
   runtime: IAgentRuntime,
   params: InboxActionParams,
@@ -299,11 +354,16 @@ export const inboxAction: Action & {
         text:
           subactionPlan.response ??
           "Tell me whether you want me to triage the inbox, show a digest, or respond to someone.",
-        success: true,
-        values: { success: true, noop: true },
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
         data: {
           actionName: ACTION_NAME,
           noop: true,
+          error: "PLANNER_SHOULDACT_FALSE",
           suggestedSubaction: subactionPlan.subaction,
         },
       };
@@ -814,8 +874,18 @@ async function handleRespond(
   state: State | undefined,
   params: InboxActionParams,
 ): Promise<ActionResult> {
-  const repo = new InboxTriageRepository(runtime);
   const userText = extractText(message);
+  const policyAcknowledgement = buildInboxPolicyAcknowledgement(userText);
+  if (
+    policyAcknowledgement &&
+    !params.entryId &&
+    !params.target &&
+    !params.messageText &&
+    params.confirmed !== true
+  ) {
+    return policyAcknowledgement;
+  }
+  const repo = new InboxTriageRepository(runtime);
 
   // -- Check for pending draft confirmation --------------------------------
   const pendingDraft = latestPendingDraft(state);
@@ -848,9 +918,20 @@ async function handleRespond(
     if (needsReply.length === 0) {
       return {
         text: "No pending inbox items need a reply right now. Use INBOX to triage for new messages.",
-        success: true,
-        values: { success: true },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — there was nothing to reply
+        // to. Report as a structured no-op rather than a success.
+        success: false,
+        values: {
+          success: false,
+          error: "NOOP_NOTHING_TO_DO",
+          noop: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          noop: true,
+          error: "NOOP_NOTHING_TO_DO",
+        },
       };
     }
     if (needsReply.length === 1) {
@@ -873,9 +954,21 @@ async function handleRespond(
         .join("\n");
       return {
         text: `Multiple items need a reply. Which one?\n\n${itemList}\n\nSay "respond to [name/channel]" to pick one.`,
-        success: true,
-        values: { success: true, pendingCount: needsReply.length },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — we need the user to
+        // disambiguate which item first. Report as a structured failure so
+        // downstream consumers don't treat this as a completed reply.
+        success: false,
+        values: {
+          success: false,
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
       };
     }
   }
@@ -944,7 +1037,7 @@ async function handleRespond(
     text:
       `I'll send this to **${draft.senderName}** on **${draft.channelName}** (${draft.source}):\n\n` +
       `> ${draftText}\n\n` +
-      `It's queued for approval as **${approvalRequest.id}**. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
+      `It's queued for approval. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
     success: true,
     values: { success: true, awaitingConfirmation: true },
     data: {

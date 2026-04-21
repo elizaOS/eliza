@@ -147,7 +147,7 @@ wait_for_notary_acceptance() {
   return 1
 }
 
-TARBALL_PATH="$(find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
+TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
 if [[ -z "$TARBALL_PATH" ]]; then
   echo "stage-macos-release-artifacts: no macOS updater tarball found in $ARTIFACTS_DIR"
   exit 1
@@ -169,7 +169,7 @@ ditto "$APP_BUNDLE_PATH" "$STAGED_APP_PATH"
 LAUNCHER_PATH="$STAGED_APP_PATH/Contents/MacOS/launcher"
 WGPU_PATH="$STAGED_APP_PATH/Contents/MacOS/libwebgpu_dawn.dylib"
 VERSION_JSON_PATH="$STAGED_APP_PATH/Contents/Resources/version.json"
-RUNTIME_DIR="$STAGED_APP_PATH/Contents/Resources/app/milady-dist"
+RUNTIME_DIR="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"
 DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"
 
 for required_path in "$LAUNCHER_PATH" "$WGPU_PATH" "$VERSION_JSON_PATH" "$RUNTIME_DIR"; do

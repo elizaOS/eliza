@@ -1,0 +1,266 @@
+/**
+ * Cloud-managed LifeOps feature provisioning.
+ *
+ *   GET  /api/cloud/features          → return current Cloud-managed feature
+ *                                      flags (one per feature key) plus the
+ *                                      effective local state. UI uses this
+ *                                      to show 'cloud' badges next to each
+ *                                      feature row.
+ *   POST /api/cloud/features/sync     → pull the user's Cloud package mapping
+ *                                      from Eliza Cloud and upsert each
+ *                                      result into `lifeops_features` with
+ *                                      `source = 'cloud'`. Idempotent.
+ *
+ * Cloud is the package→feature owner. Local code reflects the result and
+ * never decides which features a Cloud package unlocks (Commandment 4 — BFF
+ * is auth + proxy, no business logic).
+ *
+ * The `_meta.packageId` field is preserved verbatim and stored under the
+ * row's metadata so the UI can show which Cloud package activated a flag.
+ */
+
+import type http from "node:http";
+import type { AgentRuntime, IAgentRuntime, Service } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import {
+  ALL_FEATURE_KEYS,
+  CLOUD_LINKED_DEFAULT_ON,
+  isLifeOpsFeatureKey,
+  type FeatureFlagState,
+  type LifeOpsFeatureKey,
+} from "@elizaos/app-lifeops/lifeops/feature-flags.types";
+import { createFeatureFlagService } from "@elizaos/app-lifeops/lifeops/feature-flags";
+import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import { validateCloudBaseUrl } from "../cloud/validate-url.js";
+import type { CloudProxyConfigLike } from "../types/config-like.js";
+import { sendJson, sendJsonError } from "./http-helpers.js";
+import { resolveCloudApiKey } from "./wallet-rpc.js";
+
+export interface CloudFeaturesRouteState {
+  config: CloudProxyConfigLike;
+  runtime?: AgentRuntime | null;
+}
+
+const PROXY_TIMEOUT_MS = 15_000;
+
+interface CloudAuthApiKeyService {
+  isAuthenticated: () => boolean;
+  getApiKey?: () => string | undefined;
+}
+
+interface CloudFeatureRow {
+  readonly featureKey: LifeOpsFeatureKey;
+  readonly enabled: boolean;
+  readonly packageId: string | null;
+}
+
+interface CloudFeaturesUpstream {
+  readonly features?: ReadonlyArray<{
+    readonly featureKey?: unknown;
+    readonly enabled?: unknown;
+    readonly packageId?: unknown;
+  }>;
+}
+
+function normalizeCloudApiKey(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
+  return trimmed;
+}
+
+function resolveProxyApiKey(state: CloudFeaturesRouteState): string | null {
+  const cloudAuth = state.runtime
+    ? state.runtime.getService<Service & CloudAuthApiKeyService>("CLOUD_AUTH")
+    : null;
+  const runtimeApiKey =
+    cloudAuth?.isAuthenticated() === true
+      ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
+      : null;
+  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+}
+
+function buildAuthHeaders(
+  config: CloudProxyConfigLike,
+  apiKey: string,
+): Record<string, string> {
+  const serviceKey = config.cloud?.serviceKey?.trim();
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+  if (serviceKey) headers["X-Service-Key"] = serviceKey;
+  return headers;
+}
+
+function parseCloudFeatures(payload: unknown): CloudFeatureRow[] {
+  if (!payload || typeof payload !== "object") return [];
+  const features = (payload as CloudFeaturesUpstream).features;
+  if (!Array.isArray(features)) return [];
+  const rows: CloudFeatureRow[] = [];
+  for (const entry of features) {
+    if (!entry || typeof entry !== "object") continue;
+    const featureKeyRaw = entry.featureKey;
+    if (!isLifeOpsFeatureKey(featureKeyRaw)) continue;
+    const enabled = entry.enabled === true;
+    const packageId =
+      typeof entry.packageId === "string" && entry.packageId.trim().length > 0
+        ? entry.packageId.trim()
+        : null;
+    rows.push({ featureKey: featureKeyRaw, enabled, packageId });
+  }
+  return rows;
+}
+
+interface FetchCloudFeaturesResult {
+  readonly status: number;
+  readonly rows: ReadonlyArray<CloudFeatureRow>;
+  readonly error: string | null;
+}
+
+async function fetchCloudFeatures(
+  state: CloudFeaturesRouteState,
+): Promise<FetchCloudFeaturesResult> {
+  const apiKey = resolveProxyApiKey(state);
+  if (!apiKey) {
+    return {
+      status: 401,
+      rows: [],
+      error: "Not connected to Eliza Cloud. Sign in to sync features.",
+    };
+  }
+  const baseUrl = normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
+  const urlError = await validateCloudBaseUrl(baseUrl);
+  if (urlError) {
+    return { status: 502, rows: [], error: urlError };
+  }
+  const upstream = await fetch(`${baseUrl}/api/v1/features`, {
+    method: "GET",
+    headers: buildAuthHeaders(state.config, apiKey),
+    signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+  });
+  if (!upstream.ok) {
+    const body = await upstream.text().catch(() => "");
+    return {
+      status: upstream.status,
+      rows: [],
+      error: body || `Cloud features request failed (${upstream.status})`,
+    };
+  }
+  const payload = await upstream.json().catch(() => null);
+  return { status: 200, rows: parseCloudFeatures(payload), error: null };
+}
+
+interface FeatureRowDto {
+  readonly featureKey: LifeOpsFeatureKey;
+  readonly enabled: boolean;
+  readonly source: FeatureFlagState["source"];
+  readonly description: string;
+  readonly costsMoney: boolean;
+  readonly enabledAt: string | null;
+  readonly enabledBy: string | null;
+  readonly packageId: string | null;
+}
+
+function toRowDto(state: FeatureFlagState): FeatureRowDto {
+  const packageId = state.metadata.packageId;
+  return {
+    featureKey: state.featureKey,
+    enabled: state.enabled,
+    source: state.source,
+    description: state.description,
+    costsMoney: state.costsMoney,
+    enabledAt: state.enabledAt ? state.enabledAt.toISOString() : null,
+    enabledBy: state.enabledBy,
+    packageId: typeof packageId === "string" ? packageId : null,
+  };
+}
+
+async function handleGet(
+  res: http.ServerResponse,
+  state: CloudFeaturesRouteState,
+): Promise<void> {
+  if (!state.runtime) {
+    sendJsonError(res, "Runtime not available", 503);
+    return;
+  }
+  const service = createFeatureFlagService(state.runtime as IAgentRuntime);
+  const list = await service.list();
+  const rows = list.map(toRowDto);
+  sendJson(res, { features: rows }, 200);
+}
+
+async function handleSync(
+  res: http.ServerResponse,
+  state: CloudFeaturesRouteState,
+): Promise<void> {
+  if (!state.runtime) {
+    sendJsonError(res, "Runtime not available", 503);
+    return;
+  }
+  const remote = await fetchCloudFeatures(state);
+  if (remote.error) {
+    sendJsonError(res, remote.error, remote.status);
+    return;
+  }
+  const service = createFeatureFlagService(state.runtime as IAgentRuntime);
+  const remoteByKey = new Map<LifeOpsFeatureKey, CloudFeatureRow>();
+  for (const row of remote.rows) {
+    remoteByKey.set(row.featureKey, row);
+  }
+  // Cloud-default policy: a successful sync implies the user is signed
+  // into Eliza Cloud, so we upsert rows for every feature in
+  // CLOUD_LINKED_DEFAULT_ON that did not come back explicitly disabled
+  // from upstream. This keeps `source = 'cloud'` audit-correct (the row
+  // was created by a Cloud sync) and surfaces the 5% service-fee tag in
+  // the UI, while still letting an explicit upstream `enabled: false`
+  // win for users on a plan that excludes a given capability.
+  const promotedKeys = new Set<LifeOpsFeatureKey>();
+  for (const featureKey of CLOUD_LINKED_DEFAULT_ON) {
+    if (remoteByKey.has(featureKey)) continue;
+    promotedKeys.add(featureKey);
+    await service.enable(featureKey, "cloud", null, {
+      autoProvisioned: true,
+      cloudDefault: true,
+    });
+  }
+  for (const featureKey of ALL_FEATURE_KEYS) {
+    const cloudRow = remoteByKey.get(featureKey);
+    if (!cloudRow) continue;
+    const metadata = cloudRow.packageId
+      ? { packageId: cloudRow.packageId, autoProvisioned: true }
+      : { autoProvisioned: true };
+    if (cloudRow.enabled) {
+      await service.enable(featureKey, "cloud", null, metadata);
+    } else {
+      await service.disable(featureKey, "cloud", null);
+    }
+  }
+  logger.info(
+    `[cloud-features] synced ${remote.rows.length} feature(s) from Eliza Cloud (${promotedKeys.size} promoted by Cloud-default policy)`,
+  );
+  const list = await service.list();
+  sendJson(
+    res,
+    { synced: remote.rows.length, features: list.map(toRowDto) },
+    200,
+  );
+}
+
+export async function handleCloudFeaturesRoute(
+  _req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+  state: CloudFeaturesRouteState,
+): Promise<boolean> {
+  if (pathname === "/api/cloud/features" && method === "GET") {
+    await handleGet(res, state);
+    return true;
+  }
+  if (pathname === "/api/cloud/features/sync" && method === "POST") {
+    await handleSync(res, state);
+    return true;
+  }
+  return false;
+}
