@@ -28,7 +28,7 @@
 export interface ElizaCloudUserProfile {
   displayName: string;
   email: string;
-  credits: string;
+  credits: string | null;
   plan: string;
   avatarUrl: string | null;
   walletAddress: string;
@@ -292,7 +292,12 @@ export function parseCreditsSummaryPayload(
 }
 
 function normalizeApiBase(apiBase: string): string {
-  return apiBase.replace(/\/$/, "");
+  let base = apiBase.replace(/\/$/, "");
+  base = base.replace(
+    /^(https?:\/\/)elizacloud\.ai/i,
+    "$1www.elizacloud.ai",
+  );
+  return base;
 }
 
 /** No 429 retry here: summary is the rate-limited route; keeps model fetch latency predictable. */
@@ -403,7 +408,7 @@ export async function fetchElizaCloudUser(
       data["remainingCredits"]) ||
     (typeof data["remainingCredits"] === "number" &&
       String(data["remainingCredits"])) ||
-    "linked";
+    null;
   const plan =
     (typeof data["plan"] === "string" && data["plan"]) ||
     (typeof data["subscription_plan"] === "string" &&

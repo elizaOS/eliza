@@ -8833,7 +8833,7 @@ async function handleRequest(
         );
         return;
       }
-      sendRedirect(res, "/dashboard?cloud_connected=1", cookieHeaders);
+      sendRedirect(res, "/cloud/agents?cloud_connected=1", cookieHeaders);
       return;
     }
 
@@ -8877,7 +8877,7 @@ async function handleRequest(
       );
       return;
     }
-    sendRedirect(res, "/dashboard?cloud_connected=1", cookieHeaders);
+    sendRedirect(res, "/cloud/agents?cloud_connected=1", cookieHeaders);
     return;
   }
 
