@@ -212,6 +212,39 @@ const PROVIDERS: Array<{
   },
 ];
 
+function cloudOpenAiProvider(): LiveProviderConfig | null {
+  const cloudApiKey =
+    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
+    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
+    configuredCloudApiKey;
+  if (!cloudApiKey) {
+    return null;
+  }
+
+  const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
+  const largeModel =
+    getTrimmedEnv("OPENAI_LARGE_MODEL") ||
+    getTrimmedEnv("OPENAI_SMALL_MODEL") ||
+    "gpt-5.4-mini";
+
+  return {
+    name: "openai",
+    apiKey: cloudApiKey,
+    baseUrl: ELIZA_CLOUD_OPENAI_BASE_URL,
+    smallModel,
+    largeModel,
+    pluginPackage: "@elizaos/plugin-openai",
+    env: {
+      OPENAI_API_KEY: cloudApiKey,
+      OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
+      OPENAI_SMALL_MODEL: smallModel,
+      OPENAI_LARGE_MODEL: largeModel,
+      SMALL_MODEL: smallModel,
+      LARGE_MODEL: largeModel,
+    },
+  };
+}
+
 for (const provider of PROVIDERS) {
   for (const key of provider.keyEnvVars) {
     LIVE_PROVIDER_ENV_KEYS.add(key);
@@ -291,33 +324,15 @@ export function selectLiveProvider(
     };
   }
 
-  const cloudApiKey =
-    getTrimmedEnv("ELIZAOS_CLOUD_API_KEY") ||
-    getTrimmedEnv("ELIZA_CLOUD_API_KEY") ||
-    configuredCloudApiKey;
-  if (cloudApiKey && !preferredProvider) {
-    const smallModel = getTrimmedEnv("OPENAI_SMALL_MODEL") || "gpt-5.4-mini";
-    const largeModel =
-      getTrimmedEnv("OPENAI_LARGE_MODEL") ||
-      getTrimmedEnv("OPENAI_SMALL_MODEL") ||
-      "gpt-5.4-mini";
+  if (preferredProvider === "openai") {
+    return cloudOpenAiProvider();
+  }
 
-    return {
-      name: "openai",
-      apiKey: cloudApiKey,
-      baseUrl: ELIZA_CLOUD_OPENAI_BASE_URL,
-      smallModel,
-      largeModel,
-      pluginPackage: "@elizaos/plugin-openai",
-      env: {
-        OPENAI_API_KEY: cloudApiKey,
-        OPENAI_BASE_URL: ELIZA_CLOUD_OPENAI_BASE_URL,
-        OPENAI_SMALL_MODEL: smallModel,
-        OPENAI_LARGE_MODEL: largeModel,
-        SMALL_MODEL: smallModel,
-        LARGE_MODEL: largeModel,
-      },
-    };
+  if (!preferredProvider) {
+    const cloudProvider = cloudOpenAiProvider();
+    if (cloudProvider) {
+      return cloudProvider;
+    }
   }
 
   return null;
