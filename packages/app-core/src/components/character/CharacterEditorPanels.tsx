@@ -663,41 +663,18 @@ export function CharacterExamplesPanel({
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-2">
-          {normalizedMessageExamples.map((convo, ci) => {
-            const isDragging = dragConvoIndex === ci;
-            return (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                key={`convo-${ci}`}
-                draggable
-                onDragStart={(e) => {
-                  setDragConvoIndex(ci);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  if (dragConvoIndex === null || dragConvoIndex === ci) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragConvoIndex === null || dragConvoIndex === ci) return;
-                  handleFieldEdit(
-                    "messageExamples",
-                    reorder(normalizedMessageExamples, dragConvoIndex, ci),
-                  );
-                  setDragConvoIndex(null);
-                }}
-                onDragEnd={() => setDragConvoIndex(null)}
-                className={`group relative flex flex-col gap-1.5 rounded-md border border-border/20 bg-card/40 py-2.5 pl-6 pr-3 transition-opacity ${isDragging ? "opacity-40" : ""}`}
-              >
+        <div className="flex flex-col divide-y divide-border/30">
+          {normalizedMessageExamples.map((convo, ci) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+              key={`convo-${ci}`}
+              className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0"
+            >
+              {convo.examples.map((msg, mi) => (
                 <div
-                  className="absolute left-1.5 top-2.5 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
-                  aria-hidden="true"
-                  title={t("charactereditor.DragToReorder", {
-                    defaultValue: "Drag to reorder",
-                  })}
+                  // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                  key={`msg-${ci}-${mi}`}
+                  className="flex items-center gap-3"
                 >
                   <GripIconSvg />
                 </div>
@@ -751,59 +728,53 @@ export function CharacterExamplesPanel({
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);
                     }}
-                    title={t("charactereditor.AddTurn", {
-                      defaultValue: "Add turn",
-                    })}
-                  >
-                    <PlusIconSvg />
-                    {t("charactereditor.TurnLabel", {
-                      defaultValue: "turn",
-                    })}
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className={inlineRemoveBtn}
-                      onClick={() => {
-                        const updated = [...normalizedMessageExamples];
-                        const cloned = {
-                          examples: updated[ci].examples.map((m) => ({
-                            ...m,
-                            content: { ...(m.content ?? {}) },
-                          })),
-                        };
-                        updated.splice(ci + 1, 0, cloned);
-                        handleFieldEdit("messageExamples", updated);
-                      }}
-                      aria-label={t("charactereditor.DuplicateConversation", {
-                        defaultValue: "Duplicate conversation",
-                      })}
-                      title={t("charactereditor.DuplicateConversation", {
-                        defaultValue: "Duplicate conversation",
-                      })}
-                    >
-                      <CopyIconSvg />
-                    </button>
-                    <button
-                      type="button"
-                      className={inlineRemoveBtn}
-                      onClick={() => {
-                        const updated = [...normalizedMessageExamples];
-                        updated.splice(ci, 1);
-                        handleFieldEdit("messageExamples", updated);
-                      }}
-                      aria-label={`${t("common.remove")} conversation ${ci + 1}`}
-                      title={t("charactereditor.RemoveConversation", {
-                        defaultValue: "Remove conversation",
-                      })}
-                    >
-                      <TrashIconSvg />
-                    </button>
-                  </div>
+                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                  />
                 </div>
+              ))}
+              <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  onClick={() => {
+                    const agentName =
+                      typeof d.name === "string" && d.name.trim()
+                        ? d.name.trim()
+                        : "Agent";
+                    const updated = [...normalizedMessageExamples];
+                    const convoClone = {
+                      examples: [
+                        ...updated[ci].examples,
+                        { name: "{{user1}}", content: { text: "" } },
+                        { name: agentName, content: { text: "" } },
+                      ],
+                    };
+                    updated[ci] = convoClone;
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                >
+                  +{" "}
+                  {t("charactereditor.AddTurn", {
+                    defaultValue: "turn",
+                  })}
+                </button>
+                <button
+                  type="button"
+                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
+                  onClick={() => {
+                    const updated = [...normalizedMessageExamples];
+                    updated.splice(ci, 1);
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+                >
+                  {t("charactereditor.RemoveExample", {
+                    defaultValue: "remove",
+                  })}
+                </button>
               </div>
-            );
-          })}
+            </div>
+          ))}
           {normalizedMessageExamples.length === 0 && (
             <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
               {t("charactereditor.NoChatExamples", {
