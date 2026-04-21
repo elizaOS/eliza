@@ -3135,7 +3135,7 @@ function renderGooPaperPage(
     return `
     <div class="goo-agent-row" style="animation-delay:${i * 0.04}s" data-id="${escapeHtml(a.id)}" onclick="window.location='/goo/agent/${escapeHtml(a.id)}'">
       <span class="goo-rank-badge">#${i + 1}</span>
-      <img class="goo-agent-row__logo" src="/assets/goo-economy-logo.png" alt="Goo" />
+      <div class="goo-agent-avatar"><img src="/assets/goo-economy-logo.png" alt="Goo" /></div>
       <div class="goo-agent-row__dot goo-dot--${a.chainState}"></div>
       <div class="goo-agent-row__main">
         <div class="goo-agent-row__title">
@@ -3258,7 +3258,12 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
 .goo-agent-row:last-child{border-bottom:none;}
 .goo-agent-row:hover{background:rgba(0,199,210,.02);}
 
-.goo-agent-row__logo{width:22px;height:22px;border-radius:50%;flex-shrink:0;border:1.5px solid rgba(0,199,210,.25);object-fit:cover;}
+.goo-agent-avatar{position:relative;width:26px;height:26px;flex-shrink:0;}
+.goo-agent-avatar img{width:26px;height:26px;border-radius:50%;object-fit:cover;position:relative;z-index:1;}
+.goo-agent-avatar::before{content:'';position:absolute;inset:-2px;border-radius:50%;background:conic-gradient(from 0deg,#00C7D2,#8b5cf6,#00C7D2);animation:gooAvatarSpin 3s linear infinite;opacity:.6;z-index:0;filter:blur(2px);}
+.goo-agent-avatar::after{content:'';position:absolute;inset:-5px;border-radius:50%;background:radial-gradient(circle,rgba(0,199,210,.2) 0%,transparent 70%);animation:gooAvatarPulse 2s ease-in-out infinite;z-index:0;}
+@keyframes gooAvatarSpin{to{transform:rotate(360deg)}}
+@keyframes gooAvatarPulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.7;transform:scale(1.12)}}
 .goo-agent-row__dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
 .goo-dot--active{background:var(--goo-brand);animation:dotPulse 2s ease-in-out infinite;}
 .goo-dot--starving{background:var(--goo-warn);}
@@ -6116,8 +6121,22 @@ function renderHtml(
       letter-spacing: .04em;
     }
     .arena-card--leader .arena-card__rank { color: var(--yellow); }
-    .arena-card__head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-    .arena-card__goo-logo { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; opacity: .85; }
+    .arena-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .arena-card__avatar { position: relative; width: 28px; height: 28px; flex-shrink: 0; }
+    .arena-card__avatar img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; position: relative; z-index: 1; }
+    .arena-card__avatar::before {
+      content: ''; position: absolute; inset: -3px; border-radius: 50%;
+      background: conic-gradient(from 0deg, #00C7D2, #8b5cf6, #00C7D2);
+      animation: avatarGlow 3s linear infinite;
+      opacity: .7; z-index: 0; filter: blur(3px);
+    }
+    .arena-card__avatar::after {
+      content: ''; position: absolute; inset: -6px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,199,210,.25) 0%, transparent 70%);
+      animation: avatarPulse 2s ease-in-out infinite; z-index: 0;
+    }
+    @keyframes avatarGlow { to { transform: rotate(360deg); } }
+    @keyframes avatarPulse { 0%,100% { opacity: .4; transform: scale(1); } 50% { opacity: .8; transform: scale(1.15); } }
     .arena-card__dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .arena-card__name { font-size: 0.72rem; font-weight: 700; color: var(--white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .arena-card__badge {
@@ -6582,8 +6601,7 @@ function renderHtml(
             <div class="arena-card${isTop ? ' arena-card--leader' : ''}" onclick="window.location='/goo/agent/${escapeHtml(agent.id)}'">
               <div class="arena-card__rank">#${idx + 1}</div>
               <div class="arena-card__head">
-                <img class="arena-card__goo-logo" src="/assets/goo-economy-logo.png" alt="Goo" />
-                <div class="arena-card__dot" style="background:${stateColor}"></div>
+                <div class="arena-card__avatar"><img src="/assets/goo-economy-logo.png" alt="Goo" /></div>
                 <div class="arena-card__name">${escapeHtml(agent.agentName)}</div>
                 <span class="arena-card__badge">${escapeHtml(agent.strategy.label)}</span>
               </div>
