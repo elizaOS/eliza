@@ -1022,9 +1022,3 @@ export const unblockWebsitesAction: Action = {
     ],
   ] as ActionExample[][],
 };
-
-export const selfControlBlockWebsitesAction = blockWebsitesAction;
-export const selfControlGetStatusAction = getWebsiteBlockStatusAction;
-export const selfControlRequestPermissionAction =
-  requestWebsiteBlockingPermissionAction;
-export const selfControlUnblockWebsitesAction = unblockWebsitesAction;

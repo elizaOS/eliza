@@ -13,7 +13,6 @@ export type {
 // Re-export the full plugin from plugin.ts
 export {
   appLifeOpsPlugin,
-  appLifeOpsPlugin as default,
   calendarAction,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsSchedulerTask,
@@ -28,7 +27,6 @@ export {
   LIFEOPS_TASK_TAGS,
   LifeOpsBrowserPluginService,
   lifeAction,
-  lifeOpsBrowserPlugin,
   lifeOpsBrowserProvider,
   lifeOpsProvider,
   manageLifeOpsBrowserAction,

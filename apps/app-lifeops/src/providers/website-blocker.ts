@@ -131,5 +131,3 @@ export const websiteBlockerProvider: Provider = {
     };
   },
 };
-
-export const selfControlProvider = websiteBlockerProvider;

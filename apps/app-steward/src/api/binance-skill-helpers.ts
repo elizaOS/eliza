@@ -60,9 +60,9 @@ async function resolveBuiltInFallbackAction(
       "@elizaos/app-lifeops/selfcontrol"
     )
       .then((mod) => ({
-        BLOCK_WEBSITES: mod.selfControlBlockWebsitesAction,
+        BLOCK_WEBSITES: mod.blockWebsitesAction,
         REQUEST_WEBSITE_BLOCKING_PERMISSION:
-          mod.selfControlRequestPermissionAction,
+          mod.requestWebsiteBlockingPermissionAction,
       }))
       .catch(() => null);
   }
