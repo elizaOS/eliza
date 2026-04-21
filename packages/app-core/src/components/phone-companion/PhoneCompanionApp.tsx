@@ -1,8 +1,9 @@
+import { Capacitor } from "@capacitor/core";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  agentUrl as configuredAgentUrl,
   apnsEnabled,
+  agentUrl as configuredAgentUrl,
   logger,
   MiladyIntent,
   type PairingPayload,
@@ -23,9 +24,28 @@ import { RemoteSession } from "./RemoteSession";
  */
 export function PhoneCompanionApp(): React.JSX.Element {
   const nav = useNavigation();
+  const pushRef = useRef(nav.push);
+  pushRef.current = nav.push;
   const [agentUrl, setAgentUrl] = useState<string | null>(null);
   const [pairingPayload, setPairingPayload] = useState<PairingPayload | null>(
     null,
+  );
+
+  const persistPairingToNative = useCallback(
+    async (payload: PairingPayload) => {
+      if (!Capacitor.isNativePlatform()) return;
+      try {
+        await MiladyIntent.setPairingStatus({
+          deviceId: payload.agentId,
+          agentUrl: payload.ingressUrl,
+        });
+      } catch (err) {
+        logger.warn("[PhoneCompanionApp] setPairingStatus failed", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -42,16 +62,21 @@ export function PhoneCompanionApp(): React.JSX.Element {
 
   useEffect(() => {
     if (!apnsEnabled()) return;
+    let disposed = false;
     let handle: RegisterPushHandle | null = null;
-    registerPush({
+    void registerPush({
       onIntent: (intent) => {
         if (intent.kind === "session-start") {
-          logger.info("[PhoneCompanionApp] session.start intent -> RemoteSession", {
-            agentId: intent.payload.agentId,
-          });
+          logger.info(
+            "[PhoneCompanionApp] session.start intent -> RemoteSession",
+            {
+              agentId: intent.payload.agentId,
+            },
+          );
+          void persistPairingToNative(intent.payload);
           setPairingPayload(intent.payload);
           setAgentUrl(intent.payload.ingressUrl);
-          nav.push("remote-session");
+          pushRef.current("remote-session");
         }
       },
       onError: (err) => {
@@ -60,12 +85,17 @@ export function PhoneCompanionApp(): React.JSX.Element {
         });
       },
     }).then((h) => {
+      if (disposed) {
+        void h.unregister();
+        return;
+      }
       handle = h;
     });
     return () => {
-      handle?.unregister();
+      disposed = true;
+      void handle?.unregister();
     };
-  }, [nav]);
+  }, [persistPairingToNative]);
 
   if (!nav.ready) {
     return <div style={{ padding: 24 }}>Loading...</div>;
@@ -78,6 +108,7 @@ export function PhoneCompanionApp(): React.JSX.Element {
     onPushRemoteSession: () => nav.push("remote-session"),
     onBackToChat: () => nav.pop("chat"),
     onPaired: (payload: PairingPayload) => {
+      void persistPairingToNative(payload);
       setPairingPayload(payload);
       setAgentUrl(payload.ingressUrl);
       nav.push("remote-session");

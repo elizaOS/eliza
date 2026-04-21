@@ -54,11 +54,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let tokenHex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        NSLog("[MiladyCompanion] APNs device token registered (%d bytes)", tokenHex.count)
+        NSLog("[MiladyCompanion] APNs device token registered (%d bytes)", deviceToken.count)
         NotificationCenter.default.post(
             name: Notification.Name("MiladyCompanionApnsToken"),
             object: nil,
             userInfo: ["tokenHex": tokenHex]
+        )
+        // `@capacitor/push-notifications` observes `Notification.Name.capacitorDidRegisterForRemoteNotifications`
+        // and reads the device token from `notification.object` (Data or String). Include hex in userInfo for debugging.
+        NotificationCenter.default.post(
+            name: .capacitorDidRegisterForRemoteNotifications,
+            object: deviceToken,
+            userInfo: ["token": tokenHex]
         )
     }
 
@@ -67,6 +74,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         NSLog("[MiladyCompanion] APNs registration failed: %@", error.localizedDescription)
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error,
+            userInfo: ["error": error.localizedDescription]
+        )
     }
 
 }
