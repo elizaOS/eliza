@@ -427,7 +427,7 @@ export const ChatMessage = memo(function ChatMessage({
         <ChatBubble
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
-          className={`relative group pl-3 pr-1 py-1.5 text-[15px] leading-[1.7] whitespace-pre-wrap break-words`}
+          className={`relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words`}
           style={{ fontFamily: "var(--font-chat)" }}
         >
           {showReplyReference ? (
