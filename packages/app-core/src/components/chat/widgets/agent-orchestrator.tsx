@@ -33,7 +33,6 @@ import {
   Square,
   SquareArrowOutUpRight,
   SquarePause,
-  Terminal as TerminalIcon,
   Trash2,
   Workflow,
   Wrench,
@@ -42,13 +41,8 @@ import {
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
-import {
-  PULSE_STATUSES,
-  STATUS_DOT,
-} from "../../../chat/coding-agent-session-state";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useApp } from "../../../state";
-import { usePtySessions } from "../../../state/PtySessionsContext";
 import type { TranslateFn } from "../../../types";
 import { getRunAttentionReasons } from "../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "./shared";
@@ -454,115 +448,6 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   );
 }
 
-/**
- * Compact "Terminals" widget — lists the live PTY sessions so the user
- * can jump into any running terminal (orchestrator-spawned or opened
- * manually) directly from the widgets rail. The full task/coordinator
- * surface lives in its own view; this widget stays intentionally thin.
- */
-function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const setState = app?.setState;
-  const activeTerminalSessionId =
-    (app?.activeTerminalSessionId as string | null | undefined) ?? null;
-  const { ptySessions } = usePtySessions();
-  const [spawnError, setSpawnError] = useState<string | null>(null);
-
-  const sessions = useMemo(
-    () => [...ptySessions].sort((a, b) => a.label.localeCompare(b.label)),
-    [ptySessions],
-  );
-
-  const focusSession = (sessionId: string) => {
-    if (!setState) return;
-    setState("activeInboxChat", null);
-    setState("activeTerminalSessionId", sessionId);
-  };
-
-  const spawnTerminal = async () => {
-    setSpawnError(null);
-    try {
-      const res = await client.spawnShellSession();
-      focusSession(res.sessionId);
-    } catch {
-      setSpawnError(
-        t("orchestratortaskswidget.SpawnFailed", {
-          defaultValue: "Could not start terminal",
-        }),
-      );
-    }
-  };
-
-  return (
-    <WidgetSection
-      title={t("orchestratortaskswidget.Title", { defaultValue: "Terminals" })}
-      icon={<TerminalIcon className="h-4 w-4" />}
-      action={
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void spawnTerminal()}
-          aria-label={t("orchestratortaskswidget.NewTerminal", {
-            defaultValue: "New terminal",
-          })}
-          className="h-6 w-6 p-0 text-muted"
-        >
-          <Play className="h-3.5 w-3.5" />
-        </Button>
-      }
-      testId="chat-widget-terminals"
-    >
-      {spawnError ? (
-        <div className="rounded-[var(--radius-sm)] px-2 py-1 text-2xs text-danger">
-          {spawnError}
-        </div>
-      ) : null}
-      {sessions.length === 0 ? (
-        <EmptyWidgetState
-          icon={<TerminalIcon className="h-4 w-4" />}
-          title={t("orchestratortaskswidget.EmptyTitle", {
-            defaultValue: "No terminals running",
-          })}
-          description={t("orchestratortaskswidget.EmptySubtitle", {
-            defaultValue: "Start one from the Terminal channel.",
-          })}
-        />
-      ) : (
-        <div className="flex flex-col gap-1">
-          {sessions.map((session) => {
-            const isActive = session.sessionId === activeTerminalSessionId;
-            const dotClass = STATUS_DOT[session.status] ?? "bg-muted";
-            const pulse = PULSE_STATUSES.has(session.status)
-              ? " animate-pulse"
-              : "";
-            return (
-              <button
-                key={session.sessionId}
-                type="button"
-                onClick={() => focusSession(session.sessionId)}
-                data-testid={`terminals-widget-row-${session.sessionId}`}
-                aria-current={isActive ? "true" : undefined}
-                className={`flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-xs transition-colors ${
-                  isActive
-                    ? "bg-accent/10 text-txt"
-                    : "text-muted hover:bg-bg-hover/40 hover:text-txt"
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}${pulse}`}
-                />
-                <span className="min-w-0 flex-1 truncate">{session.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </WidgetSection>
-  );
-}
-
 function OrchestratorActivityWidget({
   events,
   clearEvents,
@@ -604,13 +489,6 @@ export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =
       order: 150,
       defaultEnabled: true,
       Component: AppRunsWidget,
-    },
-    {
-      id: "agent-orchestrator.tasks",
-      pluginId: "agent-orchestrator",
-      order: 200,
-      defaultEnabled: true,
-      Component: OrchestratorTasksWidget,
     },
     {
       id: "agent-orchestrator.activity",
