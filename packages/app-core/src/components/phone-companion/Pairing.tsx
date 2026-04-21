@@ -50,12 +50,18 @@ export function Pairing({
         agentId: payload.agentId,
       });
       onPaired(payload);
+      setStatus({ kind: "idle" });
     } catch (err) {
       logger.warn("[Pairing] scan or decode failed", {
         message: err instanceof Error ? err.message : String(err),
       });
-    } finally {
-      setStatus({ kind: "idle" });
+      setStatus({
+        kind: "error",
+        message:
+          err instanceof Error && err.message.length > 0
+            ? err.message
+            : "Could not read the QR code. Try again or enter the code below.",
+      });
     }
   }, [onPaired]);
 
