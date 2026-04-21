@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, it, test } from "vitest";
 
 type SuiteCallback = () => void | Promise<void>;
 type TestCallback = () => void | Promise<void>;
@@ -19,10 +19,8 @@ export function describeIf(condition: boolean): DescribeGate {
   }
 
   return (name) =>
-    describe(name, () => {
-      it("records unmet prerequisites instead of skipping", () => {
-        expect(condition).toBe(false);
-      });
+    describe.skip(name, () => {
+      it("skipped because prerequisites are unmet", () => {});
     });
 }
 
