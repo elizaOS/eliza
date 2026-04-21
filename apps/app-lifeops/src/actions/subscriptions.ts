@@ -12,7 +12,11 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
+import {
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+  messageText,
+} from "./lifeops-google-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";

@@ -9,6 +9,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { CodingAgentControlChip } from "@elizaos/app-task-coordinator/CodingAgentControlChip";
+import { PtyConsoleBase } from "@elizaos/app-task-coordinator/PtyConsoleBase";
+import {
+  ChatAttachmentStrip,
+  ChatComposer,
+  ChatComposerShell,
+  ChatSourceIcon,
+  ChatThreadLayout,
+  ChatTranscript,
+  TypingIndicator,
+} from "@elizaos/ui";
 import { type CodingAgentSession, client } from "../../api/client";
 import type {
   ConversationMessage,

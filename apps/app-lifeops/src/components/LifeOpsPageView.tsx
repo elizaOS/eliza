@@ -1,5 +1,4 @@
 import type { LifeOpsOverview } from "@elizaos/app-lifeops/contracts";
-import { Button, PagePanel } from "@elizaos/app-core";
 import {
   Button,
   type CloudOAuthConnection,
@@ -9,6 +8,7 @@ import {
   PagePanel,
   useApp,
 } from "@elizaos/app-core";
+import { ChevronDown } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { LifeOpsWorkspaceView } from "./LifeOpsWorkspaceView.js";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
@@ -46,6 +47,37 @@ import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
+
+type EnablePromptProps = {
+  loading: boolean;
+  onEnable: () => void;
+  t: (key: string, opts?: { defaultValue?: string }) => string;
+};
+
+function EnablePrompt({ loading, onEnable, t }: EnablePromptProps) {
+  return (
+    <PagePanel variant="surface">
+      <div className="flex flex-col gap-3 p-4">
+        <div className="text-sm font-semibold text-txt">
+          {t("lifeopspage.enableTitle", {
+            defaultValue: "Enable LifeOps",
+          })}
+        </div>
+        <div className="text-xs text-muted">
+          {t("lifeopspage.enableBody", {
+            defaultValue:
+              "Turn on LifeOps to let the agent manage your schedule, inbox, and calendar.",
+          })}
+        </div>
+        <Button onClick={onEnable} disabled={loading} className="self-start">
+          {loading
+            ? t("lifeopspage.enabling", { defaultValue: "Enabling…" })
+            : t("lifeopspage.enable", { defaultValue: "Enable LifeOps" })}
+        </Button>
+      </div>
+    </PagePanel>
+  );
+}
 
 const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/milady/lifeops/github-complete";
 const LIFEOPS_GITHUB_RETURN_URL = "elizaos://lifeops";
@@ -444,6 +476,7 @@ function LifeOpsWorkspaceInner() {
   const [busyAgentGithubId, setBusyAgentGithubId] = useState<string | null>(
     null,
   );
+  const [setupOpen, setSetupOpen] = useState(false);
 
   const { section, navigate } = useLifeOpsSection();
   const appEnabled = lifeOpsApp.enabled;

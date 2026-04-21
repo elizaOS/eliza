@@ -15,6 +15,7 @@ import type {
   LifeOpsBrowserKind,
   UpdateLifeOpsBrowserSettingsRequest,
 } from "@elizaos/app-lifeops/contracts";
+import { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 
 type BrowserCommand =
   | "get_settings"

@@ -14,7 +14,6 @@ import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { useApp } from "../../state";
 import type { TranslateFn } from "../../types";
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, ContentLayout } from "@elizaos/ui";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 

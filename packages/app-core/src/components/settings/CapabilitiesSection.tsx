@@ -1,84 +1,9 @@
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Switch,
-} from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
-import { type ComputerUseApprovalMode, client } from "../../api/client";
+import { Switch } from "@elizaos/ui";
 import { useApp } from "../../state";
 
 export function CapabilitiesSection() {
-  const {
-    walletEnabled,
-    browserEnabled,
-    computerUseEnabled,
-    setActionNotice,
-    setState,
-    t,
-  } = useApp();
-  const [computerUseApprovalMode, setComputerUseApprovalMode] =
-    useState<ComputerUseApprovalMode>("full_control");
-  const [computerUseModeBusy, setComputerUseModeBusy] = useState(false);
-
-  useEffect(() => {
-    if (!computerUseEnabled) {
-      return;
-    }
-
-    let cancelled = false;
-    void client
-      .getComputerUseApprovals()
-      .then((snapshot) => {
-        if (!cancelled) {
-          setComputerUseApprovalMode(snapshot.mode);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setComputerUseApprovalMode("full_control");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [computerUseEnabled]);
-
-  const handleComputerUseApprovalModeChange = useCallback(
-    async (nextMode: string) => {
-      setComputerUseApprovalMode(nextMode as ComputerUseApprovalMode);
-      setComputerUseModeBusy(true);
-      try {
-        const result = await client.setComputerUseApprovalMode(
-          nextMode as ComputerUseApprovalMode,
-        );
-        setComputerUseApprovalMode(result.mode);
-        setActionNotice(
-          t("settings.sections.capabilities.computerUseModeSaved", {
-            defaultValue: `Computer use approval mode set to ${result.mode}.`,
-          }),
-          "success",
-          2600,
-        );
-      } catch (error) {
-        setActionNotice(
-          error instanceof Error
-            ? error.message
-            : t("settings.sections.capabilities.computerUseModeFailed", {
-                defaultValue: "Failed to update computer use approval mode.",
-              }),
-          "error",
-          3600,
-        );
-      } finally {
-        setComputerUseModeBusy(false);
-      }
-    },
-    [setActionNotice, t],
-  );
+  const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } =
+    useApp();
 
   return (
     <div className="space-y-4">
@@ -161,43 +86,6 @@ export function CapabilitiesSection() {
               defaultValue:
                 "Computer Use requires Accessibility and Screen Recording permissions on macOS. On Linux, install xdotool. Configure fine-grained permissions in the Permissions section below.",
             })}
-          </div>
-          <div className="space-y-2">
-            <div className="font-medium text-sm">
-              {t("settings.sections.capabilities.computerUseModeLabel", {
-                defaultValue: "Approval Mode",
-              })}
-            </div>
-            <div className="text-xs text-muted">
-              {t("settings.sections.capabilities.computerUseModeHint", {
-                defaultValue:
-                  "Choose whether computer actions run automatically, only safe reads auto-run, every action requires review, or all actions are paused.",
-              })}
-            </div>
-            <Select
-              value={computerUseApprovalMode}
-              onValueChange={(value) => {
-                void handleComputerUseApprovalModeChange(value);
-              }}
-              disabled={computerUseModeBusy}
-            >
-              <SelectTrigger className="max-w-xs">
-                <SelectValue
-                  placeholder={t(
-                    "settings.sections.capabilities.computerUseModeLabel",
-                    {
-                      defaultValue: "Approval Mode",
-                    },
-                  )}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="full_control">Full Control</SelectItem>
-                <SelectItem value="smart_approve">Smart Approve</SelectItem>
-                <SelectItem value="approve_all">Review Every Action</SelectItem>
-                <SelectItem value="off">Pause Computer Use</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
       )}
