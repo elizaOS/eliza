@@ -1,15 +1,15 @@
 import { Badge } from "@elizaos/ui";
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../../../api";
-import type { WorkbenchTodo } from "../../../../api/client-types-config";
-import { useApp } from "../../../../state";
-import type { TranslateFn } from "../../../../types";
-import { EmptyWidgetState, WidgetSection } from "../shared";
+import { client } from "../../../api";
+import type { WorkbenchTodo } from "../../../api/client-types-config";
+import { useApp } from "../../../state";
+import type { TranslateFn } from "../../../types";
+import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
-} from "../types";
+} from "./types";
 
 const TODO_REFRESH_INTERVAL_MS = 15_000;
 const MAX_VISIBLE_TODOS = 8;

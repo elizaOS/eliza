@@ -389,7 +389,7 @@ export function PageScopedChat({
 
   return (
     <section
-      className="flex flex-col overflow-hidden"
+      className="flex h-full flex-1 flex-col overflow-hidden"
       style={{ minHeight: 0 }}
       aria-label={title}
     >

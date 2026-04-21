@@ -238,7 +238,7 @@ export function RightSideChatPanel({
   return (
     <aside
       className={cn(
-        "relative flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200",
+        "relative flex h-full shrink-0 flex-col self-stretch border-l border-border/30 bg-bg transition-[width] duration-200",
         collapsed ? "overflow-hidden" : "",
       )}
       style={{ width: panelWidth }}
