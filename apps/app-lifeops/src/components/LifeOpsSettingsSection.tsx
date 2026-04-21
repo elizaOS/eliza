@@ -7,6 +7,7 @@ import type {
 import { Copy, ExternalLink, GitBranch } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
+import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard.js";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
 const VISIBLE_CONNECTOR_MODES = ["cloud_managed", "local"] as const;
@@ -582,6 +583,8 @@ export function LifeOpsSettingsSection({
           {githubError}
         </div>
       ) : null}
+
+      <MobileSignalsSetupCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GoogleConnectorSideCard
