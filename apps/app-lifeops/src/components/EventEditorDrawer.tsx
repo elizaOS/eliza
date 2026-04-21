@@ -16,6 +16,7 @@
 import {
   Button,
   ConfirmDialog,
+  client,
   Dialog,
   DialogContent,
   Input,
@@ -25,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-  client,
   useApp,
 } from "@elizaos/app-core";
 import type {
@@ -294,10 +294,14 @@ export function EventEditorDrawer({
             ) : null}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted">
+              <label
+                htmlFor="event-editor-title"
+                className="block text-xs font-medium text-muted"
+              >
                 {t("common.title", { defaultValue: "Title" })}
               </label>
               <Input
+                id="event-editor-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={t("eventEditor.titlePlaceholder", {
@@ -311,10 +315,14 @@ export function EventEditorDrawer({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted">
+                <label
+                  htmlFor="event-editor-start-at"
+                  className="block text-xs font-medium text-muted"
+                >
                   {t("eventEditor.startAt", { defaultValue: "Start" })}
                 </label>
                 <Input
+                  id="event-editor-start-at"
                   type="datetime-local"
                   value={startAt}
                   onChange={(e) => setStartAt(e.target.value)}
@@ -324,10 +332,14 @@ export function EventEditorDrawer({
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted">
+                <label
+                  htmlFor="event-editor-end-at"
+                  className="block text-xs font-medium text-muted"
+                >
                   {t("eventEditor.endAt", { defaultValue: "End" })}
                 </label>
                 <Input
+                  id="event-editor-end-at"
                   type="datetime-local"
                   value={endAt}
                   onChange={(e) => setEndAt(e.target.value)}
@@ -339,10 +351,14 @@ export function EventEditorDrawer({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted">
+              <label
+                htmlFor="event-editor-notes"
+                className="block text-xs font-medium text-muted"
+              >
                 {t("eventEditor.notes", { defaultValue: "Notes" })}
               </label>
               <Textarea
+                id="event-editor-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t("eventEditor.notesPlaceholder", {
@@ -353,12 +369,16 @@ export function EventEditorDrawer({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted">
+              <label
+                htmlFor="event-editor-reminders"
+                className="block text-xs font-medium text-muted"
+              >
                 {t("eventEditor.reminders", {
                   defaultValue: "Reminders (minutes before, comma-separated)",
                 })}
               </label>
               <Input
+                id="event-editor-reminders"
                 value={reminders}
                 onChange={(e) => setReminders(e.target.value)}
                 placeholder={t("eventEditor.remindersPlaceholder", {
@@ -372,13 +392,17 @@ export function EventEditorDrawer({
 
             {goals.length > 0 ? (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted">
+                <div className="text-xs font-medium text-muted">
                   {t("eventEditor.linkedGoal", {
                     defaultValue: "Linked goal",
                   })}
-                </label>
+                </div>
                 <Select value={linkedGoalId} onValueChange={setLinkedGoalId}>
-                  <SelectTrigger>
+                  <SelectTrigger
+                    aria-label={t("eventEditor.linkedGoal", {
+                      defaultValue: "Linked goal",
+                    })}
+                  >
                     <SelectValue
                       placeholder={t("eventEditor.noGoal", {
                         defaultValue: "No goal",

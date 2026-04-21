@@ -8,18 +8,24 @@
  * Data comes from useCalendarWeek which calls client.getLifeOpsCalendarFeed().
  */
 
-import { Badge, Button, SegmentedControl, Spinner, useApp } from "@elizaos/app-core";
+import {
+  Badge,
+  Button,
+  SegmentedControl,
+  Spinner,
+  useApp,
+} from "@elizaos/app-core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { useMemo, useState } from "react";
-import { EventEditorDrawer } from "./EventEditorDrawer.js";
-import {
-  useLifeOpsSelection,
-  type LifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
 import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
+import { EventEditorDrawer } from "./EventEditorDrawer.js";
+import {
+  type LifeOpsSelection,
+  useLifeOpsSelection,
+} from "./LifeOpsSelectionContext.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,7 +130,7 @@ function EventBlock({
       className={`w-full rounded-xl border px-2 py-1.5 text-left transition-opacity ${colorClass} ${
         selected ? "ring-1 ring-accent/60" : "hover:opacity-90"
       }`}
-      aria-selected={selected}
+      aria-pressed={selected}
     >
       <div className="truncate text-xs font-medium">{event.title}</div>
       {!event.isAllDay ? (
@@ -161,7 +167,10 @@ function WeekGrid({
         const dayEvents = eventsByDay.get(key) ?? [];
         const isToday = key === toLocalDayKey(new Date());
         return (
-          <div key={key} className="min-h-24 overflow-hidden rounded-2xl bg-bg/28 p-2">
+          <div
+            key={key}
+            className="min-h-24 overflow-hidden rounded-2xl bg-bg/28 p-2"
+          >
             <div
               className={`mb-2 text-[11px] font-medium ${
                 isToday ? "text-accent" : "text-muted"
@@ -310,7 +319,9 @@ export interface LifeOpsCalendarSectionProps {
   onSelect?: (args: Partial<LifeOpsSelection> | null) => void;
 }
 
-export function LifeOpsCalendarSection(props: LifeOpsCalendarSectionProps = {}) {
+export function LifeOpsCalendarSection(
+  props: LifeOpsCalendarSectionProps = {},
+) {
   const ctx = useLifeOpsSelection();
   const selection = props.selection ?? ctx.selection;
   const onSelect = props.onSelect ?? ctx.select;
@@ -320,8 +331,7 @@ export function LifeOpsCalendarSection(props: LifeOpsCalendarSectionProps = {}) 
     null,
   );
 
-  const selectedEventId =
-    selection.eventId ?? null;
+  const selectedEventId = selection.eventId ?? null;
 
   const eventsByDay = useMemo(
     () => groupEventsByDay(calendar.events),
@@ -425,7 +435,11 @@ export function LifeOpsCalendarSection(props: LifeOpsCalendarSectionProps = {}) 
           ) : calendar.viewMode === "day" ? (
             <DayView
               day={weekDays[0] ?? calendar.windowStart}
-              events={eventsByDay.get(toLocalDayKey(weekDays[0] ?? calendar.windowStart)) ?? []}
+              events={
+                eventsByDay.get(
+                  toLocalDayKey(weekDays[0] ?? calendar.windowStart),
+                ) ?? []
+              }
               selectedEventId={selectedEventId}
               onSelectEvent={handleSelectEvent}
             />
