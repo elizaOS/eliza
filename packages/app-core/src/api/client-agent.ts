@@ -944,10 +944,21 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
-    method: "POST",
-  });
-  return res.status;
+  try {
+    const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
+      method: "POST",
+    });
+    return res.status;
+  } catch {
+    // Back-compat for older runtimes that still expose the legacy restart path.
+    const legacy = await this.fetch<{ status: AgentStatus }>(
+      "/api@elizaos/agent/restart",
+      {
+        method: "POST",
+      },
+    );
+    return legacy.status;
+  }
 };
 
 ElizaClient.prototype.restartAndWait = async function (
@@ -961,7 +972,9 @@ ElizaClient.prototype.restartAndWait = async function (
   });
   try {
     await this.restartAgent();
-    console.info("[eliza][reset][client] restartAndWait: restart accepted");
+    console.info(
+      "[eliza][reset][client] restartAndWait: restart accepted",
+    );
   } catch (e) {
     console.info(
       "[eliza][reset][client] restartAndWait: initial restart call failed (often 409 while restarting)",
