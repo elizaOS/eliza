@@ -53,7 +53,9 @@ function positionValue(
     return allocationUsd;
   }
 
-  return Math.round(allocationUsd * (currentReferenceUsd / entryReferenceUsd));
+  const ratio = currentReferenceUsd / entryReferenceUsd;
+  const cappedRatio = Math.min(ratio, 20);
+  return Math.round(allocationUsd * cappedRatio);
 }
 
 function buildPositionBase(params: {
@@ -520,7 +522,8 @@ function mergeLiveExecutedTrades(params: {
     (sum, position) => sum + position.currentValueUsd,
     0,
   );
-  const totalRealizedPnlUsd = allMergedPositions.reduce(
+  const keptPositions = [...activePositions, ...watchPositions, ...exitedPositions];
+  const totalRealizedPnlUsd = keptPositions.reduce(
     (sum, position) => sum + position.realizedPnlUsd,
     0,
   );

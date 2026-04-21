@@ -3385,7 +3385,6 @@ html{scrollbar-width:none;}html::-webkit-scrollbar{display:none;}
     <nav class="goo-nav">
       <a href="/">Home</a>
       <a href="/dashboard">Dashboard</a>
-      <a href="/backtest">Backtest</a>
       <a href="/goo" class="active">Goo Economy Arena</a>
       <a href="/docs">Docs</a>
       <span style="width:1px;height:20px;background:var(--goo-border);margin:0 2px"></span>
@@ -6443,7 +6442,6 @@ function renderHtml(
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
         <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
-        <a class="tb-btn primary" href="/backtest" title="Strategy Backtest"><img src="/assets/avatar.png" alt="elizaOK" style="width:16px;height:16px;border-radius:50%;vertical-align:middle;margin-right:2px;filter:drop-shadow(0 0 4px rgba(246,231,15,.5))" /> BACKTEST</a>
         <a class="tb-btn primary tb-btn--goo" href="/goo" title="Goo Economy Arena"><img src="/assets/goo-economy-logo.png" alt="Goo" class="tb-goo-icon" /> GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
@@ -6505,7 +6503,6 @@ function renderHtml(
           <button class="qa-btn" data-nav="flywheel"><span class="qa-btn__icon">&#x1F504;</span>FLYWHEEL</button>
           <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
           <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon"><img src="/assets/goo-economy-logo.png" alt="Goo" style="width:14px;height:14px;border-radius:50%;vertical-align:middle" /></span>GOO</button>
-          <button class="qa-btn" onclick="window.location='/backtest'"><span class="qa-btn__icon"><img src="/assets/avatar.png" alt="elizaOK" style="width:14px;height:14px;border-radius:50%;vertical-align:middle;filter:drop-shadow(0 0 3px rgba(246,231,15,.5))" /></span>BACKTEST</button>
         </div>
 
         <!-- ElizaCloud -->
@@ -7697,12 +7694,7 @@ sections.forEach(function(s) { observer.observe(s); });
 </script></body></html>`;
 }
 
-/* ─── Strategy Backtest Page ──────────────────────────────────────── */
-function renderBacktestPage(
-  agents: GooPaperAgent[],
-  snapshot: any,
-  bnbPrice: number = 600,
-): string {
+function __backtest_removed(): string {
   const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const fmtBnb = (v: number) => v.toFixed(4);
 
@@ -9474,15 +9466,6 @@ Guidelines:
       ...(cloudSession ? { "set-cookie": serializeElizaCloudSession(cloudSession) } : {}),
     });
     res.end(renderAirdropPage(snapshot, cloudSession, distributionPlan, distributionExecution, distributionLedger));
-    return;
-  }
-
-  if (pathname === "/backtest") {
-    const agents = getPaperAgents();
-    const snapshot = getLatestSnapshot();
-    const bnbPx = getBnbPriceUsd() || 600;
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(renderBacktestPage(agents, snapshot, bnbPx));
     return;
   }
 
