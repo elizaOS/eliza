@@ -49,6 +49,10 @@
 	<array>
 		<string>_elizaos-gw._tcp</string>
 	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>ai.eliza.mobile-signals.sleep-refresh</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses your camera to capture photos and video when you ask it to.</string>
 	<key>NSLocalNetworkUsageDescription</key>

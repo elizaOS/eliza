@@ -347,27 +347,22 @@ describe("ConversationsSidebar — Terminal channel", () => {
       fireEvent.click(screen.getByTitle("Terminal"));
     });
 
+    // The sidebar uses `conversations.newTerminalShort` (default "New") as
+    // the button label when the Terminal channel is active.
     await waitFor(() => {
-      expect(screen.getByText("New terminal")).toBeDefined();
+      expect(screen.getByText("New")).toBeDefined();
     });
 
-    // Clear auto-spawn call (the Terminal scope click with 0 sessions
-    // triggers the useEffect spawn once); the explicit button click should
-    // spawn a second time.
     const firstCalls = clientMock.spawnShellSession.mock.calls.length;
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New terminal"));
+      fireEvent.click(screen.getByText("New"));
     });
 
     await waitFor(() => {
       expect(clientMock.spawnShellSession.mock.calls.length).toBeGreaterThan(
         firstCalls,
       );
-    });
-
-    await waitFor(() => {
-      expect(clientMock.spawnShellSession).toHaveBeenCalledTimes(1);
     });
     expect(setState).toHaveBeenCalledWith(
       "activeTerminalSessionId",

@@ -1372,6 +1372,7 @@ export const basicProviders = [
 	providers.providersProvider,
 	providers.recentMessagesProvider,
 	providers.timeProvider,
+	providers.uiContextProvider,
 	providers.worldProvider,
 ];
 

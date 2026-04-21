@@ -77,18 +77,13 @@ describe("iOS Screen Time build validation", () => {
     expect(result.failures).toEqual([]);
   });
 
-  it("fails when the app entitlements omit a required Screen Time key", () => {
+  it("fails when the app entitlements omit the Family Controls key", () => {
     const dir = makeTempDir();
     const entitlementsPath = path.join(dir, "App.entitlements");
     const projectPath = path.join(dir, "project.pbxproj");
     const podspecPath = path.join(dir, "MobileSignals.podspec");
 
-    writeFile(
-      entitlementsPath,
-      entitlementPlist([
-        IOS_SCREEN_TIME_REQUIREMENTS.entitlements.familyControls,
-      ]),
-    );
+    writeFile(entitlementsPath, entitlementPlist([]));
     writeFile(projectPath, validProject());
     writeFile(podspecPath, validPodspec());
 
@@ -105,7 +100,7 @@ describe("iOS Screen Time build validation", () => {
       "app-entitlements",
     );
     expect(result.failures[0]?.message).toContain(
-      IOS_SCREEN_TIME_REQUIREMENTS.entitlements.appAndWebsiteUsage,
+      IOS_SCREEN_TIME_REQUIREMENTS.entitlements.familyControls,
     );
   });
 
@@ -124,9 +119,7 @@ describe("iOS Screen Time build validation", () => {
     writeFile(podspecPath, validPodspec());
     writeFile(
       provisioningProfilePath,
-      provisioningProfilePlist([
-        IOS_SCREEN_TIME_REQUIREMENTS.entitlements.familyControls,
-      ]),
+      provisioningProfilePlist([]),
     );
 
     const result = validateIosScreenTimeBuildWiring({
@@ -141,7 +134,7 @@ describe("iOS Screen Time build validation", () => {
       "provisioning-entitlements",
     ]);
     expect(result.failures[0]?.message).toContain(
-      IOS_SCREEN_TIME_REQUIREMENTS.entitlements.appAndWebsiteUsage,
+      IOS_SCREEN_TIME_REQUIREMENTS.entitlements.familyControls,
     );
   });
 });

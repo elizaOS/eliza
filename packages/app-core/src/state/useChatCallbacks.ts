@@ -648,6 +648,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const send = useChatSend({
     t,
     uiLanguage,
+    tab,
     chatMode,
     conversations,
     activeConversationId,

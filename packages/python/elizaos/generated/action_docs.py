@@ -3938,7 +3938,10 @@ _ALL_ACTION_DOCS_JSON = """{
         "MOVE_MOUSE",
         "DRAG",
         "MOUSE_CLICK",
-        "CLICK_WITH_MODIFIERS"
+        "CLICK_WITH_MODIFIERS",
+        "TAKE_SCREENSHOT",
+        "CAPTURE_SCREEN",
+        "SEE_SCREEN"
       ]
     },
     {

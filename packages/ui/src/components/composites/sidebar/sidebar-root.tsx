@@ -679,8 +679,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
               collapsedContentClassName,
             )}
           >
-            {renderCollapsedInner()}
-            <div className="mt-auto flex w-full flex-col items-center pb-3 pt-2">
+            <div className="flex w-full flex-col items-center pb-2 pt-1">
               <Button
                 variant="surface"
                 size="icon"
@@ -692,6 +691,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
                 <PanelLeftOpen className="h-4 w-4" />
               </Button>
             </div>
+            {renderCollapsedInner()}
           </div>
         </div>
         {renderHiddenAutoRailSource ? (
@@ -719,6 +719,31 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           layerClassName,
         )}
       >
+        {supportsCollapsedRail ? (
+          <div
+            className={cn(
+              "relative z-10 flex shrink-0 items-center gap-2 px-3.5 pb-2 pt-3.5",
+              collapseButtonLeading ? "justify-between" : "justify-end",
+              headerClassName,
+            )}
+          >
+            {collapseButtonLeading ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                {collapseButtonLeading}
+              </div>
+            ) : null}
+            <Button
+              variant="surface"
+              size="icon"
+              data-testid={collapseButtonTestId}
+              className={sidebarControlButtonClassName}
+              aria-label={collapseButtonAriaLabel}
+              onClick={handleCollapse}
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
         {header ? (
           <div
             className={cn(
@@ -741,31 +766,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         {footer ? (
           <div className={cn(sidebarFooterVariants(), footerClassName)}>
             {footer}
-          </div>
-        ) : null}
-        {supportsCollapsedRail ? (
-          <div
-            className={cn(
-              sidebarFooterVariants(),
-              collapseButtonLeading ? "justify-between" : undefined,
-              footerClassName,
-            )}
-          >
-            {collapseButtonLeading ? (
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                {collapseButtonLeading}
-              </div>
-            ) : null}
-            <Button
-              variant="surface"
-              size="icon"
-              data-testid={collapseButtonTestId}
-              className={sidebarControlButtonClassName}
-              aria-label={collapseButtonAriaLabel}
-              onClick={handleCollapse}
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
           </div>
         ) : null}
       </div>

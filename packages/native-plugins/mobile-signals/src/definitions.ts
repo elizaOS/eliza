@@ -62,7 +62,6 @@ export interface MobileSignalsScreenTimeStatus {
   requirements: {
     entitlements: {
       familyControls: string;
-      appAndWebsiteUsage: string;
     };
     frameworks: string[];
     deviceActivityReportExtension: boolean;
@@ -74,7 +73,6 @@ export interface MobileSignalsScreenTimeStatus {
   };
   entitlements: {
     familyControls: boolean;
-    appAndWebsiteUsage: boolean;
   };
   provisioning: {
     satisfied: boolean;
