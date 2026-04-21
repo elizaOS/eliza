@@ -1,13 +1,19 @@
 package ai.eliza.plugins.mobilesignals
 
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.result.ActivityResult
 import androidx.health.connect.client.HealthConnectClient
@@ -18,6 +24,7 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -35,6 +42,7 @@ import org.json.JSONObject
 private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
 private const val FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls"
 private const val APP_AND_WEBSITE_USAGE_ENTITLEMENT = "com.apple.developer.family-controls.app-and-website-usage"
+private const val PACKAGE_USAGE_STATS_PERMISSION = "android.permission.PACKAGE_USAGE_STATS"
 
 @CapacitorPlugin(name = "MobileSignals")
 class MobileSignalsPlugin : Plugin() {
@@ -125,6 +133,34 @@ class MobileSignalsPlugin : Plugin() {
 
         val intent = permissionRequest.createIntent(context, requiredPermissions())
         startActivityForResult(call, intent, "handleHealthConnectPermissionResult")
+    }
+
+    @PluginMethod
+    fun openSettings(call: PluginCall) {
+        val requestedTarget = call.getString("target") ?: "app"
+        val (actualTarget, intent) = settingsIntentFor(requestedTarget)
+        try {
+            val starter = activity
+            if (starter != null) {
+                starter.startActivity(intent)
+            } else {
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            call.resolve(JSObject().apply {
+                put("opened", true)
+                put("target", requestedTarget)
+                put("actualTarget", actualTarget)
+                put("reason", JSONObject.NULL)
+            })
+        } catch (error: Throwable) {
+            Log.e(tag, "Failed to open settings", error)
+            call.resolve(JSObject().apply {
+                put("opened", false)
+                put("target", requestedTarget)
+                put("actualTarget", actualTarget)
+                put("reason", "Failed to open Android settings: ${error.message}")
+            })
+        }
     }
 
     @PluginMethod
@@ -226,6 +262,7 @@ class MobileSignalsPlugin : Plugin() {
                 put("reason", statusReason)
             }
             put("screenTime", buildScreenTimeStatus())
+            put("setupActions", buildSetupActions(status, canRequest, sdkStatus))
             put("permissions", JSObject().apply {
                 put("sleep", sleepGranted)
                 put("biometrics", biometricsGranted)
@@ -298,6 +335,7 @@ class MobileSignalsPlugin : Plugin() {
                 put("isDeviceIdleMode", deviceIdle)
                 put("isCharging", isCharging)
                 put("batteryLevel", batteryLevel)
+                put("screenTime", buildUsageStatsSummary())
             })
         }
     }
@@ -490,10 +528,22 @@ class MobileSignalsPlugin : Plugin() {
     }
 
     private fun buildScreenTimeStatus(
-        reason: String = "iOS Screen Time requires FamilyControls and DeviceActivity; Android uses Health Connect signals.",
+        reason: String = "Android Usage Access is required for app foreground-time summaries.",
     ): JSObject {
+        val usageGranted = hasUsageStatsAccess()
+        val totalTimeForegroundMs = if (usageGranted) {
+            collectUsageStatsSummary().totalTimeForegroundMs
+        } else {
+            null
+        }
+        val status = if (usageGranted) "approved" else "not-determined"
+        val resolvedReason = if (usageGranted) {
+            null
+        } else {
+            reason
+        }
         return JSObject().apply {
-            put("supported", false)
+            put("supported", true)
             put("requirements", JSObject().apply {
                 put("entitlements", JSObject().apply {
                     put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
@@ -502,25 +552,229 @@ class MobileSignalsPlugin : Plugin() {
                 put("frameworks", listOf("FamilyControls", "DeviceActivity"))
                 put("deviceActivityReportExtension", false)
                 put("deviceActivityMonitorExtension", false)
+                put("android", JSObject().apply {
+                    put("usageStatsPermission", PACKAGE_USAGE_STATS_PERMISSION)
+                    put("usageAccessSettingsAction", Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                })
             })
             put("entitlements", JSObject().apply {
                 put("familyControls", false)
                 put("appAndWebsiteUsage", false)
             })
             put("provisioning", JSObject().apply {
-                put("satisfied", false)
+                put("satisfied", usageGranted)
                 put("inspected", "not-inspectable")
-                put("reason", reason)
+                put("reason", resolvedReason ?: JSONObject.NULL)
             })
             put("authorization", JSObject().apply {
-                put("status", "unavailable")
+                put("status", status)
                 put("canRequest", false)
             })
-            put("reportAvailable", false)
-            put("coarseSummaryAvailable", false)
+            put("reportAvailable", usageGranted)
+            put("coarseSummaryAvailable", usageGranted)
             put("thresholdEventsAvailable", false)
             put("rawUsageExportAvailable", false)
-            put("reason", reason)
+            put("android", JSObject().apply {
+                put("usageAccessGranted", usageGranted)
+                put("packageUsageStatsPermissionDeclared", isUsageStatsPermissionDeclared())
+                put("canOpenUsageAccessSettings", true)
+                put("foregroundEventsAvailable", usageGranted)
+                put("totalTimeForegroundMs", totalTimeForegroundMs ?: JSONObject.NULL)
+            })
+            put("reason", resolvedReason ?: JSONObject.NULL)
+        }
+    }
+
+    private fun buildSetupActions(
+        healthStatus: String,
+        healthCanRequest: Boolean,
+        sdkStatus: Int,
+    ): JSArray {
+        val actions = mutableListOf<JSObject>()
+        actions.add(JSObject().apply {
+            put("id", "health_permissions")
+            put("label", "Health Connect")
+            put(
+                "status",
+                when {
+                    sdkStatus != HealthConnectClient.SDK_AVAILABLE -> "unavailable"
+                    healthStatus == "granted" -> "ready"
+                    else -> "needs-action"
+                },
+            )
+            put("canRequest", healthCanRequest)
+            put("canOpenSettings", true)
+            put(
+                "settingsTarget",
+                if (sdkStatus == HealthConnectClient.SDK_AVAILABLE) "healthConnect" else "deviceSettings",
+            )
+            put(
+                "reason",
+                when {
+                    sdkStatus != HealthConnectClient.SDK_AVAILABLE -> "Install or update Health Connect to sync sleep and biometric signals."
+                    healthStatus == "granted" -> JSONObject.NULL
+                    else -> "Grant Health Connect read access for sleep, heart rate, and HRV."
+                },
+            )
+        })
+        val usageGranted = hasUsageStatsAccess()
+        actions.add(JSObject().apply {
+            put("id", "android_usage_access")
+            put("label", "Usage Access")
+            put("status", if (usageGranted) "ready" else "needs-action")
+            put("canRequest", false)
+            put("canOpenSettings", true)
+            put("settingsTarget", "usageAccess")
+            put(
+                "reason",
+                if (usageGranted) {
+                    JSONObject.NULL
+                } else {
+                    "Enable Usage Access so LifeOps can summarize foreground app usage for wake and bed inference."
+                },
+            )
+        })
+        actions.add(JSObject().apply {
+            put("id", "notification_settings")
+            put("label", "Notifications")
+            put("status", "needs-action")
+            put("canRequest", false)
+            put("canOpenSettings", true)
+            put("settingsTarget", "notification")
+            put("reason", "Open notification settings if reminders or telemetry prompts are muted.")
+        })
+        actions.add(JSObject().apply {
+            put("id", "battery_optimization")
+            put("label", "Battery optimization")
+            put("status", "needs-action")
+            put("canRequest", false)
+            put("canOpenSettings", true)
+            put("settingsTarget", "batteryOptimization")
+            put("reason", "Disable aggressive battery optimization if background sync stops.")
+        })
+        return JSArray(actions)
+    }
+
+    private fun settingsIntentFor(target: String): Pair<String, Intent> {
+        val appDetailsIntent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}"),
+        )
+        val intent = when (target) {
+            "usageAccess", "screenTime" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            "health", "healthConnect" -> Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$HEALTH_CONNECT_PACKAGE"),
+            )
+            "notification" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(
+                    Settings.EXTRA_APP_PACKAGE,
+                    context.packageName,
+                )
+            } else {
+                appDetailsIntent
+            }
+            "batteryOptimization" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            "deviceSettings" -> Intent(Settings.ACTION_SETTINGS)
+            else -> appDetailsIntent
+        }
+        val actualTarget = when (target) {
+            "usageAccess", "screenTime" -> "usageAccess"
+            "health", "healthConnect" -> "healthConnect"
+            "notification" -> "notification"
+            "batteryOptimization" -> "batteryOptimization"
+            "deviceSettings" -> "deviceSettings"
+            else -> "app"
+        }
+        return Pair(actualTarget, intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private fun hasUsageStatsAccess(): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName,
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun isUsageStatsPermissionDeclared(): Boolean {
+        return try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_PERMISSIONS,
+                )
+            }
+            packageInfo.requestedPermissions?.contains(PACKAGE_USAGE_STATS_PERMISSION) == true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
+    private data class UsageStatsSummary(
+        val totalTimeForegroundMs: Long,
+        val topApps: List<JSObject>,
+    )
+
+    private fun collectUsageStatsSummary(): UsageStatsSummary {
+        if (!hasUsageStatsAccess()) {
+            return UsageStatsSummary(0, emptyList())
+        }
+        val usageStatsManager =
+            context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val nowMs = System.currentTimeMillis()
+        val stats = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            nowMs - Duration.ofDays(1).toMillis(),
+            nowMs,
+        )
+        val topApps = stats
+            .asSequence()
+            .filter { it.totalTimeInForeground > 0 }
+            .sortedByDescending { it.totalTimeInForeground }
+            .take(10)
+            .map { usage ->
+                JSObject().apply {
+                    put("packageName", usage.packageName)
+                    put("totalTimeForegroundMs", usage.totalTimeInForeground)
+                    put("lastTimeUsed", usage.lastTimeUsed)
+                }
+            }
+            .toList()
+        val totalTimeForegroundMs = stats.sumOf { it.totalTimeInForeground }
+        return UsageStatsSummary(totalTimeForegroundMs, topApps)
+    }
+
+    private fun buildUsageStatsSummary(): JSObject {
+        val granted = hasUsageStatsAccess()
+        val summary = if (granted) {
+            collectUsageStatsSummary()
+        } else {
+            UsageStatsSummary(0, emptyList())
+        }
+        return JSObject().apply {
+            put("granted", granted)
+            put("permissionDeclared", isUsageStatsPermissionDeclared())
+            put("windowHours", 24)
+            put("totalTimeForegroundMs", if (granted) summary.totalTimeForegroundMs else JSONObject.NULL)
+            put("topApps", JSArray(summary.topApps))
         }
     }
 
