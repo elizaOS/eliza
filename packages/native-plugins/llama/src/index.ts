@@ -70,6 +70,32 @@ interface LlamaCppPluginLike {
 
 const CONTEXT_ID = 1;
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isLlamaCppPluginLike(value: unknown): value is LlamaCppPluginLike {
+  return (
+    isObject(value) &&
+    typeof value.initContext === "function" &&
+    typeof value.releaseContext === "function" &&
+    typeof value.releaseAllContexts === "function" &&
+    typeof value.generateText === "function" &&
+    typeof value.stopCompletion === "function" &&
+    typeof value.addListener === "function"
+  );
+}
+
+function resolveLlamaCppPlugin(mod: unknown): LlamaCppPluginLike | null {
+  if (!isObject(mod)) return null;
+  if (isLlamaCppPluginLike(mod.LlamaCpp)) return mod.LlamaCpp;
+  if (isLlamaCppPluginLike(mod.default)) return mod.default;
+  if (isObject(mod.default) && isLlamaCppPluginLike(mod.default.LlamaCpp)) {
+    return mod.default.LlamaCpp;
+  }
+  return null;
+}
+
 function isCapacitorNative(): boolean {
   const cap = (globalThis as Record<string, unknown>).Capacitor as
     | { isNativePlatform?: () => boolean; getPlatform?: () => string }
@@ -100,8 +126,8 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (this.plugin) return this.plugin;
     if (this.pluginLoadPromise) return this.pluginLoadPromise;
     this.pluginLoadPromise = (async () => {
-      const { LlamaCpp: plugin } = await import("llama-cpp-capacitor");
-      if (!plugin || typeof plugin.initContext !== "function") {
+      const plugin = resolveLlamaCppPlugin(await import("llama-cpp-capacitor"));
+      if (!plugin) {
         throw new Error(
           "llama-cpp-capacitor did not expose an initContext method",
         );
