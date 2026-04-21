@@ -1,5 +1,6 @@
 /** Platform detection and initialization utilities. */
 
+import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "../bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 
@@ -7,15 +8,10 @@ import { getBootConfig, setBootConfig } from "../config/boot-config";
 
 function detectPlatform(): { platform: string; isNative: boolean } {
   try {
-    const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | { getPlatform?: () => string; isNativePlatform?: () => boolean }
-      | undefined;
-    if (cap?.getPlatform) {
-      return {
-        platform: cap.getPlatform(),
-        isNative: cap.isNativePlatform?.() ?? false,
-      };
-    }
+    return {
+      platform: Capacitor.getPlatform(),
+      isNative: Capacitor.isNativePlatform(),
+    };
   } catch {
     /* fallback */
   }

@@ -23,7 +23,6 @@ import {
   useState,
 } from "react";
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
-import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { CharacterEditor } from "./components/character/CharacterEditor";
@@ -59,6 +58,7 @@ import { Header } from "./components/shell/Header";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config";
 import {
   BugReportProvider,
@@ -337,6 +337,27 @@ export function App() {
     string | null
   >(null);
   const [tasksEventsPanelOpen, setTasksEventsPanelOpen] = useState(false);
+  const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return (
+        window.localStorage.getItem("elizaos:chat:widgets-collapsed") === "true"
+      );
+    } catch {
+      return false;
+    }
+  });
+  const handleToggleWidgetsCollapsed = useCallback((next: boolean) => {
+    setWidgetsPanelCollapsed(next);
+    try {
+      window.localStorage.setItem(
+        "elizaos:chat:widgets-collapsed",
+        String(next),
+      );
+    } catch {
+      // localStorage unavailable in sandboxed environments — non-fatal.
+    }
+  }, []);
   const { events: activityEvents, clearEvents: clearActivityEvents } =
     useActivityEvents();
   const [editingAction, setEditingAction] = useState<
@@ -634,6 +655,8 @@ export function App() {
                     open
                     events={activityEvents}
                     clearEvents={clearActivityEvents}
+                    collapsed={widgetsPanelCollapsed}
+                    onToggleCollapsed={handleToggleWidgetsCollapsed}
                   />
                 ) : null}
               </>
@@ -654,9 +677,14 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <AutomationsView key="automations-view-desktop" />
-          </div>
+          <AppWorkspaceChrome
+            testId="automations-workspace"
+            main={
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <AutomationsView key="automations-view-desktop" />
+              </div>
+            }
+          />
         </div>
       ) : isSettingsPage ? (
         <div
@@ -689,9 +717,14 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <InventoryView />
-          </div>
+          <AppWorkspaceChrome
+            testId="wallets-workspace"
+            main={
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <InventoryView />
+              </div>
+            }
+          />
         </div>
       ) : isCharacterPage ? (
         <div
@@ -767,8 +800,10 @@ export function App() {
       activityEvents,
       clearActivityEvents,
       customActionsPanelOpen,
+      handleToggleWidgetsCollapsed,
       settingsInitialSection,
       t,
+      widgetsPanelCollapsed,
     ],
   );
 

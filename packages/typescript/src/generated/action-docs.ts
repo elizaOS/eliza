@@ -3596,6 +3596,9 @@ export const allActionsSpec = {
 				"DRAG",
 				"MOUSE_CLICK",
 				"CLICK_WITH_MODIFIERS",
+				"TAKE_SCREENSHOT",
+				"CAPTURE_SCREEN",
+				"SEE_SCREEN",
 			],
 		},
 		{

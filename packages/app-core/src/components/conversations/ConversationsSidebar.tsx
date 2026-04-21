@@ -505,9 +505,7 @@ export function ConversationsSidebar({
       className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted transition-colors hover:text-txt"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
-      <span>
-        {t("conversations.newChatShort", { defaultValue: "New" })}
-      </span>
+      <span>{t("conversations.newChatShort", { defaultValue: "New" })}</span>
     </button>
   );
   const newTerminalAction = (
@@ -577,6 +575,62 @@ export function ConversationsSidebar({
         : t("conversations.noneConnectors", {
             defaultValue: "No chats in this view",
           });
+  const searchControl = !isManageConnectionsActive ? (
+    <div className="relative w-full">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+      <input
+        type="text"
+        data-testid="chat-sidebar-search-input"
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setSearchQuery("");
+            (event.currentTarget as HTMLInputElement).blur();
+          }
+        }}
+        placeholder={t("conversations.searchChats", {
+          defaultValue: "Search chats",
+        })}
+        aria-label={t("conversations.searchChats", {
+          defaultValue: "Search chats",
+        })}
+        autoComplete="off"
+        spellCheck={false}
+        className="h-11 w-full rounded-sm border border-border/32 bg-transparent pl-8 pr-7 text-sm text-txt placeholder:text-muted focus:border-border/60 focus:outline-none"
+      />
+      {searchQuery ? (
+        <button
+          type="button"
+          onClick={() => setSearchQuery("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
+          aria-label={t("common.clear", {
+            defaultValue: "Clear",
+          })}
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      ) : null}
+    </div>
+  ) : undefined;
+  const manageConnectionsButton = (
+    <button
+      type="button"
+      data-testid="chat-sidebar-manage-toggle"
+      aria-pressed={isManageConnectionsActive}
+      onClick={handleManageConnections}
+      className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] transition-colors ${
+        isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
+      }`}
+    >
+      <Settings2 className="h-3.5 w-3.5" aria-hidden />
+      <span>
+        {t("conversations.manageConnections", {
+          defaultValue: "Manage",
+        })}
+      </span>
+    </button>
+  );
 
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
@@ -662,45 +716,21 @@ export function ConversationsSidebar({
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={undefined}
         collapseButtonLeading={
-          !isManageConnectionsActive ? (
-            <div className="relative w-full">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-              <input
-                type="text"
-                data-testid="chat-sidebar-search-input"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setSearchQuery("");
-                    (event.currentTarget as HTMLInputElement).blur();
-                  }
-                }}
-                placeholder={t("conversations.searchChats", {
-                  defaultValue: "Search chats",
-                })}
-                aria-label={t("conversations.searchChats", {
-                  defaultValue: "Search chats",
-                })}
-                autoComplete="off"
-                spellCheck={false}
-                className="h-11 w-full rounded-sm border border-border/32 bg-transparent pl-8 pr-7 text-sm text-txt placeholder:text-muted focus:border-border/60 focus:outline-none"
-              />
-              {searchQuery ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
-                  aria-label={t("common.clear", {
-                    defaultValue: "Clear",
-                  })}
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              ) : null}
-            </div>
+          <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
+            <span>
+              {t("conversations.filterScope", {
+                defaultValue: "Channels",
+              })}
+            </span>
+          </div>
+        }
+        footer={
+          searchControl ? (
+            <div className="w-full px-3 pb-3 pt-2">{searchControl}</div>
           ) : undefined
         }
+        footerClassName="border-t border-border/30 !justify-start !px-0 !pb-0 !pt-0"
         collapsedRailAction={
           showNewTerminalAction ? (
             <SidebarCollapsedActionButton
@@ -761,44 +791,13 @@ export function ConversationsSidebar({
               isGameModal ? undefined : "bg-transparent gap-0 p-0 shadow-none"
             }
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-                {isManageConnectionsActive
-                  ? t("conversations.connectors", {
-                      defaultValue: "Connectors",
-                    })
-                  : t("conversations.filterScope", {
-                      defaultValue: "Channels",
-                    })}
-              </span>
-              <button
-                type="button"
-                data-testid="chat-sidebar-manage-toggle"
-                aria-pressed={isManageConnectionsActive}
-                onClick={handleManageConnections}
-                className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] transition-colors ${
-                  isManageConnectionsActive
-                    ? "text-txt"
-                    : "text-muted hover:text-txt"
-                }`}
-              >
-                <Settings2 className="h-3.5 w-3.5" aria-hidden />
-                <span>
-                  {t("conversations.manageConnections", {
-                    defaultValue: "Manage",
-                  })}
-                </span>
-              </button>
-            </div>
-
             {!isManageConnectionsActive ? (
-              <div className="flex items-center gap-0.5">
-                <div className="flex flex-wrap items-center gap-0.5">
+              <div className="flex min-w-0 items-center gap-1 px-1 pb-1">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
                   {sidebarModel.sourceOptions.map((option) => {
                     if (option.value === ALL_CONNECTORS_SOURCE_SCOPE)
                       return null;
-                    const isActive =
-                      sidebarModel.sourceScope === option.value;
+                    const isActive = sidebarModel.sourceScope === option.value;
                     return (
                       <button
                         key={option.value}
@@ -819,7 +818,7 @@ export function ConversationsSidebar({
                   })}
                 </div>
                 {sidebarModel.showWorldFilter ? (
-                  <div className="ml-auto min-w-0 max-w-[60%]">
+                  <div className="min-w-0 max-w-[42%] shrink">
                     <Select
                       value={sidebarModel.worldScope}
                       onValueChange={setWorldScope}
@@ -847,8 +846,18 @@ export function ConversationsSidebar({
                     </Select>
                   </div>
                 ) : null}
+                {manageConnectionsButton}
               </div>
-            ) : null}
+            ) : (
+              <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+                  {t("conversations.connectors", {
+                    defaultValue: "Connectors",
+                  })}
+                </span>
+                {manageConnectionsButton}
+              </div>
+            )}
 
             {isManageConnectionsActive ? (
               <div className="space-y-1">

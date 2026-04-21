@@ -11,6 +11,8 @@
 
 import { useEffect, useRef } from "react";
 import { client } from "../../api";
+import { CONNECT_EVENT } from "../../events";
+import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
@@ -48,8 +50,14 @@ function phaseToStatusKey(phase: string): string {
 }
 
 export function StartupShell() {
-  const { startupCoordinator, startupError, retryStartup, setState, t } =
-    useApp();
+  const {
+    startupCoordinator,
+    startupError,
+    retryStartup,
+    setActionNotice,
+    setState,
+    t,
+  } = useApp();
   const phase = startupCoordinator.phase;
   const cloudSkipProbeStartedRef = useRef(false);
   const isSplash = phase === "splash";
@@ -70,6 +78,43 @@ export function StartupShell() {
   coordinatorDispatchRef.current = startupCoordinator.dispatch;
   const coordinatorStateRef = useRef(startupCoordinator.state);
   coordinatorStateRef.current = startupCoordinator.state;
+
+  useEffect(() => {
+    const handleConnect = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const payload =
+        detail && typeof detail === "object" && !Array.isArray(detail)
+          ? (detail as { gatewayUrl?: unknown; token?: unknown })
+          : null;
+      if (typeof payload?.gatewayUrl !== "string") {
+        return;
+      }
+
+      try {
+        const connection = applyLaunchConnection({
+          kind: "remote",
+          apiBase: payload.gatewayUrl,
+          token: typeof payload.token === "string" ? payload.token : null,
+        });
+        setState("onboardingServerTarget", "remote");
+        setState("onboardingRemoteApiBase", connection.apiBase);
+        setState("onboardingRemoteToken", connection.token ?? "");
+        setState("onboardingRemoteConnected", true);
+        setState("onboardingRemoteError", null);
+        setActionNotice("Connected to remote backend.", "success", 4200);
+        retryStartup();
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error ? err.message : "Failed to connect remote backend.",
+          "error",
+          8000,
+        );
+      }
+    };
+
+    document.addEventListener(CONNECT_EVENT, handleConnect);
+    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+  }, [retryStartup, setActionNotice, setState]);
 
   useEffect(() => {
     if (phase !== "onboarding-required") {

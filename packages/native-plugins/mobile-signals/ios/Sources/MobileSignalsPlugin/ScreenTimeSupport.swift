@@ -5,17 +5,15 @@ import Security
 
 enum ScreenTimeSupport {
     private static let familyControlsEntitlement = "com.apple.developer.family-controls"
-    private static let appAndWebsiteUsageEntitlement = "com.apple.developer.family-controls.app-and-website-usage"
     private static let requiredFrameworks = ["FamilyControls", "DeviceActivity"]
 
     private struct EntitlementInspection {
         let familyControls: Bool
-        let appAndWebsiteUsage: Bool
         let inspected: String
         let reason: String?
 
         var satisfied: Bool {
-            familyControls && appAndWebsiteUsage
+            familyControls
         }
 
         var canAttemptAuthorization: Bool {
@@ -26,15 +24,12 @@ enum ScreenTimeSupport {
     static func buildStatus(reasonOverride: String? = nil) -> [String: Any] {
         let entitlementInspection = inspectEntitlements()
         let familyControlsEnabled = entitlementInspection.familyControls
-        let appAndWebsiteUsageEnabled = entitlementInspection.appAndWebsiteUsage
         let authorizationEntitlementAvailable = entitlementInspection.canAttemptAuthorization
-        let usageEntitlementAvailable = entitlementInspection.inspected == "not-inspectable" || appAndWebsiteUsageEnabled
         let authorizationStatus = authorizationStatusString()
         let provisioningSatisfied = entitlementInspection.satisfied
 
         let reason = reasonOverride ?? derivedReason(
             familyControlsEnabled: authorizationEntitlementAvailable,
-            appAndWebsiteUsageEnabled: usageEntitlementAvailable,
             authorizationStatus: authorizationStatus
         )
         let provisioningReason: Any = provisioningSatisfied
@@ -46,7 +41,6 @@ enum ScreenTimeSupport {
             "requirements": [
                 "entitlements": [
                     "familyControls": familyControlsEntitlement,
-                    "appAndWebsiteUsage": appAndWebsiteUsageEntitlement,
                 ],
                 "frameworks": requiredFrameworks,
                 "deviceActivityReportExtension": false,
@@ -54,7 +48,6 @@ enum ScreenTimeSupport {
             ],
             "entitlements": [
                 "familyControls": familyControlsEnabled,
-                "appAndWebsiteUsage": appAndWebsiteUsageEnabled,
             ],
             "provisioning": [
                 "satisfied": provisioningSatisfied,
@@ -141,14 +134,10 @@ enum ScreenTimeSupport {
 
     private static func derivedReason(
         familyControlsEnabled: Bool,
-        appAndWebsiteUsageEnabled: Bool,
         authorizationStatus: String
     ) -> String {
         if !familyControlsEnabled {
             return "Family Controls entitlement is missing from the app bundle."
-        }
-        if !appAndWebsiteUsageEnabled {
-            return "Family Controls app-and-website-usage entitlement is missing from the app bundle."
         }
         if authorizationStatus == "not-determined" {
             return "Screen Time authorization has not been granted yet."
@@ -163,14 +152,12 @@ enum ScreenTimeSupport {
         #if os(macOS)
         return EntitlementInspection(
             familyControls: entitlementIsEnabled(familyControlsEntitlement),
-            appAndWebsiteUsage: entitlementIsEnabled(appAndWebsiteUsageEntitlement),
             inspected: "code-signature",
             reason: nil
         )
         #else
         return EntitlementInspection(
             familyControls: false,
-            appAndWebsiteUsage: false,
             inspected: "not-inspectable",
             reason: "iOS entitlement inspection is handled by build validation and provisioning profile checks."
         )

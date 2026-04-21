@@ -20,6 +20,7 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import type { Tab } from "../navigation";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   formatSearchBullet,
@@ -32,6 +33,153 @@ import {
 } from "./internal";
 
 // ── Types ────────────────────────────────────────────────────────────
+
+const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+interface ChatViewRouting {
+  view: string;
+  primaryContext: string;
+  secondaryContexts: string[];
+  capabilities: string[];
+}
+
+function uniq(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    return value.split(/[\n,;]/);
+  }
+  return [];
+}
+
+function resolveChatViewRouting(tab: Tab): ChatViewRouting {
+  switch (tab) {
+    case "apps":
+      return {
+        view: "apps",
+        primaryContext: "apps",
+        secondaryContexts: ["system"],
+        capabilities: ["launch-app", "stop-app"],
+      };
+    case "character":
+    case "character-select":
+      return {
+        view: "character",
+        primaryContext: "character",
+        secondaryContexts: ["knowledge", "system"],
+        capabilities: ["modify-character", "edit-character-knowledge"],
+      };
+    case "knowledge":
+      return {
+        view: "character",
+        primaryContext: "knowledge",
+        secondaryContexts: ["character"],
+        capabilities: ["search-knowledge", "add-knowledge", "modify-character"],
+      };
+    case "automations":
+    case "triggers":
+      return {
+        view: "automations",
+        primaryContext: "automation",
+        secondaryContexts: ["code", "system"],
+        capabilities: ["manage-cron", "manage-workflow", "run-automation"],
+      };
+    case "browser":
+      return {
+        view: "browser",
+        primaryContext: "browser",
+        secondaryContexts: ["knowledge"],
+        capabilities: ["browser-session", "browse", "extract-page"],
+      };
+    case "inventory":
+      return {
+        view: "wallet",
+        primaryContext: "wallet",
+        secondaryContexts: ["knowledge"],
+        capabilities: ["wallet", "portfolio", "transactions"],
+      };
+    case "lifeops":
+      return {
+        view: "apps",
+        primaryContext: "automation",
+        secondaryContexts: ["social", "knowledge"],
+        capabilities: ["lifeops", "tasks", "calendar"],
+      };
+    case "plugins":
+    case "runtime":
+    case "database":
+    case "logs":
+    case "settings":
+    case "voice":
+      return {
+        view: "system",
+        primaryContext: "system",
+        secondaryContexts: ["knowledge"],
+        capabilities: ["configure-runtime", "inspect-system"],
+      };
+    case "skills":
+    case "trajectories":
+    case "relationships":
+    case "memories":
+      return {
+        view: "knowledge",
+        primaryContext: "knowledge",
+        secondaryContexts: ["system", "social"],
+        capabilities: ["knowledge", "memory", "relationships"],
+      };
+    default:
+      return {
+        view: "chat",
+        primaryContext: "general",
+        secondaryContexts: [],
+        capabilities: ["general-chat"],
+      };
+  }
+}
+
+function buildChatViewMetadata(
+  tab: Tab,
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> {
+  const viewRouting = resolveChatViewRouting(tab);
+  const existingRouting = asRecord(metadata?.[CONTEXT_ROUTING_METADATA_KEY]);
+  const secondaryContexts = uniq([
+    ...viewRouting.secondaryContexts,
+    ...asStringList(existingRouting?.secondaryContexts),
+    viewRouting.primaryContext,
+  ]);
+
+  return {
+    ...(metadata ?? {}),
+    uiView: viewRouting.view,
+    uiTab: tab,
+    uiViewCapabilities: viewRouting.capabilities,
+    [CONTEXT_ROUTING_METADATA_KEY]: {
+      ...(existingRouting ?? {}),
+      primaryContext: viewRouting.primaryContext,
+      secondaryContexts,
+    },
+  };
+}
 
 export interface QueuedChatSend {
   rawInput: string;
@@ -51,6 +199,7 @@ export interface UseChatSendDeps {
 
   // UI state
   uiLanguage: string;
+  tab: Tab;
 
   // Chat state
   chatMode: ConversationMode;
@@ -119,6 +268,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   const {
     t,
     uiLanguage,
+    tab,
     chatMode,
     conversations,
     activeConversationId,
@@ -643,6 +793,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               channelType,
               imagesToSend,
               conversationMode,
+              turn.metadata,
             );
             setConversationMessages(
               filterRenderableConversationMessages([
@@ -749,7 +900,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           channelType: options?.channelType ?? "DM",
           conversationId: options?.conversationId,
           images: options?.images,
-          metadata: options?.metadata,
+          metadata: buildChatViewMetadata(tab, options?.metadata),
           resolve,
           reject,
         });
@@ -757,7 +908,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending],
+    [flushQueuedChatSends, setChatSending, tab],
   );
 
   const handleChatSend = useCallback(
@@ -896,6 +1047,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             controller.signal,
             undefined,
             conversationMode,
+            buildChatViewMetadata(tab),
           );
 
           if (!data.text.trim()) {
@@ -981,6 +1133,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
+      tab,
       uiLanguage,
     ],
   );

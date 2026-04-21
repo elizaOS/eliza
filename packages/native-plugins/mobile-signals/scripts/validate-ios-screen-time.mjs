@@ -12,8 +12,6 @@ const defaultRepoRoot = path.resolve(pluginRoot, "..", "..", "..");
 export const IOS_SCREEN_TIME_REQUIREMENTS = Object.freeze({
   entitlements: Object.freeze({
     familyControls: "com.apple.developer.family-controls",
-    appAndWebsiteUsage:
-      "com.apple.developer.family-controls.app-and-website-usage",
   }),
   frameworks: Object.freeze(["FamilyControls", "DeviceActivity"]),
   appEntitlementsRelativePath: path.join("App", "App.entitlements"),

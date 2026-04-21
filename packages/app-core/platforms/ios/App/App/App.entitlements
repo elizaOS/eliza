@@ -6,8 +6,6 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
-	<key>com.apple.developer.networking.multicast</key>
-	<true/>
 	<key>com.apple.developer.family-controls</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>
@@ -26,13 +24,7 @@
 	<true/>
 	<key>com.apple.developer.healthkit.background-delivery</key>
 	<true/>
-	<key>com.apple.developer.family-controls</key>
-	<true/>
-	<key>com.apple.developer.family-controls.app-and-website-usage</key>
-	<true/>
-	<key>com.apple.developer.push-notifications</key>
-	<true/>
 	<key>aps-environment</key>
-	<string>production</string>
+	<string>development</string>
 </dict>
 </plist>
