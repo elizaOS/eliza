@@ -435,6 +435,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       headerClassName,
       footerClassName,
       collapsedContentClassName,
+      collapseButtonClassName,
       className,
       children,
       ...props
@@ -684,7 +685,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
                 variant="surface"
                 size="icon"
                 data-testid={expandButtonTestId}
-                className={sidebarControlButtonClassName}
+                className={cn(sidebarControlButtonClassName, collapseButtonClassName)}
                 aria-label={expandButtonAriaLabel}
                 onClick={handleExpand}
               >
@@ -736,7 +737,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
               variant="surface"
               size="icon"
               data-testid={collapseButtonTestId}
-              className={sidebarControlButtonClassName}
+              className={cn(sidebarControlButtonClassName, collapseButtonClassName)}
               aria-label={collapseButtonAriaLabel}
               onClick={handleCollapse}
             >

@@ -29,6 +29,7 @@ export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
   headerClassName?: string;
   footerClassName?: string;
   collapsedContentClassName?: string;
+  collapseButtonClassName?: string;
 }
 
 export interface SidebarScrollRegionProps
