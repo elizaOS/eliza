@@ -3,7 +3,9 @@ import "dotenv/config";
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { type MoltbookService, moltbookPlugin } from "@elizaos/plugin-moltbook";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
+// sqlPlugin disabled: PGlite WASM abort() kills the process on this VPS.
+// Dashboard and Goo Arena use JSON file persistence only.
+// import sqlPlugin from "@elizaos/plugin-sql";
 import { getDiscoveryConfig } from "./memecoin/config";
 import { startDashboardServer } from "./memecoin/server";
 import { setupElizaOkDiscovery } from "./memecoin/setup";
@@ -103,8 +105,6 @@ async function main(): Promise<void> {
     );
   }
 
-  const pgliteDir = process.env.PGLITE_DATA_DIR || ".elizadb/elizaokbsc";
-
   const character = createCharacter({
     name: "elizaOK_BSC",
     bio: [
@@ -129,7 +129,6 @@ async function main(): Promise<void> {
       post: ["Be authentic", "Add value to the conversation"],
     },
     plugins: [
-      "@elizaos/plugin-sql",
       ...(hasOpenAI ? ["@elizaos/plugin-openai"] : []),
       ...(hasMoltbook ? ["@elizaos/plugin-moltbook"] : []),
     ],
@@ -160,13 +159,11 @@ async function main(): Promise<void> {
   const runtime = new AgentRuntime({
     character,
     plugins: [
-      sqlPlugin,
       ...(hasOpenAI ? [openaiPlugin] : []),
       ...(hasMoltbook ? [moltbookPlugin] : []),
     ],
     settings: {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-      PGLITE_DATA_DIR: pgliteDir,
       ...(hasMoltbook
         ? {
             MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
@@ -190,22 +187,12 @@ async function main(): Promise<void> {
     },
   });
 
-  let runtimeReady = false;
-  try {
-    await runtime.initialize();
-    runtimeReady = true;
-    console.log("elizaOK_BSC initialized.");
-    console.log(
-      "Loaded plugins:",
-      runtime.plugins.map((plugin) => plugin.name).join(", "),
-    );
-    console.log("PGLite:", pgliteDir);
-  } catch (initError) {
-    console.error(
-      "elizaOK_BSC runtime init failed (PGlite WASM). Dashboard will still start.",
-      initError instanceof Error ? initError.message : initError,
-    );
-  }
+  await runtime.initialize();
+  console.log("elizaOK_BSC initialized.");
+  console.log(
+    "Loaded plugins:",
+    runtime.plugins.map((plugin) => plugin.name).join(", "),
+  );
 
   console.log(
     "Moltbook:",
@@ -238,7 +225,7 @@ async function main(): Promise<void> {
 
   await setupElizaOkDiscovery(runtime);
 
-  if (hasMoltbook && runtimeReady) {
+  if (hasMoltbook) {
     await tryBootPost(runtime);
   }
 
