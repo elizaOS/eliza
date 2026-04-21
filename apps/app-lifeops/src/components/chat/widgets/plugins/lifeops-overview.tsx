@@ -8,7 +8,9 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsOverview,
   LifeOpsOverviewSection,
-} from "@elizaos/app-lifeops/contracts";
+  LifeOpsScheduleInsight,
+} from "@elizaos/shared/contracts/lifeops";
+import { formatMinutesDuration } from "../../../../utils/format-duration.js";
 import { Badge, Button } from "@elizaos/ui";
 import {
   Bell,
@@ -34,15 +36,21 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "../../../../api";
-import { isApiError } from "../../../../api/client-types-core";
-import { useLifeOpsAppState } from "../../../../hooks";
-import { useApp } from "../../../../state";
-import { EmptyWidgetState, WidgetSection } from "../shared";
+import { client } from "@elizaos/app-core/api";
+import { isApiError } from "@elizaos/app-core/api/client-types-core";
+import {
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
-} from "../types";
+} from "@elizaos/app-core/components/chat/widgets/types";
+import { useApp } from "@elizaos/app-core/state";
+import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
+import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
+import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
+import { GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
 const MAX_SECTION_OCCURRENCES = 3;
