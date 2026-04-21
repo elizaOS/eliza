@@ -1,0 +1,151 @@
+{
+  "id": "lp-manager",
+  "name": "Lp Manager",
+  "description": "A unified plugin for managing liquidity positions on Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
+  "npmName": "@elizaos/plugin-lp-manager",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "lp-manager",
+    "lp",
+    "manager"
+  ],
+  "config": {
+    "BSC_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "BASE_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "LP_EVM_DEXES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Evm Dexes",
+      "help": "Comma-separated DEX list to manage",
+      "advanced": false
+    },
+    "SOLANA_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "EVM_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Private key for Evm",
+      "advanced": false
+    },
+    "LP_SOLANA_DEXES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Solana Dexes",
+      "help": "Comma-separated DEX list to manage",
+      "advanced": false
+    },
+    "ARBITRUM_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "ETHEREUM_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL",
+      "advanced": false
+    },
+    "EVM_PROVIDER_BSC": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Bsc",
+      "help": "RPC provider URL for Evm",
+      "advanced": false
+    },
+    "EVM_PROVIDER_BASE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Base",
+      "help": "RPC provider URL for Evm",
+      "advanced": false
+    },
+    "SOLANA_COMMITMENT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Commitment",
+      "help": "Transaction commitment level (e.g. confirmed, finalized)",
+      "advanced": false
+    },
+    "SOLANA_PUBLIC_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Public Key",
+      "help": "Public key / wallet address",
+      "advanced": false
+    },
+    "SOLANA_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Private key for Solana",
+      "advanced": false
+    },
+    "EVM_PROVIDER_MAINNET": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Mainnet",
+      "help": "RPC provider URL for Evm",
+      "advanced": false
+    },
+    "EVM_PROVIDER_ARBITRUM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Arbitrum",
+      "help": "RPC provider URL for Evm",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Wallet",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

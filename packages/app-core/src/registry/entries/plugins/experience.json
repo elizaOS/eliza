@@ -1,0 +1,42 @@
+{
+  "id": "experience",
+  "name": "Experience",
+  "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
+  "npmName": "@elizaos/plugin-experience",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "experience",
+    "learning",
+    "memory"
+  ],
+  "config": {
+    "AUTO_RECORD_THRESHOLD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Record Threshold",
+      "help": "Threshold value",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Star",
+    "group": "storage",
+    "groupOrder": 10,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "storage"
+}

@@ -24,6 +24,10 @@ import {
   ensureCompatSensitiveRouteAuthorized,
 } from "./auth";
 import {
+  entriesToLegacyManifest,
+  loadRegistry,
+} from "../registry";
+import {
   type CompatRuntimeState,
   readCompatJsonBody,
   scheduleCompatRuntimeRestart,
@@ -122,6 +126,14 @@ interface CompatPluginRecord {
   homepage?: string;
   repository?: string;
   setupGuideUrl?: string;
+  // Registry-sourced render hints. Replaces frontend lookups against
+  // VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS / FEATURE_SUBGROUP /
+  // SUBGROUP_DISPLAY_ORDER. Optional during migration; required once the
+  // frontend constants are deleted.
+  iconName?: string;
+  group?: string;
+  groupOrder?: number;
+  visible?: boolean;
 }
 
 type PluginDriftFlag =
@@ -921,13 +933,15 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const loadedNames = resolveLoadedPluginNames(runtime);
-  const manifestPath = resolvePluginManifestPath();
-  const manifestRoot = manifestPath
-    ? path.dirname(manifestPath)
+  // Source of truth: registry under packages/app-core/src/registry/data/.
+  // The legacy adapter projects RegistryEntry[] back to the manifest shape
+  // this route's transformation pipeline still expects. Once that pipeline
+  // is rewritten to consume RegistryEntry directly, drop the adapter.
+  const registry = loadRegistry();
+  const manifestRoot = resolvePluginManifestPath()
+    ? path.dirname(resolvePluginManifestPath() ?? "")
     : process.cwd();
-  const manifest = manifestPath
-    ? (JSON.parse(fs.readFileSync(manifestPath, "utf8")) as PluginManifestFile)
-    : null;
+  const manifest: PluginManifestFile = entriesToLegacyManifest(registry.all);
 
   const configEntries = config.plugins?.entries ?? {};
   const installEntries = config.plugins?.installs ?? {};
@@ -971,6 +985,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
         message: "Required value is not configured.",
       }));
 
+    const registryEntry = registry.byId.get(pluginId);
     plugins.set(pluginId, {
       id: pluginId,
       name: entry.name ?? titleCasePluginId(pluginId),
@@ -993,10 +1008,14 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       pluginDeps: entry.pluginDeps,
       isActive: active,
       configUiHints: entry.configUiHints ?? bundledMeta?.configUiHints,
-      icon: entry.logoUrl ?? entry.icon ?? bundledMeta?.icon ?? null,
+      icon: entry.logoUrl ?? bundledMeta?.icon ?? null,
       homepage: entry.homepage ?? bundledMeta?.homepage,
       repository: entry.repository ?? bundledMeta?.repository,
       setupGuideUrl: entry.setupGuideUrl,
+      iconName: registryEntry?.render.icon,
+      group: registryEntry?.render.group,
+      groupOrder: registryEntry?.render.groupOrder,
+      visible: registryEntry?.render.visible ?? true,
     });
   }
 
@@ -1296,9 +1315,8 @@ export async function handlePluginsCompatRoutes(
     }
 
     const pluginResponse = buildPluginListResponse(state.current);
-    const manifestPath = resolvePluginManifestPath();
     logger.debug(
-      `[api/plugins] manifest=${manifestPath ?? "NOT_FOUND"} total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
+      `[api/plugins] source=registry total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
     );
     maybeLogPluginStateDrift(buildPluginDriftDiagnostics(state.current));
     sendJsonResponse(res, 200, pluginResponse);

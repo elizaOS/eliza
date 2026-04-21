@@ -1,0 +1,28 @@
+{
+  "id": "cron",
+  "name": "Cron",
+  "description": "Cron scheduling plugin for ElizaOS agents - schedule recurring or one-time jobs that execute actions, run prompts, or trigger events",
+  "npmName": "@elizaos/plugin-cron",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": [
+    "cron"
+  ],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Clock",
+    "group": "automation",
+    "groupOrder": 9,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "automation"
+}

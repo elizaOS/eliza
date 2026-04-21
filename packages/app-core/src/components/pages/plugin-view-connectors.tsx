@@ -22,7 +22,6 @@ import {
 } from "./cloud-dashboard-utils";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
 import {
-  connectorDisplayName,
   getPluginResourceLinks,
   pluginResourceLinkLabel,
   SUBGROUP_LABELS,
@@ -409,7 +408,7 @@ function ConnectorPluginCard({
         className="flex min-w-0 flex-wrap items-center gap-2"
       >
         <span className="whitespace-normal break-words [overflow-wrap:anywhere] text-sm font-semibold leading-snug text-txt">
-          {connectorDisplayName(plugin)}
+          {plugin.name}
         </span>
         {hasParams ? (
           <span className="text-xs-tight font-medium text-muted">
@@ -475,7 +474,7 @@ function ConnectorPluginCard({
           handleConnectorSectionToggle(plugin.id);
         }}
         aria-expanded={isExpanded}
-        aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)}`}
+        aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name}`}
         title={isExpanded ? collapseLabel : expandLabel}
       >
         <ChevronRight

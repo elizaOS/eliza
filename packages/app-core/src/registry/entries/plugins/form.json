@@ -1,0 +1,33 @@
+{
+  "id": "form",
+  "name": "Form",
+  "description": "Integrates Form chain capabilities for curves-based token economics with ERC20 conversion and management.",
+  "npmName": "@elizaos/plugin-form",
+  "version": "2.0.0-alpha.6",
+  "source": "bundled",
+  "tags": [
+    "form",
+    "conversational",
+    "data-collection"
+  ],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ClipboardList",
+    "group": "media",
+    "groupOrder": 8,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media"
+}
