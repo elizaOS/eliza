@@ -110,16 +110,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 150,
     defaultEnabled: true,
   },
-  // Agent Orchestrator — tasks
-  {
-    id: "agent-orchestrator.tasks",
-    pluginId: "agent-orchestrator",
-    slot: "chat-sidebar",
-    label: "Tasks",
-    icon: "ListTodo",
-    order: 200,
-    defaultEnabled: true,
-  },
   // Agent Orchestrator — activity
   {
     id: "agent-orchestrator.activity",
