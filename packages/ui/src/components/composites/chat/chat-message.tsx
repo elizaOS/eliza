@@ -393,17 +393,27 @@ export const ChatMessage = memo(function ChatMessage({
         {!isUser && !isGrouped ? (
           <div
             className={cn(
-              "mb-1 text-xs font-semibold text-accent",
+              "text-xs font-semibold text-accent",
               isRightAligned ? "text-right" : "text-left",
             )}
           >
             {agentName}
           </div>
         ) : null}
+        {isUser && !isGrouped && !showSenderHeader ? (
+          <div
+            className={cn(
+              "text-xs font-semibold text-accent",
+              isRightAligned ? "text-right" : "text-left",
+            )}
+          >
+            You
+          </div>
+        ) : null}
         {showSenderHeader ? (
           <div
             className={cn(
-              "mb-1 flex items-center gap-2",
+              "flex items-center gap-2",
               isRightAligned ? "justify-end" : "justify-start",
             )}
           >
