@@ -1,5 +1,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
+import {
+  type EvmSigningCapability,
+  type EvmSigningCapabilityKind,
+  resolveEvmSigningCapability,
+} from "../services/evm-signing-capability.js";
 import { isStewardEvmBridgeActive } from "../services/steward-evm-bridge.js";
 import { getWalletAddresses } from "./wallet.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
@@ -20,6 +25,8 @@ export interface WalletCapabilityStatus {
   pluginEvmRequired: boolean;
   executionReady: boolean;
   executionBlockedReason: string | null;
+  evmSigningCapability: EvmSigningCapabilityKind;
+  evmSigningReason: string;
 }
 
 function readPrimaryWalletSource(
@@ -112,11 +119,15 @@ export function resolveWalletCapabilityStatus(state: {
   config: ElizaConfig;
   runtime: AgentRuntime | null;
   getWalletAddresses?: typeof getWalletAddresses;
+  resolveEvmSigningCapability?: typeof resolveEvmSigningCapability;
 }): WalletCapabilityStatus {
   const addrs = (state.getWalletAddresses ?? getWalletAddresses)();
   const rpcReadiness = resolveWalletRpcReadiness(state.config);
   const automationMode = resolveWalletAutomationMode(state.config);
-  const localSignerAvailable = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
+  const evmSigning: EvmSigningCapability = (
+    state.resolveEvmSigningCapability ?? resolveEvmSigningCapability
+  )();
+  const localSignerAvailable = evmSigning.kind === "local";
   const localSolanaSignerAvailable = Boolean(
     process.env.SOLANA_PRIVATE_KEY?.trim(),
   );
@@ -144,6 +155,10 @@ export function resolveWalletCapabilityStatus(state: {
   let executionBlockedReason: string | null = null;
   if (!hasEvm) {
     executionBlockedReason = "No EVM wallet is active yet.";
+  } else if (evmSigning.kind === "cloud-view-only") {
+    // Prefer the explicit capability reason over a generic "plugin not loaded"
+    // so the UI can tell users the cloud wallet is visible but not signable.
+    executionBlockedReason = evmSigning.reason;
   } else if (!rpcReady) {
     executionBlockedReason = "BSC RPC is not configured.";
   } else if (!pluginEvmLoaded) {
@@ -169,5 +184,7 @@ export function resolveWalletCapabilityStatus(state: {
     executionReady:
       hasEvm && rpcReady && pluginEvmLoaded && automationMode === "full",
     executionBlockedReason,
+    evmSigningCapability: evmSigning.kind,
+    evmSigningReason: evmSigning.reason,
   };
 }
