@@ -384,12 +384,6 @@ function captureStateTransitionsFromValue(
   }
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function toStringArray(value: unknown): string[] {
   if (typeof value === "string" && value.trim().length > 0) {
     return [value.trim()];
@@ -524,9 +518,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   const approvalRequests: CapturedApprovalRequest[] = [];
   const connectorDispatches: CapturedConnectorDispatch[] = [];
   const memoryWrites: CapturedMemoryWrite[] = [];
-  const stateTransitions: CapturedStateTransition[] = [];
   const artifacts: CapturedArtifact[] = [];
-  const stateTransitions: CapturedStateTransition[] = [];
 
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
