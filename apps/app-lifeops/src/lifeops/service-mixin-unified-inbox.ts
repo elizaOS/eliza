@@ -8,7 +8,10 @@ import type {
   LifeOpsUnifiedMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
-import { fetchAllMessages } from "../inbox/message-fetcher.js";
+import {
+  fetchAllMessages,
+  type GmailInboxSource,
+} from "../inbox/message-fetcher.js";
 import type { InboundMessage } from "../inbox/types.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
@@ -151,12 +154,14 @@ export function resolveUnifiedInboxRequest(
 export async function fetchUnifiedInbox(
   runtime: IAgentRuntime,
   request: GetLifeOpsUnifiedInboxRequest = {},
+  gmailSource?: GmailInboxSource,
 ): Promise<LifeOpsUnifiedInbox> {
   const { limit, allowed } = resolveUnifiedInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(allowed),
     limit,
     includeGmail: allowed.has("gmail"),
+    gmailSource,
   });
   return buildUnifiedInbox(inbound, { limit, allowed });
 }
@@ -169,7 +174,14 @@ export function withUnifiedInbox<TBase extends Constructor<LifeOpsServiceBase>>(
     async getUnifiedInbox(
       request: GetLifeOpsUnifiedInboxRequest = {},
     ): Promise<LifeOpsUnifiedInbox> {
-      return fetchUnifiedInbox(this.runtime, request);
+      const { limit, allowed } = resolveUnifiedInboxRequest(request);
+      const inbound = await fetchAllMessages(this.runtime, {
+        sources: Array.from(allowed),
+        limit,
+        includeGmail: allowed.has("gmail"),
+        gmailSource: this,
+      });
+      return buildUnifiedInbox(inbound, { limit, allowed });
     }
   }
 

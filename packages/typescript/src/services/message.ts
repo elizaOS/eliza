@@ -84,6 +84,7 @@ import {
 	attachAvailableContexts,
 	CONTEXT_ROUTING_STATE_KEY,
 	type ContextRoutingDecision,
+	getActiveRoutingContexts,
 	mergeContextRouting,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
@@ -3849,8 +3850,10 @@ export class DefaultMessageService implements IMessageService {
 
 		if (shouldRespondToMessage) {
 			const resolvedRouting = mergeContextRouting(state, message);
+			const hasResolvedRouting =
+				getActiveRoutingContexts(resolvedRouting).length > 0;
 			let executionState = state;
-			if (routedDecision) {
+			if (hasResolvedRouting) {
 				executionState = withContextRoutingValues(
 					await runtime.composeState(
 						message,

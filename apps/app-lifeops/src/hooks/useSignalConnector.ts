@@ -1,10 +1,10 @@
+import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "@elizaos/app-core/api";
 
 const PAIRING_POLL_INTERVAL_MS = 2_000;
 
@@ -92,18 +92,14 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         try {
           const ps = await client.getSignalPairingStatus(sessionId);
           setPairingStatus(ps);
+          setError(null);
           if (ps.state === "connected" || ps.state === "failed") {
             clearPairingPoll();
             pairingSessionIdRef.current = null;
             void refresh();
           }
         } catch (cause) {
-          // Keep polling across transient failures; log so a broken backend
-          // surfaces in the browser console instead of a silent stall.
-          console.warn(
-            "[useSignalConnector] pairing status poll failed",
-            cause,
-          );
+          setError(formatError(cause, "Signal pairing status poll failed."));
         }
       }, PAIRING_POLL_INTERVAL_MS);
     },

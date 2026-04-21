@@ -5,13 +5,13 @@ import type {
 import { client } from "@elizaos/app-core/api";
 import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
+import { Capacitor } from "@capacitor/core";
 import {
   getMobileSignalsPlugin,
   type MobileSignalsHealthSnapshot,
   type MobileSignalsSignal,
   type MobileSignalsSnapshot,
 } from "@elizaos/app-core/bridge/native-plugins";
-import { isNative } from "@elizaos/app-core/platform";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/app-core/utils/desktop-workspace";
 import {
   APP_PAUSE_EVENT,
@@ -32,11 +32,43 @@ type SignalFingerprint = {
   sentAtMs: number;
 };
 
+interface CapacitorRuntime {
+  getPlatform?: () => string;
+  isNativePlatform?: () => boolean;
+}
+
+interface WindowWithCapacitor extends Window {
+  Capacitor?: CapacitorRuntime;
+}
+
+function getWindowCapacitor(): CapacitorRuntime | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  return (window as WindowWithCapacitor).Capacitor;
+}
+
+function resolveCapacitorPlatform(): string {
+  const importedPlatform = Capacitor.getPlatform();
+  if (importedPlatform !== "web") {
+    return importedPlatform;
+  }
+  return getWindowCapacitor()?.getPlatform?.() ?? importedPlatform;
+}
+
+function isNativeCapacitorRuntime(): boolean {
+  return (
+    Capacitor.isNativePlatform() ||
+    getWindowCapacitor()?.isNativePlatform?.() === true ||
+    ["ios", "android"].includes(resolveCapacitorPlatform())
+  );
+}
+
 function resolveActivityPlatform(): string {
   if (isElectrobunRuntime()) {
     return "desktop_app";
   }
-  if (isNative) {
+  if (isNativeCapacitorRuntime()) {
     return "mobile_app";
   }
   return "web_app";
@@ -290,7 +322,9 @@ export function useLifeOpsActivitySignals(enabled = true): void {
     };
 
     const mobileSignals =
-      isNative && !isElectrobunRuntime() ? getMobileSignalsPlugin() : null;
+      isNativeCapacitorRuntime() && !isElectrobunRuntime()
+        ? getMobileSignalsPlugin()
+        : null;
     let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
     let mobileSignalsStarted = false;
     let mobileHealthPoller: number | null = null;

@@ -7,22 +7,7 @@ import { useEffect } from "react";
 import { useApp } from "../../state";
 import { GameView } from "../apps/GameView";
 import { getAppSlug } from "../apps/helpers";
-import { PageScopedChat } from "../chat/PageScopedChat";
-import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { AppsView } from "./AppsView";
-
-const APPS_SYSTEM_ADDENDUM = `
-You are scoped to controlling Milady's mini-apps on this page.
-Tools available:
-- LAUNCH_APP (aliases: OPEN_APP, START_APP, RUN_APP, LAUNCH_MINI_APP) — launch an app by name or slug.
-- CLOSE_APP (aliases: STOP_APP, EXIT_APP, KILL_APP, QUIT_APP) — stop a running app by runId or name.
-- LIST_RUNNING_APPS (aliases: LIST_APPS, WHATS_OPEN, SHOW_RUNNING_APPS) — list what is currently running.
-
-When the user asks "what's open" or "what is running", call LIST_RUNNING_APPS.
-When asked to launch/open/start an app, call LAUNCH_APP.
-When asked to close/stop/quit an app, call CLOSE_APP — prefer runId if disambiguation is needed.
-For unrelated requests, suggest the user switch to the main chat.
-`;
 
 type AppsPageViewRenderer = () => React.ReactElement;
 
@@ -35,13 +20,7 @@ export function AppsPageView({
   appsView?: AppsPageViewRenderer;
   gameView?: AppsPageViewRenderer;
 } = {}) {
-  const {
-    appRuns,
-    appsSubTab,
-    activeGameRunId,
-    activeConversationId,
-    setState,
-  } = useApp();
+  const { appRuns, appsSubTab, activeGameRunId, setState } = useApp();
   const hasActiveGame = activeGameRunId.trim().length > 0;
   const activeGameRun = hasActiveGame
     ? appRuns.find((run) => run.runId === activeGameRunId)
@@ -105,25 +84,5 @@ export function AppsPageView({
     );
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
-      <div className="min-w-0 flex-1 overflow-auto">
-        <AppsViewRenderer />
-      </div>
-      <RightSideChatPanel
-        storageKey="milady:chat-panel:apps"
-        defaultWidth={384}
-        minWidth={300}
-        maxWidth={720}
-      >
-        <PageScopedChat
-          scope="page-apps"
-          title="Apps assistant"
-          placeholder="Ask to launch or close an app..."
-          systemAddendum={APPS_SYSTEM_ADDENDUM}
-          bridgeFromConversationId={activeConversationId}
-        />
-      </RightSideChatPanel>
-    </div>
-  );
+  return <AppsViewRenderer />;
 }

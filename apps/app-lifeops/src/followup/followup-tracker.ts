@@ -19,17 +19,14 @@ import {
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 
 /**
- * Follow-up tracker (T7c).
- *
  * Periodically scans known contacts managed by the RelationshipsService and
  * identifies contacts whose `lastContactedAt` has exceeded the configured
  * threshold. Overdue entries are written as a single consolidated memory per
  * tick (`followup_overdue_digest`) so the morning check-in + the
  * `LIST_OVERDUE_FOLLOWUPS` action can pull from a canonical location.
  *
- * Graceful degradation: if `RelationshipsService` is not registered on the
- * runtime (T7b hasn't landed yet), the tracker logs once at info level and
- * returns an empty digest. No stubs, no fallbacks that mask missing data.
+ * If `RelationshipsService` is not registered on the runtime, the tracker logs
+ * once at info level and returns an empty digest.
  */
 
 /**
@@ -307,9 +304,8 @@ export async function reconcileFollowupsOnce(
   );
   await writeOverdueDigestMemory(runtime, digest);
 
-  // WS5: route each overdue contact through the shared LLM planner.
-  // Sensitive actions (nudges, calls, emails) are enqueued into the WS6
-  // approval queue — the tracker itself never auto-sends.
+  // Route each overdue contact through the shared LLM planner. Sensitive
+  // actions are enqueued into the approval queue; the tracker never auto-sends.
   for (const entry of digest.overdue) {
     const plannerContext: BackgroundJobContext = {
       jobKind: "followup_watchdog",

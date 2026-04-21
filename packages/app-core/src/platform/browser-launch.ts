@@ -137,6 +137,27 @@ async function exchangeCloudLaunchSession(
   throw lastError ?? new Error("Launch session exchange failed");
 }
 
+export function applyLaunchConnection(args: {
+  apiBase: string;
+  token?: string | null;
+  kind?: "cloud" | "remote";
+}): { apiBase: string; token: string | null } {
+  const normalizedApiBase = normalizeLaunchApiBase(args.apiBase);
+  const token = args.token?.trim() || null;
+
+  client.setBaseUrl(normalizedApiBase);
+  client.setToken(token);
+  savePersistedActiveServer(
+    createPersistedActiveServer({
+      kind: args.kind ?? "remote",
+      apiBase: normalizedApiBase,
+      ...(token ? { accessToken: token } : {}),
+    }),
+  );
+
+  return { apiBase: normalizedApiBase, token };
+}
+
 export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
@@ -149,15 +170,11 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
       normalizeLaunchBaseUrl(launchBase),
       launchSession,
     );
-    client.setBaseUrl(connection.apiBase);
-    client.setToken(connection.token);
-    savePersistedActiveServer(
-      createPersistedActiveServer({
-        kind: "cloud",
-        apiBase: connection.apiBase,
-        accessToken: connection.token,
-      }),
-    );
+    applyLaunchConnection({
+      kind: "cloud",
+      apiBase: connection.apiBase,
+      token: connection.token,
+    });
     stripLaunchParams();
     return true;
   }
@@ -167,18 +184,11 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
     return false;
   }
 
-  const normalizedApiBase = normalizeLaunchApiBase(apiBase);
-  const launchToken = params.get("token")?.trim() || null;
-
-  client.setBaseUrl(normalizedApiBase);
-  client.setToken(launchToken);
-  savePersistedActiveServer(
-    createPersistedActiveServer({
-      kind: "remote",
-      apiBase: normalizedApiBase,
-      ...(launchToken ? { accessToken: launchToken } : {}),
-    }),
-  );
+  applyLaunchConnection({
+    kind: "remote",
+    apiBase,
+    token: params.get("token")?.trim() || null,
+  });
   stripLaunchParams();
   return true;
 }

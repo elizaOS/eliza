@@ -94,54 +94,53 @@ export function AppWorkspaceChrome({
   const chatContent = chat ?? <ChatView variant="default" />;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-bg" data-testid={testId}>
-      {nav}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Main content area */}
+    <div className="flex min-h-0 flex-1 bg-bg" data-testid={testId}>
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {nav}
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {main}
         </div>
+      </div>
 
-        {/* Collapsible right-side chat sidebar */}
-        <aside
-          className={`flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200 ${
-            collapsed ? "w-10" : "w-[24rem]"
-          }`}
-          data-testid={`${testId}-chat-sidebar`}
-        >
-          <div className="flex h-10 items-center justify-between border-b border-border/30 px-2">
-            {collapsed ? (
+      {/* Collapsible right-side chat sidebar */}
+      <aside
+        className={`flex shrink-0 flex-col border-l border-border/30 bg-bg transition-[width] duration-200 ${
+          collapsed ? "w-10" : "w-[24rem]"
+        }`}
+        data-testid={`${testId}-chat-sidebar`}
+      >
+        <div className="flex h-10 items-center justify-between border-b border-border/30 px-2">
+          {collapsed ? (
+            <button
+              type="button"
+              className="mx-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+              aria-label="Expand chat"
+              onClick={() => handleToggle(false)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                <MessageSquare className="h-3.5 w-3.5" />
+                Chat
+              </div>
               <button
                 type="button"
-                className="mx-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-                aria-label="Expand chat"
-                onClick={() => handleToggle(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+                aria-label="Collapse chat"
+                onClick={() => handleToggle(true)}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronRight className="h-4 w-4" />
               </button>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Chat
-                </div>
-                <button
-                  type="button"
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-                  aria-label="Collapse chat"
-                  onClick={() => handleToggle(true)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </>
-            )}
-          </div>
-
-          {collapsed ? null : (
-            <div className="flex min-h-0 flex-1 flex-col">{chatContent}</div>
+            </>
           )}
-        </aside>
-      </div>
+        </div>
+
+        {collapsed ? null : (
+          <div className="flex min-h-0 flex-1 flex-col">{chatContent}</div>
+        )}
+      </aside>
     </div>
   );
 }

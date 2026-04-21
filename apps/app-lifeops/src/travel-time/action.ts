@@ -16,6 +16,7 @@ import { LifeOpsService } from "../lifeops/service.js";
 import {
   TravelTimeService,
   type CalendarEventLookupLike,
+  TravelTimeUnavailableError,
 } from "./service.js";
 
 type ComputeTravelBufferParams = {
@@ -32,7 +33,7 @@ export const computeTravelBufferAction: Action = {
     "ESTIMATE_TRAVEL",
   ],
   description:
-    "Compute a travel-time buffer (in minutes) for an upcoming calendar event using Google Maps Distance Matrix. Returns an explicit fallback result when GOOGLE_MAPS_API_KEY is absent or the call fails.",
+    "Compute a travel-time buffer (in minutes) for an upcoming calendar event using Google Maps Distance Matrix. Fails explicitly when Maps configuration, addresses, or provider responses are unavailable.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -56,14 +57,32 @@ export const computeTravelBufferAction: Action = {
       getCalendarFeed: lifeOps.getCalendarFeed.bind(lifeOps),
     };
     const service = new TravelTimeService(runtime, { calendar });
-    const result = await service.computeBuffer({
-      eventId,
-      originAddress: params.originAddress,
-    });
-    const text =
-      result.method === "maps-api"
-        ? `Travel buffer ${result.bufferMinutes} min (Maps API) — ${result.originAddress} → ${result.destinationAddress}`
-        : `Travel buffer ${result.bufferMinutes} min (fixed fallback: ${result.reason})`;
+    let result;
+    try {
+      result = await service.computeBuffer({
+        eventId,
+        originAddress: params.originAddress,
+      });
+    } catch (error) {
+      if (error instanceof TravelTimeUnavailableError) {
+        return {
+          text: error.message,
+          success: false,
+          values: {
+            success: false,
+            error: "TRAVEL_TIME_UNAVAILABLE",
+            reason: error.code,
+          },
+          data: {
+            actionName: "COMPUTE_TRAVEL_BUFFER",
+            error: "TRAVEL_TIME_UNAVAILABLE",
+            reason: error.code,
+          },
+        };
+      }
+      throw error;
+    }
+    const text = `Travel buffer ${result.bufferMinutes} min (Maps API) — ${result.originAddress} → ${result.destinationAddress}`;
     return {
       text,
       success: true,

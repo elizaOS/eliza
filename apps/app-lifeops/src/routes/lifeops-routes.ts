@@ -22,6 +22,7 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
@@ -42,7 +43,9 @@ import type {
   SendLifeOpsIMessageRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
+  StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
   SyncLifeOpsBrowserStateRequest,
@@ -57,6 +60,8 @@ import type {
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
+  LIFEOPS_CONNECTOR_MODES,
+  LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_INBOX_CHANNELS,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/app-lifeops/contracts";
@@ -266,15 +271,111 @@ function decodeMatchedPathComponent(
 function parsePositiveIntegerQuery(
   value: string | null,
   field: string,
+  options: { max?: number } = {},
 ): number | null {
-  if (!value) {
+  const normalized = value?.trim();
+  if (!normalized) {
     return null;
   }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  if (!/^\d+$/.test(normalized)) {
     throw new LifeOpsServiceError(400, `${field} must be a positive integer`);
   }
+  const parsed = Number.parseInt(normalized, 10);
+  if (parsed <= 0) {
+    throw new LifeOpsServiceError(400, `${field} must be a positive integer`);
+  }
+  if (options.max !== undefined && parsed > options.max) {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be less than or equal to ${options.max}`,
+    );
+  }
   return parsed;
+}
+
+function parseConnectorModeQuery(
+  value: string | null,
+): LifeOpsConnectorMode | undefined {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+  if (
+    !LIFEOPS_CONNECTOR_MODES.includes(
+      value as (typeof LIFEOPS_CONNECTOR_MODES)[number],
+    )
+  ) {
+    throw new LifeOpsServiceError(
+      400,
+      `mode must be one of: ${LIFEOPS_CONNECTOR_MODES.join(", ")}`,
+    );
+  }
+  return value as LifeOpsConnectorMode;
+}
+
+function parseConnectorSideQuery(
+  value: string | null,
+): LifeOpsConnectorSide | undefined {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+  if (
+    !LIFEOPS_CONNECTOR_SIDES.includes(
+      value as (typeof LIFEOPS_CONNECTOR_SIDES)[number],
+    )
+  ) {
+    throw new LifeOpsServiceError(
+      400,
+      `side must be one of: ${LIFEOPS_CONNECTOR_SIDES.join(", ")}`,
+    );
+  }
+  return value as LifeOpsConnectorSide;
+}
+
+function parseConnectorSideInput(
+  value: unknown,
+): LifeOpsConnectorSide | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(
+      400,
+      `side must be one of: ${LIFEOPS_CONNECTOR_SIDES.join(", ")}`,
+    );
+  }
+  return parseConnectorSideQuery(value);
+}
+
+function parseConnectorSideFromRequest(
+  url: URL,
+  body?: { side?: unknown } | null,
+): LifeOpsConnectorSide | undefined {
+  const querySide = parseConnectorSideQuery(url.searchParams.get("side"));
+  const bodySide = parseConnectorSideInput(body?.side);
+  if (querySide && bodySide && querySide !== bodySide) {
+    throw new LifeOpsServiceError(
+      400,
+      "side must match between query string and request body",
+    );
+  }
+  return bodySide ?? querySide;
+}
+
+function parseBooleanQuery(
+  value: string | null,
+  field: string,
+): boolean | undefined {
+  if (value === null) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+  throw new LifeOpsServiceError(400, `${field} must be a boolean`);
 }
 
 function parseActivitySignalStates(
@@ -560,9 +661,8 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } = await import(
-      "../lifeops/feature-flags.types.js"
-    );
+    const { isLifeOpsFeatureKey } =
+      await import("../lifeops/feature-flags.types.js");
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -571,9 +671,8 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } = await import(
-      "../lifeops/feature-flags.js"
-    );
+    const { createFeatureFlagService } =
+      await import("../lifeops/feature-flags.js");
     const service = createFeatureFlagService(ctx.state.runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
@@ -633,33 +732,15 @@ export async function handleLifeOpsRoutes(
   ) {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
+      const mode = parseConnectorModeQuery(url.searchParams.get("mode"));
+      const side = parseConnectorSideQuery(url.searchParams.get("side"));
       const rawGrantId = url.searchParams.get("grantId");
       json(
         res,
         await service.getGoogleConnectorStatus(
           url,
-          (rawMode ?? undefined) as
-            | "local"
-            | "remote"
-            | "cloud_managed"
-            | undefined,
-          (rawSide ?? undefined) as "owner" | "agent" | undefined,
+          mode,
+          side,
           rawGrantId ?? undefined,
         ),
       );
@@ -672,64 +753,25 @@ export async function handleLifeOpsRoutes(
   ) {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawSide = url.searchParams.get("side");
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
-      json(
-        res,
-        await service.getGoogleConnectorAccounts(
-          url,
-          (rawSide ?? undefined) as "owner" | "agent" | undefined,
-        ),
-      );
+      const side = parseConnectorSideQuery(url.searchParams.get("side"));
+      json(res, await service.getGoogleConnectorAccounts(url, side));
     });
   }
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      const rawForceSync = url.searchParams.get("forceSync");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
-      if (
-        rawForceSync !== null &&
-        rawForceSync !== "true" &&
-        rawForceSync !== "false" &&
-        rawForceSync !== "1" &&
-        rawForceSync !== "0"
-      ) {
-        throw new LifeOpsServiceError(400, "forceSync must be a boolean");
-      }
       const request: GetLifeOpsCalendarFeedRequest = {
-        mode: (rawMode ?? undefined) as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: (rawSide ?? undefined) as "owner" | "agent" | undefined,
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
         calendarId: url.searchParams.get("calendarId") ?? undefined,
         timeMin: url.searchParams.get("timeMin") ?? undefined,
         timeMax: url.searchParams.get("timeMax") ?? undefined,
         timeZone: url.searchParams.get("timeZone") ?? undefined,
-        forceSync:
-          rawForceSync === null
-            ? undefined
-            : rawForceSync === "true" || rawForceSync === "1",
+        forceSync: parseBooleanQuery(
+          url.searchParams.get("forceSync"),
+          "forceSync",
+        ),
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
@@ -739,29 +781,9 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/calendar/next-context") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
       const request: GetLifeOpsCalendarFeedRequest = {
-        mode: (rawMode ?? undefined) as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: (rawSide ?? undefined) as "owner" | "agent" | undefined,
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
         calendarId: url.searchParams.get("calendarId") ?? undefined,
         timeMin: url.searchParams.get("timeMin") ?? undefined,
         timeMax: url.searchParams.get("timeMax") ?? undefined,
@@ -774,47 +796,18 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/gmail/triage") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      const rawForceSync = url.searchParams.get("forceSync");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
-      if (
-        rawForceSync !== null &&
-        rawForceSync !== "true" &&
-        rawForceSync !== "false" &&
-        rawForceSync !== "1" &&
-        rawForceSync !== "0"
-      ) {
-        throw new LifeOpsServiceError(400, "forceSync must be a boolean");
-      }
       const request: GetLifeOpsGmailTriageRequest = {
-        mode: (rawMode ?? undefined) as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: (rawSide ?? undefined) as "owner" | "agent" | undefined,
-        forceSync:
-          rawForceSync === null
-            ? undefined
-            : rawForceSync === "true" || rawForceSync === "1",
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        forceSync: parseBooleanQuery(
+          url.searchParams.get("forceSync"),
+          "forceSync",
+        ),
         maxResults:
-          url.searchParams.get("maxResults") === null
-            ? undefined
-            : Number(url.searchParams.get("maxResults")),
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailTriage(url, request));
@@ -824,63 +817,24 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/gmail/search") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      const rawForceSync = url.searchParams.get("forceSync");
       const query = url.searchParams.get("query");
-      const rawReplyNeededOnly = url.searchParams.get("replyNeededOnly");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
-      if (
-        rawForceSync !== null &&
-        rawForceSync !== "true" &&
-        rawForceSync !== "false" &&
-        rawForceSync !== "1" &&
-        rawForceSync !== "0"
-      ) {
-        throw new LifeOpsServiceError(400, "forceSync must be a boolean");
-      }
-      if (
-        rawReplyNeededOnly !== null &&
-        rawReplyNeededOnly !== "true" &&
-        rawReplyNeededOnly !== "false" &&
-        rawReplyNeededOnly !== "1" &&
-        rawReplyNeededOnly !== "0"
-      ) {
-        throw new LifeOpsServiceError(400, "replyNeededOnly must be a boolean");
-      }
       const request: GetLifeOpsGmailSearchRequest = {
-        mode: (rawMode ?? undefined) as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: (rawSide ?? undefined) as "owner" | "agent" | undefined,
-        forceSync:
-          rawForceSync === null
-            ? undefined
-            : rawForceSync === "true" || rawForceSync === "1",
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        forceSync: parseBooleanQuery(
+          url.searchParams.get("forceSync"),
+          "forceSync",
+        ),
         maxResults:
-          url.searchParams.get("maxResults") === null
-            ? undefined
-            : Number(url.searchParams.get("maxResults")),
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
         query: query ?? "",
-        replyNeededOnly:
-          rawReplyNeededOnly === null
-            ? undefined
-            : rawReplyNeededOnly === "true" || rawReplyNeededOnly === "1",
+        replyNeededOnly: parseBooleanQuery(
+          url.searchParams.get("replyNeededOnly"),
+          "replyNeededOnly",
+        ),
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailSearch(url, request));
@@ -890,47 +844,18 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/gmail/needs-response") {
     if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      const rawSide = url.searchParams.get("side");
-      const rawForceSync = url.searchParams.get("forceSync");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
-      if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-        throw new LifeOpsServiceError(400, "side must be one of: owner, agent");
-      }
-      if (
-        rawForceSync !== null &&
-        rawForceSync !== "true" &&
-        rawForceSync !== "false" &&
-        rawForceSync !== "1" &&
-        rawForceSync !== "0"
-      ) {
-        throw new LifeOpsServiceError(400, "forceSync must be a boolean");
-      }
       const request: GetLifeOpsGmailTriageRequest = {
-        mode: (rawMode ?? undefined) as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: (rawSide ?? undefined) as "owner" | "agent" | undefined,
-        forceSync:
-          rawForceSync === null
-            ? undefined
-            : rawForceSync === "true" || rawForceSync === "1",
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        forceSync: parseBooleanQuery(
+          url.searchParams.get("forceSync"),
+          "forceSync",
+        ),
         maxResults:
-          url.searchParams.get("maxResults") === null
-            ? undefined
-            : Number(url.searchParams.get("maxResults")),
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailNeedsResponse(url, request));
@@ -987,18 +912,9 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/inbox/unified") {
     return runRoute(ctx, async (service) => {
-      const rawLimit = url.searchParams.get("limit");
-      let limit: number | undefined;
-      if (rawLimit !== null) {
-        const parsed = Number.parseInt(rawLimit, 10);
-        if (!Number.isFinite(parsed) || parsed <= 0) {
-          throw new LifeOpsServiceError(
-            400,
-            "limit must be a positive integer",
-          );
-        }
-        limit = parsed;
-      }
+      const limit =
+        parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
+        undefined;
       const rawChannels = url.searchParams.get("channels");
       let channels: LifeOpsInboxChannel[] | undefined;
       if (rawChannels !== null && rawChannels.trim().length > 0) {
@@ -1197,26 +1113,10 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/status") {
     return runRoute(ctx, async (service) => {
-      const rawMode = url.searchParams.get("mode");
-      if (
-        rawMode !== null &&
-        rawMode !== "local" &&
-        rawMode !== "remote" &&
-        rawMode !== "cloud_managed"
-      ) {
-        throw new LifeOpsServiceError(
-          400,
-          "mode must be one of: local, remote, cloud_managed",
-        );
-      }
       json(
         res,
         await service.getXConnectorStatus(
-          (rawMode ?? undefined) as
-            | "local"
-            | "remote"
-            | "cloud_managed"
-            | undefined,
+          parseConnectorModeQuery(url.searchParams.get("mode")),
         ),
       );
     });
@@ -1240,11 +1140,10 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/x/dms/digest") {
     return runRoute(ctx, async (service) => {
-      const limitParam = url.searchParams.get("limit");
       const limit =
-        limitParam && Number.isFinite(Number(limitParam))
-          ? Math.max(1, Math.min(100, Math.floor(Number(limitParam))))
-          : undefined;
+        parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+          max: 100,
+        }) ?? undefined;
       const conversationId = url.searchParams.get("conversationId")?.trim();
       json(
         res,
@@ -1383,9 +1282,13 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/telegram/status"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
-      json(res, await service.getTelegramConnectorStatus(rawSide ?? undefined));
+      json(
+        res,
+        await service.getTelegramConnectorStatus(
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
     });
   }
 
@@ -1415,9 +1318,9 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/cancel"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
-      const side = rawSide ?? "owner";
+      const side =
+        parseConnectorSideQuery(url.searchParams.get("side")) ?? "owner";
       const pending = await service.getTelegramConnectorStatus(side);
       if (pending.authState !== "idle" && pending.authState !== "connected") {
         json(res, await service.disconnectTelegram(side));
@@ -1431,9 +1334,13 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/disconnect"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectTelegram(rawSide ?? undefined));
+      json(
+        res,
+        await service.disconnectTelegram(
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
     });
   }
 
@@ -1459,16 +1366,27 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/signal/status"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
-      json(res, await service.getSignalConnectorStatus(rawSide ?? undefined));
+      json(
+        res,
+        await service.getSignalConnectorStatus(
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
     });
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/signal/pair") {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    const body = await readJsonBody<StartLifeOpsSignalPairingRequest>(req, res);
+    if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.startSignalPairing(rawSide ?? undefined), 201);
+      json(
+        res,
+        await service.startSignalPairing(
+          parseConnectorSideFromRequest(url, body),
+        ),
+        201,
+      );
     });
   }
 
@@ -1476,19 +1394,28 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/signal/pairing-status"
   ) {
-    const sessionId = url.searchParams.get("sessionId");
-    if (!sessionId) {
-      throw new LifeOpsServiceError(400, "sessionId is required");
-    }
     return runRoute(ctx, async (service) => {
+      const sessionId = url.searchParams.get("sessionId")?.trim();
+      if (!sessionId) {
+        throw new LifeOpsServiceError(400, "sessionId is required");
+      }
       json(res, await service.getSignalPairingStatus(sessionId));
     });
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/signal/stop") {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, service.stopSignalPairing(rawSide ?? undefined));
+      json(
+        res,
+        await service.stopSignalPairing(
+          parseConnectorSideFromRequest(url, body),
+        ),
+      );
     });
   }
 
@@ -1496,9 +1423,18 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/signal/disconnect"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectSignal(rawSide ?? undefined));
+      json(
+        res,
+        await service.disconnectSignal(
+          parseConnectorSideFromRequest(url, body),
+        ),
+      );
     });
   }
 
@@ -1510,9 +1446,13 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/discord/status"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
     return runRoute(ctx, async (service) => {
-      json(res, await service.getDiscordConnectorStatus(rawSide ?? undefined));
+      json(
+        res,
+        await service.getDiscordConnectorStatus(
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
     });
   }
 
@@ -1520,9 +1460,18 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/connect"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    const body = await readJsonBody<StartLifeOpsDiscordConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.authorizeDiscordConnector(rawSide ?? undefined));
+      json(
+        res,
+        await service.authorizeDiscordConnector(
+          parseConnectorSideFromRequest(url, body),
+        ),
+      );
     });
   }
 
@@ -1530,9 +1479,18 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/disconnect"
   ) {
-    const rawSide = url.searchParams.get("side") as LifeOpsConnectorSide | null;
+    const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.disconnectDiscord(rawSide ?? undefined));
+      json(
+        res,
+        await service.disconnectDiscord(
+          parseConnectorSideFromRequest(url, body),
+        ),
+      );
     });
   }
 

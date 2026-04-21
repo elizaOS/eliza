@@ -88,7 +88,7 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
     expect(data.intentId).toBe("intent-local-1");
   });
 
-  test("missing kind defaults to a local reminder when the bridge is absent", async () => {
+  test("missing kind fails instead of inventing a reminder intent", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await publishDeviceIntentAction.handler!(
       makeRuntime(),
@@ -97,9 +97,36 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
       { parameters: {} },
     );
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(broadcastIntent).toHaveBeenCalledTimes(1);
+    expect(broadcastIntent).not.toHaveBeenCalled();
     const r = result as { success: boolean; values?: Record<string, unknown> };
-    expect(r.success).toBe(true);
-    expect(r.values?.kind).toBe("reminder");
+    expect(r.success).toBe(false);
+    expect(r.values?.error).toBe("MISSING_KIND");
+  });
+
+  test("cloud publish requires a response intent id", async () => {
+    process.env.MILADY_DEVICE_BUS_URL = "https://device-bus.example.test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ deliveredTo: ["mac"] }),
+    } as Response);
+
+    const result = await publishDeviceIntentAction.handler!(
+      makeRuntime(),
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          kind: "reminder",
+          payload: { title: "Stretch break" },
+        },
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(broadcastIntent).not.toHaveBeenCalled();
+    const r = result as { success: boolean; values?: Record<string, unknown> };
+    expect(r.success).toBe(false);
+    expect(r.values?.error).toBe("DEVICE_BUS_INVALID_RESPONSE");
   });
 });

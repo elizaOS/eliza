@@ -1,18 +1,3 @@
-/**
- * EventEditorDrawer — right-side drawer for editing a LifeOps calendar event.
- *
- * Opens over the main pane (not the chat panel). Fields: title, startAt, endAt,
- * notes, reminders (minutesBefore multi-input), linked goal dropdown.
- *
- * Actions: Save, Delete (with confirm), Close.
- *
- * While the drawer is open, the SelectionContext holds { eventId } so the chat
- * placeholder becomes context-aware.
- *
- * TODO: updateLifeOpsCalendarEvent and deleteLifeOpsCalendarEvent are Stream C
- * contracts — stubs below will be replaced when Stream C lands.
- */
-
 import {
   Button,
   ConfirmDialog,
@@ -20,24 +5,12 @@ import {
   Dialog,
   DialogContent,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Textarea,
   useApp,
 } from "@elizaos/app-core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsGoalRecord,
-} from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-
-// ---------------------------------------------------------------------------
-// Stream C contract stubs — remove when updateLifeOpsCalendarEvent lands.
-// ---------------------------------------------------------------------------
 
 type CalendarEventPatch = {
   title?: string;
@@ -46,10 +19,6 @@ type CalendarEventPatch = {
   description?: string;
   minutesBefore?: number[];
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function toLocalInputValue(isoString: string | null): string {
   if (!isoString) {
@@ -71,14 +40,9 @@ function fromLocalInputValue(localValue: string): string | null {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export interface EventEditorDrawerProps {
   open: boolean;
   event: LifeOpsCalendarEvent | null;
-  goals?: LifeOpsGoalRecord[];
   onClose: () => void;
   onSaved?: (event: LifeOpsCalendarEvent) => void;
   onDeleted?: (eventId: string) => void;
@@ -87,7 +51,6 @@ export interface EventEditorDrawerProps {
 export function EventEditorDrawer({
   open,
   event,
-  goals = [],
   onClose,
   onSaved,
   onDeleted,
@@ -97,14 +60,12 @@ export function EventEditorDrawer({
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [notes, setNotes] = useState("");
-  const [linkedGoalId, setLinkedGoalId] = useState<string>("");
-  const [reminders, setReminders] = useState<string>(""); // comma-separated minutesBefore
+  const [reminders, setReminders] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Populate form when event changes.
   useEffect(() => {
     if (!event) {
       return;
@@ -113,7 +74,6 @@ export function EventEditorDrawer({
     setStartAt(toLocalInputValue(event.startAt));
     setEndAt(toLocalInputValue(event.endAt));
     setNotes(event.description ?? "");
-    setLinkedGoalId("");
     setReminders("");
     setError(null);
   }, [event]);
@@ -353,39 +313,6 @@ export function EventEditorDrawer({
                 })}
               />
             </div>
-
-            {goals.length > 0 ? (
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted">
-                  {t("eventEditor.linkedGoal", {
-                    defaultValue: "Linked goal",
-                  })}
-                </div>
-                <Select value={linkedGoalId} onValueChange={setLinkedGoalId}>
-                  <SelectTrigger
-                    aria-label={t("eventEditor.linkedGoal", {
-                      defaultValue: "Linked goal",
-                    })}
-                  >
-                    <SelectValue
-                      placeholder={t("eventEditor.noGoal", {
-                        defaultValue: "No goal",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">
-                      {t("eventEditor.noGoal", { defaultValue: "No goal" })}
-                    </SelectItem>
-                    {goals.map((g) => (
-                      <SelectItem key={g.goal.id} value={g.goal.id}>
-                        {g.goal.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-border/12 px-5 py-4">

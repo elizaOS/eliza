@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
 } from "@elizaos/shared/connectors";
+import type {
+  LifeOpsGmailTriageFeed,
+  LifeOpsGoogleConnectorStatus,
+} from "@elizaos/shared/contracts/lifeops";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 
@@ -25,6 +28,12 @@ const DEFAULT_SOURCES = [
 const MAX_ROOMS_SCANNED = 200;
 const THREAD_CONTEXT_LIMIT = 5;
 const SNIPPET_MAX_LENGTH = 200;
+const INTERNAL_URL = new URL("http://127.0.0.1/");
+
+export interface GmailInboxSource {
+  getGoogleConnectorStatus(requestUrl: URL): Promise<LifeOpsGoogleConnectorStatus>;
+  getGmailTriage(requestUrl: URL): Promise<LifeOpsGmailTriageFeed>;
+}
 
 // ---------------------------------------------------------------------------
 // Chat channel fetcher
@@ -166,73 +175,59 @@ export async function fetchChatMessages(
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch recent Gmail triage data via the existing LifeOpsService.
+ * Fetch recent Gmail triage data from an explicit service source.
  * Returns normalised InboundMessage[] from the email triage feed.
  */
 export async function fetchGmailMessages(
-  runtime: IAgentRuntime,
+  source: GmailInboxSource,
   opts: {
     sinceIso?: string;
     limit?: number;
   },
 ): Promise<InboundMessage[]> {
-  try {
-    const { LifeOpsService } = await import("../lifeops/service.js");
-    const service = new LifeOpsService(runtime);
-    const INTERNAL_URL = new URL("http://127.0.0.1/");
+  const status = await source.getGoogleConnectorStatus(INTERNAL_URL);
+  if (!status.connected) return [];
+  const capabilities = status.grantedCapabilities ?? [];
+  if (!capabilities.includes("google.gmail.triage")) return [];
 
-    // Check if Gmail is connected
-    const status = await service.getGoogleConnectorStatus(INTERNAL_URL);
-    if (!status.connected) return [];
-    const capabilities = status.grantedCapabilities ?? [];
-    if (!capabilities.includes("google.gmail.triage")) return [];
+  const triageFeed = await source.getGmailTriage(INTERNAL_URL);
+  if (triageFeed.messages.length === 0) return [];
 
-    // Fetch triage feed
-    const triageFeed = await service.getGmailTriage(INTERNAL_URL);
-    if (!triageFeed || triageFeed.messages.length === 0) return [];
+  const limit = opts.limit ?? 50;
+  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
 
-    const limit = opts.limit ?? 50;
-    const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
+  const results: InboundMessage[] = [];
+  for (const msg of triageFeed.messages.slice(0, limit)) {
+    const receivedMs = Date.parse(String(msg.receivedAt));
+    if (sinceMs > 0 && receivedMs < sinceMs) continue;
 
-    const results: InboundMessage[] = [];
-    for (const msg of triageFeed.messages.slice(0, limit)) {
-      const receivedMs = Date.parse(String(msg.receivedAt));
-      if (sinceMs > 0 && receivedMs < sinceMs) continue;
+    const from = msg.from || msg.fromEmail || "Unknown sender";
+    const gmailLink =
+      msg.htmlLink ??
+      (msg.externalId
+        ? `https://mail.google.com/mail/u/0/#inbox/${msg.externalId}`
+        : undefined);
 
-      const from = msg.from || msg.fromEmail || "Unknown sender";
-      const gmailLink =
-        msg.htmlLink ??
-        (msg.externalId
-          ? `https://mail.google.com/mail/u/0/#inbox/${msg.externalId}`
-          : undefined);
-
-      results.push({
-        id: msg.id || `gmail-${Date.now()}-${results.length}`,
-        source: "gmail",
-        senderName: from,
-        channelName: `Email from ${from}`,
-        channelType: "dm",
-        text: msg.snippet || msg.subject || "",
-        snippet: (msg.snippet || msg.subject || "").slice(
-          0,
-          SNIPPET_MAX_LENGTH,
-        ),
-        timestamp: receivedMs,
-        deepLink: gmailLink ?? undefined,
-        gmailMessageId: msg.externalId || msg.id,
-        gmailIsImportant: msg.isImportant ?? false,
-        gmailLikelyReplyNeeded: msg.likelyReplyNeeded ?? false,
-      });
-    }
-
-    return results;
-  } catch (error) {
-    logger.debug(
-      "[inbox-fetcher] Gmail fetch failed (likely not connected):",
-      String(error),
-    );
-    return [];
+    results.push({
+      id: msg.id || `gmail-${Date.now()}-${results.length}`,
+      source: "gmail",
+      senderName: from,
+      channelName: `Email from ${from}`,
+      channelType: "dm",
+      text: msg.snippet || msg.subject || "",
+      snippet: (msg.snippet || msg.subject || "").slice(
+        0,
+        SNIPPET_MAX_LENGTH,
+      ),
+      timestamp: receivedMs,
+      deepLink: gmailLink ?? undefined,
+      gmailMessageId: msg.externalId || msg.id,
+      gmailIsImportant: msg.isImportant ?? false,
+      gmailLikelyReplyNeeded: msg.likelyReplyNeeded ?? false,
+    });
   }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,11 +244,22 @@ export async function fetchAllMessages(
     sinceIso?: string;
     limit?: number;
     includeGmail?: boolean;
+    gmailSource?: GmailInboxSource;
   },
 ): Promise<InboundMessage[]> {
   const includeGmail =
     opts.includeGmail !== false &&
     (!opts.sources || opts.sources.includes("gmail"));
+  const gmailMessagesPromise = includeGmail
+    ? opts.gmailSource
+      ? fetchGmailMessages(opts.gmailSource, {
+          sinceIso: opts.sinceIso,
+          limit: opts.limit,
+        })
+      : Promise.reject(
+          new Error("fetchAllMessages requires gmailSource when Gmail is included"),
+        )
+    : Promise.resolve([]);
 
   const [chatMessages, gmailMessages] = await Promise.all([
     fetchChatMessages(runtime, {
@@ -261,12 +267,7 @@ export async function fetchAllMessages(
       sinceIso: opts.sinceIso,
       limit: opts.limit,
     }),
-    includeGmail
-      ? fetchGmailMessages(runtime, {
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
-        })
-      : Promise.resolve([]),
+    gmailMessagesPromise,
   ]);
 
   const combined = [...chatMessages, ...gmailMessages];

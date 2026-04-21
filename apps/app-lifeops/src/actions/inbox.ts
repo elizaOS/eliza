@@ -31,6 +31,7 @@ import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { looksLikeEmailVenting } from "./non-actionable-request.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
+import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedRequest } from "./approval.js";
 
 // ---------------------------------------------------------------------------
@@ -260,7 +261,13 @@ async function resolveSubactionPlan(
         typeof parsed.confirmed === "boolean" ? parsed.confirmed : null,
     };
   } catch (error) {
-    logger.warn("[INBOX] Failed to plan inbox subaction:", String(error));
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[INBOX] failed to plan inbox subaction",
+    );
     return {
       subaction: null,
       shouldAct: false,
@@ -597,6 +604,7 @@ async function handleTriage(
     sources: config.channels,
     sinceIso,
     limit: 200,
+    gmailSource: new LifeOpsService(runtime),
   });
 
   if (allMessages.length === 0) {
@@ -719,7 +727,14 @@ async function handleTriage(
           `[URGENT] ${msg.channelName}: "${msg.snippet}"${linkText}`,
         );
       } catch (err) {
-        logger.warn("[INBOX] Escalation failed:", String(err));
+        logger.warn(
+          {
+            src: "action:inbox",
+            error: err instanceof Error ? err.message : String(err),
+            messageId: msg.id,
+          },
+          "[INBOX] escalation failed",
+        );
       }
     }
 
@@ -891,7 +906,13 @@ async function handleDigest(
       },
     );
   } catch (err) {
-    logger.warn("[INBOX] Failed to deliver digest:", String(err));
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "[INBOX] failed to deliver digest",
+    );
   }
 
   return {
@@ -1188,7 +1209,14 @@ async function tryAutoReply(
     logger.info(`[INBOX] Auto-replied to ${msg.senderName} on ${msg.source}`);
     return true;
   } catch (err) {
-    logger.warn("[INBOX] Auto-reply send failed:", String(err));
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: err instanceof Error ? err.message : String(err),
+        messageId: msg.id,
+      },
+      "[INBOX] auto-reply send failed",
+    );
     return false;
   }
 }

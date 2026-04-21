@@ -31,17 +31,6 @@ vi.mock("../../api", () => ({
   client: clientMock,
 }));
 
-vi.mock("../chat/RightSideChatPanel.js", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RightSideChatPanel: ({ children }: { children: any }) => (
-    <div data-testid="browser-chat-panel">{children}</div>
-  ),
-}));
-
-vi.mock("../chat/PageScopedChat.js", () => ({
-  PageScopedChat: () => <div data-testid="browser-page-scoped-chat" />,
-}));
-
 vi.mock("./useBrowserWorkspaceWalletBridge", () => ({
   useBrowserWorkspaceWalletBridge: () => ({
     postBrowserWalletReady: vi.fn(),

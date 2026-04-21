@@ -2,32 +2,26 @@
  * T8a — Travel-time awareness (plan §6.9).
  *
  * {@link TravelTimeService} computes a travel-time buffer (in minutes) for a
- * calendar event. When GOOGLE_MAPS_API_KEY is set, it calls Google's
- * Distance Matrix API with `departure_time=now` and prefers
- * `duration_in_traffic` over `duration`. When the key is absent or the call
- * fails, it returns an explicit fallback result carrying
- * `method: "fallback-fixed"` so consumers can branch on partial data — this
- * is explicit-absence, not a stub.
+ * calendar event. It calls Google's Distance Matrix API with
+ * `departure_time=now` and prefers `duration_in_traffic` over `duration`.
+ * Missing configuration, missing addresses, and provider failures are surfaced
+ * as explicit errors. The service never fabricates a travel buffer.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/shared/contracts/lifeops";
 
-export const FALLBACK_FIXED_BUFFER_MINUTES = 30;
 export const GOOGLE_DISTANCE_MATRIX_URL =
   "https://maps.googleapis.com/maps/api/distancematrix/json";
 
-export type TravelBufferMethod = "maps-api" | "fallback-fixed";
+export type TravelBufferMethod = "maps-api";
 
 export interface TravelBufferResult {
   bufferMinutes: number;
   method: TravelBufferMethod;
-  /** Reason included when method === "fallback-fixed". */
-  reason?: string;
   originAddress: string | null;
   destinationAddress: string | null;
 }
@@ -79,6 +73,21 @@ interface DistanceMatrixResponse {
   destination_addresses?: string[];
 }
 
+export class TravelTimeUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | "MISSING_DESTINATION"
+      | "MISSING_ORIGIN"
+      | "MISSING_API_KEY"
+      | "DISTANCE_MATRIX_FAILED"
+      | "INVALID_DISTANCE_MATRIX_RESPONSE",
+  ) {
+    super(message);
+    this.name = "TravelTimeUnavailableError";
+  }
+}
+
 export class TravelTimeService {
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -107,26 +116,23 @@ export class TravelTimeService {
       normalizeAddress(this.deps.defaultOriginAddress ?? null);
 
     if (!destinationAddress) {
-      return this.fallback(
-        originAddress,
-        destinationAddress,
-        "event has no location",
+      throw new TravelTimeUnavailableError(
+        "Cannot compute travel time because the event has no destination location.",
+        "MISSING_DESTINATION",
       );
     }
     if (!originAddress) {
-      return this.fallback(
-        originAddress,
-        destinationAddress,
-        "no origin address supplied",
+      throw new TravelTimeUnavailableError(
+        "Cannot compute travel time because no origin address was supplied.",
+        "MISSING_ORIGIN",
       );
     }
 
     const apiKey = (this.deps.getApiKey ?? (() => process.env.GOOGLE_MAPS_API_KEY))();
     if (!apiKey) {
-      return this.fallback(
-        originAddress,
-        destinationAddress,
-        "GOOGLE_MAPS_API_KEY not set",
+      throw new TravelTimeUnavailableError(
+        "Cannot compute travel time because GOOGLE_MAPS_API_KEY is not configured.",
+        "MISSING_API_KEY",
       );
     }
 
@@ -139,36 +145,21 @@ export class TravelTimeService {
 
     const response = await safeFetch(fetchImpl, url);
     if (response.ok === false) {
-      return this.fallback(
-        originAddress,
-        destinationAddress,
-        `distance matrix ${response.kind}: ${response.message}`,
+      throw new TravelTimeUnavailableError(
+        `Distance Matrix ${response.kind} error: ${response.message}`,
+        "DISTANCE_MATRIX_FAILED",
       );
     }
     const parsed = parseDistanceMatrix(response.body);
     if (parsed.ok === false) {
-      return this.fallback(originAddress, destinationAddress, parsed.reason);
+      throw new TravelTimeUnavailableError(
+        parsed.reason,
+        "INVALID_DISTANCE_MATRIX_RESPONSE",
+      );
     }
     return {
       bufferMinutes: parsed.bufferMinutes,
       method: "maps-api",
-      originAddress,
-      destinationAddress,
-    };
-  }
-
-  private fallback(
-    originAddress: string | null,
-    destinationAddress: string | null,
-    reason: string,
-  ): TravelBufferResult {
-    logger.warn(
-      `[TravelTimeService] falling back to fixed ${FALLBACK_FIXED_BUFFER_MINUTES}m buffer: ${reason}`,
-    );
-    return {
-      bufferMinutes: FALLBACK_FIXED_BUFFER_MINUTES,
-      method: "fallback-fixed",
-      reason,
       originAddress,
       destinationAddress,
     };
