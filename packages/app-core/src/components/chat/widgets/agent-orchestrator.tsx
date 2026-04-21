@@ -454,8 +454,102 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   );
 }
 
+/**
+ * Compact "Terminals" widget — lists the live PTY sessions so the user
+ * can jump into any running terminal (orchestrator-spawned or opened
+ * manually) directly from the widgets rail. The full task/coordinator
+ * surface lives in its own view; this widget stays intentionally thin.
+ */
 function OrchestratorTasksWidget(_props: ChatSidebarWidgetProps) {
-  return <AppCodingAgentTasksPanel />;
+  const app = useApp() as ReturnType<typeof useApp> | undefined;
+  const t = app?.t ?? fallbackTranslate;
+  const setState = app?.setState;
+  const activeTerminalSessionId =
+    (app?.activeTerminalSessionId as string | null | undefined) ?? null;
+  const { ptySessions } = usePtySessions();
+
+  const sessions = useMemo(
+    () => [...ptySessions].sort((a, b) => a.label.localeCompare(b.label)),
+    [ptySessions],
+  );
+
+  const focusSession = (sessionId: string) => {
+    if (!setState) return;
+    setState("activeInboxChat", null);
+    setState("activeTerminalSessionId", sessionId);
+  };
+
+  const spawnTerminal = async () => {
+    try {
+      const res = await client.spawnShellSession();
+      focusSession(res.sessionId);
+    } catch (err) {
+      console.error("[OrchestratorTasksWidget] spawn failed:", err);
+    }
+  };
+
+  return (
+    <WidgetSection
+      title={t("orchestratortaskswidget.Title", { defaultValue: "Terminals" })}
+      icon={<TerminalIcon className="h-4 w-4" />}
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void spawnTerminal()}
+          aria-label={t("orchestratortaskswidget.NewTerminal", {
+            defaultValue: "New terminal",
+          })}
+          className="h-6 w-6 p-0 text-muted"
+        >
+          <Play className="h-3.5 w-3.5" />
+        </Button>
+      }
+      testId="chat-widget-terminals"
+    >
+      {sessions.length === 0 ? (
+        <EmptyWidgetState
+          icon={<TerminalIcon className="h-4 w-4" />}
+          title={t("orchestratortaskswidget.EmptyTitle", {
+            defaultValue: "No terminals running",
+          })}
+          description={t("orchestratortaskswidget.EmptySubtitle", {
+            defaultValue: "Start one from the Terminal channel.",
+          })}
+        />
+      ) : (
+        <div className="flex flex-col gap-1">
+          {sessions.map((session) => {
+            const isActive = session.sessionId === activeTerminalSessionId;
+            const dotClass = STATUS_DOT[session.status] ?? "bg-muted";
+            const pulse = PULSE_STATUSES.has(session.status)
+              ? " animate-pulse"
+              : "";
+            return (
+              <button
+                key={session.sessionId}
+                type="button"
+                onClick={() => focusSession(session.sessionId)}
+                data-testid={`terminals-widget-row-${session.sessionId}`}
+                aria-current={isActive ? "true" : undefined}
+                className={`flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-xs transition-colors ${
+                  isActive
+                    ? "bg-accent/10 text-txt"
+                    : "text-muted hover:bg-bg-hover/40 hover:text-txt"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}${pulse}`}
+                />
+                <span className="min-w-0 flex-1 truncate">{session.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </WidgetSection>
+  );
 }
 
 function OrchestratorActivityWidget({
