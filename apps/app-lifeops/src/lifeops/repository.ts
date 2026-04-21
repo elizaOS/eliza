@@ -2356,6 +2356,25 @@ export class LifeOpsRepository {
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_block_rules_active_gate ON life_block_rules(active, gate_type) WHERE active = TRUE`,
     );
+
+    // ── lifeops_features (feature opt-in framework) ────────────────────
+    // Holds per-feature override rows. Compile-time defaults in
+    // `feature-flags.types.ts` are the authority when no row exists; the
+    // table never represents a "default" source — absence is the canonical
+    // default state. See `feature-flags.ts` for the service contract.
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS lifeops_features (
+        feature_key TEXT PRIMARY KEY,
+        enabled BOOLEAN NOT NULL,
+        source TEXT NOT NULL,
+        enabled_at TIMESTAMPTZ,
+        enabled_by UUID,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`,
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {

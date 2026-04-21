@@ -86,6 +86,7 @@ import type {
   ApprovalChannel,
   ApprovalPayload,
 } from "./approval-queue.types.js";
+import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
 // ---------------------------------------------------------------------------
 // Job kinds — closed enum aligned to PRD §"Background Jobs And Cron Handlers"
@@ -358,9 +359,12 @@ function coercePayload(
           record.orderType === "hold" || record.orderType === "instant"
             ? record.orderType
             : null,
-        search,
-        passengers,
-        calendarSync,
+        // Planner output is shaped by the LLM; downstream booking flow
+        // re-validates each field before any real Duffel call. Cast through
+        // unknown to satisfy the closed TravelBookingPayloadFields shapes.
+        search: search as TravelBookingPayloadFields["search"],
+        passengers: passengers as unknown as TravelBookingPayloadFields["passengers"],
+        calendarSync: calendarSync as unknown as TravelBookingPayloadFields["calendarSync"],
         summary: typeof record.summary === "string" ? record.summary : null,
       };
     }
