@@ -160,6 +160,14 @@ export interface BrowserWorkspaceTab {
   createdAt: string;
   updatedAt: string;
   lastFocusedAt: string | null;
+  /** Remote/cloud-managed providers expose a cached live-view image URL. */
+  liveViewUrl?: string | null;
+  /** Interactive live view (rfb/WebSocket stream) when the provider supports it. */
+  interactiveLiveViewUrl?: string | null;
+  /** Provider identifier when the tab is backed by a remote browser (e.g. "browserbase"). */
+  provider?: string | null;
+  /** Provider-specific status string for remote tabs ("starting", "ready", "ended"). */
+  status?: string | null;
 }
 
 export interface BrowserWorkspaceSnapshot {
