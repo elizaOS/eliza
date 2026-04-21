@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../../api";
-import { filterAppsForCatalog } from "./helpers";
+import {
+  APPS_VIEW_HIDDEN_APP_NAMES,
+  filterAppsForCatalog,
+  isHiddenFromAppsView,
+} from "./helpers";
 import { getInternalToolApps } from "./internal-tool-apps";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,9 +67,23 @@ describe("apps catalog coverage", () => {
 
     const missing = upstreamPackageNames.filter(
       (name) =>
-        !injectedCatalogNames.has(name) && !filteredCatalogNames.has(name),
+        !isHiddenFromAppsView(name) &&
+        !injectedCatalogNames.has(name) &&
+        !filteredCatalogNames.has(name),
     );
 
     expect(missing).toEqual([]);
+  });
+
+  it("keeps retired utility packages out of the apps catalog", () => {
+    const internalCatalogNames = getInternalToolApps().map((app) => app.name);
+    expect(internalCatalogNames).not.toEqual(
+      expect.arrayContaining([...APPS_VIEW_HIDDEN_APP_NAMES]),
+    );
+    expect(
+      filterAppsForCatalog(
+        APPS_VIEW_HIDDEN_APP_NAMES.map(makeCatalogCandidate),
+      ).map((app) => app.name),
+    ).toEqual([]);
   });
 });

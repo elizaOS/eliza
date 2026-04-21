@@ -165,19 +165,26 @@ describe("Header", () => {
     expect(screen.queryByTestId("desktop-window-titlebar")).toBeNull();
   });
 
-  it("renders the bottom navigation on mobile without desktop chrome controls", () => {
+  it("renders mobile navigation at the top without a bottom dock", () => {
     useMediaQueryMock.mockImplementation(
       (query: string) => query === "(max-width: 639px)",
     );
 
     render(<Header hideCloudCredits />);
 
-    expect(screen.getByTestId("header-mobile-bottom-nav")).toBeTruthy();
+    expect(screen.getByTestId("header-mobile-top-nav")).toBeTruthy();
+    expect(screen.getByTestId("header-mobile-nav-button-chat")).toBeTruthy();
+    expect(
+      screen.queryByTestId("header-mobile-nav-button-settings"),
+    ).toBeNull();
+    expect(screen.getByTestId("header-settings-button")).toBeTruthy();
+    expect(screen.queryByText("Milady")).toBeNull();
+    expect(screen.queryByTestId("header-mobile-bottom-nav")).toBeNull();
     expect(screen.queryByTestId("header-language-dropdown")).toBeNull();
     expect(screen.queryByTestId("header-theme-toggle")).toBeNull();
     expect(
       document.documentElement.classList.contains("eliza-mobile-bottom-nav"),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("keeps desktop titlebar buttons out of drag handling and clickable", () => {

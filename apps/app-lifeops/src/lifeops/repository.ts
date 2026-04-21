@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { runPluginMigrations, type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
@@ -44,14 +44,24 @@ import type {
   LifeOpsProposalStatus,
   LifeOpsProposalProposer,
 } from "@elizaos/shared/contracts/lifeops";
+import type {
+  EmailUnsubscribeMethod,
+  EmailUnsubscribeRecord,
+  EmailUnsubscribeStatus,
+} from "./email-unsubscribe-types.js";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "./schedule-sync-contracts.js";
+import { lifeOpsSchema } from "./schema.js";
 import {
   executeRawSql,
   parseJsonArray,
   parseJsonRecord,
   sqlBoolean,
   sqlInteger,
-  sqlNumber,
   sqlJson,
+  sqlNumber,
   sqlQuote,
   sqlText,
   toBoolean,
@@ -60,18 +70,9 @@ import {
 } from "./sql.js";
 import type {
   LifeOpsSubscriptionAudit,
-  LifeOpsSubscriptionCandidate,
   LifeOpsSubscriptionCancellation,
+  LifeOpsSubscriptionCandidate,
 } from "./subscriptions-types.js";
-import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "./schedule-sync-contracts.js";
-import type {
-  EmailUnsubscribeMethod,
-  EmailUnsubscribeRecord,
-  EmailUnsubscribeStatus,
-} from "./email-unsubscribe-types.js";
 
 type BrowserCompanionCredential = {
   companion: LifeOpsBrowserCompanionStatus;
@@ -1371,7 +1372,8 @@ export class LifeOpsRepository {
   /**
    * Ensure the LifeOps plugin schema has been migrated for this runtime.
    * Legacy callers still use this entrypoint in tests and seed helpers, but
-   * schema ownership now lives entirely in the plugin migration system.
+   * those callers do not always construct a runtime with the LifeOps plugin
+   * registered. Run this plugin's schema directly so the contract is stable.
    */
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
     const adapter = runtime.adapter;
@@ -1381,14 +1383,19 @@ export class LifeOpsRepository {
     if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
       return;
     }
-    const runtimeWithPluginMigrations = runtime as IAgentRuntime & {
-      runPluginMigrations?: () => Promise<void>;
-    };
-    if (typeof runtimeWithPluginMigrations.runPluginMigrations === "function") {
-      await runtimeWithPluginMigrations.runPluginMigrations();
-      return;
-    }
-    await runPluginMigrations(runtime);
+    await adapter.runPluginMigrations(
+      [
+        {
+          name: "@elizaos/app-lifeops",
+          schema: lifeOpsSchema,
+        },
+      ],
+      {
+        verbose: process.env.NODE_ENV !== "production",
+        force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
+        dryRun: false,
+      },
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
