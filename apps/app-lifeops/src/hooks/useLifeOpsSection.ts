@@ -17,8 +17,7 @@ export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
 
 function isLifeOpsSection(value: unknown): value is LifeOpsSection {
   return (
-    typeof value === "string" &&
-    (LIFEOPS_SECTIONS as string[]).includes(value)
+    typeof value === "string" && (LIFEOPS_SECTIONS as string[]).includes(value)
   );
 }
 

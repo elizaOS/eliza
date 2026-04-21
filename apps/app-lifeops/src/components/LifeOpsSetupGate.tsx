@@ -13,7 +13,8 @@ import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 
-export const LIFEOPS_SETUP_GATE_DISMISSED_KEY = "eliza:lifeops-setup-gate-dismissed";
+export const LIFEOPS_SETUP_GATE_DISMISSED_KEY =
+  "eliza:lifeops-setup-gate-dismissed";
 
 function loadDismissed(): boolean {
   try {
@@ -88,10 +89,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
   }, []);
 
   return (
-    <div
-      className="space-y-6 px-1 py-2"
-      data-testid="lifeops-setup-gate"
-    >
+    <div className="space-y-6 px-1 py-2" data-testid="lifeops-setup-gate">
       <div className="space-y-1.5">
         <h2 className="text-base font-semibold text-txt">
           {t("lifeopssetup.title", {
