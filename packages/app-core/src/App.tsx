@@ -768,7 +768,9 @@ export function App() {
           />
           <main
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
-              tab === "browser" ? "" : "px-3 xl:px-5 py-4 xl:py-6"
+              tab === "browser" || tab === "apps"
+                ? ""
+                : "px-3 xl:px-5 py-4 xl:py-6"
             }`}
           >
             <ViewRouter
