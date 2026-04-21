@@ -13,6 +13,13 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import type {
+  NativeCompletionParams,
+  NativeCompletionResult,
+  NativeCompletionTokenProb,
+  NativeContextParams,
+  NativeLlamaContext,
+} from "llama-cpp-capacitor";
+import type {
   GenerateOptions,
   GenerateResult,
   HardwareInfo,
@@ -29,41 +36,39 @@ export {
 
 // Dynamically imported so the adapter can be bundled into a desktop build
 // without pulling in native-only module resolution noise.
+type NativeGenerateParams = Partial<Omit<NativeCompletionParams, "prompt">>;
+
+type TokenEventPayload = {
+  token?: string;
+  completion_probabilities?: NativeCompletionTokenProb[];
+  tokenResult?: {
+    token?: string;
+    completion_probabilities?: NativeCompletionTokenProb[];
+  };
+};
+
 interface LlamaCppCapacitorModule {
-  default: LlamaCppPluginLike;
+  default?: LlamaCppPluginLike;
+  LlamaCpp?: LlamaCppPluginLike;
 }
 
 interface LlamaCppPluginLike {
   initContext: (options: {
     contextId: number;
-    params: {
-      model: string;
-      n_ctx?: number;
-      n_gpu_layers?: number;
-      n_threads?: number;
-      use_mmap?: boolean;
-    };
-  }) => Promise<{ gpu: boolean; reasonNoGPU?: string }>;
+    params: NativeContextParams;
+  }) => Promise<NativeLlamaContext>;
   releaseContext: (options: { contextId: number }) => Promise<void>;
   releaseAllContexts: () => Promise<void>;
   generateText: (options: {
     contextId: number;
     prompt: string;
-    params?: Record<string, unknown>;
-  }) => Promise<{
-    text: string;
-    tokens_predicted: number;
-    tokens_evaluated: number;
-    timings?: { predicted_ms?: number };
-  }>;
+    params?: NativeGenerateParams;
+  }) => Promise<NativeCompletionResult>;
   stopCompletion: (options: { contextId: number }) => Promise<void>;
   addListener: (
     event: string,
-    listener: (data: {
-      token: string;
-      completion_probabilities?: unknown[];
-    }) => void,
-  ) => Promise<PluginListenerHandle>;
+    listener: (data: TokenEventPayload) => void,
+  ) => Promise<PluginListenerHandle | void>;
 }
 
 const CONTEXT_ID = 1;
@@ -98,32 +103,32 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     if (this.plugin) return this.plugin;
     if (this.pluginLoadPromise) return this.pluginLoadPromise;
     this.pluginLoadPromise = (async () => {
-      const mod = (await import("llama-cpp-capacitor")) as unknown as
-        | LlamaCppCapacitorModule
-        | { LlamaCpp: LlamaCppPluginLike };
-      const plugin =
-        "default" in mod
-          ? (mod as LlamaCppCapacitorModule).default
-          : (mod as { LlamaCpp: LlamaCppPluginLike }).LlamaCpp;
+      const mod = (await import(
+        "llama-cpp-capacitor"
+      )) as LlamaCppCapacitorModule;
+      const plugin = mod.default ?? mod.LlamaCpp;
       if (!plugin || typeof plugin.initContext !== "function") {
         throw new Error(
           "llama-cpp-capacitor did not expose an initContext method",
         );
       }
       // Set up the token listener once; it fans out to registered listeners.
-      this.pluginListenerHandle = await plugin.addListener(
+      const tokenListenerHandle = await plugin.addListener(
         "@LlamaCpp_onToken",
         (data) => {
+          const token = data.tokenResult?.token ?? data.token;
+          if (!token) return;
           this.tokenIndex += 1;
           for (const listener of this.tokenListeners) {
             try {
-              listener(data.token, this.tokenIndex);
+              listener(token, this.tokenIndex);
             } catch {
               this.tokenListeners.delete(listener);
             }
           }
         },
       );
+      this.pluginListenerHandle = tokenListenerHandle ?? null;
       this.plugin = plugin;
       return plugin;
     })();
@@ -160,6 +165,10 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       loaded: this.loadedPath !== null,
       modelPath: this.loadedPath,
     };
+  }
+
+  currentModelPath(): string | null {
+    return this.loadedPath;
   }
 
   async load(options: LoadOptions): Promise<void> {
@@ -204,7 +213,7 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     this.tokenIndex = 0;
 
-    const params: Record<string, unknown> = {
+    const params: NativeGenerateParams = {
       n_predict: options.maxTokens ?? 2048,
       temperature: options.temperature ?? 0.7,
       top_p: options.topP ?? 0.9,
@@ -279,13 +288,7 @@ export function registerCapacitorLlamaLoader(runtime: {
       await capacitorLlama.unload();
     },
     currentModelPath(): string | null {
-      // The adapter keeps a cached path; the async isLoaded() isn't useful
-      // for a synchronous getter. Private field access via a small cast
-      // keeps the public API clean.
-      return (
-        (capacitorLlama as unknown as { loadedPath: string | null })
-          .loadedPath ?? null
-      );
+      return capacitorLlama.currentModelPath();
     },
     async generate(args: {
       prompt: string;
