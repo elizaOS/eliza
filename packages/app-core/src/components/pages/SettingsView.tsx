@@ -1,4 +1,3 @@
-
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -9,18 +8,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
 import { type ComputerUseApprovalMode, client } from "../../api/client";
 import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
 import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
-import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
-import { CapabilitiesSection } from "../settings/CapabilitiesSection";
+import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Spinner, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
