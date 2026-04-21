@@ -154,6 +154,86 @@ describe("schedule-state", () => {
     expect(merged?.contributingDeviceKinds).toEqual(["iphone", "mac"]);
   });
 
+  it("drops stale meal_window_likely observations whose window has already passed", () => {
+    const merged = mergeScheduleObservations({
+      agentId: "agent-1",
+      scope: "local",
+      timezone: "America/Los_Angeles",
+      // After midnight the next day: any dinner window from last night is stale.
+      now: new Date("2026-04-21T08:00:00.000Z"),
+      observations: [
+        observation({
+          id: "active-late",
+          deviceId: "macbook-1",
+          deviceKind: "mac",
+          state: "active_recently",
+          confidence: 0.7,
+          observedAt: "2026-04-21T07:55:00.000Z",
+          windowStartAt: "2026-04-21T07:30:00.000Z",
+          windowEndAt: "2026-04-21T08:00:00.000Z",
+          phase: "winding_down",
+        }),
+        observation({
+          id: "stale-dinner",
+          deviceId: "macbook-1",
+          deviceKind: "mac",
+          state: "meal_window_likely",
+          confidence: 0.52,
+          mealLabel: "dinner",
+          // Dinner window created at 9:30 PM Apr 20 local (04:30 UTC Apr 21),
+          // ending at 12:30 AM Apr 21 local (07:30 UTC Apr 21). Now is 01:00
+          // AM local (08:00 UTC) — the entire window is behind us.
+          observedAt: "2026-04-21T04:30:00.000Z",
+          windowStartAt: "2026-04-21T04:30:00.000Z",
+          windowEndAt: "2026-04-21T07:30:00.000Z",
+          phase: "evening",
+          metadata: {
+            source: "schedule_insight",
+            snapshot: {
+              nextMealLabel: "dinner",
+              nextMealWindowStartAt: "2026-04-21T04:30:00.000Z",
+              nextMealWindowEndAt: "2026-04-21T07:30:00.000Z",
+              nextMealConfidence: 0.52,
+            },
+          },
+        }),
+      ],
+    });
+
+    expect(merged).not.toBeNull();
+    expect(merged?.nextMealLabel).toBeNull();
+    expect(merged?.nextMealWindowStartAt).toBeNull();
+    expect(merged?.nextMealWindowEndAt).toBeNull();
+    expect(merged?.nextMealConfidence).toBe(0);
+  });
+
+  it("keeps a future meal_window_likely observation untouched", () => {
+    const merged = mergeScheduleObservations({
+      agentId: "agent-1",
+      scope: "local",
+      timezone: "UTC",
+      now: new Date("2026-04-19T11:30:00.000Z"),
+      observations: [
+        observation({
+          id: "upcoming-lunch",
+          deviceId: "macbook-1",
+          deviceKind: "mac",
+          state: "meal_window_likely",
+          confidence: 0.6,
+          mealLabel: "lunch",
+          observedAt: "2026-04-19T11:25:00.000Z",
+          windowStartAt: "2026-04-19T12:00:00.000Z",
+          windowEndAt: "2026-04-19T14:00:00.000Z",
+          phase: "morning",
+        }),
+      ],
+    });
+
+    expect(merged?.nextMealLabel).toBe("lunch");
+    expect(merged?.nextMealWindowStartAt).toBe("2026-04-19T12:00:00.000Z");
+    expect(merged?.nextMealWindowEndAt).toBe("2026-04-19T14:00:00.000Z");
+  });
+
   it("preserves the inferred effective day key from schedule snapshots", () => {
     const observations = deriveLocalScheduleObservations({
       agentId: "agent-1",
