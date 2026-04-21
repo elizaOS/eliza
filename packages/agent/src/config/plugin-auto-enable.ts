@@ -107,11 +107,9 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   OBSIDAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH: "@elizaos/plugin-repoprompt",
   CLAUDE_CODE_WORKBENCH_ENABLED: "@elizaos/plugin-claude-code-workbench",
-  // EVM plugin gated behind explicit opt-in flag instead of EVM_PRIVATE_KEY.
-  // plugin-evm's CROSS_CHAIN_TRANSFER action has a 'BRIDGE' simile that
-  // crashes with 'Action spec not found: BRIDGE' during startup.
-  // Gate behind ENABLE_EVM_PLUGIN=1 until the spec registration is fixed.
-  ENABLE_EVM_PLUGIN: "@elizaos/plugin-evm",
+  // NOTE: @elizaos/plugin-evm is NOT enabled via this map. Its auto-enable
+  // reasons (local key / Steward cloud / Steward self-hosted) are resolved by
+  // resolveEvmAutoEnableReason() below so a single code path owns the decision.
   SOLANA_PRIVATE_KEY: "@elizaos/plugin-solana",
   LASTFM_API_KEY: "@elizaos/plugin-music-library",
   GENIUS_API_KEY: "@elizaos/plugin-music-library",
@@ -163,10 +161,14 @@ function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
     return "env: EVM_PRIVATE_KEY";
   }
 
-  const cloudProvisioned = env.ELIZA_CLOUD_PROVISIONED === "1";
-
-  if (cloudProvisioned && env.STEWARD_AGENT_TOKEN?.trim()) {
-    return "cloud-provisioned Steward wallet";
+  // Steward-backed signing: plugin-evm uses a dummy key placeholder and the
+  // Steward EVM bridge replaces the WalletProvider account after boot. Works
+  // the same whether Steward is a cloud-provisioned sidecar or a self-hosted
+  // vault — the signing capability only needs the API URL + agent token.
+  if (env.STEWARD_API_URL?.trim() && env.STEWARD_AGENT_TOKEN?.trim()) {
+    return env.ELIZA_CLOUD_PROVISIONED === "1"
+      ? "cloud-provisioned Steward wallet"
+      : "self-hosted Steward wallet";
   }
 
   return null;

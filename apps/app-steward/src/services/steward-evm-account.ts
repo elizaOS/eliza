@@ -351,26 +351,37 @@ export function createStewardEvmAccount(
 // ─── Integration helper ──────────────────────────────────────────────────────
 
 /**
- * Check if this runtime is a cloud-provisioned container that should use Steward signing.
+ * Check if the runtime has the credentials needed to sign EVM transactions
+ * through the Steward API. True for both cloud-provisioned containers
+ * (ELIZA_CLOUD_PROVISIONED=1) and self-hosted Steward deployments — the
+ * signing capability only depends on having the API URL and agent token.
+ */
+export function isStewardSigningReady(): boolean {
+  return (
+    !!process.env.STEWARD_AGENT_TOKEN && !!process.env.STEWARD_API_URL
+  );
+}
+
+/**
+ * True when this runtime is a cloud-provisioned container. Informational —
+ * distinguishes cloud Steward from self-hosted Steward in logs and UI, but
+ * does NOT gate signing capability.
  */
 export function isStewardCloudProvisioned(): boolean {
   return (
-    process.env.ELIZA_CLOUD_PROVISIONED === "1" &&
-    !!process.env.STEWARD_AGENT_TOKEN &&
-    !!process.env.STEWARD_API_URL
+    process.env.ELIZA_CLOUD_PROVISIONED === "1" && isStewardSigningReady()
   );
 }
 
 /**
  * Resolve Steward config from environment variables.
- * Returns null if not in cloud-provisioned mode.
+ * Returns null when signing credentials are unavailable.
  */
 export function resolveStewardEvmConfig(): StewardEvmAccountConfig | null {
-  if (!isStewardCloudProvisioned()) return null;
+  if (!isStewardSigningReady()) return null;
 
-  const apiUrl = process.env.STEWARD_API_URL;
-  const agentToken = process.env.STEWARD_AGENT_TOKEN;
-  if (!apiUrl || !agentToken) return null;
+  const apiUrl = process.env.STEWARD_API_URL as string;
+  const agentToken = process.env.STEWARD_AGENT_TOKEN as string;
 
   // Agent ID can come from the JWT payload or env var
   const agentId =
