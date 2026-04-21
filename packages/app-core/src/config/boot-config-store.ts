@@ -13,7 +13,13 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/app-lifeops/types";
-import type { ComponentType } from "react";
+import type {
+  StewardApprovalActionResponse,
+  StewardPendingApproval,
+  StewardTxRecord,
+} from "@elizaos/app-steward/types/steward";
+import type { ComponentType, ReactNode } from "react";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";

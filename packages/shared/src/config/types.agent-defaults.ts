@@ -209,30 +209,6 @@ export type InboxTriageRules = {
   alwaysNotify?: string[];
 };
 
-export type InboxTriageConfig = {
-  enabled?: boolean;
-  /** Cron expression for periodic triage (default: "0 * * * *" = hourly). */
-  triageCron?: string;
-  /** Cron expression for daily digest (default: "0 8 * * *" = 8am). */
-  digestCron?: string;
-  /** Timezone for cron expressions. */
-  digestTimezone?: string;
-  /** Which channels to triage. Default: all connected. */
-  channels?: string[];
-  /** Senders that should be treated as high priority. */
-  prioritySenders?: string[];
-  /** Channels that should be treated as high priority. */
-  priorityChannels?: string[];
-  /** Auto-reply configuration. */
-  autoReply?: InboxAutoReplyConfig;
-  /** Rule-based triage overrides. */
-  triageRules?: InboxTriageRules;
-  /** Channel to deliver daily digest to. Default: "client_chat". */
-  digestDeliveryChannel?: string;
-  /** Days to retain triage entries before cleanup. Default: 30. */
-  retentionDays?: number;
-};
-
 export type AgentDefaultsConfig = {
   /** Active subscription provider, set automatically by provider switch. */
   subscriptionProvider?: string;
