@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import type {
   ChannelType,
-  HandlerOptions,
   IAgentRuntime,
   Memory,
   UUID,
