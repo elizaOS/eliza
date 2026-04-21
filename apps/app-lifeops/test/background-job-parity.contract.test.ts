@@ -346,7 +346,7 @@ describe("background-job-parity: followup tracker", () => {
 
 describe("background-job-parity: lifeops scheduler", () => {
   test("executeLifeOpsSchedulerTask does NOT invoke the LLM planner with an empty snapshot", async () => {
-    // Prior behavior (LARP): this function called planJob every tick with a
+    // Prior behavior: this function called planJob every tick with a
     // hardcoded jobKind and an empty snapshot, wasting tokens for a result
     // that was never used. The call was removed. This test guards against
     // that regression.
