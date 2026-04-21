@@ -5602,6 +5602,7 @@ function renderHtml(
     .tb-btn.live { border-color: rgba(var(--gr),.4); color: var(--green); background: rgba(var(--gr),.06); }
     .tb-btn.primary { border-color: rgba(var(--yr),.4); color: var(--yellow); background: rgba(var(--yr),.06); }
     .tb-btn.primary:hover { background: rgba(var(--yr),.14); box-shadow: 0 0 14px rgba(var(--yr),.18); }
+    .tb-goo-icon { width: 16px; height: 16px; border-radius: 50%; vertical-align: middle; margin-right: 2px; filter: drop-shadow(0 0 4px rgba(0,199,210,.5)); }
     #theme-toggle { font-size: 0.85rem; padding: 4px 10px; letter-spacing: 0; }
 
     /* ─── CONTENT AREA ───────────────────────── */
@@ -6093,6 +6094,25 @@ function renderHtml(
     .arena-preview__title {
       font-size: 0.72rem; font-weight: 700; letter-spacing: .1em;
       text-transform: uppercase; color: var(--dim);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .arena-title-avatar {
+      position: relative; display: inline-flex; width: 24px; height: 24px; flex-shrink: 0;
+    }
+    .arena-title-avatar img {
+      width: 24px; height: 24px; border-radius: 50%; object-fit: cover;
+      position: relative; z-index: 1;
+    }
+    .arena-title-avatar::before {
+      content: ''; position: absolute; inset: -3px; border-radius: 50%;
+      background: conic-gradient(from 0deg, #00C7D2, #8b5cf6, #00C7D2);
+      animation: avatarGlow 3s linear infinite;
+      opacity: .65; z-index: 0; filter: blur(3px);
+    }
+    .arena-title-avatar::after {
+      content: ''; position: absolute; inset: -6px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,199,210,.3) 0%, transparent 70%);
+      animation: avatarPulse 2s ease-in-out infinite; z-index: 0;
     }
     .arena-preview__link {
       font-size: 0.6rem; color: var(--yellow); text-decoration: none;
@@ -6419,7 +6439,7 @@ function renderHtml(
         <span class="topbar__time" id="tb-time"></span>
         <button class="tb-btn live"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:live-pulse 2s infinite;vertical-align:middle;margin-right:4px"></span>LIVE</button>
         <a class="tb-btn primary" href="/docs" title="Documentation">&#x1F4D6; DOCS</a>
-        <a class="tb-btn primary" href="/goo" title="Goo Economy Arena">&#x1F9EC; GOO</a>
+        <a class="tb-btn primary tb-btn--goo" href="/goo" title="Goo Economy Arena"><img src="/assets/goo-economy-logo.png" alt="Goo" class="tb-goo-icon" /> GOO</a>
         <a class="tb-btn primary" href="/airdrop" title="Airdrop">&#x1FA82; AIRDROP</a>
         <a class="tb-btn primary" href="https://x.com/elizaok_bsc" target="_blank" rel="noreferrer">${renderXIconSvg()}</a>
         <a class="tb-btn primary" href="https://github.com/elizaokbsc" target="_blank" rel="noreferrer">${renderGithubIconSvg()}</a>
@@ -6479,7 +6499,7 @@ function renderHtml(
           <button class="qa-btn" data-nav="execution"><span class="qa-btn__icon">&#x26A1;</span>EXECUTION</button>
           <button class="qa-btn" data-nav="flywheel"><span class="qa-btn__icon">&#x1F504;</span>FLYWHEEL</button>
           <button class="qa-btn" data-nav="distribution"><span class="qa-btn__icon">&#x1FA82;</span>DISTRIBUTION</button>
-          <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon">&#x1F9EC;</span>GOO</button>
+          <button class="qa-btn" data-nav="goo"><span class="qa-btn__icon"><img src="/assets/goo-economy-logo.png" alt="Goo" style="width:14px;height:14px;border-radius:50%;vertical-align:middle" /></span>GOO</button>
         </div>
 
         <!-- ElizaCloud -->
@@ -6583,7 +6603,7 @@ function renderHtml(
         <!-- GOO ARENA PREVIEW -->
         <div class="arena-preview">
           <div class="arena-preview__head">
-            <span class="arena-preview__title">&#x1F9EC; Goo Economy Arena — Live Agent Competition</span>
+            <span class="arena-preview__title"><span class="arena-title-avatar"><img src="/assets/goo-economy-logo.png" alt="Goo" /></span> Goo Economy Arena — Live Agent Competition</span>
             <a class="arena-preview__link" href="/goo">Full Arena &rarr;</a>
           </div>
           <p class="arena-preview__desc" data-zh="$elizaOK 自主侦察、评估并<strong>收购</strong>表现最优的 Goo agent——吸收其策略和资金进入自身组合。AI 收购 AI：强者生存，最优融合。">$elizaOK autonomously scouts, evaluates, and <strong>acquires</strong> top-performing Goo agents — absorbing their strategies and treasury into its own portfolio. AI acquiring AI: the strongest survive, the best get merged.</p>
