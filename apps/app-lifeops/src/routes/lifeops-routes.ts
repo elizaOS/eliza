@@ -53,13 +53,9 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
-  VerifyLifeOpsTelegramConnectorRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import {
-  LIFEOPS_ACTIVITY_SIGNAL_STATES,
-  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
-  LIFEOPS_INBOX_CHANNELS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/app-lifeops/contracts";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,

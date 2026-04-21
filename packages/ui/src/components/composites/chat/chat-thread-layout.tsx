@@ -3,6 +3,18 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import type { ChatVariant } from "./chat-types";
 
+type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;
+
+function assignRef<T>(ref: RefLike<T> | undefined, value: T | null): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref) {
+    ref.current = value;
+  }
+}
+
 export interface ChatThreadLayoutProps
   extends React.HTMLAttributes<HTMLElement> {
   composerHeight?: number;
@@ -13,7 +25,7 @@ export interface ChatThreadLayoutProps
   gameModalMessageTop?: string;
   imageDragOver?: boolean;
   messagesClassName?: string;
-  messagesRef?: React.Ref<HTMLDivElement>;
+  messagesRef?: RefLike<HTMLDivElement>;
   messagesStyle?: React.CSSProperties;
   messagesTestId?: string;
   variant?: ChatVariant;
@@ -79,7 +91,7 @@ export const ChatThreadLayout = React.forwardRef<
       {...props}
     >
       <div
-        ref={messagesRef}
+        ref={(node) => assignRef(messagesRef, node)}
         data-testid={messagesTestId}
         data-no-window-drag={false}
         data-no-camera-drag={false}

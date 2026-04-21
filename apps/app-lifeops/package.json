@@ -30,17 +30,8 @@
     "./actions/*.js": "./src/actions/*.ts",
     "./providers/*": "./src/providers/*.ts",
     "./routes/*": "./src/routes/*.ts",
-    "./activity-profile/*": "./src/activity-profile/*.ts",
-    "./api/client-lifeops": "./src/api/client-lifeops.ts",
-    "./hooks": "./src/hooks/index.ts",
-    "./hooks/*": "./src/hooks/*.ts",
-    "./events": "./src/events/index.ts",
-    "./platform": "./src/platform/index.ts",
-    "./platform/*": "./src/platform/*.ts",
-    "./utils": "./src/utils/index.ts",
-    "./utils/*": "./src/utils/*.ts",
-    "./widgets": "./src/widgets/index.ts",
-    "./components/*": "./src/components/*"
+    "./contracts": "./src/contracts/index.ts",
+    "./contracts/lifeops": "./src/contracts/lifeops.ts"
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",

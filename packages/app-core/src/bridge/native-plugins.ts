@@ -314,6 +314,55 @@ export interface WebsiteBlockerPermissionResult {
   reason?: string;
 }
 
+export interface AppBlockerPermissionResult {
+  status: "granted" | "denied" | "not-determined" | "not-applicable";
+  canRequest: boolean;
+  reason?: string;
+}
+
+export interface AppBlockerInstalledApp {
+  packageName: string;
+  displayName: string;
+  tokenData?: string;
+}
+
+export interface AppBlockerStatusResult {
+  available: boolean;
+  active: boolean;
+  platform: string;
+  engine: "family-controls" | "usage-stats-overlay" | "none";
+  blockedCount: number;
+  blockedPackageNames: string[];
+  endsAt: string | null;
+  permissionStatus: AppBlockerPermissionResult["status"];
+  reason?: string;
+}
+
+export interface AppBlockerPluginLike extends NativePlugin {
+  checkPermissions(): Promise<AppBlockerPermissionResult>;
+  requestPermissions(): Promise<AppBlockerPermissionResult>;
+  getInstalledApps(): Promise<{ apps: AppBlockerInstalledApp[] }>;
+  selectApps(): Promise<{
+    apps: AppBlockerInstalledApp[];
+    cancelled: boolean;
+  }>;
+  blockApps(options: {
+    appTokens?: string[];
+    packageNames?: string[];
+    durationMinutes?: number | null;
+  }): Promise<{
+    success: boolean;
+    endsAt: string | null;
+    blockedCount: number;
+    error?: string;
+  }>;
+  unblockApps(): Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  getStatus(): Promise<AppBlockerStatusResult>;
+}
+
 export interface WebsiteBlockerStatusResult {
   available: boolean;
   active: boolean;
@@ -474,4 +523,11 @@ export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
   return (plugins.ElizaWebsiteBlocker ??
     plugins.WebsiteBlocker ??
     {}) as WebsiteBlockerPluginLike;
+}
+
+export function getAppBlockerPlugin(): AppBlockerPluginLike {
+  const plugins = getCapacitorPlugins();
+  return (plugins.ElizaAppBlocker ??
+    plugins.AppBlocker ??
+    {}) as AppBlockerPluginLike;
 }

@@ -3,8 +3,8 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_GOOGLE_CAPABILITIES } from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_GOOGLE_CAPABILITIES } from "@elizaos/app-lifeops/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "@elizaos/app-core/api";
 import { isApiError } from "@elizaos/app-core/api/client-types-core";

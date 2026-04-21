@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { createServer, type Server } from "node:http";
 import fs from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import {
@@ -17,6 +20,73 @@ type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";
 
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+
+function codexHasStoredAuth(): boolean {
+  if (process.env.OPENAI_API_KEY?.trim()) {
+    return true;
+  }
+
+  try {
+    const authPath = path.join(os.homedir(), ".codex", "auth.json");
+    const raw = fs.readFileSync(authPath, "utf8");
+    const parsed = JSON.parse(raw) as { OPENAI_API_KEY?: string };
+    return (
+      typeof parsed.OPENAI_API_KEY === "string" &&
+      parsed.OPENAI_API_KEY.trim().length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function claudeHasDeterministicAuth(): boolean {
+  if (process.env.ANTHROPIC_API_KEY?.trim()) {
+    return true;
+  }
+
+  return fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json"));
+}
+
+function isFrameworkAuthenticated(framework: Framework): boolean {
+  if (framework === "claude" && !claudeHasDeterministicAuth()) {
+    return false;
+  }
+
+  try {
+    if (framework === "claude") {
+      const output = execFileSync("claude", ["auth", "status"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 5_000,
+      });
+      return /"loggedIn"\s*:\s*true|\blogged in\b/i.test(output);
+    }
+
+    if (codexHasStoredAuth()) {
+      return true;
+    }
+
+    const output = execFileSync("codex", ["login", "status"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    });
+    return /\blogged in\b/i.test(output);
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "";
+
+    return (
+      !/\bnot logged in\b|\bno stored credentials\b|\bunauthenticated\b/i.test(detail) &&
+      framework === "codex" &&
+      codexHasStoredAuth()
+    );
+  }
+}
 
 async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
   runtime: AgentRuntime;
@@ -425,6 +495,18 @@ async function main(): Promise<void> {
     throw new Error(
       "Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web>",
     );
+  }
+
+  if (!isFrameworkAuthenticated(framework)) {
+    console.log(
+      "[task-agent-live-smoke] SKIP",
+      JSON.stringify({
+        framework,
+        mode,
+        reason: `${framework} is not authenticated on this machine`,
+      }),
+    );
+    return;
   }
 
   if (mode === "sequential") {

@@ -3,11 +3,23 @@ import type * as React from "react";
 import { cn } from "../../../lib/utils";
 import type { ChatVariant } from "./chat-types";
 
+type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;
+
+function assignRef<T>(ref: RefLike<T> | undefined, value: T | null): void {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref) {
+    ref.current = value;
+  }
+}
+
 export interface ChatComposerShellProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
   before?: React.ReactNode;
   children: React.ReactNode;
-  shellRef?: React.Ref<HTMLDivElement>;
+  shellRef?: RefLike<HTMLDivElement>;
   variant?: ChatVariant;
 }
 
@@ -23,7 +35,7 @@ export function ChatComposerShell({
   if (variant === "game-modal") {
     return (
       <div
-        ref={shellRef}
+        ref={(node) => assignRef(shellRef, node)}
         className={cn(
           "mt-auto pointer-events-auto px-1 max-[380px]:px-0.5",
           className,
@@ -49,7 +61,7 @@ export function ChatComposerShell({
 
   return (
     <div
-      ref={shellRef}
+      ref={(node) => assignRef(shellRef, node)}
       className={cn(
         "relative bg-transparent px-3 pb-3 pt-3 sm:px-4 sm:pb-4 xl:px-5",
         className,

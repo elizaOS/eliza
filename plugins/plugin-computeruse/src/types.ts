@@ -33,6 +33,9 @@ export interface DesktopActionParams {
   action: DesktopActionType;
   coordinate?: [number, number];
   startCoordinate?: [number, number];
+  /** Modifier keys to hold during click_with_modifiers */
+  modifiers?: string[];
+  /** Text to type (for "type" action) */
   text?: string;
   key?: string;
   modifiers?: string[];
@@ -69,6 +72,7 @@ export type BrowserActionType =
   | "state"
   | "info"
   | "context"
+  | "get_context"
   | "wait"
   | "list_tabs"
   | "open_tab"
@@ -82,11 +86,17 @@ export interface BrowserActionParams {
   coordinate?: [number, number];
   text?: string;
   code?: string;
+  /** Text to wait for or click by text content */
+  waitForText?: string;
+  /** Text to wait to disappear */
+  waitForTextGone?: string;
+  /** Scroll direction */
   direction?: "up" | "down";
   amount?: number;
   tabId?: string;
-  tab_index?: string | number;
-  index?: string | number;
+  /** Numeric tab index alias from upstream callers */
+  index?: number;
+  /** Wait timeout in ms */
   timeout?: number;
 }
 
@@ -106,15 +116,59 @@ export type WindowActionType =
 export interface WindowActionParams {
   action: WindowActionType;
   windowId?: string;
+  /** Window title match for switch action */
   windowTitle?: string;
-  window?: string;
+  /** App name match for switch action */
+  appName?: string;
+  /** Upstream title alias */
   title?: string;
+  /** Upstream window alias */
+  window?: string;
+  /** Upstream arrangement hint for arrange action */
   arrangement?: string;
+  /** Upstream coordinates for move action */
   x?: number;
   y?: number;
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
+
+export type PermissionType = "accessibility" | "screen-recording";
+
+export type ApprovalMode =
+  | "full_control"
+  | "smart_approve"
+  | "approve_all"
+  | "off";
+
+export interface ComputerUseResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  permissionDenied?: true;
+  permissionType?: PermissionType;
+  approvalRequired?: true;
+  approvalId?: string;
+}
+
+export interface ComputerActionResult extends ComputerUseResult {
+  /** Base64-encoded PNG screenshot taken after the action */
+  screenshot?: string;
+}
+
+export interface BrowserActionResult extends ComputerUseResult {
+  /** Base64-encoded PNG for screenshot action */
+  screenshot?: string;
+  /** Text content for dom, state, clickables, execute results */
+  content?: string;
+  /** Structured data (e.g. tab list, clickable elements) */
+  data?: unknown;
+}
+
+export interface WindowActionResult extends ComputerUseResult {
+  /** Window list for "list" action */
+  windows?: WindowInfo[];
+}
 
 export type FileActionType =
   | "read"
@@ -123,7 +177,7 @@ export type FileActionType =
   | "append"
   | "delete"
   | "exists"
-  | "list"
+  | "list_directory"
   | "delete_directory"
   | "upload"
   | "download"
@@ -132,19 +186,30 @@ export type FileActionType =
 export interface FileActionParams {
   action: FileActionType;
   path?: string;
-  filepath?: string;
-  dirpath?: string;
   content?: string;
-  encoding?: BufferEncoding | string;
   oldText?: string;
   newText?: string;
   old_text?: string;
   new_text?: string;
-  find?: string;
-  replace?: string;
+  encoding?: BufferEncoding;
 }
 
-// ── Terminal Actions ──────────────────────────────────────────────────────
+export interface FileEntry {
+  name: string;
+  type: "file" | "directory";
+  path: string;
+}
+
+export interface FileActionResult extends ComputerUseResult {
+  path?: string;
+  content?: string;
+  exists?: boolean;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  size?: number;
+  count?: number;
+  items?: FileEntry[];
+}
 
 export type TerminalActionType =
   | "connect"
@@ -158,24 +223,18 @@ export type TerminalActionType =
 export interface TerminalActionParams {
   action: TerminalActionType;
   command?: string;
+  cwd?: string;
   timeout?: number;
-  timeoutSeconds?: number;
   sessionId?: string;
   session_id?: string;
-  cwd?: string;
   text?: string;
 }
 
-// ── Shared Results ────────────────────────────────────────────────────────
-
-export interface BaseActionResult {
-  success: boolean;
-  error?: string;
-  message?: string;
-  approvalRequired?: boolean;
-  approvalId?: string;
-  permissionDenied?: boolean;
-  permissionType?: PermissionType;
+export interface TerminalActionResult extends ComputerUseResult {
+  sessionId?: string;
+  cwd?: string;
+  output?: string;
+  exitCode?: number;
 }
 
 export interface ComputerActionResult extends BaseActionResult {
@@ -263,12 +322,12 @@ export interface PlatformCapability {
 }
 
 export interface PlatformCapabilities {
-  screenshot: PlatformCapability;
-  computerUse: PlatformCapability;
-  windowList: PlatformCapability;
-  browser: PlatformCapability;
-  terminal: PlatformCapability;
-  fileSystem: PlatformCapability;
+  screenshot: { available: boolean; tool: string };
+  computerUse: { available: boolean; tool: string };
+  windowList: { available: boolean; tool: string };
+  browser: { available: boolean; tool: string };
+  terminal: { available: boolean; tool: string };
+  fileSystem: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
@@ -315,7 +374,7 @@ export interface ComputerUseConfig {
   actionTimeoutMs: number;
   /** Max recent actions to keep for provider context (default: 10) */
   maxRecentActions: number;
-  /** Human approval mode for local computer actions */
+  /** Approval mode for side-effecting commands */
   approvalMode: ApprovalMode;
 }
 
@@ -356,6 +415,12 @@ export interface BrowserState {
 export interface BrowserInfo extends BrowserState {
   success: boolean;
   error?: string;
+}
+
+export interface BrowserInfo extends BrowserState {
+  userAgent?: string;
+  viewport?: { width: number; height: number } | null;
+  tabs?: number;
 }
 
 export interface ClickableElement {

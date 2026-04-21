@@ -19,7 +19,7 @@ import type {
   LifeOpsGmailBatchReplySendItem,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailReplyRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { hasContextSignalForKey } from "@elizaos/agent/actions";

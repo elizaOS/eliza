@@ -12,10 +12,9 @@ const repoRoot = path.resolve(here, "..", "..", "..", "..", "..");
 const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
 const nodeCmd = resolveNodeCmd();
 const appRoot = path.join(repoRoot, "apps", "app");
-const appCoreRoot = path.join(repoRoot, "eliza", "packages", "app-core");
 const elizaRoot = path.join(repoRoot, "eliza");
-const cloudRoot = path.join(repoRoot, "eliza", "cloud");
-const stewardFiRoot = path.join(repoRoot, "eliza", "steward-fi");
+const cloudRoot = path.join(elizaRoot, "cloud");
+const stewardFiRoot = path.join(elizaRoot, "steward-fi");
 const unitShardCount = 1;
 
 await runManagedTestCommand({
@@ -73,12 +72,18 @@ for (let shard = 1; shard <= unitShardCount; shard += 1) {
 
 await runManagedTestCommand({
   repoRoot,
-  lockName: "integration",
-  label: "integration",
+  lockName: "computeruse-real",
+  label: "computeruse-real",
   command: bunCmd,
-  args: ["run", "test:integration"],
-  cwd: repoRoot,
-  env: buildTestEnv(repoRoot),
+  args: ["run", "test"],
+  cwd: path.join(repoRoot, "eliza", "plugins", "plugin-computeruse"),
+  env: {
+    ...buildTestEnv(repoRoot),
+    MILADY_LIVE_TEST: "1",
+    ELIZA_LIVE_TEST: "1",
+    COMPUTER_USE_BROWSER_HEADLESS:
+      process.env.COMPUTER_USE_BROWSER_HEADLESS || "1",
+  },
 });
 
 await runManagedTestCommand({

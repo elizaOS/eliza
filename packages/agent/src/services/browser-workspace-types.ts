@@ -160,10 +160,6 @@ export interface BrowserWorkspaceTab {
   createdAt: string;
   updatedAt: string;
   lastFocusedAt: string | null;
-  liveViewUrl?: string | null;
-  interactiveLiveViewUrl?: string | null;
-  status?: string | null;
-  provider?: string | null;
 }
 
 export interface BrowserWorkspaceSnapshot {

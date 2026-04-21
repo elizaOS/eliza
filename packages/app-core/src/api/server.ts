@@ -126,6 +126,19 @@ import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
 import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
+import {
+  buildCorsAllowedPorts,
+  getCorsAllowedPorts,
+  isAllowedLocalOrigin,
+} from "./server-cors";
+// Phase 2 extraction: Vincent routes → app-vincent/src/plugin.ts (vincentPlugin)
+// Phase 2 extraction: Shopify routes → app-shopify/src/plugin.ts (shopifyPlugin)
+import {
+  isAllowedDevConsoleLogPath,
+  readDevConsoleLogTail,
+} from "./dev-console-log";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
@@ -759,6 +772,8 @@ async function handleCompatRoute(
       },
     });
   }
+
+  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!ensureCompatApiAuthorized(req, res)) return true;

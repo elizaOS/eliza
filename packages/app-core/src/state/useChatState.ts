@@ -45,8 +45,7 @@ export interface ChatState {
   conversationMessages: ConversationMessage[];
   autonomousEvents: StreamEventEnvelope[];
   autonomousLatestEventId: string | null;
-  // biome-ignore lint/suspicious/noExplicitAny: app-core keeps this app-owned replay map structural
-  autonomousRunHealthByRunId: Record<string, any>;
+  autonomousRunHealthByRunId: import("../autonomy").AutonomyRunHealthMap;
   ptySessions: CodingAgentSession[];
   unreadConversations: Set<string>;
   chatPendingImages: ImageAttachment[];
@@ -95,7 +94,7 @@ type ChatAction =
   | { type: "UPDATE_MESSAGE"; id: string; update: Partial<ConversationMessage> }
   | { type: "SET_AUTONOMOUS_EVENTS"; value: StreamEventEnvelope[] }
   | { type: "SET_AUTONOMOUS_LATEST_EVENT_ID"; value: string | null }
-  | { type: "SET_AUTONOMOUS_RUN_HEALTH"; value: Record<string, unknown> }
+  | { type: "SET_AUTONOMOUS_RUN_HEALTH"; value: AutonomyRunHealthMap }
   | { type: "SET_PTY_SESSIONS"; value: CodingAgentSession[] }
   | { type: "ADD_UNREAD"; conversationId: string }
   | { type: "REMOVE_UNREAD"; conversationId: string }
@@ -202,7 +201,7 @@ export interface ChatStateHook {
   >;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
-  setAutonomousRunHealthByRunId: (v: Record<string, unknown>) => void;
+  setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
   setPtySessions: React.Dispatch<React.SetStateAction<CodingAgentSession[]>>;
   addUnread: (conversationId: string) => void;
   removeUnread: (conversationId: string) => void;
@@ -349,8 +348,8 @@ export function useChatState(): ChatStateHook {
   }, []);
 
   const setAutonomousRunHealthByRunId = useCallback(
-    (v: Record<string, unknown>) => {
-      autonomousRunHealthByRunIdRef.current = v as AutonomyRunHealthMap;
+    (v: AutonomyRunHealthMap) => {
+      autonomousRunHealthByRunIdRef.current = v;
       dispatch({ type: "SET_AUTONOMOUS_RUN_HEALTH", value: v });
     },
     [],

@@ -5,6 +5,7 @@ export {
 export { AutoApproveSection, autoApproveSummary } from "./AutoApproveSection";
 export * from "./constants";
 export {
+  approvedAddressValue,
   chainTypeLabel,
   detectChainType,
   findPolicy,

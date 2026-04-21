@@ -16,6 +16,7 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble } from "./chat-bubble";
 import { ChatMessageActions } from "./chat-message-actions";
+import { normalizeChatSourceKey, renderChatReactionEmoji } from "./chat-source";
 import type {
   ChatMessageData,
   ChatMessageLabels,
@@ -39,8 +40,6 @@ export interface ChatMessageProps {
 export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
-
-const DISCORD_CUSTOM_EMOJI_RE = /^<(a?):([^:>]+):(\d+)>$/;
 
 function normalizeSenderHandle(handle?: string): string | null {
   if (typeof handle !== "string") return null;
@@ -108,35 +107,12 @@ function normalizeMessageReactions(
   );
 }
 
-function parseDiscordCustomEmoji(emoji: string): {
-  animated: boolean;
-  id: string;
-  name: string;
-} | null {
-  const match = emoji.match(DISCORD_CUSTOM_EMOJI_RE);
-  if (!match) return null;
-  return {
-    animated: match[1] === "a",
-    name: match[2],
-    id: match[3],
-  };
-}
-
 function ReactionEmoji({ emoji }: { emoji: string }) {
-  const customEmoji = parseDiscordCustomEmoji(emoji);
-  if (!customEmoji) {
-    return <span className="text-[15px] leading-none">{emoji}</span>;
+  const rendered = renderChatReactionEmoji(emoji);
+  if (rendered) {
+    return rendered;
   }
-
-  const extension = customEmoji.animated ? "gif" : "png";
-  const src = `https://cdn.discordapp.com/emojis/${customEmoji.id}.${extension}?size=64&quality=lossless`;
-  return (
-    <img
-      src={src}
-      alt={`:${customEmoji.name}:`}
-      className="h-4 w-4 object-contain"
-    />
-  );
+  return <span className="text-[15px] leading-none">{emoji}</span>;
 }
 
 function ReactionStrip({
@@ -214,11 +190,7 @@ export const ChatMessage = memo(function ChatMessage({
   const canPlay = Boolean(
     !isUser && typeof onSpeak === "function" && message.text.trim(),
   );
-  const normalizedSource =
-    typeof message.source === "string" &&
-    message.source.trim().toLowerCase() !== "app"
-      ? message.source
-      : undefined;
+  const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
   const senderDisplayName = isUser ? resolveSenderDisplayName(message) : null;
   const senderHandle = isUser
     ? resolveSenderHandle(message, senderDisplayName)

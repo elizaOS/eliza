@@ -11,7 +11,7 @@ import { logger } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 
 type WebsiteBlockerRequestBody = {

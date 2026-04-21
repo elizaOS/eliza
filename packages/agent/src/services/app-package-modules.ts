@@ -59,16 +59,6 @@ type AppPluginModule = {
   [key: string]: unknown;
 };
 
-// Built-in app route modules for 2004scape and hyperscape have been
-// extracted to their own app packages (@elizaos/app-2004scape/routes
-// and @elizaos/app-hyperscape/routes). The workspace-local lookup in
-// importLocalAppRouteModule resolves them automatically via
-// src/routes.ts in the respective app directories.
-const BUILT_IN_APP_ROUTE_MODULE_IMPORTERS = new Map<
-  string,
-  () => Promise<AppRouteModule>
->();
-
 function uniquePaths(paths: string[]): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
@@ -481,29 +471,6 @@ function resolvePluginAppBridge(plugin: Plugin | null): AppRouteModule | null {
   return bridge;
 }
 
-async function importBuiltInAppRouteModule(
-  appIdentifier: string,
-  packageName: string | null,
-): Promise<AppRouteModule | null> {
-  const candidates = [
-    appIdentifier.trim(),
-    packageName?.trim() ?? null,
-    packageNameToAppSlug(appIdentifier),
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-    const importer = BUILT_IN_APP_ROUTE_MODULE_IMPORTERS.get(candidate);
-    if (importer) {
-      return importer();
-    }
-  }
-
-  return null;
-}
-
 export async function importAppRouteModule(
   appIdentifier: string,
 ): Promise<AppRouteModule | null> {
@@ -527,14 +494,6 @@ export async function importAppRouteModule(
         err instanceof Error ? err.message : String(err)
       }`,
     );
-  }
-
-  const builtInModule = await importBuiltInAppRouteModule(
-    appIdentifier,
-    packageName,
-  );
-  if (builtInModule) {
-    return builtInModule;
   }
 
   if (!packageName) {

@@ -20,6 +20,10 @@ import type {
   SubscriptionStatusResponse,
 } from "@elizaos/shared/contracts/onboarding";
 import {
+  type AppBlockerInstalledApp,
+  type AppBlockerPermissionResult,
+  type AppBlockerStatusResult,
+  getAppBlockerPlugin,
   getWebsiteBlockerPlugin,
   type WebsiteBlockerPermissionResult,
   type WebsiteBlockerStatusResult,
@@ -112,6 +116,19 @@ function getNativeWebsiteBlockerPluginIfAvailable() {
     typeof plugin.checkPermissions === "function" &&
     typeof plugin.requestPermissions === "function" &&
     typeof plugin.openSettings === "function"
+    ? plugin
+    : null;
+}
+
+function getNativeAppBlockerPluginIfAvailable() {
+  const plugin = getAppBlockerPlugin();
+  return typeof plugin.getStatus === "function" &&
+    typeof plugin.checkPermissions === "function" &&
+    typeof plugin.requestPermissions === "function" &&
+    typeof plugin.getInstalledApps === "function" &&
+    typeof plugin.selectApps === "function" &&
+    typeof plugin.blockApps === "function" &&
+    typeof plugin.unblockApps === "function"
     ? plugin
     : null;
 }
@@ -505,6 +522,28 @@ declare module "./client-base" {
           };
         }
     >;
+    getAppBlockerStatus(): Promise<AppBlockerStatusResult>;
+    checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+    requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+    getInstalledAppsToBlock(): Promise<{ apps: AppBlockerInstalledApp[] }>;
+    selectAppBlockerApps(): Promise<{
+      apps: AppBlockerInstalledApp[];
+      cancelled: boolean;
+    }>;
+    startAppBlock(options: {
+      appTokens?: string[];
+      packageNames?: string[];
+      durationMinutes?: number | null;
+    }): Promise<{
+      success: boolean;
+      endsAt: string | null;
+      blockedCount: number;
+      error?: string;
+    }>;
+    stopAppBlock(): Promise<{
+      success: boolean;
+      error?: string;
+    }>;
     getCodingAgentStatus(): Promise<CodingAgentStatus | null>;
     listCodingAgentTaskThreads(options?: {
       includeArchived?: boolean;
@@ -840,88 +879,6 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
   return res.status;
 };
 
-ElizaClient.prototype.startAndWait = async function (
-  this: ElizaClient,
-  maxWaitMs = 30_000,
-) {
-  const t0 = Date.now();
-  console.info("[eliza][lifecycle][client] startAndWait: begin", {
-    baseUrl: this.getBaseUrl(),
-    maxWaitMs,
-  });
-  try {
-    const initial = await this.getStatus();
-    if (initial.state === "running") {
-      return initial;
-    }
-  } catch (e) {
-    console.info(
-      "[eliza][lifecycle][client] startAndWait: initial status check failed",
-      e,
-    );
-  }
-  try {
-    const started = await this.startAgent();
-    if (started.state === "running") {
-      return started;
-    }
-    console.info("[eliza][lifecycle][client] startAndWait: start accepted", {
-      state: started.state,
-    });
-  } catch (e) {
-    console.info(
-      "[eliza][lifecycle][client] startAndWait: initial start call failed",
-      e,
-    );
-  }
-  const start = Date.now();
-  const interval = 1_000;
-  let pollN = 0;
-  while (Date.now() - start < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, interval));
-    pollN += 1;
-    try {
-      const status = await this.getStatus();
-      if (status.state === "running") {
-        console.info("[eliza][lifecycle][client] startAndWait: running", {
-          pollN,
-          waitedMs: Date.now() - t0,
-          port: status.port,
-        });
-        return status;
-      }
-      if (status.state === "error") {
-        return status;
-      }
-      if (pollN === 1 || pollN % 5 === 0) {
-        console.debug("[eliza][lifecycle][client] startAndWait: poll", {
-          pollN,
-          state: status.state,
-          waitedMs: Date.now() - t0,
-        });
-      }
-    } catch (pollErr) {
-      if (pollN === 1 || pollN % 5 === 0) {
-        console.debug(
-          "[eliza][lifecycle][client] startAndWait: getStatus error while polling",
-          { pollN, waitedMs: Date.now() - t0 },
-          pollErr,
-        );
-      }
-    }
-  }
-  const final = await this.getStatus();
-  console.warn(
-    "[eliza][lifecycle][client] startAndWait: timed out — returning last status",
-    {
-      state: final.state,
-      waitedMs: Date.now() - t0,
-      maxWaitMs,
-    },
-  );
-  return final;
-};
-
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
   const res = await this.fetch<{ status: AgentStatus }>("/api/agent/stop", {
     method: "POST",
@@ -972,10 +929,8 @@ ElizaClient.prototype.restartAndWait = async function (
   });
   try {
     await this.restartAgent();
-    console.info(
-      "[eliza][reset][client] restartAndWait: restart accepted",
-    );
-  } catch (e) {
+    console.info("[eliza][reset][client] restartAndWait: restart accepted");
+  } catch (e: unknown) {
     console.info(
       "[eliza][reset][client] restartAndWait: initial restart call failed (often 409 while restarting)",
       e,
@@ -1897,6 +1852,102 @@ ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
   return this.fetch("/api/website-blocker", {
     method: "DELETE",
   });
+};
+
+ElizaClient.prototype.getAppBlockerStatus = async function (this: ElizaClient) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.getStatus();
+  }
+  return {
+    available: false,
+    active: false,
+    platform: "web",
+    engine: "none",
+    blockedCount: 0,
+    blockedPackageNames: [],
+    endsAt: null,
+    permissionStatus: "not-applicable",
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerStatusResult;
+};
+
+ElizaClient.prototype.checkAppBlockerPermissions = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.checkPermissions();
+  }
+  return {
+    status: "not-applicable",
+    canRequest: false,
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerPermissionResult;
+};
+
+ElizaClient.prototype.requestAppBlockerPermissions = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.requestPermissions();
+  }
+  return {
+    status: "not-applicable",
+    canRequest: false,
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerPermissionResult;
+};
+
+ElizaClient.prototype.getInstalledAppsToBlock = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.getInstalledApps();
+  }
+  return { apps: [] as AppBlockerInstalledApp[] };
+};
+
+ElizaClient.prototype.selectAppBlockerApps = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.selectApps();
+  }
+  return {
+    apps: [] as AppBlockerInstalledApp[],
+    cancelled: true,
+  };
+};
+
+ElizaClient.prototype.startAppBlock = async function (
+  this: ElizaClient,
+  options,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.blockApps(options);
+  }
+  return {
+    success: false,
+    endsAt: null,
+    blockedCount: 0,
+    error: "App blocking is only available on iPhone and Android builds.",
+  };
+};
+
+ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.unblockApps();
+  }
+  return {
+    success: false,
+    error: "App blocking is only available on iPhone and Android builds.",
+  };
 };
 
 ElizaClient.prototype.getCodingAgentStatus = async function (

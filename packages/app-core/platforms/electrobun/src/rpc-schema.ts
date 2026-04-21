@@ -19,6 +19,7 @@ import type {
   OpenBrowserWorkspaceTabRequest,
 } from "@elizaos/agent/services/browser-workspace";
 import type { RPCSchema } from "electrobun/bun";
+import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
 // ============================================================================
 // Shared Types
@@ -430,16 +431,6 @@ export interface EmbeddedAgentStatus {
   port: number | null;
   startedAt: number | null;
   error: string | null;
-}
-
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: "config-path-env" | "state-dir-env" | "default-state-dir";
 }
 
 export interface DesktopStartupDiagnostics {

@@ -8,8 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
-    "test": "bunx vitest run",
-    "test:e2e": "node test/run-storybook-e2e.mjs",
+    "test": "bunx vitest run --config ./vitest.config.ts",
     "storybook": "storybook dev -p 6007",
     "build-storybook": "storybook build"
   },

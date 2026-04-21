@@ -17,7 +17,8 @@ import type {
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+  LifeOpsNextCalendarEventContext,
+} from "@elizaos/app-lifeops/contracts";
 import {
   type ReactNode,
   useCallback,

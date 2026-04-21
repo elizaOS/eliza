@@ -95,6 +95,19 @@ type ErrorWithCause = Error & {
   dataDir?: unknown;
 };
 
+type AutonomyServiceLike = {
+  enableAutonomy(): Promise<void>;
+};
+
+function isAutonomyService(value: unknown): value is AutonomyServiceLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "enableAutonomy" in value &&
+    typeof value.enableAutonomy === "function"
+  );
+}
+
 export const CHANNEL_PLUGIN_MAP = {
   ...upstreamChannelPluginMap,
   ...INTERNAL_CHANNEL_PLUGIN_OVERRIDES,
@@ -157,6 +170,16 @@ interface RuntimeModelCompat {
     type: (typeof ModelType)[keyof typeof ModelType] | string,
     params: { prompt: string },
   ) => Promise<unknown>;
+}
+
+function getAutonomyService(
+  runtime: AgentRuntime,
+): AutonomyServiceLike | null {
+  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  if (isAutonomyService(svc)) {
+    return svc;
+  }
+  return null;
 }
 
 function syncBrandEnvAliases(): void {
@@ -435,12 +458,8 @@ async function repairRuntimeAfterBoot(
 
   // Enable the autonomy loop so trigger/heartbeat instructions are processed.
   {
-    const autonomySvc = (runtime.getService("AUTONOMY") ??
-      runtime.getService("autonomy")) as unknown as
-      | { enableAutonomy(): Promise<void> }
-      | null
-      | undefined;
-    if (autonomySvc && typeof autonomySvc.enableAutonomy === "function") {
+    const autonomySvc = getAutonomyService(runtime);
+    if (autonomySvc) {
       try {
         await autonomySvc.enableAutonomy();
         logger.info(

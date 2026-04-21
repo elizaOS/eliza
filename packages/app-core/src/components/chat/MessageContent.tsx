@@ -534,7 +534,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
       await client.updatePlugin(pluginId, { config: patch });
       if (mountedRef.current) setSaved(true);
       await fetchPlugin();
-    } catch (e) {
+    } catch (e: unknown) {
       if (mountedRef.current) {
         setError(
           e instanceof Error
@@ -594,7 +594,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
         }
         // Wait for agent restart then refresh (with cleanup on unmount)
         refreshTimerRef.current = setTimeout(() => void fetchPlugin(), 3000);
-      } catch (e) {
+      } catch (e: unknown) {
         if (mountedRef.current) {
           setError(
             e instanceof Error

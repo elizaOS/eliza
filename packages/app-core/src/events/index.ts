@@ -1,3 +1,8 @@
+import type {
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+} from "@elizaos/app-lifeops/contracts";
+
 /**
  * Typed constants for eliza:* custom events dispatched across the app.
  *

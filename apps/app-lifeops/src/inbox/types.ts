@@ -4,6 +4,11 @@ import type {
   InboxTriageRules as SharedInboxTriageRules,
 } from "@elizaos/shared/config";
 import type { UUID } from "@elizaos/core";
+import type {
+  InboxAutoReplyConfig,
+  InboxTriageConfig,
+  InboxTriageRules,
+} from "@elizaos/shared/contracts";
 
 // ---------------------------------------------------------------------------
 // Classification & urgency enums
@@ -135,12 +140,8 @@ export interface DeferredInboxDraft {
   senderName: string;
 }
 
-// ---------------------------------------------------------------------------
-// Config types
-// ---------------------------------------------------------------------------
-
-export type InboxAutoReplyConfig = SharedInboxAutoReplyConfig;
-
-export type InboxTriageRules = SharedInboxTriageRules;
-
-export type InboxTriageConfig = SharedInboxTriageConfig;
+export type {
+  InboxAutoReplyConfig,
+  InboxTriageConfig,
+  InboxTriageRules,
+} from "@elizaos/shared/contracts";

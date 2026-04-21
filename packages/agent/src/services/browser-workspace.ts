@@ -66,7 +66,6 @@ import type {
   EvaluateBrowserWorkspaceTabRequest,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-  WebBrowserWorkspaceTabState,
 } from "./browser-workspace-types.js";
 
 // ── Re-export state ──────────────────────────────────────────────────
@@ -97,8 +96,6 @@ import {
   DEFAULT_WEB_PARTITION,
   inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceCommand,
-  normalizeBrowserWorkspaceText,
-  resolveBrowserWorkspaceCommandElementRefs,
   sleep,
 } from "./browser-workspace-helpers.js";
 
@@ -124,10 +121,8 @@ import {
 } from "./browser-workspace-jsdom.js";
 // ── Re-export snapshots ──────────────────────────────────────────────
 import {
-  buildBrowserWorkspaceDocumentSnapshotText,
   createBrowserWorkspacePdfBuffer,
   createBrowserWorkspaceSnapshotRecord,
-  createBrowserWorkspaceSyntheticScreenshotData,
   diffBrowserWorkspaceSnapshots,
 } from "./browser-workspace-snapshots.js";
 // ── Imports for state ────────────────────────────────────────────────
@@ -145,20 +140,9 @@ import {
   executeWebBrowserWorkspaceDomCommand,
   executeWebBrowserWorkspaceUtilityCommand,
   findWebBrowserWorkspaceTargetTabId,
-  getCurrentWebBrowserWorkspaceTabState,
   getWebBrowserWorkspaceTabIndex,
   getWebBrowserWorkspaceTabState,
 } from "./browser-workspace-web.js";
-import {
-  createHostedCloudBrowserSession,
-  deleteHostedCloudBrowserSession,
-  executeHostedCloudBrowserCommand,
-  getHostedCloudBrowserSession,
-  isHostedCloudToolingConfigured,
-  listHostedCloudBrowserSessions,
-  navigateHostedCloudBrowserSession,
-  snapshotHostedCloudBrowserSession,
-} from "./hosted-tools.js";
 
 // ────────────────────────────────────────────────────────────────────
 // Public API functions
@@ -167,13 +151,7 @@ import {
 export function getBrowserWorkspaceMode(
   env: NodeJS.ProcessEnv = process.env,
 ): BrowserWorkspaceMode {
-  if (isBrowserWorkspaceBridgeConfigured(env)) {
-    return "desktop";
-  }
-  if (isHostedCloudToolingConfigured(env)) {
-    return "cloud";
-  }
-  return "web";
+  return isBrowserWorkspaceBridgeConfigured(env) ? "desktop" : "web";
 }
 
 export async function getBrowserWorkspaceSnapshot(
@@ -188,13 +166,7 @@ export async function getBrowserWorkspaceSnapshot(
 export async function listBrowserWorkspaceTabs(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab[]> {
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return listHostedCloudBrowserSessions(env);
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return webWorkspaceState.tabs.map((tab) => ({
       id: tab.id,
       title: tab.title,
@@ -217,20 +189,7 @@ export async function openBrowserWorkspaceTab(
   request: OpenBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return createHostedCloudBrowserSession(
-      {
-        show: request.show,
-        title: request.title,
-        url: request.url,
-      },
-      env,
-    );
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
       const now = getBrowserWorkspaceTimestamp();
       const url = assertBrowserWorkspaceUrl(
@@ -287,13 +246,7 @@ export async function navigateBrowserWorkspaceTab(
 ): Promise<BrowserWorkspaceTab> {
   const nextUrl = assertBrowserWorkspaceUrl(request.url);
 
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return navigateHostedCloudBrowserSession(request.id, nextUrl, env);
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
       const index = getWebBrowserWorkspaceTabIndex(request.id);
       if (index < 0) {
@@ -301,9 +254,6 @@ export async function navigateBrowserWorkspaceTab(
       }
 
       const existing = webWorkspaceState.tabs[index];
-      if (!existing) {
-        throw createBrowserWorkspaceNotFoundError(request.id);
-      }
       const updatedAt = getBrowserWorkspaceTimestamp();
       const state = getBrowserWorkspaceRuntimeState("web", existing.id);
       clearWebBrowserWorkspaceTabElementRefs(existing.id);
@@ -312,7 +262,7 @@ export async function navigateBrowserWorkspaceTab(
         nextUrl === "about:blank"
           ? createEmptyWebBrowserWorkspaceDom(nextUrl)
           : null;
-      const nextTab: WebBrowserWorkspaceTabState = {
+      const nextTab = {
         ...existing,
         title: inferBrowserWorkspaceTitle(nextUrl),
         url: nextUrl,
@@ -344,13 +294,7 @@ export async function showBrowserWorkspaceTab(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return getHostedCloudBrowserSession(id, env);
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
       getWebBrowserWorkspaceTabState(id);
       const lastFocusedAt = getBrowserWorkspaceTimestamp();
@@ -378,26 +322,16 @@ export async function hideBrowserWorkspaceTab(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceTab> {
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return getHostedCloudBrowserSession(id, env);
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
       const index = getWebBrowserWorkspaceTabIndex(id);
       if (index < 0) {
         throw createBrowserWorkspaceNotFoundError(id);
       }
 
-      const existing = webWorkspaceState.tabs[index];
-      if (!existing) {
-        throw createBrowserWorkspaceNotFoundError(id);
-      }
       const updatedAt = getBrowserWorkspaceTimestamp();
-      const nextTab: WebBrowserWorkspaceTabState = {
-        ...existing,
+      const nextTab = {
+        ...webWorkspaceState.tabs[index],
         visible: false,
         updatedAt,
       };
@@ -418,13 +352,7 @@ export async function closeBrowserWorkspaceTab(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
-  const mode = getBrowserWorkspaceMode(env);
-
-  if (mode === "cloud") {
-    return deleteHostedCloudBrowserSession(id, env);
-  }
-
-  if (mode === "web") {
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
       const initialLength = webWorkspaceState.tabs.length;
       clearWebBrowserWorkspaceTabElementRefs(id);
@@ -448,18 +376,6 @@ export async function evaluateBrowserWorkspaceTab(
   request: EvaluateBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
-  if (getBrowserWorkspaceMode(env) === "cloud") {
-    const result = await executeHostedCloudBrowserCommand(
-      request.id,
-      {
-        id: request.id,
-        script: request.script,
-        subaction: "eval",
-      },
-      env,
-    );
-    return result.output;
-  }
   return evaluateBrowserWorkspaceTabDesktop(request, env);
 }
 
@@ -467,168 +383,7 @@ export async function snapshotBrowserWorkspaceTab(
   id: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ data: string }> {
-  if (getBrowserWorkspaceMode(env) === "cloud") {
-    return snapshotHostedCloudBrowserSession(id, env);
-  }
   return snapshotBrowserWorkspaceTabDesktop(id, env);
-}
-
-async function resolveHostedCloudBrowserTargetTabId(
-  command: BrowserWorkspaceCommand,
-  env: NodeJS.ProcessEnv,
-): Promise<string> {
-  const explicitId = command.id?.trim();
-  if (explicitId) {
-    return explicitId;
-  }
-
-  const tabs = await listHostedCloudBrowserSessions(env);
-  const fallbackId = tabs.find((tab) => tab.visible)?.id ?? tabs[0]?.id;
-  if (!fallbackId) {
-    throw new Error(
-      "Eliza browser workspace command requires an active cloud browser session.",
-    );
-  }
-  return fallbackId;
-}
-
-async function executeHostedCloudBrowserWorkspaceCommand(
-  command: BrowserWorkspaceCommand,
-  env: NodeJS.ProcessEnv,
-): Promise<BrowserWorkspaceCommandResult> {
-  if (command.subaction === "list") {
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      tabs: await listHostedCloudBrowserSessions(env),
-    };
-  }
-
-  if (command.subaction === "open" || command.subaction === "window") {
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      tab: await createHostedCloudBrowserSession(
-        {
-          show: command.show ?? true,
-          title: command.title,
-          url: command.url,
-        },
-        env,
-      ),
-    };
-  }
-
-  if (command.subaction === "tab") {
-    const action = command.tabAction ?? "list";
-    if (action === "list") {
-      return {
-        mode: "cloud",
-        subaction: command.subaction,
-        tabs: await listHostedCloudBrowserSessions(env),
-      };
-    }
-
-    if (action === "new") {
-      return {
-        mode: "cloud",
-        subaction: command.subaction,
-        tab: await createHostedCloudBrowserSession(
-          {
-            show: command.show ?? true,
-            title: command.title,
-            url: command.url,
-          },
-          env,
-        ),
-      };
-    }
-
-    if (action === "switch") {
-      const targetId = await resolveHostedCloudBrowserTargetTabId(command, env);
-      return {
-        mode: "cloud",
-        subaction: command.subaction,
-        tab: await getHostedCloudBrowserSession(targetId, env),
-      };
-    }
-
-    const targetId = await resolveHostedCloudBrowserTargetTabId(command, env);
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      closed: await deleteHostedCloudBrowserSession(targetId, env),
-    };
-  }
-
-  if (command.subaction === "show" || command.subaction === "hide") {
-    const targetId = await resolveHostedCloudBrowserTargetTabId(command, env);
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      tab: await getHostedCloudBrowserSession(targetId, env),
-    };
-  }
-
-  if (command.subaction === "close") {
-    const targetId = await resolveHostedCloudBrowserTargetTabId(command, env);
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      closed: await deleteHostedCloudBrowserSession(targetId, env),
-    };
-  }
-
-  if (command.subaction === "navigate" && !command.id?.trim()) {
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      tab: await createHostedCloudBrowserSession(
-        {
-          show: command.show ?? true,
-          title: command.title,
-          url: command.url,
-        },
-        env,
-      ),
-    };
-  }
-
-  const targetId = await resolveHostedCloudBrowserTargetTabId(command, env);
-
-  if (command.subaction === "navigate") {
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      tab: await navigateHostedCloudBrowserSession(targetId, command.url ?? "", env),
-    };
-  }
-
-  if (command.subaction === "screenshot" || command.subaction === "snapshot") {
-    return {
-      mode: "cloud",
-      subaction: command.subaction,
-      snapshot: await snapshotHostedCloudBrowserSession(targetId, env),
-      tab: await getHostedCloudBrowserSession(targetId, env),
-    };
-  }
-
-  const result = await executeHostedCloudBrowserCommand(
-    targetId,
-    {
-      ...command,
-      id: targetId,
-    },
-    env,
-  );
-
-  return {
-    mode: "cloud",
-    subaction: command.subaction,
-    snapshot: result.snapshot,
-    tab: result.session,
-    value: result.output,
-  };
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -640,14 +395,6 @@ export async function executeBrowserWorkspaceCommand(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserWorkspaceCommandResult> {
   command = normalizeBrowserWorkspaceCommand(command);
-
-  if (
-    getBrowserWorkspaceMode(env) === "cloud" &&
-    command.subaction !== "batch"
-  ) {
-    return executeHostedCloudBrowserWorkspaceCommand(command, env);
-  }
-
   switch (command.subaction) {
     case "batch": {
       const steps = Array.isArray(command.steps) ? command.steps : [];

@@ -138,7 +138,7 @@ function deriveLocalEvmAddress(): string | null {
   if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
   try {
     return deriveEvmAddress(evmKey);
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(`Bad EVM key: ${e}`);
     return null;
   }
@@ -149,7 +149,7 @@ function deriveLocalSolanaAddress(): string | null {
   if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
   try {
     return deriveSolanaAddress(solKey);
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(`Bad SOL key: ${e}`);
     return null;
   }

@@ -12,8 +12,8 @@ export type {
   TriggerLastStatus,
   TriggerType,
   TriggerWakeMode,
-} from "@elizaos/agent/triggers/types";
-export type { TrajectoryExportFormat } from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent/triggers";
+export type { TrajectoryExportFormat } from "@elizaos/agent/types";
 
 export interface DatabaseStatus {
   provider: DatabaseProviderType;
@@ -352,7 +352,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserCompanionReleaseManifest
+    | import("@elizaos/app-lifeops/contracts").LifeOpsBrowserCompanionReleaseManifest
     | null;
 }
 

@@ -32,9 +32,10 @@ import type {
   LifeOpsWorkflowRun,
   SetLifeOpsReminderPreferenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_CHANNEL_TYPES } from "@elizaos/shared/contracts/lifeops";
-import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
+} from "@elizaos/app-lifeops/contracts";
+import {
+  LIFEOPS_CHANNEL_TYPES,
+} from "@elizaos/app-lifeops/contracts";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -97,8 +98,12 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import type { ReminderActivityProfileSnapshot } from "./service-types.js";
-import { addMinutes, getZonedDateParts } from "./time.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+import { addMinutes } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -248,77 +253,52 @@ type LifeOpsReminderPreferenceSetting = {
   note: string | null;
 };
 
-function zonedDecimalHour(
-  value: string | null | undefined,
-  timeZone: string,
-  wrapAfterMidnight = false,
-): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) {
-    return null;
-  }
-  const parts = getZonedDateParts(parsed, timeZone);
-  let hour = parts.hour + parts.minute / 60;
-  if (wrapAfterMidnight && hour < 12) {
-    hour += 24;
-  }
-  return Math.round(hour * 100) / 100;
-}
-
-function buildAdaptiveWindowProfile(args: {
-  profile: Pick<
-    Parameters<typeof computeAdaptiveWindowPolicy>[0],
-    | "typicalWakeHour"
-    | "typicalFirstActiveHour"
-    | "typicalLastActiveHour"
-    | "typicalSleepHour"
-  > | null;
-  schedule: {
-    wakeAt: string | null;
-    firstActiveAt: string | null;
-    lastActiveAt: string | null;
-    currentSleepStartedAt: string | null;
-    lastSleepStartedAt: string | null;
-    typicalWakeHour: number | null;
-    typicalSleepHour: number | null;
-  } | null;
-  timeZone: string;
-}): Parameters<typeof computeAdaptiveWindowPolicy>[0] | null {
-  const scheduleWakeHour =
-    zonedDecimalHour(args.schedule?.wakeAt, args.timeZone) ??
-    args.schedule?.typicalWakeHour ??
-    null;
-  const scheduleFirstActiveHour = zonedDecimalHour(
-    args.schedule?.firstActiveAt,
-    args.timeZone,
-  );
-  const scheduleLastActiveHour = zonedDecimalHour(
-    args.schedule?.lastActiveAt,
-    args.timeZone,
-  );
-  const scheduleSleepHour =
-    zonedDecimalHour(
-      args.schedule?.currentSleepStartedAt ?? args.schedule?.lastSleepStartedAt,
-      args.timeZone,
-      true,
-    ) ??
-    args.schedule?.typicalSleepHour ??
-    null;
-  const adaptiveProfile = {
-    typicalWakeHour: scheduleWakeHour ?? args.profile?.typicalWakeHour ?? null,
-    typicalFirstActiveHour:
-      scheduleFirstActiveHour ?? args.profile?.typicalFirstActiveHour ?? null,
-    typicalLastActiveHour:
-      scheduleLastActiveHour ?? args.profile?.typicalLastActiveHour ?? null,
-    typicalSleepHour:
-      scheduleSleepHour ?? args.profile?.typicalSleepHour ?? null,
-  };
-  return Object.values(adaptiveProfile).some((value) => value !== null)
-    ? adaptiveProfile
-    : null;
+export interface LifeOpsReminderService {
+  getReminderPreference(
+    definitionId?: string | null,
+  ): Promise<LifeOpsReminderPreference>;
+  setReminderPreference(
+    request: SetLifeOpsReminderPreferenceRequest,
+  ): Promise<LifeOpsReminderPreference>;
+  captureActivitySignal(
+    request: CaptureLifeOpsActivitySignalRequest,
+  ): Promise<LifeOpsActivitySignal>;
+  listActivitySignals(args?: {
+    sinceAt?: string | null;
+    limit?: number | null;
+    states?: LifeOpsActivitySignal["state"][] | null;
+  }): Promise<LifeOpsActivitySignal[]>;
+  upsertChannelPolicy(
+    request: UpsertLifeOpsChannelPolicyRequest,
+  ): Promise<LifeOpsChannelPolicy>;
+  capturePhoneConsent(request: CaptureLifeOpsPhoneConsentRequest): Promise<{
+    phoneNumber: string;
+    policies: LifeOpsChannelPolicy[];
+  }>;
+  processReminders(
+    request?: { now?: string; limit?: number },
+  ): Promise<LifeOpsReminderProcessingResult>;
+  processScheduledWork(request?: {
+    now?: string;
+    reminderLimit?: number;
+    workflowLimit?: number;
+  }): Promise<{
+    now: string;
+    reminderAttempts: LifeOpsReminderAttempt[];
+    workflowRuns: LifeOpsWorkflowRun[];
+  }>;
+  relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
+  resolveWebsiteAccessCallback(
+    callbackKey: string,
+    now?: Date,
+  ): Promise<{ ok: true }>;
+  inspectReminder(
+    ownerType: "occurrence" | "calendar_event",
+    ownerId: string,
+  ): Promise<LifeOpsReminderInspection>;
+  acknowledgeReminder(
+    request: AcknowledgeLifeOpsReminderRequest,
+  ): Promise<{ ok: true }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -982,9 +962,9 @@ function isWebsiteAccessGrantActive(
 /** @internal */
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsRemindersServiceMixin extends Base {
-    public emitInAppReminderNudge(args: {
+): MixinClass<TBase, LifeOpsReminderService> {
+  return class extends Base {
+    protected emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
       ownerId: string;
@@ -4170,7 +4150,5 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return { ok: true };
     }
-  }
-
-  return LifeOpsRemindersServiceMixin;
+  } as MixinClass<TBase, LifeOpsReminderService>;
 }

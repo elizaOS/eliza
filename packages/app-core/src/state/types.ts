@@ -365,8 +365,7 @@ export interface AppState {
   conversationMessages: ConversationMessage[];
   autonomousEvents: StreamEventEnvelope[];
   autonomousLatestEventId: string | null;
-  // biome-ignore lint/suspicious/noExplicitAny: app-core keeps this app-owned replay map structural without importing app-local types.
-  autonomousRunHealthByRunId: Record<string, any>; // defined in autonomy-events.ts in app
+  autonomousRunHealthByRunId: import("../autonomy").AutonomyRunHealthMap;
   /** Active PTY coding agent sessions from the SwarmCoordinator. */
   ptySessions: CodingAgentSession[];
   /** Conversation IDs with unread proactive messages from the agent. */
@@ -959,8 +958,7 @@ export interface AppActions {
   copyToClipboard: (text: string) => Promise<void>;
 
   // Translations
-  // biome-ignore lint/suspicious/noExplicitAny: translation interpolation values are intentionally open-ended.
-  t: (key: string, values?: Record<string, any>) => string;
+  t: (key: string, values?: Record<string, unknown>) => string;
 }
 
 export type AppContextValue = AppState & AppActions;

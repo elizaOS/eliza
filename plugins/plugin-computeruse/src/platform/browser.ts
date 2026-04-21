@@ -21,6 +21,12 @@ import type {
   ClickableElement,
 } from "../types.js";
 
+type BrowserInfo = BrowserState & {
+  success: boolean;
+  is_open: boolean;
+  error?: string;
+};
+
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
 type Browser = import("puppeteer-core").Browser;
@@ -53,6 +59,12 @@ export function setBrowserRuntimeOptions(options: {
   if (typeof options.headless === "boolean") {
     browserHeadless = options.headless;
   }
+}
+
+function envFlagEnabled(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 // ── Browser Detection ───────────────────────────────────────────────────────
@@ -184,12 +196,41 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
   }
   let lastError: unknown = null;
 
-  for (
-    let attempt = 1;
-    attempt <= BROWSER_LAUNCH_ATTEMPTS;
-    attempt += 1
-  ) {
-    tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
+  const launchArgs = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    "--disable-dev-shm-usage",
+    `--window-size=1280,900`,
+  ];
+  const preferredHeadless = envFlagEnabled(
+    process.env.COMPUTER_USE_BROWSER_HEADLESS,
+  );
+
+  const launchBrowser = async (headless: boolean) =>
+    pup.default.launch({
+      executablePath,
+      headless,
+      userDataDir: tempUserDataDir!,
+      args: launchArgs,
+      defaultViewport: { width: 1280, height: 900 },
+    });
+
+  try {
+    browser = await launchBrowser(preferredHeadless);
+  } catch (error) {
+    const shouldRetryHeadless =
+      !preferredHeadless &&
+      (process.env.CI === "true" ||
+        process.env.CI === "1" ||
+        (!process.env.DISPLAY && currentPlatform() === "linux"));
+
+    if (!shouldRetryHeadless) {
+      throw error;
+    }
+
+    browser = await launchBrowser(true);
+  }
 
     try {
       browser = await pup.default.launch({
@@ -363,6 +404,29 @@ export async function getBrowserInfo(): Promise<BrowserInfo> {
   }
 }
 
+export async function getBrowserContext(): Promise<BrowserState> {
+  return getBrowserState();
+}
+
+export async function getBrowserInfo(): Promise<BrowserInfo> {
+  try {
+    const state = await getBrowserState();
+    return {
+      success: true,
+      is_open: true,
+      ...state,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      is_open: false,
+      url: "",
+      title: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // ── DOM ─────────────────────────────────────────────────────────────────────
 
 export async function getBrowserDom(): Promise<string> {
@@ -461,6 +525,28 @@ export async function waitBrowser(
   }
 }
 
+export async function browserWait(
+  selector?: string,
+  text?: string,
+  timeout = 5000,
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    await waitBrowser(selector, text, timeout);
+    if (selector) {
+      return { success: true, message: `Element "${selector}" found` };
+    }
+    if (text) {
+      return { success: true, message: `Text "${text}" found on page` };
+    }
+    return { success: true, message: `Waited ${Math.min(timeout, 5000)}ms` };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 // ── Tab Management ──────────────────────────────────────────────────────────
 
 export async function listBrowserTabs(): Promise<BrowserTab[]> {
@@ -523,3 +609,24 @@ export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
     is_open: true,
   };
 }
+
+export const browser_open = openBrowser;
+export const browser_connect = openBrowser;
+export const browser_navigate = navigateBrowser;
+export const browser_click = clickBrowser;
+export const browser_type = typeBrowser;
+export const browser_scroll = scrollBrowser;
+export const browser_close = closeBrowser;
+export const browser_execute = executeBrowser;
+export const browser_screenshot = screenshotBrowser;
+export const browser_dom = getBrowserDom;
+export const browser_get_dom = getBrowserDom;
+export const browser_get_clickables = getBrowserClickables;
+export const browser_state = getBrowserState;
+export const browser_get_context = getBrowserContext;
+export const browser_info = getBrowserInfo;
+export const browser_wait = browserWait;
+export const browser_list_tabs = listBrowserTabs;
+export const browser_open_tab = openBrowserTab;
+export const browser_close_tab = closeBrowserTab;
+export const browser_switch_tab = switchBrowserTab;

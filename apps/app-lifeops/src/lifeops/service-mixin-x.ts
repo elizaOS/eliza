@@ -7,10 +7,10 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   UpsertLifeOpsXConnectorRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_X_CAPABILITIES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   fail,
@@ -24,13 +24,22 @@ import {
 import {
   normalizeOptionalRecord,
 } from "./service-helpers-misc.js";
-import {
-  postToX,
-  readXPosterCredentialsFromEnv,
-  sendXDm,
-} from "./x-poster.js";
-import { normalizeOptionalString } from "./service-normalize.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { postToX, readXPosterCredentialsFromEnv } from "./x-poster.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsXService {
+  getXConnectorStatus(
+    requestedMode?: LifeOpsConnectorMode,
+  ): Promise<LifeOpsXConnectorStatus>;
+  upsertXConnector(
+    request: UpsertLifeOpsXConnectorRequest,
+  ): Promise<LifeOpsXConnectorStatus>;
+  createXPost(request: CreateLifeOpsXPostRequest): Promise<LifeOpsXPostResponse>;
+}
 
 type LifeOpsXConnectorCapability =
   | "x.read"
@@ -49,60 +58,11 @@ function normalizeXCapabilityRequest(value: unknown): LifeOpsXConnectorCapabilit
   return [...new Set(capabilities)];
 }
 
-function capabilitySummary(capabilities: readonly LifeOpsXConnectorCapability[]): {
-  feedRead: boolean;
-  feedWrite: boolean;
-  dmRead: boolean;
-  dmWrite: boolean;
-} {
-  return {
-    feedRead: capabilities.includes("x.read"),
-    feedWrite: capabilities.includes("x.write"),
-    dmRead: capabilities.includes("x.dm.read"),
-    dmWrite: capabilities.includes("x.dm.write"),
-  };
-}
-
-function resolveXCapabilities(
-  grantCapabilities: readonly string[] | undefined,
-  hasCredentials: boolean,
-): LifeOpsXConnectorCapability[] {
-  const normalized = (grantCapabilities ?? []).filter(
-    (candidate): candidate is LifeOpsXConnectorCapability =>
-      candidate === "x.read" ||
-      candidate === "x.write" ||
-      candidate === "x.dm.read" ||
-      candidate === "x.dm.write",
-  );
-  if (normalized.length > 0) {
-    return [...new Set(normalized)];
-  }
-  return hasCredentials
-    ? (["x.read", "x.write", "x.dm.read", "x.dm.write"] as const)
-    : [];
-}
-
-function createSyntheticXGrant(
-  agentId: string,
-  mode: LifeOpsConnectorMode,
-): LifeOpsConnectorGrant {
-  return createLifeOpsConnectorGrant({
-    agentId,
-    provider: "x",
-    identity: {},
-    grantedScopes: [],
-    capabilities: [...LIFEOPS_X_CAPABILITIES],
-    tokenRef: null,
-    mode,
-    metadata: { synthetic: true, source: "env_credentials" },
-    side: "owner",
-  });
-}
-
-/** @internal */
-export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  class LifeOpsXServiceMixin extends Base {
-    async resolveXGrant(
+export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsXService> {
+  return class extends Base {
+    async getXConnectorStatus(
       requestedMode?: LifeOpsConnectorMode,
     ): Promise<LifeOpsConnectorGrant | null> {
       const mode =
@@ -381,7 +341,5 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase
         category: result.category,
       };
     }
-  }
-
-  return LifeOpsXServiceMixin;
+  } as MixinClass<TBase, LifeOpsXService>;
 }

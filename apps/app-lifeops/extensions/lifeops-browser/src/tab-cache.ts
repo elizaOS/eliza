@@ -1,4 +1,4 @@
-import type { LifeOpsBrowserSettings } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserSettings } from "@elizaos/app-lifeops/contracts";
 import type { CompanionSyncRequest } from "./protocol";
 
 export type RememberedTab = CompanionSyncRequest["tabs"][number];

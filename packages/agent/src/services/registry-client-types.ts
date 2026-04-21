@@ -1,30 +1,17 @@
-export interface RegistryAppViewerMeta {
-  url: string;
-  embedParams?: Record<string, string>;
-  postMessageAuth?: boolean;
-  sandbox?: string;
-}
+import type {
+  AppSessionConfig,
+  AppSessionFeature,
+  AppSessionMode,
+  AppUiExtensionConfig,
+  AppViewerConfig,
+  RegistryAppInfo,
+} from "@elizaos/shared/contracts/apps";
 
-export type RegistryAppSessionMode =
-  | "viewer"
-  | "spectate-and-steer"
-  | "external";
-
-export type RegistryAppSessionFeature =
-  | "commands"
-  | "telemetry"
-  | "pause"
-  | "resume"
-  | "suggestions";
-
-export interface RegistryAppSessionMeta {
-  mode: RegistryAppSessionMode;
-  features?: RegistryAppSessionFeature[];
-}
-
-export interface AppUiExtensionConfig {
-  detailPanelId: string;
-}
+export type RegistryAppViewerMeta = Omit<AppViewerConfig, "authMessage">;
+export type RegistryAppSessionMode = AppSessionMode;
+export type RegistryAppSessionFeature = AppSessionFeature;
+export type RegistryAppSessionMeta = AppSessionConfig;
+export type { AppUiExtensionConfig, RegistryAppInfo };
 
 export interface RegistryAppMeta {
   displayName: string;
@@ -74,8 +61,6 @@ export interface RegistryPluginInfo {
   kind?: string;
   appMeta?: RegistryAppMeta;
 }
-
-export type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 
 export interface RegistrySearchResult {
   name: string;

@@ -1,15 +1,5 @@
-/**
- * LifeOpsPageView — left-nav + main + right-chat workspace layout.
- *
- * Layout:
- *   [NavRail] | [Main section content] | [Chat (AppWorkspaceChrome)]
- *
- * Section routing via useLifeOpsSection; selection propagated via
- * LifeOpsSelectionProvider.
- *
- * TODO: replace AppWorkspaceChromeFallback with AppWorkspaceChrome
- * from @elizaos/app-core when Stream B lands.
- */
+import type { LifeOpsOverview } from "@elizaos/app-lifeops/contracts";
+import { Button, PagePanel } from "@elizaos/app-core";
 import {
   Button,
   type CloudOAuthConnection,

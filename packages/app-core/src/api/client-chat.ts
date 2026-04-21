@@ -4,6 +4,16 @@
  */
 
 import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
+import type {
+  CaptureLifeOpsActivitySignalRequest,
+  CreateLifeOpsBrowserCompanionPairingRequest,
+  LifeOpsActivitySignal,
+  LifeOpsBrowserCompanionPackageStatus,
+  LifeOpsBrowserCompanionPairingResponse,
+  LifeOpsBrowserKind,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+} from "@elizaos/app-lifeops/contracts";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,

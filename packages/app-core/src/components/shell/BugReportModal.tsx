@@ -394,7 +394,9 @@ export function BugReportModal() {
         <DialogContent className="w-[min(100%-2rem,28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
           <DialogHeader className="px-5 py-4 text-left">
             <DialogTitle
-              ref={successHeadingRef as unknown as React.Ref<never>}
+              ref={(node) => {
+                successHeadingRef.current = node;
+              }}
               tabIndex={-1}
               className="text-sm font-bold text-txt focus:outline-none"
             >

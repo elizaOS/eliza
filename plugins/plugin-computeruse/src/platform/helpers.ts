@@ -75,11 +75,8 @@ export function runShellCommand(
  * Ported from open-computer-use desktop-automation.ts validateInt().
  */
 export function validateInt(val: unknown): number {
-  if (val == null) {
+  if (val === null || val === undefined) {
     throw new Error(`Invalid numeric value: ${String(val)}`);
-  }
-  if (typeof val === "string" && val.trim() === "") {
-    throw new Error("Invalid numeric value: ");
   }
   const n = Number(val);
   if (!Number.isFinite(n)) {

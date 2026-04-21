@@ -98,7 +98,7 @@ export function buildTestEnv(cwd) {
     }
   }
   env.NODE_NO_WARNINGS = env.NODE_NO_WARNINGS || "1";
-  env.ELIZA_LIVE_TEST = "0";
+  env.MILADY_LIVE_TEST = env.MILADY_LIVE_TEST || "0";
   env.ELIZA_LIVE_TEST = "0";
   env.PWD = path.resolve(cwd);
   if (!env.ELIZAOS_CLOUD_API_KEY) {

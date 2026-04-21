@@ -12,12 +12,12 @@ import type {
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
   UpsertLifeOpsBrowserCompanionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
   LIFEOPS_BROWSER_KINDS,
-} from "@elizaos/shared/contracts/lifeops";
-import { getAgentEventService } from "@elizaos/agent/runtime";
+} from "@elizaos/app-lifeops/contracts";
+import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
 import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
@@ -61,6 +61,10 @@ import type { LifeOpsServiceOptions } from "./service-types.js";
 /** Constructor type for the mixin pattern. */
 // biome-ignore lint/suspicious/noExplicitAny: mixin pattern requires open-ended constructor signature
 export type Constructor<T = {}> = new (...args: any[]) => T;
+
+export type MixinClass<TBase extends Constructor, TPublic extends object> = new (
+  ...args: ConstructorParameters<TBase>
+) => InstanceType<TBase> & TPublic;
 
 // ---------------------------------------------------------------------------
 // Helpers used only inside the base class

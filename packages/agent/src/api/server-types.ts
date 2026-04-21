@@ -126,7 +126,7 @@ export interface StreamEventEnvelope {
   sessionKey?: string;
   agentId?: string;
   roomId?: UUID;
-  payload: object;
+  payload: unknown;
 }
 
 /** A connector-registered route handler. Returns `true` if the request was handled. */

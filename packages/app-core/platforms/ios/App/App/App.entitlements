@@ -8,6 +8,8 @@
 	<true/>
 	<key>com.apple.developer.networking.multicast</key>
 	<true/>
+	<key>com.apple.developer.family-controls</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.ai.elizaos.app</string>
