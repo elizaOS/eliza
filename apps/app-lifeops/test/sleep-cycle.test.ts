@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
 import type { LifeOpsActivitySignal } from "@elizaos/shared/contracts/lifeops";
+import { describe, expect, it } from "vitest";
 import {
+  type LifeOpsActivityWindow,
   resolveLifeOpsDayBoundary,
   resolveLifeOpsSleepCycle,
-  type LifeOpsActivityWindow,
 } from "../src/lifeops/sleep-cycle.js";
 
-function activitySignal(overrides: Partial<LifeOpsActivitySignal>): LifeOpsActivitySignal {
+function activitySignal(
+  overrides: Partial<LifeOpsActivitySignal>,
+): LifeOpsActivitySignal {
   return {
     id: "signal-1",
     agentId: "agent-1",
@@ -93,12 +95,14 @@ describe("lifeops sleep cycle resolver", () => {
     expect(resolution.sleepCycle.sleepStatus).toBe("slept");
     expect(resolution.sleepCycle.cycleType).toBe("overnight");
     expect(resolution.sleepCycle.sleepConfidence).toBeGreaterThan(0.5);
-    expect(resolution.sleepCycle.evidence.some((item) => item.source === "activity_gap")).toBe(
-      true,
-    );
+    expect(
+      resolution.sleepCycle.evidence.some(
+        (item) => item.source === "activity_gap",
+      ),
+    ).toBe(true);
   });
 
-  it("distinguishes nap gaps from overnight sleep and resolves day boundaries", () => {
+  it("does not treat a short current daytime gap as sleep", () => {
     const windows: LifeOpsActivityWindow[] = [
       {
         startMs: Date.parse("2026-04-19T10:00:00.000Z"),
@@ -124,11 +128,121 @@ describe("lifeops sleep cycle resolver", () => {
       sleepCycle: resolution.sleepCycle,
     });
 
-    expect(resolution.sleepCycle.sleepStatus).toBe("sleeping_now");
-    expect(resolution.sleepCycle.cycleType).toBe("nap");
+    expect(resolution.sleepCycle.sleepStatus).toBe("unknown");
+    expect(resolution.sleepCycle.cycleType).toBe("unknown");
     expect(boundary.anchor).toBe("start_of_day");
-    expect(boundary.beforeSleepAt).toBe("2026-04-19T12:00:00.000Z");
+    expect(boundary.beforeSleepAt).toBeNull();
     expect(boundary.startOfDayAt).toBe("2026-04-19T00:00:00.000Z");
     expect(boundary.endOfDayAt).toBe("2026-04-20T00:00:00.000Z");
+  });
+
+  it("ignores stale current health sleep snapshots", () => {
+    const resolution = resolveLifeOpsSleepCycle({
+      nowMs: Date.parse("2026-04-19T18:00:00.000Z"),
+      timezone: "UTC",
+      windows: [],
+      signals: [
+        activitySignal({
+          id: "health-stale",
+          source: "mobile_health",
+          observedAt: "2026-04-19T08:00:00.000Z",
+          state: "sleeping",
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: true,
+              asleepAt: "2026-04-19T01:00:00.000Z",
+              awakeAt: null,
+              durationMinutes: null,
+              stage: "asleep",
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+        }),
+      ],
+    });
+
+    expect(resolution.sleepCycle.sleepStatus).toBe("unknown");
+    expect(resolution.sleepCycle.isProbablySleeping).toBe(false);
+    expect(resolution.sleepCycle.currentSleepStartedAt).toBeNull();
+  });
+
+  it("keeps overnight wake as the day anchor when a later nap is present", () => {
+    const resolution = resolveLifeOpsSleepCycle({
+      nowMs: Date.parse("2026-04-19T17:00:00.000Z"),
+      timezone: "UTC",
+      windows: [],
+      signals: [
+        activitySignal({
+          id: "overnight",
+          source: "mobile_health",
+          observedAt: "2026-04-19T07:45:00.000Z",
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: false,
+              asleepAt: "2026-04-18T23:30:00.000Z",
+              awakeAt: "2026-04-19T07:30:00.000Z",
+              durationMinutes: 480,
+              stage: null,
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+        }),
+        activitySignal({
+          id: "nap",
+          source: "mobile_health",
+          observedAt: "2026-04-19T15:30:00.000Z",
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: false,
+              asleepAt: "2026-04-19T14:00:00.000Z",
+              awakeAt: "2026-04-19T15:15:00.000Z",
+              durationMinutes: 75,
+              stage: null,
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+        }),
+      ],
+    });
+
+    expect(resolution.sleepCycle.sleepStatus).toBe("slept");
+    expect(resolution.sleepCycle.cycleType).toBe("overnight");
+    expect(resolution.sleepCycle.lastSleepEndedAt).toBe(
+      "2026-04-19T07:30:00.000Z",
+    );
+    expect(resolution.typicalWakeHour).toBe(7);
   });
 });

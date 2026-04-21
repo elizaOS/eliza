@@ -14,6 +14,9 @@ import {
 
 const COMPLETED_SLEEP_GAP_MIN_MS = 3 * 60 * 60 * 1_000;
 const CURRENT_SLEEP_GAP_MIN_MS = 2 * 60 * 60 * 1_000;
+const CURRENT_SLEEP_GAP_STRONG_MIN_MS = 5 * 60 * 60 * 1_000;
+const HEALTH_CURRENT_SLEEP_MAX_AGE_MS = 2 * 60 * 60 * 1_000;
+const HEALTH_CURRENT_SLEEP_MAX_DURATION_MS = 16 * 60 * 60 * 1_000;
 const MIN_SLEEP_CONFIDENCE = 0.45;
 
 export type LifeOpsActivityWindow = {
@@ -28,6 +31,7 @@ export type LifeOpsSleepEpisode = {
   current: boolean;
   confidence: number;
   source: "health" | "activity_gap";
+  observedMs?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,7 +91,9 @@ function median(values: number[]): number | null {
   return Math.round(((left + right) / 2) * 100) / 100;
 }
 
-function resolveHealthSignal(signal: LifeOpsActivitySignal): LifeOpsHealthSignal | null {
+function resolveHealthSignal(
+  signal: LifeOpsActivitySignal,
+): LifeOpsHealthSignal | null {
   if (signal.health) {
     return signal.health;
   }
@@ -105,7 +111,10 @@ function normalizeSleepEndMs(args: {
   if (Number.isFinite(args.awakeAtMs) && args.awakeAtMs > args.asleepAtMs) {
     return args.awakeAtMs;
   }
-  if (typeof args.durationMinutes === "number" && Number.isFinite(args.durationMinutes)) {
+  if (
+    typeof args.durationMinutes === "number" &&
+    Number.isFinite(args.durationMinutes)
+  ) {
     const durationMs = args.durationMinutes * 60_000;
     if (durationMs > 0) {
       return args.asleepAtMs + durationMs;
@@ -114,31 +123,84 @@ function normalizeSleepEndMs(args: {
   return null;
 }
 
-function parseHealthSleepEpisodes(signals: LifeOpsActivitySignal[]): LifeOpsSleepEpisode[] {
+function isFreshCurrentHealthSleep(args: {
+  asleepAtMs: number | null;
+  observedAtMs: number;
+  nowMs: number;
+}): boolean {
+  if (!Number.isFinite(args.observedAtMs)) {
+    return false;
+  }
+  if (args.nowMs - args.observedAtMs > HEALTH_CURRENT_SLEEP_MAX_AGE_MS) {
+    return false;
+  }
+  if (args.asleepAtMs !== null) {
+    if (args.observedAtMs < args.asleepAtMs - 5 * 60_000) {
+      return false;
+    }
+    if (args.nowMs - args.asleepAtMs > HEALTH_CURRENT_SLEEP_MAX_DURATION_MS) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasActiveSignalAfter(
+  signals: LifeOpsActivitySignal[],
+  thresholdMs: number,
+): boolean {
+  return signals.some((signal) => {
+    if (signal.state !== "active") {
+      return false;
+    }
+    const observedAt = Date.parse(signal.observedAt);
+    return Number.isFinite(observedAt) && observedAt > thresholdMs;
+  });
+}
+
+function parseHealthSleepEpisodes(args: {
+  signals: LifeOpsActivitySignal[];
+  nowMs: number;
+}): LifeOpsSleepEpisode[] {
   const deduped = new Map<string, LifeOpsSleepEpisode>();
-  for (const signal of signals) {
+  for (const signal of args.signals) {
     const health = resolveHealthSignal(signal);
     const sleep = health && isRecord(health.sleep) ? health.sleep : null;
     if (!sleep) {
       continue;
     }
     const asleepAt =
-      typeof sleep.asleepAt === "string" ? Date.parse(sleep.asleepAt) : Number.NaN;
+      typeof sleep.asleepAt === "string"
+        ? Date.parse(sleep.asleepAt)
+        : Number.NaN;
     const awakeAt =
-      typeof sleep.awakeAt === "string" ? Date.parse(sleep.awakeAt) : Number.NaN;
+      typeof sleep.awakeAt === "string"
+        ? Date.parse(sleep.awakeAt)
+        : Number.NaN;
     const durationMinutes =
-      typeof sleep.durationMinutes === "number" && Number.isFinite(sleep.durationMinutes)
+      typeof sleep.durationMinutes === "number" &&
+      Number.isFinite(sleep.durationMinutes)
         ? sleep.durationMinutes
         : null;
     const observedAt = Date.parse(signal.observedAt);
 
-    if (sleep.isSleeping === true && Number.isFinite(asleepAt)) {
+    if (
+      sleep.isSleeping === true &&
+      Number.isFinite(asleepAt) &&
+      isFreshCurrentHealthSleep({
+        asleepAtMs: asleepAt,
+        observedAtMs: observedAt,
+        nowMs: args.nowMs,
+      }) &&
+      !hasActiveSignalAfter(args.signals, observedAt + 5 * 60_000)
+    ) {
       deduped.set(`health-current:${asleepAt}`, {
         startMs: asleepAt,
         endMs: null,
         current: true,
         confidence: 0.96,
         source: "health",
+        observedMs: observedAt,
       });
       continue;
     }
@@ -161,17 +223,28 @@ function parseHealthSleepEpisodes(signals: LifeOpsActivitySignal[]): LifeOpsSlee
       }
     }
 
-    if (sleep.isSleeping === true && Number.isFinite(observedAt)) {
+    if (
+      sleep.isSleeping === true &&
+      isFreshCurrentHealthSleep({
+        asleepAtMs: null,
+        observedAtMs: observedAt,
+        nowMs: args.nowMs,
+      }) &&
+      !hasActiveSignalAfter(args.signals, observedAt + 5 * 60_000)
+    ) {
       deduped.set(`health-observed:${observedAt}`, {
         startMs: observedAt,
         endMs: null,
         current: true,
         confidence: 0.88,
         source: "health",
+        observedMs: observedAt,
       });
     }
   }
-  return [...deduped.values()].sort((left, right) => left.startMs - right.startMs);
+  return [...deduped.values()].sort(
+    (left, right) => left.startMs - right.startMs,
+  );
 }
 
 function hasSignalNear(
@@ -231,23 +304,40 @@ function buildGapSleepEpisodes(args: {
     if (endHour >= 4 && endHour < 13) {
       score += 0.15;
     }
-    if (
-      hasSignalNear(args.signals, gapStartMs, 90 * 60 * 1_000, (signal) => signal.onBattery === false)
-    ) {
+    const hasChargingCue = hasSignalNear(
+      args.signals,
+      gapStartMs,
+      90 * 60 * 1_000,
+      (signal) => signal.onBattery === false,
+    );
+    const hasRestCue = hasSignalNear(
+      args.signals,
+      gapStartMs,
+      45 * 60 * 1_000,
+      (signal) =>
+        signal.state === "locked" ||
+        signal.state === "background" ||
+        signal.state === "idle" ||
+        signal.state === "sleeping",
+    );
+
+    if (currentGap) {
+      const nowHour = localHour(args.nowMs, args.timezone);
+      const looksLikeOvernight =
+        startHour >= 20 || startHour < 5 || nowHour < 10;
+      const hasStrongCue = hasChargingCue || hasRestCue;
+      if (
+        !looksLikeOvernight ||
+        (gapMs < CURRENT_SLEEP_GAP_STRONG_MIN_MS && !hasStrongCue)
+      ) {
+        continue;
+      }
+    }
+
+    if (hasChargingCue) {
       score += 0.1;
     }
-    if (
-      hasSignalNear(
-        args.signals,
-        gapStartMs,
-        45 * 60 * 1_000,
-        (signal) =>
-          signal.state === "locked" ||
-          signal.state === "background" ||
-          signal.state === "idle" ||
-          signal.state === "sleeping",
-      )
-    ) {
+    if (hasRestCue) {
       score += 0.1;
     }
     if (gapMs < 4 * 60 * 60 * 1_000) {
@@ -272,22 +362,38 @@ function buildGapSleepEpisodes(args: {
 function selectLatestCompletedSleep(
   episodes: LifeOpsSleepEpisode[],
   nowMs: number,
+  timezone: string,
 ): LifeOpsSleepEpisode | null {
+  const completed = [...episodes].filter(
+    (episode) => episode.endMs !== null && episode.endMs <= nowMs,
+  );
+  const dayAnchoring = completed.filter((episode) => {
+    const sleepType = classifySleepType(episode, nowMs, timezone);
+    if (sleepType === "overnight") {
+      return true;
+    }
+    return (
+      sleepType !== "nap" &&
+      intervalDurationMs(episode.startMs, episode.endMs, nowMs) >=
+        4 * 60 * 60 * 1_000
+    );
+  });
+  const candidates = dayAnchoring.length > 0 ? dayAnchoring : completed;
   return (
-    [...episodes]
-      .filter((episode) => episode.endMs !== null && episode.endMs <= nowMs)
-      .sort((left, right) => {
-        const leftEnd = left.endMs ?? 0;
-        const rightEnd = right.endMs ?? 0;
-        if (rightEnd !== leftEnd) {
-          return rightEnd - leftEnd;
-        }
-        return right.confidence - left.confidence;
-      })[0] ?? null
+    candidates.sort((left, right) => {
+      const leftEnd = left.endMs ?? 0;
+      const rightEnd = right.endMs ?? 0;
+      if (rightEnd !== leftEnd) {
+        return rightEnd - leftEnd;
+      }
+      return right.confidence - left.confidence;
+    })[0] ?? null
   );
 }
 
-function selectCurrentSleep(episodes: LifeOpsSleepEpisode[]): LifeOpsSleepEpisode | null {
+function selectCurrentSleep(
+  episodes: LifeOpsSleepEpisode[],
+): LifeOpsSleepEpisode | null {
   return (
     [...episodes]
       .filter((episode) => episode.current)
@@ -305,7 +411,10 @@ function classifySleepType(
   const durationHours = durationMs / (60 * 60 * 1_000);
   const startHour = localHour(episode.startMs, timezone);
   const endHour = localHour(endMs, timezone);
-  if (durationHours >= 4 && (startHour >= 18 || startHour < 6 || endHour <= 11)) {
+  if (
+    durationHours >= 4 &&
+    (startHour >= 18 || startHour < 6 || endHour <= 11)
+  ) {
     return "overnight";
   }
   if (durationHours > 0 && durationHours < 4) {
@@ -327,7 +436,10 @@ export function resolveLifeOpsSleepCycle(args: {
   windows: LifeOpsActivityWindow[];
   signals: LifeOpsActivitySignal[];
 }): LifeOpsSleepCycleResolution {
-  const healthEpisodes = parseHealthSleepEpisodes(args.signals);
+  const healthEpisodes = parseHealthSleepEpisodes({
+    signals: args.signals,
+    nowMs: args.nowMs,
+  });
   const gapEpisodes = buildGapSleepEpisodes({
     windows: args.windows,
     signals: args.signals,
@@ -336,18 +448,26 @@ export function resolveLifeOpsSleepCycle(args: {
   });
   const episodes = [...healthEpisodes, ...gapEpisodes];
   const currentSleep = selectCurrentSleep(episodes);
-  const lastCompletedSleep = selectLatestCompletedSleep(episodes, args.nowMs);
+  const lastCompletedSleep = selectLatestCompletedSleep(
+    episodes,
+    args.nowMs,
+    args.timezone,
+  );
   const candidateSleepStarts = episodes
     .filter(
       (episode) =>
+        classifySleepType(episode, args.nowMs, args.timezone) !== "nap" &&
         intervalDurationMs(episode.startMs, episode.endMs, args.nowMs) >=
-        COMPLETED_SLEEP_GAP_MIN_MS,
+          COMPLETED_SLEEP_GAP_MIN_MS,
     )
-    .map((episode) => normalizeSleepHour(localHour(episode.startMs, args.timezone)));
+    .map((episode) =>
+      normalizeSleepHour(localHour(episode.startMs, args.timezone)),
+    );
   const candidateWakeHours = episodes
     .filter(
       (episode): episode is LifeOpsSleepEpisode & { endMs: number } =>
-        episode.endMs !== null,
+        episode.endMs !== null &&
+        classifySleepType(episode, args.nowMs, args.timezone) !== "nap",
     )
     .map((episode) => localHour(episode.endMs, args.timezone));
   const typicalSleepHour = median(candidateSleepStarts);
@@ -360,9 +480,11 @@ export function resolveLifeOpsSleepCycle(args: {
     sleepStatus:
       currentSleep?.confidence !== undefined && currentSleep.confidence >= 0.55
         ? "sleeping_now"
-        : lastCompletedSleep?.endMs && args.nowMs - lastCompletedSleep.endMs <= 30 * 60 * 60 * 1_000
+        : lastCompletedSleep?.endMs &&
+            args.nowMs - lastCompletedSleep.endMs <= 30 * 60 * 60 * 1_000
           ? "slept"
-          : lastCompletedSleep?.endMs && args.nowMs - lastCompletedSleep.endMs >= 20 * 60 * 60 * 1_000
+          : lastCompletedSleep?.endMs &&
+              args.nowMs - lastCompletedSleep.endMs >= 20 * 60 * 60 * 1_000
             ? "likely_missed"
             : "unknown",
     isProbablySleeping:
@@ -371,7 +493,9 @@ export function resolveLifeOpsSleepCycle(args: {
       currentSleep?.confidence ?? lastCompletedSleep?.confidence ?? 0,
     ),
     currentSleepStartedAt: toIso(currentSleep?.startMs ?? null),
-    lastSleepStartedAt: toIso((currentSleep ?? lastCompletedSleep)?.startMs ?? null),
+    lastSleepStartedAt: toIso(
+      (currentSleep ?? lastCompletedSleep)?.startMs ?? null,
+    ),
     lastSleepEndedAt: toIso(lastCompletedSleep?.endMs ?? null),
     lastSleepDurationMinutes: (() => {
       const target = currentSleep ?? lastCompletedSleep;
@@ -391,7 +515,9 @@ export function resolveLifeOpsSleepCycle(args: {
           confidence: episode.confidence,
         }),
       )
-      .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt)),
+      .sort(
+        (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+      ),
   };
 
   return {
@@ -407,7 +533,11 @@ export function resolveLifeOpsDayBoundary(args: {
   timezone: string;
   sleepCycle: Pick<
     LifeOpsSleepCycle,
-    "cycleType" | "sleepConfidence" | "currentSleepStartedAt" | "lastSleepStartedAt" | "lastSleepEndedAt"
+    | "cycleType"
+    | "sleepConfidence"
+    | "currentSleepStartedAt"
+    | "lastSleepStartedAt"
+    | "lastSleepEndedAt"
   >;
 }): LifeOpsDayBoundary {
   const nowDate = new Date(args.nowMs);
@@ -436,14 +566,17 @@ export function resolveLifeOpsDayBoundary(args: {
     args.sleepCycle.currentSleepStartedAt ??
     args.sleepCycle.lastSleepStartedAt ??
     null;
-  const overnightAnchor = args.sleepCycle.cycleType === "overnight" && beforeSleepAt;
+  const overnightAnchor =
+    args.sleepCycle.cycleType === "overnight" && beforeSleepAt;
   const anchor: LifeOpsDayBoundary["anchor"] = overnightAnchor
     ? "before_sleep"
     : "start_of_day";
   const effectiveDaySourceMs =
-    args.sleepCycle.cycleType === "overnight" && args.sleepCycle.lastSleepEndedAt
+    args.sleepCycle.cycleType === "overnight" &&
+    args.sleepCycle.lastSleepEndedAt
       ? Date.parse(args.sleepCycle.lastSleepEndedAt)
-      : args.sleepCycle.currentSleepStartedAt
+      : args.sleepCycle.cycleType === "overnight" &&
+          args.sleepCycle.currentSleepStartedAt
         ? Date.parse(args.sleepCycle.currentSleepStartedAt)
         : args.nowMs;
   return {
