@@ -139,11 +139,7 @@ async function postConversationMessageWithRetry(
     lastResult = result;
 
     const text = String(result.data?.text ?? result.data?.response ?? "").trim();
-    if (
-      result.status === 200 &&
-      text.length > 0 &&
-      !isProviderIssueResponse(text)
-    ) {
+    if (result.status === 200 && text.length > 0) {
       return result;
     }
 
@@ -158,10 +154,6 @@ async function postConversationMessageWithRetry(
   }
 
   return lastResult;
-}
-
-function isProviderIssueResponse(text: string): boolean {
-  return /provider issue/i.test(text);
 }
 
 async function ensureWalletKeys(): Promise<void> {
@@ -406,12 +398,6 @@ describeIf(CAN_RUN)(
       expect(status).toBe(200);
       const text = String(data.text ?? data.response ?? "");
       expect(text.length).toBeGreaterThan(0);
-      if (isProviderIssueResponse(text)) {
-        console.warn(
-          "[api-auth-live] provider unavailable, skipping strict authenticated chat assertion",
-        );
-        return;
-      }
       expect(text.toLowerCase()).toContain("auth");
     }, 120_000);
 
