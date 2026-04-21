@@ -36,7 +36,7 @@
 	"devDependencies": {
 		"@types/node": "22.19.17",
 		"tsup": "8.4.0",
-		"typescript": "5.7.3",
+		"typescript": "5.9.3",
 		"vitest": "3.0.5",
 		"@biomejs/biome": "^2.3.11"
 	},
