@@ -84,6 +84,27 @@ export function createLifeOpsChatTestRuntime(options: {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS life_connector_grants (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      side TEXT NOT NULL DEFAULT 'owner',
+      identity_json TEXT NOT NULL DEFAULT '{}',
+      identity_email TEXT,
+      granted_scopes_json TEXT NOT NULL DEFAULT '[]',
+      capabilities_json TEXT NOT NULL DEFAULT '[]',
+      token_ref TEXT,
+      mode TEXT NOT NULL DEFAULT 'oauth',
+      execution_target TEXT NOT NULL DEFAULT 'local',
+      source_of_truth TEXT NOT NULL DEFAULT 'local_storage',
+      preferred_by_agent INTEGER NOT NULL DEFAULT 0,
+      cloud_connection_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      last_refresh_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, provider, side, mode, identity_email)
+    );
     CREATE TABLE IF NOT EXISTS life_browser_companions (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -167,6 +188,18 @@ export function createLifeOpsChatTestRuntime(options: {
       captured_at TEXT NOT NULL,
       metadata_json TEXT NOT NULL DEFAULT '{}',
       UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS life_audit_events (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      inputs_json TEXT NOT NULL DEFAULT '{}',
+      decision_json TEXT NOT NULL DEFAULT '{}',
+      actor TEXT NOT NULL DEFAULT 'agent',
+      created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS life_subscription_audits (
       id TEXT PRIMARY KEY,
