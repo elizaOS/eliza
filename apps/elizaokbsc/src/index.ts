@@ -225,8 +225,27 @@ async function main(): Promise<void> {
       : "disabled",
   );
 
-  await setupElizaOkDiscovery(runtime);
   const dashboardServer = startDashboardServer(runtime);
+
+  try {
+    await setupElizaOkDiscovery(runtime);
+  } catch (discoveryError) {
+    console.error(
+      "ElizaOK discovery setup failed (PGlite task system unavailable). Dashboard still running. Falling back to interval-based discovery.",
+      discoveryError instanceof Error ? discoveryError.message : discoveryError,
+    );
+    const { runElizaOkDiscoveryCycle } = await import("./memecoin/worker");
+    const intervalMs = discoveryConfig.intervalMs || 900_000;
+    const fallbackCycle = async () => {
+      try {
+        await runElizaOkDiscoveryCycle(runtime, "fallback-interval");
+      } catch (e) {
+        console.error("ElizaOK fallback discovery cycle failed:", e instanceof Error ? e.message : e);
+      }
+    };
+    setTimeout(() => void fallbackCycle(), 5_000);
+    setInterval(() => void fallbackCycle(), intervalMs);
+  }
 
   if (hasMoltbook) {
     await tryBootPost(runtime);
