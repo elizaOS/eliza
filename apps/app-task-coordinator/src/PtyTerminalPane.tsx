@@ -48,8 +48,12 @@ export function PtyTerminalPane({
         convertEol: true,
         scrollback: 5000,
         cursorBlink: true,
+        // Transparent background so the terminal inherits the app's theme
+        // (light or dark) instead of forcing a near-black surface. The host
+        // container's background becomes the terminal background.
+        allowTransparency: true,
         theme: {
-          background: cssVar("--bg-deep", "#0a0a0a"),
+          background: "rgba(0, 0, 0, 0)",
           foreground: cssVar("--txt", "#e4e4e7"),
           cursor: cssVar("--accent", "#5a9a2a"),
           selectionBackground: cssVar(

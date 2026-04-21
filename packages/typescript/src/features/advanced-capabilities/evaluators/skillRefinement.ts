@@ -25,7 +25,6 @@ import type {
 	EvaluationExample,
 	Evaluator,
 	IAgentRuntime,
-	Memory,
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/index.ts";
 import { resolveStateDir } from "../../../utils/state-dir.ts";
@@ -391,7 +390,7 @@ export const skillRefinementEvaluator: Evaluator = {
 			const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
 			if (!response || typeof response !== "string") continue;
 			const draft = parseRefinementResponse(response);
-			if (!draft || !draft.refine || !draft.newBody) continue;
+			if (!draft?.refine || !draft.newBody) continue;
 			if (draft.newBody.includes("---")) {
 				logger.warn(
 					{

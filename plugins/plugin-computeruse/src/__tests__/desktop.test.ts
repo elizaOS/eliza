@@ -46,7 +46,10 @@ describe("desktop platform helpers", () => {
 
     expect(runCommandMock).toHaveBeenCalledWith(
       "osascript",
-      ["-e", 'tell application "System Events" to key code 53 using {shift down}'],
+      [
+        "-e",
+        'tell application "System Events" to key code 53 using {shift down}',
+      ],
       5000,
     );
   });

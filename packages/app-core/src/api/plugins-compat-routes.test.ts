@@ -87,6 +87,33 @@ describe("analyzePluginStateDrift", () => {
     expect(report.plugins[0]?.drift_flags).toContain("entries_vs_allowlist");
   });
 
+  it("skips entries_vs_allowlist when allow list is unconfigured (null)", () => {
+    const report = analyzePluginStateDrift(
+      [
+        {
+          id: "discord",
+          npmName: "@elizaos/plugin-discord",
+          category: "connector",
+          enabled: true,
+          isActive: true,
+        },
+      ] as any[],
+      {
+        connectors: {
+          discord: { enabled: true },
+        },
+      },
+      {
+        discord: { enabled: true },
+      },
+      null,
+    );
+
+    expect(report.summary.withDrift).toBe(0);
+    expect(report.summary.byFlag.entries_vs_allowlist).toBe(0);
+    expect(report.plugins[0]?.enabled_allowlist).toBeNull();
+  });
+
   it("flags active_but_disabled when runtime is active but UI model disabled", () => {
     const report = analyzePluginStateDrift(
       [

@@ -12,79 +12,84 @@
  */
 
 import type {
-	IAgentRuntime,
-	Route,
-	RouteBodyValue,
-	RouteRequest,
-	RouteResponse,
+  IAgentRuntime,
+  Route,
+  RouteBodyValue,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { CalendlyWebhookEvent } from "../types.js";
 
 const VALID_EVENTS: ReadonlySet<CalendlyWebhookEvent["event"]> = new Set([
-	"invitee.created",
-	"invitee.canceled",
-	"invitee_no_show.created",
-	"invitee_no_show.deleted",
-	"routing_form_submission.created",
+  "invitee.created",
+  "invitee.canceled",
+  "invitee_no_show.created",
+  "invitee_no_show.deleted",
+  "routing_form_submission.created",
 ]);
 
 function parsePayload(
-	body: Record<string, RouteBodyValue> | undefined,
+  body: Record<string, RouteBodyValue> | undefined,
 ): CalendlyWebhookEvent | null {
-	if (!body || typeof body !== "object") {
-		return null;
-	}
-	const { event, created_at, created_by, payload } = body as Record<
-		string,
-		unknown
-	>;
-	if (typeof event !== "string" || !VALID_EVENTS.has(event as CalendlyWebhookEvent["event"])) {
-		return null;
-	}
-	if (typeof created_at !== "string" || typeof created_by !== "string") {
-		return null;
-	}
-	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-		return null;
-	}
-	return {
-		event: event as CalendlyWebhookEvent["event"],
-		created_at,
-		created_by,
-		payload: payload as Record<string, unknown>,
-	};
+  if (!body || typeof body !== "object") {
+    return null;
+  }
+  const { event, created_at, created_by, payload } = body as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof event !== "string" ||
+    !VALID_EVENTS.has(event as CalendlyWebhookEvent["event"])
+  ) {
+    return null;
+  }
+  if (typeof created_at !== "string" || typeof created_by !== "string") {
+    return null;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  return {
+    event: event as CalendlyWebhookEvent["event"],
+    created_at,
+    created_by,
+    payload: payload as Record<string, unknown>,
+  };
 }
 
 export const calendlyWebhookRoute: Route = {
-	type: "POST",
-	path: "/calendly/webhook",
-	name: "calendly-webhook",
-	public: true,
-	handler: async (
-		req: RouteRequest,
-		res: RouteResponse,
-		runtime: IAgentRuntime,
-	): Promise<void> => {
-		const parsed = parsePayload(req.body);
-		if (!parsed) {
-			res.status(400).json({ ok: false, error: "invalid-calendly-webhook-payload" });
-			return;
-		}
-		logger.info(
-			{ event: parsed.event, createdAt: parsed.created_at },
-			"[Calendly:webhook] received",
-		);
-		// `emitEvent` is generic over `EventPayloadMap` but falls through to a
-		// string-keyed overload for plugin-defined events. Payload must satisfy
-		// the base `EventPayload` shape (runtime, optional source). Consumers
-		// read the typed envelope from the `data` carrier.
-		const calendlyPayload = {
-			runtime,
-			source: "calendly",
-			data: parsed,
-		};
-		await runtime.emitEvent("CALENDLY_WEBHOOK", calendlyPayload);
-		res.status(200).json({ ok: true });
-	},
+  type: "POST",
+  path: "/calendly/webhook",
+  name: "calendly-webhook",
+  public: true,
+  handler: async (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ): Promise<void> => {
+    const parsed = parsePayload(req.body);
+    if (!parsed) {
+      res
+        .status(400)
+        .json({ ok: false, error: "invalid-calendly-webhook-payload" });
+      return;
+    }
+    logger.info(
+      { event: parsed.event, createdAt: parsed.created_at },
+      "[Calendly:webhook] received",
+    );
+    // `emitEvent` is generic over `EventPayloadMap` but falls through to a
+    // string-keyed overload for plugin-defined events. Payload must satisfy
+    // the base `EventPayload` shape (runtime, optional source). Consumers
+    // read the typed envelope from the `data` carrier.
+    const calendlyPayload = {
+      runtime,
+      source: "calendly",
+      data: parsed,
+    };
+    await runtime.emitEvent("CALENDLY_WEBHOOK", calendlyPayload);
+    res.status(200).json({ ok: true });
+  },
 };

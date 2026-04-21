@@ -4,8 +4,8 @@
  * Tests list/focus/screen-size using actual system calls.
  */
 import { describe, expect, it } from "vitest";
-import { getScreenSize, listWindows } from "../platform/windows-list.js";
 import { currentPlatform } from "../platform/helpers.js";
+import { getScreenSize, listWindows } from "../platform/windows-list.js";
 
 const os = currentPlatform();
 const hasDisplay =

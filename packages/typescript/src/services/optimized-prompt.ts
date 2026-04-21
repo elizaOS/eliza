@@ -231,10 +231,6 @@ export class OptimizedPromptService extends Service {
 	private storeRoot: string = defaultStoreRoot();
 	private cache: Partial<Record<OptimizedPromptTask, CachedEntry>> = {};
 
-	constructor(runtime?: IAgentRuntime) {
-		super(runtime);
-	}
-
 	static override async start(
 		runtime: IAgentRuntime,
 	): Promise<OptimizedPromptService> {

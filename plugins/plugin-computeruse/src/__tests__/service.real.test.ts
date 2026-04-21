@@ -4,12 +4,13 @@
  * Tests service start/stop, capability detection, action dispatch,
  * and the action history buffer.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
 import type { IAgentRuntime } from "@elizaos/core";
-import { ComputerUseService } from "../services/computer-use-service.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { desktopMouseMove } from "../platform/desktop.js";
 import { currentPlatform } from "../platform/helpers.js";
 import { captureScreenshot } from "../platform/screenshot.js";
-import { desktopMouseMove } from "../platform/desktop.js";
+import { ComputerUseService } from "../services/computer-use-service.js";
 
 const os = currentPlatform();
 
@@ -46,10 +47,17 @@ function createMockRuntime(
 
 function skipIfAccessibilityPermissionMissing(
   skip: (message?: string) => void,
-  result: { permissionDenied?: boolean; permissionType?: string; message?: string; error?: string },
+  result: {
+    permissionDenied?: boolean;
+    permissionType?: string;
+    message?: string;
+    error?: string;
+  },
 ): void {
   if (result.permissionDenied && result.permissionType === "accessibility") {
-    skip(result.message ?? result.error ?? "Accessibility permission is missing");
+    skip(
+      result.message ?? result.error ?? "Accessibility permission is missing",
+    );
   }
 }
 
@@ -86,7 +94,12 @@ describe("ComputerUseService lifecycle", () => {
     expect(caps).toHaveProperty("browser");
 
     // Each capability has available and tool
-    for (const key of ["screenshot", "computerUse", "windowList", "browser"] as const) {
+    for (const key of [
+      "screenshot",
+      "computerUse",
+      "windowList",
+      "browser",
+    ] as const) {
       expect(typeof caps[key].available).toBe("boolean");
       expect(typeof caps[key].tool).toBe("string");
     }

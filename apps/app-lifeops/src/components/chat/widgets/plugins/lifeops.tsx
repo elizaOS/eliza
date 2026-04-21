@@ -49,7 +49,13 @@ function formatEventTime(
   }
 }
 
-function GlanceHeading({ icon, title }: { icon: ReactNode; title: string }) {
+export function GlanceHeading({
+  icon,
+  title,
+}: {
+  icon: ReactNode;
+  title: string;
+}) {
   return (
     <div className="flex items-center gap-1.5 px-0.5">
       <span className="text-muted">{icon}</span>

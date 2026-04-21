@@ -6,15 +6,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type {
-  ComputerActionResult,
-  DesktopActionParams,
-} from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import {
-  buildScreenshotAttachment,
-  resolveActionParams,
-} from "./helpers.js";
+import type { ComputerActionResult, DesktopActionParams } from "../types.js";
+import { buildScreenshotAttachment, resolveActionParams } from "./helpers.js";
 
 const MOCK_SCREENSHOT_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+R4QAAAAASUVORK5CYII=";
@@ -120,8 +114,8 @@ async function deliverResult(
   await callback({
     text: result.success
       ? params.action === "screenshot"
-        ? result.message ?? "Here is the current screen."
-        : result.message ?? `Completed ${params.action}.`
+        ? (result.message ?? "Here is the current screen.")
+        : (result.message ?? `Completed ${params.action}.`)
       : `Desktop action failed: ${result.error}`,
     ...(result.screenshot
       ? {
@@ -188,8 +182,19 @@ export const useComputerAction: Action = {
       schema: {
         type: "string",
         enum: [
-          "screenshot", "click", "click_with_modifiers", "double_click", "right_click",
-          "mouse_move", "type", "key", "key_combo", "scroll", "drag", "detect_elements", "ocr",
+          "screenshot",
+          "click",
+          "click_with_modifiers",
+          "double_click",
+          "right_click",
+          "mouse_move",
+          "type",
+          "key",
+          "key_combo",
+          "scroll",
+          "drag",
+          "detect_elements",
+          "ocr",
         ],
       },
     },
@@ -213,7 +218,8 @@ export const useComputerAction: Action = {
     },
     {
       name: "modifiers",
-      description: "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+      description:
+        "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
       required: false,
       schema: { type: "array", items: { type: "string" } },
     },
@@ -315,6 +321,9 @@ export const useComputerAction: Action = {
       });
     }
 
-    return { success: result.success, data: { screenshot: !!result.screenshot } };
+    return {
+      success: result.success,
+      data: { screenshot: !!result.screenshot },
+    };
   },
 };

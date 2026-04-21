@@ -57,10 +57,7 @@ export function runCommandBuffer(
 /**
  * Run a shell command string (uses shell). Use sparingly — prefer runCommand.
  */
-export function runShellCommand(
-  cmd: string,
-  timeout: number,
-): string {
+export function runShellCommand(cmd: string, timeout: number): string {
   return execSync(cmd, {
     encoding: "utf-8",
     timeout,
@@ -129,9 +126,7 @@ export function validateText(text: string, maxLength = 4096): string {
     throw new Error("Text must be a string");
   }
   if (text.length > maxLength) {
-    throw new Error(
-      `Text too long: ${text.length} chars (max ${maxLength})`,
-    );
+    throw new Error(`Text too long: ${text.length} chars (max ${maxLength})`);
   }
   return text;
 }
@@ -152,18 +147,58 @@ export function escapeAppleScript(value: string): string {
  * Known-safe xdotool key names. Whitelist approach from open-computer-use.
  */
 const SAFE_XDOTOOL_KEYS = new Set([
-  "Return", "Tab", "Escape", "BackSpace", "Delete",
-  "space", "Home", "End", "Page_Up", "Page_Down",
-  "Left", "Right", "Up", "Down",
-  "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-  "shift", "Shift_L", "Shift_R",
-  "ctrl", "Control_L", "Control_R",
-  "alt", "Alt_L", "Alt_R",
-  "super", "Super_L", "Super_R",
-  "Meta_L", "Meta_R",
-  "plus", "minus", "period", "comma", "slash", "backslash",
-  "bracketleft", "bracketright", "semicolon", "apostrophe",
-  "grave", "equal",
+  "Return",
+  "Tab",
+  "Escape",
+  "BackSpace",
+  "Delete",
+  "space",
+  "Home",
+  "End",
+  "Page_Up",
+  "Page_Down",
+  "Left",
+  "Right",
+  "Up",
+  "Down",
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+  "F10",
+  "F11",
+  "F12",
+  "shift",
+  "Shift_L",
+  "Shift_R",
+  "ctrl",
+  "Control_L",
+  "Control_R",
+  "alt",
+  "Alt_L",
+  "Alt_R",
+  "super",
+  "Super_L",
+  "Super_R",
+  "Meta_L",
+  "Meta_R",
+  "plus",
+  "minus",
+  "period",
+  "comma",
+  "slash",
+  "backslash",
+  "bracketleft",
+  "bracketright",
+  "semicolon",
+  "apostrophe",
+  "grave",
+  "equal",
 ]);
 
 /**
@@ -176,7 +211,11 @@ export function safeXdotoolKey(key: string): string {
     return trimmed;
   }
   // Single printable ASCII character
-  if (trimmed.length === 1 && trimmed.charCodeAt(0) >= 32 && trimmed.charCodeAt(0) <= 126) {
+  if (
+    trimmed.length === 1 &&
+    trimmed.charCodeAt(0) >= 32 &&
+    trimmed.charCodeAt(0) <= 126
+  ) {
     return trimmed;
   }
   throw new Error(
@@ -187,14 +226,16 @@ export function safeXdotoolKey(key: string): string {
 /**
  * Safe keypress pattern for general validation (matches sandbox-routes).
  */
-const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_ .,:\-]+$/;
+const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_ .,:-]+$/;
 
 export function validateKeypress(keys: string, maxLength = 128): string {
   if (typeof keys !== "string" || keys.length === 0) {
     throw new Error("Key input must be a non-empty string");
   }
   if (keys.length > maxLength) {
-    throw new Error(`Key input too long: ${keys.length} chars (max ${maxLength})`);
+    throw new Error(
+      `Key input too long: ${keys.length} chars (max ${maxLength})`,
+    );
   }
   if (!SAFE_KEYPRESS_PATTERN.test(keys)) {
     throw new Error(

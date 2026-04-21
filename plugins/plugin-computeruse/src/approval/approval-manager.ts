@@ -11,7 +11,12 @@ interface PendingApprovalRecord extends PendingApproval {
   resolve: (resolution: ApprovalResolution) => void;
 }
 
-const VALID_MODES: readonly ApprovalMode[] = ["full_control", "smart_approve", "approve_all", "off"];
+const VALID_MODES: readonly ApprovalMode[] = [
+  "full_control",
+  "smart_approve",
+  "approve_all",
+  "off",
+];
 
 export class ApprovalManager {
   private mode: ApprovalMode;
@@ -60,24 +65,41 @@ export class ApprovalManager {
     }
   }
 
-  requestApproval(command: string, parameters: Record<string, unknown> = {}): Promise<ApprovalResolution> {
+  requestApproval(
+    command: string,
+    parameters: Record<string, unknown> = {},
+  ): Promise<ApprovalResolution> {
     if (this.mode === "off") {
-      return Promise.resolve(this.createImmediateResolution(command, parameters, false, "approval is disabled in off mode"));
+      return Promise.resolve(
+        this.createImmediateResolution(
+          command,
+          parameters,
+          false,
+          "approval is disabled in off mode",
+        ),
+      );
     }
 
     if (this.shouldAutoApprove(command)) {
-      const reason = this.mode === "full_control"
-        ? "auto-approved in full_control mode"
-        : "auto-approved by safe-command allowlist";
-      return Promise.resolve(this.createImmediateResolution(command, parameters, true, reason));
+      const reason =
+        this.mode === "full_control"
+          ? "auto-approved in full_control mode"
+          : "auto-approved by safe-command allowlist";
+      return Promise.resolve(
+        this.createImmediateResolution(command, parameters, true, reason),
+      );
     }
 
     return this.registerPendingApproval(command, parameters).promise;
   }
 
-  registerPendingApproval(command: string, parameters: Record<string, unknown> = {}): PendingApproval {
+  registerPendingApproval(
+    command: string,
+    parameters: Record<string, unknown> = {},
+  ): PendingApproval {
     const request = this.createRequest(command, parameters);
-    let resolvePromise: (resolution: ApprovalResolution) => void = () => undefined;
+    let resolvePromise: (resolution: ApprovalResolution) => void = () =>
+      undefined;
 
     const promise = new Promise<ApprovalResolution>((resolve) => {
       resolvePromise = resolve;
@@ -105,10 +127,16 @@ export class ApprovalManager {
   }
 
   listPendingApprovals(): PendingApproval[] {
-    return [...this.pendingApprovals.values()].map((pending) => this.clonePendingApproval(pending));
+    return [...this.pendingApprovals.values()].map((pending) =>
+      this.clonePendingApproval(pending),
+    );
   }
 
-  resolvePendingApproval(id: string, approved: boolean, reason?: string): ApprovalResolution | null {
+  resolvePendingApproval(
+    id: string,
+    approved: boolean,
+    reason?: string,
+  ): ApprovalResolution | null {
     const pending = this.pendingApprovals.get(id);
     if (!pending) {
       return null;
@@ -121,7 +149,10 @@ export class ApprovalManager {
     return resolution;
   }
 
-  cancelPendingApproval(id: string, reason = "cancelled"): ApprovalResolution | null {
+  cancelPendingApproval(
+    id: string,
+    reason = "cancelled",
+  ): ApprovalResolution | null {
     const pending = this.pendingApprovals.get(id);
     if (!pending) {
       return null;
@@ -152,7 +183,10 @@ export class ApprovalManager {
     return this.pendingApprovals.size;
   }
 
-  private createRequest(command: string, parameters: Record<string, unknown>): ApprovalRequest {
+  private createRequest(
+    command: string,
+    parameters: Record<string, unknown>,
+  ): ApprovalRequest {
     this.nextId += 1;
 
     return {
@@ -189,7 +223,9 @@ export class ApprovalManager {
     };
   }
 
-  private clonePendingApproval(pending: PendingApprovalRecord): PendingApproval {
+  private clonePendingApproval(
+    pending: PendingApprovalRecord,
+  ): PendingApproval {
     return {
       id: pending.id,
       command: pending.command,

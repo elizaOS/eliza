@@ -1,7 +1,4 @@
-import type {
-  HandlerOptions,
-  Memory,
-} from "@elizaos/core";
+import type { HandlerOptions, Memory } from "@elizaos/core";
 
 export function resolveActionParams<T>(
   message: Memory,

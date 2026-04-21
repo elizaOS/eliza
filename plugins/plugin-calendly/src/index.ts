@@ -23,25 +23,25 @@ import { listEventTypesAction } from "./actions/list-event-types.js";
 import { calendlyWebhookRoute } from "./routes/webhook.js";
 import { CalendlyService } from "./services/CalendlyService.js";
 
-export { CalendlyService } from "./services/CalendlyService.js";
-export { CalendlyClient, CalendlyApiError } from "./calendly-client.js";
-export type { FetchLike } from "./calendly-client.js";
 export { bookSlotAction } from "./actions/book-slot.js";
 export { cancelBookingAction } from "./actions/cancel-booking.js";
 export { listEventTypesAction } from "./actions/list-event-types.js";
+export type { FetchLike } from "./calendly-client.js";
+export { CalendlyApiError, CalendlyClient } from "./calendly-client.js";
 export { calendlyWebhookRoute } from "./routes/webhook.js";
+export { CalendlyService } from "./services/CalendlyService.js";
 export * from "./types.js";
 
 export const calendlyPlugin: Plugin = {
-	name: "calendly",
-	description:
-		"Calendly integration — list event types, hand off booking links, cancel scheduled events",
-	services: [CalendlyService],
-	actions: [listEventTypesAction, bookSlotAction, cancelBookingAction],
-	routes: [calendlyWebhookRoute],
-	autoEnable: {
-		envKeys: ["CALENDLY_ACCESS_TOKEN", "MILADY_E2E_CALENDLY_ACCESS_TOKEN"],
-	},
+  name: "calendly",
+  description:
+    "Calendly integration — list event types, hand off booking links, cancel scheduled events",
+  services: [CalendlyService],
+  actions: [listEventTypesAction, bookSlotAction, cancelBookingAction],
+  routes: [calendlyWebhookRoute],
+  autoEnable: {
+    envKeys: ["CALENDLY_ACCESS_TOKEN", "MILADY_E2E_CALENDLY_ACCESS_TOKEN"],
+  },
 };
 
 export default calendlyPlugin;

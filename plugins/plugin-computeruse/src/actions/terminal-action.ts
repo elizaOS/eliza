@@ -6,8 +6,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { TerminalActionParams } from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import type { TerminalActionParams } from "../types.js";
 import { resolveActionParams } from "./helpers.js";
 
 export const terminalAction: Action = {
@@ -124,7 +124,7 @@ export const terminalAction: Action = {
     if (callback) {
       await callback({
         text: result.success
-          ? result.output ?? result.message ?? "Terminal action completed."
+          ? (result.output ?? result.message ?? "Terminal action completed.")
           : `Terminal action failed: ${result.error}`,
       });
     }

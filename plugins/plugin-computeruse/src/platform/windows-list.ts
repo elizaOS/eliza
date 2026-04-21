@@ -33,11 +33,16 @@ function matchesWindowQuery(win: WindowInfo, query: string): boolean {
   );
 }
 
-export function findWindowsByQuery(query: string, windows: WindowInfo[] = listWindows()): WindowInfo[] {
+export function findWindowsByQuery(
+  query: string,
+  windows: WindowInfo[] = listWindows(),
+): WindowInfo[] {
   const normalized = normalizeWindowQuery(query);
   if (!normalized) return [];
 
-  const exact = windows.filter((win) => normalizeWindowQuery(win.id) === normalized);
+  const exact = windows.filter(
+    (win) => normalizeWindowQuery(win.id) === normalized,
+  );
   if (exact.length > 0) return exact;
 
   return windows.filter((win) => matchesWindowQuery(win, normalized));
@@ -48,7 +53,10 @@ function resolveWindowTarget(queryOrId: string): WindowInfo | null {
   return matches[0] ?? null;
 }
 
-export function resolveWindowMatch(queryOrId: string, windows: WindowInfo[] = listWindows()): WindowInfo | null {
+export function resolveWindowMatch(
+  queryOrId: string,
+  windows: WindowInfo[] = listWindows(),
+): WindowInfo | null {
   return findWindowsByQuery(queryOrId, windows)[0] ?? null;
 }
 
@@ -60,9 +68,10 @@ function appleScriptWindowMatchTerms(target: WindowInfo): string[] {
 
 function runDarwinWindowScript(target: WindowInfo, body: string): void {
   const terms = appleScriptWindowMatchTerms(target);
-  const termList = terms.length > 0
-    ? `{${terms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
-    : "{}";
+  const termList =
+    terms.length > 0
+      ? `{${terms.map((term) => `"${escapeAppleScriptString(term)}"`).join(", ")}}`
+      : "{}";
   const script = `
       tell application "System Events"
         repeat with proc in (every process whose visible is true)
@@ -217,7 +226,14 @@ export function focusWindow(windowId: string): void {
       }
     } catch {
       if (target?.app) {
-        runCommand("osascript", ["-e", `tell application "${escapeAppleScriptString(target.app)}" to activate`], 5000);
+        runCommand(
+          "osascript",
+          [
+            "-e",
+            `tell application "${escapeAppleScriptString(target.app)}" to activate`,
+          ],
+          5000,
+        );
       }
     }
   } else if (os === "linux") {
@@ -250,7 +266,10 @@ export function arrangeWindows(arrangement = "tile"): {
   };
 }
 
-export function moveWindow(x?: number, y?: number): {
+export function moveWindow(
+  x?: number,
+  y?: number,
+): {
   success: true;
   message: string;
 } {
@@ -270,9 +289,14 @@ export function minimizeWindow(windowId: string): void {
   if (os === "darwin") {
     try {
       if (target) {
-        runDarwinWindowScript(target, "set miniaturized of window 1 of proc to true");
+        runDarwinWindowScript(
+          target,
+          "set miniaturized of window 1 of proc to true",
+        );
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   } else if (os === "linux") {
     if (commandExists("xdotool")) {
       runCommand("xdotool", ["windowminimize", target?.id ?? windowId], 5000);
@@ -297,12 +321,27 @@ export function maximizeWindow(windowId: string): void {
   if (os === "darwin") {
     try {
       if (target) {
-        runDarwinWindowScript(target, "set value of attribute \"AXFullScreen\" of window 1 of proc to true");
+        runDarwinWindowScript(
+          target,
+          'set value of attribute "AXFullScreen" of window 1 of proc to true',
+        );
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-r", target?.id ?? windowId, "-b", "add,maximized_vert,maximized_horz"], 5000);
+      runCommand(
+        "wmctrl",
+        [
+          "-i",
+          "-r",
+          target?.id ?? windowId,
+          "-b",
+          "add,maximized_vert,maximized_horz",
+        ],
+        5000,
+      );
     }
   } else if (os === "win32") {
     const ps = `
@@ -321,16 +360,31 @@ export function restoreWindow(windowId: string): void {
   if (os === "darwin") {
     try {
       if (target) {
-        runDarwinWindowScript(target, `
+        runDarwinWindowScript(
+          target,
+          `
               try
                 set miniaturized of window 1 of proc to false
               end try
-              set frontmost of proc to true`);
+              set frontmost of proc to true`,
+        );
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
-      runCommand("wmctrl", ["-i", "-r", target?.id ?? windowId, "-b", "remove,maximized_vert,maximized_horz"], 5000);
+      runCommand(
+        "wmctrl",
+        [
+          "-i",
+          "-r",
+          target?.id ?? windowId,
+          "-b",
+          "remove,maximized_vert,maximized_horz",
+        ],
+        5000,
+      );
       runCommand("wmctrl", ["-i", "-a", target?.id ?? windowId], 5000);
     } else if (commandExists("xdotool")) {
       runCommand("xdotool", ["windowactivate", target?.id ?? windowId], 5000);
@@ -357,7 +411,9 @@ export function closeWindow(windowId: string): void {
       if (target) {
         runDarwinWindowScript(target, "click button 1 of window 1 of proc");
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   } else if (os === "linux") {
     if (commandExists("wmctrl")) {
       runCommand("wmctrl", ["-i", "-c", target?.id ?? windowId], 5000);
@@ -392,11 +448,16 @@ export function getScreenSize(): ScreenSize {
         { encoding: "utf-8", timeout: 5000 },
       );
       // Returns: "0, 0, 2560, 1440"
-      const parts = output.trim().split(",").map((p) => Number.parseInt(p.trim(), 10));
+      const parts = output
+        .trim()
+        .split(",")
+        .map((p) => Number.parseInt(p.trim(), 10));
       if (parts.length >= 4) {
         return { width: parts[2]!, height: parts[3]! };
       }
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
     // Fallback: system_profiler
     try {
       const output = execSync(
@@ -405,9 +466,14 @@ export function getScreenSize(): ScreenSize {
       );
       const match = output.match(/(\d+)\s*x\s*(\d+)/);
       if (match) {
-        return { width: Number.parseInt(match[1]!, 10), height: Number.parseInt(match[2]!, 10) };
+        return {
+          width: Number.parseInt(match[1]!, 10),
+          height: Number.parseInt(match[2]!, 10),
+        };
       }
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
     return { width: 1920, height: 1080 };
   }
 
@@ -422,7 +488,9 @@ export function getScreenSize(): ScreenSize {
             height: Number.parseInt(parts[1]!, 10),
           };
         }
-      } catch { /* fallback */ }
+      } catch {
+        /* fallback */
+      }
     }
     if (commandExists("xrandr")) {
       try {
@@ -432,9 +500,14 @@ export function getScreenSize(): ScreenSize {
         });
         const match = output.match(/(\d+)x(\d+)/);
         if (match) {
-          return { width: Number.parseInt(match[1]!, 10), height: Number.parseInt(match[2]!, 10) };
+          return {
+            width: Number.parseInt(match[1]!, 10),
+            height: Number.parseInt(match[2]!, 10),
+          };
         }
-      } catch { /* fallback */ }
+      } catch {
+        /* fallback */
+      }
     }
     return { width: 1920, height: 1080 };
   }
@@ -447,7 +520,9 @@ export function getScreenSize(): ScreenSize {
       );
       const bounds = JSON.parse(output);
       return { width: bounds.Width, height: bounds.Height };
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
     return { width: 1920, height: 1080 };
   }
 

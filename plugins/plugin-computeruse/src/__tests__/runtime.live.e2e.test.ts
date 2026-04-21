@@ -32,7 +32,14 @@ type RuntimeDebugSnapshot = {
   };
 };
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -171,7 +178,9 @@ describe("computer-use runtime registration (live e2e)", () => {
     const pluginNames = snapshot.order.plugins.map((item) => item.name);
     const actionNames = snapshot.order.actions.map((item) => item.name);
     const providerNames = snapshot.order.providers.map((item) => item.name);
-    const serviceTypes = snapshot.order.services.map((item) => item.serviceType);
+    const serviceTypes = snapshot.order.services.map(
+      (item) => item.serviceType,
+    );
 
     expect(pluginNames).toContain("@elizaos/plugin-computeruse");
     expect(actionNames).toEqual(

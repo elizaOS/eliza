@@ -156,11 +156,14 @@ try:
 except Exception as e:
     print(f"AT-SPI unavailable: {e}")
 `;
-      const output = execSync(`python3 -c '${pyScript.replace(/'/g, "'\\''")}'`, {
-        encoding: "utf-8",
-        timeout: 10000,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
+      const output = execSync(
+        `python3 -c '${pyScript.replace(/'/g, "'\\''")}'`,
+        {
+          encoding: "utf-8",
+          timeout: 10000,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
       return output.trim() || null;
     } catch {
       return null;
@@ -195,11 +198,14 @@ if ($parent) {
 }
 $lines -join [Environment]::NewLine
 `;
-    const output = execSync(`powershell -Command "${psScript.replace(/"/g, '\\"')}"`, {
-      encoding: "utf-8",
-      timeout: 10000,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    const output = execSync(
+      `powershell -Command "${psScript.replace(/"/g, '\\"')}"`,
+      {
+        encoding: "utf-8",
+        timeout: 10000,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
     return output.trim() || null;
   } catch {
     return null;

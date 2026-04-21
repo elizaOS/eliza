@@ -432,7 +432,7 @@ export function analyzePluginStateDrift(
   pluginList: CompatPluginRecord[],
   configRecord: Record<string, unknown>,
   configEntries: Record<string, { enabled?: unknown }>,
-  allowList: Set<string>,
+  allowList: Set<string> | null,
 ): PluginDriftDiagnosticsReport {
   const diagnostics = pluginList.map((plugin): PluginDriftDiagnostic => {
     const pluginId = String(plugin.id ?? "");
@@ -464,7 +464,7 @@ export function analyzePluginStateDrift(
         ? Boolean(configEntries[pluginId]?.enabled)
         : undefined;
     const enabledAllowList =
-      npmName == null
+      allowList === null || npmName == null
         ? null
         : allowList.has(npmName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
@@ -531,7 +531,9 @@ function buildPluginDriftDiagnostics(
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
-  const allowList = new Set(config.plugins?.allow ?? []);
+  const allowList = Array.isArray(config.plugins?.allow)
+    ? new Set(config.plugins.allow)
+    : null;
 
   return analyzePluginStateDrift(
     pluginList,

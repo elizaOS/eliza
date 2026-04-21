@@ -6,12 +6,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { BrowserActionParams } from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import {
-  buildScreenshotAttachment,
-  resolveActionParams,
-} from "./helpers.js";
+import type { BrowserActionParams } from "../types.js";
+import { buildScreenshotAttachment, resolveActionParams } from "./helpers.js";
 
 export const browserAction: Action = {
   name: "BROWSER_ACTION",
@@ -58,10 +55,28 @@ export const browserAction: Action = {
       schema: {
         type: "string",
         enum: [
-          "open", "connect", "close", "navigate", "click", "type", "scroll",
-          "screenshot", "dom", "get_dom", "clickables", "get_clickables", "execute", "state", "info",
-          "context", "get_context", "wait",
-          "list_tabs", "open_tab", "close_tab", "switch_tab",
+          "open",
+          "connect",
+          "close",
+          "navigate",
+          "click",
+          "type",
+          "scroll",
+          "screenshot",
+          "dom",
+          "get_dom",
+          "clickables",
+          "get_clickables",
+          "execute",
+          "state",
+          "info",
+          "context",
+          "get_context",
+          "wait",
+          "list_tabs",
+          "open_tab",
+          "close_tab",
+          "switch_tab",
         ],
       },
     },
@@ -172,7 +187,7 @@ export const browserAction: Action = {
       } else {
         await callback({
           text: result.success
-            ? result.content ?? "Browser action completed."
+            ? (result.content ?? "Browser action completed.")
             : result.permissionDenied
               ? `Browser action failed because ${result.permissionType} permission is missing.`
               : result.approvalRequired

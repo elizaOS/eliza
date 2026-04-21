@@ -21,11 +21,11 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { useComputerAction } from "./actions/use-computer.js";
 import { browserAction } from "./actions/browser-action.js";
-import { manageWindowAction } from "./actions/manage-window.js";
 import { fileAction } from "./actions/file-action.js";
+import { manageWindowAction } from "./actions/manage-window.js";
 import { terminalAction } from "./actions/terminal-action.js";
+import { useComputerAction } from "./actions/use-computer.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
 
@@ -60,40 +60,39 @@ export const computerusePlugin = computerUsePlugin;
 
 export default computerUsePlugin;
 
+export { ComputerUseService } from "./services/computer-use-service.js";
 // Re-export types for consumers
 export type {
-  DesktopActionType,
-  DesktopActionParams,
-  BrowserActionType,
-  BrowserActionParams,
-  WindowActionType,
-  WindowActionParams,
-  FileActionType,
-  FileActionParams,
-  TerminalActionType,
-  TerminalActionParams,
-  ComputerActionResult,
-  BrowserActionResult,
-  WindowActionResult,
-  FileActionResult,
-  TerminalActionResult,
-  WindowInfo,
-  FileEntry,
-  ScreenRegion,
-  ScreenSize,
-  PlatformCapabilities,
   ActionHistoryEntry,
   ApprovalMode,
   ApprovalResolution,
   ApprovalSnapshot,
+  BrowserActionParams,
+  BrowserActionResult,
+  BrowserActionType,
+  BrowserInfo,
+  BrowserState,
+  BrowserTab,
+  ClickableElement,
+  ComputerActionResult,
   ComputerUseConfig,
   ComputerUseResult,
-  PermissionType,
-  BrowserState,
-  BrowserInfo,
-  ClickableElement,
-  BrowserTab,
+  DesktopActionParams,
+  DesktopActionType,
+  FileActionParams,
+  FileActionResult,
+  FileActionType,
+  FileEntry,
   PendingApproval,
+  PermissionType,
+  PlatformCapabilities,
+  ScreenRegion,
+  ScreenSize,
+  TerminalActionParams,
+  TerminalActionResult,
+  TerminalActionType,
+  WindowActionParams,
+  WindowActionResult,
+  WindowActionType,
+  WindowInfo,
 } from "./types.js";
-
-export { ComputerUseService } from "./services/computer-use-service.js";

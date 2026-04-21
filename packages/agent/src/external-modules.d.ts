@@ -36,7 +36,9 @@ declare module "@elizaos/plugin-telegram/account-auth-service" {
     systemVersion?: string;
     [key: string]: unknown;
   };
-  export class TelegramAccountAuthSession implements TelegramAccountAuthSessionLike {
+  export class TelegramAccountAuthSession
+    implements TelegramAccountAuthSessionLike
+  {
     constructor();
     getSnapshot(): TelegramAccountAuthSnapshot;
     getResolvedConnectorConfig(): TelegramAccountConnectorConfig | null;
@@ -71,11 +73,11 @@ declare module "telegram" {
     checkAuthorization(): Promise<boolean>;
     sendCode(
       ...args: unknown[]
-    ): Promise<{ phoneCodeHash: string; isCodeViaApp: boolean } & Record<string, unknown>>;
+    ): Promise<
+      { phoneCodeHash: string; isCodeViaApp: boolean } & Record<string, unknown>
+    >;
     invoke(request: unknown): Promise<unknown>;
-    signInWithPassword(
-      ...args: unknown[]
-    ): Promise<Record<string, unknown>>;
+    signInWithPassword(...args: unknown[]): Promise<Record<string, unknown>>;
     getDialogs(args: { limit: number }): Promise<ReadonlyArray<unknown>>;
     getEntity(target: unknown): Promise<unknown>;
     sendMessage(
@@ -113,7 +115,10 @@ declare module "telegram" {
     namespace account {}
   }
   export const Api: {
-    auth: { SignIn: typeof Api.auth.SignIn; Authorization: typeof Api.auth.Authorization };
+    auth: {
+      SignIn: typeof Api.auth.SignIn;
+      Authorization: typeof Api.auth.Authorization;
+    };
     account: Record<string, unknown>;
     [key: string]: unknown;
   };
@@ -208,7 +213,6 @@ declare module "@elizaos/app-training/routes/trajectory" {
     ...args: unknown[]
   ) => Promise<boolean> | boolean;
 }
-
 
 declare module "@elizaos/app-training/routes/training" {
   export type TrainingRouteHelpers = unknown;
