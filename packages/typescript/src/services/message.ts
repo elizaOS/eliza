@@ -1025,7 +1025,7 @@ interface StrategyResult {
  * Embeddings-only (local-ai) and TTS do not count — without this, ACTION_PLANNER
  * and TEXT_LARGE fail with "No handler found for delegate type".
  */
-function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
+export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 	const keys: Array<keyof typeof ModelType | string> = [
 		ModelType.TEXT_LARGE,
 		ModelType.TEXT_SMALL,

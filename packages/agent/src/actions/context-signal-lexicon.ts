@@ -231,13 +231,6 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
       weak: "contextSignal.search_entity.weak",
     },
   },
-  link_entity: {
-    contextLimit: 8,
-    keywordKeys: {
-      strong: "contextSignal.search_entity.strong",
-      weak: "contextSignal.search_entity.weak",
-    },
-  },
 };
 
 export function resolveContextSignalSpec(
