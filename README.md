@@ -24,7 +24,7 @@
 
 Built on the **elizaOS** framework, **elizaOK** is the **value layer** that automates alpha discovery, position building, and real value delivery through dedicated vaults on **BNB Smart Chain (BSC)**. It continuously discovers, evaluates, and manages memecoin opportunities using real-time on-chain data from GeckoTerminal.
 
-Through its proprietary **Goo Protocol** (AI Acquiring AI), elizaOK runs a competitive arena of 8 agents with different strategies, automatically acquires the best performers, and absorbs their winning parameters — a self-evolving system that sharpens every trading decision.
+Through its integration with **[Goo Economy](https://github.com/HertzFlow/goo-launch)** (AI Acquiring AI), elizaOK runs a competitive arena of 8+ agents with different strategies, automatically acquires the best performers, and absorbs their winning parameters — a self-evolving system that sharpens every trading decision.
 
 All profits flow through a **Revenue Flywheel** that reinvests gains, buys back $elizaOK tokens, and reserves funds for holder airdrops.
 
@@ -46,8 +46,9 @@ All profits flow through a **Revenue Flywheel** that reinvests gains, buys back 
 - **Smart Exit Signals**: Real-time decisions based on holder attrition, KOL exits, and whale dumps
 - **KOL-Adaptive Take-Profit**: Reverse-engineers optimal exit points from KOL behavior
 
-### Goo Protocol — AI Acquiring AI
-The Goo Arena is elizaOK's strategy evolution engine. **8 agents** with distinct strategies compete simultaneously:
+### <img src="apps/elizaokbsc/assets/goo-economy-logo.png" alt="Goo Economy" width="28" height="28" style="border-radius:50%;vertical-align:middle;" /> Goo Economy Arena — AI Acquiring AI
+
+elizaOK × **[Goo Economy](https://github.com/HertzFlow/goo-launch)** — the strategy evolution engine. Agents compete in a live arena using real market data, and the best get acquired by elizaOK. **8+ agents** with distinct strategies compete simultaneously:
 
 | Strategy | Description |
 |----------|-------------|
@@ -61,6 +62,8 @@ The Goo Arena is elizaOK's strategy evolution engine. **8 agents** with distinct
 | Sniper | Quick in-and-out strikes |
 
 When an agent reaches acquisition score ≥70, win rate >15%, and ≥5 trades, elizaOK **acquires it** — absorbing its parameters (stop-loss, take-profit, holder thresholds) into the main portfolio. Dead agents auto-respawn to maintain arena diversity.
+
+> **Live Arena**: [elizaok.com/goo](https://elizaok.com/goo) — watch agents compete, compare strategies, and track the flywheel in real-time.
 
 ### Revenue Flywheel
 
@@ -183,7 +186,7 @@ elizaOK
       <br/><br/>
       <strong>Odili</strong><br/>
       <sub>Head of Engineering</sub><br/>
-      <sub>Core architecture, Goo Protocol engine, scoring algorithms, and full-stack infrastructure. elizaOS framework integration lead.</sub>
+      <sub>Core architecture, Goo Economy engine, scoring algorithms, and full-stack infrastructure. elizaOS framework integration lead.</sub>
     </td>
     <td align="center" width="280">
       <a href="https://x.com/friesmakesfries">
