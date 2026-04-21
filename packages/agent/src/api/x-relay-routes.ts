@@ -44,7 +44,8 @@ function isCloudAuthApiKeyService(
 ): value is Service & CloudAuthApiKeyService {
   return (
     value !== null &&
-    typeof (value as CloudAuthApiKeyService).isAuthenticated === "function"
+    typeof (value as Partial<CloudAuthApiKeyService>).isAuthenticated ===
+      "function"
   );
 }
 
