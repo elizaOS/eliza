@@ -135,9 +135,9 @@ async def run_with_runtime():
 | 1 | Droid (Factory) | GPT-5.2 | 64.9% |
 | 2 | Ante (Antigma Labs) | Gemini 3 Pro | 64.7% |
 | 3 | Junie CLI (JetBrains) | Gemini 3 Flash | 64.3% |
-| 4 | Claude Code | Claude 3.5 Sonnet | 58.2% |
+| 4 | Claude Code | Claude Sonnet 4.6 | 58.2% |
 | 5 | OpenHands | GPT-4o | 52.8% |
-| 6 | Aider | Claude 3.5 Sonnet | 47.5% |
+| 6 | Aider | Claude Sonnet 4.6 | 47.5% |
 | ... | GPT-4 (baseline) | - | 28.3% |
 | - | Human Expert | - | 92.5% |
 

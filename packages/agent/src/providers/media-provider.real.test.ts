@@ -155,7 +155,7 @@ describeFn("Anthropic Vision Provider (Real API)", () => {
       provider: "anthropic",
       anthropic: {
         apiKey: ANTHROPIC_API_KEY,
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
       },
     };
     provider = createVisionProvider(config, {});
@@ -395,7 +395,7 @@ describeFn("Cross-Provider Vision Comparison (Real API)", () => {
         provider: "anthropic",
         anthropic: {
           apiKey: ANTHROPIC_API_KEY,
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
         },
       },
       {},

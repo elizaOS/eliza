@@ -1,19 +1,19 @@
 /**
- * Duffel travel API relay — proxies the local agent's Duffel calls through
- * Eliza Cloud so the upstream Duffel API key is never bundled with the
- * desktop install and so each call is metered against the user's Cloud
- * credit balance with a creator markup.
+ * Travel-provider API relay — proxies the local app's provider-specific
+ * travel calls through Eliza Cloud so upstream provider credentials are
+ * never bundled with the desktop install and so each call can be metered
+ * against the user's Cloud credit balance.
  *
  * Pattern mirrors `cloud-billing-routes.ts` (commandment 4 — BFF is
  * auth + proxy + usage write, nothing else):
  *
  *   1. Resolve the user's Eliza Cloud API key (runtime CLOUD_AUTH service
  *      first, then saved config).
- *   2. Forward the request to `${cloudBaseUrl}/api/v1/duffel/...` with
+ *   2. Forward the request to `${cloudBaseUrl}/api/v1/<provider>/...` with
  *      `Authorization: Bearer <apiKey>` + `X-Service-Key`.
- *   3. The Cloud-side use case performs the upstream Duffel call, writes
+ *   3. The Cloud-side use case performs the upstream provider call, writes
  *      a `usage_event`, deducts cost + creator markup from the user's
- *      credit balance, and returns the Duffel payload plus a typed
+ *      credit balance, and returns the provider payload plus a typed
  *      `_meta.cost` envelope.
  *   4. The relay forwards the response unchanged. No business logic
  *      executes locally (commandment 2).
@@ -24,34 +24,45 @@
  *   when the user's credit balance can't cover a metered call — see
  *   https://www.x402.org. This relay forwards 402 responses verbatim:
  *   status code, the `WWW-Authenticate` header, and the raw body. That
- *   lets the lifeops Duffel adapter parse the payment requirements via
+ *   lets the local travel adapter parse the payment requirements via
  *   `parseX402Response` and surface them to the user. We do not collapse
  *   the body to JSON in the 402 path because the spec allows
  *   non-JSON-typed payloads.
  *
  * Routes:
- *   POST /api/cloud/duffel/offer-requests   → /api/v1/duffel/offer-requests
- *   GET  /api/cloud/duffel/offers/:id       → /api/v1/duffel/offers/:id
- *   POST /api/cloud/duffel/orders           → /api/v1/duffel/orders
- *   GET  /api/cloud/duffel/orders/:id       → /api/v1/duffel/orders/:id
- *   POST /api/cloud/duffel/payments         → /api/v1/duffel/payments
+ *   POST /api/cloud/travel-providers/:provider/offer-requests
+ *      → /api/v1/:provider/offer-requests
+ *   GET  /api/cloud/travel-providers/:provider/offers/:id
+ *      → /api/v1/:provider/offers/:id
+ *   POST /api/cloud/travel-providers/:provider/orders
+ *      → /api/v1/:provider/orders
+ *   GET  /api/cloud/travel-providers/:provider/orders/:id
+ *      → /api/v1/:provider/orders/:id
+ *   POST /api/cloud/travel-providers/:provider/payments
+ *      → /api/v1/:provider/payments
  */
 
 import type http from "node:http";
-import type { AgentRuntime, Service } from "@elizaos/core";
+import type { Service } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../types/config-like.js";
 import { sendJson, sendJsonError } from "./http-helpers.js";
 import { resolveCloudApiKey } from "./wallet-rpc.js";
 
-export interface DuffelRelayRouteState {
+interface TravelProviderRelayRuntime {
+  getService<TService = unknown>(serviceType: string): TService | null;
+}
+
+export interface TravelProviderRelayRouteState {
   config: CloudProxyConfigLike;
-  runtime?: AgentRuntime | null;
+  runtime?: TravelProviderRelayRuntime | null;
 }
 
 const PROXY_TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 1_048_576;
+const TRAVEL_PROVIDER_PATH_RE =
+  /^\/api\/cloud\/travel-providers\/([a-z0-9][a-z0-9-]*)(\/.*)$/;
 
 interface CloudAuthApiKeyService {
   isAuthenticated: () => boolean;
@@ -67,7 +78,7 @@ function normalizeCloudApiKey(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-function resolveProxyApiKey(state: DuffelRelayRouteState): string | null {
+function resolveProxyApiKey(state: TravelProviderRelayRouteState): string | null {
   const cloudAuth = state.runtime
     ? state.runtime.getService<Service & CloudAuthApiKeyService>("CLOUD_AUTH")
     : null;
@@ -118,46 +129,68 @@ function readBody(req: http.IncomingMessage): Promise<string | undefined> {
 async function readJsonResponse(response: Response): Promise<unknown> {
   return response.json().catch(async () => ({
     success: response.ok,
-    error: await response.text().catch(() => "Duffel relay request failed"),
+    error: await response
+      .text()
+      .catch(() => "Travel-provider relay request failed"),
   }));
 }
 
 /**
  * Map local relay path to upstream Cloud path. The upstream owns markup,
- * billing, and the actual Duffel call.
+ * billing, and the actual provider call.
  */
 function buildUpstreamPath(localPath: string): string {
-  return localPath.replace("/api/cloud/duffel", "/api/v1/duffel");
+  const parsed = parseTravelProviderPath(localPath);
+  if (!parsed) {
+    throw new Error("Invalid travel-provider relay path");
+  }
+  return `/api/v1/${parsed.provider}${parsed.providerPath}`;
 }
 
-const DUFFEL_RELAY_ROUTES: ReadonlyArray<{
+const TRAVEL_PROVIDER_RELAY_ROUTES: ReadonlyArray<{
   method: "GET" | "POST";
   pattern: RegExp;
 }> = [
-  { method: "POST", pattern: /^\/api\/cloud\/duffel\/offer-requests$/ },
-  { method: "GET", pattern: /^\/api\/cloud\/duffel\/offers\/[^/]+$/ },
-  { method: "POST", pattern: /^\/api\/cloud\/duffel\/orders$/ },
-  { method: "GET", pattern: /^\/api\/cloud\/duffel\/orders\/[^/]+$/ },
-  { method: "POST", pattern: /^\/api\/cloud\/duffel\/payments$/ },
+  { method: "POST", pattern: /^\/offer-requests$/ },
+  { method: "GET", pattern: /^\/offers\/[^/]+$/ },
+  { method: "POST", pattern: /^\/orders$/ },
+  { method: "GET", pattern: /^\/orders\/[^/]+$/ },
+  { method: "POST", pattern: /^\/payments$/ },
 ];
 
+function parseTravelProviderPath(
+  pathname: string,
+): { provider: string; providerPath: string } | null {
+  const match = TRAVEL_PROVIDER_PATH_RE.exec(pathname);
+  if (!match) {
+    return null;
+  }
+  const [, provider, providerPath] = match;
+  return provider ? { provider, providerPath } : null;
+}
+
 function matchRoute(method: string, pathname: string): boolean {
-  return DUFFEL_RELAY_ROUTES.some(
-    (route) => route.method === method && route.pattern.test(pathname),
+  const parsed = parseTravelProviderPath(pathname);
+  if (!parsed) {
+    return false;
+  }
+  return TRAVEL_PROVIDER_RELAY_ROUTES.some(
+    (route) => route.method === method && route.pattern.test(parsed.providerPath),
   );
 }
 
-export async function handleDuffelRelayRoute(
+export async function handleTravelProviderRelayRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   method: string,
-  state: DuffelRelayRouteState,
+  state: TravelProviderRelayRouteState,
 ): Promise<boolean> {
-  if (!pathname.startsWith("/api/cloud/duffel/")) return false;
+  const parsed = parseTravelProviderPath(pathname);
+  if (!parsed) return false;
 
   if (!matchRoute(method, pathname)) {
-    sendJsonError(res, "Unknown duffel relay route", 404);
+    sendJsonError(res, "Unknown travel-provider relay route", 404);
     return true;
   }
 
@@ -214,8 +247,8 @@ export async function handleDuffelRelayRoute(
 
 /**
  * Forward a Cloud-side 402 verbatim. We preserve `WWW-Authenticate`
- * (the x402 header form) and `Content-Type` so the local lifeops
- * adapter's `parseX402Response` can read whichever envelope the Cloud
+ * (the x402 header form) and `Content-Type` so the local travel adapter's
+ * `parseX402Response` can read whichever envelope the Cloud
  * billing layer chose to emit. The body is streamed as raw text — we
  * intentionally do NOT re-encode through `sendJson`.
  */

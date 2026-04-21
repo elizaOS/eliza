@@ -25,7 +25,7 @@ uv run python -m pytest tests/
 USE_EXTERNAL_SURFPOOL=true uv run python code_loop_explorer.py
 
 # With specific model
-MODEL_NAME="anthropic/claude-3.5-sonnet" uv run python code_loop_explorer.py
+MODEL_NAME="anthropic/claude-sonnet-4-6" uv run python code_loop_explorer.py
 
 # Batch comparison of multiple models
 uv run python run_model_comparison_batch.py
@@ -176,7 +176,7 @@ The Code Loop Explorer tracks detailed metrics in JSON files saved to `/metrics/
 
 ```json
 {
-  "model": "anthropic/claude-3.5-sonnet",
+  "model": "anthropic/claude-sonnet-4-6",
   "run_index": 0,
   "messages": [
     {

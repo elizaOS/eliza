@@ -132,7 +132,7 @@ async def run_comparison():
     models = [
         "openai/gpt-oss-120b",
         "google/gemini-2.5-flash",
-        "anthropic/claude-sonnet-4",
+        "anthropic/claude-sonnet-4.6",
         "openai/gpt-5"
     ]
     

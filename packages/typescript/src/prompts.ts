@@ -447,6 +447,8 @@ rules[21]:
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
 - REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
+- set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again
+- if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
 - use IGNORE or STOP only by themselves
 - include providers only when needed
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
@@ -475,7 +477,7 @@ fields[5]{name,meaning}:
 - actions | ordered <action> entries inside <actions>
 - providers | array of provider names, or empty
 - text | next message for {{agentName}}
-- simple | true or false
+- simple | true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
 
 formatting:
 - wrap multi-line code in fenced code blocks

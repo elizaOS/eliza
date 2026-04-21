@@ -75,7 +75,7 @@ export const DEFAULT_DEMO_CONFIG: DemoConfig = {
 
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
-    anthropicLargeModel: "claude-sonnet-4-20250514",
+    anthropicLargeModel: "claude-sonnet-4-6",
     anthropicBrowserBaseUrl: "",
 
     xaiApiKey: "",

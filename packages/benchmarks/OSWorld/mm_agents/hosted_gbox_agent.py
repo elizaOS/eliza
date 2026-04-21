@@ -22,7 +22,7 @@ class HostedGboxAgent:
         api_key: str,
         vm_ip: str,
         platform: str = "ubuntu",
-        model: str = "claude-sonnet-4-5",
+        model: str = "claude-sonnet-4-6",
         max_steps: int = 15,
         **kwargs
     ):

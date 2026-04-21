@@ -81,10 +81,8 @@ class VLMSearcherAgent(SearcherAgent):
         self.env = search_env
 
         self.use_thinking = engine_params.get("model", "") in [
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            "claude-3-7-sonnet-20250219",
-            "claude-sonnet-4-5-20250929",
+            "claude-opus-4-7",
+            "claude-sonnet-4-6",
         ]
 
         self.engine = engine_params.get("engine", "google")
@@ -474,5 +472,4 @@ class VLMSearcherAgent(SearcherAgent):
         self.tutorial_or_hint = hint
         return """FAIL"""
         
-
 

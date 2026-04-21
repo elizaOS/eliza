@@ -70,7 +70,7 @@ class TestModelProviderDetection:
         assert _detect_model_provider("gpt-4o") == "openai"
 
     def test_claude_model(self):
-        assert _detect_model_provider("claude-3-opus") == "anthropic"
+        assert _detect_model_provider("claude-opus-4-7") == "anthropic"
 
     def test_gemini_model(self):
         assert _detect_model_provider("gemini-1.5-pro") == "google"

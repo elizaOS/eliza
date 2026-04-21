@@ -81,13 +81,13 @@ cat <<EOF > /tmp/antigravity_provider.json
           "high": { "thinkingLevel": "high" }
         }
       },
-      "antigravity-claude-sonnet-4-5": {
-        "name": "Claude Sonnet 4.5 (Antigravity)",
+      "antigravity-claude-sonnet-4-6": {
+        "name": "Claude Sonnet 4.6 (Antigravity)",
         "limit": { "context": 200000, "output": 64000 },
         "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
       },
-      "antigravity-claude-sonnet-4-5-thinking": {
-        "name": "Claude Sonnet 4.5 Thinking (Antigravity)",
+      "antigravity-claude-sonnet-4-6-thinking": {
+        "name": "Claude Sonnet 4.6 Thinking (Antigravity)",
         "limit": { "context": 200000, "output": 64000 },
         "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
         "variants": {

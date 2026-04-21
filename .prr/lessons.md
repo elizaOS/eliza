@@ -9,7 +9,7 @@ Date:   Mon Mar 16 18:35:49 2026 -0700
     left in the repo root (*.test.ts, database.ts, reporting.py, *.md
     docs, run_mac_lite.sh, feb17handoff.md).
     
-    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 
 diff --git a/.prr/lessons.md b/.prr/lessons.md
 deleted file mode 100644

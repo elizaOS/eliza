@@ -8,7 +8,7 @@ We currently support the following models as the foundational models for the age
 - `GPT-4V` (gpt-4-vision-preview, ...)
 - `Gemini-Pro`
 - `Gemini-Pro-Vision`
-- `Claude-3, 2` (claude-3-haiku-2024030, claude-3-sonnet-2024022, ...)
+- `Claude-3, 2` (claude-haiku-4-5-20251001-2024030, claude-sonnet-4-6-2024022, ...)
 - ...
 
 And those from the open-source community:

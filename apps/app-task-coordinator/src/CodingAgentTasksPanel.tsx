@@ -1,15 +1,15 @@
 import {
+  type CodingAgentSession,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
   client,
   EmptyWidgetState,
   PULSE_STATUSES,
   STATUS_DOT,
   TERMINAL_STATUSES,
-  WidgetSection,
-  usePtySessions,
   useApp,
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
+  usePtySessions,
+  WidgetSection,
 } from "@elizaos/app-core";
 import { Badge, Button } from "@elizaos/ui";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
@@ -260,7 +260,9 @@ function ThreadDetailContent({
   locale?: string;
 }) {
   const latestTranscripts = (detail.transcripts ?? [])
-    .filter((entry) => entry.direction === "stdin" || entry.direction === "system")
+    .filter(
+      (entry) => entry.direction === "stdin" || entry.direction === "system",
+    )
     .slice(-8)
     .reverse();
   const latestEvents = (detail.events ?? []).slice(-6).reverse();
@@ -696,7 +698,12 @@ export function CodingAgentTasksPanel({
         if (cancelled) return;
         if (!silent) {
           setLoadError(
-            getClientErrorMessage(error, "Failed to load task threads."),
+            getClientErrorMessage(
+              error,
+              t("codingagenttaskspanel.unknown", {
+                defaultValue: "Unknown",
+              }),
+            ),
           );
         }
         if (!silent) {
@@ -721,7 +728,7 @@ export function CodingAgentTasksPanel({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [deferredSearch, showArchived]);
+  }, [deferredSearch, showArchived, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -752,7 +759,12 @@ export function CodingAgentTasksPanel({
       } catch (error) {
         if (cancelled) return;
         setDetailError(
-          getClientErrorMessage(error, "Failed to load task detail."),
+          getClientErrorMessage(
+            error,
+            t("codingagenttaskspanel.unknown", {
+              defaultValue: "Unknown",
+            }),
+          ),
         );
         setSelectedThread(null);
       }
@@ -762,7 +774,7 @@ export function CodingAgentTasksPanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedThreadId, selectedThreadSummary?.updatedAt]);
+  }, [selectedThreadId, selectedThreadSummary?.updatedAt, t]);
 
   const handleDelete = async () => {
     if (!selectedThread) return;
@@ -782,9 +794,13 @@ export function CodingAgentTasksPanel({
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
       setMutationError(
-        error instanceof Error
-          ? `Failed to delete task: ${error.message}`
-          : "Failed to delete task.",
+        t("codingagenttaskspanel.deleteFailed", {
+          defaultValue:
+            error instanceof Error
+              ? "Failed to delete task: {{error}}"
+              : "Failed to delete task.",
+          error: error instanceof Error ? error.message : undefined,
+        }),
       );
     } finally {
       setMutating(false);
@@ -810,9 +826,13 @@ export function CodingAgentTasksPanel({
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
       setMutationError(
-        error instanceof Error
-          ? `Failed to reopen task: ${error.message}`
-          : "Failed to reopen task.",
+        t("codingagenttaskspanel.reopenFailed", {
+          defaultValue:
+            error instanceof Error
+              ? "Failed to reopen task: {{error}}"
+              : "Failed to reopen task.",
+          error: error instanceof Error ? error.message : undefined,
+        }),
       );
     } finally {
       setMutating(false);

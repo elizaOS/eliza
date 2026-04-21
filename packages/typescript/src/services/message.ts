@@ -1068,9 +1068,6 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 	return false;
 }
 
-const NO_LLM_PROVIDER_REPLY =
-	"No chat model is configured. Add an API key to your environment (for example OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY in `.env`) or connect Eliza Cloud (ELIZAOS_CLOUD_API_KEY) in Settings — then restart the dev server. The log line “No AI provider plugin was loaded” means no provider plugin was registered.";
-
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
@@ -1105,6 +1102,26 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		responseContent.actions[0].toUpperCase() === "REPLY"
 	);
+}
+
+export function resolveStrategyMode(
+	responseContent: Pick<Content, "actions" | "text" | "simple"> | null | undefined,
+): StrategyMode {
+	if (isStopResponse(responseContent)) {
+		return "none";
+	}
+
+	if (!isSimpleReplyResponse(responseContent)) {
+		return "actions";
+	}
+
+	const hasPlannerText =
+		typeof responseContent?.text === "string" &&
+		responseContent.text.trim().length > 0;
+
+	return responseContent?.simple === true && hasPlannerText
+		? "simple"
+		: "actions";
 }
 
 function isStopResponse(
@@ -3548,62 +3565,30 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-			let result: StrategyResult;
-			if (!hasTextGenerationHandler(runtime)) {
-				runtime.logger.warn(
-					{ src: "service:message", agentId: runtime.agentId },
-					NO_LLM_PROVIDER_REPLY,
-				);
-				const cfgContent: Content = {
-					text: NO_LLM_PROVIDER_REPLY,
-					thought: "Configuration: no LLM provider plugin loaded.",
-					actions: ["REPLY"],
-					simple: true,
-					...(message.id
-						? { inReplyTo: createUniqueUuid(runtime, message.id) }
-						: {}),
-				};
-				result = {
-					responseContent: cfgContent,
-					responseMessages: [
+			const result = opts.useMultiStep
+				? await this.runMultiStepCore(
+						runtime,
+						message,
+						executionState,
+						callback,
+						opts,
+						responseId,
+						promptAttachments,
 						{
-							id: asUUID(v4()),
-							entityId: runtime.agentId,
-							agentId: runtime.agentId,
-							content: cfgContent,
-							roomId: message.roomId,
-							createdAt: Date.now(),
+							precomposedState: executionState,
 						},
-					],
-					state: executionState,
-					mode: "simple",
-				};
-			} else {
-				result = opts.useMultiStep
-					? await this.runMultiStepCore(
-							runtime,
-							message,
-							executionState,
-							callback,
-							opts,
-							responseId,
-							promptAttachments,
-							{
-								precomposedState: executionState,
-							},
-						)
-					: await this.runSingleShotCore(
-							runtime,
-							message,
-							executionState,
-							opts,
-							responseId,
-							promptAttachments,
-							{
-								precomposedState: executionState,
-							},
-						);
-			}
+					)
+				: await this.runSingleShotCore(
+						runtime,
+						message,
+						executionState,
+						opts,
+						responseId,
+						promptAttachments,
+						{
+							precomposedState: executionState,
+						},
+					);
 
 			responseContent = result.responseContent;
 			responseMessages = result.responseMessages;
@@ -5898,11 +5883,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		// Automatically determine if response is simple
-		const isSimple = isSimpleReplyResponse(responseContent);
-		const isStop = isStopResponse(responseContent);
-
-		responseContent.simple = isSimple;
+		const mode = resolveStrategyMode(responseContent);
+		responseContent.simple = mode === "simple";
 		// Include message ID for streaming coordination (so broadcast uses same ID)
 		responseContent.responseId = responseId;
 
@@ -5921,11 +5903,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				responseContent,
 				responseMessages,
 				state,
-				mode: isStop
-					? "none"
-					: isSimple && responseContent.text
-						? "simple"
-						: "actions",
+				mode,
 			};
 		}
 

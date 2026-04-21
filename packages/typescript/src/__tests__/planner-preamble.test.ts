@@ -2,12 +2,12 @@
  * Unit tests for the planner-preamble emission logic in the message service.
  *
  * When the planner returns `{text, actions}`, the runtime decides whether to
- * surface `text` to the user based on the first action:
+ * surface `text` to the user based on the dispatch mode:
  *
- *   - Simple mode (`actions === ["REPLY"]`): text is emitted as the reply via
- *     the normal simple-mode pipeline. No preamble needed.
+ *   - Simple mode (`actions === ["REPLY"]` + `simple=true` + planner text):
+ *     text is emitted as the reply via the normal simple-mode pipeline.
  *   - Actions mode with first action REPLY: skip the preamble — the REPLY
- *     handler generates its own text.
+ *     handler generates its own text via TEXT_LARGE.
  *   - Actions mode with first action IGNORE or STOP: skip the preamble —
  *     nothing is sent to the user.
  *   - Actions mode with any other first action: fire the preamble so the user
@@ -19,6 +19,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	resolveStrategyMode,
 	shouldEmitPlannerPreamble,
 	stripReplyWhenActionOwnsTurn,
 } from "../services/message.ts";
@@ -164,6 +165,58 @@ describe("shouldEmitPlannerPreamble", () => {
 				actions: ["UPDATE_MEETING_PREFERENCES"],
 			}),
 		).toBe(false);
+	});
+});
+
+describe("resolveStrategyMode", () => {
+	it("uses simple mode only for explicit simple REPLY-only replies with planner text", () => {
+		expect(
+			resolveStrategyMode({
+				actions: ["REPLY"],
+				text: "Hello there",
+				simple: true,
+			}),
+		).toBe("simple");
+	});
+
+	it("uses actions mode for REPLY-only turns when simple is false", () => {
+		expect(
+			resolveStrategyMode({
+				actions: ["REPLY"],
+				text: "Hello there",
+				simple: false,
+			}),
+		).toBe("actions");
+	});
+
+	it("uses actions mode for REPLY-only turns without planner text", () => {
+		expect(
+			resolveStrategyMode({
+				actions: ["REPLY"],
+				text: "   ",
+				simple: true,
+			}),
+		).toBe("actions");
+	});
+
+	it("uses actions mode for non-REPLY actions", () => {
+		expect(
+			resolveStrategyMode({
+				actions: ["INBOX"],
+				text: "Checking your inbox",
+				simple: true,
+			}),
+		).toBe("actions");
+	});
+
+	it("uses none mode for STOP", () => {
+		expect(
+			resolveStrategyMode({
+				actions: ["STOP"],
+				text: "Done",
+				simple: false,
+			}),
+		).toBe("none");
 	});
 });
 

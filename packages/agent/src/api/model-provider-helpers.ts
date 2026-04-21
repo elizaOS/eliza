@@ -48,8 +48,8 @@ export function getModelOptions(): {
   const allModels = [
     // Anthropic
     {
-      id: "anthropic/claude-opus-4.6",
-      name: "Claude Opus 4.6",
+      id: "anthropic/claude-opus-4.7",
+      name: "Claude Opus 4.7",
       provider: "Anthropic",
       description: "Most capable Claude model.",
     },

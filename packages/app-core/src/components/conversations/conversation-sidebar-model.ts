@@ -82,9 +82,11 @@ function normalizeWorldLabel(
   if (trimmed) {
     return trimmed;
   }
-  return t?.("conversations.scopeUnknownWorld", {
-    defaultValue: "Unknown world",
-  }) ?? "Unknown world";
+  return (
+    t?.("conversations.scopeUnknownWorld", {
+      defaultValue: "Unknown world",
+    }) ?? "Unknown world"
+  );
 }
 
 function worldKey(chat: InboxChatSidebarRow, t?: TranslateFn): string {

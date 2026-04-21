@@ -378,7 +378,7 @@ LEADERBOARD_SCORES: dict[str, LeaderboardEntry] = {
         top_score=Decimal("4694.15"),
     ),
     "claude_3_5_sonnet": LeaderboardEntry(
-        model_name="Claude 3.5 Sonnet",
+        model_name="Claude Sonnet 4.6",
         top_score=Decimal("2217.93"),
     ),
     "claude_opus_4": LeaderboardEntry(
