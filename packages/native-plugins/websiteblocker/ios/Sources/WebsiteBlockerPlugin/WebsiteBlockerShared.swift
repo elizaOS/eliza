@@ -126,7 +126,7 @@ enum WebsiteBlockerShared {
             requestedWebsites: normalizedRequested,
             blockedWebsites: Array(blockedWebsites).sorted(),
             allowedWebsites: Array(allowedWebsites).sorted(),
-            matchMode: exactMatchMode,
+            matchMode: exactMatchMode
         )
     }
 

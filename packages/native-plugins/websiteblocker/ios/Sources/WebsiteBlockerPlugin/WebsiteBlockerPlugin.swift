@@ -46,19 +46,15 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
                 try await WebsiteBlockerShared.reloadContentBlocker()
                 let contentBlockerState = try await WebsiteBlockerShared.contentBlockerState()
                 if !contentBlockerState.isEnabled {
+                    let disabledStatus = statusPayload(
+                        storedState: savedState,
+                        active: false,
+                        requiresElevation: true
+                    )
                     call.resolve([
                         "success": false,
                         "error": disabledReason(configuredWebsites: savedState.websites),
-                        "status": [
-                            "active": false,
-                            "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: savedState)),
-                            "websites": savedState.websites,
-                            "requestedWebsites": savedState.requestedWebsites ?? savedState.websites,
-                            "blockedWebsites": savedState.blockedWebsites ?? savedState.websites,
-                            "allowedWebsites": savedState.allowedWebsites ?? [],
-                            "matchMode": savedState.matchMode ?? WebsiteBlockerShared.exactMatchMode,
-                            "requiresElevation": true,
-                        ],
+                        "status": disabledStatus,
                     ])
                     return
                 }
@@ -73,19 +69,15 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             } catch {
                 let storedState = WebsiteBlockerShared.loadState()
+                let failedStatus = statusPayload(
+                    storedState: storedState,
+                    active: false,
+                    requiresElevation: true
+                )
                 call.resolve([
                     "success": false,
                     "error": error.localizedDescription,
-                    "status": [
-                        "active": false,
-                        "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: storedState)),
-                        "websites": storedState?.websites ?? [],
-                        "requestedWebsites": storedState?.requestedWebsites ?? storedState?.websites ?? [],
-                        "blockedWebsites": storedState?.blockedWebsites ?? storedState?.websites ?? [],
-                        "allowedWebsites": storedState?.allowedWebsites ?? [],
-                        "matchMode": storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode,
-                        "requiresElevation": true,
-                    ],
+                    "status": failedStatus,
                 ])
             }
         }
@@ -175,27 +167,46 @@ public class ElizaWebsiteBlockerPlugin: CAPPlugin, CAPBridgedPlugin {
         let permissionStatus = permission["status"] as? String ?? "not-determined"
         let enabled = permissionStatus == "granted"
         let reason = permission["reason"] as? String
+        var status = statusPayload(
+            storedState: storedState,
+            active: enabled && !websites.isEmpty,
+            requiresElevation: !enabled
+        )
+        status["hostsFilePath"] = NSNull()
+        status["engine"] = "content-blocker"
+        status["platform"] = "ios"
+        status["supportsElevationPrompt"] = false
+        status["elevationPromptMethod"] = enabled ? NSNull() : "system-settings"
+        status["permissionStatus"] = permissionStatus
+        status["canRequestPermission"] = permission["canRequest"] as? Bool ?? false
+        status["canOpenSystemSettings"] = true
+        status["reason"] = nullable(reason)
+
+        return status
+    }
+
+    private func statusPayload(
+        storedState: WebsiteBlockerStoredState?,
+        active: Bool,
+        requiresElevation: Bool
+    ) -> [String: Any] {
+        let websites = storedState?.websites ?? []
+        let requestedWebsites = storedState?.requestedWebsites ?? websites
+        let blockedWebsites = storedState?.blockedWebsites ?? websites
+        let allowedWebsites = storedState?.allowedWebsites ?? []
+        let matchMode = storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode
 
         return [
             "available": true,
-            "active": enabled && !websites.isEmpty,
-            "hostsFilePath": NSNull(),
+            "active": active,
             "endsAt": nullable(WebsiteBlockerShared.endsAtString(for: storedState)),
             "websites": websites,
-            "requestedWebsites": storedState?.requestedWebsites ?? websites,
-            "blockedWebsites": storedState?.blockedWebsites ?? websites,
-            "allowedWebsites": storedState?.allowedWebsites ?? [],
-            "matchMode": storedState?.matchMode ?? WebsiteBlockerShared.exactMatchMode,
+            "requestedWebsites": requestedWebsites,
+            "blockedWebsites": blockedWebsites,
+            "allowedWebsites": allowedWebsites,
+            "matchMode": matchMode,
             "canUnblockEarly": true,
-            "requiresElevation": !enabled,
-            "engine": "content-blocker",
-            "platform": "ios",
-            "supportsElevationPrompt": false,
-            "elevationPromptMethod": enabled ? NSNull() : "system-settings",
-            "permissionStatus": permissionStatus,
-            "canRequestPermission": permission["canRequest"] as? Bool ?? false,
-            "canOpenSystemSettings": true,
-            "reason": nullable(reason),
+            "requiresElevation": requiresElevation,
         ]
     }
 
