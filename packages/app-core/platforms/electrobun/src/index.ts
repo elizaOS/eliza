@@ -518,6 +518,7 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
 
   alignChrome();
   setTimeout(alignChrome, 120);
+  const chromeRefreshTimer = setInterval(alignChrome, 1000);
 
   win.on("resize", alignChrome);
   win.on("focus", alignChrome);
@@ -529,6 +530,7 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
   });
   // Display (NSScreen) changes without a resize edge case — depth uses window.screen.
   win.on("move", alignChrome);
+  win.on("close", () => clearInterval(chromeRefreshTimer));
 
   // WKWebView is often inserted or reordered after first layout; restack native
   // views so drag/resize strips stay hit-testable above the page.
