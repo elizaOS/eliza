@@ -51,6 +51,12 @@ describe("lifeops schedule insight inference", () => {
     expect(insight.isProbablySleeping).toBe(false);
     expect(insight.lastSleepDurationMinutes).toBeGreaterThanOrEqual(450);
     expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
+    expect(insight.relativeTime.minutesSinceWake).toBe(330);
+    expect(insight.relativeTime.bedtimeTargetAt).toBe(
+      "2026-04-19T23:30:00.000Z",
+    );
+    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBe(630);
+    expect(insight.relativeTime.minutesSinceBedtimeTarget).toBeNull();
     expect(insight.nextMealLabel).toBe("lunch");
   });
 
@@ -110,6 +116,11 @@ describe("lifeops schedule insight inference", () => {
     expect(insight.currentSleepStartedAt).toBe("2026-04-19T02:15:00.000Z");
     expect(insight.sleepConfidence).toBeGreaterThanOrEqual(0.9);
     expect(insight.phase).toBe("sleeping");
+    expect(insight.relativeTime.bedtimeTargetAt).toBe(
+      "2026-04-19T02:15:00.000Z",
+    );
+    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBeNull();
+    expect(insight.relativeTime.minutesSinceBedtimeTarget).toBe(165);
   });
 
   it("reports the first post-wake window as firstActiveAt, not a pre-sleep window", () => {

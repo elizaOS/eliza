@@ -108,6 +108,38 @@ export function LifeOpsSchedulePanel() {
             })
           : t("lifeopspanels.unknown", { defaultValue: "Unknown" })
     : t("common.loading", { defaultValue: "Loading" });
+  const relativeWakeLabel =
+    merged?.relativeTime.minutesSinceWake !== null &&
+    merged?.relativeTime.minutesSinceWake !== undefined
+      ? t("lifeopspanels.relativePhase", {
+          defaultValue: "{{phase}} · woke {{duration}} ago",
+          phase: merged.relativeTime.phase,
+          duration: formatMinutes(merged.relativeTime.minutesSinceWake),
+        })
+      : merged
+        ? t("lifeopspanels.relativePhaseCalibrating", {
+            defaultValue: "{{phase}} · wake anchor calibrating",
+            phase: merged.relativeTime.phase,
+          })
+        : "—";
+  const bedtimeRelativeLabel =
+    merged?.relativeTime.minutesUntilBedtimeTarget !== null &&
+    merged?.relativeTime.minutesUntilBedtimeTarget !== undefined
+      ? t("lifeopspanels.bedtimeFuture", {
+          defaultValue: "in {{duration}}",
+          duration: formatMinutes(merged.relativeTime.minutesUntilBedtimeTarget),
+        })
+      : merged?.relativeTime.minutesSinceBedtimeTarget !== null &&
+          merged?.relativeTime.minutesSinceBedtimeTarget !== undefined
+        ? t("lifeopspanels.bedtimePast", {
+            defaultValue: "{{duration}} ago",
+            duration: formatMinutes(
+              merged.relativeTime.minutesSinceBedtimeTarget,
+            ),
+          })
+        : t("lifeopspanels.bedtimeRelativeCalibrating", {
+            defaultValue: "calibrating",
+          });
 
   return (
     <PanelShell
@@ -152,22 +184,14 @@ export function LifeOpsSchedulePanel() {
             })}
           </div>
           <div className="mt-1 text-sm font-semibold text-txt">
-            {merged
-              ? t("lifeopspanels.relativePhase", {
-                  defaultValue: "{{phase}} · woke {{duration}} ago",
-                  phase: merged.relativeTime.phase,
-                  duration: formatMinutes(merged.relativeTime.minutesSinceWake),
-                })
-              : "—"}
+            {relativeWakeLabel}
           </div>
           <div className="mt-1 text-xs text-muted">
             {merged?.relativeTime.bedtimeTargetAt
               ? t("lifeopspanels.bedtimeTarget", {
-                  defaultValue: "Bedtime target {{time}} · in {{duration}}",
+                  defaultValue: "Bedtime target {{time}} · {{duration}}",
                   time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
-                  duration: formatMinutes(
-                    merged.relativeTime.minutesUntilBedtimeTarget,
-                  ),
+                  duration: bedtimeRelativeLabel,
                 })
               : t("lifeopspanels.bedtimeCalibrating", {
                   defaultValue: "Bedtime target calibrating",

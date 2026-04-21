@@ -95,7 +95,8 @@ function toDurationMinutes(startMs: number, endMs: number | null, nowMs: number)
 }
 
 function localHour(ms: number, timezone: string): number {
-  return getZonedDateParts(new Date(ms), timezone).hour;
+  const parts = getZonedDateParts(new Date(ms), timezone);
+  return parts.hour + parts.minute / 60;
 }
 
 function normalizeSleepHour(hour: number): number {

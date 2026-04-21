@@ -179,9 +179,9 @@ export function resolveLifeOpsRelativeTime(args: {
   const startOfDayMs = Date.parse(dayBoundary.startOfDayAt);
   const endOfDayMs = Date.parse(dayBoundary.endOfDayAt);
   const minutesUntilBedtimeTarget =
-    bedtimeTargetMs === null
+    bedtimeTargetMs === null || bedtimeTargetMs < args.nowMs
       ? null
-      : Math.max(0, Math.round((bedtimeTargetMs - args.nowMs) / 60_000));
+      : Math.round((bedtimeTargetMs - args.nowMs) / 60_000);
   const minutesSinceBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs > args.nowMs
       ? null
