@@ -22,18 +22,12 @@ import {
 /**
  * SQL-backed FeatureFlagService.
  *
- * Reads & writes the `lifeops_features` table. Schema ownership lives in the
- * app-lifeops plugin schema and is migrated up front via plugin-sql.
- *
- * Compile-time defaults (`BASE_FEATURE_DEFAULTS` resolved through
- * `resolveFeatureDefaults`) are the authority when no row exists. The
- * runtime never writes a row with `source = 'default'` — absence is the
- * canonical representation of an unmodified default (Commandment 7).
- *
- * Cloud-link awareness: when a `CLOUD_AUTH` runtime service reports the
- * user is signed into Eliza Cloud, travel features and the cloud-managed
- * travel-billing flag default to ON. The Cloud-side billing layer owns
- * pricing; the local code never recomputes that markup (Commandment 2).
+ * Reads & writes the `lifeops_features` table owned by `app-lifeops` and
+ * migrated via the plugin's `schema` export.
+ * Compile-time defaults (`FEATURE_DEFAULTS`) are the authority when no row
+ * exists. The runtime never writes a row with `source = 'default'` —
+ * absence is the canonical representation of an unmodified default
+ * (Commandment 7).
  */
 
 const SELECT_COLUMNS =

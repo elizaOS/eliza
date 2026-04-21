@@ -1028,72 +1028,42 @@ function getWorkflowTemplates(
     {
       id: "slack-discord-bridge",
       icon: Share2,
-      title: t("automations.templates.slackDiscord.title", {
-        defaultValue: "Slack ↔ Discord Bridge",
-      }),
-      description: t("automations.templates.slackDiscord.desc", {
-        defaultValue: "Cross-post messages between Slack and Discord channels.",
-      }),
-      seedPrompt: t("automations.templates.slackDiscord.prompt", {
-        defaultValue:
-          "Whenever a message is posted in the #announcements channel in Slack, forward it to the #general channel in Discord.",
-      }),
+      title: "Slack \u2194 Discord Bridge",
+      description: "Cross-post messages between Slack and Discord channels.",
+      seedPrompt:
+        "Whenever a message is posted in the #announcements channel in Slack, forward it to the #general channel in Discord.",
     },
     {
       id: "rss-to-summary",
       icon: Rss,
-      title: t("automations.templates.rssSummary.title", {
-        defaultValue: "RSS to Summary",
-      }),
-      description: t("automations.templates.rssSummary.desc", {
-        defaultValue: "Poll an RSS feed and summarize new articles by email.",
-      }),
-      seedPrompt: t("automations.templates.rssSummary.prompt", {
-        defaultValue:
-          "Check my RSS feed https://example.com/feed.xml every hour. For each new article, generate a 3-sentence summary and email it to me.",
-      }),
+      title: "RSS to Summary",
+      description: "Poll an RSS feed and summarize new articles via email.",
+      seedPrompt:
+        "Check my RSS feed https://example.com/feed.xml every hour. For each new article, generate a 3-sentence summary and email it to me.",
     },
     {
       id: "calendar-to-slack",
       icon: Calendar,
-      title: t("automations.templates.calendarSlack.title", {
-        defaultValue: "Calendar to Slack",
-      }),
-      description: t("automations.templates.calendarSlack.desc", {
-        defaultValue: "Post your day's agenda to Slack each morning.",
-      }),
-      seedPrompt: t("automations.templates.calendarSlack.prompt", {
-        defaultValue:
-          "Every weekday at 8am, read today's events from my Google Calendar and post a formatted agenda to my #daily-standup channel in Slack.",
-      }),
+      title: "Calendar to Slack",
+      description: "Post your day's agenda to Slack each morning.",
+      seedPrompt:
+        "Every weekday at 8am, read today's events from my Google Calendar and post a formatted agenda to my #daily-standup channel in Slack.",
     },
     {
       id: "github-issue-triage",
       icon: GitBranch,
-      title: t("automations.templates.githubTriage.title", {
-        defaultValue: "GitHub Issue Triage",
-      }),
-      description: t("automations.templates.githubTriage.desc", {
-        defaultValue: "Auto-classify and label new GitHub issues.",
-      }),
-      seedPrompt: t("automations.templates.githubTriage.prompt", {
-        defaultValue:
-          "When a new issue is opened on my GitHub repo, classify it (bug/feature/question/docs), add the matching label, and post a welcoming comment.",
-      }),
+      title: "GitHub Issue Triage",
+      description: "Auto-classify and label new GitHub issues.",
+      seedPrompt:
+        "When a new issue is opened on my GitHub repo, classify it (bug/feature/question/docs), add the matching label, and post a welcoming comment.",
     },
     {
       id: "email-to-notion",
       icon: FileText,
-      title: t("automations.templates.emailNotion.title", {
-        defaultValue: "Email → Notion",
-      }),
-      description: t("automations.templates.emailNotion.desc", {
-        defaultValue: "Turn tagged emails into Notion pages.",
-      }),
-      seedPrompt: t("automations.templates.emailNotion.prompt", {
-        defaultValue:
-          "When I receive a Gmail message labeled 'Task', extract the key details and create a new page in my Notion 'Inbox' database with the subject as the title and body as content.",
-      }),
+      title: "Email \u2192 Notion",
+      description: "Turn tagged emails into Notion pages.",
+      seedPrompt:
+        "When I receive a Gmail message labeled 'Task', extract the key details and create a new page in my Notion 'Inbox' database with the subject as the title and body as content.",
     },
   ];
 }
@@ -2124,6 +2094,10 @@ function WorkflowAutomationDetailPane({
     workflowOpsBusy ||
     (automation.workflowId != null && workflowBusyId === automation.workflowId);
 
+  useEffect(() => {
+    setChatCollapsed(false);
+  }, [automation.id]);
+
   return (
     <div className="space-y-6">
       <WorkflowRuntimeNotice
@@ -2953,9 +2927,7 @@ function AutomationsLayout() {
       header={null}
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label={t("automations.newTaskButton", {
-            defaultValue: "+ New task",
-          })}
+          aria-label="New coordinator automation"
           onClick={handleOpenCreateTask}
         >
           <Plus className="h-4 w-4" />
@@ -3108,35 +3080,34 @@ function AutomationsLayout() {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
-      <PageLayout
-        className="h-full min-w-0 flex-1 bg-transparent"
-        data-testid="automations-shell"
-        sidebar={automationsSidebar}
-        contentInnerClassName="mx-auto w-full max-w-[96rem]"
-        footer={<WidgetHost slot="automations" className="py-3" />}
-        mobileSidebarLabel={mobileSidebarLabel}
-      >
-        <div className="flex min-h-0 flex-1 flex-col">
-          {activeSubpage === "node-catalog" || showDetailPane ? (
-            <button
-              type="button"
-              className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
-              onClick={() => {
-                if (activeSubpage === "node-catalog") {
-                  showAutomationsList();
-                  return;
-                }
-                setSelectedItemId(null);
-                setSelectedItemKind(null);
-                setEditorOpen(false);
-                setEditingId(null);
-                ctx.setEditingTaskId(null);
-              }}
-            >
-              ← Back
-            </button>
-          ) : null}
+    <PageLayout
+      className="h-full bg-transparent"
+      data-testid="automations-shell"
+      sidebar={automationsSidebar}
+      contentInnerClassName="mx-auto w-full max-w-[96rem]"
+      footer={<WidgetHost slot="automations" className="py-3" />}
+      mobileSidebarLabel={mobileSidebarLabel}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        {activeSubpage === "node-catalog" || showDetailPane ? (
+          <button
+            type="button"
+            className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
+            onClick={() => {
+              if (activeSubpage === "node-catalog") {
+                showAutomationsList();
+                return;
+              }
+              setSelectedItemId(null);
+              setSelectedItemKind(null);
+              setEditorOpen(false);
+              setEditingId(null);
+              ctx.setEditingTaskId(null);
+            }}
+          >
+            ← Back
+          </button>
+        ) : null}
 
           {(pageNotice || combinedError) && (
             <PagePanel
@@ -3207,70 +3178,70 @@ function AutomationsLayout() {
               onToggleWorkflowActive={handleToggleWorkflowActive}
               onWorkflowMutated={handleWorkflowMutated}
             />
-          ) : resolvedSelectedItem?.trigger ? (
-            <TriggerAutomationDetailPane
-              key={resolvedSelectedItem.id}
-              automation={resolvedSelectedItem}
-              nodes={automationNodes}
-              onAutomationMutated={() => {
-                void ctx.refreshAutomations();
-              }}
-              onPromoteToWorkflow={promoteAutomationToWorkflow}
-            />
-          ) : resolvedSelectedItem?.task ? (
-            <TaskAutomationDetailPane
-              key={resolvedSelectedItem.id}
-              automation={resolvedSelectedItem}
-              nodes={automationNodes}
-              onAutomationMutated={() => {
-                void ctx.refreshAutomations();
-              }}
-              onPromoteToWorkflow={promoteAutomationToWorkflow}
-            />
-          ) : showFirstRunEmptyState ? (
-            <AutomationsZeroState
-              onBrowseTemplates={() => setTemplatesModalOpen(true)}
-              onNewTrigger={handleZeroStateNewTrigger}
-              onNewTask={handleZeroStateNewTask}
-            />
-          ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-txt-strong">
-                  Select an automation
-                </h3>
-              </div>
+          )
+        ) : activeSubpage === "node-catalog" ? (
+          <AutomationNodeCatalogPane nodes={automationNodes} />
+        ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
+          <WorkflowAutomationDetailPane
+            automation={resolvedSelectedItem}
+            nodes={automationNodes}
+            n8nStatus={n8nStatus}
+            workflowFetchError={workflowFetchError}
+            workflowBusyId={workflowBusyId}
+            workflowOpsBusy={workflowOpsBusy}
+            onConversationResolved={setActiveWorkflowConversation}
+            onDeleteWorkflow={handleDeleteWorkflow}
+            onRefreshWorkflows={handleRefreshWorkflows}
+            onStartLocalN8n={handleStartLocalN8n}
+            onToggleWorkflowActive={handleToggleWorkflowActive}
+            onWorkflowMutated={handleWorkflowMutated}
+          />
+        ) : resolvedSelectedItem?.trigger ? (
+          <TriggerAutomationDetailPane
+            automation={resolvedSelectedItem}
+            nodes={automationNodes}
+            onAutomationMutated={() => {
+              void ctx.refreshAutomations();
+            }}
+            onPromoteToWorkflow={promoteAutomationToWorkflow}
+          />
+        ) : resolvedSelectedItem?.task ? (
+          <TaskAutomationDetailPane
+            automation={resolvedSelectedItem}
+            nodes={automationNodes}
+            onAutomationMutated={() => {
+              void ctx.refreshAutomations();
+            }}
+            onPromoteToWorkflow={promoteAutomationToWorkflow}
+          />
+        ) : showFirstRunEmptyState ? (
+          <AutomationsZeroState
+            onBrowseTemplates={() => setTemplatesModalOpen(true)}
+            onNewTrigger={handleZeroStateNewTrigger}
+            onNewTask={handleZeroStateNewTask}
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-txt-strong">
+                Select an automation
+              </h3>
             </div>
           )}
         </div>
 
-        <WorkflowTemplatesModal
-          open={templatesModalOpen}
-          onOpenChange={setTemplatesModalOpen}
-          onSelectTemplate={(seedPrompt) =>
-            void handleTemplateSelected(seedPrompt)
-          }
-          onSelectCustom={() => {
-            setTemplatesModalOpen(false);
-            void createWorkflowDraft();
-          }}
-        />
-      </PageLayout>
-      <RightSideChatPanel
-        storageKey="milady:chat-panel:automations"
-        defaultWidth={384}
-        minWidth={300}
-        maxWidth={720}
-      >
-        <PageScopedChat
-          scope="page-automations"
-          title="Automations assistant"
-          placeholder="Ask to create, edit, activate, or visualize automations..."
-          systemAddendum={AUTOMATIONS_SYSTEM_ADDENDUM}
-          bridgeFromConversationId={activeConversationId}
-        />
-      </RightSideChatPanel>
-    </div>
+      <WorkflowTemplatesModal
+        open={templatesModalOpen}
+        onOpenChange={setTemplatesModalOpen}
+        onSelectTemplate={(seedPrompt) =>
+          void handleTemplateSelected(seedPrompt)
+        }
+        onSelectCustom={() => {
+          setTemplatesModalOpen(false);
+          void createWorkflowDraft();
+        }}
+      />
+    </PageLayout>
   );
 }
 

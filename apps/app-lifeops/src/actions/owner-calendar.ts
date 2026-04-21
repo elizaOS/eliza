@@ -707,6 +707,9 @@ export const ownerCalendarAction: Action & {
     "SEARCH_CALENDAR",
     "ITINERARY",
     "TRAVEL_SCHEDULE",
+    "CHECK_FLIGHT_CONFLICT",
+    "FLIGHT_CONFLICT_REBOOKING",
+    "REBOOK_CONFLICTING_EVENT",
     "BOOK_TIME_BLOCK",
     "RECURRING_TIME_BLOCK",
     "REBOOK_TRAVEL",
@@ -756,6 +759,8 @@ export const ownerCalendarAction: Action & {
     "blackout window",
     "meeting preferences",
     "scheduling rules",
+    "flight conflict",
+    "rebook the other thing",
   ],
   description:
     "Owner's calendar and scheduling surface: Google Calendar (view, search, create, travel), " +
@@ -785,7 +790,7 @@ export const ownerCalendarAction: Action & {
     "means device alerts or ringing behavior. If the user is asking to remind " +
     "or bump them later about an unanswered decision rather than changing the " +
     "calendar itself, another action should own it. " +
-    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, flight-conflict rebooking, and bulk requests to cancel or push a cohort of meetings into next month all belong here and may ask the minimum follow-up inside the action. " +
+    "Choose this action even when the owner has not supplied the exact time window yet, as long as the request is clearly calendar-owned. Recurring daily time blocks, travel-window meeting bundling, and flight-conflict rebooking all belong here and may ask the minimum follow-up inside the action. Do not stay in chat just because the exact flight time, booking reference, or conflicting event id is still missing. " +
     "Do NOT use this action for morning briefs, night briefs, operating pictures, command-center views, " +
     "or broad day-start/day-end reviews that combine inbox, calendar, and tasks — those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN. " +
     "This action provides the final grounded reply; do not pair it with a " +

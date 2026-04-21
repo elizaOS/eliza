@@ -469,8 +469,8 @@ export const subscriptionsAction: Action & {
   ],
   description:
     "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states. " +
-    "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', 'cancel my App Store subscription on this Mac', or any subscription cancellation that may require sign-in, MFA, or user confirmation. " +
-    "Do not route subscription cancellations that hit a login wall to INBOX or CROSS_CHANNEL_SEND; they still belong here.",
+    "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', or 'cancel my App Store subscription on this Mac'. " +
+    "Do not use this for generic cancellation-fee warnings, deadline-risk escalations, or 'warn me and offer to handle it now' policies when the user has not yet asked to audit, cancel, or status-check a specific subscription.",
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),

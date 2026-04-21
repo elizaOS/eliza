@@ -293,7 +293,10 @@ export const lifeOpsComputerUseAction: Action & {
     "portal uploads, Finder/Desktop tasks like creating folders or taking " +
     "screenshots, browser form-filling, and other on-machine workflows the " +
     "assistant should perform directly, including standing instructions like " +
-    "'when I send the file, upload it to the portal for me.' Select this action even when the file or portal details will arrive in the next turn, because the action owns that workflow. Owner-only. " +
+    "'when I send the file, upload it to the portal for me.' Select this action " +
+    "even before the file arrives when the user is delegating that future upload " +
+    "workflow; the action can hold the task and ask for portal/file details later. " +
+    "Do not use this merely to ask the owner for a missing document or updated ID copy; if the workflow is blocked waiting on the owner to send an artifact, use an intervention or inbox action unless the assistant is actually operating a browser, portal, or file surface. Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   suppressPostActionContinuation: true,
 

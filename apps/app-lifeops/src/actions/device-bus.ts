@@ -189,9 +189,9 @@ export const publishDeviceIntentAction: Action & {
     "SIGNATURE_REMINDER",
     "MEETING_REMINDER_LADDER",
     "DEVICE_WARNING",
+    "UPDATED_ID_COPY",
+    "UPDATED_ID_INTERVENTION",
     "CANCELLATION_FEE_WARNING",
-    "UPDATED_ID_COPY_REQUEST",
-    "WORKFLOW_BLOCKER_NUDGE",
   ],
   tags: [
     "always-include",
@@ -209,11 +209,7 @@ export const publishDeviceIntentAction: Action & {
     "expired id reminder",
   ],
   description:
-    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. " +
-    "Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, urgent device-level escalation, and requests like " +
-    "'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes'. " +
-    "Use it for standing warning or escalation policies like cancellation-fee warnings, expired-ID nudges, document-signing reminders, or asking for an updated copy when a workflow is blocked. " +
-    "Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn.",
+    "Publish a cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices can realize it. Use this for desktop+phone reminder ladders, multi-device meeting nudges, document-signing reminders, updated-ID interventions, cancellation-fee warnings, and urgent device-level escalation where the owner wants the same intent realized across paired devices. Standing 'if/when this happens, warn or remind me on my devices' policies should still use this action on the first turn, even when the exact reservation, workflow, or event still needs a follow-up question. Do not use this for generic contextual bumps about unanswered events, group-chat handoff policies, or inbox coordination unless the owner explicitly asks for phone/desktop/mobile delivery; those belong to OWNER_INBOX or LIFE. Do not use this for scheduling preferences like protected sleep windows or no-call meeting hours; those belong to OWNER_CALENDAR.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
