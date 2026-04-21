@@ -1,4 +1,8 @@
-export type ApprovalMode = "full_control" | "smart_approve" | "approve_all" | "off";
+export type ApprovalMode =
+  | "full_control"
+  | "smart_approve"
+  | "approve_all"
+  | "off";
 
 export interface ApprovalRequest {
   id: string;

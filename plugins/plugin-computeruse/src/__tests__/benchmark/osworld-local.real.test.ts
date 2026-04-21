@@ -13,13 +13,17 @@
  * Requires: desktop access (screen recording + accessibility permissions on macOS).
  * Skipped on CI or headless environments.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import type { IAgentRuntime } from "@elizaos/core";
-import { ComputerUseService } from "../../services/computer-use-service.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  fromOSWorldAction,
+  fromPyAutoGUI,
+} from "../../osworld/action-converter.js";
 import { OSWorldAdapter } from "../../osworld/adapter.js";
-import { fromOSWorldAction, fromPyAutoGUI } from "../../osworld/action-converter.js";
-import { captureScreenshot } from "../../platform/screenshot.js";
 import type { OSWorldAction } from "../../osworld/types.js";
+import { captureScreenshot } from "../../platform/screenshot.js";
+import { ComputerUseService } from "../../services/computer-use-service.js";
 
 // ── Environment detection ───────────────────────────────────────────────
 
@@ -102,7 +106,10 @@ describeIfDesktop("OSWorld local benchmark", () => {
       const obs = await a11yAdapter.getObservation("Test with a11y");
       expect(obs.screenshot).toBeDefined();
       // a11y tree may or may not be available depending on permissions
-      expect(obs.accessibility_tree === null || typeof obs.accessibility_tree === "string").toBe(true);
+      expect(
+        obs.accessibility_tree === null ||
+          typeof obs.accessibility_tree === "string",
+      ).toBe(true);
     });
   });
 
@@ -193,12 +200,16 @@ describeIfDesktop("OSWorld local benchmark", () => {
 
   describe("pyautogui action execution", () => {
     it("executes pyautogui.click()", async () => {
-      const result = await adapter.executePyAutoGUI("pyautogui.click(200, 200)");
+      const result = await adapter.executePyAutoGUI(
+        "pyautogui.click(200, 200)",
+      );
       expect(result.executed).toBe(true);
     });
 
     it("executes pyautogui.press()", async () => {
-      const result = await adapter.executePyAutoGUI("pyautogui.press('escape')");
+      const result = await adapter.executePyAutoGUI(
+        "pyautogui.press('escape')",
+      );
       expect(result.executed).toBe(true);
     });
 
@@ -251,7 +262,11 @@ describeIfDesktop("OSWorld local benchmark", () => {
       // Verify trajectory
       const trajectory = adapter.getTrajectory();
       expect(trajectory.length).toBe(3);
-      expect(trajectory[0].action).toEqual({ action_type: "MOVE_TO", x: 100, y: 100 });
+      expect(trajectory[0].action).toEqual({
+        action_type: "MOVE_TO",
+        x: 100,
+        y: 100,
+      });
       expect(trajectory[2].action).toEqual({ action_type: "DONE" });
     });
 
@@ -338,23 +353,42 @@ describeIfDesktop("OSWorld local benchmark", () => {
       console.log("║     OSWorld Local Benchmark Results          ║");
       console.log("╠══════════════════════════════════════════════╣");
       console.log(`║ Platform:        ${process.platform.padEnd(27)}║`);
-      console.log(`║ Screen:          ${`${screen.width}x${screen.height}`.padEnd(27)}║`);
-      console.log(`║ Screenshot tool: ${caps.screenshot.tool.slice(0, 27).padEnd(27)}║`);
-      console.log(`║ Mouse/KB tool:   ${caps.computerUse.tool.slice(0, 27).padEnd(27)}║`);
-      console.log(`║ Browser:         ${caps.browser.tool.slice(0, 27).padEnd(27)}║`);
-      console.log(`║ A11y available:  ${String(adapter.isA11yAvailable()).padEnd(27)}║`);
+      console.log(
+        `║ Screen:          ${`${screen.width}x${screen.height}`.padEnd(27)}║`,
+      );
+      console.log(
+        `║ Screenshot tool: ${caps.screenshot.tool.slice(0, 27).padEnd(27)}║`,
+      );
+      console.log(
+        `║ Mouse/KB tool:   ${caps.computerUse.tool.slice(0, 27).padEnd(27)}║`,
+      );
+      console.log(
+        `║ Browser:         ${caps.browser.tool.slice(0, 27).padEnd(27)}║`,
+      );
+      console.log(
+        `║ A11y available:  ${String(adapter.isA11yAvailable()).padEnd(27)}║`,
+      );
       console.log("╠──────────────────────────────────────────────╣");
-      console.log(`║ Observation time:  ${String(obsTime).padStart(5)}ms                  ║`);
+      console.log(
+        `║ Observation time:  ${String(obsTime).padStart(5)}ms                  ║`,
+      );
       for (let i = 0; i < actions.length; i++) {
         const label = actions[i].action_type.padEnd(15);
-        console.log(`║ ${label}    ${String(timings[i]).padStart(5)}ms                  ║`);
+        console.log(
+          `║ ${label}    ${String(timings[i]).padStart(5)}ms                  ║`,
+        );
       }
-      console.log(`║ Total time:        ${String(totalTime).padStart(5)}ms                  ║`);
-      console.log(`║ Avg action time:   ${String(Math.round(timings.reduce((a, b) => a + b, 0) / timings.length)).padStart(5)}ms                  ║`);
+      console.log(
+        `║ Total time:        ${String(totalTime).padStart(5)}ms                  ║`,
+      );
+      console.log(
+        `║ Avg action time:   ${String(Math.round(timings.reduce((a, b) => a + b, 0) / timings.length)).padStart(5)}ms                  ║`,
+      );
       console.log("╠──────────────────────────────────────────────╣");
-      const ssSize = obs.screenshot.length > 0
-        ? `${Math.round(obs.screenshot.length / 1024)}KB base64`
-        : "N/A (no permission)";
+      const ssSize =
+        obs.screenshot.length > 0
+          ? `${Math.round(obs.screenshot.length / 1024)}KB base64`
+          : "N/A (no permission)";
       console.log(`║ Screenshot size:   ${ssSize.padEnd(27)}║`);
       console.log(`║ Actions tested:    ${String(actions.length).padEnd(27)}║`);
       console.log(`║ All actions OK:    ${"✓ PASS".padEnd(27)}║`);

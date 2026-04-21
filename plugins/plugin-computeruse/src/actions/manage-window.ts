@@ -12,8 +12,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { WindowActionParams } from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import type { WindowActionParams } from "../types.js";
 import { resolveActionParams } from "./helpers.js";
 
 export const manageWindowAction: Action = {
@@ -51,7 +51,17 @@ export const manageWindowAction: Action = {
       required: true,
       schema: {
         type: "string",
-        enum: ["list", "focus", "switch", "arrange", "move", "minimize", "maximize", "restore", "close"],
+        enum: [
+          "list",
+          "focus",
+          "switch",
+          "arrange",
+          "move",
+          "minimize",
+          "maximize",
+          "restore",
+          "close",
+        ],
       },
     },
     {
@@ -62,25 +72,29 @@ export const manageWindowAction: Action = {
     },
     {
       name: "windowTitle",
-      description: "Window title or app-name query for switch/restore/focus operations.",
+      description:
+        "Window title or app-name query for switch/restore/focus operations.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "arrangement",
-      description: "Layout hint for the arrange action. Upstream exposes this as a stub.",
+      description:
+        "Layout hint for the arrange action. Upstream exposes this as a stub.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "x",
-      description: "Target X coordinate for move. Upstream exposes this as a stub.",
+      description:
+        "Target X coordinate for move. Upstream exposes this as a stub.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "y",
-      description: "Target Y coordinate for move. Upstream exposes this as a stub.",
+      description:
+        "Target Y coordinate for move. Upstream exposes this as a stub.",
       required: false,
       schema: { type: "number" },
     },
@@ -116,14 +130,17 @@ export const manageWindowAction: Action = {
 
     if (callback) {
       if (result.windows) {
-        const windowText = result.windows.length > 0
-          ? result.windows.map((w) => `[${w.id}] ${w.app} — ${w.title}`).join("\n")
-          : "No visible windows found.";
+        const windowText =
+          result.windows.length > 0
+            ? result.windows
+                .map((w) => `[${w.id}] ${w.app} — ${w.title}`)
+                .join("\n")
+            : "No visible windows found.";
         await callback({ text: `Open windows:\n${windowText}` });
       } else {
         await callback({
           text: result.success
-            ? result.message ?? `Window ${params.action} completed.`
+            ? (result.message ?? `Window ${params.action} completed.`)
             : result.approvalRequired
               ? `Window action is waiting for approval (${result.approvalId}).`
               : `Window action failed: ${result.error}`,

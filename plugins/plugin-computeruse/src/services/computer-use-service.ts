@@ -1,73 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type {
-  ActionHistoryEntry,
-  ApprovalMode,
-  ApprovalResolution,
-  ApprovalSnapshot,
-  BrowserActionParams,
-  BrowserActionResult,
-  ComputerActionResult,
-  ComputerUseConfig,
-  ComputerUseResult,
-  DesktopActionParams,
-  FileActionParams,
-  FileActionResult,
-  PlatformCapabilities,
-  ScreenSize,
-  TerminalActionParams,
-  TerminalActionResult,
-  WindowActionParams,
-  WindowActionResult,
-} from "../types.js";
 import {
   ComputerUseApprovalManager,
   isApprovalMode,
 } from "../approval-manager.js";
-import {
-  desktopClick,
-  desktopClickWithModifiers,
-  desktopDoubleClick,
-  desktopDrag,
-  desktopKeyCombo,
-  desktopKeyPress,
-  desktopMouseMove,
-  desktopRightClick,
-  desktopScroll,
-  desktopType,
-} from "../platform/desktop.js";
-import {
-  appendFile,
-  deleteDirectory,
-  deleteFile,
-  editFile,
-  fileExists,
-  listDirectory,
-  readFile,
-  writeFile,
-} from "../platform/file-ops.js";
-import { classifyPermissionDeniedError } from "../platform/permissions.js";
-import { captureScreenshot } from "../platform/screenshot.js";
-import {
-  clearTerminal,
-  closeAllTerminalSessions,
-  closeTerminal,
-  connectTerminal,
-  executeTerminal,
-  readTerminal,
-  typeTerminal,
-} from "../platform/terminal.js";
-import {
-  closeWindow,
-  focusWindow,
-  getScreenSize,
-  listWindows,
-  maximizeWindow,
-  minimizeWindow,
-  restoreWindow,
-  switchWindow,
-} from "../platform/windows-list.js";
 import {
   clickBrowser,
   closeBrowser,
@@ -90,7 +27,70 @@ import {
   typeBrowser,
   waitBrowser,
 } from "../platform/browser.js";
+import {
+  desktopClick,
+  desktopClickWithModifiers,
+  desktopDoubleClick,
+  desktopDrag,
+  desktopKeyCombo,
+  desktopKeyPress,
+  desktopMouseMove,
+  desktopRightClick,
+  desktopScroll,
+  desktopType,
+} from "../platform/desktop.js";
+import {
+  appendFile,
+  deleteDirectory,
+  deleteFile,
+  editFile,
+  fileExists,
+  listDirectory,
+  readFile,
+  writeFile,
+} from "../platform/file-ops.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
+import { classifyPermissionDeniedError } from "../platform/permissions.js";
+import { captureScreenshot } from "../platform/screenshot.js";
+import {
+  clearTerminal,
+  closeAllTerminalSessions,
+  closeTerminal,
+  connectTerminal,
+  executeTerminal,
+  readTerminal,
+  typeTerminal,
+} from "../platform/terminal.js";
+import {
+  closeWindow,
+  focusWindow,
+  getScreenSize,
+  listWindows,
+  maximizeWindow,
+  minimizeWindow,
+  restoreWindow,
+  switchWindow,
+} from "../platform/windows-list.js";
+import type {
+  ActionHistoryEntry,
+  ApprovalMode,
+  ApprovalResolution,
+  ApprovalSnapshot,
+  BrowserActionParams,
+  BrowserActionResult,
+  ComputerActionResult,
+  ComputerUseConfig,
+  ComputerUseResult,
+  DesktopActionParams,
+  FileActionParams,
+  FileActionResult,
+  PlatformCapabilities,
+  ScreenSize,
+  TerminalActionParams,
+  TerminalActionResult,
+  WindowActionParams,
+  WindowActionResult,
+} from "../types.js";
 
 const MAX_RECENT_ACTIONS = 10;
 
@@ -726,7 +726,10 @@ export class ComputerUseService extends Service {
       const targetPath =
         params.action === "list_downloads"
           ? this.defaultDownloadsPath()
-          : this.requireIdentifier(params.path, "path is required for file action");
+          : this.requireIdentifier(
+              params.path,
+              "path is required for file action",
+            );
 
       switch (params.action) {
         case "read":
@@ -771,10 +774,7 @@ export class ComputerUseService extends Service {
         case "list_downloads":
           return this.finishFileEntry(entry, await listDirectory(targetPath));
         case "delete_directory":
-          return this.finishFileEntry(
-            entry,
-            await deleteDirectory(targetPath),
-          );
+          return this.finishFileEntry(entry, await deleteDirectory(targetPath));
         default:
           return this.failEntry(entry, {
             success: false,
@@ -837,7 +837,10 @@ export class ComputerUseService extends Service {
           return this.finishTerminalEntry(
             entry,
             await typeTerminal(
-              this.requireIdentifier(params.text, "text is required for terminal type"),
+              this.requireIdentifier(
+                params.text,
+                "text is required for terminal type",
+              ),
             ),
           );
         case "clear":
@@ -973,7 +976,9 @@ export class ComputerUseService extends Service {
     };
   }
 
-  private normalizeFileActionParams(params: FileActionParams): FileActionParams {
+  private normalizeFileActionParams(
+    params: FileActionParams,
+  ): FileActionParams {
     return {
       ...params,
       path: params.path ?? params.filepath ?? params.dirpath,
@@ -1007,11 +1012,15 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private desktopApprovalCommand(action: DesktopActionParams["action"]): string {
+  private desktopApprovalCommand(
+    action: DesktopActionParams["action"],
+  ): string {
     return action === "key" ? "key_press" : action;
   }
 
-  private browserApprovalCommand(action: BrowserActionParams["action"]): string {
+  private browserApprovalCommand(
+    action: BrowserActionParams["action"],
+  ): string {
     switch (action) {
       case "open":
         return "browser_open";
@@ -1113,7 +1122,9 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private terminalApprovalCommand(action: TerminalActionParams["action"]): string {
+  private terminalApprovalCommand(
+    action: TerminalActionParams["action"],
+  ): string {
     switch (action) {
       case "connect":
         return "terminal_connect";
@@ -1132,7 +1143,9 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private mapDesktopCommandToAction(command: string): DesktopActionParams["action"] {
+  private mapDesktopCommandToAction(
+    command: string,
+  ): DesktopActionParams["action"] {
     switch (command) {
       case "key_press":
         return "key";
@@ -1141,7 +1154,9 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private mapBrowserCommandToAction(command: string): BrowserActionParams["action"] {
+  private mapBrowserCommandToAction(
+    command: string,
+  ): BrowserActionParams["action"] {
     const value = command.replace(/^browser_/, "");
     switch (value) {
       case "get_dom":
@@ -1155,7 +1170,9 @@ export class ComputerUseService extends Service {
     }
   }
 
-  private mapWindowCommandToAction(command: string): WindowActionParams["action"] {
+  private mapWindowCommandToAction(
+    command: string,
+  ): WindowActionParams["action"] {
     switch (command) {
       case "list_windows":
         return "list";
@@ -1264,7 +1281,9 @@ export class ComputerUseService extends Service {
   private shouldCaptureAfterDesktopAction(
     action: DesktopActionParams["action"],
   ): boolean {
-    return action !== "screenshot" && action !== "detect_elements" && action !== "ocr"
+    return action !== "screenshot" &&
+      action !== "detect_elements" &&
+      action !== "ocr"
       ? this.cuConfig.screenshotAfterAction
       : false;
   }
@@ -1387,7 +1406,9 @@ export class ComputerUseService extends Service {
 
   private toParamsRecord(value: object): Record<string, unknown> {
     return Object.fromEntries(
-      Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
+      Object.entries(value).filter(
+        ([, entryValue]) => entryValue !== undefined,
+      ),
     );
   }
 

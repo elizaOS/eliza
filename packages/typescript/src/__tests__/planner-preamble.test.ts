@@ -18,11 +18,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	resolveStrategyMode,
-	shouldEmitPlannerPreamble,
-	stripReplyWhenActionOwnsTurn,
-} from "../services/message.ts";
+import { shouldEmitPlannerPreamble } from "../services/message.ts";
 
 const runtime = {
 	actions: [

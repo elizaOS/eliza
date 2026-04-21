@@ -11,8 +11,8 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ScreenRegion } from "../types.js";
 import { commandExists, currentPlatform, runCommandBuffer } from "./helpers.js";
 import {

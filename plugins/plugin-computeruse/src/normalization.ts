@@ -49,9 +49,7 @@ const END_POINT_ALIASES: Array<[string, string]> = [
   ["target_x", "target_y"],
 ];
 
-const COORDINATE_ALIASES: Array<[string, string]> = [
-  ["x", "y"],
-];
+const COORDINATE_ALIASES: Array<[string, string]> = [["x", "y"]];
 
 function cloneParams(params: ParamRecord | null | undefined): ParamRecord {
   if (!params || typeof params !== "object" || Array.isArray(params)) {
@@ -71,8 +69,20 @@ function toPoint(value: unknown): Point | undefined {
 
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
-    const x = record.x ?? record.left ?? record.startX ?? record.start_x ?? record.fromX ?? record.from_x;
-    const y = record.y ?? record.top ?? record.startY ?? record.start_y ?? record.fromY ?? record.from_y;
+    const x =
+      record.x ??
+      record.left ??
+      record.startX ??
+      record.start_x ??
+      record.fromX ??
+      record.from_x;
+    const y =
+      record.y ??
+      record.top ??
+      record.startY ??
+      record.start_y ??
+      record.fromY ??
+      record.from_y;
 
     if (x !== undefined && y !== undefined) {
       return [Number(x), Number(y)];
@@ -82,7 +92,11 @@ function toPoint(value: unknown): Point | undefined {
   return undefined;
 }
 
-function setPointAlias(params: ParamRecord, targetKey: string, aliases: Array<[string, string]>): void {
+function setPointAlias(
+  params: ParamRecord,
+  targetKey: string,
+  aliases: Array<[string, string]>,
+): void {
   if (hasOwnValue(params, targetKey)) {
     const existing = toPoint(params[targetKey]);
     if (existing) {
@@ -107,7 +121,11 @@ function setPointAlias(params: ParamRecord, targetKey: string, aliases: Array<[s
   }
 }
 
-function setPointFromKeys(params: ParamRecord, targetKey: string, aliases: string[]): void {
+function setPointFromKeys(
+  params: ParamRecord,
+  targetKey: string,
+  aliases: string[],
+): void {
   if (hasOwnValue(params, targetKey)) {
     const existing = toPoint(params[targetKey]);
     if (existing) {
@@ -169,7 +187,11 @@ function normalizeTabAliases(command: string, params: ParamRecord): void {
     }
   }
 
-  if (TAB_COMMANDS.has(command) && hasOwnValue(params, "index") && !hasOwnValue(params, "tabId")) {
+  if (
+    TAB_COMMANDS.has(command) &&
+    hasOwnValue(params, "index") &&
+    !hasOwnValue(params, "tabId")
+  ) {
     params.tabId = String(params.index);
   }
 }
@@ -179,14 +201,20 @@ function normalizeWindowAliases(command: string, params: ParamRecord): void {
     return;
   }
 
-  setDirectAlias(params, "windowId", ["windowId", "window", "title", "window_title"]);
+  setDirectAlias(params, "windowId", [
+    "windowId",
+    "window",
+    "title",
+    "window_title",
+  ]);
 }
 
-function normalizeCoordinateAliases(command: string, params: ParamRecord): void {
+function normalizeCoordinateAliases(
+  command: string,
+  params: ParamRecord,
+): void {
   const wantsStartEnd =
-    command === "drag" ||
-    command === "browser_drag" ||
-    command === "file_drag";
+    command === "drag" || command === "browser_drag" || command === "file_drag";
 
   if (hasOwnValue(params, "coordinate")) {
     const point = toPoint(params.coordinate);

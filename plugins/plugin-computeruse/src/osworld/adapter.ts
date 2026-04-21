@@ -16,10 +16,14 @@
  *   const result2 = await adapter.executePyAutoGUI("pyautogui.click(100, 200)");
  */
 
-import type { ComputerUseService } from "../services/computer-use-service.js";
-import { captureScreenshot } from "../platform/screenshot.js";
 import { extractA11yTree, isA11yAvailable } from "../platform/a11y.js";
-import { fromOSWorldAction, fromPyAutoGUI, toOSWorldAction } from "./action-converter.js";
+import { captureScreenshot } from "../platform/screenshot.js";
+import type { ComputerUseService } from "../services/computer-use-service.js";
+import {
+  fromOSWorldAction,
+  fromPyAutoGUI,
+  toOSWorldAction,
+} from "./action-converter.js";
 import type {
   DEFAULT_AGENT_CONFIG,
   OSWorldAction,
@@ -166,7 +170,8 @@ export class OSWorldAdapter {
     }
 
     // Check trajectory limit
-    const trajectoryExceeded = this.stepCount >= this.config.maxTrajectoryLength;
+    const trajectoryExceeded =
+      this.stepCount >= this.config.maxTrajectoryLength;
 
     // Capture observation
     const observation = await this.getObservation(instruction);

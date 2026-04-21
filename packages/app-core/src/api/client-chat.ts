@@ -228,6 +228,9 @@ declare module "./client-base" {
       },
     ): Promise<{ conversation: Conversation }>;
     deleteConversation(id: string): Promise<{ ok: boolean }>;
+    cleanupEmptyConversations(options?: {
+      keepId?: string;
+    }): Promise<{ deleted: string[] }>;
     getKnowledgeStats(): Promise<KnowledgeStats>;
     listKnowledgeDocuments(options?: {
       limit?: number;
@@ -792,6 +795,19 @@ ElizaClient.prototype.deleteConversation = async function (
 ) {
   return this.fetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "DELETE",
+  });
+};
+
+ElizaClient.prototype.cleanupEmptyConversations = async function (
+  this: ElizaClient,
+  options?,
+) {
+  return this.fetch("/api/conversations/cleanup-empty", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(options?.keepId ? { keepId: options.keepId } : {}),
+    }),
   });
 };
 

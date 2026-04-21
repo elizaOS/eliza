@@ -11,15 +11,13 @@ import type {
   LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
 import { formatMinutesDuration } from "../../../../utils/format-duration.js";
-import { Badge, Button } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
 import {
   Bell,
-  BellRing,
   Bot,
   Check,
   CheckCircle2,
   Clock,
-  Clock3,
   Cloud,
   Info,
   ListTodo,
@@ -30,7 +28,6 @@ import {
   Phone,
   Send,
   Smartphone,
-  Sparkles,
   SquareArrowOutUpRight,
   X,
 } from "lucide-react";
@@ -50,7 +47,7 @@ import { useApp } from "@elizaos/app-core/state";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";
-import { GoogleGlanceSection } from "./lifeops.js";
+import { GlanceHeading, GoogleGlanceSection } from "./lifeops.js";
 
 const LIFEOPS_REFRESH_INTERVAL_MS = 15_000;
 const MAX_SECTION_OCCURRENCES = 3;
@@ -252,57 +249,6 @@ function descriptionForOccurrence(
 ): string | null {
   const description = occurrence.description.trim();
   return description.length > 0 ? description : null;
-}
-
-function sectionSummary(
-  section: LifeOpsOverviewSection,
-  t: TranslateFn,
-): string {
-  const parts: string[] = [];
-  if (section.summary.activeOccurrenceCount > 0) {
-    parts.push(
-      t("lifeopsoverview.summary.openItems", {
-        defaultValue: "{{count}} open {{itemLabel}}",
-        count: section.summary.activeOccurrenceCount,
-        itemLabel:
-          section.summary.activeOccurrenceCount === 1
-            ? t("lifeopsoverview.item", { defaultValue: "item" })
-            : t("lifeopsoverview.items", { defaultValue: "items" }),
-      }),
-    );
-  }
-  if (section.summary.activeGoalCount > 0) {
-    parts.push(
-      t("lifeopsoverview.summary.activeGoals", {
-        defaultValue: "{{count}} active {{goalLabel}}",
-        count: section.summary.activeGoalCount,
-        goalLabel:
-          section.summary.activeGoalCount === 1
-            ? t("lifeopsoverview.goal", { defaultValue: "goal" })
-            : t("lifeopsoverview.goals", { defaultValue: "goals" }),
-      }),
-    );
-  }
-  if (section.summary.activeReminderCount > 0) {
-    parts.push(
-      t("lifeopsoverview.summary.liveReminders", {
-        defaultValue: "{{count}} live {{reminderLabel}}",
-        count: section.summary.activeReminderCount,
-        reminderLabel:
-          section.summary.activeReminderCount === 1
-            ? t("lifeopsoverview.reminder", { defaultValue: "reminder" })
-            : t("lifeopsoverview.reminders", {
-                defaultValue: "reminders",
-              }),
-      }),
-    );
-  }
-  if (parts.length === 0) {
-    return t("lifeopsoverview.noActiveItems", {
-      defaultValue: "No active items",
-    });
-  }
-  return parts.join(" • ");
 }
 
 function reminderChannelIcon(
@@ -740,26 +686,20 @@ function OccurrenceRow({
               {occurrence.title}
             </span>
             {occurrence.state === "snoozed" ? (
-              <Badge
-                variant="secondary"
-                className="text-[10px]"
+              <Moon
+                className="h-3 w-3 shrink-0 text-muted"
                 aria-label={t("lifeopsoverview.snoozed", {
                   defaultValue: "Snoozed",
                 })}
-              >
-                <Moon className="h-3 w-3" />
-              </Badge>
+              />
             ) : null}
             {occurrence.subjectType === "agent" ? (
-              <Badge
-                variant="secondary"
-                className="text-[10px]"
+              <Bot
+                className="h-3 w-3 shrink-0 text-muted"
                 aria-label={t("lifeopsoverview.agent", {
                   defaultValue: "Agent",
                 })}
-              >
-                <Bot className="h-3 w-3" />
-              </Badge>
+              />
             ) : null}
           </div>
           {description ? (
@@ -916,17 +856,17 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
 
   return (
     <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {reminder.title}
         </span>
-        <Badge
-          variant="secondary"
-          className="text-[10px]"
-          aria-label={channelLabel}
-        >
-          {channelIcon ?? channelLabel}
-        </Badge>
+        <span className="shrink-0 text-muted" aria-label={channelLabel}>
+          {channelIcon ?? (
+            <span className="text-3xs uppercase tracking-wider">
+              {channelLabel}
+            </span>
+          )}
+        </span>
       </div>
       {scheduledFor ? (
         <div className="mt-1 text-xs text-muted">{scheduledFor}</div>
@@ -936,7 +876,6 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
 }
 
 function OccurrenceBucketBlock({
-  icon,
   occurrences,
   actionState,
   detailState,
@@ -946,7 +885,6 @@ function OccurrenceBucketBlock({
   onSnoozeOccurrence,
   onExplainOccurrence,
 }: {
-  icon: ReactElement;
   occurrences: LifeOpsOccurrenceView[];
   actionState: string | null;
   detailState: string | null;
@@ -968,12 +906,6 @@ function OccurrenceBucketBlock({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="text-muted">{icon}</span>
-        <Badge variant="secondary" className="text-[10px]">
-          {occurrences.length}
-        </Badge>
-      </div>
       {occurrences.slice(0, MAX_SECTION_OCCURRENCES).map((occurrence) => (
         <OccurrenceRow
           key={occurrence.id}
@@ -1010,14 +942,6 @@ function GoalSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="text-muted">
-          <Sparkles className="h-3.5 w-3.5" />
-        </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {goals.length}
-        </Badge>
-      </div>
       {goals.slice(0, MAX_SECTION_GOALS).map((goal) => (
         <GoalRow
           key={goal.id}
@@ -1052,6 +976,7 @@ function DiscordPreviewRow({ preview }: { preview: LifeOpsDiscordDmPreview }) {
 }
 
 function DiscordMessagesGlance() {
+  const { t } = useApp();
   const connector = useDiscordConnector({ side: "owner" });
   const previews = connector.status?.dmInbox?.previews ?? [];
   if (!connector.status?.connected || previews.length === 0) {
@@ -1062,11 +987,10 @@ function DiscordMessagesGlance() {
   );
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 px-0.5">
-        <span className="text-muted">
-          <MessageCircleMore className="h-3 w-3" />
-        </span>
-      </div>
+      <GlanceHeading
+        icon={<MessageCircleMore className="h-3 w-3" />}
+        title={t("lifeopsoverview.discord", { defaultValue: "Discord" })}
+      />
       {unreadFirst.slice(0, MAX_DISCORD_PREVIEWS).map((preview) => (
         <DiscordPreviewRow
           key={`${preview.channelId ?? preview.label}`}
@@ -1088,11 +1012,6 @@ function ReminderSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="text-muted">
-          <BellRing className="h-3.5 w-3.5" />
-        </span>
-      </div>
       {reminders.slice(0, MAX_SECTION_REMINDERS).map((reminder) => (
         <ReminderRow
           key={`${reminder.ownerId}:${reminder.stepIndex}:${reminder.scheduledFor}`}
@@ -1195,19 +1114,15 @@ function ScheduleSection({
   })();
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="text-muted">
-          <Moon className="h-3.5 w-3.5" />
-        </span>
+    <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-txt">
+        <Moon className="h-3 w-3 shrink-0 text-muted" />
+        <span>{sleepLine}</span>
       </div>
-      <div className="rounded-lg border border-border/50 bg-bg/70 p-2">
-        <div className="text-xs font-semibold text-txt">{sleepLine}</div>
-        {relativeLine ? (
-          <div className="mt-1 text-xs text-muted">{relativeLine}</div>
-        ) : null}
-        <div className="mt-1 text-xs text-muted">{mealLine}</div>
-      </div>
+      {relativeLine ? (
+        <div className="mt-1 text-xs text-muted">{relativeLine}</div>
+      ) : null}
+      <div className="mt-1 text-xs text-muted">{mealLine}</div>
     </div>
   );
 }
@@ -1250,17 +1165,10 @@ function AgentOpsSection({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <span className="text-muted">
-          <Bot className="h-3.5 w-3.5" />
-        </span>
-        <Badge variant="secondary" className="text-[10px]">
-          {section.summary.activeOccurrenceCount +
-            section.summary.activeGoalCount +
-            section.summary.activeReminderCount}
-        </Badge>
-      </div>
-      <p className="px-0.5 text-xs text-muted">{sectionSummary(section, t)}</p>
+      <GlanceHeading
+        icon={<Bot className="h-3 w-3" />}
+        title={t("lifeopsoverview.agentOps", { defaultValue: "Agent ops" })}
+      />
       {section.occurrences
         .slice(0, MAX_SECTION_OCCURRENCES)
         .map((occurrence) => (
@@ -1525,7 +1433,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
     ? hasSectionContent(overview.owner) || hasSectionContent(overview.agentOps)
     : false;
   const ownerSection = overview?.owner ?? null;
-  const agentOpsSection = overview?.agentOps ?? overview?.owner ?? null;
+  const agentOpsSection = overview?.agentOps ?? null;
   const ownerBuckets = useMemo(
     () => bucketOccurrences(overview?.owner.occurrences ?? [], new Date()),
     [overview?.owner.occurrences],
@@ -1564,7 +1472,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
         {hasAnyContent ? (
           <>
             <OccurrenceBucketBlock
-              icon={<ListTodo className="h-3 w-3" />}
               occurrences={ownerBuckets.now}
               actionState={actionState}
               detailState={detailState}
@@ -1575,7 +1482,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.next}
               actionState={actionState}
               detailState={detailState}
@@ -1586,7 +1492,6 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
               onExplainOccurrence={onExplainOccurrence}
             />
             <OccurrenceBucketBlock
-              icon={<Clock3 className="h-3 w-3" />}
               occurrences={ownerBuckets.upcoming}
               actionState={actionState}
               detailState={detailState}

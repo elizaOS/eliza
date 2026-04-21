@@ -11,15 +11,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { currentPlatform } from "./helpers.js";
+import { join } from "node:path";
 import type {
   BrowserInfo,
   BrowserState,
   BrowserTab,
   ClickableElement,
 } from "../types.js";
+import { currentPlatform } from "./helpers.js";
 
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
@@ -86,7 +86,8 @@ function detectBrowserPath(): string | null {
     );
   } else if (os === "win32") {
     const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
-    const programFilesX86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
+    const programFilesX86 =
+      process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
     const localAppData = process.env.LOCALAPPDATA || "";
     candidates.push(
       join(programFiles, "Google\\Chrome\\Application\\chrome.exe"),
@@ -94,7 +95,10 @@ function detectBrowserPath(): string | null {
       join(localAppData, "Google\\Chrome\\Application\\chrome.exe"),
       join(programFiles, "Microsoft\\Edge\\Application\\msedge.exe"),
       join(programFilesX86, "Microsoft\\Edge\\Application\\msedge.exe"),
-      join(programFiles, "BraveSoftware\\Brave-Browser\\Application\\brave.exe"),
+      join(
+        programFiles,
+        "BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+      ),
     );
   }
 
@@ -190,11 +194,7 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
   }
   let lastError: unknown = null;
 
-  for (
-    let attempt = 1;
-    attempt <= BROWSER_LAUNCH_ATTEMPTS;
-    attempt += 1
-  ) {
+  for (let attempt = 1; attempt <= BROWSER_LAUNCH_ATTEMPTS; attempt += 1) {
     tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
     try {
@@ -240,7 +240,9 @@ export async function closeBrowser(): Promise<void> {
   if (browser) {
     try {
       await browser.close();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     browser = null;
     activePage = null;
   }
@@ -248,7 +250,9 @@ export async function closeBrowser(): Promise<void> {
   if (tempUserDataDir) {
     try {
       await rm(tempUserDataDir, { recursive: true, force: true });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     tempUserDataDir = null;
   }
 }
@@ -293,7 +297,9 @@ export async function clickBrowser(
       }
       return null;
     }, text);
-    const element = el.asElement() as import("puppeteer-core").ElementHandle<Element> | null;
+    const element = el.asElement() as
+      | import("puppeteer-core").ElementHandle<Element>
+      | null;
     if (!element) {
       await el.dispose();
       throw new Error(`Element with text "${text}" not found`);
@@ -301,7 +307,9 @@ export async function clickBrowser(
     await element.click();
     await el.dispose();
   } else {
-    throw new Error("selector, coordinate, or text is required for browser click");
+    throw new Error(
+      "selector, coordinate, or text is required for browser click",
+    );
   }
 }
 
@@ -383,7 +391,8 @@ export async function getBrowserDom(): Promise<string> {
 export async function getBrowserClickables(): Promise<ClickableElement[]> {
   const page = await ensureBrowser();
   return page.evaluate(() => {
-    const selectors = "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
+    const selectors =
+      "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
     const elements = document.querySelectorAll(selectors);
     const result: Array<{
       tag: string;
@@ -399,9 +408,10 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
       const tag = el.tagName.toLowerCase();
       const text = (el.textContent ?? "").trim().slice(0, 100);
       const id = el.id ? `#${el.id}` : "";
-      const cls = el.className && typeof el.className === "string"
-        ? `.${el.className.split(" ").filter(Boolean).join(".")}`
-        : "";
+      const cls =
+        el.className && typeof el.className === "string"
+          ? `.${el.className.split(" ").filter(Boolean).join(".")}`
+          : "";
       result.push({
         tag,
         text,
@@ -428,18 +438,15 @@ export async function screenshotBrowser(): Promise<string> {
 export async function executeBrowser(code: string): Promise<string> {
   const page = await ensureBrowser();
   try {
-    const result = await page.evaluate(
-      async (script) => {
-        const AsyncFunction = Object.getPrototypeOf(
-          async function placeholder() {
-            // noop
-          },
-        ).constructor as new (...args: string[]) => (...fnArgs: unknown[]) => Promise<unknown>;
-        const fn = new AsyncFunction(script);
-        return await fn();
-      },
-      code,
-    );
+    const result = await page.evaluate(async (script) => {
+      const AsyncFunction = Object.getPrototypeOf(async function placeholder() {
+        // noop
+      }).constructor as new (
+        ...args: string[]
+      ) => (...fnArgs: unknown[]) => Promise<unknown>;
+      const fn = new AsyncFunction(script);
+      return await fn();
+    }, code);
     return JSON.stringify(result, null, 2);
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
@@ -463,7 +470,9 @@ export async function waitBrowser(
       text,
     );
   } else {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, 5000)));
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(timeout, 5000)),
+    );
   }
 }
 

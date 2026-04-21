@@ -15,7 +15,6 @@ export default defineConfig({
         "node",
         "index.node.js",
       ),
-
     },
   },
   test: {

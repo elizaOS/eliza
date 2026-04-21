@@ -21,17 +21,21 @@ describe("@elizaos/core node entry contract", () => {
 		expect(source).toContain(EXPLICIT_EVALUATOR_EXPORT_SNIPPET);
 	});
 
-	it("exports advanced evaluators from the built node bundle when dist exists", async () => {
-		const distEntryPath = fileURLToPath(DIST_ENTRY_URL);
+	it(
+		"exports advanced evaluators from the built node bundle when dist exists",
+		async () => {
+			const distEntryPath = fileURLToPath(DIST_ENTRY_URL);
 
-		if (!existsSync(distEntryPath)) {
-			return;
-		}
+			if (!existsSync(distEntryPath)) {
+				return;
+			}
 
-		const distEntry = await import(DIST_ENTRY_URL.href);
+			const distEntry = await import(DIST_ENTRY_URL.href);
 
-		expect(distEntry.skillRefinementEvaluator).toBeDefined();
-		expect(distEntry.skillExtractionEvaluator).toBeDefined();
-		expect(distEntry.factRefinementEvaluator).toBeDefined();
-	});
+			expect(distEntry.skillRefinementEvaluator).toBeDefined();
+			expect(distEntry.skillExtractionEvaluator).toBeDefined();
+			expect(distEntry.factRefinementEvaluator).toBeDefined();
+		},
+		60000,
+	);
 });

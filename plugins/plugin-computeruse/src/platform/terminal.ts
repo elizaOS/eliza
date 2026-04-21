@@ -18,7 +18,10 @@ function truncateOutput(output: string): string {
   return output.slice(0, 5000);
 }
 
-function resolveShell(): { command: string; argsFor: (command: string) => string[] } {
+function resolveShell(): {
+  command: string;
+  argsFor: (command: string) => string[];
+} {
   if (process.platform === "win32") {
     return {
       command: "powershell.exe",
@@ -86,7 +89,9 @@ export async function executeTerminal(params: {
         env: sanitizeChildEnv(),
       },
       (error, stdout, stderr) => {
-        const output = truncateOutput(`${stdout}${stderr ? `\n${stderr}` : ""}`);
+        const output = truncateOutput(
+          `${stdout}${stderr ? `\n${stderr}` : ""}`,
+        );
         lastOutputBuffer = output;
         if (params.sessionId) {
           const existing = sessions.get(params.sessionId);
@@ -122,19 +127,22 @@ export async function executeTerminal(params: {
       },
     );
 
-    const killTimer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve({
-        success: false,
-        output: "",
-        exitCode: -1,
-        exit_code: -1,
-        cwd: sessionCwd,
-        sessionId: params.sessionId,
-        session_id: params.sessionId,
-        error: `Command timed out after ${timeoutSeconds}s.`,
-      });
-    }, (timeoutSeconds + 1) * 1000);
+    const killTimer = setTimeout(
+      () => {
+        child.kill("SIGKILL");
+        resolve({
+          success: false,
+          output: "",
+          exitCode: -1,
+          exit_code: -1,
+          cwd: sessionCwd,
+          sessionId: params.sessionId,
+          session_id: params.sessionId,
+          error: `Command timed out after ${timeoutSeconds}s.`,
+        });
+      },
+      (timeoutSeconds + 1) * 1000,
+    );
 
     child.once("exit", () => {
       clearTimeout(killTimer);
@@ -146,9 +154,7 @@ export function readTerminal(
   arg?: string | { session_id?: string; sessionId?: string },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string"
-      ? arg
-      : arg?.session_id ?? arg?.sessionId;
+    typeof arg === "string" ? arg : (arg?.session_id ?? arg?.sessionId);
   const output =
     (sessionId ? sessions.get(sessionId)?.lastOutput : undefined) ??
     lastOutputBuffer;
@@ -166,9 +172,7 @@ export function typeTerminal(
 ): TerminalActionResult {
   const text = typeof arg === "string" ? arg : arg.text;
   const sessionId =
-    typeof arg === "string"
-      ? undefined
-      : arg.session_id ?? arg.sessionId;
+    typeof arg === "string" ? undefined : (arg.session_id ?? arg.sessionId);
   return {
     success: true,
     sessionId,
@@ -181,9 +185,7 @@ export function clearTerminal(
   arg?: string | { session_id?: string; sessionId?: string },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string"
-      ? arg
-      : arg?.session_id ?? arg?.sessionId;
+    typeof arg === "string" ? arg : (arg?.session_id ?? arg?.sessionId);
   return {
     success: true,
     sessionId,
@@ -196,9 +198,7 @@ export function closeTerminal(
   arg?: string | { session_id?: string; sessionId?: string },
 ): TerminalActionResult {
   const sessionId =
-    typeof arg === "string"
-      ? arg
-      : arg?.session_id ?? arg?.sessionId;
+    typeof arg === "string" ? arg : (arg?.session_id ?? arg?.sessionId);
   if (sessionId) {
     sessions.delete(sessionId);
   } else {

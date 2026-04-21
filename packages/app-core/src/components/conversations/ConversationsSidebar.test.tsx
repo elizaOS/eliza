@@ -212,19 +212,18 @@ describe("ConversationsSidebar — Terminal channel", () => {
     cleanup();
   });
 
-  it("auto-spawns a terminal when the Terminal scope is clicked with no sessions", async () => {
+  it("spawns a terminal when the Terminal section add button is clicked with no sessions", async () => {
     const setState = vi.fn();
     appState.value = buildAppState({ setState });
 
     renderSidebar();
 
     await waitFor(() => {
-      // Terminal scope button is always rendered
-      expect(screen.getByTitle("Terminal")).toBeDefined();
+      expect(screen.getByTestId("channel-section-add-terminal")).toBeDefined();
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle("Terminal"));
+      fireEvent.click(screen.getByTestId("channel-section-add-terminal"));
     });
 
     await waitFor(() => {
@@ -244,7 +243,7 @@ describe("ConversationsSidebar — Terminal channel", () => {
     expect(inboxClears.length).toBeGreaterThan(0);
   });
 
-  it("does not auto-spawn if a PTY session already exists", async () => {
+  it("does not auto-spawn when the Terminal section is rendered with an existing PTY session", async () => {
     ptySessionsMock.value = [
       {
         sessionId: "existing-1",
@@ -262,11 +261,7 @@ describe("ConversationsSidebar — Terminal channel", () => {
     renderSidebar();
 
     await waitFor(() => {
-      expect(screen.getByTitle("Terminal")).toBeDefined();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByTitle("Terminal"));
+      expect(screen.getByTestId("row-terminal:existing-1")).toBeDefined();
     });
 
     // Give any effect a tick to settle without auto-spawning.
@@ -293,16 +288,6 @@ describe("ConversationsSidebar — Terminal channel", () => {
 
     renderSidebar();
 
-    await waitFor(() => {
-      expect(screen.getByTitle("Terminal")).toBeDefined();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByTitle("Terminal"));
-    });
-
-    // Row for existing session should now be rendered; click it. Terminal
-    // rows get a "terminal:" prefix applied by the sidebar's rowListId.
     await waitFor(() => {
       expect(screen.getByTestId("row-terminal:existing-row")).toBeDefined();
     });
@@ -340,23 +325,13 @@ describe("ConversationsSidebar — Terminal channel", () => {
 
     renderSidebar();
     await waitFor(() => {
-      expect(screen.getByTitle("Terminal")).toBeDefined();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByTitle("Terminal"));
-    });
-
-    // The sidebar uses `conversations.newTerminalShort` (default "New") as
-    // the button label when the Terminal channel is active.
-    await waitFor(() => {
-      expect(screen.getByText("New")).toBeDefined();
+      expect(screen.getByTestId("channel-section-add-terminal")).toBeDefined();
     });
 
     const firstCalls = clientMock.spawnShellSession.mock.calls.length;
 
     await act(async () => {
-      fireEvent.click(screen.getByText("New"));
+      fireEvent.click(screen.getByTestId("channel-section-add-terminal"));
     });
 
     await waitFor(() => {

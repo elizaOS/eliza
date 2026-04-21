@@ -64,10 +64,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.js";
-import type {
-  ConversationMeta,
-  ConversationMetadata,
-} from "./server-types.js";
+import type { ConversationMeta, ConversationMetadata } from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
@@ -1667,6 +1664,48 @@ export async function handleConversationRoutes(
       await syncConversationRoomState(state, conv);
     }
     json(res, { conversation: conv });
+    return true;
+  }
+
+  // ── POST /api/conversations/cleanup-empty ───────────────────────────
+  if (method === "POST" && pathname === "/api/conversations/cleanup-empty") {
+    const body = await readJsonBody<{ keepId?: string }>(req, res);
+    if (!body) return true;
+    await waitForConversationRestore(state);
+    const runtime = state.runtime;
+    if (!runtime) {
+      json(res, { deleted: [] });
+      return true;
+    }
+    const keepId =
+      typeof body.keepId === "string" ? body.keepId.trim() : undefined;
+    const agentId = runtime.agentId;
+    const deleted: string[] = [];
+    for (const conv of Array.from(state.conversations.values())) {
+      if (keepId && conv.id === keepId) continue;
+      if (state.deletedConversationIds.has(conv.id)) continue;
+      const memories = await runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 10,
+      });
+      const hasUserMessage = memories.some((m) => m.entityId !== agentId);
+      if (hasUserMessage) continue;
+      const memoryIds = memories
+        .map((memory) => memory.id)
+        .filter(
+          (memoryId): memoryId is UUID =>
+            typeof memoryId === "string" && memoryId.trim().length > 0,
+        );
+      if (memoryIds.length > 0) {
+        await deleteConversationMemories(runtime, memoryIds);
+      }
+      await deleteConversationRoomData(runtime, conv.roomId);
+      state.conversations.delete(conv.id);
+      markConversationDeleted(state, conv.id);
+      deleted.push(conv.id);
+    }
+    json(res, { deleted });
     return true;
   }
 

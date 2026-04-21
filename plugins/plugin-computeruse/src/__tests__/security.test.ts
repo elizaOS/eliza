@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  validateFilePath,
   checkDangerousCommand,
+  validateFilePath,
 } from "../platform/security.js";
 
 describe("validateFilePath", () => {
@@ -72,7 +72,9 @@ describe("checkDangerousCommand", () => {
   });
 
   it("blocks dd to raw disk", () => {
-    expect(checkDangerousCommand("dd if=/dev/zero of=/dev/sda").blocked).toBe(true);
+    expect(checkDangerousCommand("dd if=/dev/zero of=/dev/sda").blocked).toBe(
+      true,
+    );
   });
 
   it("blocks fork bombs", () => {
@@ -89,6 +91,8 @@ describe("checkDangerousCommand", () => {
 
   it("handles null/empty gracefully", () => {
     expect(checkDangerousCommand("").blocked).toBe(false);
-    expect(checkDangerousCommand(null as unknown as string).blocked).toBe(false);
+    expect(checkDangerousCommand(null as unknown as string).blocked).toBe(
+      false,
+    );
   });
 });

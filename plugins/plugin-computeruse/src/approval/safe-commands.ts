@@ -18,4 +18,6 @@ export const DEFAULT_SAFE_COMMANDS = [
   "browser_list_tabs",
 ] as const;
 
-export const DEFAULT_SAFE_COMMAND_SET: ReadonlySet<string> = new Set(DEFAULT_SAFE_COMMANDS);
+export const DEFAULT_SAFE_COMMAND_SET: ReadonlySet<string> = new Set(
+  DEFAULT_SAFE_COMMANDS,
+);

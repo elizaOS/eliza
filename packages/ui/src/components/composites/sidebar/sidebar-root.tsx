@@ -35,12 +35,7 @@ const sidebarRootVariants = cva(
         variant: "default",
         collapsed: false,
         className:
-          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem]",
-      },
-      {
-        variant: "default",
-        collapsed: false,
-        className: "shadow-lg",
+          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] shadow-lg",
       },
       {
         variant: "default",

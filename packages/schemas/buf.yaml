@@ -3,6 +3,8 @@ version: v2
 modules:
   - path: .
     name: buf.build/elizaos/eliza
+    excludes:
+      - node_modules
 lint:
   use:
     - STANDARD

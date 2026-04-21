@@ -1,4 +1,3 @@
-import { logger } from "../../../logger.ts";
 import {
 	type IAgentRuntime,
 	Service,

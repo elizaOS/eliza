@@ -3,20 +3,20 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  arrangeWindows,
   arrange_windows,
+  arrangeWindows,
   findWindowsByQuery,
-  focusWindow,
-  listWindows,
-  list_windows,
-  moveWindow,
-  move_window,
-  restoreWindow,
-  restore_window,
-  resolveWindowMatch,
-  switchWindow,
-  switch_to_window,
   focus_window,
+  focusWindow,
+  list_windows,
+  listWindows,
+  move_window,
+  moveWindow,
+  resolveWindowMatch,
+  restore_window,
+  restoreWindow,
+  switch_to_window,
+  switchWindow,
 } from "../platform/windows-list.js";
 
 const sampleWindows = [
@@ -27,14 +27,24 @@ const sampleWindows = [
 
 describe("window query matching", () => {
   it("matches by title, app, and id", () => {
-    expect(findWindowsByQuery("docs", sampleWindows)).toEqual([sampleWindows[0]]);
-    expect(findWindowsByQuery("chrome", sampleWindows)).toEqual([sampleWindows[0]]);
-    expect(findWindowsByQuery("202", sampleWindows)).toEqual([sampleWindows[1]]);
+    expect(findWindowsByQuery("docs", sampleWindows)).toEqual([
+      sampleWindows[0],
+    ]);
+    expect(findWindowsByQuery("chrome", sampleWindows)).toEqual([
+      sampleWindows[0],
+    ]);
+    expect(findWindowsByQuery("202", sampleWindows)).toEqual([
+      sampleWindows[1],
+    ]);
   });
 
   it("returns the first matching window for resolveWindowMatch", () => {
-    expect(resolveWindowMatch("terminal", sampleWindows)).toEqual(sampleWindows[1]);
-    expect(resolveWindowMatch("settings", sampleWindows)).toEqual(sampleWindows[2]);
+    expect(resolveWindowMatch("terminal", sampleWindows)).toEqual(
+      sampleWindows[1],
+    );
+    expect(resolveWindowMatch("settings", sampleWindows)).toEqual(
+      sampleWindows[2],
+    );
   });
 
   it("returns no matches for unknown queries", () => {

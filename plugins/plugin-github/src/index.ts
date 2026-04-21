@@ -27,30 +27,30 @@ import { notificationTriageAction } from "./actions/notification-triage.js";
 import { reviewPrAction } from "./actions/review-pr.js";
 import { GitHubService } from "./services/github-service.js";
 
+export { assignIssueAction } from "./actions/assign-issue.js";
+export { createIssueAction } from "./actions/create-issue.js";
+export { listPrsAction } from "./actions/list-prs.js";
+export {
+  notificationTriageAction,
+  scoreNotification,
+  type TriagedNotification,
+} from "./actions/notification-triage.js";
+export { reviewPrAction } from "./actions/review-pr.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";
-export { listPrsAction } from "./actions/list-prs.js";
-export { reviewPrAction } from "./actions/review-pr.js";
-export { createIssueAction } from "./actions/create-issue.js";
-export { assignIssueAction } from "./actions/assign-issue.js";
-export {
-	notificationTriageAction,
-	scoreNotification,
-	type TriagedNotification,
-} from "./actions/notification-triage.js";
 
 export const githubPlugin: Plugin = {
-	name: "github",
-	description:
-		"GitHub integration for pull requests, issues, and notification triage",
-	services: [GitHubService],
-	actions: [
-		listPrsAction,
-		reviewPrAction,
-		createIssueAction,
-		assignIssueAction,
-		notificationTriageAction,
-	],
+  name: "github",
+  description:
+    "GitHub integration for pull requests, issues, and notification triage",
+  services: [GitHubService],
+  actions: [
+    listPrsAction,
+    reviewPrAction,
+    createIssueAction,
+    assignIssueAction,
+    notificationTriageAction,
+  ],
 };
 
 export default githubPlugin;

@@ -348,7 +348,7 @@ export const skillExtractionEvaluator: Evaluator = {
 		}
 
 		const draft = parseExtractionResponse(response);
-		if (!draft || !draft.extract) {
+		if (!draft?.extract) {
 			logger.debug(
 				{
 					src: "plugin:advanced-capabilities:evaluator:skill_extraction",

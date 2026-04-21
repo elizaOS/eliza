@@ -3,11 +3,14 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  checkDangerousCommand,
+  sanitizeChildEnv,
+} from "../platform/security.js";
+import {
+  closeTerminal,
   connectTerminal,
   executeTerminal,
-  closeTerminal,
 } from "../platform/terminal.js";
-import { checkDangerousCommand, sanitizeChildEnv } from "../platform/security.js";
 
 describe("terminal execution (real)", () => {
   it("executes a simple command", async () => {
@@ -18,7 +21,9 @@ describe("terminal execution (real)", () => {
   });
 
   it("captures stderr on failure", async () => {
-    const result = await executeTerminal({ command: "ls /nonexistent_path_xyz" });
+    const result = await executeTerminal({
+      command: "ls /nonexistent_path_xyz",
+    });
     expect(result.success).toBe(false);
     expect(result.exitCode).not.toBe(0);
   });
@@ -57,7 +62,8 @@ describe("terminal execution (real)", () => {
   it("truncates long output", async () => {
     // Generate a lot of output
     const result = await executeTerminal({
-      command: 'for i in $(seq 1 10000); do echo "line $i padding text to make it longer"; done',
+      command:
+        'for i in $(seq 1 10000); do echo "line $i padding text to make it longer"; done',
     });
     // Output should be present but may be truncated
     expect(result.output).toBeDefined();

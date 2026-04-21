@@ -261,9 +261,9 @@ describe("computer-use live parity", () => {
     });
     expect(executeResult.success).toBe(true);
 
-    expect(await readFile(path.join(workspaceDir, "terminal.txt"), "utf8")).toBe(
-      "live-terminal",
-    );
+    expect(
+      await readFile(path.join(workspaceDir, "terminal.txt"), "utf8"),
+    ).toBe("live-terminal");
 
     const readResult = await service.executeCommand("terminal_read", {
       session_id: sessionId,
@@ -352,7 +352,9 @@ describe("computer-use live parity", () => {
     const tabsResult = await service.executeCommand("browser_list_tabs");
     expect(tabsResult.success).toBe(true);
     expect(Array.isArray(tabsResult.data)).toBe(true);
-    expect((tabsResult.data as Array<unknown>).length).toBeGreaterThanOrEqual(2);
+    expect((tabsResult.data as Array<unknown>).length).toBeGreaterThanOrEqual(
+      2,
+    );
 
     const switchTabResult = await service.executeCommand("browser_switch_tab", {
       tab_index: 0,

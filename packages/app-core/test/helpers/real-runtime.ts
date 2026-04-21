@@ -225,8 +225,8 @@ export async function createRealTestRuntime(
         const { default: localEmbeddingPlugin } = await import(
           "@elizaos/plugin-local-embedding"
         );
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-        await runtime.registerPlugin(localEmbeddingPlugin);
+        configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
+        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
         logger.info(
           "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
         );
@@ -282,7 +282,7 @@ export async function createRealTestRuntime(
         const { default: discordPlugin } = await import(
           "@elizaos/plugin-discord"
         );
-        await runtime.registerPlugin(discordPlugin);
+        await runtime.registerPlugin(discordPlugin as Plugin);
         logger.info("[real-runtime] Registered Discord plugin");
       } catch (err) {
         logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
@@ -295,7 +295,7 @@ export async function createRealTestRuntime(
         const { default: telegramPlugin } = await import(
           "@elizaos/plugin-telegram"
         );
-        await runtime.registerPlugin(telegramPlugin);
+        await runtime.registerPlugin(telegramPlugin as Plugin);
         logger.info("[real-runtime] Registered Telegram plugin");
       } catch (err) {
         logger.warn(

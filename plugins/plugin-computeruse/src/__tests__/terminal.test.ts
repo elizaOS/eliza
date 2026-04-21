@@ -49,7 +49,10 @@ describe("terminal platform", () => {
 
   it("queues typed text and clears the buffer", () => {
     const session = connectTerminal();
-    const typed = typeTerminal({ text: "ls -la", session_id: session.session_id });
+    const typed = typeTerminal({
+      text: "ls -la",
+      session_id: session.session_id,
+    });
     expect(typed.success).toBe(true);
     expect(String(typed.message ?? "")).toContain("queued");
 
@@ -64,4 +67,3 @@ describe("terminal platform", () => {
     expect(String(closed.message ?? "")).toContain("closed");
   });
 });
-
