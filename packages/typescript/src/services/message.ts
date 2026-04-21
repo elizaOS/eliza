@@ -1156,13 +1156,46 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR_ACTION"],
 		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
 		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
-		["GET_PENDING_ASSETS", "INBOX"],
-		["GET_PENDING_ITEMS", "INBOX"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "INBOX"],
-		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
-		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
-		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
-		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+			["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
+			["GET_PENDING_ASSETS", "OWNER_INBOX"],
+			["GET_PENDING_ITEMS", "OWNER_INBOX"],
+			["EVENT_ASSET_CHECKLIST", "OWNER_INBOX"],
+			["OUTSTANDING_EVENT_ASSETS", "OWNER_INBOX"],
+			["PORTAL_ASSET_CHECKLIST", "OWNER_INBOX"],
+			["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
+			["GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+			["SET_GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+			["CREATE_GROUP_CHAT", "OWNER_INBOX"],
+			["BUMP_WITH_CONTEXT", "OWNER_INBOX"],
+			["CONTEXTUAL_BUMP", "OWNER_INBOX"],
+			["BUMP_UNANSWERED_DECISION", "OWNER_INBOX"],
+			["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
+			["GET_PENDING_DRAFTS", "OWNER_INBOX"],
+			["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
+		["CREATE_REMINDER", "LIFE"],
+		["SET_REMINDER_RULE", "LIFE"],
+		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
+		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
+			["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
+			["FLAG_CONFLICT", "OWNER_CALENDAR"],
+			["CHECK_FLIGHT_CONFLICT", "OWNER_CALENDAR"],
+			["FLIGHT_CONFLICT_REBOOKING", "OWNER_CALENDAR"],
+			["REBOOK_CONFLICTING_EVENT", "OWNER_CALENDAR"],
+			["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+			["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
+			["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+			["CANCELLATION_FEE_WARNING", "PUBLISH_DEVICE_INTENT"],
+			["WARN_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+			["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
+			["REQUEST_UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+			["UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+			["UPDATED_ID_INTERVENTION", "PUBLISH_DEVICE_INTENT"],
+			["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+			["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
@@ -1171,13 +1204,13 @@ const PLANNER_ACTION_ALIASES = new Map(
 
 const PLANNER_PROVIDER_ALIASES = new Map(
 	[
-		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
-		["INBOX_TRIAGE", "inboxTriage"],
-	].map(([from, to]) => [
-		normalizeActionIdentifier(from),
-		to,
-	]),
-);
+			["DOCUMENT_LOOKUP", "ATTACHMENTS"],
+			["INBOX_TRIAGE", "inboxTriage"],
+			["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
+			["PENDING_DRAFTS", "inboxTriage"],
+			["DRAFTS", "inboxTriage"],
+		].map(([from, to]) => [normalizeActionIdentifier(from), to]),
+	);
 
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
@@ -1331,16 +1364,16 @@ function buildActionRescuePrompt(basePrompt: string, draftReply: string): string
 
 	return `${basePrompt}
 
-[ACTION RESCUE]
-The previous draft stayed in prose-only mode or selected only passive reply actions.
-Re-evaluate the turn using the same available actions and providers already in context above.
-If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
+	[ACTION RESCUE]
+	The previous draft stayed in prose-only mode or selected only passive reply actions.
+	Re-evaluate the turn using the same available actions and providers already in context above.
+	If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
 	Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
 	Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
-	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
-	Exact examples that must not stay in REPLY: "When I send over the deck, upload it to the portal for me." -> LIFEOPS_COMPUTER_USE; "If the only ID on file is expired, ask me for an updated copy so the workflow can continue." -> PUBLISH_DEVICE_INTENT; "If missing this could trigger a cancellation fee, warn me clearly and offer to handle it now." -> PUBLISH_DEVICE_INTENT.
+	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, outstanding event-asset checklists, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
+	For live checklist questions like what slides, bio, title, portal assets, drafts, or pending items the owner still owes, choose the owning inbox/calendar/computer-use action instead of answering from memory or treating it like a generic LifeOps reminder.
 	If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
-Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
+	Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
 }
 
 function buildActionOnlyRescuePrompt(draftReply: string): string {
@@ -1352,32 +1385,32 @@ function buildActionOnlyRescuePrompt(draftReply: string): string {
 
 	return `Select the single best action for this turn using only the available actions already in context above.
 
-Rules:
-- Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
-- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
-- If the right action still needs clarification, choose that action anyway.
-- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
-- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, and call-me-if-stuck escalations must choose the owning action on this turn.
-- Choose REPLY only when no listed action owns the request.
-- Do not invent action names.
+	Rules:
+	- Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
+	- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
+	- If the right action still needs clarification, choose that action anyway.
+	- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
+	- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, event-asset checklists, and call-me-if-stuck escalations must choose the owning action on this turn.
+	- Choose REPLY only when no listed action owns the request.
+	- Do not invent action names.
 
 Examples:
 - "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> OWNER_CALENDAR
 - "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> OWNER_CALENDAR
 - "repair that missed call and hold the note for approval" -> OWNER_INBOX
 - "if I still haven't answered about those three events, bump me again with context instead of starting over" -> OWNER_INBOX
-- "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
-- "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
-- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_INBOX
-- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
-- "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
-- "flag the conflict before my flight later and help rebook the other thing" -> OWNER_CALENDAR
-- "start booking the trip once I approve" -> BOOK_TRAVEL
-- "when I'm done with the PPT, upload it to the speaker portal for me" -> LIFEOPS_COMPUTER_USE
-- "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
-- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
-- "warn me now if missing this will cost money" -> PUBLISH_DEVICE_INTENT
-- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
+	- "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
+	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
+	- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_INBOX
+	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
+	- "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
+	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> OWNER_CALENDAR
+	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
+	- "when I'm done with the PPT, upload it to the speaker portal for me" -> LIFEOPS_COMPUTER_USE
+	- "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
+	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
+	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> PUBLISH_DEVICE_INTENT
+	- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
 
 ${draftSection}Return XML only:
 <response>
@@ -1388,6 +1421,117 @@ ${draftSection}Return XML only:
     </action>
   </actions>
 </response>`;
+}
+
+const ROUTING_REASSESS_ACTIONS = new Set(
+	[
+		"LIFE",
+		"PUBLISH_DEVICE_INTENT",
+		"LIFEOPS_COMPUTER_USE",
+		"SUBSCRIPTIONS",
+	].map(normalizeActionIdentifier),
+);
+
+function getMessageText(message: Memory): string {
+	return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
+	const text = getMessageText(message).toLowerCase();
+	if (!text) {
+		return false;
+	}
+
+	return [
+		/\bif\b/,
+		/\bwhen\b/,
+		/\bwhenever\b/,
+		/\bapproval\b/,
+		/\bapprove\b/,
+		/\bgood with you\b/,
+		/\bif needed\b/,
+		/\brebook\b/,
+		/\bgroup chat\b/,
+		/\bhandoff\b/,
+		/\bbump me again\b/,
+		/\bwith context\b/,
+		/\bwhat .* still owe\b/,
+		/\bslides\b/,
+		/\bportal assets?\b/,
+		/\bupdated copy\b/,
+		/\bexpired\b/,
+		/\bcancellation fee\b/,
+		/\bimportant meetings?\b/,
+		/\bstuck\b/,
+		/\bupload it to the portal\b/,
+	].some((pattern) => pattern.test(text));
+}
+
+function shouldAttemptOwnershipRepair(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Memory,
+	state: State,
+	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
+): boolean {
+	if (!responseContent || !hasNonPassiveAction(responseContent)) {
+		return false;
+	}
+
+	if (looksLikeNonActionableChatter(message)) {
+		return false;
+	}
+
+	const availableActionNames =
+		typeof state.values?.actionNames === "string"
+			? state.values.actionNames
+			: "";
+	if (
+		availableActionNames.trim().length === 0 &&
+		(runtime.actions?.length ?? 0) === 0
+	) {
+		return false;
+	}
+
+	const normalizedActions = (responseContent.actions ?? [])
+		.map((actionName) =>
+			typeof actionName === "string"
+				? normalizeActionIdentifier(actionName)
+				: "",
+		)
+		.filter((actionName) => actionName.length > 0);
+	if (normalizedActions.length !== 1) {
+		return false;
+	}
+
+	return (
+		ROUTING_REASSESS_ACTIONS.has(normalizedActions[0]) &&
+		looksLikeOwnershipSensitiveRequest(message)
+	);
+}
+
+function buildOwnershipRepairPrompt(
+	basePrompt: string,
+	selectedActionName: string,
+	draftReply: string,
+): string {
+	const trimmedDraftReply = draftReply.trim();
+	const draftSection =
+		trimmedDraftReply.length > 0
+			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
+			: "";
+
+	return `${basePrompt}
+
+[OWNERSHIP REPAIR]
+The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
+Re-evaluate the request and choose the single best owning action from the listed actions above.
+Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
+Generic contextual bump rules about unanswered events belong to OWNER_INBOX or LIFE, not PUBLISH_DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
+Missing-ID or blocked-workflow prompts belong to PUBLISH_DEVICE_INTENT, CALL_USER, CROSS_CHANNEL_SEND, or OWNER_INBOX, not LIFEOPS_COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
+Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to LIFE unless the request is explicitly about personal todo/habit state.
+Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
+Flight-conflict rebooking belongs to OWNER_CALENDAR even when the exact flight time or event ID still needs a follow-up.
+If the current action is already the most specific owner, keep it.${draftSection}`;
 }
 
 function shouldAttemptProviderRescue(
@@ -5282,14 +5426,122 @@ Output ONLY the continuation, starting immediately after the last character abov
 							"Recovered grounded action plan after passive reply draft",
 						);
 						responseContent = rescuedContent;
+						}
 					}
 				}
-			}
 
-			if (
-				!overrides?.providerFollowup &&
-				shouldAttemptActionRescue(runtime, message, state, responseContent)
-			) {
+				if (
+					!overrides?.providerFollowup &&
+					shouldAttemptOwnershipRepair(
+						runtime,
+						message,
+						state,
+						responseContent,
+					)
+				) {
+					const selectedActionName =
+						(typeof responseContent.actions?.[0] === "string" &&
+							responseContent.actions[0]) ||
+						"UNKNOWN_ACTION";
+					const ownershipRepairPrompt = buildOwnershipRepairPrompt(
+						prompt,
+						selectedActionName,
+						String(responseContent.text || ""),
+					);
+					const repairedOwnershipXml = await runtime.dynamicPromptExecFromState({
+						state,
+						params: {
+							prompt: ownershipRepairPrompt,
+							...(promptAttachments ? { attachments: promptAttachments } : {}),
+						},
+						schema: [
+							{
+								field: "thought",
+								description:
+									"Short reasoning about whether a more specific owning action should replace the current one",
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "actions",
+								description:
+									"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+								required: true,
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "providers",
+								description:
+									"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+								required: false,
+								validateField: false,
+								streamField: false,
+							},
+							{
+								field: "text",
+								description: "The text response to send to the user",
+								streamField: false,
+							},
+							{
+								field: "simple",
+								description: "Whether this is a simple response (true/false)",
+								validateField: false,
+								streamField: false,
+							},
+						],
+						options: {
+							modelType: ModelType.ACTION_PLANNER,
+							preferredEncapsulation: "xml",
+							maxRetries: 1,
+						},
+					});
+
+					if (repairedOwnershipXml) {
+						const repairedOwnershipContent: Content = {
+							...repairedOwnershipXml,
+							thought: String(repairedOwnershipXml.thought || ""),
+							actions: normalizePlannerActions(
+								repairedOwnershipXml as Record<string, unknown>,
+								runtime,
+							),
+							providers: normalizePlannerProviders(
+								repairedOwnershipXml as Record<string, unknown>,
+								runtime,
+							),
+							text:
+								typeof repairedOwnershipXml.text === "string" &&
+								repairedOwnershipXml.text.trim().length > 0
+									? String(repairedOwnershipXml.text)
+									: responseContent.text,
+							simple:
+								repairedOwnershipXml.simple === true ||
+								repairedOwnershipXml.simple === "true",
+						};
+
+						if (
+							hasNonPassiveAction(repairedOwnershipContent) &&
+							JSON.stringify(repairedOwnershipContent.actions ?? []) !==
+								JSON.stringify(responseContent.actions ?? [])
+						) {
+							runtime.logger.info(
+								{
+									src: "service:message",
+									originalActions: responseContent.actions ?? [],
+									repairedActions: repairedOwnershipContent.actions ?? [],
+									repairedProviders: repairedOwnershipContent.providers ?? [],
+								},
+								"Replaced broad routing action with a more specific owning action",
+							);
+							responseContent = repairedOwnershipContent;
+						}
+					}
+				}
+
+				if (
+					!overrides?.providerFollowup &&
+					shouldAttemptActionRescue(runtime, message, state, responseContent)
+				) {
 				const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
 					state,
 					params: {
