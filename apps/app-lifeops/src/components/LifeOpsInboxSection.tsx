@@ -16,8 +16,8 @@ import {
   Badge,
   Button,
   Input,
-  Spinner,
   openExternalUrl,
+  Spinner,
   useApp,
 } from "@elizaos/app-core";
 import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
@@ -31,17 +31,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  buildReplyPrefill,
-  postToChat,
-} from "./LifeOpsChatAdapter.js";
-import {
-  useLifeOpsSelection,
-  type LifeOpsSelection,
-} from "./LifeOpsSelectionContext.js";
-import {
   type InboxChannel,
   useUnifiedInbox,
 } from "../hooks/useUnifiedInbox.js";
+import { buildReplyPrefill, postToChat } from "./LifeOpsChatAdapter.js";
+import {
+  type LifeOpsSelection,
+  useLifeOpsSelection,
+} from "./LifeOpsSelectionContext.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -308,8 +305,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selectedMessageId = selection.messageId ?? null;
 
   const selectedIndex = useMemo(
-    () =>
-      inbox.messages.findIndex((m) => m.id === selectedMessageId),
+    () => inbox.messages.findIndex((m) => m.id === selectedMessageId),
     [inbox.messages, selectedMessageId],
   );
   const selectedMessage = inbox.messages[selectedIndex] ?? null;
@@ -362,7 +358,13 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleReply, inbox.messages.length, selectByIndex, selectedIndex, selectedMessage]);
+  }, [
+    handleReply,
+    inbox.messages.length,
+    selectByIndex,
+    selectedIndex,
+    selectedMessage,
+  ]);
 
   // Auto-select first message when list loads.
   useEffect(() => {
@@ -449,9 +451,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                       key={msg.id}
                       message={msg}
                       selected={msg.id === selectedMessageId}
-                      onSelect={() =>
-                        onSelect({ messageId: msg.id })
-                      }
+                      onSelect={() => onSelect({ messageId: msg.id })}
                       onReply={() => handleReply(msg)}
                     />
                   ))

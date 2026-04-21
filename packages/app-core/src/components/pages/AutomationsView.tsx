@@ -64,6 +64,8 @@ import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
+import { PageScopedChat } from "../chat/PageScopedChat";
+import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { AutomationRoomChatPane } from "./AutomationRoomChatPane";
 import {
   buildAutomationResponseRoutingMetadata,
@@ -74,8 +76,6 @@ import {
   getAutomationBridgeConversationId,
   resolveAutomationConversation,
 } from "./automation-conversations";
-import { PageScopedChat } from "../chat/PageScopedChat";
-import { RightSideChatPanel } from "../chat/RightSideChatPanel";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   buildCreateRequest,
@@ -93,8 +93,8 @@ import {
   validateForm,
 } from "./heartbeat-utils";
 import {
-  type VisualizeWorkflowEventDetail,
   VISUALIZE_WORKFLOW_EVENT,
+  type VisualizeWorkflowEventDetail,
 } from "./workflow-graph-events";
 
 type AutomationFilter = "all" | "coordinator" | "workflows" | "scheduled";
@@ -2619,10 +2619,11 @@ function AutomationsLayout() {
   // Event consumer for agent-driven graph focus
   useEffect(() => {
     const handler = (event: Event) => {
-      const { workflowId } = (event as CustomEvent<VisualizeWorkflowEventDetail>).detail;
+      const { workflowId } = (
+        event as CustomEvent<VisualizeWorkflowEventDetail>
+      ).detail;
       const match = filteredItems.find(
-        (item) =>
-          item.workflowId === workflowId || item.id === workflowId,
+        (item) => item.workflowId === workflowId || item.id === workflowId,
       );
       if (match) {
         selectItem(match);
@@ -3108,167 +3109,167 @@ function AutomationsLayout() {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-    <PageLayout
-      className="h-full min-w-0 flex-1 bg-transparent"
-      data-testid="automations-shell"
-      sidebar={automationsSidebar}
-      contentInnerClassName="mx-auto w-full max-w-[96rem]"
-      footer={<WidgetHost slot="automations" className="py-3" />}
-      mobileSidebarLabel={mobileSidebarLabel}
-    >
-      <div className="flex min-h-0 flex-1 flex-col">
-        {activeSubpage === "node-catalog" || showDetailPane ? (
-          <button
-            type="button"
-            className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
-            onClick={() => {
-              if (activeSubpage === "node-catalog") {
-                showAutomationsList();
-                return;
-              }
-              setSelectedItemId(null);
-              setSelectedItemKind(null);
-              setEditorOpen(false);
-              setEditingId(null);
-              ctx.setEditingTaskId(null);
-            }}
-          >
-            ← Back
-          </button>
-        ) : null}
+      <PageLayout
+        className="h-full min-w-0 flex-1 bg-transparent"
+        data-testid="automations-shell"
+        sidebar={automationsSidebar}
+        contentInnerClassName="mx-auto w-full max-w-[96rem]"
+        footer={<WidgetHost slot="automations" className="py-3" />}
+        mobileSidebarLabel={mobileSidebarLabel}
+      >
+        <div className="flex min-h-0 flex-1 flex-col">
+          {activeSubpage === "node-catalog" || showDetailPane ? (
+            <button
+              type="button"
+              className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
+              onClick={() => {
+                if (activeSubpage === "node-catalog") {
+                  showAutomationsList();
+                  return;
+                }
+                setSelectedItemId(null);
+                setSelectedItemKind(null);
+                setEditorOpen(false);
+                setEditingId(null);
+                ctx.setEditingTaskId(null);
+              }}
+            >
+              ← Back
+            </button>
+          ) : null}
 
-        {(pageNotice || combinedError) && (
-          <PagePanel
-            variant="padded"
-            className="mb-4 border border-danger/20 bg-danger/5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-danger">
-                {pageNotice ?? combinedError}
-              </p>
-              {pageNotice && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-danger hover:bg-danger/10"
-                  onClick={() => setPageNotice(null)}
-                >
-                  Dismiss
-                </Button>
-              )}
-            </div>
-          </PagePanel>
-        )}
+          {(pageNotice || combinedError) && (
+            <PagePanel
+              variant="padded"
+              className="mb-4 border border-danger/20 bg-danger/5"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-danger">
+                  {pageNotice ?? combinedError}
+                </p>
+                {pageNotice && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-danger hover:bg-danger/10"
+                    onClick={() => setPageNotice(null)}
+                  >
+                    Dismiss
+                  </Button>
+                )}
+              </div>
+            </PagePanel>
+          )}
 
-        {editorOpen || editingId || editingTaskId ? (
-          editorMode === "task" || editingTaskId ? (
-            <TaskForm />
-          ) : (
-            <HeartbeatForm
-              form={form}
-              editingId={editingId}
-              editorEnabled={editorEnabled}
-              modalTitle={modalTitle}
-              formError={formError}
-              triggersSaving={triggersSaving}
-              templateNotice={templateNotice}
-              triggers={triggers}
-              triggerRunsById={triggerRunsById}
-              t={t}
-              selectedTriggerId={editingId}
-              setField={setField}
-              setForm={setForm}
-              setFormError={setFormError}
-              closeEditor={closeEditor}
-              onSubmit={onSubmitTrigger}
-              onDelete={onDeleteTrigger}
-              onRunSelectedTrigger={onRunSelectedTrigger}
-              onToggleTriggerEnabled={onToggleTriggerEnabled}
-              saveFormAsTemplate={saveFormAsTemplate}
-              loadTriggerRuns={loadTriggerRuns}
+          {editorOpen || editingId || editingTaskId ? (
+            editorMode === "task" || editingTaskId ? (
+              <TaskForm />
+            ) : (
+              <HeartbeatForm
+                form={form}
+                editingId={editingId}
+                editorEnabled={editorEnabled}
+                modalTitle={modalTitle}
+                formError={formError}
+                triggersSaving={triggersSaving}
+                templateNotice={templateNotice}
+                triggers={triggers}
+                triggerRunsById={triggerRunsById}
+                t={t}
+                selectedTriggerId={editingId}
+                setField={setField}
+                setForm={setForm}
+                setFormError={setFormError}
+                closeEditor={closeEditor}
+                onSubmit={onSubmitTrigger}
+                onDelete={onDeleteTrigger}
+                onRunSelectedTrigger={onRunSelectedTrigger}
+                onToggleTriggerEnabled={onToggleTriggerEnabled}
+                saveFormAsTemplate={saveFormAsTemplate}
+                loadTriggerRuns={loadTriggerRuns}
+              />
+            )
+          ) : activeSubpage === "node-catalog" ? (
+            <AutomationNodeCatalogPane nodes={automationNodes} />
+          ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
+            <WorkflowAutomationDetailPane
+              key={resolvedSelectedItem.id}
+              automation={resolvedSelectedItem}
+              nodes={automationNodes}
+              n8nStatus={n8nStatus}
+              workflowFetchError={workflowFetchError}
+              workflowBusyId={workflowBusyId}
+              workflowOpsBusy={workflowOpsBusy}
+              onConversationResolved={setActiveWorkflowConversation}
+              onDeleteWorkflow={handleDeleteWorkflow}
+              onRefreshWorkflows={handleRefreshWorkflows}
+              onStartLocalN8n={handleStartLocalN8n}
+              onToggleWorkflowActive={handleToggleWorkflowActive}
+              onWorkflowMutated={handleWorkflowMutated}
             />
-          )
-        ) : activeSubpage === "node-catalog" ? (
-          <AutomationNodeCatalogPane nodes={automationNodes} />
-        ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
-          <WorkflowAutomationDetailPane
-            key={resolvedSelectedItem.id}
-            automation={resolvedSelectedItem}
-            nodes={automationNodes}
-            n8nStatus={n8nStatus}
-            workflowFetchError={workflowFetchError}
-            workflowBusyId={workflowBusyId}
-            workflowOpsBusy={workflowOpsBusy}
-            onConversationResolved={setActiveWorkflowConversation}
-            onDeleteWorkflow={handleDeleteWorkflow}
-            onRefreshWorkflows={handleRefreshWorkflows}
-            onStartLocalN8n={handleStartLocalN8n}
-            onToggleWorkflowActive={handleToggleWorkflowActive}
-            onWorkflowMutated={handleWorkflowMutated}
-          />
-        ) : resolvedSelectedItem?.trigger ? (
-          <TriggerAutomationDetailPane
-            key={resolvedSelectedItem.id}
-            automation={resolvedSelectedItem}
-            nodes={automationNodes}
-            onAutomationMutated={() => {
-              void ctx.refreshAutomations();
-            }}
-            onPromoteToWorkflow={promoteAutomationToWorkflow}
-          />
-        ) : resolvedSelectedItem?.task ? (
-          <TaskAutomationDetailPane
-            key={resolvedSelectedItem.id}
-            automation={resolvedSelectedItem}
-            nodes={automationNodes}
-            onAutomationMutated={() => {
-              void ctx.refreshAutomations();
-            }}
-            onPromoteToWorkflow={promoteAutomationToWorkflow}
-          />
-        ) : showFirstRunEmptyState ? (
-          <AutomationsZeroState
-            onBrowseTemplates={() => setTemplatesModalOpen(true)}
-            onNewTrigger={handleZeroStateNewTrigger}
-            onNewTask={handleZeroStateNewTask}
-          />
-        ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-txt-strong">
-                Select an automation
-              </h3>
+          ) : resolvedSelectedItem?.trigger ? (
+            <TriggerAutomationDetailPane
+              key={resolvedSelectedItem.id}
+              automation={resolvedSelectedItem}
+              nodes={automationNodes}
+              onAutomationMutated={() => {
+                void ctx.refreshAutomations();
+              }}
+              onPromoteToWorkflow={promoteAutomationToWorkflow}
+            />
+          ) : resolvedSelectedItem?.task ? (
+            <TaskAutomationDetailPane
+              key={resolvedSelectedItem.id}
+              automation={resolvedSelectedItem}
+              nodes={automationNodes}
+              onAutomationMutated={() => {
+                void ctx.refreshAutomations();
+              }}
+              onPromoteToWorkflow={promoteAutomationToWorkflow}
+            />
+          ) : showFirstRunEmptyState ? (
+            <AutomationsZeroState
+              onBrowseTemplates={() => setTemplatesModalOpen(true)}
+              onNewTrigger={handleZeroStateNewTrigger}
+              onNewTask={handleZeroStateNewTask}
+            />
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-txt-strong">
+                  Select an automation
+                </h3>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <WorkflowTemplatesModal
-        open={templatesModalOpen}
-        onOpenChange={setTemplatesModalOpen}
-        onSelectTemplate={(seedPrompt) =>
-          void handleTemplateSelected(seedPrompt)
-        }
-        onSelectCustom={() => {
-          setTemplatesModalOpen(false);
-          void createWorkflowDraft();
-        }}
-      />
-    </PageLayout>
-    <RightSideChatPanel
-      storageKey="milady:chat-panel:automations"
-      defaultWidth={384}
-      minWidth={300}
-      maxWidth={720}
-    >
-      <PageScopedChat
-        scope="page-automations"
-        title="Automations assistant"
-        placeholder="Ask to create, edit, activate, or visualize automations..."
-        systemAddendum={AUTOMATIONS_SYSTEM_ADDENDUM}
-        bridgeFromConversationId={activeConversationId}
-      />
-    </RightSideChatPanel>
+        <WorkflowTemplatesModal
+          open={templatesModalOpen}
+          onOpenChange={setTemplatesModalOpen}
+          onSelectTemplate={(seedPrompt) =>
+            void handleTemplateSelected(seedPrompt)
+          }
+          onSelectCustom={() => {
+            setTemplatesModalOpen(false);
+            void createWorkflowDraft();
+          }}
+        />
+      </PageLayout>
+      <RightSideChatPanel
+        storageKey="milady:chat-panel:automations"
+        defaultWidth={384}
+        minWidth={300}
+        maxWidth={720}
+      >
+        <PageScopedChat
+          scope="page-automations"
+          title="Automations assistant"
+          placeholder="Ask to create, edit, activate, or visualize automations..."
+          systemAddendum={AUTOMATIONS_SYSTEM_ADDENDUM}
+          bridgeFromConversationId={activeConversationId}
+        />
+      </RightSideChatPanel>
     </div>
   );
 }
