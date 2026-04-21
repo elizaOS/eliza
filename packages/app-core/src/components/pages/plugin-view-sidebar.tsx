@@ -19,7 +19,6 @@ import type {
   SubgroupTag,
   TranslateFn,
 } from "./plugin-list-utils";
-import { connectorDisplayName } from "./plugin-list-utils";
 
 type RenderResolvedIconOptions = {
   className?: string;
@@ -116,8 +115,8 @@ export function ConnectorSidebar({
           <SidebarContent.RailItem
             key={plugin.id}
             ref={registerConnectorRailItem(plugin.id)}
-            aria-label={connectorDisplayName(plugin)}
-            title={connectorDisplayName(plugin)}
+            aria-label={plugin.name}
+            title={plugin.name}
             active={isSelected}
             indicatorTone={plugin.enabled ? "accent" : undefined}
             onClick={() => onConnectorSelect(plugin.id)}
@@ -197,7 +196,7 @@ export function ConnectorSidebar({
                     </SidebarContent.ItemIcon>
                     <SidebarContent.ItemBody>
                       <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                        {connectorDisplayName(plugin)}
+                        {plugin.name}
                       </span>
                     </SidebarContent.ItemBody>
                   </SidebarContent.ItemButton>
@@ -230,7 +229,7 @@ export function ConnectorSidebar({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 shrink-0 rounded-[var(--radius-sm)] text-muted hover:text-txt"
-                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)} in sidebar`}
+                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name} in sidebar`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onConnectorSectionToggle(plugin.id);

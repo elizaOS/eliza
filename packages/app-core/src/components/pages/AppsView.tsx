@@ -120,18 +120,35 @@ export function AppsView() {
           serverAppsResult.reason,
         );
       }
-      const internalToolApps = getInternalToolApps();
+      // Static catalog (registry SoT) — internal tool apps + curated apps.
+      // Falls back to the legacy hardcoded list if the catalog endpoint is
+      // unavailable, so the UI never goes empty during a backend hiccup.
+      let catalogApps: RegistryAppInfo[];
+      try {
+        catalogApps = await client.listCatalogApps();
+      } catch (catalogErr) {
+        console.warn(
+          "[AppsView] Failed to load catalog apps; using legacy fallback:",
+          catalogErr,
+        );
+        catalogApps = getInternalToolApps();
+      }
       // Inject registered overlay apps (e.g. companion) if not already from server
       const overlayDescriptors = getAllOverlayApps()
         .filter((oa) => !serverApps.some((a) => a.name === oa.name))
+        .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
         .map(overlayAppToRegistryInfo);
+      // Server-discovered apps win on conflicts — they have live runtime data.
+      // Catalog apps fill in known-but-not-installed entries (scape, vincent,
+      // hyperscape, etc.) so the page keeps showing them.
       const list = [
-        ...internalToolApps,
+        ...catalogApps,
         ...overlayDescriptors,
         ...serverApps,
       ].filter(
         (app, index, items) =>
-          items.findIndex((candidate) => candidate.name === app.name) === index,
+          items.findLastIndex((candidate) => candidate.name === app.name) ===
+          index,
       );
       setApps(list);
     } catch (err) {

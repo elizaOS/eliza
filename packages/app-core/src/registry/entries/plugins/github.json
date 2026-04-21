@@ -79,7 +79,7 @@
     "visible": true,
     "pinTo": [],
     "style": "card",
-    "icon": "Github",
+    "icon": "GitBranch",
     "group": "devtools",
     "groupOrder": 5,
     "actions": [
