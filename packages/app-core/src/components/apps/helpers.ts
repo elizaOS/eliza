@@ -179,6 +179,20 @@ export function getAppCatalogSectionKey(
     return "lifeManagement";
   }
 
+  if (
+    app.name === "@elizaos/app-steward" ||
+    app.name === "@elizaos/app-elizamaker"
+  ) {
+    return "finance";
+  }
+
+  if (
+    app.name === "@elizaos/app-knowledge" ||
+    app.name === "@elizaos/app-form"
+  ) {
+    return "other";
+  }
+
   if (isInternalToolApp(app.name)) {
     return "developerUtilities";
   }

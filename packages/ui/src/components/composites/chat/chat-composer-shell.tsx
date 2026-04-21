@@ -32,7 +32,7 @@ export function ChatComposerShell({
         style={{
           zIndex: 1,
           paddingBottom:
-            "calc(max(env(safe-area-inset-bottom, 0px), 0px) + 0.25rem)",
+            "calc(max(env(safe-area-inset-bottom, 0px), 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.25rem)",
           ...style,
         }}
         {...props}
@@ -56,7 +56,8 @@ export function ChatComposerShell({
       )}
       style={{
         zIndex: 1,
-        paddingBottom: "calc(var(--safe-area-bottom, 0px) + 0.75rem)",
+        paddingBottom:
+          "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.75rem)",
         ...style,
       }}
       {...props}

@@ -32,8 +32,8 @@ import { setApplicationMenuActionHandler } from "./application-menu-action-regis
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
-import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
@@ -314,11 +314,11 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
                 process.env as Record<string, string | undefined>,
                 port,
               )
-            : resolveHeartbeatMenuApiBase() ??
+            : (resolveHeartbeatMenuApiBase() ??
               resolveInitialApiBase(
                 process.env as Record<string, string | undefined>,
               ) ??
-              apiBase;
+              apiBase);
           if (base) {
             pushApiBaseToRenderer(currentWindow, base, apiToken);
           }
@@ -471,9 +471,10 @@ const MAC_TRAFFIC_LIGHTS_Y = 12;
 const MAC_NATIVE_DRAG_REGION_X = 92;
 /**
  * Top drag strip height == right/bottom/BR overlay thickness (points).
- * `0` → native derives depth from `window.screen` (HiDPI / ultrawide); positive pins.
+ * Pin this lower than the old auto depth so toolbar controls can live in the
+ * titlebar without sitting inside the native drag overlay.
  */
-const MAC_NATIVE_DRAG_REGION_HEIGHT = 0;
+const MAC_NATIVE_DRAG_REGION_HEIGHT = 18;
 
 /**
  * Vibrancy, shadow, traffic lights, and native chrome layout. Re-calls native
