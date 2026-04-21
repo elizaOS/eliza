@@ -89,7 +89,9 @@ describe("crossChannelSendAction", () => {
 
 describe("dispatchCrossChannelSend", () => {
   const fakeRuntime = { agentId: SAME_ID } as unknown as IAgentRuntime;
-  type DispatchService = Parameters<typeof dispatchCrossChannelSend>[0]["service"];
+  type DispatchService = Parameters<
+    typeof dispatchCrossChannelSend
+  >[0]["service"];
 
   test("imessage dispatcher forwards { to, text } and returns channel metadata", async () => {
     const captured: unknown[] = [];

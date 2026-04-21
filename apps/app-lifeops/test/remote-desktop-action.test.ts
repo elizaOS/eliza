@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { remoteDesktopAction } from "../src/actions/remote-desktop.js";
-import { endRemoteSession, listActiveSessions } from "../src/lifeops/remote-desktop.js";
+import {
+  endRemoteSession,
+  listActiveSessions,
+} from "../src/lifeops/remote-desktop.js";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 const ORIGINAL_MOCK_ENV = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
@@ -132,7 +135,10 @@ describe("remoteDesktopAction", () => {
       undefined,
       { parameters: { subaction: "end", sessionId } },
     );
-    const ended = endResult as { success: boolean; values?: { sessionId?: string } };
+    const ended = endResult as {
+      success: boolean;
+      values?: { sessionId?: string };
+    };
     expect(ended.success).toBe(true);
     expect(ended.values?.sessionId).toBe(sessionId);
 
@@ -165,9 +171,9 @@ describe("remoteDesktopAction", () => {
       { parameters: { subaction: "end" } },
     );
 
-    expect((statusResult as { values?: { error?: string } }).values?.error).toBe(
-      "MISSING_SESSION_ID",
-    );
+    expect(
+      (statusResult as { values?: { error?: string } }).values?.error,
+    ).toBe("MISSING_SESSION_ID");
     expect((endResult as { values?: { error?: string } }).values?.error).toBe(
       "MISSING_SESSION_ID",
     );
