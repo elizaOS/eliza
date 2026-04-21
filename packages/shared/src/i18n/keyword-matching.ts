@@ -5,13 +5,13 @@
  * loaded from the generated keyword data. They handle Unicode normalization,
  * word boundary detection, and greedy matching across message history.
  *
- * The keyword data itself lives in generated/validation-keyword-data.ts
- * (codegen'd from keywords/*.keywords.json).
+ * The keyword data itself lives in generated/validation-keyword-data.js
+ * at runtime (codegen'd from keywords/*.keywords.json).
  */
 
 import type { CharacterLanguage } from "../contracts/onboarding.js";
 import { normalizeCharacterLanguage } from "../onboarding-presets.js";
-import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
+import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.js";
 
 // Re-export the generated data so existing consumers can still reach it
 export { VALIDATION_KEYWORD_DOCS };
