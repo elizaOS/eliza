@@ -576,6 +576,19 @@ export function formatOverview(overview: LifeOpsOverview): string {
         ? `Last wake ${schedule.lastSleepEndedAt}${schedule.lastSleepDurationMinutes ? ` after ${schedule.lastSleepDurationMinutes} minutes asleep` : ""}`
         : `Sleep status ${schedule.sleepStatus}`;
     lines.push(`- Schedule phase: ${schedule.phase}`);
+    if (schedule.relativeTime.minutesSinceWake !== null) {
+      lines.push(
+        `- Relative time: woke ${schedule.relativeTime.minutesSinceWake} minutes ago${
+          schedule.relativeTime.minutesUntilBedtimeTarget !== null
+            ? `; bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`
+            : ""
+        }`,
+      );
+    } else if (schedule.relativeTime.minutesUntilBedtimeTarget !== null) {
+      lines.push(
+        `- Relative time: bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`,
+      );
+    }
     lines.push(`- ${sleepLine}`);
     if (schedule.nextMealLabel && schedule.nextMealWindowStartAt) {
       lines.push(

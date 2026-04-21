@@ -147,8 +147,11 @@ export function AppsView() {
         ...serverApps,
       ].filter(
         (app, index, items) =>
-          items.findLastIndex((candidate) => candidate.name === app.name) ===
-          index,
+          !items
+            .slice(index + 1)
+            .some(
+              (candidate: RegistryAppInfo) => candidate.name === app.name,
+            ),
       );
       setApps(list);
     } catch (err) {

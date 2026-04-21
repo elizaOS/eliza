@@ -500,15 +500,16 @@ export function paramsToSchema(
  * that name to the actual React component at render time.
  */
 const ICON_BY_LUCIDE_NAME: Record<string, LucideIcon> = {
-  Binary, Bird, BookOpen, Bot, Brain, BrickWall, Briefcase, Calendar, Chrome,
+  Binary, Bird, BookOpen, Bot, Brain, BrickWall, Briefcase, Calendar,
+  Chrome: Globe,
   Circle, CircleDashed, CircleDot, ClipboardList, Clock, Cloud, Command,
   Construction, CreditCard, Diamond, Dna, Eye, Feather, FileKey, FileText,
-  Fingerprint, Gamepad, Gamepad2, GitBranch, Github, Globe, Handshake, Hash,
+  Fingerprint, Gamepad, Gamepad2, GitBranch, Github: GitBranch, Globe, Handshake, Hash,
   Layers, Leaf, Link, Lock, LockKeyhole, Mail, MessageCircle, MessageSquare,
   MessagesSquare, Mic, Monitor, MousePointer2, Package, PenTool, Phone,
   Pickaxe, Puzzle, RefreshCw, Rss, ScrollText, Send, Server, Settings, Shell,
   Shuffle, Smartphone, Sparkle, Sparkles, Square, Star, StickyNote, Target,
-  Tornado, TrendingDown, Triangle, Twitter, Video, Volume2, Wallet, Webhook,
+  Tornado, TrendingDown, Triangle, Twitter: MessageCircle, Video, Volume2, Wallet, Webhook,
   Wrench, Zap,
 };
 

@@ -6,6 +6,7 @@ import type {
   LifeOpsSchedulePhase,
 } from "@elizaos/shared/contracts/lifeops";
 import { asRecord } from "@elizaos/shared/type-guards";
+import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
 import type {
   LifeOpsScheduleDeviceKind,
@@ -148,6 +149,7 @@ function toObservationSnapshot(
     effectiveDayKey: insight.effectiveDayKey,
     localDate: insight.localDate,
     phase: insight.phase,
+    relativeTime: insight.relativeTime,
     sleepStatus: insight.sleepStatus,
     isProbablySleeping: insight.isProbablySleeping,
     sleepConfidence: roundConfidence(insight.sleepConfidence),
@@ -174,6 +176,10 @@ function bucketSnapshot(
 ): LifeOpsScheduleObservationSnapshot {
   return {
     ...snapshot,
+    relativeTime: {
+      ...snapshot.relativeTime,
+      confidence: roundConfidence(snapshot.relativeTime.confidence),
+    },
     sleepConfidence: roundConfidence(snapshot.sleepConfidence),
     currentSleepStartedAt: bucketIso(
       snapshot.currentSleepStartedAt,
@@ -495,7 +501,7 @@ function recordFromSyncInput(args: {
   const isActiveObservation = args.input.state === "active_recently";
   const isMealObservation = args.input.state === "meal_window_likely";
   const isAteObservation = args.input.state === "ate_recently";
-  const snapshot = {
+  const snapshotBase = {
     effectiveDayKey:
       typeof snapshotSource.effectiveDayKey === "string"
         ? snapshotSource.effectiveDayKey
@@ -575,7 +581,15 @@ function recordFromSyncInput(args: {
       snapshotSource.nextMealConfidence ??
         (isMealObservation ? args.input.confidence : 0),
     ),
-  } satisfies LifeOpsScheduleObservationSnapshot;
+  } satisfies Omit<LifeOpsScheduleObservationSnapshot, "relativeTime">;
+  const snapshot: LifeOpsScheduleObservationSnapshot = {
+    ...snapshotBase,
+    relativeTime: resolveLifeOpsRelativeTime({
+      nowMs: parseIsoMs(args.observedAt) ?? Date.now(),
+      timezone: args.timezone,
+      schedule: snapshotBase,
+    }),
+  };
 
   return buildObservationRecord({
     agentId: args.agentId,
@@ -858,6 +872,23 @@ export function mergeScheduleObservations(args: {
   const contributingDeviceKinds = [
     ...new Set(relevant.map((observation) => observation.deviceKind)),
   ];
+  const typicalWakeHour = median(typicalWakeHourValues);
+  const typicalSleepHour = median(typicalSleepHourValues);
+  const relativeTime = resolveLifeOpsRelativeTime({
+    nowMs,
+    timezone: args.timezone,
+    schedule: {
+      phase,
+      isProbablySleeping: phase === "sleeping",
+      sleepConfidence,
+      currentSleepStartedAt,
+      lastSleepStartedAt,
+      lastSleepEndedAt,
+      typicalSleepHour,
+      wakeAt,
+      firstActiveAt,
+    },
+  });
   return {
     id: `lifeops-schedule-merged:${args.agentId}:${args.scope}:${args.timezone}`,
     agentId: args.agentId,
@@ -868,6 +899,7 @@ export function mergeScheduleObservations(args: {
     timezone: args.timezone,
     inferredAt: mergedAt,
     phase,
+    relativeTime,
     sleepStatus,
     isProbablySleeping: phase === "sleeping",
     sleepConfidence,
@@ -879,8 +911,8 @@ export function mergeScheduleObservations(args: {
         relevant,
         (snapshot) => snapshot.lastSleepDurationMinutes,
       ) ?? null,
-    typicalWakeHour: median(typicalWakeHourValues),
-    typicalSleepHour: median(typicalSleepHourValues),
+    typicalWakeHour,
+    typicalSleepHour,
     wakeAt,
     firstActiveAt,
     lastActiveAt,
@@ -925,6 +957,7 @@ export function mergeScheduleObservations(args: {
       deviceIds: [
         ...new Set(relevant.map((observation) => observation.deviceId)),
       ],
+      relativeTime,
     },
     createdAt: mergedAt,
     updatedAt: mergedAt,

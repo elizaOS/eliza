@@ -97,10 +97,49 @@ function resolveHealthSignal(
   if (signal.health) {
     return signal.health;
   }
-  const metadataHealth = isRecord(signal.metadata.health)
-    ? (signal.metadata.health as LifeOpsHealthSignal)
+  const metadataHealth = isHealthSignal(signal.metadata.health)
+    ? signal.metadata.health
     : null;
   return metadataHealth ?? null;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || typeof value === "number";
+}
+
+function isHealthSignal(value: unknown): value is LifeOpsHealthSignal {
+  if (!isRecord(value)) return false;
+  if (value.source !== "healthkit" && value.source !== "health_connect") {
+    return false;
+  }
+  const permissions = value.permissions;
+  const sleep = value.sleep;
+  const biometrics = value.biometrics;
+  return (
+    isRecord(permissions) &&
+    typeof permissions.sleep === "boolean" &&
+    typeof permissions.biometrics === "boolean" &&
+    isRecord(sleep) &&
+    typeof sleep.available === "boolean" &&
+    typeof sleep.isSleeping === "boolean" &&
+    isNullableString(sleep.asleepAt) &&
+    isNullableString(sleep.awakeAt) &&
+    isNullableNumber(sleep.durationMinutes) &&
+    isNullableString(sleep.stage) &&
+    isRecord(biometrics) &&
+    isNullableString(biometrics.sampleAt) &&
+    isNullableNumber(biometrics.heartRateBpm) &&
+    isNullableNumber(biometrics.restingHeartRateBpm) &&
+    isNullableNumber(biometrics.heartRateVariabilityMs) &&
+    isNullableNumber(biometrics.respiratoryRate) &&
+    isNullableNumber(biometrics.bloodOxygenPercent) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((warning) => typeof warning === "string")
+  );
 }
 
 function normalizeSleepEndMs(args: {

@@ -17,8 +17,9 @@ function formatError(cause: unknown, fallback: string): string {
 function defaultCapabilities(
   status: LifeOpsXConnectorStatus | null,
 ): LifeOpsXCapability[] {
-  if (status?.grantedCapabilities.length > 0) {
-    return status.grantedCapabilities;
+  const grantedCapabilities = status?.grantedCapabilities ?? [];
+  if (grantedCapabilities.length > 0) {
+    return grantedCapabilities;
   }
   return ["x.read", "x.write"];
 }

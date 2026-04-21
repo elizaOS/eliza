@@ -9,6 +9,7 @@ import type {
 import {
   ChannelType,
   ModelType,
+  Role,
   parseJSONObjectFromText,
   parseKeyValueXml,
   stringToUuid,
@@ -45,7 +46,13 @@ type RuntimeLike = IAgentRuntime & {
     messageServerId: UUID;
     metadata?: Record<string, unknown>;
   }) => Promise<void>;
-  getWorld?: (id: UUID) => Promise<{ id: UUID } | null>;
+  getWorld?: (id: UUID) => Promise<{
+    id: UUID;
+    name?: string;
+    agentId?: UUID;
+    messageServerId?: UUID;
+    metadata?: Record<string, unknown>;
+  } | null>;
   createWorld?: (world: {
     id: UUID;
     name: string;
@@ -234,8 +241,8 @@ async function ensureWorld(
   const metadata = {
     ownership: { ownerId: args.ownerId },
     roles: {
-      [args.ownerId]: "OWNER",
-      [runtime.agentId]: "ADMIN",
+      [args.ownerId]: Role.OWNER,
+      [runtime.agentId]: Role.ADMIN,
     },
     roleSources: {
       [args.ownerId]: "owner",
@@ -257,9 +264,20 @@ async function ensureWorld(
 
   const existing = await runtime.getWorld?.(args.worldId);
   if (existing) {
+    const currentMetadata =
+      existing.metadata && typeof existing.metadata === "object"
+        ? existing.metadata
+        : {};
     await runtime.updateWorld?.({
+      ...existing,
       id: args.worldId,
-      metadata,
+      name: existing.name ?? args.worldName,
+      agentId: existing.agentId ?? runtime.agentId,
+      messageServerId: existing.messageServerId ?? args.ownerId,
+      metadata: {
+        ...currentMetadata,
+        ...metadata,
+      },
     });
     return;
   }

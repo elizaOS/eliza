@@ -53,6 +53,7 @@ import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "./schedule-sync-contracts.js";
+import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
   executeRawSql,
@@ -1232,7 +1233,7 @@ function parseScheduleObservation(
 function parseScheduleMergedState(
   row: Record<string, unknown>,
 ): LifeOpsScheduleMergedStateRecord {
-  return {
+  return refreshLifeOpsRelativeTime({
     id: toText(row.id),
     agentId: toText(row.agent_id),
     scope: toText(row.scope) as LifeOpsScheduleMergedStateRecord["scope"],
@@ -1297,7 +1298,7 @@ function parseScheduleMergedState(
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
-  };
+  }, new Date(toText(row.inferred_at, toText(row.updated_at))));
 }
 
 function parseSchedulingNegotiation(

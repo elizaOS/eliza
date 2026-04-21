@@ -41,6 +41,13 @@ function formatPercent(value: number | null | undefined): string {
   }).format(value);
 }
 
+function formatMinutes(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${value} min`;
+}
+
 function readXIdentity(
   identity: Record<string, unknown> | null,
   fallback: string,
@@ -135,6 +142,35 @@ export function LifeOpsSchedulePanel() {
               ? `${merged.phase} · ${formatPercent(merged.sleepConfidence)} confidence`
               : t("lifeopspanels.scheduleUnavailable", {
                   defaultValue: "No schedule state available.",
+                })}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("lifeopspanels.relativeTime", {
+              defaultValue: "Relative time",
+            })}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {merged
+              ? t("lifeopspanels.relativePhase", {
+                  defaultValue: "{{phase}} · woke {{duration}} ago",
+                  phase: merged.relativeTime.phase,
+                  duration: formatMinutes(merged.relativeTime.minutesSinceWake),
+                })
+              : "—"}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {merged?.relativeTime.bedtimeTargetAt
+              ? t("lifeopspanels.bedtimeTarget", {
+                  defaultValue: "Bedtime target {{time}} · in {{duration}}",
+                  time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
+                  duration: formatMinutes(
+                    merged.relativeTime.minutesUntilBedtimeTarget,
+                  ),
+                })
+              : t("lifeopspanels.bedtimeCalibrating", {
+                  defaultValue: "Bedtime target calibrating",
                 })}
           </div>
         </div>

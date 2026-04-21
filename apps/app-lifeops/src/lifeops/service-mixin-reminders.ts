@@ -56,6 +56,7 @@ import {
 } from "./defaults.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
@@ -1539,20 +1540,21 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         observations: recentObservations,
       });
       if (!merged) {
-        return await this.repository.getScheduleMergedState(
+        const cached = await this.repository.getScheduleMergedState(
           this.agentId(),
           "local",
           timezone,
         );
+        return cached ? refreshLifeOpsRelativeTime(cached, now) : null;
       }
       await this.repository.upsertScheduleMergedState(merged);
-      return (
+      const stored =
         (await this.repository.getScheduleMergedState(
           this.agentId(),
           "local",
           timezone,
-        )) ?? merged
-      );
+        )) ?? merged;
+      return refreshLifeOpsRelativeTime(stored, now);
     }
 
     public async ingestScheduleObservations(
@@ -1667,13 +1669,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<LifeOpsScheduleMergedStateRecord | null> {
       const timezone =
         normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone();
+      const now = new Date();
       const cached = await this.repository.getScheduleMergedState(
         this.agentId(),
         "cloud",
         timezone,
       );
       if (!this.scheduleSyncClient.configured) {
-        return cached;
+        return cached ? refreshLifeOpsRelativeTime(cached, now) : null;
       }
       try {
         const response = await this.scheduleSyncClient.getMergedState(
@@ -1681,23 +1684,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           "cloud",
         );
         if (!response.mergedState) {
-          return cached;
+          return cached ? refreshLifeOpsRelativeTime(cached, now) : null;
         }
         await this.repository.upsertScheduleMergedState(response.mergedState);
-        return (
+        const stored =
           (await this.repository.getScheduleMergedState(
             this.agentId(),
             "cloud",
             timezone,
-          )) ?? response.mergedState
-        );
+          )) ?? response.mergedState;
+        return refreshLifeOpsRelativeTime(stored, now);
       } catch (error) {
         this.logLifeOpsWarn(
           "schedule_fetch_cloud_state",
           "[lifeops] Failed to fetch merged cloud schedule state; using cached state.",
           { error: lifeOpsErrorMessage(error) },
         );
-        return cached;
+        return cached ? refreshLifeOpsRelativeTime(cached, now) : null;
       }
     }
 
@@ -1718,11 +1721,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         "cloud",
         timezone,
       );
-      return preferEffectiveMergedState({
+      const preferred = preferEffectiveMergedState({
         now,
         local,
         cloud,
       });
+      return preferred ? refreshLifeOpsRelativeTime(preferred, now) : null;
     }
 
     public async refreshEffectiveScheduleState(args?: {
@@ -1742,7 +1746,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         timezone,
       );
       if (!this.scheduleSyncClient.configured) {
-        return preferEffectiveMergedState({ now, local, cloud });
+        const preferred = preferEffectiveMergedState({ now, local, cloud });
+        return preferred ? refreshLifeOpsRelativeTime(preferred, now) : null;
       }
       if (!isFreshCloudMergedState(cloud, now)) {
         const deviceIdentity = resolveScheduleDeviceIdentity();
@@ -1791,7 +1796,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           }
         }
       }
-      return preferEffectiveMergedState({ now, local, cloud });
+      const preferred = preferEffectiveMergedState({ now, local, cloud });
+      return preferred ? refreshLifeOpsRelativeTime(preferred, now) : null;
     }
 
     public async getScheduleMergedState(args?: {
@@ -1820,11 +1826,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           now: args?.now,
         });
       }
-      return await this.repository.getScheduleMergedState(
+      const state = await this.repository.getScheduleMergedState(
         this.agentId(),
         scope,
         timezone,
       );
+      return state
+        ? refreshLifeOpsRelativeTime(state, args?.now ?? new Date())
+        : null;
     }
 
     /** Max age for the cached adaptive window policy (30 minutes). */

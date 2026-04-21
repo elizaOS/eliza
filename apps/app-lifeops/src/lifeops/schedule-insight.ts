@@ -18,6 +18,7 @@ import {
   type LifeOpsActivityWindow,
   type LifeOpsSleepEpisode,
 } from "./sleep-cycle.js";
+import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import { getZonedDateParts } from "./time.js";
 
 const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
@@ -509,6 +510,23 @@ function analyzeLifeOpsScheduleInsight(args: {
 
   const sleepStatus = sleepCycle.sleepStatus;
   const effectiveDayKey = dayBoundary.effectiveDayKey;
+  const wakeAt = sleepCycle.lastSleepEndedAt;
+  const relativeTime = resolveLifeOpsRelativeTime({
+    nowMs: args.nowMs,
+    timezone: args.timezone,
+    dayBoundary,
+    schedule: {
+      phase,
+      isProbablySleeping: sleepCycle.isProbablySleeping,
+      sleepConfidence: sleepCycle.sleepConfidence,
+      currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
+      lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
+      lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
+      typicalSleepHour,
+      wakeAt,
+      firstActiveAt: toIso(firstActiveAtMs),
+    },
+  });
 
   return {
     insight: {
@@ -517,6 +535,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       timezone: args.timezone,
       inferredAt: new Date(args.nowMs).toISOString(),
       phase,
+      relativeTime,
       sleepStatus,
       isProbablySleeping: sleepCycle.isProbablySleeping,
       sleepConfidence: sleepCycle.sleepConfidence,
@@ -526,7 +545,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       lastSleepDurationMinutes: sleepCycle.lastSleepDurationMinutes,
       typicalWakeHour: median(candidateWakeHours),
       typicalSleepHour,
-      wakeAt: sleepCycle.lastSleepEndedAt,
+      wakeAt,
       firstActiveAt: toIso(firstActiveAtMs),
       lastActiveAt: toIso(lastActiveAtMs),
       meals,
@@ -590,6 +609,7 @@ export async function inspectLifeOpsSchedule(args: {
       activityEventCount: activityEvents.length,
       sleepCycle: analysis.sleepCycle,
       dayBoundary: analysis.dayBoundary,
+      relativeTime: analysis.insight.relativeTime,
     },
     createdAt: untilAt,
     updatedAt: untilAt,
