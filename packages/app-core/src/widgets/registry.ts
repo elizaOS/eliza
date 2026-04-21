@@ -14,8 +14,8 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
 // -- Bundled widget component imports ----------------------------------------
 
-import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/plugins/agent-orchestrator";
-import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/plugins/todo";
+import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
+import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 
 // -- Static component registry -----------------------------------------------
