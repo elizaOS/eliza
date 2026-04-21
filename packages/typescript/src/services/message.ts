@@ -3432,9 +3432,37 @@ export class DefaultMessageService implements IMessageService {
 			);
 			// Skip LLM should-respond classification when no text delegate is
 			// registered — `dynamicPromptExecFromState` would throw "No handler found".
-			shouldRespondToMessage = true;
+			// Still apply the same non-LLM gates as `runNonAutonomousShouldRespondClassify`:
+			// only respond for DM / mention / reply / whitelisted source / etc. Ambiguous
+			// group traffic that would need the classifier must not auto-reply with
+			// NO_LLM_PROVIDER_REPLY (channel flood).
+			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+			const responseDecision = this.shouldRespond(
+				runtime,
+				message,
+				room ?? undefined,
+				mentionContext,
+			);
+			if (!checkShouldRespondEnabled) {
+				shouldRespondToMessage = true;
+			} else if (responseDecision.skipEvaluation) {
+				routedDecision = parseContextRoutingMetadata(
+					responseDecision as unknown as Record<string, unknown>,
+				);
+				setContextRoutingMetadata(message, routedDecision);
+				shouldRespondToMessage = responseDecision.shouldRespond;
+			} else {
+				runtime.logger.debug(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						reason: responseDecision.reason,
+					},
+					"No text-generation handler: skipping message that requires LLM should-respond",
+				);
+				shouldRespondToMessage = false;
+			}
 			terminalDecision = null;
-			routedDecision = null;
 			dualPressureLog = null;
 			shouldRespondClassifierAction = null;
 		} else {

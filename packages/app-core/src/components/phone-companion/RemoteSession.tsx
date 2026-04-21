@@ -68,6 +68,8 @@ function assertSafeCompanionIngressUrl(ingressUrl: string): URL {
 /**
  * Builds the noVNC viewer URL from a validated pairing ingress URL.
  * The ingress hosts noVNC at `/vnc` and the input WS at `/input`.
+ * Uses the URL API so `/vnc` is joined on pathname, not appended after `?query`
+ * (e.g. `wss://host/path/input?k=v` would otherwise yield `...?k=v/vnc`).
  */
 function buildViewerUrl(ingressUrl: URL, payload: PairingPayload): string {
   const viewerUrl = new URL(ingressUrl.toString());
