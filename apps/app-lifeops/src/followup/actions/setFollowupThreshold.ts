@@ -6,7 +6,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { asUUID, logger } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 import {
   type ContactInfo,
   getRelationshipsServiceLike,

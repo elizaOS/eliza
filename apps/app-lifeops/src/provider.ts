@@ -6,7 +6,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { LifeOpsService } from "./lifeops/service.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 
 function formatSettingsLine(
   settings: Awaited<ReturnType<LifeOpsService["getBrowserSettings"]>>,

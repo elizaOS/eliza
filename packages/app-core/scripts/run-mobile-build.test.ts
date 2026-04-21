@@ -69,6 +69,20 @@ describe("run-mobile-build", () => {
         "ios",
         "App",
         "App",
+        "MiladyIntentPlugin.swift",
+      ),
+      "intent-plugin\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App",
         "WebsiteBlockerContentExtension",
         "ActionRequestHandler.swift",
       ),
@@ -144,6 +158,7 @@ describe("run-mobile-build", () => {
     expect(iosCopied).toEqual([
       path.join("App", "Podfile"),
       path.join("App", "App.xcodeproj", "project.pbxproj"),
+      path.join("App", "App", "MiladyIntentPlugin.swift"),
       path.join(
         "App",
         "App",
@@ -169,6 +184,18 @@ describe("run-mobile-build", () => {
         "utf8",
       ),
     ).toBe("ios-project\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "MiladyIntentPlugin.swift",
+        ),
+        "utf8",
+      ),
+    ).toBe("intent-plugin\n");
     expect(
       fs.readFileSync(
         path.join(

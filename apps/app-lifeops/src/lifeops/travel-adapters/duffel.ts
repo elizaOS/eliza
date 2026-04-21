@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 
 // ---------------------------------------------------------------------------
 // Config

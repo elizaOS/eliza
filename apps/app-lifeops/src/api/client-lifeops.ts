@@ -233,13 +233,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getSignalConnectorStatus(
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsSignalConnectorStatus>;
-    startSignalPairing(
+    startLifeOpsSignalPairing(
       data?: StartLifeOpsSignalPairingRequest,
     ): Promise<StartLifeOpsSignalPairingResponse>;
-    getSignalPairingStatus(
+    getLifeOpsSignalPairingStatus(
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
-    stopSignalPairing(sessionId: string): Promise<void>;
+    stopLifeOpsSignalPairing(sessionId: string): Promise<void>;
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
@@ -822,31 +822,31 @@ ElizaClient.prototype.getSignalConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/signal/status${query}`);
 };
 
-ElizaClient.prototype.startSignalPairing = async function (
+ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   this: ElizaClient,
-  data = {},
-) {
+  data: StartLifeOpsSignalPairingRequest = {},
+): Promise<StartLifeOpsSignalPairingResponse> {
   return this.fetch("/api/lifeops/connectors/signal/pair", {
     method: "POST",
     body: JSON.stringify(data),
-  });
+  }) as Promise<StartLifeOpsSignalPairingResponse>;
 };
 
-ElizaClient.prototype.getSignalPairingStatus = async function (
+ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
   this: ElizaClient,
-  sessionId,
-) {
+  sessionId: string,
+): Promise<LifeOpsSignalPairingStatus> {
   const params = new URLSearchParams({ sessionId });
   return this.fetch(
     `/api/lifeops/connectors/signal/pairing-status?${params.toString()}`,
-  );
+  ) as Promise<LifeOpsSignalPairingStatus>;
 };
 
-ElizaClient.prototype.stopSignalPairing = async function (
+ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
   this: ElizaClient,
-  sessionId,
-) {
-  return this.fetch("/api/lifeops/connectors/signal/stop", {
+  sessionId: string,
+): Promise<void> {
+  await this.fetch("/api/lifeops/connectors/signal/stop", {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });

@@ -15,7 +15,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
 
@@ -27,7 +27,7 @@ async function loadBaseAction(): Promise<Action | null> {
   try {
     // Dynamic import so a missing peer dependency does not break plugin load.
     const mod = (await import(
-      /* @vite-ignore */ "@elizaos/plugin-computeruse"
+      /* @vite-ignore */ "../../../../plugins/plugin-computeruse/src/index.ts"
     )) as {
       useComputerAction?: Action;
       default?: { actions?: readonly Action[] };

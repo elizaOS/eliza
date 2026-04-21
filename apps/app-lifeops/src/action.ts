@@ -10,7 +10,7 @@ import {
   LifeOpsService,
   LifeOpsServiceError,
 } from "./lifeops/service.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,

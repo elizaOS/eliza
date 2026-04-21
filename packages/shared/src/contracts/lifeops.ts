@@ -212,6 +212,9 @@ export const LIFEOPS_REMINDER_CHANNELS = [
   "signal",
   "whatsapp",
   "imessage",
+  "email",
+  "push",
+  "cloud",
 ] as const;
 export type LifeOpsReminderChannel = (typeof LIFEOPS_REMINDER_CHANNELS)[number];
 

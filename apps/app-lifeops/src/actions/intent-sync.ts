@@ -6,7 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasAdminAccess } from "@elizaos/agent";
 import {
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,

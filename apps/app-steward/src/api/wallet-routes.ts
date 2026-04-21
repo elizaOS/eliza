@@ -4,7 +4,7 @@ import type {
   RouteRequestMeta,
 } from "@elizaos/agent/api/route-helpers";
 import type { ElizaConfig } from "@elizaos/agent/config/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

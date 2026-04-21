@@ -8,7 +8,6 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserCompanionAutoPairRequest,
   CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -50,7 +49,7 @@ import type {
   VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_ACTIVITY_SIGNAL_STATES } from "@elizaos/shared/contracts/lifeops";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -1473,17 +1472,10 @@ export async function handleLifeOpsRoutes(
       return true;
     }
     const body =
-      await readJsonBody<CreateLifeOpsBrowserCompanionAutoPairRequest>(
-        req,
-        res,
-      );
+      await readJsonBody<CreateLifeOpsBrowserCompanionPairingRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.autoPairBrowserCompanion(body, ctx.url.origin),
-        201,
-      );
+      json(res, await service.createBrowserCompanionPairing(body), 201);
     });
   }
 

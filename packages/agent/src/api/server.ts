@@ -356,6 +356,7 @@ const nodeRequire = createRequire(import.meta.url);
 // any consumer reads the binding.
 let agentOrchestratorCompat: unknown = null;
 try {
+  // @ts-expect-error Optional plugin package is not present in every workspace.
   agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
 } catch {
   agentOrchestratorCompat = null;
@@ -4027,6 +4028,7 @@ async function handleRequest(
           ),
         stop: (pluginManager, name, runId) =>
           state.appManager.stop(pluginManager, name, runId),
+        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           state.appManager.getInfo(pluginManager, name),
       },

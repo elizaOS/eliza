@@ -295,10 +295,10 @@ export function AppearanceSettingsSection() {
             const isActive = themeId === theme.id;
             const colors = isDark ? theme.dark : theme.light;
             const swatches: Array<[string, string]> = [
-              ["bg", colors.bg],
-              ["card", colors.card],
-              ["accent", colors.accent],
-              ["text", colors.text],
+              ["bg", colors.bg ?? ""],
+              ["card", colors.card ?? ""],
+              ["accent", colors.accent ?? ""],
+              ["text", colors.text ?? ""],
             ];
             return (
               <button
