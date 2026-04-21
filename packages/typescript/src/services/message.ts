@@ -527,6 +527,28 @@ interface StrategyResult {
 }
 
 /**
+ * True when a plugin registered at least one core text delegate (chat / planning).
+ * Embeddings-only (local-ai) and TTS do not count — without this, ACTION_PLANNER
+ * and TEXT_LARGE fail with "No handler found for delegate type".
+ */
+function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
+	const keys: Array<keyof typeof ModelType | string> = [
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_NANO,
+		ModelType.TEXT_MEGA,
+	];
+	for (const k of keys) {
+		if (runtime.getModel(String(k))) return true;
+	}
+	return false;
+}
+
+const NO_LLM_PROVIDER_REPLY =
+	"No chat model is configured. Add an API key to your environment (for example OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY in `.env`) or connect Eliza Cloud (ELIZAOS_CLOUD_API_KEY) in Settings — then restart the dev server. The log line “No AI provider plugin was loaded” means no provider plugin was registered.";
+
+/**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
@@ -2130,30 +2152,62 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 
-			const result = opts.useMultiStep
-				? await this.runMultiStepCore(
-						runtime,
-						message,
-						executionState,
-						callback,
-						opts,
-						responseId,
-						promptAttachments,
+			let result: StrategyResult;
+			if (!hasTextGenerationHandler(runtime)) {
+				runtime.logger.warn(
+					{ src: "service:message", agentId: runtime.agentId },
+					NO_LLM_PROVIDER_REPLY,
+				);
+				const cfgContent: Content = {
+					text: NO_LLM_PROVIDER_REPLY,
+					thought: "Configuration: no LLM provider plugin loaded.",
+					actions: ["REPLY"],
+					simple: true,
+					...(message.id
+						? { inReplyTo: createUniqueUuid(runtime, message.id) }
+						: {}),
+				};
+				result = {
+					responseContent: cfgContent,
+					responseMessages: [
 						{
-							precomposedState: executionState,
+							id: asUUID(v4()),
+							entityId: runtime.agentId,
+							agentId: runtime.agentId,
+							content: cfgContent,
+							roomId: message.roomId,
+							createdAt: Date.now(),
 						},
-					)
-				: await this.runSingleShotCore(
-						runtime,
-						message,
-						executionState,
-						opts,
-						responseId,
-						promptAttachments,
-						{
-							precomposedState: executionState,
-						},
-					);
+					],
+					state: executionState,
+					mode: "simple",
+				};
+			} else {
+				result = opts.useMultiStep
+					? await this.runMultiStepCore(
+							runtime,
+							message,
+							executionState,
+							callback,
+							opts,
+							responseId,
+							promptAttachments,
+							{
+								precomposedState: executionState,
+							},
+						)
+					: await this.runSingleShotCore(
+							runtime,
+							message,
+							executionState,
+							opts,
+							responseId,
+							promptAttachments,
+							{
+								precomposedState: executionState,
+							},
+						);
+			}
 
 			responseContent = result.responseContent;
 			responseMessages = result.responseMessages;

@@ -862,11 +862,19 @@ const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 		ModelType.RESPONSE_HANDLER,
 		ModelType.TEXT_NANO,
 		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_MEGA,
 	],
+	// Planner delegates prefer dedicated handlers, then lighter text models, then
+	// TEXT_LARGE/TEXT_MEGA so installs that only register a primary model (common
+	// for BYOK / minimal plugins) still resolve instead of "No handler found".
 	[ModelType.ACTION_PLANNER]: [
 		ModelType.ACTION_PLANNER,
 		ModelType.TEXT_MEDIUM,
 		ModelType.TEXT_SMALL,
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_MEGA,
 	],
 };
 
