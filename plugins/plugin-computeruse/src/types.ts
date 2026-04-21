@@ -136,29 +136,41 @@ export interface ComputerUseResult {
   success: boolean;
   message?: string;
   error?: string;
-  permissionDenied?: true;
+  permissionDenied?: boolean;
   permissionType?: PermissionType;
-  approvalRequired?: true;
+  approvalRequired?: boolean;
   approvalId?: string;
 }
 
 export interface ComputerActionResult extends ComputerUseResult {
   /** Base64-encoded PNG screenshot taken after the action */
   screenshot?: string;
+  /** Structured data payload (e.g. OCR/detect results) */
+  data?: unknown;
 }
 
 export interface BrowserActionResult extends ComputerUseResult {
   /** Base64-encoded PNG for screenshot action */
   screenshot?: string;
+  /** Front-end proxy screenshot variant */
+  frontendScreenshot?: string;
   /** Text content for dom, state, clickables, execute results */
   content?: string;
   /** Structured data (e.g. tab list, clickable elements) */
   data?: unknown;
+  url?: string;
+  title?: string;
+  isOpen?: boolean;
+  is_open?: boolean;
+  tabs?: BrowserTab[];
+  elements?: ClickableElement[];
+  count?: number;
 }
 
 export interface WindowActionResult extends ComputerUseResult {
   /** Window list for "list" action */
   windows?: WindowInfo[];
+  count?: number;
 }
 
 export type FileActionType =
@@ -168,6 +180,7 @@ export type FileActionType =
   | "append"
   | "delete"
   | "exists"
+  | "list"
   | "list_directory"
   | "delete_directory"
   | "upload"
@@ -177,11 +190,15 @@ export type FileActionType =
 export interface FileActionParams {
   action: FileActionType;
   path?: string;
+  filepath?: string;
+  dirpath?: string;
   content?: string;
   oldText?: string;
   newText?: string;
   old_text?: string;
   new_text?: string;
+  find?: string;
+  replace?: string;
   encoding?: BufferEncoding;
 }
 
@@ -197,6 +214,8 @@ export interface FileActionResult extends ComputerUseResult {
   exists?: boolean;
   isFile?: boolean;
   isDirectory?: boolean;
+  is_file?: boolean;
+  is_directory?: boolean;
   size?: number;
   count?: number;
   items?: FileEntry[];
@@ -223,9 +242,11 @@ export interface TerminalActionParams {
 
 export interface TerminalActionResult extends ComputerUseResult {
   sessionId?: string;
+  session_id?: string;
   cwd?: string;
   output?: string;
   exitCode?: number;
+  exit_code?: number;
 }
 
 // ── Shared Models ─────────────────────────────────────────────────────────

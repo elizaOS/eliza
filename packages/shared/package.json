@@ -33,6 +33,7 @@
     "./contracts/awareness": "./src/contracts/awareness.ts",
     "./contracts/config": "./src/contracts/config.ts",
     "./contracts/drop": "./src/contracts/drop.ts",
+    "./contracts/lifeops": "./src/contracts/lifeops.ts",
     "./contracts/onboarding": "./src/contracts/onboarding.ts",
     "./contracts/permissions": "./src/contracts/permissions.ts",
     "./contracts/service-routing": "./src/contracts/service-routing.ts",

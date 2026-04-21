@@ -89,7 +89,6 @@ export type {
   ComputerUseConfig,
   ComputerUseResult,
   PermissionType,
-  ApprovalMode,
   BrowserState,
   BrowserInfo,
   ClickableElement,

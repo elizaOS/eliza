@@ -461,6 +461,314 @@ export function analyzeMessages(
   | "typicalLastEventHour"
   | "avgWeekdayMeetings"
 >;
+export function analyzeMessages(
+  messages: MessageRecord[],
+  roomSourceMap: Map<string, string>,
+  ownerEntityId: string,
+  timezone: string,
+  windowDays: number,
+  now: Date,
+  activitySignals: ActivitySignalRecord[],
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+>;
+export function analyzeMessages(
+  messages: MessageRecord[],
+  roomSourceMap: Map<string, string>,
+  ownerEntityId: string,
+  timezone: string,
+  windowDays: number,
+  activitySignals?: ActivitySignalRecord[],
+  now?: Date,
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+>;
+export function analyzeMessages(
+  messages: MessageRecord[],
+  roomSourceMap: Map<string, string>,
+  ownerEntityId: string,
+  timezone: string,
+  windowDays: number,
+  firstOptionalArg?: Date | ActivitySignalRecord[],
+  secondOptionalArg?: Date | ActivitySignalRecord[],
+): Omit<
+  ActivityProfile,
+  | "hasCalendarData"
+  | "typicalFirstEventHour"
+  | "typicalLastEventHour"
+  | "avgWeekdayMeetings"
+> {
+  const currentTime =
+    firstOptionalArg instanceof Date
+      ? firstOptionalArg
+      : secondOptionalArg instanceof Date
+        ? secondOptionalArg
+        : new Date();
+  const activitySignals = Array.isArray(firstOptionalArg)
+    ? firstOptionalArg
+    : Array.isArray(secondOptionalArg)
+      ? secondOptionalArg
+      : [];
+  const windowStart = currentTime.getTime() - windowDays * 24 * 60 * 60 * 1000;
+
+  const ownerMessages = messages.filter(
+    (m) =>
+      m.entityId === ownerEntityId &&
+      m.createdAt >= windowStart &&
+      m.createdAt <= currentTime.getTime(),
+  );
+  const activeSignals = activitySignals.filter(
+    (signal) =>
+      signal.observedAt >= windowStart &&
+      isActiveSignal(signal, currentTime.getTime()),
+  );
+  const healthSnapshots = activitySignals
+    .map((signal) => parseHealthSnapshot(signal))
+    .filter((snapshot): snapshot is HealthSnapshot => snapshot !== null);
+
+  const platformMap = new Map<
+    string,
+    {
+      count: number;
+      buckets: Record<TimeBucket, number>;
+      lastAt: number;
+    }
+  >();
+
+  const aggregateBuckets = emptyBucketCounts();
+
+  for (const msg of ownerMessages) {
+    const source = roomSourceMap.get(msg.roomId) ?? "unknown";
+    let entry = platformMap.get(source);
+    if (!entry) {
+      entry = { count: 0, buckets: emptyBucketCounts(), lastAt: 0 };
+      platformMap.set(source, entry);
+    }
+
+    entry.count++;
+    if (msg.createdAt > entry.lastAt) entry.lastAt = msg.createdAt;
+
+    const parts = getZonedDateParts(new Date(msg.createdAt), timezone);
+    const bucket = classifyTimeBucket(parts.hour);
+    entry.buckets[bucket]++;
+    aggregateBuckets[bucket]++;
+  }
+
+  for (const signal of activeSignals) {
+    const source =
+      signal.platform.trim().length > 0 ? signal.platform : "client_chat";
+    let entry = platformMap.get(source);
+    if (!entry) {
+      entry = { count: 0, buckets: emptyBucketCounts(), lastAt: 0 };
+      platformMap.set(source, entry);
+    }
+
+    entry.count++;
+    if (signal.observedAt > entry.lastAt) entry.lastAt = signal.observedAt;
+
+    const parts = getZonedDateParts(new Date(signal.observedAt), timezone);
+    const bucket = classifyTimeBucket(parts.hour);
+    entry.buckets[bucket]++;
+    aggregateBuckets[bucket]++;
+  }
+
+  const platforms: PlatformActivity[] = Array.from(platformMap.entries())
+    .map(([source, data]) => ({
+      source,
+      messageCount: data.count,
+      bucketCounts: data.buckets,
+      lastMessageAt: data.lastAt,
+      averageMessagesPerDay: windowDays > 0 ? data.count / windowDays : 0,
+    }))
+    .sort((a, b) => b.messageCount - a.messageCount);
+
+  const totalMessages = ownerMessages.length;
+  const activityPointCount = totalMessages + activeSignals.length;
+  const threshold =
+    activityPointCount > 0
+      ? Math.max(activityPointCount * SIGNIFICANT_BUCKET_SHARE, 1)
+      : Infinity;
+
+  let typicalFirstActiveHour: number | null = null;
+  let typicalLastActiveHour: number | null = null;
+
+  // Walk buckets in chronological clock order so LATE_NIGHT (00:00–05:00) is
+  // treated as the earliest part of the day, not the latest. ALL_TIME_BUCKETS
+  // lists LATE_NIGHT last; iterating in that order would make a single 3 AM
+  // message overwrite typicalLastActiveHour to 3, landing GN scheduling in
+  // the past and causing it to spam every tick.
+  for (const bucket of CLOCK_ORDERED_TIME_BUCKETS) {
+    if (aggregateBuckets[bucket] >= threshold) {
+      const midHour = bucketMidpointHour(bucket);
+      if (typicalFirstActiveHour === null) typicalFirstActiveHour = midHour;
+      typicalLastActiveHour = midHour;
+    }
+  }
+
+  const sessions = buildActivitySessionsFromTimestamps(
+    [
+      ...ownerMessages.map((message) => message.createdAt),
+      ...activeSignals.map((signal) => signal.observedAt),
+    ],
+    timezone,
+  );
+  const sleepHoursFromHealth = healthSnapshots
+    .filter((snapshot) => snapshot.sleepStartedAt !== null)
+    .map(
+      (snapshot) =>
+        getZonedDateParts(new Date(snapshot.sleepStartedAt ?? 0), timezone)
+          .hour,
+    );
+  const wakeHoursFromHealth = healthSnapshots
+    .filter((snapshot) => snapshot.sleepEndedAt !== null)
+    .map(
+      (snapshot) =>
+        getZonedDateParts(new Date(snapshot.sleepEndedAt ?? 0), timezone).hour,
+    );
+  const wakeHours = sessions
+    .map((session) => session.startHour)
+    .concat(wakeHoursFromHealth)
+    .sort((left, right) => left - right);
+  const sleepHours = sessions
+    .map((session) => session.normalizedEndHour)
+    .concat(sleepHoursFromHealth)
+    .sort((left, right) => left - right);
+  const typicalWakeHour = wakeHours.length > 0 ? median(wakeHours) : null;
+  const typicalSleepHour = sleepHours.length > 0 ? median(sleepHours) : null;
+  const sleepDurations = healthSnapshots
+    .map((snapshot) => snapshot.durationMinutes)
+    .filter((value): value is number => typeof value === "number");
+  const typicalSleepDurationMinutes =
+    sleepDurations.length > 0
+      ? Math.round(
+          sleepDurations.reduce((sum, value) => sum + value, 0) /
+            sleepDurations.length,
+        )
+      : null;
+  const latestHealthSnapshot =
+    healthSnapshots.length > 0
+      ? ([...healthSnapshots].sort(
+          (left, right) => right.observedAt - left.observedAt,
+        )[0] ?? null)
+      : null;
+  const latestSleepingHealthSnapshot =
+    [...healthSnapshots]
+      .filter((snapshot) => snapshot.isSleeping)
+      .sort((left, right) => right.observedAt - left.observedAt)[0] ?? null;
+  const latestWakeHealthSnapshot =
+    [...healthSnapshots]
+      .filter((snapshot) => !snapshot.isSleeping)
+      .sort((left, right) => right.observedAt - left.observedAt)[0] ?? null;
+
+  const latestInteraction = resolveLatestInteractionSnapshot(
+    messages,
+    ownerEntityId,
+    roomSourceMap,
+    currentTime,
+    activeSignals,
+  );
+  let lastSeenAt = latestInteraction.lastSeenAt;
+  let lastSeenPlatform = latestInteraction.lastSeenPlatform;
+  if (latestHealthSnapshot) {
+    const healthBoundaryAt = latestHealthSnapshot.isSleeping
+      ? (latestHealthSnapshot.sleepStartedAt ?? latestHealthSnapshot.observedAt)
+      : (latestHealthSnapshot.sleepEndedAt ?? latestHealthSnapshot.observedAt);
+    if (healthBoundaryAt > lastSeenAt) {
+      lastSeenAt = healthBoundaryAt;
+      lastSeenPlatform = latestHealthSnapshot.platform;
+    }
+  }
+  const isCurrentlySleeping = latestHealthSnapshot?.isSleeping === true;
+  const hasSleepData = healthSnapshots.length > 0;
+  const lastSleepSignalAt =
+    latestSleepingHealthSnapshot?.sleepStartedAt ??
+    latestSleepingHealthSnapshot?.observedAt ??
+    null;
+  const lastWakeSignalAt =
+    latestWakeHealthSnapshot?.sleepEndedAt ??
+    latestWakeHealthSnapshot?.observedAt ??
+    null;
+  const hasOpenActivityCycle =
+    !isCurrentlySleeping &&
+    lastSeenAt > 0 &&
+    currentTime.getTime() - lastSeenAt <= SUSTAINED_INACTIVITY_GAP_MS;
+  const currentActivityCycle =
+    sessions.length > 0 ? sessions[sessions.length - 1] : null;
+  const latestInteractionStartsNewCycle =
+    !isCurrentlySleeping &&
+    lastSeenAt > 0 &&
+    (!currentActivityCycle || lastSeenAt > currentActivityCycle.endAt);
+  const currentActivityCycleStartedAt = latestInteractionStartsNewCycle
+    ? lastSeenAt
+    : isCurrentlySleeping
+      ? null
+      : (currentActivityCycle?.startAt ?? lastSeenAt);
+  const currentActivityCycleLocalDate = latestInteractionStartsNewCycle
+    ? localDateKeyForTimestamp(lastSeenAt, timezone)
+    : isCurrentlySleeping
+      ? lastSleepSignalAt !== null
+        ? localDateKeyForTimestamp(lastSleepSignalAt, timezone)
+        : localDateKeyForTimestamp(currentTime.getTime(), timezone)
+      : (currentActivityCycle?.startDayKey ??
+        localDateKeyForTimestamp(lastSeenAt, timezone));
+
+  return {
+    ownerEntityId,
+    analyzedAt: currentTime.getTime(),
+    analysisWindowDays: windowDays,
+    timezone,
+    totalMessages,
+    sustainedInactivityThresholdMinutes: SUSTAINED_INACTIVITY_GAP_MS / 60_000,
+    platforms,
+    primaryPlatform: platforms[0]?.source ?? null,
+    secondaryPlatform: platforms[1]?.source ?? null,
+    bucketCounts: aggregateBuckets,
+    typicalFirstActiveHour,
+    typicalLastActiveHour,
+    typicalWakeHour,
+    typicalSleepHour,
+    hasSleepData,
+    isCurrentlySleeping,
+    lastSleepSignalAt,
+    lastWakeSignalAt,
+    sleepSourcePlatform: latestHealthSnapshot?.platform ?? null,
+    sleepSource: latestHealthSnapshot?.source ?? null,
+    typicalSleepDurationMinutes,
+    lastSeenAt,
+    lastSeenPlatform,
+    isCurrentlyActive:
+      !isCurrentlySleeping &&
+      currentTime.getTime() - lastSeenAt < ACTIVE_THRESHOLD_MS,
+    hasOpenActivityCycle,
+    currentActivityCycleStartedAt,
+    currentActivityCycleLocalDate,
+    effectiveDayKey: hasOpenActivityCycle
+      ? (currentActivityCycleLocalDate ??
+        localDateKeyForTimestamp(currentTime.getTime(), timezone))
+      : isCurrentlySleeping
+        ? (currentActivityCycleLocalDate ??
+          (lastSleepSignalAt !== null
+            ? localDateKeyForTimestamp(lastSleepSignalAt, timezone)
+            : localDateKeyForTimestamp(currentTime.getTime(), timezone)))
+        : localDateKeyForTimestamp(currentTime.getTime(), timezone),
+    screenContextFocus: null,
+    screenContextSource: null,
+    screenContextSampledAt: null,
+    screenContextConfidence: null,
+    screenContextBusy: false,
+    screenContextAvailable: false,
+    screenContextStale: false,
+  };
+}
+
 // ── Calendar enrichment ────────────────────────────────
 
 export function enrichWithCalendar(

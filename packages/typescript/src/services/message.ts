@@ -1464,6 +1464,413 @@ const ROUTING_REASSESS_ACTIONS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
+const ACTION_OWNERSHIP_STOPWORDS = new Set([
+	"a",
+	"an",
+	"and",
+	"are",
+	"as",
+	"at",
+	"be",
+	"because",
+	"can",
+	"could",
+	"do",
+	"for",
+	"from",
+	"get",
+	"go",
+	"here",
+	"i",
+	"if",
+	"in",
+	"into",
+	"is",
+	"it",
+	"just",
+	"let",
+	"me",
+	"my",
+	"now",
+	"of",
+	"on",
+	"or",
+	"our",
+	"please",
+	"so",
+	"that",
+	"the",
+	"them",
+	"this",
+	"to",
+	"up",
+	"we",
+	"when",
+	"with",
+	"you",
+	"your",
+]);
+
+const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
+	/\b(?:if|when)\b/iu,
+	/\b(?:upload|send over|send|attach)\b/iu,
+	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
+	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
+	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
+	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
+	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
+	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
+];
+
+const ACTION_METADATA_FUTURE_HINTS = /\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
+
+type ActionOwnershipSuggestion = {
+	actionName: string;
+	score: number;
+	secondBestScore: number;
+	reasons: string[];
+};
+
+type ActionOwnershipCandidate = {
+	actionName: string;
+	score: number;
+	reasons: string[];
+};
+
+function tokenizeOwnershipText(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^a-z0-9]+/u)
+		.map((token) => token.trim())
+		.filter(
+			(token) =>
+				token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
+		);
+}
+
+function buildTokenSet(text: string): Set<string> {
+	return new Set(tokenizeOwnershipText(text));
+}
+
+function exampleContentText(action: Action): string[] {
+	return (action.examples ?? []).flatMap((example) =>
+		example.flatMap((turn) => {
+			const text =
+				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
+			return text.length > 0 ? [text] : [];
+		}),
+	);
+}
+
+function splitActionMetadataText(value: string): string[] {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		return [];
+	}
+	return trimmed
+		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
+		.map((chunk) => chunk.trim())
+		.filter((chunk) => chunk.length > 0);
+}
+
+function actionMetadataTexts(action: Action): string[] {
+	return [
+		action.name,
+		action.description,
+		action.descriptionCompressed,
+		...(action.tags ?? []),
+		...(action.similes ?? []),
+		...exampleContentText(action),
+	]
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim().length > 0,
+		)
+		.flatMap((value) => splitActionMetadataText(value));
+}
+
+function scoreActionOwnershipMatch(
+	messageText: string,
+	action: Action,
+): { score: number; reasons: string[] } {
+	const messageTokens = buildTokenSet(messageText);
+	if (messageTokens.size === 0) {
+		return { score: 0, reasons: [] };
+	}
+
+	let score = 0;
+	const reasons: string[] = [];
+	let bestExampleScore = 0;
+	const normalizedMessage = messageText.toLowerCase();
+	const actionMetadataBlob = actionMetadataTexts(action).join(" ").toLowerCase();
+
+	for (const chunk of actionMetadataTexts(action)) {
+		const chunkTokens = buildTokenSet(chunk);
+		if (chunkTokens.size === 0) {
+			continue;
+		}
+		const overlap = [...messageTokens].filter((token) => chunkTokens.has(token));
+		if (overlap.length === 0) {
+			continue;
+		}
+		const normalizedChunk = chunk.toLowerCase();
+		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
+		if (
+			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
+				normalizedChunk,
+			)
+		) {
+			score -= overlap.length * 1.25 + overlapRatio;
+			if (overlap.length >= 2) {
+				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
+			}
+			continue;
+		}
+		score += overlap.length * 1.25 + overlapRatio;
+		if (overlap.length >= 2) {
+			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
+		}
+
+		if (
+			normalizedChunk.length > 12 &&
+			(normalizedMessage.includes(normalizedChunk) ||
+				normalizedChunk.includes(normalizedMessage))
+		) {
+			score += 3;
+			reasons.push("phrase");
+		}
+
+		const exampleTokens = tokenizeOwnershipText(chunk);
+		if (exampleTokens.length >= 3) {
+			const exampleOverlap = overlap.length / exampleTokens.length;
+			if (exampleOverlap > bestExampleScore) {
+				bestExampleScore = exampleOverlap;
+			}
+		}
+	}
+
+	if (bestExampleScore >= 0.6) {
+		score += 4;
+		reasons.push("example");
+	}
+
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		) &&
+		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
+			actionMetadataBlob,
+		)
+	) {
+		score += 4;
+		reasons.push("schedule-policy");
+	}
+
+	if (
+		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText)) &&
+		ACTION_METADATA_FUTURE_HINTS.test(
+			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
+				.filter(Boolean)
+				.join(" "),
+		)
+	) {
+		score += 2;
+		reasons.push("workflow");
+	}
+
+	return { score, reasons };
+}
+
+function findDirectOwnedActionSuggestion(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageText: string,
+): ActionOwnershipSuggestion | null {
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		)
+	) {
+		const ownerCalendarAction = (runtime.actions ?? []).find((action) => {
+			const normalizedName = normalizeActionIdentifier(action.name);
+			if (normalizedName === normalizeActionIdentifier("OWNER_CALENDAR")) {
+				return true;
+			}
+			return (action.similes ?? []).some(
+				(simile) =>
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("UPDATE_MEETING_PREFERENCES") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("NO_CALL_HOURS") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("PROTECT_SLEEP"),
+			);
+		});
+		if (ownerCalendarAction) {
+			return {
+				actionName: ownerCalendarAction.name,
+				score: 100,
+				secondBestScore: 0,
+				reasons: ["direct:schedule-policy"],
+			};
+		}
+	}
+
+	return null;
+}
+
+export function suggestOwnedActionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+): ActionOwnershipSuggestion | null {
+	const messageText =
+		typeof message.content?.text === "string" ? message.content.text.trim() : "";
+	if (
+		messageText.length === 0 ||
+		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) => pattern.test(messageText))
+	) {
+		return null;
+	}
+
+	const directSuggestion = findDirectOwnedActionSuggestion(runtime, messageText);
+	if (directSuggestion) {
+		return directSuggestion;
+	}
+
+	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
+		.filter((action) => {
+			const normalized = normalizeActionIdentifier(action.name);
+			return (
+				normalized.length > 0 &&
+				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
+				normalized !== normalizeActionIdentifier("IGNORE") &&
+				normalized !== normalizeActionIdentifier("STOP")
+			);
+		})
+		.map((action) => ({
+			actionName: action.name,
+			...scoreActionOwnershipMatch(messageText, action),
+		}))
+		.filter((candidate) => candidate.score > 0)
+		.sort((left, right) => right.score - left.score);
+
+	if (ranked.length === 0) {
+		return null;
+	}
+
+	const best = ranked[0];
+	const secondBestScore = ranked[1]?.score ?? 0;
+	if (best.score < 8 || best.score - secondBestScore < 1.5) {
+		return null;
+	}
+
+	return {
+		actionName: best.actionName,
+		score: best.score,
+		secondBestScore,
+		reasons: best.reasons,
+	};
+}
+
+function findOwnedActionCorrectionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): ActionOwnershipSuggestion | null {
+	const currentAction = responseContent?.actions?.find(
+		(actionName) =>
+			typeof actionName === "string" &&
+			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+				normalizeActionIdentifier(actionName),
+			) &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("IGNORE") &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("STOP"),
+	);
+	if (!currentAction) {
+		return null;
+	}
+
+	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
+	if (!suggestion) {
+		return null;
+	}
+
+	if (
+		normalizeActionIdentifier(suggestion.actionName) ===
+		normalizeActionIdentifier(currentAction)
+	) {
+		return null;
+	}
+
+	const currentActionDef = (runtime.actions ?? []).find(
+		(action) =>
+			normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier(currentAction),
+	);
+	const currentScore = currentActionDef
+		? scoreActionOwnershipMatch(
+				typeof message.content?.text === "string" ? message.content.text : "",
+				currentActionDef,
+			).score
+		: 0;
+	if (suggestion.score - currentScore < 4) {
+		return null;
+	}
+
+	return suggestion;
+}
+
+function hasNonPassiveAction(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	return (
+		responseContent?.actions?.some(
+			(actionName) =>
+				typeof actionName === "string" &&
+				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+					normalizeActionIdentifier(actionName),
+				) &&
+				normalizeActionIdentifier(actionName) !==
+					normalizeActionIdentifier("IGNORE") &&
+				normalizeActionIdentifier(actionName) !==
+					normalizeActionIdentifier("STOP"),
+		) ?? false
+	);
+}
+
+function shouldAttemptActionRescue(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Memory,
+	state: State,
+	responseContent: Pick<Content, "actions" | "providers" | "text"> | null | undefined,
+): boolean {
+	if (!responseContent) {
+		return false;
+	}
+
+	if (hasNonPassiveAction(responseContent)) {
+		return false;
+	}
+
+	if (looksLikeNonActionableChatter(message)) {
+		return false;
+	}
+
+	const availableActionNames =
+		typeof state.values?.actionNames === "string"
+			? state.values.actionNames
+			: "";
+	if (
+		availableActionNames.trim().length === 0 &&
+		(runtime.actions?.length ?? 0) === 0
+	) {
+		return false;
+	}
+
+	return true;
+}
+
 function getMessageText(message: Memory): string {
 	return typeof message.content?.text === "string" ? message.content.text : "";
 }

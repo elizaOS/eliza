@@ -26,6 +26,10 @@ vi.mock("@elizaos/app-core/bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => isElectrobunRuntimeMock(),
 }));
 
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => isElectrobunRuntimeMock(),
+}));
+
 vi.mock("@elizaos/app-core/components/cloud/CloudStatusBadge", () => ({
   CloudStatusBadge: () => <div data-testid="header-cloud-status" />,
 }));

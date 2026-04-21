@@ -4,7 +4,7 @@ import {
 } from "@elizaos/app-companion/ui";
 import { Button } from "@elizaos/ui";
 import { ListTodo, Settings } from "lucide-react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useBranding } from "../../config/branding";

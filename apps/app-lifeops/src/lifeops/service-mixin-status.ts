@@ -13,6 +13,7 @@ import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
+import type { HealthBackend } from "./health-bridge.js";
 import type { LifeOpsScheduleMergedState } from "./schedule-sync-contracts.js";
 import {
   LIFEOPS_TASK_NAME,
@@ -23,11 +24,11 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 type HealthConnectorStatus = {
   available: boolean;
-  backend: string;
+  backend: HealthBackend;
   lastCheckedAt: string;
 };
 
-type StatusMixinDependencies = LifeOpsServiceBase & {
+export type StatusMixinDependencies = LifeOpsServiceBase & {
   runtime: IAgentRuntime;
   getScheduleMergedState(args?: {
     timezone?: string | null;
