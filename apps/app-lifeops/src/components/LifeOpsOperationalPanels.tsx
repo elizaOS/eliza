@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Send,
   Sparkles,
-  UserRound,
   Wand2,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -367,7 +366,6 @@ export function LifeOpsXPanel() {
     t("lifeopspanels.notConnected", { defaultValue: "Not connected" }),
   );
   const mode = status?.mode ?? "local";
-  const missingRoutes = true;
 
   const handlePost = useCallback(() => {
     const text = draft.trim();
@@ -457,28 +455,6 @@ export function LifeOpsXPanel() {
               ? t("lifeopspanels.reconnectX", { defaultValue: "Reconnect X" })
               : t("lifeopspanels.connectX", { defaultValue: "Connect X" })}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled
-            title="No HTTP route is exposed for X digest yet."
-          >
-            {t("lifeopspanels.readDigest", {
-              defaultValue: "Read digest",
-            })}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled
-            title="No HTTP route is exposed for X curation yet."
-          >
-            {t("lifeopspanels.curateFeed", {
-              defaultValue: "Curate feed",
-            })}
-          </Button>
         </div>
 
         <Textarea
@@ -491,9 +467,6 @@ export function LifeOpsXPanel() {
         />
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted">
-            {missingRoutes
-              ? "Digest and curation backend routes are missing."
-              : ""}
             {x.lastPost?.postId
               ? ` Last post ${x.lastPost.postId}.`
               : x.lastPost
@@ -529,48 +502,6 @@ export function LifeOpsXPanel() {
       ) : null}
 
       {x.error ? <div className="text-xs text-danger">{x.error}</div> : null}
-    </PanelShell>
-  );
-}
-
-export function LifeOpsProfilePanel() {
-  const { t } = useApp();
-  return (
-    <PanelShell
-      title={t("lifeopspanels.profile", { defaultValue: "Profile" })}
-      icon={<UserRound className="h-4 w-4 shrink-0 text-muted" />}
-      status={
-        <Badge variant="outline" className="text-2xs">
-          Missing route
-        </Badge>
-      }
-    >
-      <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-xs text-muted">
-        {t("lifeopspanels.profileMissing", {
-          defaultValue:
-            "No dashboard HTTP endpoint exists for owner profile read/load yet.",
-        })}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled
-          title="No profile read route exists yet."
-        >
-          {t("lifeopspanels.readProfile", { defaultValue: "Read profile" })}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled
-          title="No profile load route exists yet."
-        >
-          {t("lifeopspanels.loadProfile", { defaultValue: "Load profile" })}
-        </Button>
-      </div>
     </PanelShell>
   );
 }

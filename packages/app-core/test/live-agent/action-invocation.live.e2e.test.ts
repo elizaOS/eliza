@@ -16,6 +16,7 @@ import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/cal
 import { detectHealthBackend } from "@elizaos/app-lifeops/lifeops/health-bridge";
 import { detectPasswordManagerBackend } from "@elizaos/app-lifeops/lifeops/password-manager-bridge";
 import { detectRemoteDesktopBackend } from "@elizaos/app-lifeops/lifeops/remote-desktop";
+import { LifeOpsRepository } from "@elizaos/app-lifeops/lifeops/repository";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/twilio";
 import { appLifeOpsPlugin } from "@elizaos/app-lifeops/plugin";
@@ -74,6 +75,7 @@ describe("Action Invocation E2E", () => {
   let twilioConfigured = false;
   let websiteBlockingAvailable = false;
   let xReadConnected = false;
+  let previousDisableLifeOpsScheduler: string | undefined;
 
   /**
    * Returns true if the action is registered. If not, emits a clearly-marked
@@ -185,6 +187,9 @@ describe("Action Invocation E2E", () => {
     process.env.ENABLE_TRAJECTORIES = "false";
     process.env.ELIZA_TRAJECTORY_LOGGING = "false";
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+    previousDisableLifeOpsScheduler =
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
 
     const result = await createRealTestRuntime({
       withLLM: true,
@@ -197,6 +202,7 @@ describe("Action Invocation E2E", () => {
     runtime = result.runtime;
     cleanup = result.cleanup;
     initialized = true;
+    await LifeOpsRepository.bootstrapSchema(runtime);
 
     const removedEvaluators = runtime.evaluators.map((e) => e.name);
     runtime.evaluators.splice(0, runtime.evaluators.length);
@@ -240,6 +246,12 @@ describe("Action Invocation E2E", () => {
   afterAll(async () => {
     if (cleanup) {
       await cleanup();
+    }
+    if (previousDisableLifeOpsScheduler === undefined) {
+      delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    } else {
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
+        previousDisableLifeOpsScheduler;
     }
   }, 150_000);
 

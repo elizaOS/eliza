@@ -82,18 +82,13 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
           try {
             const next = await client.getDiscordConnectorStatus(side);
             setStatus(next);
-            if (
-              next.reason !== "pairing" &&
-              next.reason !== "auth_pending"
-            ) {
+            if (next.reason !== "pairing" && next.reason !== "auth_pending") {
               clearPoll();
             }
+            setError(null);
           } catch (cause) {
-            // Keep polling across transient errors; log so a persistently
-            // broken backend is discoverable in the browser console.
-            console.warn(
-              "[useDiscordConnector] status poll failed",
-              cause,
+            setError(
+              formatError(cause, "Discord connector status poll failed."),
             );
           }
         })();

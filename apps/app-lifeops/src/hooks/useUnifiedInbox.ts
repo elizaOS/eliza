@@ -1,22 +1,12 @@
-/**
- * useUnifiedInbox — fetches and filters the LifeOps unified inbox.
- *
- * Wraps client.getLifeOpsGmailTriage() for the owner Google account and
- * surfaces normalised messages. When Stream C lands and adds
- * client.getLifeOpsUnifiedInbox(), the fetcher below should be swapped in.
- *
- * TODO: replace fetcher with client.getLifeOpsUnifiedInbox() when Stream C
- * contract lands.
- */
-
 import { client, useApp } from "@elizaos/app-core";
 import type {
-  LifeOpsGmailMessageSummary,
-  LifeOpsGmailTriageFeed,
+  LifeOpsInboxChannel,
+  LifeOpsUnifiedInbox,
+  LifeOpsUnifiedMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-export type InboxChannel = "all" | "gmail";
+export type InboxChannel = "all" | LifeOpsInboxChannel;
 
 export interface UseUnifiedInboxOptions {
   maxResults?: number;
@@ -25,14 +15,12 @@ export interface UseUnifiedInboxOptions {
 }
 
 export interface UseUnifiedInboxResult {
-  messages: LifeOpsGmailMessageSummary[];
+  messages: LifeOpsUnifiedMessage[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  /** Active channel filter */
   channel: InboxChannel;
   setChannel: (ch: InboxChannel) => void;
-  /** Live search query string */
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 }
@@ -43,7 +31,7 @@ export function useUnifiedInbox(
   opts: UseUnifiedInboxOptions = {},
 ): UseUnifiedInboxResult {
   const { t } = useApp();
-  const [feed, setFeed] = useState<LifeOpsGmailTriageFeed | null>(null);
+  const [feed, setFeed] = useState<LifeOpsUnifiedInbox | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [channel, setChannel] = useState<InboxChannel>(opts.channel ?? "all");
@@ -53,10 +41,9 @@ export function useUnifiedInbox(
     setLoading(true);
     setError(null);
     try {
-      // TODO: replace with client.getLifeOpsUnifiedInbox() when Stream C lands.
-      const result = await client.getLifeOpsGmailTriage({
-        side: "owner",
-        maxResults: opts.maxResults ?? DEFAULT_MAX_RESULTS,
+      const result = await client.getLifeOpsUnifiedInbox({
+        limit: opts.maxResults ?? DEFAULT_MAX_RESULTS,
+        channels: channel === "all" ? undefined : [channel],
       });
       setFeed(result);
     } catch (cause) {
@@ -70,13 +57,13 @@ export function useUnifiedInbox(
     } finally {
       setLoading(false);
     }
-  }, [opts.maxResults, t]);
+  }, [channel, opts.maxResults, t]);
 
   useEffect(() => {
     void fetch();
   }, [fetch]);
 
-  const messages = useMemo<LifeOpsGmailMessageSummary[]>(() => {
+  const messages = useMemo<LifeOpsUnifiedMessage[]>(() => {
     const base = feed?.messages ?? [];
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
@@ -84,9 +71,10 @@ export function useUnifiedInbox(
     }
     return base.filter(
       (m) =>
-        m.subject.toLowerCase().includes(q) ||
-        m.from.toLowerCase().includes(q) ||
-        m.snippet.toLowerCase().includes(q),
+        (m.subject ?? "").toLowerCase().includes(q) ||
+        m.sender.displayName.toLowerCase().includes(q) ||
+        m.snippet.toLowerCase().includes(q) ||
+        m.channel.toLowerCase().includes(q),
     );
   }, [feed, searchQuery]);
 

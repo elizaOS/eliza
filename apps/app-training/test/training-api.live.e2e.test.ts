@@ -176,7 +176,8 @@ describeIf(LIVE)("App-Training: API e2e", () => {
     const res = await req(runtime.port, "POST", "/api/training/trajectories/export", {
       format: "jsonl",
     });
-    // Export should work (200) or service unavailable (503) or bad request (400)
-    expect([200, 400, 503]).toContain(res.status);
+    // Export may create an artifact (201), return one immediately (200),
+    // degrade when the service is unavailable (503), or reject bad input (400).
+    expect([200, 201, 400, 503]).toContain(res.status);
   }, 30_000);
 });

@@ -189,7 +189,11 @@ class PgFeatureFlagService implements FeatureFlagService {
       const byKey = new Map<LifeOpsFeatureKey, FeatureFlagState>();
       for (const row of rows) {
         const text = toText(row.feature_key);
-        if (!isLifeOpsFeatureKey(text)) continue;
+        if (!isLifeOpsFeatureKey(text)) {
+          throw new Error(
+            `[FeatureFlags] unknown feature_key from db: ${text}`,
+          );
+        }
         byKey.set(text, rowToState(row, text, cloudLinked));
       }
       return ALL_FEATURE_KEYS.map(

@@ -143,19 +143,19 @@ export async function handleWebsiteBlockerRoutes(
       return true;
     }
 
-  const status = await getSelfControlStatus();
-  const blockedWebsites = status.blockedWebsites ?? status.websites;
-  const allowedWebsites = status.allowedWebsites ?? [];
-  const hostBlocked =
-    status.active &&
-    isWebsiteBlockedByPolicy(
-      {
-        blockedWebsites,
-        allowedWebsites,
-        matchMode: status.matchMode ?? "exact",
-      },
-      queriedHost,
-    );
+    const status = await getSelfControlStatus();
+    const blockedWebsites = status.blockedWebsites ?? status.websites;
+    const allowedWebsites = status.allowedWebsites ?? [];
+    const hostBlocked =
+      status.active &&
+      isWebsiteBlockedByPolicy(
+        {
+          blockedWebsites,
+          allowedWebsites,
+          matchMode: status.matchMode ?? "exact",
+        },
+        queriedHost,
+      );
 
     const result: WebsiteBlockerHostResponse = {
       blocked: hostBlocked,
@@ -172,7 +172,11 @@ export async function handleWebsiteBlockerRoutes(
         result.groupKey = tasks.groupKey;
       } catch (err) {
         logger.warn(
-          `[website-blocker] Failed to resolve required tasks for host ${queriedHost}: ${err instanceof Error ? err.message : String(err)}`,
+          {
+            host: queriedHost,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "[WebsiteBlockerRoutes] Failed to resolve required tasks for host",
         );
       }
     }

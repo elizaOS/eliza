@@ -17,7 +17,7 @@ export function useLifeOpsAppState() {
     setLoading(true);
     try {
       const state = await client.getLifeOpsAppState();
-      setEnabled(state.enabled === true);
+      setEnabled(state.enabled);
       setError(null);
       return state;
     } catch (cause) {
@@ -36,7 +36,7 @@ export function useLifeOpsAppState() {
         if (!active) {
           return;
         }
-        setEnabled(state.enabled === true);
+        setEnabled(state.enabled);
         setError(null);
       } catch (cause) {
         if (active) {
@@ -60,7 +60,7 @@ export function useLifeOpsAppState() {
       const state = await client.updateLifeOpsAppState({
         enabled: nextEnabled,
       });
-      setEnabled(state.enabled === true);
+      setEnabled(state.enabled);
       setError(null);
       return state;
     } catch (cause) {

@@ -1,4 +1,5 @@
 import type { LifeOpsGoalReviewState } from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_REVIEW_STATES } from "@elizaos/app-lifeops/contracts";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",
@@ -201,7 +202,12 @@ export function readGoalSemanticReviewMetadata(
   const reviewedAt = asText(candidate.reviewedAt);
   const reviewState = asText(candidate.reviewState);
   const explanation = asText(candidate.explanation);
-  if (!reviewedAt || !reviewState || !explanation) {
+  if (
+    !reviewedAt ||
+    !reviewState ||
+    !LIFEOPS_REVIEW_STATES.includes(reviewState as LifeOpsGoalReviewState) ||
+    !explanation
+  ) {
     return null;
   }
   return buildGoalSemanticReviewMetadata({
