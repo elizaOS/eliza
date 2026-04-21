@@ -127,9 +127,16 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async {
             UIApplication.shared.open(url, options: [:]) { opened in
-                let resolvedReason: Any = opened
-                    ? (reason ?? NSNull())
-                    : "iOS declined to open Settings."
+                let resolvedReason: Any
+                if opened {
+                    if let reason {
+                        resolvedReason = reason
+                    } else {
+                        resolvedReason = NSNull()
+                    }
+                } else {
+                    resolvedReason = "iOS declined to open Settings."
+                }
                 call.resolve([
                     "opened": opened,
                     "target": target,

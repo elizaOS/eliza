@@ -145,9 +145,9 @@ describe("provider snapshot (real env-state readers)", () => {
 
   it("capacitor-llama is enabled only inside a native Capacitor runtime", async () => {
     let snap = await snapshotProviders();
-    expect(snap.find((s) => s.id === "capacitor-llama")?.enableState.enabled).toBe(
-      false,
-    );
+    expect(
+      snap.find((s) => s.id === "capacitor-llama")?.enableState.enabled,
+    ).toBe(false);
 
     (
       globalThis as {
