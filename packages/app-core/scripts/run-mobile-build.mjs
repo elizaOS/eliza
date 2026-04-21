@@ -190,12 +190,19 @@ function withPrependedPath(env, entries) {
   return `${filtered.join(separator)}${separator}${env.PATH ?? ""}`;
 }
 
-async function buildSharedApp() {
+async function buildSharedApp(platform) {
   if (process.env.ELIZA_SKIP_WEB_BUILD === "1") {
     console.log("[mobile-build] Skipping web build (ELIZA_SKIP_WEB_BUILD=1).");
     return;
   }
-  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+  await run("bun", ["scripts/build.mjs"], {
+    cwd: appDir,
+    env: {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: platform,
+      MILADY_CAPACITOR_BUILD_TARGET: platform,
+    },
+  });
 }
 
 export function syncPlatformTemplateFiles(
@@ -637,6 +644,7 @@ function generateIosPodfile() {
     ["CapacitorKeyboard", "@capacitor/keyboard"],
     ["CapacitorPreferences", "@capacitor/preferences"],
     ["CapacitorStatusBar", "@capacitor/status-bar"],
+    ["LlamaCppCapacitor", "llama-cpp-capacitor"],
   ];
 
   const nativePluginPods = [
@@ -815,7 +823,7 @@ async function buildAndroid() {
     );
   }
 
-  await buildSharedApp();
+  await buildSharedApp("android");
   await ensureCapacitorPlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
   syncPlatformTemplateFiles("android");
@@ -853,7 +861,7 @@ async function buildIos() {
     throw new Error("iOS builds require macOS and Xcode.");
   }
 
-  await buildSharedApp();
+  await buildSharedApp("ios");
   await ensureCapacitorPlatform("ios");
   await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
