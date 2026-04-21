@@ -17,7 +17,7 @@ import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "../runtime/core-plugins.js";
-import type { ResolvedPlugin } from "../runtime/eliza.js";
+import type { ResolvedPlugin } from "../runtime/plugin-types.js";
 import type {
   CoreManagerLike,
   InstallProgressLike,
