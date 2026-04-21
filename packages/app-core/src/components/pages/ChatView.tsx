@@ -228,6 +228,7 @@ export function ChatView({
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
   const hasCompletedLifecycleActivity =
     !chatSending &&
+    Array.isArray(conversationMessages) &&
     conversationMessages.some(
       (message) =>
         message.role === "user" ||
@@ -281,7 +282,7 @@ export function ChatView({
     characterData?.name ||
     agentStatus?.agentName ||
     t("chat.agentType", { defaultValue: "Agent" });
-  const msgs = conversationMessages;
+  const msgs = Array.isArray(conversationMessages) ? conversationMessages : [];
   const visibleMsgs = useMemo(
     () =>
       msgs
