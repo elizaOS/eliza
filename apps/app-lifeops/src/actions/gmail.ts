@@ -477,8 +477,12 @@ function buildGmailReplyOnlyFallback(subaction: GmailSubaction | null): string {
       return "What exactly do you want me to send in Gmail?";
     case "needs_response":
       return "Do you want emails that need a reply, or something else in Gmail?";
+    case "unresponded":
+      return "How far back should I look for sent Gmail threads without replies?";
+    case "manage":
+      return "Which Gmail messages should I update, and should I archive, mark read, label, trash, or report spam?";
     default:
-      return "What do you want to do in Gmail — check inbox, search, read, or draft a reply?";
+      return "What do you want to do in Gmail — check inbox, search, manage, read, or draft a reply?";
   }
 }
 
@@ -1615,8 +1619,8 @@ export const gmailAction: Action & {
     "USE this action ONLY when the request explicitly names Gmail or email " +
     "(e.g. 'triage my Gmail', 'summarize my unread emails', 'search for emails from Sarah', " +
     "'draft a reply to the latest email from finance', 'send the email'). " +
-    "Subactions: Gmail-specific triage, search by sender/subject/keyword/date/label, " +
-    "read message bodies by Gmail ID, draft reply, send reply. " +
+    "Subactions: Gmail-specific triage, true unresponded threads, search by sender/subject/keyword/date/label, " +
+    "read message bodies by Gmail ID, draft reply, send reply, and inbox-zero management. " +
     "DO NOT use for a cross-channel inbox digest / inbox-only daily digest / unified inbox / triage across " +
     "Slack / Discord / SMS / Telegram — route owner inbox work to OWNER_INBOX and the agent's " +
     "own mailbox to AGENT_INBOX. If the user says 'my inbox' without specifying Gmail (e.g. " +
@@ -1628,7 +1632,7 @@ export const gmailAction: Action & {
     "DO NOT use for calendar, meetings, scheduling, habits, goals, routines, or reminders. " +
     "Provides the final grounded reply; do not pair with a speculative REPLY.",
   descriptionCompressed:
-    "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, search, read, and draft/send replies.",
+    "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, unresponded threads, search, read, manage, and draft/send replies.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
@@ -2813,10 +2817,12 @@ export const gmailAction: Action & {
         enum: [
           "triage",
           "needs_response",
+          "unresponded",
           "search",
           "read",
           "draft_reply",
           "draft_batch_replies",
+          "manage",
           "send_reply",
           "send_batch_replies",
           "send_message",
@@ -2867,7 +2873,7 @@ export const gmailAction: Action & {
     {
       name: "details",
       description:
-        "Structured Gmail arguments. Supported keys include mode, side, grantId, forceSync, maxResults, query, queries, replyNeededOnly, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, holdForApproval, and items for batch send.",
+        "Structured Gmail arguments. Supported keys include mode, side, grantId, forceSync, maxResults, query, queries, replyNeededOnly, olderThanDays, operation, labelIds, confirmDestructive, tone, includeQuotedOriginal, messageId, messageIds, draftIntent, subject, to, cc, bodyText, confirmSend, holdForApproval, and items for batch send.",
       required: false,
       schema: { type: "object" as const },
     },
