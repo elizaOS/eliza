@@ -5,7 +5,8 @@ export type IntegrationBoundary =
   | "wallet"
   | "marketplace"
   | "mcp"
-  | "lifeops";
+  | "lifeops"
+  | "browser-bridge";
 export type IntegrationOutcome = "success" | "failure";
 
 export interface IntegrationObservabilityEvent {
