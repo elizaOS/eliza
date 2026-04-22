@@ -2664,7 +2664,7 @@ function AutomationsLayout() {
     workflowFetchError,
   } = ctx;
   const [searchQuery, setSearchQuery] = useState("");
-  const [_showDashboard, _setShowDashboard] = useState(true);
+  const [, setShowDashboard] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -2745,6 +2745,7 @@ function AutomationsLayout() {
   const selectItem = useCallback(
     (item: AutomationItem) => {
       showAutomationsList();
+      setShowDashboard(false);
       setSelectedItemId(item.id);
       setSelectedItemKind(getSelectionKind(item));
       setEditorOpen(false);
@@ -2764,6 +2765,23 @@ function AutomationsLayout() {
       showAutomationsList,
     ],
   );
+
+  const showOverview = useCallback(() => {
+    showAutomationsList();
+    setShowDashboard(true);
+    setSelectedItemId(null);
+    setSelectedItemKind(null);
+    setEditorOpen(false);
+    setEditingId(null);
+    ctx.setEditingTaskId(null);
+  }, [
+    ctx,
+    setEditingId,
+    setEditorOpen,
+    setSelectedItemId,
+    setSelectedItemKind,
+    showAutomationsList,
+  ]);
 
   // Event consumer for agent-driven graph focus
   useEffect(() => {
@@ -3060,6 +3078,7 @@ function AutomationsLayout() {
           conversation.id,
         );
 
+        setShowDashboard(false);
         setSelectedItemId(resolvedItem?.id ?? `automation-draft:${draftId}`);
         setSelectedItemKind(null);
         setEditorOpen(false);
