@@ -6,6 +6,7 @@
 
 @source "..";
 @source "../../../ui/src";
+@source "../../../../apps/app-lifeops/src";
 
 /*
  * Map the existing theme CSS custom properties to Tailwind theme tokens.
