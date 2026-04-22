@@ -50,7 +50,7 @@ sha2 = "0.10"
 # Secret encryption/decryption compatibility (matches TS AES-256-CBC helpers)
 aes = "0.8"
 cbc = "0.2"
-cipher = "0.4"
+cipher = "0.5"
 hex = "0.4"
 aes-gcm = "0.10"
 base64 = "0.22"

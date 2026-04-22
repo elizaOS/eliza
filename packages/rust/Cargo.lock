@@ -492,7 +492,7 @@ dependencies = [
  "base64",
  "cbc",
  "chrono",
- "cipher 0.4.4",
+ "cipher 0.5.1",
  "console_error_panic_hook",
  "futures",
  "getrandom 0.2.17",
