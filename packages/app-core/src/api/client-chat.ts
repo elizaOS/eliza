@@ -5,12 +5,14 @@
 
 import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
 import type {
+  CreateBrowserBridgeCompanionPairingRequest,
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeKind,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   CaptureLifeOpsActivitySignalRequest,
-  CreateLifeOpsBrowserCompanionPairingRequest,
   LifeOpsActivitySignal,
-  LifeOpsBrowserCompanionPackageStatus,
-  LifeOpsBrowserCompanionPairingResponse,
-  LifeOpsBrowserKind,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/app-lifeops/contracts";
