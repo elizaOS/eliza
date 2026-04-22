@@ -254,6 +254,9 @@ export function CharacterEditor({
     [handleCharacterStyleInput],
   );
 
+  /* ── Generation ─────────────────────────────────────────────────── */
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
     tab === "knowledge" ? "knowledge" : "personality",
   );
@@ -1178,6 +1181,99 @@ export function CharacterEditor({
           : t("charactereditor.Save", { defaultValue: "Save" })}
       </Button>
     </div>
+  );
+
+  /* ── Generate field ─────────────────────────────────────────────── */
+  const getCharContext = useCallback(
+    () => ({
+      name: d.name ?? "",
+      system: d.system ?? "",
+      bio: bioText,
+      style: d.style ?? { all: [], chat: [], post: [] },
+      postExamples: d.postExamples ?? [],
+    }),
+    [bioText, d],
+  );
+
+  const handleGenerate = useCallback(
+    async (field: string, mode: "replace" | "append" = "replace") => {
+      setGenerating(field);
+      setGenerateError(null);
+      try {
+        const { generated } = await client.generateCharacterField(
+          field,
+          getCharContext(),
+          mode,
+        );
+        if (field === "bio") {
+          handleFieldEdit("bio", generated.trim());
+        } else if (field === "system") {
+          handleFieldEdit("system", generated.trim());
+        } else if (field === "style") {
+          try {
+            const parsed = JSON.parse(generated);
+            if (mode === "append") {
+              handleStyleEdit(
+                "all",
+                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
+              );
+              handleStyleEdit(
+                "chat",
+                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
+              );
+              handleStyleEdit(
+                "post",
+                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
+              );
+            } else {
+              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
+              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
+              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
+            }
+          } catch {
+            setGenerateError("Generated style could not be parsed");
+          }
+        } else if (field === "chatExamples") {
+          const formatted = normalizeCharacterMessageExamples(
+            generated,
+            fallbackCharacterName,
+          );
+          if (formatted.length > 0) {
+            handleFieldEdit("messageExamples", formatted);
+          }
+        } else if (field === "postExamples") {
+          try {
+            const parsed = JSON.parse(generated);
+            if (Array.isArray(parsed)) {
+              if (mode === "append") {
+                handleCharacterArrayInput(
+                  "postExamples",
+                  [...(d.postExamples ?? []), ...parsed].join("\n"),
+                );
+              } else {
+                handleCharacterArrayInput("postExamples", parsed.join("\n"));
+              }
+            }
+          } catch {
+            setGenerateError("Generated post examples could not be parsed");
+          }
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Generation failed";
+        setGenerateError(message);
+      } finally {
+        setGenerating(null);
+      }
+    },
+    [
+      d,
+      fallbackCharacterName,
+      getCharContext,
+      handleCharacterArrayInput,
+      handleFieldEdit,
+      handleStyleEdit,
+    ],
   );
 
   /* ── Style entry handlers ───────────────────────────────────────── */
