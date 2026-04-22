@@ -74,6 +74,7 @@ const SignalIcon = makeIcon(
 
 const GoogleChatIcon = makeIcon(
   "M21 3H3a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h3v4l4.8-4H21a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-13 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z",
+  "Google Chat",
 );
 
 const BRAND_ICONS: Record<

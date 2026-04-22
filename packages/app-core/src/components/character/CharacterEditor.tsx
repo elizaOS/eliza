@@ -254,6 +254,8 @@ export function CharacterEditor({
     [handleCharacterStyleInput],
   );
 
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
     tab === "knowledge" ? "knowledge" : "personality",
   );
@@ -613,6 +615,110 @@ export function CharacterEditor({
       suppressDirtyRef.current = false;
     });
   }, [d.messageExamples, fallbackCharacterName, handleFieldEdit]);
+
+  const getCharContext = useCallback(
+    () => ({
+      name: d.name ?? "",
+      system: d.system ?? "",
+      bio: bioText,
+      style: d.style ?? { all: [], chat: [], post: [] },
+      postExamples: d.postExamples ?? [],
+    }),
+    [d, bioText],
+  );
+
+  const handleGenerate = useCallback(
+    async (field: string, mode: "replace" | "append" = "replace") => {
+      setGenerating(field);
+      setGenerateError(null);
+      try {
+        const { generated } = await client.generateCharacterField(
+          field,
+          getCharContext(),
+          mode,
+        );
+        if (field === "bio") {
+          handleFieldEdit("bio", generated.trim());
+        } else if (field === "system") {
+          handleFieldEdit("system", generated.trim());
+        } else if (field === "style") {
+          try {
+            const parsed = JSON.parse(generated) as {
+              all?: string[];
+              chat?: string[];
+              post?: string[];
+            };
+            if (mode === "append") {
+              handleStyleEdit(
+                "all",
+                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
+              );
+              handleStyleEdit(
+                "chat",
+                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
+              );
+              handleStyleEdit(
+                "post",
+                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
+              );
+            } else {
+              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
+              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
+              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
+            }
+          } catch (err) {
+            console.warn(
+              "[CharacterEditor] Failed to parse AI-generated style JSON:",
+              err,
+            );
+          }
+        } else if (field === "chatExamples") {
+          const formatted = normalizeCharacterMessageExamples(
+            generated,
+            fallbackCharacterName,
+          );
+          if (formatted.length > 0) {
+            handleFieldEdit("messageExamples", formatted);
+          }
+        } else if (field === "postExamples") {
+          try {
+            const parsed: unknown = JSON.parse(generated);
+            if (
+              Array.isArray(parsed) &&
+              parsed.every((x) => typeof x === "string")
+            ) {
+              const strings = parsed as string[];
+              if (mode === "append") {
+                handleFieldEdit("postExamples", [
+                  ...(d.postExamples ?? []),
+                  ...strings,
+                ]);
+              } else {
+                handleFieldEdit("postExamples", strings);
+              }
+            }
+          } catch (err) {
+            console.warn(
+              "[CharacterEditor] Failed to parse AI-generated postExamples JSON:",
+              err,
+            );
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Generation failed";
+        setGenerateError(msg);
+      }
+
+      setGenerating(null);
+    },
+    [
+      fallbackCharacterName,
+      getCharContext,
+      d,
+      handleFieldEdit,
+      handleStyleEdit,
+    ],
+  );
 
   /* ── Load voice config on mount ─────────────────────────────────── */
   /* Load voice config from server — but don't overwrite a roster-derived
@@ -1249,7 +1355,7 @@ export function CharacterEditor({
   const voiceSelectValue = selectedVoicePresetId ?? null;
   const combinedSaveError = voiceSaveError ?? characterSaveError;
   const hasStandaloneHeaderFeedback = Boolean(
-    characterSaveSuccess || combinedSaveError,
+    characterSaveSuccess || combinedSaveError || generateError,
   );
 
   /* ── Loading state ──────────────────────────────────────────────── */
@@ -1407,6 +1513,7 @@ export function CharacterEditor({
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
+                  generating={generating}
                   voiceSelectValue={voiceSelectValue}
                   activeVoicePreset={activeVoicePreset}
                   voiceTesting={voiceTesting}
@@ -1415,6 +1522,7 @@ export function CharacterEditor({
                   elevenLabsVoiceGroups={elevenLabsVoiceGroups}
                   edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
                   handleSelectPreset={handleSelectPreset}
                   handleStopTest={handleStopTest}
                   setVoiceTesting={setVoiceTesting}
@@ -1431,8 +1539,10 @@ export function CharacterEditor({
                 >
                   <CharacterStylePanel
                     d={d}
+                    generating={generating}
                     pendingStyleEntries={pendingStyleEntries}
                     styleEntryDrafts={styleEntryDrafts}
+                    handleGenerate={handleGenerate}
                     handlePendingStyleEntryChange={
                       handlePendingStyleEntryChange
                     }
@@ -1452,7 +1562,9 @@ export function CharacterEditor({
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
+                    generating={generating}
                     handleFieldEdit={handleFieldEdit}
+                    handleGenerate={handleGenerate}
                     t={t}
                   />
                 </div>
@@ -1497,6 +1609,11 @@ export function CharacterEditor({
                         {combinedSaveError && (
                           <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
                             {combinedSaveError}
+                          </span>
+                        )}
+                        {generateError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {generateError}
                           </span>
                         )}
                       </div>
@@ -1763,6 +1880,7 @@ export function CharacterEditor({
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
+                  generating={generating}
                   voiceSelectValue={voiceSelectValue}
                   activeVoicePreset={activeVoicePreset}
                   voiceTesting={voiceTesting}
@@ -1771,6 +1889,7 @@ export function CharacterEditor({
                   elevenLabsVoiceGroups={elevenLabsVoiceGroups}
                   edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
                   handleSelectPreset={handleSelectPreset}
                   handleStopTest={handleStopTest}
                   setVoiceTesting={setVoiceTesting}
@@ -1790,8 +1909,10 @@ export function CharacterEditor({
               >
                 <CharacterStylePanel
                   d={d}
+                  generating={generating}
                   pendingStyleEntries={pendingStyleEntries}
                   styleEntryDrafts={styleEntryDrafts}
+                  handleGenerate={handleGenerate}
                   handlePendingStyleEntryChange={handlePendingStyleEntryChange}
                   handleAddStyleEntry={handleAddStyleEntry}
                   handleRemoveStyleEntry={handleRemoveStyleEntry}
@@ -1814,7 +1935,9 @@ export function CharacterEditor({
                 <CharacterExamplesPanel
                   d={d}
                   normalizedMessageExamples={normalizedMessageExamples}
+                  generating={generating}
                   handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
                   t={t}
                 />
               </section>
@@ -1845,7 +1968,7 @@ export function CharacterEditor({
       {/* ── Footer (companion overlay only) ────────────────────────── */}
       {sceneOverlay && (
         <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
-          {(characterSaveSuccess || combinedSaveError) && (
+          {(characterSaveSuccess || combinedSaveError || generateError) && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               {characterSaveSuccess && (
                 <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
@@ -1855,6 +1978,11 @@ export function CharacterEditor({
               {combinedSaveError && (
                 <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
                   {combinedSaveError}
+                </span>
+              )}
+              {generateError && (
+                <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
+                  {generateError}
                 </span>
               )}
             </div>

@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("widgetVisibilityKey", () => {
-  it("returns ${pluginId}/${id}", () => {
+  it("joins plugin id and widget id with a slash", () => {
     expect(widgetVisibilityKey("lifeops", "lifeops.calendar")).toBe(
       "lifeops/lifeops.calendar",
     );
