@@ -361,15 +361,14 @@ export function CharacterStylePanel({
                       dragStyleIndex?.key === key &&
                       dragStyleIndex.index === index;
                     return (
-                      <div
+                      <fieldset
                         key={`${key}:${item}`}
-                        role="group"
                         draggable
-                        onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                        onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
                           setDragStyleIndex({ key, index });
                           e.dataTransfer.effectAllowed = "move";
                         }}
-                        onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                        onDragOver={(e: DragEvent<HTMLFieldSetElement>) => {
                           if (
                             dragStyleIndex === null ||
                             dragStyleIndex.key !== key ||
@@ -379,7 +378,7 @@ export function CharacterStylePanel({
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                         }}
-                        onDrop={(e: DragEvent<HTMLDivElement>) => {
+                        onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
                           e.preventDefault();
                           if (
                             dragStyleIndex === null ||
@@ -394,7 +393,7 @@ export function CharacterStylePanel({
                           setDragStyleIndex(null);
                         }}
                         onDragEnd={() => setDragStyleIndex(null)}
-                        className={`group flex items-start gap-2 transition-opacity ${isDragging ? "opacity-40" : ""}`}
+                        className={`group flex min-w-0 items-start gap-2 border-0 p-0 transition-opacity ${isDragging ? "opacity-40" : ""}`}
                       >
                         <span
                           className="mt-1 shrink-0 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
@@ -446,7 +445,7 @@ export function CharacterStylePanel({
                         >
                           <TrashIconSvg />
                         </Button>
-                      </div>
+                      </fieldset>
                     );
                   })
                 ) : (
@@ -655,21 +654,20 @@ export function CharacterExamplesPanel({
           {(d.postExamples ?? []).map((post, pi) => {
             const isDragging = dragPostIndex === pi;
             return (
-              <div
+              <fieldset
                 // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                 key={`post-${pi}`}
-                role="group"
                 draggable
-                onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
                   setDragPostIndex(pi);
                   e.dataTransfer.effectAllowed = "move";
                 }}
-                onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                onDragOver={(e: DragEvent<HTMLFieldSetElement>) => {
                   if (dragPostIndex === null || dragPostIndex === pi) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                 }}
-                onDrop={(e: DragEvent<HTMLDivElement>) => {
+                onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
                   e.preventDefault();
                   if (dragPostIndex === null || dragPostIndex === pi) return;
                   handleFieldEdit(
@@ -679,7 +677,7 @@ export function CharacterExamplesPanel({
                   setDragPostIndex(null);
                 }}
                 onDragEnd={() => setDragPostIndex(null)}
-                className={`group flex items-center gap-1.5 transition-opacity ${isDragging ? "opacity-40" : ""}`}
+                className={`group flex min-w-0 items-center gap-1.5 border-0 p-0 transition-opacity ${isDragging ? "opacity-40" : ""}`}
               >
                 <span
                   className="text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
@@ -716,7 +714,7 @@ export function CharacterExamplesPanel({
                 >
                   <TrashIconSvg />
                 </Button>
-              </div>
+              </fieldset>
             );
           })}
           {(d.postExamples ?? []).length === 0 && (
