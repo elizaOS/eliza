@@ -2664,7 +2664,7 @@ function AutomationsLayout() {
     workflowFetchError,
   } = ctx;
   const [searchQuery, setSearchQuery] = useState("");
-  const [, setShowDashboard] = useState(true);
+  const [showDashboard, setShowDashboard] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -3407,6 +3407,23 @@ function AutomationsLayout() {
               {t("common.loading")}
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={showOverview}
+            aria-current={showDashboard ? "page" : undefined}
+            className={`mt-0.5 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left text-xs-tight transition-colors ${
+              showDashboard
+                ? "bg-accent/15 text-txt"
+                : "text-txt hover:bg-bg-muted/50"
+            }`}
+          >
+            <LayoutDashboard
+              className="h-3.5 w-3.5 shrink-0 text-muted/70"
+              aria-hidden
+            />
+            <span className="truncate">Overview</span>
+          </button>
 
           {!isLoading && normalizedSearchQuery && visibleItems.length === 0 ? (
             <div className="px-3 py-3 text-2xs text-muted/70">
