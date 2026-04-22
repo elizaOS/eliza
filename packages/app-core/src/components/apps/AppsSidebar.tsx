@@ -4,7 +4,7 @@ import {
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
-import { Clock, Play, Star } from "lucide-react";
+import { ChevronsLeft, Clock, Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
@@ -24,11 +24,11 @@ interface AppsSidebarProps {
   recentAppNames: readonly string[];
   selectedAppName: string | null;
   /** Controlled collapsed state. */
-  collapsed?: boolean;
-  onCollapsedChange?: (next: boolean) => void;
+  collapsed: boolean;
+  onCollapsedChange: (next: boolean) => void;
   /** Controlled width in px (expanded only; ignored when collapsed). */
-  width?: number;
-  onWidthChange?: (next: number) => void;
+  width: number;
+  onWidthChange: (next: number) => void;
   minWidth?: number;
   maxWidth?: number;
   onLaunchApp: (app: RegistryAppInfo) => void;
@@ -143,6 +143,18 @@ export function AppsSidebar({
     recentEntries.length > 0 ||
     genreEntries.length > 0;
 
+  const collapseFooter = (
+    <button
+      type="button"
+      onClick={() => onCollapsedChange(true)}
+      aria-label="Collapse apps sidebar"
+      data-testid="apps-sidebar-collapse-inline"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-bg-muted/60 hover:text-txt"
+    >
+      <ChevronsLeft className="h-4 w-4" aria-hidden />
+    </button>
+  );
+
   return (
     <Sidebar
       testId="apps-sidebar"
@@ -150,20 +162,25 @@ export function AppsSidebar({
       contentIdentity="apps"
       collapseButtonAriaLabel="Collapse apps sidebar"
       expandButtonAriaLabel="Expand apps sidebar"
+      expandButtonTestId="apps-sidebar-expand-toggle"
       header={undefined}
       className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
       headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-      collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
+      // Re-position the default (floating) expand button to the true
+      // bottom-left corner so it mirrors the right-side collapse toggle.
+      collapseButtonClassName="!bottom-3 !left-3"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
-      resizable={typeof width === "number" && Boolean(onWidthChange)}
+      resizable
       width={width}
       onWidthChange={onWidthChange}
       minWidth={minWidth}
       maxWidth={maxWidth}
-      onCollapseRequest={() => onCollapsedChange?.(true)}
+      onCollapseRequest={() => onCollapsedChange(true)}
+      footer={collapseFooter}
+      footerClassName="!justify-start !px-1 !pt-1 !pb-2"
     >
-      <SidebarScrollRegion className="px-1 pb-3 pt-1 !overflow-y-scroll [&::-webkit-scrollbar]:!w-2 [&::-webkit-scrollbar-thumb]:!rounded-full [&::-webkit-scrollbar-thumb]:!bg-border/60 hover:[&::-webkit-scrollbar-thumb]:!bg-border/80 [&::-webkit-scrollbar-track]:!bg-transparent">
+      <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
           {!hasAnyResults ? (
             <div className="px-3 py-4 text-2xs text-muted/70">
