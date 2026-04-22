@@ -204,6 +204,50 @@ describe("N8nSidecar", () => {
       await sidecar.stop();
       await startPromise;
     });
+
+    it("reuses a reachable n8n instance when the preferred port is already occupied", async () => {
+      const stateDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), "milady-n8n-existing-"),
+      );
+      await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
+
+      const pickPort = vi.fn(async () => 5679);
+      const preflightBinary = vi.fn(async () => undefined);
+      const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/rest/login")) {
+          return new Response(null, { status: 401 });
+        }
+        if (
+          url.includes("/api/v1/workflows") &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      const h = makeHarness({ fetch: fetchFn, pickPort });
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        preflightBinary,
+      });
+
+      await sidecar.start();
+
+      const state = sidecar.getState();
+      expect(state.status).toBe("ready");
+      expect(state.host).toBe("http://127.0.0.1:5678");
+      expect(state.port).toBe(5678);
+      expect(state.pid).toBeNull();
+      expect(state.recentOutput).toContain(
+        "[attach] existing n8n detected at http://127.0.0.1:5678; reusing it",
+      );
+      expect(h.spawn).not.toHaveBeenCalled();
+      expect(preflightBinary).not.toHaveBeenCalled();
+      expect(sidecar.getApiKey()).toBe("cached_key_abc");
+
+      await sidecar.stop();
+      await fs.rm(stateDir, { recursive: true, force: true });
+    });
   });
 
   describe("readiness probe termination", () => {
@@ -475,10 +519,10 @@ describe("N8nSidecar", () => {
         );
       });
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ maxRetries: 0 }),
-        { ...h.deps, preflightBinary },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ maxRetries: 0 }), {
+        ...h.deps,
+        preflightBinary,
+      });
 
       const errorPromise = new Promise<N8nSidecarState>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -518,15 +562,12 @@ describe("N8nSidecar", () => {
       });
 
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ stateDir }),
-        {
-          ...h.deps,
-          isProcessAlive,
-          readProcessCommand,
-          killPid,
-        },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        isProcessAlive,
+        readProcessCommand,
+        killPid,
+      });
 
       const readyPromise = new Promise<void>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -564,15 +605,12 @@ describe("N8nSidecar", () => {
       const killPid = vi.fn();
 
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ stateDir }),
-        {
-          ...h.deps,
-          isProcessAlive,
-          readProcessCommand,
-          killPid,
-        },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        isProcessAlive,
+        readProcessCommand,
+        killPid,
+      });
 
       const readyPromise = new Promise<void>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -708,7 +746,9 @@ describe("N8nSidecar", () => {
           url.includes("/api/v1/workflows") &&
           (!init?.method || init.method === "GET")
         ) {
-          const key = (init?.headers as Record<string, string>)["X-N8N-API-KEY"];
+          const key = (init?.headers as Record<string, string>)[
+            "X-N8N-API-KEY"
+          ];
           if (key === "cached_key_abc") {
             return new Response(JSON.stringify({ data: [] }), { status: 200 });
           }
@@ -825,9 +865,11 @@ describe("N8nSidecar", () => {
       );
       sidecar.updateConfig({ readinessTimeoutMs: 5000 });
       // Internal field — exercise via a cast only to assert the merge.
-      const cfg = (sidecar as unknown as {
-        config: { readinessTimeoutMs: number; startPort: number };
-      }).config;
+      const cfg = (
+        sidecar as unknown as {
+          config: { readinessTimeoutMs: number; startPort: number };
+        }
+      ).config;
       expect(cfg.readinessTimeoutMs).toBe(5000);
     });
 
@@ -846,9 +888,11 @@ describe("N8nSidecar", () => {
       await readyPromise;
 
       sidecar.updateConfig({ startPort: 9999, version: "2.0.0" });
-      const cfg = (sidecar as unknown as {
-        config: { startPort: number; version: string };
-      }).config;
+      const cfg = (
+        sidecar as unknown as {
+          config: { startPort: number; version: string };
+        }
+      ).config;
       // Live values unchanged until explicit restart.
       expect(cfg.startPort).toBe(5678);
       expect(cfg.version).toBe("1.70.0");
@@ -867,9 +911,11 @@ describe("N8nSidecar", () => {
       const first = getN8nSidecar({ readinessTimeoutMs: 1000 });
       const second = getN8nSidecar({ readinessTimeoutMs: 8000 });
       expect(first).toBe(second);
-      const cfg = (second as unknown as {
-        config: { readinessTimeoutMs: number };
-      }).config;
+      const cfg = (
+        second as unknown as {
+          config: { readinessTimeoutMs: number };
+        }
+      ).config;
       expect(cfg.readinessTimeoutMs).toBe(8000);
     });
 

@@ -214,17 +214,37 @@ async function pickFreePortDefault(start: number): Promise<number> {
   for (let offset = 0; offset < maxAttempts; offset++) {
     const candidate = start + offset;
     if (candidate > 65535) break;
-    const free = await new Promise<boolean>((resolve) => {
-      const server = createServer();
-      server.once("error", () => resolve(false));
-      server.once("listening", () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(candidate, "127.0.0.1");
-    });
-    if (free) return candidate;
+    const ipv4Free = await canBindTcpPortDefault(candidate, "127.0.0.1");
+    const ipv6Free = await canBindTcpPortDefault(candidate, "::");
+    if (ipv4Free && ipv6Free) return candidate;
   }
   throw new Error(`no free port available starting from ${start}`);
+}
+
+function canBindTcpPortDefault(port: number, host: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const server = createServer();
+    let settled = false;
+    const finish = (free: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(free);
+    };
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (
+        host === "::" &&
+        (err.code === "EADDRNOTAVAIL" || err.code === "EAFNOSUPPORT")
+      ) {
+        finish(true);
+        return;
+      }
+      finish(false);
+    });
+    server.once("listening", () => {
+      server.close(() => finish(true));
+    });
+    server.listen({ port, host });
+  });
 }
 
 function sleepDefault(ms: number): Promise<void> {
@@ -351,9 +371,9 @@ function extractAuthCookie(res: Response): string | null {
   const list =
     typeof headers.getSetCookie === "function"
       ? headers.getSetCookie()
-      : ((headers.get("set-cookie") ?? "")
+      : (headers.get("set-cookie") ?? "")
           .split(/,(?=\s*[\w-]+=)/)
-          .filter((s) => s.length > 0));
+          .filter((s) => s.length > 0);
   for (const raw of list) {
     const first = raw.split(";")[0]?.trim();
     if (first?.startsWith("n8n-auth=")) return first;
@@ -610,12 +630,6 @@ export class N8nSidecar {
     try {
       while (!this.stopping) {
         try {
-          await this.deps.preflightBinary(this.config.binary);
-
-          const port = await this.deps.pickPort(this.config.startPort);
-          const host = `http://${this.config.host}:${port}`;
-          this.setState({ host, port });
-
           try {
             mkdirSync(this.config.stateDir, { recursive: true });
           } catch (err) {
@@ -623,6 +637,23 @@ export class N8nSidecar {
               `[n8n-sidecar] mkdir state dir failed: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
+
+          const port = await this.deps.pickPort(this.config.startPort);
+          const preferredHost = `http://${this.config.host}:${this.config.startPort}`;
+          if (
+            port !== this.config.startPort &&
+            (await this.attachExistingInstance(
+              preferredHost,
+              this.config.startPort,
+            ))
+          ) {
+            return;
+          }
+
+          const host = `http://${this.config.host}:${port}`;
+          this.setState({ host, port });
+
+          await this.deps.preflightBinary(this.config.binary);
 
           await this.reapOrphan();
 
@@ -641,9 +672,7 @@ export class N8nSidecar {
             const key = await this.ensureApiKey(host);
             if (key) {
               this.apiKey = key;
-              logger.info(
-                `[n8n-sidecar] using api key ${fingerprint(key)}`,
-              );
+              logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
             }
           } catch (err) {
             logger.warn(
@@ -747,7 +776,8 @@ export class N8nSidecar {
     //   npx:  --yes <pkg> <args...>   (auto-confirm install prompt)
     //   bunx: -- <pkg> <args...>       (still supported for manual overrides)
     // Anything else is passed through as <pkg> <args...>.
-    const binaryBase = this.config.binary.split("/").pop() ?? this.config.binary;
+    const binaryBase =
+      this.config.binary.split("/").pop() ?? this.config.binary;
     const launcherArgs =
       binaryBase === "npx"
         ? ["--yes", versioned, "start"]
@@ -906,6 +936,47 @@ export class N8nSidecar {
     }
   }
 
+  private async attachExistingInstance(
+    host: string,
+    port: number,
+  ): Promise<boolean> {
+    const reachable = await this.probeExistingInstance(host);
+    if (!reachable) return false;
+
+    this.child = null;
+    this.recordOutput(`[attach] existing n8n detected at ${host}; reusing it`);
+    logger.info(`[n8n-sidecar] reusing existing n8n at ${host}`);
+    this.setState({ host, port, pid: null });
+
+    try {
+      const key = await this.ensureApiKey(host);
+      if (key) {
+        this.apiKey = key;
+        logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
+      }
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    this.setState({ status: "ready", errorMessage: null });
+    this.armRetryResetTimer();
+    return true;
+  }
+
+  private async probeExistingInstance(host: string): Promise<boolean> {
+    try {
+      const res = await this.deps.fetch(`${host}/rest/login`, {
+        method: "GET",
+        signal: AbortSignal.timeout(2_000),
+      });
+      return res.status === 200 || res.status === 401;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Polls GET {host}/rest/login until 200 or 401 (both mean "up"). 503
    * means "still booting". Times out per `readinessTimeoutMs`.
@@ -924,11 +995,7 @@ export class N8nSidecar {
       // some spawn topologies (bun's child_process.spawn in particular),
       // so a 0 here is not a real failure.
       const child = this.child;
-      if (
-        child &&
-        typeof child.exitCode === "number" &&
-        child.exitCode !== 0
-      ) {
+      if (child && typeof child.exitCode === "number" && child.exitCode !== 0) {
         throw new Error(
           `n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
         );
