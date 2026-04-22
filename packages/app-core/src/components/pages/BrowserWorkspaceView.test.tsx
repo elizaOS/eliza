@@ -101,7 +101,7 @@ describe("BrowserWorkspaceView", () => {
   it("shows the LifeOps Browser install card in empty web mode", async () => {
     render(<BrowserWorkspaceView />);
 
-    await screen.findByText("Use your real browser here");
+    await screen.findByText(/LifeOps can drive your real Chrome tabs/i);
 
     expect(screen.queryByText(/Embedded fallback only/i)).toBeNull();
     expect(
