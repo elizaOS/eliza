@@ -160,11 +160,7 @@ export function PageScopedChatPane({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (typeof el.scrollTo === "function") {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
+    el.scrollTop = el.scrollHeight;
   }, [messages, sending]);
 
   const handleSend = useCallback(async () => {
