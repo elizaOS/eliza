@@ -2046,50 +2046,43 @@ export function CharacterEditor({
       >
         <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
           <DialogHeader className="gap-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
-                <SparklesIcon className="h-4 w-4" />
-              </div>
-              <div>
-                <DialogTitle>
-                  {t("charactereditor.UnsavedChangesTitle", {
-                    defaultValue: "Unsaved changes",
-                  })}
-                </DialogTitle>
-                <DialogDescription className="mt-1 whitespace-pre-line text-muted-strong">
-                  {t("charactereditor.UnsavedChangesBody", {
-                    defaultValue:
-                      "You have unsaved changes. Save before switching?",
-                  })}
-                  {pendingNavigation?.kind === "character"
-                    ? `\n${t("charactereditor.SwitchCharacterPrompt", {
-                        defaultValue: "Switch to {{name}}?",
-                        name: pendingNavigation.entry.name,
-                      })}`
-                    : pendingNavigation?.kind === "page"
-                      ? `\n${t("charactereditor.SwitchSectionPrompt", {
-                          defaultValue: "Switch to {{name}}?",
-                          name:
-                            pendingNavigation.page === "personality"
-                              ? t("charactereditor.TabPersonality", {
-                                  defaultValue: "Personality",
+            <DialogTitle>
+              {t("charactereditor.UnsavedChangesTitle", {
+                defaultValue: "Unsaved changes",
+              })}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-line text-muted-strong">
+              {t("charactereditor.UnsavedChangesBody", {
+                defaultValue:
+                  "You have unsaved changes. Save before switching?",
+              })}
+              {pendingNavigation?.kind === "character"
+                ? `\n${t("charactereditor.SwitchCharacterPrompt", {
+                    defaultValue: "Switch to {{name}}?",
+                    name: pendingNavigation.entry.name,
+                  })}`
+                : pendingNavigation?.kind === "page"
+                  ? `\n${t("charactereditor.SwitchSectionPrompt", {
+                      defaultValue: "Switch to {{name}}?",
+                      name:
+                        pendingNavigation.page === "personality"
+                          ? t("charactereditor.TabPersonality", {
+                              defaultValue: "Personality",
+                            })
+                          : pendingNavigation.page === "style"
+                            ? t("charactereditor.TabStyles", {
+                                defaultValue: "Style",
+                              })
+                            : pendingNavigation.page === "examples"
+                              ? t("charactereditor.TabExamples", {
+                                  defaultValue: "Examples",
                                 })
-                              : pendingNavigation.page === "style"
-                                ? t("charactereditor.TabStyles", {
-                                    defaultValue: "Style",
-                                  })
-                                : pendingNavigation.page === "examples"
-                                  ? t("charactereditor.TabExamples", {
-                                      defaultValue: "Examples",
-                                    })
-                                  : t("charactereditor.TabKnowledge", {
-                                      defaultValue: "Knowledge",
-                                    }),
-                        })}`
-                      : ""}
-                </DialogDescription>
-              </div>
-            </div>
+                              : t("charactereditor.TabKnowledge", {
+                                  defaultValue: "Knowledge",
+                                }),
+                    })}`
+                  : ""}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
