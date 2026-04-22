@@ -626,7 +626,7 @@ export function ConversationsSidebar({
         data-testid="chat-sidebar-manage-toggle"
         aria-pressed={isManageConnectionsActive}
         onClick={handleManageConnections}
-        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-3xs font-semibold uppercase tracking-[0.1em] transition-colors ${
+        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] transition-colors ${
           isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
         }`}
       >

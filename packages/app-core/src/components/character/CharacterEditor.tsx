@@ -1569,7 +1569,8 @@ export function CharacterEditor({
         {!sceneOverlay && (
           <PageLayout
             className="h-full"
-            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
+            contentPadding={false}
+            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col px-6 py-6 lg:px-8 lg:py-8"
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={

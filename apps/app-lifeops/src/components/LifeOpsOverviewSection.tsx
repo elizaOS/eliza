@@ -1,25 +1,38 @@
 /**
- * LifeOps Overview — today-first landing.
+ * LifeOps Overview - today-first unified feed.
  *
- * Renders a Google-Calendar-style "Today" hero with a colour-coded agenda
- * that mixes calendar events, reminders, and inbox attention in one list.
- * Navigation is handled by the sidebar, so we do not render jump-to cards.
+ * Shows a single agenda that interleaves today's calendar events, active
+ * reminders, and the freshest inbox messages, each coloured by type.
+ * Clicking an item deep-links into the dedicated section. Navigation is
+ * handled by the sidebar so we do not render jump cards.
  */
 import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
+  LifeOpsCalendarEvent,
+  LifeOpsInboxChannel,
   LifeOpsOverview,
+  LifeOpsUnifiedMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  AtSign,
   Bell,
   CalendarDays,
   Flame,
   Loader2,
+  MessageCircle,
+  MessageSquare,
+  Phone,
   RefreshCw,
+  Send,
+  Shield,
+  Smartphone,
   Sparkles,
   Target,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
+import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
@@ -27,6 +40,8 @@ import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
 interface LifeOpsOverviewSectionProps {
   onNavigate: (section: LifeOpsSection) => void;
 }
+
+// Date helpers
 
 function useGreeting(): string {
   const hour = new Date().getHours();
@@ -45,7 +60,7 @@ function formatFullDate(date: Date): string {
   }).format(date);
 }
 
-function formatTime(iso: string): string {
+function formatClockTime(iso: string): string {
   const parsed = Date.parse(iso);
   if (!Number.isFinite(parsed)) return "";
   return new Intl.DateTimeFormat(undefined, {
@@ -73,6 +88,19 @@ function formatRelative(iso: string): string {
   return `${Math.round(agoH / 24)}d ago`;
 }
 
+function isToday(iso: string): boolean {
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return false;
+  const today = new Date();
+  return (
+    parsed.getFullYear() === today.getFullYear() &&
+    parsed.getMonth() === today.getMonth() &&
+    parsed.getDate() === today.getDate()
+  );
+}
+
+// Classification and style tokens
+
 type ReminderUrgency = "overdue" | "soon" | "today" | "later";
 
 function classifyReminder(iso: string): ReminderUrgency {
@@ -85,37 +113,87 @@ function classifyReminder(iso: string): ReminderUrgency {
   return "later";
 }
 
-const URGENCY_CLASS: Record<
+const URGENCY_STYLES: Record<
   ReminderUrgency,
-  { dot: string; pill: string; ring: string }
+  { dot: string; pill: string; label: string }
 > = {
   overdue: {
     dot: "bg-rose-500",
     pill: "text-rose-300 bg-rose-500/12",
-    ring: "ring-rose-500/30",
+    label: "Overdue",
   },
   soon: {
     dot: "bg-amber-400",
     pill: "text-amber-300 bg-amber-500/12",
-    ring: "ring-amber-500/30",
+    label: "Soon",
   },
   today: {
     dot: "bg-blue-400",
     pill: "text-blue-300 bg-blue-500/12",
-    ring: "ring-blue-500/30",
+    label: "Today",
   },
   later: {
-    dot: "bg-muted",
-    pill: "text-muted bg-bg-muted/40",
-    ring: "ring-border/30",
+    dot: "bg-emerald-400",
+    pill: "text-emerald-300 bg-emerald-500/12",
+    label: "Later",
   },
 };
+
+const CHANNEL_STYLES: Record<
+  LifeOpsInboxChannel,
+  { label: string; icon: ReactNode; text: string; bg: string }
+> = {
+  gmail: {
+    label: "Gmail",
+    icon: <AtSign className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-rose-300",
+    bg: "bg-rose-500/12",
+  },
+  discord: {
+    label: "Discord",
+    icon: <MessageCircle className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-indigo-300",
+    bg: "bg-indigo-500/14",
+  },
+  telegram: {
+    label: "Telegram",
+    icon: <Send className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-sky-300",
+    bg: "bg-sky-500/14",
+  },
+  signal: {
+    label: "Signal",
+    icon: <Shield className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-blue-300",
+    bg: "bg-blue-500/14",
+  },
+  imessage: {
+    label: "iMessage",
+    icon: <MessageSquare className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-emerald-300",
+    bg: "bg-emerald-500/14",
+  },
+  whatsapp: {
+    label: "WhatsApp",
+    icon: <Smartphone className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-lime-300",
+    bg: "bg-lime-500/14",
+  },
+  sms: {
+    label: "SMS",
+    icon: <Phone className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-amber-300",
+    bg: "bg-amber-500/14",
+  },
+};
+
+// Small UI primitives
 
 interface StatPillProps {
   label: string;
   value: number;
   accent: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   onClick?: () => void;
 }
 
@@ -155,15 +233,51 @@ function StatPill({ label, value, accent, icon, onClick }: StatPillProps) {
   );
 }
 
-function AgendaReminderRow({
-  reminder,
+function SectionCard({
+  title,
+  icon,
+  count,
+  onSeeAll,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  count: number;
+  onSeeAll: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col overflow-hidden rounded-3xl border border-border/16 bg-card/18">
+      <div className="flex items-center justify-between gap-3 border-b border-border/12 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+          {icon}
+          <span>{title}</span>
+          <span className="rounded-full bg-bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted tabular-nums">
+            {count}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="text-[11px] font-medium text-muted hover:text-txt"
+          onClick={onSeeAll}
+        >
+          See all
+        </button>
+      </div>
+      <div className="divide-y divide-border/8">{children}</div>
+    </section>
+  );
+}
+
+// Row renderers
+
+function CalendarEventRow({
+  event,
   onClick,
 }: {
-  reminder: LifeOpsActiveReminderView;
+  event: LifeOpsCalendarEvent;
   onClick: () => void;
 }) {
-  const urgency = classifyReminder(reminder.scheduledFor);
-  const cls = URGENCY_CLASS[urgency];
   return (
     <button
       type="button"
@@ -171,7 +285,43 @@ function AgendaReminderRow({
       className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/30"
     >
       <span
-        className={`h-2 w-2 shrink-0 rounded-full ${cls.dot}`}
+        className="h-2 w-2 shrink-0 rounded-full bg-blue-400"
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-txt">{event.title}</span>
+        {event.location ? (
+          <span className="mt-0.5 block truncate text-[11px] text-muted">
+            {event.location}
+          </span>
+        ) : null}
+      </span>
+      <span className="shrink-0 rounded-full bg-blue-500/12 px-2 py-0.5 text-[10px] font-semibold text-blue-300">
+        {event.isAllDay
+          ? "All day"
+          : `${formatClockTime(event.startAt)} · ${formatRelative(event.startAt)}`}
+      </span>
+    </button>
+  );
+}
+
+function ReminderAgendaRow({
+  reminder,
+  onClick,
+}: {
+  reminder: LifeOpsActiveReminderView;
+  onClick: () => void;
+}) {
+  const urgency = classifyReminder(reminder.scheduledFor);
+  const style = URGENCY_STYLES[urgency];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/30"
+    >
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`}
         aria-hidden
       />
       <span className="min-w-0 flex-1">
@@ -185,13 +335,63 @@ function AgendaReminderRow({
         ) : null}
       </span>
       <span
-        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cls.pill}`}
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${style.pill}`}
       >
         {formatRelative(reminder.scheduledFor)}
       </span>
     </button>
   );
 }
+
+function InboxMessageRow({
+  message,
+  onClick,
+}: {
+  message: LifeOpsUnifiedMessage;
+  onClick: () => void;
+}) {
+  const style = CHANNEL_STYLES[message.channel];
+  const subject = message.subject?.trim() || `${style.label} message`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/30"
+    >
+      <span
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${style.bg} ${style.text}`}
+        aria-hidden
+      >
+        {style.icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className={`flex items-center gap-2 truncate text-sm ${
+            message.unread ? "font-semibold text-txt" : "text-txt/85"
+          }`}
+        >
+          <span className="truncate">{message.sender.displayName}</span>
+          {message.unread ? (
+            <span
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              aria-hidden
+            />
+          ) : null}
+        </span>
+        <span className="mt-0.5 block truncate text-[11px] text-muted">
+          {subject}
+        </span>
+      </span>
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${style.bg} ${style.text}`}
+      >
+        {formatRelative(message.receivedAt)}
+      </span>
+    </button>
+  );
+}
+
+// Main section
 
 export function LifeOpsOverviewSection({
   onNavigate,
@@ -205,7 +405,7 @@ export function LifeOpsOverviewSection({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -225,12 +425,38 @@ export function LifeOpsOverviewSection({
   }, [t]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadOverview();
+  }, [loadOverview]);
+
+  const calendar = useCalendarWeek({ viewMode: "week" });
+  const inbox = useUnifiedInbox({ maxResults: 6 });
+
+  const upcomingEvents = useMemo(() => {
+    const now = Date.now();
+    return [...calendar.events]
+      .filter((event) => {
+        const end = Date.parse(event.endAt);
+        return Number.isFinite(end) && end >= now;
+      })
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .slice(0, 5);
+  }, [calendar.events]);
+
+  const todayEvents = useMemo(
+    () => upcomingEvents.filter((event) => isToday(event.startAt)),
+    [upcomingEvents],
+  );
 
   const today = useMemo(() => new Date(), []);
   const reminders = overview?.reminders ?? [];
+  const activeReminders = reminders.slice(0, 5);
   const summary = overview?.summary;
+
+  const refresh = useCallback(() => {
+    void loadOverview();
+    void calendar.refresh();
+    void inbox.refresh();
+  }, [calendar, inbox, loadOverview]);
 
   if (!dismissed) {
     return <LifeOpsSetupGate onDismiss={dismiss} />;
@@ -239,7 +465,7 @@ export function LifeOpsOverviewSection({
   return (
     <div className="space-y-6" data-testid="lifeops-overview">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-3xl border border-border/16 bg-gradient-to-br from-violet-500/12 via-blue-500/10 to-emerald-500/10 px-5 py-5">
+      <div className="relative overflow-hidden rounded-3xl border border-border/16 bg-gradient-to-br from-violet-500/14 via-blue-500/10 to-emerald-500/12 px-5 py-5">
         <div className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-10 -left-6 h-32 w-32 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="relative flex flex-wrap items-end justify-between gap-4">
@@ -251,23 +477,32 @@ export function LifeOpsOverviewSection({
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-txt">
               {formatFullDate(today)}
             </h1>
-            {overview?.schedule?.phase ? (
-              <div className="mt-1 text-xs text-muted">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              {overview?.schedule?.phase ? (
                 <span className="capitalize">
                   {overview.schedule.phase.replace(/_/g, " ")}
                 </span>
-                {overview.schedule.wakeAt ? (
-                  <>
-                    {" · "}wake {formatRelative(overview.schedule.wakeAt)}
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+              ) : null}
+              {todayEvents.length > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/14 px-2 py-0.5 text-blue-300">
+                  <CalendarDays className="h-3 w-3" aria-hidden />
+                  {todayEvents.length} event
+                  {todayEvents.length === 1 ? "" : "s"} today
+                </span>
+              ) : null}
+              {summary && summary.activeReminderCount > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/14 px-2 py-0.5 text-amber-300">
+                  <Bell className="h-3 w-3" aria-hidden />
+                  {summary.activeReminderCount} reminder
+                  {summary.activeReminderCount === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
           </div>
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-full border border-border/20 bg-card/40 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
-            onClick={() => void load()}
+            onClick={refresh}
             disabled={loading}
           >
             <RefreshCw
@@ -288,44 +523,35 @@ export function LifeOpsOverviewSection({
       {loading && !overview ? (
         <div className="flex items-center gap-2 py-6 text-xs text-muted">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          {t("lifeopsoverviewsection.loading", {
-            defaultValue: "Loading overview…",
-          })}
+          Loading overview...
         </div>
       ) : null}
 
+      {/* Stat pills */}
       {summary ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatPill
-            label={t("lifeopsoverviewsection.activeItems", {
-              defaultValue: "Active",
-            })}
+            label="Active"
             value={summary.activeOccurrenceCount}
             accent="bg-violet-500/20 text-violet-300"
             icon={<Flame className="h-4 w-4" aria-hidden />}
           />
           <StatPill
-            label={t("lifeopsoverviewsection.overdue", {
-              defaultValue: "Overdue",
-            })}
+            label="Overdue"
             value={summary.overdueOccurrenceCount}
             accent="bg-rose-500/20 text-rose-300"
             icon={<Bell className="h-4 w-4" aria-hidden />}
             onClick={() => onNavigate("reminders")}
           />
           <StatPill
-            label={t("lifeopsoverviewsection.reminders", {
-              defaultValue: "Reminders",
-            })}
+            label="Reminders"
             value={summary.activeReminderCount}
             accent="bg-amber-500/20 text-amber-300"
             icon={<Bell className="h-4 w-4" aria-hidden />}
             onClick={() => onNavigate("reminders")}
           />
           <StatPill
-            label={t("lifeopsoverviewsection.goals", {
-              defaultValue: "Goals",
-            })}
+            label="Goals"
             value={summary.activeGoalCount}
             accent="bg-emerald-500/20 text-emerald-300"
             icon={<Target className="h-4 w-4" aria-hidden />}
@@ -333,47 +559,97 @@ export function LifeOpsOverviewSection({
         </div>
       ) : null}
 
-      {overview ? (
-        <section className="overflow-hidden rounded-3xl border border-border/16 bg-card/18">
-          <div className="flex items-center justify-between gap-3 border-b border-border/12 px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-              <CalendarDays className="h-4 w-4 text-blue-300" aria-hidden />
-              {t("lifeopsoverviewsection.nextUp", {
-                defaultValue: "Next up",
-              })}
+      {/* Three-up unified feed */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <SectionCard
+          title="Up next"
+          icon={<CalendarDays className="h-4 w-4 text-blue-300" aria-hidden />}
+          count={upcomingEvents.length}
+          onSeeAll={() => onNavigate("calendar")}
+        >
+          {calendar.loading && upcomingEvents.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-muted">
+              Loading...
             </div>
-            <button
-              type="button"
-              className="text-[11px] font-medium text-muted hover:text-txt"
-              onClick={() => onNavigate("reminders")}
-            >
-              {t("common.seeAll", { defaultValue: "See all" })}
-            </button>
-          </div>
-          {reminders.length === 0 ? (
+          ) : upcomingEvents.length === 0 ? (
             <div className="px-4 py-8 text-center text-xs text-muted">
-              {t("lifeopsoverviewsection.noReminders", {
-                defaultValue: "No upcoming reminders.",
-              })}
+              Nothing scheduled.
             </div>
           ) : (
-            <div className="divide-y divide-border/8">
-              {reminders.slice(0, 6).map((reminder) => (
-                <AgendaReminderRow
-                  key={`${reminder.ownerId}:${reminder.stepIndex}`}
-                  reminder={reminder}
-                  onClick={() =>
-                    select({
-                      reminderId: reminder.ownerId,
-                      eventId: reminder.eventId ?? null,
-                    })
-                  }
-                />
-              ))}
-            </div>
+            upcomingEvents.map((event) => (
+              <CalendarEventRow
+                key={event.id}
+                event={event}
+                onClick={() => {
+                  select({ eventId: event.id });
+                  onNavigate("calendar");
+                }}
+              />
+            ))
           )}
-        </section>
-      ) : null}
+        </SectionCard>
+
+        <SectionCard
+          title="Reminders"
+          icon={<Bell className="h-4 w-4 text-amber-300" aria-hidden />}
+          count={reminders.length}
+          onSeeAll={() => onNavigate("reminders")}
+        >
+          {loading && activeReminders.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-muted">
+              Loading...
+            </div>
+          ) : activeReminders.length === 0 ? (
+            <div className="px-4 py-8 text-center text-xs text-muted">
+              All clear.
+            </div>
+          ) : (
+            activeReminders.map((reminder) => (
+              <ReminderAgendaRow
+                key={`${reminder.ownerId}:${reminder.stepIndex}`}
+                reminder={reminder}
+                onClick={() => {
+                  select({
+                    reminderId: reminder.ownerId,
+                    eventId: reminder.eventId ?? null,
+                  });
+                  onNavigate("reminders");
+                }}
+              />
+            ))
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Inbox"
+          icon={
+            <MessageSquare className="h-4 w-4 text-emerald-300" aria-hidden />
+          }
+          count={inbox.messages.length}
+          onSeeAll={() => onNavigate("messages")}
+        >
+          {inbox.loading && inbox.messages.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-muted">
+              Loading...
+            </div>
+          ) : inbox.messages.length === 0 ? (
+            <div className="px-4 py-8 text-center text-xs text-muted">
+              Inbox clear.
+            </div>
+          ) : (
+            inbox.messages.slice(0, 5).map((message) => (
+              <InboxMessageRow
+                key={message.id}
+                message={message}
+                onClick={() => {
+                  select({ messageId: message.id });
+                  onNavigate("messages");
+                }}
+              />
+            ))
+          )}
+        </SectionCard>
+      </div>
     </div>
   );
 }

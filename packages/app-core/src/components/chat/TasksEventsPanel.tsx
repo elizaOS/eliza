@@ -176,7 +176,7 @@ export function TasksEventsPanel({
         <button
           type="button"
           data-testid="chat-widgets-expand-floating"
-          className="fixed bottom-[6.5rem] right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
+          className="fixed bottom-3 right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
           aria-label="Expand widgets"
           onClick={() => onToggleCollapsed?.(false)}
         >
@@ -236,7 +236,7 @@ export function TasksEventsPanel({
               <button
                 type="button"
                 data-testid="chat-widgets-edit-inline"
-                className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-3xs font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-txt"
+                className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-txt"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >
