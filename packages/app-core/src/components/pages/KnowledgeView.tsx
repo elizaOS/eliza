@@ -25,8 +25,8 @@ import { DocumentViewer } from "./knowledge-detail";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
-  KNOWLEDGE_UPLOAD_ACCEPT,
   isSupportedKnowledgeFile,
+  KNOWLEDGE_UPLOAD_ACCEPT,
   type KnowledgeUploadFile,
   type KnowledgeUploadOptions,
   LARGE_FILE_WARNING_BYTES,
