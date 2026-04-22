@@ -1137,57 +1137,67 @@ export function SettingsView({
         </div>
       )}
 
-      {visibleSectionIds.has("local-models") && (
-        <SettingsSection
-          id="local-models"
-          title={t("settings.sections.localModels.label", {
-            defaultValue: "Local models",
-          })}
-          description={t("settings.sections.localModels.desc", {
-            defaultValue:
-              "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
-          })}
-          ref={registerContentItem("local-models")}
-        >
-          <LocalInferencePanel />
-        </SettingsSection>
+      {(visibleSectionIds.has("local-models") ||
+        visibleSectionIds.has("coding-agents")) && (
+        <div className="grid gap-5 xl:grid-cols-2 items-start">
+          {visibleSectionIds.has("local-models") && (
+            <SettingsSection
+              id="local-models"
+              title={t("settings.sections.localModels.label", {
+                defaultValue: "Local models",
+              })}
+              description={t("settings.sections.localModels.desc", {
+                defaultValue:
+                  "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
+              })}
+              ref={registerContentItem("local-models")}
+            >
+              <LocalInferencePanel />
+            </SettingsSection>
+          )}
+
+          {visibleSectionIds.has("coding-agents") && (
+            <SettingsSection
+              id="coding-agents"
+              title={t("settings.sections.codingagents.label")}
+              description={t("settings.codingAgentsDescription")}
+              ref={registerContentItem("coding-agents")}
+            >
+              <CodingAgentSettingsSection />
+            </SettingsSection>
+          )}
+        </div>
       )}
 
-      {visibleSectionIds.has("coding-agents") && (
-        <SettingsSection
-          id="coding-agents"
-          title={t("settings.sections.codingagents.label")}
-          description={t("settings.codingAgentsDescription")}
-          ref={registerContentItem("coding-agents")}
-        >
-          <CodingAgentSettingsSection />
-        </SettingsSection>
-      )}
+      {(visibleSectionIds.has("capabilities") ||
+        visibleSectionIds.has("permissions")) && (
+        <div className="grid gap-5 xl:grid-cols-2 items-start">
+          {visibleSectionIds.has("capabilities") && (
+            <SettingsSection
+              id="capabilities"
+              title={t("settings.sections.capabilities.label", {
+                defaultValue: "Capabilities",
+              })}
+              description={t("settings.sections.capabilities.desc", {
+                defaultValue: "Enable or disable agent capabilities",
+              })}
+              ref={registerContentItem("capabilities")}
+            >
+              <CapabilitiesSection />
+            </SettingsSection>
+          )}
 
-      {visibleSectionIds.has("capabilities") && (
-        <SettingsSection
-          id="capabilities"
-          title={t("settings.sections.capabilities.label", {
-            defaultValue: "Capabilities",
-          })}
-          description={t("settings.sections.capabilities.desc", {
-            defaultValue: "Enable or disable agent capabilities",
-          })}
-          ref={registerContentItem("capabilities")}
-        >
-          <CapabilitiesSection />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("permissions") && (
-        <SettingsSection
-          id="permissions"
-          title={t("settings.sections.permissions.label")}
-          description={t("settings.sections.permissions.desc")}
-          ref={registerContentItem("permissions")}
-        >
-          <PermissionsSection />
-        </SettingsSection>
+          {visibleSectionIds.has("permissions") && (
+            <SettingsSection
+              id="permissions"
+              title={t("settings.sections.permissions.label")}
+              description={t("settings.sections.permissions.desc")}
+              ref={registerContentItem("permissions")}
+            >
+              <PermissionsSection />
+            </SettingsSection>
+          )}
+        </div>
       )}
 
       {visibleSectionIds.has("updates") && (

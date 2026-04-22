@@ -137,7 +137,7 @@ function MobilePermissionsView() {
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <StreamingPermissionsSettingsView
         mode="mobile"
         testId="mobile-permissions"
@@ -161,7 +161,7 @@ function WebPermissionsView() {
   const { websiteBlockerSettingsCard: WebsiteBlockerSettingsCard } =
     useBootConfig();
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <StreamingPermissionsSettingsView
         mode="web"
         testId="web-permissions-info"
@@ -244,7 +244,7 @@ function DesktopPermissionsView() {
   const copy = platformCopy(platform);
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       {/* System Permissions */}
       <section className="space-y-2">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
