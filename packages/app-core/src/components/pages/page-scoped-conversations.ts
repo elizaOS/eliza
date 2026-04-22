@@ -25,7 +25,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 2;
+export const PAGE_SCOPE_VERSION = 3;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -82,31 +82,31 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
 };
 
 /**
- * Browser scope intro copy varies by LifeOps Browser companion state: when the
+ * Browser scope intro copy varies by Agent Browser Bridge companion state: when the
  * extension is connected the agent can drive real tabs; when it isn't the
  * intro has to walk the user through installing the extension instead of
  * pretending real-browser control is available.
  */
 export function getBrowserPageScopeCopy(state: {
-  lifeOpsConnected: boolean;
+  browserBridgeConnected: boolean;
   browserLabel?: string | null;
   profileLabel?: string | null;
 }): PageScopeIntroCopy {
-  if (state.lifeOpsConnected) {
+  if (state.browserBridgeConnected) {
     const browser = state.browserLabel?.trim() || "Chrome";
     const profile = state.profileLabel?.trim();
     const where = profile ? `${browser} / ${profile}` : browser;
     return {
       title: "Browser chat",
-      body: `LifeOps Browser is connected in ${where}. Ask me to open a tab, navigate somewhere, snapshot a page, or close a tab. I can also explain what's currently open.`,
-      systemAddendum: `You are answering inside the Browser view. LifeOps Browser is connected in ${where}. The user can ask you to open tabs, navigate, snapshot, show/hide, or close tabs in the connected browser companion. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+      body: `Agent Browser Bridge is connected in ${where}. Ask me to open a tab, navigate somewhere, snapshot a page, or close a tab. I can also explain what's currently open.`,
+      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate, snapshot, show/hide, or close tabs in the connected browser companion. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
     };
   }
   return {
-    title: "Install LifeOps Browser",
-    body: "LifeOps can drive your real Chrome tabs once you install the LifeOps Browser extension. Use the buttons below to build the extension and open Chrome's extension manager, then come back and I'll work against your real browser.",
+    title: "Install Agent Browser Bridge",
+    body: "The agent can drive your real Chrome tabs once you install the Agent Browser Bridge extension. Use the buttons below to build the extension and open Chrome's extension manager, then come back and I'll work against your real browser.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the LifeOps Browser companion extension yet. Guide them to click the Install LifeOps Browser button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control.",
+      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control.",
   };
 }
 

@@ -534,6 +534,36 @@ export function saveFavoriteApps(apps: string[]): void {
   }, undefined);
 }
 
+/* ── Recent apps persistence ──────────────────────────────────────────── */
+const RECENT_APPS_KEY = "eliza:recent-apps";
+/** Cap on persisted recency list. Older entries are evicted. */
+export const RECENT_APPS_MAX = 10;
+
+export function loadRecentApps(): string[] {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(RECENT_APPS_KEY);
+    if (!stored) return [];
+    try {
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((item): item is string => typeof item === "string")
+        .slice(0, RECENT_APPS_MAX);
+    } catch {
+      return [];
+    }
+  }, []);
+}
+
+export function saveRecentApps(apps: string[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      RECENT_APPS_KEY,
+      JSON.stringify(apps.slice(0, RECENT_APPS_MAX)),
+    );
+  }, undefined);
+}
+
 /* ── Wallet enabled persistence ─────────────────────────────────────── */
 const WALLET_ENABLED_KEY = "eliza:wallet:enabled";
 

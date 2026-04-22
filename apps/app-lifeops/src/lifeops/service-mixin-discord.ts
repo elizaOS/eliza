@@ -2,9 +2,11 @@
 
 import { logger } from "@elizaos/core";
 import type {
-  LifeOpsBrowserCompanionStatus,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeTabSummary,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsBrowserSession,
-  LifeOpsBrowserTabSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsDiscordCapability,
@@ -113,8 +115,8 @@ function companionKey(args: { browser: string; profileId: string }): string {
 }
 
 function companionMap(
-  companions: readonly LifeOpsBrowserCompanionStatus[],
-): Map<string, LifeOpsBrowserCompanionStatus> {
+  companions: readonly BrowserBridgeCompanionStatus[],
+): Map<string, BrowserBridgeCompanionStatus> {
   return new Map(
     companions.map((companion) => [
       companionKey({
@@ -127,8 +129,8 @@ function companionMap(
 }
 
 function sortCompanionsByRecency(
-  companions: readonly LifeOpsBrowserCompanionStatus[],
-): LifeOpsBrowserCompanionStatus[] {
+  companions: readonly BrowserBridgeCompanionStatus[],
+): BrowserBridgeCompanionStatus[] {
   return [...companions].sort((left, right) => {
     const leftMs = Date.parse(left.lastSeenAt ?? "");
     const rightMs = Date.parse(right.lastSeenAt ?? "");
@@ -151,8 +153,8 @@ function sortCompanionsByRecency(
 }
 
 function pickNewestDiscordTab(
-  tabs: readonly LifeOpsBrowserTabSummary[],
-): LifeOpsBrowserTabSummary | null {
+  tabs: readonly BrowserBridgeTabSummary[],
+): BrowserBridgeTabSummary | null {
   return (
     [...tabs]
       .filter((tab) => tab.url.includes("discord.com"))
@@ -256,7 +258,7 @@ function sessionError(session: LifeOpsBrowserSession | null): string | null {
 }
 
 function siteAccessAllowsDiscord(
-  companion: LifeOpsBrowserCompanionStatus | null,
+  companion: BrowserBridgeCompanionStatus | null,
   hasDiscordPage: boolean,
 ): boolean | null {
   if (!companion) {
@@ -304,13 +306,13 @@ function browserTabState(args: {
   return "missing";
 }
 
-function lifeOpsBrowserAccessStatus(args: {
+function browserBridgeAccessStatus(args: {
   active: boolean;
   settingsEnabled: boolean;
   trackingEnabled: boolean;
   paused: boolean;
   canControl: boolean;
-  companion: LifeOpsBrowserCompanionStatus | null;
+  companion: BrowserBridgeCompanionStatus | null;
   hasAnyCompanion: boolean;
   hasConnectedCompanion: boolean;
   probe: DiscordTabProbe | null;
@@ -449,10 +451,10 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       trackingEnabled: boolean;
       paused: boolean;
       canControl: boolean;
-      selectedCompanion: LifeOpsBrowserCompanionStatus | null;
+      selectedCompanion: BrowserBridgeCompanionStatus | null;
       hasAnyCompanion: boolean;
       hasConnectedCompanion: boolean;
-      discordTab: LifeOpsBrowserTabSummary | null;
+      discordTab: BrowserBridgeTabSummary | null;
       currentPageUrl: string | null;
       probe: DiscordTabProbe | null;
       session: LifeOpsBrowserSession | null;
@@ -627,7 +629,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           Boolean(browserState.currentPageUrl?.includes("discord.com")) ||
           Boolean(browserState.discordTab);
         const browserAccess = [
-          lifeOpsBrowserAccessStatus({
+          browserBridgeAccessStatus({
             active: browserState.available,
             settingsEnabled: browserState.settingsEnabled,
             trackingEnabled: browserState.trackingEnabled,
@@ -730,7 +732,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           ) {
             fail(
               409,
-              "LifeOps Browser can see your browser, but browser control is disabled. Enable browser control or open Discord manually, then try again.",
+              "Agent Browser Bridge can see your browser, but browser control is disabled. Enable browser control or open Discord manually, then try again.",
             );
           }
 
@@ -742,7 +744,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
               if (!browserState.canControl && !onDiscordDmPage) {
                 fail(
                   409,
-                  "Discord is open in your browser, but LifeOps Browser control is disabled. Focus the Discord DM tab manually or enable browser control.",
+                  "Discord is open in your browser, but Agent Browser Bridge control is disabled. Focus the Discord DM tab manually or enable browser control.",
                 );
               }
             }
@@ -750,13 +752,13 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             if (!browserState.selectedCompanion) {
               fail(
                 503,
-                "No connected LifeOps Browser companion is available for Discord.",
+                "No connected Agent Browser Bridge companion is available for Discord.",
               );
             }
             if (!browserState.canControl) {
               fail(
                 409,
-                "LifeOps Browser control is disabled. Enable browser control or open Discord manually so LifeOps can inspect your DMs.",
+                "Agent Browser Bridge control is disabled. Enable browser control or open Discord manually so LifeOps can inspect your DMs.",
               );
             }
 
@@ -907,7 +909,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!discordBrowserWorkspaceAvailable()) {
         fail(
           503,
-          "Discord connector requires either Your Browser connected through LifeOps Browser or Milady Desktop Browser.",
+          "Discord connector requires either Your Browser connected through Agent Browser Bridge or Milady Desktop Browser.",
         );
       }
 

@@ -1,8 +1,10 @@
 import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
 import type {
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserAction,
-  LifeOpsBrowserCompanionStatus,
   LifeOpsBrowserSession,
   LifeOpsGmailTriageFeed,
 } from "@elizaos/shared/contracts/lifeops";
@@ -82,7 +84,7 @@ type SubscriptionDependencies = LifeOpsServiceBase & {
     request?: Record<string, unknown>,
     now?: Date,
   ): Promise<LifeOpsGmailTriageFeed>;
-  listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]>;
+  listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
   createBrowserSession(
     request: CreateLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
@@ -230,7 +232,7 @@ function resolvePlaybookFromCandidate(
 function toUserBrowserActions(
   playbook: LifeOpsSubscriptionPlaybook,
 ): CreateLifeOpsBrowserSessionRequest["actions"] {
-  const actions: Array<Omit<LifeOpsBrowserAction, "id">> = [];
+  const actions: Array<Omit<BrowserBridgeAction, "id">> = [];
   for (const step of playbook.steps ?? []) {
     switch (step.kind) {
       case "open":
@@ -688,7 +690,7 @@ export function withSubscriptions<
               status: nextStatus,
               evidenceSummary:
                 cancellation.evidenceSummary ??
-                `LifeOps Browser session ${session.status}.`,
+                `Agent Browser Bridge session ${session.status}.`,
               error:
                 nextStatus === "failed"
                   ? JSON.stringify(session.result)
@@ -841,7 +843,7 @@ export function withSubscriptions<
           cancellation = {
             ...cancellation,
             status: "blocked",
-            error: "No connected LifeOps Browser companion is available.",
+            error: "No connected Agent Browser Bridge companion is available.",
             updatedAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
           };

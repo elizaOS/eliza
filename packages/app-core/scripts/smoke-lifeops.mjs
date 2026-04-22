@@ -183,7 +183,7 @@ export async function runSmokeLifeOps(options = {}) {
     );
 
     const browserUrl = new URL(
-      "/api/lifeops/browser/sessions",
+      "/api/browser-bridge/sessions",
       base,
     ).toString();
     const browserSessions = await fetchJson(

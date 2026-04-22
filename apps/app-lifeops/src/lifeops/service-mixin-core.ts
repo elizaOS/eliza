@@ -1,21 +1,23 @@
 import crypto from "node:crypto";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+  UpsertBrowserBridgeCompanionRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
+  BROWSER_BRIDGE_KINDS,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,
-  LifeOpsBrowserAction,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserSettings,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsOwnership,
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
-  UpsertLifeOpsBrowserCompanionRequest,
-} from "@elizaos/app-lifeops/contracts";
-import {
-  LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
-  LIFEOPS_BROWSER_KINDS,
 } from "@elizaos/app-lifeops/contracts";
 import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
 import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
@@ -26,7 +28,7 @@ import {
 import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
 import {
   createLifeOpsAuditEvent,
-  createLifeOpsBrowserCompanionStatus,
+  createBrowserBridgeCompanionStatus,
   LifeOpsRepository,
 } from "./repository.js";
 import {
@@ -71,7 +73,7 @@ export type MixinClass<TBase extends Constructor, TPublic extends object> = new 
 // ---------------------------------------------------------------------------
 
 function browserActionChangesState(
-  action: Pick<LifeOpsBrowserAction, "kind">,
+  action: Pick<BrowserBridgeAction, "kind">,
 ): boolean {
   return (
     action.kind === "open" ||
@@ -200,7 +202,7 @@ export class LifeOpsServiceBase {
   // Browser helpers
   // -----------------------------------------------------------------------
 
-  public async getBrowserSettingsInternal(): Promise<LifeOpsBrowserSettings> {
+  public async getBrowserSettingsInternal(): Promise<BrowserBridgeSettings> {
     const current = await this.repository.getBrowserSettings(this.agentId());
     return current
       ? {
@@ -216,7 +218,7 @@ export class LifeOpsServiceBase {
         };
   }
 
-  public isBrowserPaused(settings: LifeOpsBrowserSettings): boolean {
+  public isBrowserPaused(settings: BrowserBridgeSettings): boolean {
     if (!settings.pauseUntil) {
       return false;
     }
@@ -225,17 +227,17 @@ export class LifeOpsServiceBase {
   }
 
   public async requireBrowserAvailableForActions(
-    actions: readonly LifeOpsBrowserAction[],
-  ): Promise<LifeOpsBrowserSettings> {
+    actions: readonly BrowserBridgeAction[],
+  ): Promise<BrowserBridgeSettings> {
     const settings = await this.getBrowserSettingsInternal();
     if (!settings.enabled || settings.trackingMode === "off") {
       fail(
         409,
-        "LifeOps Browser is disabled. Enable it in settings before starting browser sessions.",
+        "Agent Browser Bridge is disabled. Enable it in settings before starting browser sessions.",
       );
     }
     if (this.isBrowserPaused(settings)) {
-      fail(409, "LifeOps Browser is paused.");
+      fail(409, "Agent Browser Bridge is paused.");
     }
     if (
       actions.some((action) => browserActionChangesState(action)) &&
@@ -243,20 +245,20 @@ export class LifeOpsServiceBase {
     ) {
       fail(
         409,
-        "LifeOps Browser control is disabled. Enable browser control in settings before running control actions.",
+        "Agent Browser Bridge control is disabled. Enable browser control in settings before running control actions.",
       );
     }
     return settings;
   }
 
   public buildBrowserCompanion(
-    request: UpsertLifeOpsBrowserCompanionRequest,
-    current: LifeOpsBrowserCompanionStatus | null,
-  ): LifeOpsBrowserCompanionStatus {
+    request: UpsertBrowserBridgeCompanionRequest,
+    current: BrowserBridgeCompanionStatus | null,
+  ): BrowserBridgeCompanionStatus {
     const browser = normalizeEnumValue(
       request.browser,
       "companion.browser",
-      LIFEOPS_BROWSER_KINDS,
+      BROWSER_BRIDGE_KINDS,
     );
     const profileId = requireNonEmptyString(
       request.profileId,
@@ -274,7 +276,7 @@ export class LifeOpsServiceBase {
         : normalizeEnumValue(
             request.connectionState,
             "companion.connectionState",
-            LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
+            BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
           );
     const permissions = normalizeBrowserPermissionStateInput(
       request.permissions,
@@ -308,7 +310,7 @@ export class LifeOpsServiceBase {
       };
     }
 
-    return createLifeOpsBrowserCompanionStatus({
+    return createBrowserBridgeCompanionStatus({
       agentId: this.agentId(),
       browser,
       profileId,

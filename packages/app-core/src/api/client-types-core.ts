@@ -352,7 +352,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/app-lifeops/contracts").LifeOpsBrowserCompanionReleaseManifest
+    | import("@elizaos/plugin-browser-bridge/contracts").BrowserBridgeCompanionReleaseManifest
     | null;
 }
 

@@ -20,10 +20,19 @@ import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding
 import type { ConfigUiHint } from "../types";
 
 export type {
-  CompleteLifeOpsBrowserSessionRequest,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+export type {
+  CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
+  CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -31,11 +40,7 @@ export type {
   DisconnectLifeOpsGoogleConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserPageContext,
-  LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
+  LifeOpsBrowserSession as BrowserBridgeSession,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
@@ -57,8 +62,6 @@ export type {
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-  SyncLifeOpsBrowserStateRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/app-lifeops/contracts";
@@ -465,13 +468,17 @@ export interface WorkbenchOverview {
   };
 }
 
-export type AutomationType = "coordinator_text" | "n8n_workflow";
+export type AutomationType =
+  | "coordinator_text"
+  | "n8n_workflow"
+  | "automation_draft";
 export type AutomationSource =
   | "workbench_task"
   | "trigger"
   | "n8n_workflow"
   | "workflow_draft"
-  | "workflow_shadow";
+  | "workflow_shadow"
+  | "automation_draft";
 export type AutomationStatus =
   | "active"
   | "paused"

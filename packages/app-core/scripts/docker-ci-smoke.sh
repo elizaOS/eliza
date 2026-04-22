@@ -137,11 +137,15 @@ else
 fi
 cleanup() {
   set +e
-  if "$DOCKER_BIN" ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
+  local containers_file
+  containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-containers.txt")"
+  timeout 10 "$DOCKER_BIN" ps -a --format '{{.Names}}' >"$containers_file" 2>&1 || true
+  if grep -Fxq "$CONTAINER_NAME" "$containers_file" 2>/dev/null; then
     timeout 15 "$DOCKER_BIN" inspect "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container-inspect.json" 2>&1 || true
     timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container.log" 2>&1 || true
     timeout 10 "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
+  rm -f "$containers_file" >/dev/null 2>&1 || true
   if [[ -f "$DOCKERIGNORE_BACKUP" ]]; then
     if [[ "$HAD_ROOT_DOCKERIGNORE" == "1" ]]; then
       cp "$DOCKERIGNORE_BACKUP" .dockerignore >/dev/null 2>&1 || true
@@ -283,11 +287,15 @@ probe_ok() {
 deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
 last_log_dump=0
 while (( SECONDS < deadline )); do
-  if ! "$DOCKER_BIN" ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
+  running_containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-running-containers.txt")"
+  timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' >"$running_containers_file" 2>&1 || true
+  if ! grep -Fxq "$CONTAINER_NAME" "$running_containers_file" 2>/dev/null; then
+    rm -f "$running_containers_file" >/dev/null 2>&1 || true
     timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
     log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
     fail "Container exited before smoke probe succeeded"
   fi
+  rm -f "$running_containers_file" >/dev/null 2>&1 || true
 
   if (( SECONDS - last_log_dump >= 30 )); then
     last_log_dump=$SECONDS

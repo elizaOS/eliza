@@ -33,6 +33,7 @@ import {
   FileText,
   GitBranch,
   Grid3x3,
+  LayoutDashboard,
   type LucideIcon,
   Mail,
   Pause,
@@ -74,7 +75,10 @@ import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome";
 import {
+  buildAutomationDraftConversationMetadata,
   buildAutomationResponseRoutingMetadata,
+  buildCoordinatorConversationMetadata,
+  buildCoordinatorTriggerConversationMetadata,
   buildWorkflowConversationMetadata,
   buildWorkflowDraftConversationMetadata,
   getAutomationBridgeConversationId,
@@ -112,6 +116,21 @@ const WORKFLOW_SYSTEM_ADDENDUM =
   "workflow. Use the linked terminal conversation only when it directly " +
   "informs the workflow. Request keys and connector setup when needed, and " +
   "prefer owner-scoped LifeOps integrations for personal services.";
+
+const AUTOMATION_DRAFT_TITLE = "New automation";
+const AUTOMATION_DRAFT_SYSTEM_ADDENDUM =
+  "You are in an automation-creation room. The user wants to create one " +
+  "automation. Decide the right shape based on their description and call " +
+  "the matching action exactly once:\n" +
+  '- Recurring prompt or schedule, for example "every morning summarize my inbox": ' +
+  "CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
+  '- Goal to work toward until done, for example "figure out the onboarding refactor": ' +
+  "CREATE_TASK with name and description.\n" +
+  '- Deterministic pipeline of integration steps, for example "when a Slack message matches X, post to Discord": ' +
+  "create an n8n workflow via the n8n actions.\n" +
+  "Ask one short clarifying question only if the shape is genuinely " +
+  "ambiguous; otherwise create immediately. After creation, briefly " +
+  "confirm what you made and how to run it.";
 
 const NODE_CLASS_ORDER = [
   "agent",
@@ -1331,145 +1350,124 @@ function WorkflowRuntimeNotice({
   onRefresh: () => void;
   onStartLocal: () => void;
 }) {
+  // Auto-start kicks the local sidecar at runtime boot. While it is
+  // starting (or briefly stopped before the first tick), suppress the
+  // alarm UI — the fetch error is expected and resolves itself.
+  const isAutoStarting =
+    status?.mode === "local" &&
+    (status.status === "starting" || status.status === "stopped");
+
   if (!status && !workflowFetchError) {
     return null;
   }
 
   if (status?.mode === "disabled") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-border/30 bg-bg/30"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-txt">
-              Workflow execution needs n8n.
-            </div>
-            <p className="text-sm text-muted">
-              Coordinator automations stay usable without n8n. Workflow
-              automations become deployable once Eliza Cloud or local n8n is
-              available.
-            </p>
-          </div>
-          {status.platform !== "mobile" && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onStartLocal}
-            >
-              Enable Local n8n
-            </Button>
-          )}
-        </div>
-      </PagePanel>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-1.5 text-xs-tight">
+        <span className="text-muted">
+          Workflow deploy requires n8n. Coordinator automations still work.
+        </span>
+        {status.platform !== "mobile" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onStartLocal}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-accent hover:text-accent/80 disabled:opacity-50"
+          >
+            Enable
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (isAutoStarting) {
+    return (
+      <div className="mb-2 flex items-center gap-2 px-3 py-1 text-2xs text-muted/70">
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+        <span>Starting local n8n…</span>
+      </div>
     );
   }
 
   if (workflowFetchError) {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-danger/20 bg-danger/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-danger">
-              Workflow backend unavailable
-            </div>
-            <p className="text-sm text-danger/90">{workflowFetchError}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {status?.mode === "local" && status.status !== "ready" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={onStartLocal}
-              >
-                Start Local n8n
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
-          </div>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+          <span className="truncate text-danger/90">{workflowFetchError}</span>
         </div>
-      </PagePanel>
+        <div className="flex items-center gap-3">
+          {status?.mode === "local" && status.status !== "ready" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onStartLocal}
+              className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
+            >
+              Restart
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRefresh}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
     );
   }
 
-  if (status?.mode === "local" && status.status !== "ready") {
+  if (status?.mode === "local" && status.status === "error") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-warning/20 bg-warning/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-warning">
-              Local n8n is {status.status}.
-            </div>
-            <p className="text-sm text-muted">
-              Draft rooms still work. Workflow deploy, activate, and delete
-              operations resume when local n8n is ready.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onStartLocal}
-            >
-              Start Local n8n
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
-          </div>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+          <span className="text-danger/90">Local n8n failed to start.</span>
         </div>
-      </PagePanel>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onStartLocal}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRefresh}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
     );
   }
 
   if (status?.mode === "cloud" && status.cloudHealth === "degraded") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-warning/20 bg-warning/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-warning">
-              Eliza Cloud workflow gateway is degraded.
-            </div>
-            <p className="text-sm text-muted">
-              Chat rooms remain usable while workflow execution and sync may be
-              delayed.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={onRefresh}
-          >
-            Refresh
-          </Button>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-warning/25 bg-warning/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+          <span className="text-warning">
+            Eliza Cloud workflow gateway is degraded.
+          </span>
         </div>
-      </PagePanel>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRefresh}
+          className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+        >
+          Refresh
+        </button>
+      </div>
     );
   }
 
@@ -1654,6 +1652,381 @@ function TaskAutomationDetailPane({
       )}
 
       <AutomationNodePalette nodes={nodes} title="Automation nodes" />
+    </div>
+  );
+}
+
+const AUTOMATION_DRAFT_EXAMPLES: Array<{
+  icon: LucideIcon;
+  label: string;
+  prompt: string;
+}> = [
+  {
+    icon: Mail,
+    label: "Daily inbox digest",
+    prompt:
+      "Every weekday at 9am, summarize my Gmail inbox from the last 24 hours and post the summary to my #daily channel in Slack.",
+  },
+  {
+    icon: Clock3,
+    label: "Hourly health check",
+    prompt:
+      "Every hour, review recent activity, check that nothing is stuck or errored, and notify me if anything needs attention.",
+  },
+  {
+    icon: GitBranch,
+    label: "GitHub issue triage",
+    prompt:
+      "When a new issue is opened on my GitHub repo, classify it (bug / feature / question / docs), add the matching label, and post a welcoming comment.",
+  },
+  {
+    icon: SquareTerminal,
+    label: "Goal: ship onboarding",
+    prompt:
+      "Help me ship the onboarding refactor: track subtasks, surface blockers, and check in with me daily until it's done.",
+  },
+];
+
+function formatRelativeFuture(
+  targetMs: number,
+  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+): string {
+  const delta = targetMs - Date.now();
+  if (delta <= 0) return "now";
+  return `in ${formatDurationMs(delta, { t })}`;
+}
+
+function formatRelativePast(
+  iso: string | number | null | undefined,
+  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+): string {
+  if (!iso) return "—";
+  const ts = typeof iso === "string" ? Date.parse(iso) : iso;
+  if (!Number.isFinite(ts)) return "—";
+  const delta = Date.now() - ts;
+  if (delta < 0) return "now";
+  return `${formatDurationMs(delta, { t })} ago`;
+}
+
+function AutomationsDashboard({
+  items,
+  onSelectItem,
+  onCreateDraft,
+}: {
+  items: AutomationItem[];
+  onSelectItem: (item: AutomationItem) => void;
+  onCreateDraft: () => void;
+}) {
+  const { t } = useAutomationsViewContext();
+  const now = Date.now();
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => !item.system),
+    [items],
+  );
+
+  const triggerItems = useMemo(
+    () => visibleItems.filter((item): item is AutomationItem & { trigger: TriggerSummary } =>
+      item.trigger != null,
+    ),
+    [visibleItems],
+  );
+
+  const activeCount = visibleItems.filter(
+    (item) => item.enabled && !item.isDraft,
+  ).length;
+  const failingCount = triggerItems.filter(
+    (item) => toneForLastStatus(item.trigger.lastStatus) === "danger",
+  ).length;
+  const draftCount = visibleItems.filter((item) => item.isDraft).length;
+  const totalCount = visibleItems.filter((item) => !item.isDraft).length;
+
+  const upcoming = useMemo(
+    () =>
+      triggerItems
+        .filter(
+          (item) =>
+            item.trigger.enabled &&
+            typeof item.trigger.nextRunAtMs === "number" &&
+            item.trigger.nextRunAtMs > now,
+        )
+        .sort(
+          (a, b) =>
+            (a.trigger.nextRunAtMs ?? 0) - (b.trigger.nextRunAtMs ?? 0),
+        )
+        .slice(0, 6),
+    [triggerItems, now],
+  );
+
+  const recent = useMemo(
+    () =>
+      triggerItems
+        .filter((item) => item.trigger.lastRunAtIso)
+        .sort((a, b) => {
+          const aTs = a.trigger.lastRunAtIso
+            ? Date.parse(a.trigger.lastRunAtIso)
+            : 0;
+          const bTs = b.trigger.lastRunAtIso
+            ? Date.parse(b.trigger.lastRunAtIso)
+            : 0;
+          return bTs - aTs;
+        })
+        .slice(0, 6),
+    [triggerItems],
+  );
+
+  const failures = useMemo(
+    () =>
+      triggerItems
+        .filter(
+          (item) => toneForLastStatus(item.trigger.lastStatus) === "danger",
+        )
+        .slice(0, 5),
+    [triggerItems],
+  );
+
+  if (totalCount === 0 && draftCount === 0) {
+    return (
+      <div className="space-y-3 px-2 pt-6 text-center">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-txt">
+            No automations yet
+          </h2>
+          <p className="text-xs-tight text-muted/80">
+            Click + to describe one in chat — Eliza picks the right shape.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCreateDraft}
+          className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-accent/15 px-3 py-1.5 text-xs-tight font-semibold text-accent hover:bg-accent/25"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          New automation
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <DetailStatsRow
+        items={[
+          { label: "Total", value: totalCount },
+          {
+            label: "Active",
+            value: (
+              <span className="text-ok tabular-nums">{activeCount}</span>
+            ),
+          },
+          {
+            label: "Failing",
+            value:
+              failingCount > 0 ? (
+                <span className="text-danger tabular-nums">
+                  {failingCount}
+                </span>
+              ) : (
+                <span className="text-muted tabular-nums">0</span>
+              ),
+          },
+          {
+            label: "Drafts",
+            value: <span className="tabular-nums">{draftCount}</span>,
+          },
+          {
+            label: "Next",
+            value:
+              upcoming.length > 0 && upcoming[0].trigger.nextRunAtMs
+                ? formatRelativeFuture(upcoming[0].trigger.nextRunAtMs, t)
+                : "—",
+          },
+        ]}
+      />
+
+      {failures.length > 0 && (
+        <DetailSection title={`Failing (${failures.length})`}>
+          <div className="divide-y divide-border/20">
+            {failures.map(({ id, title, trigger }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  const found = items.find((it) => it.id === id);
+                  if (found) onSelectItem(found);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+              >
+                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+                <span className="truncate font-medium text-txt">{title}</span>
+                <span className="ml-auto text-muted/70 tabular-nums">
+                  {formatRelativePast(trigger.lastRunAtIso, t)}
+                </span>
+                {trigger.lastError ? (
+                  <span className="basis-full truncate pl-4 text-[11px] text-danger/80">
+                    {trigger.lastError}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+
+      {upcoming.length > 0 && (
+        <DetailSection title="Upcoming">
+          <div className="divide-y divide-border/20">
+            {upcoming.map(({ id, title, trigger }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  const found = items.find((it) => it.id === id);
+                  if (found) onSelectItem(found);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+              >
+                <Clock3 className="h-3.5 w-3.5 shrink-0 text-muted/60" aria-hidden />
+                <span className="truncate text-txt">{title}</span>
+                <span className="ml-auto text-muted tabular-nums">
+                  {trigger.nextRunAtMs
+                    ? formatRelativeFuture(trigger.nextRunAtMs, t)
+                    : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+
+      {recent.length > 0 && (
+        <DetailSection title="Recent runs">
+          <div className="divide-y divide-border/20">
+            {recent.map(({ id, title, trigger }) => {
+              const tone = toneForLastStatus(trigger.lastStatus);
+              const dotClass =
+                tone === "success"
+                  ? "bg-ok"
+                  : tone === "danger"
+                    ? "bg-danger"
+                    : tone === "warning"
+                      ? "bg-warning"
+                      : "bg-muted/50";
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    const found = items.find((it) => it.id === id);
+                    if (found) onSelectItem(found);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+                >
+                  <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                  <span className="truncate text-txt">{title}</span>
+                  <span className="ml-auto text-muted/70 tabular-nums">
+                    {formatRelativePast(trigger.lastRunAtIso, t)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DetailSection>
+      )}
+
+      {totalCount > 0 && upcoming.length === 0 && recent.length === 0 && (
+        <div className="px-3 py-4 text-center text-xs-tight text-muted/70">
+          No scheduled runs yet. Select an automation to run one manually.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AutomationDraftPane({
+  automation,
+  onPromptSubmit,
+  onPromptSent,
+}: {
+  automation: AutomationItem;
+  onPromptSubmit: (prompt: string) => void;
+  onPromptSent?: () => void;
+}) {
+  const conversationId = automation.room?.conversationId ?? null;
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const sendPrompt = useCallback(
+    async (prompt: string) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+      setSendError(null);
+      if (!conversationId) {
+        onPromptSubmit(trimmed);
+        return;
+      }
+      try {
+        await client.sendConversationMessage(
+          conversationId,
+          `[SYSTEM]${AUTOMATION_DRAFT_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${trimmed}`,
+          "DM",
+        );
+        onPromptSent?.();
+      } catch (error) {
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : "Failed to send automation prompt.",
+        );
+      }
+    },
+    [conversationId, onPromptSent, onPromptSubmit],
+  );
+
+  return (
+    <div className="space-y-4 px-4 pt-6">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-txt">
+          What would you like to automate?
+        </h2>
+        <p className="text-xs-tight text-muted/80">
+          Describe it in chat. Eliza will pick the right shape — a recurring
+          prompt, a goal-oriented task, or a deterministic workflow — and set
+          it up.
+        </p>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {AUTOMATION_DRAFT_EXAMPLES.map((example) => {
+          const Icon = example.icon;
+          return (
+            <button
+              key={example.label}
+              type="button"
+              onClick={() => void sendPrompt(example.prompt)}
+              className="group flex items-start gap-2 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-2 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
+            >
+              <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent/80" aria-hidden />
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="text-xs-tight font-semibold text-txt">
+                  {example.label}
+                </div>
+                <div className="line-clamp-2 text-[11px] leading-snug text-muted/70">
+                  {example.prompt}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="px-1 text-[11px] text-muted/60">
+        Or describe your own automation in the chat panel on the right.
+      </p>
+      {sendError ? (
+        <div className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
+          {sendError}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2198,6 +2571,9 @@ function AutomationSidebarItem({
   if (item.type === "n8n_workflow") {
     Icon = Workflow;
     tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
+  } else if (item.type === "automation_draft") {
+    Icon = FileText;
+    tone = "warning";
   } else if (item.trigger) {
     Icon = Clock3;
     tone = item.trigger.enabled ? "success" : "muted";
@@ -2289,6 +2665,7 @@ function AutomationsLayout() {
     workflowFetchError,
   } = ctx;
   const [searchQuery, setSearchQuery] = useState("");
+  const [showDashboard, setShowDashboard] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -2431,46 +2808,142 @@ function AutomationsLayout() {
           )
           .map((item) => item.workflowId as string),
       );
+      const previousTriggerIds = new Set(
+        ctx.allItems
+          .filter((item) => item.trigger?.id)
+          .map((item) => item.trigger!.id),
+      );
+      const previousTaskIds = new Set(
+        ctx.allItems
+          .filter((item) => item.task?.id)
+          .map((item) => item.task!.id),
+      );
 
       const data = await ctx.refreshAutomations();
+      const draftScope = draftConversation?.metadata?.scope;
+      if (!draftConversation || !draftScope) {
+        return data;
+      }
+
+      const bridgeConversationId =
+        draftConversation.metadata?.terminalBridgeConversationId;
+
+      // Workflow-draft scope: rebind on new n8n workflow (existing path).
       if (
-        !draftConversation ||
-        draftConversation.metadata?.scope !== "automation-workflow-draft" ||
-        draftConversation.metadata.automationType !== "n8n_workflow"
+        draftScope === "automation-workflow-draft" &&
+        draftConversation.metadata?.automationType === "n8n_workflow"
       ) {
-        return data;
+        const createdWorkflows =
+          data?.automations.filter(
+            (item) =>
+              item.type === "n8n_workflow" &&
+              item.workflowId != null &&
+              !item.isDraft &&
+              !previousWorkflowIds.has(item.workflowId),
+          ) ?? [];
+        if (createdWorkflows.length !== 1) return data;
+        const created = createdWorkflows[0];
+        const reboundMetadata = buildWorkflowConversationMetadata(
+          created.workflowId as string,
+          created.title,
+          bridgeConversationId,
+        );
+        const { conversation } = await client.updateConversation(
+          draftConversation.id,
+          { title: created.title, metadata: reboundMetadata },
+        );
+        setActiveWorkflowConversation(conversation);
+        return await ctx.refreshAutomations();
       }
 
-      const createdWorkflows =
-        data?.automations.filter(
-          (item) =>
-            item.type === "n8n_workflow" &&
-            item.workflowId != null &&
-            !item.isDraft &&
-            !previousWorkflowIds.has(item.workflowId),
-        ) ?? [];
+      // Shape-undecided draft: detect what the agent created and rebind.
+      if (draftScope === "automation-draft") {
+        const createdTriggers =
+          data?.automations.filter(
+            (item) =>
+              item.trigger != null && !previousTriggerIds.has(item.trigger.id),
+          ) ?? [];
+        const createdTasks =
+          data?.automations.filter(
+            (item) =>
+              item.task != null &&
+              !item.system &&
+              !previousTaskIds.has(item.task.id),
+          ) ?? [];
+        const createdWorkflows =
+          data?.automations.filter(
+            (item) =>
+              item.type === "n8n_workflow" &&
+              item.workflowId != null &&
+              !item.isDraft &&
+              !previousWorkflowIds.has(item.workflowId),
+          ) ?? [];
 
-      if (createdWorkflows.length !== 1) {
-        return data;
+        const createdCount =
+          createdTriggers.length + createdTasks.length + createdWorkflows.length;
+        if (createdCount !== 1) {
+          return data;
+        }
+
+        const draftItemId = `automation-draft:${draftConversation.metadata?.draftId ?? ""}`;
+        const draftWasSelected = selectedItemId === draftItemId;
+
+        const followSelection = (nextItemId: string, kind: SelectionKind) => {
+          if (!draftWasSelected) return;
+          setSelectedItemId(nextItemId);
+          setSelectedItemKind(kind);
+        };
+
+        if (createdTriggers.length === 1) {
+          const created = createdTriggers[0];
+          const trigger = created.trigger!;
+          const reboundMetadata = buildCoordinatorTriggerConversationMetadata(
+            trigger.id,
+            bridgeConversationId,
+          );
+          await client.updateConversation(draftConversation.id, {
+            title: created.title,
+            metadata: reboundMetadata,
+          });
+          followSelection(created.id, "trigger");
+          return await ctx.refreshAutomations();
+        }
+
+        if (createdTasks.length === 1) {
+          const created = createdTasks[0];
+          const task = created.task!;
+          const reboundMetadata = buildCoordinatorConversationMetadata(
+            task.id,
+            bridgeConversationId,
+          );
+          await client.updateConversation(draftConversation.id, {
+            title: created.title,
+            metadata: reboundMetadata,
+          });
+          followSelection(created.id, "task");
+          return await ctx.refreshAutomations();
+        }
+
+        if (createdWorkflows.length === 1) {
+          const created = createdWorkflows[0];
+          const reboundMetadata = buildWorkflowConversationMetadata(
+            created.workflowId as string,
+            created.title,
+            bridgeConversationId,
+          );
+          const { conversation } = await client.updateConversation(
+            draftConversation.id,
+            { title: created.title, metadata: reboundMetadata },
+          );
+          setActiveWorkflowConversation(conversation);
+          followSelection(created.id, "workflow");
+          return await ctx.refreshAutomations();
+        }
       }
 
-      const createdWorkflow = createdWorkflows[0];
-      const reboundMetadata = buildWorkflowConversationMetadata(
-        createdWorkflow.workflowId as string,
-        createdWorkflow.title,
-        draftConversation.metadata.terminalBridgeConversationId,
-      );
-      const { conversation } = await client.updateConversation(
-        draftConversation.id,
-        {
-          title: createdWorkflow.title,
-          metadata: reboundMetadata,
-        },
-      );
-      setActiveWorkflowConversation(conversation);
-      return await ctx.refreshAutomations();
+      return data;
     },
-    [ctx],
+    [ctx, selectedItemId, setSelectedItemId, setSelectedItemKind],
   );
 
   const createWorkflowDraft = useCallback(
@@ -2544,6 +3017,74 @@ function AutomationsLayout() {
     ],
   );
 
+  const createAutomationDraft = useCallback(
+    async (options?: { initialPrompt?: string }) => {
+      setPageNotice(null);
+      showAutomationsList();
+      const draftId = createWorkflowDraftId();
+      const bridgeConversationId = getAutomationBridgeIdForItem(
+        resolvedSelectedItem,
+        activeConversationId,
+        conversations,
+      );
+      const metadata = buildAutomationDraftConversationMetadata(
+        draftId,
+        bridgeConversationId,
+      );
+
+      try {
+        const conversation = await resolveAutomationConversation({
+          title: AUTOMATION_DRAFT_TITLE,
+          metadata,
+        });
+
+        if (options?.initialPrompt?.trim()) {
+          await client.sendConversationMessage(
+            conversation.id,
+            `[SYSTEM]${AUTOMATION_DRAFT_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${options.initialPrompt.trim()}`,
+            "DM",
+            undefined,
+            undefined,
+            buildAutomationResponseRoutingMetadata(metadata),
+          );
+        }
+
+        const data = options?.initialPrompt
+          ? await refreshAutomationsWithDraftBinding(conversation)
+          : await ctx.refreshAutomations();
+        const resolvedItem = findAutomationForConversation(
+          data,
+          conversation.id,
+        );
+
+        setSelectedItemId(resolvedItem?.id ?? `automation-draft:${draftId}`);
+        setSelectedItemKind(null);
+        setEditorOpen(false);
+        setEditingId(null);
+        ctx.setEditingTaskId(null);
+      } catch (error) {
+        setPageNotice(
+          error instanceof Error
+            ? error.message
+            : "Failed to create the automation draft.",
+        );
+      }
+    },
+    [
+      activeConversationId,
+      conversations,
+      ctx,
+      findAutomationForConversation,
+      refreshAutomationsWithDraftBinding,
+      resolvedSelectedItem,
+      setEditingId,
+      setEditorOpen,
+      setSelectedItemId,
+      setSelectedItemKind,
+      showAutomationsList,
+    ],
+  );
+
   const promoteAutomationToWorkflow = useCallback(
     async (item: AutomationItem) => {
       await createWorkflowDraft({
@@ -2563,12 +3104,6 @@ function AutomationsLayout() {
     [createWorkflowDraft],
   );
 
-  // Open templates modal — disabled when n8n is not configured.
-  const handleNewWorkflowCTA = useCallback(() => {
-    showAutomationsList();
-    setTemplatesModalOpen(true);
-  }, [showAutomationsList]);
-
   // Zero-state: open trigger or task forms, switching filter first.
   const handleZeroStateNewTrigger = useCallback(() => {
     showAutomationsList();
@@ -2581,16 +3116,6 @@ function AutomationsLayout() {
     setFilter("coordinator");
     openCreateTask();
   }, [openCreateTask, setFilter, showAutomationsList]);
-
-  const handleOpenCreateTask = useCallback(() => {
-    showAutomationsList();
-    openCreateTask();
-  }, [openCreateTask, showAutomationsList]);
-
-  const handleOpenCreateTrigger = useCallback(() => {
-    showAutomationsList();
-    openCreateTrigger();
-  }, [openCreateTrigger, showAutomationsList]);
 
   const handleRefreshWorkflows = useCallback(async () => {
     setPageNotice(null);
@@ -2695,6 +3220,10 @@ function AutomationsLayout() {
     [ctx, t],
   );
 
+  const draftItems = useMemo(
+    () => visibleItems.filter((item) => item.type === "automation_draft"),
+    [visibleItems],
+  );
   const workflowItems = useMemo(
     () => visibleItems.filter((item) => item.type === "n8n_workflow"),
     [visibleItems],
@@ -2707,6 +3236,32 @@ function AutomationsLayout() {
     () => visibleItems.filter((item) => item.task != null),
     [visibleItems],
   );
+
+  // Watch active drafts: while any unbound draft exists, poll the
+  // automations list and try to rebind it to whatever the agent
+  // materialized (trigger / task / workflow). Loop self-terminates as
+  // soon as the draft is rebound (it disappears from `allItems`).
+  const allDraftItems = useMemo(
+    () => ctx.allItems.filter((item) => item.type === "automation_draft"),
+    [ctx.allItems],
+  );
+  useEffect(() => {
+    if (allDraftItems.length === 0) return undefined;
+    const draftConversations = allDraftItems
+      .map((item) => {
+        const conversationId = item.room?.conversationId;
+        if (!conversationId) return null;
+        return conversations.find((c) => c.id === conversationId) ?? null;
+      })
+      .filter((c): c is Conversation => c != null);
+    if (draftConversations.length === 0) return undefined;
+    const interval = window.setInterval(() => {
+      for (const draftConversation of draftConversations) {
+        void refreshAutomationsWithDraftBinding(draftConversation);
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [allDraftItems, conversations, refreshAutomationsWithDraftBinding]);
 
   const renderItem = (item: AutomationItem) => (
     <AutomationSidebarItem
@@ -2731,24 +3286,14 @@ function AutomationsLayout() {
     />
   );
 
-  const newWorkflowDisabled = n8nStatus?.mode === "disabled";
-  const newWorkflowLabel = t("automations.newWorkflowCTA", {
-    defaultValue: "New workflow",
-  });
-  const newWorkflowButton = (
+  const newAutomationLabel = "New automation";
+  const newAutomationButton = (
     <button
       type="button"
-      onClick={newWorkflowDisabled ? undefined : handleNewWorkflowCTA}
-      disabled={newWorkflowDisabled}
-      aria-label={newWorkflowLabel}
-      title={
-        newWorkflowDisabled
-          ? t("automations.newWorkflowDisabled", {
-              defaultValue: "Enable Automations in Settings to create workflows",
-            })
-          : newWorkflowLabel
-      }
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent/15 text-accent transition-colors hover:bg-accent/25 disabled:cursor-not-allowed disabled:opacity-40"
+      onClick={() => void createAutomationDraft()}
+      aria-label={newAutomationLabel}
+      title={newAutomationLabel}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent/15 text-accent transition-colors hover:bg-accent/25"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
     </button>
@@ -2793,8 +3338,8 @@ function AutomationsLayout() {
       footerClassName="!px-2 !pt-1.5 !pb-1.5 !justify-start"
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label={newWorkflowLabel}
-          onClick={handleNewWorkflowCTA}
+          aria-label={newAutomationLabel}
+          onClick={() => void createAutomationDraft()}
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
@@ -2831,7 +3376,7 @@ function AutomationsLayout() {
                 className="w-full rounded-[var(--radius-sm)] border border-border/30 bg-bg/40 px-2 py-1 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
               />
             </div>
-            {newWorkflowButton}
+            {newAutomationButton}
           </div>
 
           {isLoading && (
@@ -2849,6 +3394,20 @@ function AutomationsLayout() {
             </div>
           ) : (
             <div className="mt-0.5 space-y-1">
+              {draftItems.length > 0 && (
+                <AutomationCollapsibleSection
+                  sectionKey="drafts"
+                  label="Drafts"
+                  icon={<FileText className="h-3.5 w-3.5" aria-hidden />}
+                  count={draftItems.length}
+                  collapsed={collapsedSections.has("drafts")}
+                  onToggleCollapsed={toggleSectionCollapsed}
+                  emptyLabel="No drafts"
+                >
+                  {draftItems.map(renderItem)}
+                </AutomationCollapsibleSection>
+              )}
+
               <AutomationCollapsibleSection
                 sectionKey="workflows"
                 label="Workflows"
@@ -2856,8 +3415,6 @@ function AutomationsLayout() {
                 count={workflowItems.length}
                 collapsed={collapsedSections.has("workflows")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={!newWorkflowDisabled ? handleNewWorkflowCTA : undefined}
-                addLabel={newWorkflowLabel}
                 emptyLabel="No workflows"
               >
                 {workflowItems.map(renderItem)}
@@ -2870,10 +3427,6 @@ function AutomationsLayout() {
                 count={taskItems.length}
                 collapsed={collapsedSections.has("coordinator")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={handleOpenCreateTask}
-                addLabel={t("automations.newCoordinator", {
-                  defaultValue: "New coordinator",
-                })}
                 emptyLabel="No coordinators"
               >
                 {taskItems.map(renderItem)}
@@ -2886,10 +3439,6 @@ function AutomationsLayout() {
                 count={triggerItems.length}
                 collapsed={collapsedSections.has("scheduled")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={handleOpenCreateTrigger}
-                addLabel={t("automations.newSchedule", {
-                  defaultValue: "New schedule",
-                })}
                 emptyLabel="No schedules"
               >
                 {triggerItems.map(renderItem)}
@@ -2984,6 +3533,25 @@ function AutomationsLayout() {
           )
         ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
+        ) : resolvedSelectedItem?.type === "automation_draft" ? (
+          <AutomationDraftPane
+            automation={resolvedSelectedItem}
+            onPromptSubmit={(prompt) =>
+              void createAutomationDraft({ initialPrompt: prompt })
+            }
+            onPromptSent={() => {
+              const conversationId =
+                resolvedSelectedItem.room?.conversationId ?? null;
+              const draftConversation = conversationId
+                ? (conversations.find((c) => c.id === conversationId) ?? null)
+                : null;
+              if (draftConversation) {
+                void refreshAutomationsWithDraftBinding(draftConversation);
+              } else {
+                void ctx.refreshAutomations();
+              }
+            }}
+          />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
             automation={resolvedSelectedItem}

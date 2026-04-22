@@ -28,7 +28,7 @@ function resolveLifeOpsBaseUrl(fallback: string): URL {
   return new URL(resolveLocationOrigin() ?? fallback);
 }
 
-export function resolveLifeOpsBrowserApiBaseUrl(): string {
+export function resolveBrowserBridgeApiBaseUrl(): string {
   return resolveLifeOpsBaseUrl("http://127.0.0.1:31337")
     .toString()
     .replace(/\/+$/, "");

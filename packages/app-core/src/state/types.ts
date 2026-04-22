@@ -701,6 +701,9 @@ export interface AppState {
   // Favorite apps
   favoriteApps: string[];
 
+  // Recently launched apps, most recent first (capped)
+  recentApps: string[];
+
   // Config text
   configRaw: Record<string, unknown>;
   configText: string;

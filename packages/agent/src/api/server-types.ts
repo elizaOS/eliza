@@ -35,6 +35,7 @@ export type ConversationScope =
   | "automation-coordinator"
   | "automation-workflow"
   | "automation-workflow-draft"
+  | "automation-draft"
   | "page-character"
   | "page-apps"
   | "page-wallet"

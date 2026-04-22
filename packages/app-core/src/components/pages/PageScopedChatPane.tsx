@@ -34,7 +34,7 @@ interface PageScopedChatPaneProps {
   /**
    * Dynamic intro card override. When provided, replaces the static
    * PAGE_SCOPE_COPY[scope] intro text and can attach action buttons (used by
-   * the Browser view to surface LifeOps Browser install buttons when the
+   * the Browser view to surface Agent Browser Bridge install buttons when the
    * extension is not yet connected).
    */
   introOverride?: {
@@ -45,7 +45,7 @@ interface PageScopedChatPaneProps {
   /**
    * First-turn system addendum override — replaces PAGE_SCOPE_COPY[scope].systemAddendum
    * so the agent's first-turn grounding reflects current page state (e.g. the
-   * Browser view tells the agent whether LifeOps Browser is connected).
+   * Browser view tells the agent whether Agent Browser Bridge is connected).
    */
   systemAddendumOverride?: string;
   /** Override the composer placeholder text. */

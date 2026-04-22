@@ -675,33 +675,14 @@ export interface LifeOpsWorkflowPermissionPolicy {
   requireConfirmationForXPosts: boolean;
 }
 
+// Generic browser-companion + packaging contracts live in
+// `@elizaos/plugin-browser-bridge/contracts`. `LIFEOPS_BROWSER_KINDS`,
+// `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
+// `LifeOpsBrowserActionKind`, and `LifeOpsBrowserAction` remain here
+// because workflow-linked session shapes below still reference them;
+// Phase 5 will revisit those references.
 export const LIFEOPS_BROWSER_KINDS = ["chrome", "safari"] as const;
 export type LifeOpsBrowserKind = (typeof LIFEOPS_BROWSER_KINDS)[number];
-
-export const LIFEOPS_BROWSER_TRACKING_MODES = [
-  "off",
-  "current_tab",
-  "active_tabs",
-] as const;
-export type LifeOpsBrowserTrackingMode =
-  (typeof LIFEOPS_BROWSER_TRACKING_MODES)[number];
-
-export const LIFEOPS_BROWSER_SITE_ACCESS_MODES = [
-  "current_site_only",
-  "granted_sites",
-  "all_sites",
-] as const;
-export type LifeOpsBrowserSiteAccessMode =
-  (typeof LIFEOPS_BROWSER_SITE_ACCESS_MODES)[number];
-
-export const LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES = [
-  "disconnected",
-  "connected",
-  "paused",
-  "permission_blocked",
-] as const;
-export type LifeOpsBrowserCompanionConnectionState =
-  (typeof LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES)[number];
 
 export const LIFEOPS_BROWSER_ACTION_KINDS = [
   "open",
@@ -733,267 +714,6 @@ export interface LifeOpsBrowserAction {
   accountAffecting: boolean;
   requiresConfirmation: boolean;
   metadata: Record<string, unknown>;
-}
-
-export interface LifeOpsBrowserPermissionState {
-  tabs: boolean;
-  scripting: boolean;
-  activeTab: boolean;
-  allOrigins: boolean;
-  grantedOrigins: string[];
-  incognitoEnabled: boolean;
-}
-
-export interface LifeOpsBrowserSettings {
-  enabled: boolean;
-  trackingMode: LifeOpsBrowserTrackingMode;
-  allowBrowserControl: boolean;
-  requireConfirmationForAccountAffecting: boolean;
-  incognitoEnabled: boolean;
-  siteAccessMode: LifeOpsBrowserSiteAccessMode;
-  grantedOrigins: string[];
-  blockedOrigins: string[];
-  maxRememberedTabs: number;
-  pauseUntil: string | null;
-  metadata: Record<string, unknown>;
-  updatedAt: string | null;
-}
-
-export interface UpdateLifeOpsBrowserSettingsRequest {
-  enabled?: boolean;
-  trackingMode?: LifeOpsBrowserTrackingMode;
-  allowBrowserControl?: boolean;
-  requireConfirmationForAccountAffecting?: boolean;
-  incognitoEnabled?: boolean;
-  siteAccessMode?: LifeOpsBrowserSiteAccessMode;
-  grantedOrigins?: string[];
-  blockedOrigins?: string[];
-  maxRememberedTabs?: number;
-  pauseUntil?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface LifeOpsBrowserCompanionStatus {
-  id: string;
-  agentId: string;
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  profileLabel: string;
-  label: string;
-  extensionVersion: string | null;
-  connectionState: LifeOpsBrowserCompanionConnectionState;
-  permissions: LifeOpsBrowserPermissionState;
-  lastSeenAt: string | null;
-  pairedAt: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LifeOpsBrowserTabSummary {
-  id: string;
-  agentId: string;
-  companionId: string | null;
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  windowId: string;
-  tabId: string;
-  url: string;
-  title: string;
-  activeInWindow: boolean;
-  focusedWindow: boolean;
-  focusedActive: boolean;
-  incognito: boolean;
-  faviconUrl: string | null;
-  lastSeenAt: string;
-  lastFocusedAt: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LifeOpsBrowserPageContext {
-  id: string;
-  agentId: string;
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  windowId: string;
-  tabId: string;
-  url: string;
-  title: string;
-  selectionText: string | null;
-  mainText: string | null;
-  headings: string[];
-  links: Array<{ text: string; href: string }>;
-  forms: Array<{ action: string | null; fields: string[] }>;
-  capturedAt: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface UpsertLifeOpsBrowserCompanionRequest {
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  profileLabel?: string | null;
-  label: string;
-  extensionVersion?: string | null;
-  connectionState?: LifeOpsBrowserCompanionConnectionState;
-  permissions?: Partial<LifeOpsBrowserPermissionState>;
-  lastSeenAt?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface SyncLifeOpsBrowserStateRequest {
-  companion: UpsertLifeOpsBrowserCompanionRequest;
-  tabs: Array<{
-    browser: LifeOpsBrowserKind;
-    profileId: string;
-    windowId: string;
-    tabId: string;
-    url: string;
-    title: string;
-    activeInWindow: boolean;
-    focusedWindow: boolean;
-    focusedActive: boolean;
-    incognito?: boolean;
-    faviconUrl?: string | null;
-    lastSeenAt?: string;
-    lastFocusedAt?: string | null;
-    metadata?: Record<string, unknown>;
-  }>;
-  pageContexts?: Array<{
-    browser: LifeOpsBrowserKind;
-    profileId: string;
-    windowId: string;
-    tabId: string;
-    url: string;
-    title: string;
-    selectionText?: string | null;
-    mainText?: string | null;
-    headings?: string[];
-    links?: Array<{ text: string; href: string }>;
-    forms?: Array<{ action: string | null; fields: string[] }>;
-    capturedAt?: string;
-    metadata?: Record<string, unknown>;
-  }>;
-}
-
-export interface CreateLifeOpsBrowserCompanionPairingRequest {
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  profileLabel?: string | null;
-  label?: string | null;
-  extensionVersion?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface LifeOpsBrowserCompanionPairingResponse {
-  companion: LifeOpsBrowserCompanionStatus;
-  pairingToken: string;
-}
-
-export interface LifeOpsBrowserCompanionConfig {
-  apiBaseUrl: string;
-  companionId: string;
-  pairingToken: string;
-  browser: LifeOpsBrowserKind;
-  profileId: string;
-  profileLabel: string;
-  label: string;
-}
-
-export interface CreateLifeOpsBrowserCompanionAutoPairRequest {
-  browser: LifeOpsBrowserKind;
-  profileId?: string | null;
-  profileLabel?: string | null;
-  label?: string | null;
-  extensionVersion?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface LifeOpsBrowserCompanionAutoPairResponse {
-  companion: LifeOpsBrowserCompanionStatus;
-  config: LifeOpsBrowserCompanionConfig;
-}
-
-export interface UpdateLifeOpsBrowserSessionProgressRequest {
-  currentActionIndex?: number;
-  result?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-}
-
-export interface LifeOpsBrowserCompanionSyncResponse {
-  companion: LifeOpsBrowserCompanionStatus;
-  tabs: LifeOpsBrowserTabSummary[];
-  currentPage: LifeOpsBrowserPageContext | null;
-  settings: LifeOpsBrowserSettings;
-  session: LifeOpsBrowserSession | null;
-}
-
-export const LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS = [
-  "extension_root",
-  "chrome_build",
-  "chrome_package",
-  "safari_web_extension",
-  "safari_app",
-  "safari_package",
-] as const;
-export type LifeOpsBrowserPackagePathTarget =
-  (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
-
-export interface LifeOpsBrowserCompanionPackageStatus {
-  extensionPath: string | null;
-  chromeBuildPath: string | null;
-  chromePackagePath: string | null;
-  safariWebExtensionPath: string | null;
-  safariAppPath: string | null;
-  safariPackagePath: string | null;
-  releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null;
-}
-
-export interface LifeOpsBrowserCompanionReleaseAsset {
-  fileName: string;
-  downloadUrl: string | null;
-}
-
-export interface LifeOpsBrowserCompanionReleaseTarget {
-  installKind:
-    | "chrome_web_store"
-    | "apple_app_store"
-    | "github_release"
-    | "local_download";
-  installUrl: string | null;
-  storeListingUrl: string | null;
-  asset: LifeOpsBrowserCompanionReleaseAsset;
-}
-
-export interface LifeOpsBrowserCompanionReleaseManifest {
-  schema: "lifeops_browser_release_v2";
-  releaseTag: string;
-  releaseVersion: string;
-  repository: string | null;
-  releasePageUrl: string | null;
-  chromeVersion: string;
-  chromeVersionName: string;
-  safariMarketingVersion: string;
-  safariBuildVersion: string;
-  chrome: LifeOpsBrowserCompanionReleaseTarget;
-  safari: LifeOpsBrowserCompanionReleaseTarget;
-  generatedAt: string;
-}
-
-export interface OpenLifeOpsBrowserCompanionPackagePathRequest {
-  target: LifeOpsBrowserPackagePathTarget;
-  revealOnly?: boolean;
-}
-
-export interface OpenLifeOpsBrowserCompanionPackagePathResponse {
-  target: LifeOpsBrowserPackagePathTarget;
-  path: string;
-  revealOnly: boolean;
-}
-
-export interface OpenLifeOpsBrowserCompanionManagerResponse {
-  browser: LifeOpsBrowserKind;
 }
 
 export interface LifeOpsWorkflowActionBase {
@@ -2591,6 +2311,12 @@ export interface CreateLifeOpsBrowserSessionRequest {
 
 export interface ConfirmLifeOpsBrowserSessionRequest {
   confirmed: boolean;
+}
+
+export interface UpdateLifeOpsBrowserSessionProgressRequest {
+  currentActionIndex?: number;
+  result?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CompleteLifeOpsBrowserSessionRequest {

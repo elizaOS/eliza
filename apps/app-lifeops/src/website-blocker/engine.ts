@@ -13,14 +13,6 @@ const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
 const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";
 const BLOCK_METADATA_PREFIX = "# eliza-selfcontrol ";
 const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
-const WEBSITE_HOSTNAME_RE =
-  /\b(?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.)+(?:[a-z]{2,63})\b/gi;
-const WEBSITE_BLOCK_DEFERRAL_RE =
-  /\b(?:later|not yet|wait|hold off|don't block|do not block|before blocking|confirm first)\b/i;
-const WEBSITE_BLOCK_INTENT_RE =
-  /\b(?:block|pause|stop|disable|focus on|shield|restrict)\b/i;
-const INDEFINITE_BLOCK_RE =
-  /\b(?:indefinite(?:ly)?|until i (?:say|tell you)|until i unblock|no time limit|forever)\b/i;
 
 // ---------------------------------------------------------------------------
 // Native backend adapter
@@ -967,41 +959,6 @@ export function parseSelfControlBlockRequest(options?: HandlerOptions): {
       durationMinutes,
     },
   };
-}
-
-export function extractDurationMinutesFromText(text: string): number | null {
-  const match = text.match(/(\d+)\s*(min(?:ute)?s?|hrs?|hours?)\b/i);
-  if (!match) {
-    return null;
-  }
-
-  const amount = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return null;
-  }
-
-  const unit = match[2].toLowerCase();
-  return unit.startsWith("h") ? amount * 60 : amount;
-}
-
-export function extractWebsiteTargetsFromText(text: string): string[] {
-  const matches = text.match(WEBSITE_HOSTNAME_RE) ?? [];
-  return normalizeWebsiteTargets(matches);
-}
-
-export function hasIndefiniteBlockIntent(text: string): boolean {
-  return INDEFINITE_BLOCK_RE.test(text);
-}
-
-export function hasWebsiteBlockDeferralIntent(text: string): boolean {
-  return WEBSITE_BLOCK_DEFERRAL_RE.test(text);
-}
-
-export function hasWebsiteBlockIntent(text: string): boolean {
-  return (
-    WEBSITE_BLOCK_INTENT_RE.test(text) &&
-    extractWebsiteTargetsFromText(text).length > 0
-  );
 }
 
 export function normalizeWebsiteTargets(

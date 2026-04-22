@@ -35,13 +35,6 @@ const VolumeX = ({ className }: { className?: string }) => (
     <line x1="17" y1="9" x2="23" y2="15" />
   </svg>
 );
-const SparklesIcon = ({ className }: { className?: string }) => (
-  <svg {...svgBase} className={className} aria-hidden="true">
-    <path d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2z" />
-    <path d="M19 13l.9 2.7L22 16l-2.1.3L19 19l-.9-2.7L16 16l2.1-.3L19 13z" />
-  </svg>
-);
-
 /* ── Small plus icon used for inline "add" actions ───────────────── */
 const PlusIconSvg = ({ className }: { className?: string }) => (
   <svg
@@ -219,178 +212,120 @@ export function CharacterIdentityPanel({
   t,
 }: CharacterIdentityPanelProps) {
   return (
-    <div className="flex flex-1 min-h-0 flex-col gap-5">
-      {/* Name + Voice (50/50 split) */}
-      <section className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-2 min-w-0">
-            <div className="flex items-center justify-between">
-              <span
-                id="character-editor-name-label"
-                className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
-              >
-                {t("charactereditor.Name", { defaultValue: "Name" })}
-              </span>
-            </div>
-            <Input
-              type="text"
-              value={d.name ?? ""}
-              placeholder={t("charactereditor.AgentNamePlaceholder", {
-                defaultValue: "Agent name",
-              })}
-              aria-labelledby="character-editor-name-label"
-              onChange={(
-                e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-              ) => handleFieldEdit("name", e.target.value)}
-              className="h-8 rounded-lg border-border bg-white/[0.04] text-sm text-txt"
-            />
-          </div>
-          <div className="flex flex-col gap-2 min-w-0">
-            <div className="flex items-center justify-between">
-              <span
-                id="character-editor-voice-label"
-                className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
-              >
-                {t("charactereditor.Voice", {
-                  defaultValue: "Voice",
-                })}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <ThemedSelect
-                value={voiceSelectValue}
-                groups={useElevenLabs ? elevenLabsVoiceGroups : edgeVoiceGroups}
-                onChange={(id: string) => {
-                  const allVoices = useElevenLabs
-                    ? PREMADE_VOICES
-                    : EDGE_BACKUP_VOICES;
-                  const preset = allVoices.find((p) => p.id === id);
-                  if (preset) handleSelectPreset(preset);
-                }}
-                placeholder={t("charactereditor.SelectAVoice", {
-                  defaultValue: "Select a voice",
-                })}
-                ariaLabelledBy="character-editor-voice-label"
-                menuPlacement="bottom"
-                className="flex-1 min-w-0"
-                triggerClassName="h-8 rounded-md border-border/50 bg-bg/65 px-3 py-0 text-xs-tight shadow-inner backdrop-blur-sm"
-                menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
-              />
-              <Button
-                type="button"
-                variant={voiceTesting ? "destructive" : "outline"}
-                size="icon"
-                className="h-8 w-8 rounded-full border-transparent bg-transparent p-0 shadow-none text-muted shrink-0 hover:text-txt hover:bg-white/10"
-                onClick={() => {
-                  if (voiceTesting) {
-                    handleStopTest();
-                  } else if (activeVoicePreset?.previewUrl) {
-                    setVoiceTesting(true);
-                    const audio = new Audio(activeVoicePreset.previewUrl);
-                    audio.onended = () => {
-                      setVoiceTesting(false);
-                      setVoiceTestAudio(null);
-                    };
-                    audio.onerror = () => {
-                      setVoiceTesting(false);
-                      setVoiceTestAudio(null);
-                    };
-                    setVoiceTestAudio(audio);
-                    audio.play().catch(() => {
-                      setVoiceTesting(false);
-                      setVoiceTestAudio(null);
-                    });
-                  }
-                }}
-                aria-label={
-                  voiceTesting ? "Stop voice preview" : "Preview voice"
-                }
-                disabled={!activeVoicePreset || voiceLoading}
-              >
-                {voiceTesting ? (
-                  <VolumeX className="h-3.5 w-3.5" />
-                ) : (
-                  <Volume2 className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Bio / About Me + System Prompt — stacked on narrow, side-by-side on wide */}
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:gap-6 xl:gap-10 lg:flex-1 lg:min-h-0">
-      <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            {t("charactereditor.AboutMe", {
-              defaultValue: "About Me",
-            })}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-full p-0 text-accent"
-            onClick={() => void handleGenerate("bio")}
-            disabled={generating === "bio"}
-            title={t("charactereditor.Regenerate", {
-              defaultValue: "Regenerate",
-            })}
-            aria-label={t("charactereditor.Regenerate", {
-              defaultValue: "Regenerate",
-            })}
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        <div className="flex flex-col gap-2 min-w-0">
+          <span
+            id="character-editor-name-label"
+            className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
           >
-            {generating === "bio" ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-          </Button>
+            {t("charactereditor.Name", { defaultValue: "Name" })}
+          </span>
+          <Input
+            type="text"
+            value={d.name ?? ""}
+            placeholder={t("charactereditor.AgentNamePlaceholder", {
+              defaultValue: "Agent name",
+            })}
+            aria-labelledby="character-editor-name-label"
+            onChange={(
+              e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+            ) => handleFieldEdit("name", e.target.value)}
+            className="h-9 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          />
         </div>
+        <div className="flex flex-col gap-2 min-w-0">
+          <span
+            id="character-editor-voice-label"
+            className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
+          >
+            {t("charactereditor.Voice", { defaultValue: "Voice" })}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <ThemedSelect
+              value={voiceSelectValue}
+              groups={useElevenLabs ? elevenLabsVoiceGroups : edgeVoiceGroups}
+              onChange={(id: string) => {
+                const allVoices = useElevenLabs
+                  ? PREMADE_VOICES
+                  : EDGE_BACKUP_VOICES;
+                const preset = allVoices.find((p) => p.id === id);
+                if (preset) handleSelectPreset(preset);
+              }}
+              placeholder={t("charactereditor.SelectAVoice", {
+                defaultValue: "Select a voice",
+              })}
+              ariaLabelledBy="character-editor-voice-label"
+              menuPlacement="bottom"
+              className="flex-1 min-w-0"
+              triggerClassName="h-9 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm shadow-none"
+              menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
+            />
+            <Button
+              type="button"
+              variant={voiceTesting ? "destructive" : "ghost"}
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full p-0 text-muted hover:text-txt"
+              onClick={() => {
+                if (voiceTesting) {
+                  handleStopTest();
+                } else if (activeVoicePreset?.previewUrl) {
+                  setVoiceTesting(true);
+                  const audio = new Audio(activeVoicePreset.previewUrl);
+                  audio.onended = () => {
+                    setVoiceTesting(false);
+                    setVoiceTestAudio(null);
+                  };
+                  audio.onerror = () => {
+                    setVoiceTesting(false);
+                    setVoiceTestAudio(null);
+                  };
+                  setVoiceTestAudio(audio);
+                  audio.play().catch(() => {
+                    setVoiceTesting(false);
+                    setVoiceTestAudio(null);
+                  });
+                }
+              }}
+              aria-label={voiceTesting ? "Stop voice preview" : "Preview voice"}
+              disabled={!activeVoicePreset || voiceLoading}
+            >
+              {voiceTesting ? (
+                <VolumeX className="h-3.5 w-3.5" />
+              ) : (
+                <Volume2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
+        </span>
         <Textarea
           value={bioText}
-          rows={6}
+          rows={8}
           placeholder={t("charactereditor.AboutMePlaceholder", {
             defaultValue: "Describe who your agent is...",
           })}
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
+          className="w-full resize-y min-h-[8rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
-      </section>
+      </div>
 
-      {/* System Prompt / Directions */}
-      <section className="flex flex-1 min-h-[15rem] flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            {t("charactereditor.SystemPrompt", {
-              defaultValue: "Things I Should Always Remember",
-            })}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-full p-0 text-accent"
-            onClick={() => void handleGenerate("system")}
-            disabled={generating === "system"}
-            title={t("charactereditor.Regenerate", {
-              defaultValue: "Regenerate",
-            })}
-            aria-label={t("charactereditor.Regenerate", {
-              defaultValue: "Regenerate",
-            })}
-          >
-            {generating === "system" ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+      <div className="flex flex-col gap-2">
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.SystemPrompt", {
+            defaultValue: "Things I Should Always Remember",
+          })}
+        </span>
         <Textarea
           value={d.system ?? ""}
-          rows={6}
+          rows={8}
           maxLength={100000}
           placeholder={t("charactereditor.SystemPromptPlaceholder", {
             defaultValue: "Write in first person...",
@@ -398,9 +333,8 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className="flex-1 min-h-12 resize-none overflow-y-auto rounded-lg border-border bg-white/[0.04] px-3 py-2 font-mono text-xs leading-relaxed text-txt h-full min-h-[14rem] max-h-none"
+          className="w-full resize-y min-h-[8rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
-      </section>
       </div>
     </div>
   );
@@ -437,32 +371,11 @@ export function CharacterStylePanel({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("charactereditor.StyleRulesHeader", {
-            defaultValue: "Style Rules",
-          })}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 rounded-full p-0 text-accent"
-          onClick={() => void handleGenerate("style", "replace")}
-          disabled={generating === "style"}
-          title={t("charactereditor.Regenerate", {
-            defaultValue: "Regenerate",
-          })}
-          aria-label={t("charactereditor.Regenerate", {
-            defaultValue: "Regenerate",
-          })}
-        >
-          {generating === "style" ? (
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <SparklesIcon className="h-3.5 w-3.5" />
-          )}
-        </Button>
-      </div>
+      <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+        {t("charactereditor.StyleRulesHeader", {
+          defaultValue: "Style Rules",
+        })}
+      </span>
       <div className="flex flex-col gap-3 min-h-0">
         {STYLE_SECTION_KEYS.map((key) => {
           const items = style?.[key] ?? [];
@@ -634,35 +547,14 @@ export function CharacterExamplesPanel({
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
       {/* Chat Examples */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            {t("charactereditor.ChatExamples", {
-              defaultValue: "Chat Examples",
-            })}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-full p-0 text-accent"
-            onClick={() => void handleGenerate("chatExamples", "replace")}
-            disabled={generating === "chatExamples"}
-            title={t("charactereditor.Generate", {
-              defaultValue: "Generate",
-            })}
-            aria-label={t("charactereditor.Generate", {
-              defaultValue: "Generate",
-            })}
-          >
-            {generating === "chatExamples" ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.ChatExamples", {
+            defaultValue: "Chat Examples",
+          })}
+        </span>
         <div className="flex flex-col divide-y divide-border/30">
           {normalizedMessageExamples.map((convo, ci) => (
             <div
@@ -784,32 +676,11 @@ export function CharacterExamplesPanel({
 
       {/* Post Examples */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            {t("charactereditor.PostExamples", {
-              defaultValue: "Post Examples",
-            })}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-full p-0 text-accent"
-            onClick={() => void handleGenerate("postExamples", "replace")}
-            disabled={generating === "postExamples"}
-            title={t("charactereditor.Generate", {
-              defaultValue: "Generate",
-            })}
-            aria-label={t("charactereditor.Generate", {
-              defaultValue: "Generate",
-            })}
-          >
-            {generating === "postExamples" ? (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <SparklesIcon className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          {t("charactereditor.PostExamples", {
+            defaultValue: "Post Examples",
+          })}
+        </span>
         <div className="flex flex-col gap-1.5">
           {(d.postExamples ?? []).map((post, pi) => {
             const isDragging = dragPostIndex === pi;
@@ -902,6 +773,6 @@ export function CharacterExamplesPanel({
           </button>
         </div>
       </section>
-    </>
+    </div>
   );
 }

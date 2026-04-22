@@ -1244,22 +1244,11 @@ async function handleRequest(
     if (serveStaticUi(req, res, pathname)) return;
   }
 
-  if (
-    isCloudProvisioned &&
-    method !== "OPTIONS" &&
-    isAuthProtectedPath &&
-    !isAuthEndpoint &&
-    !isHealthEndpoint &&
-    !isCloudOnboardingStatusEndpoint &&
-    !isWhatsAppWebhookEndpoint &&
-    !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/lifeops/browser/companions/") &&
-    !isAuthorized(req)
-  ) {
-    json(res, { error: "Unauthorized" }, 401);
-    return;
-  }
-
+  // Single auth gate. The previous two-block arrangement (a cloud-provisioned
+  // copy followed by an unconditional copy) was redundant: the unconditional
+  // block already applied to cloud-provisioned requests because
+  // `isAuthorized` consults `isCloudProvisionedContainer()` when no token is
+  // configured.
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1268,7 +1257,7 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/lifeops/browser/companions/") &&
+    !pathname.startsWith("/api/browser-bridge/companions/") &&
     !isAuthorized(req)
   ) {
     json(res, { error: "Unauthorized" }, 401);

@@ -66,21 +66,21 @@ describe("browser-portal — fixture routing regression test (handleTurn string-
   test("executive assistant portal upload scenario passes", async () => {
     await expectScenarioPasses(
       portalUploadScenario,
-      "lifeops-browser-portal-upload-scenario",
+      "browser-bridge-portal-upload-scenario",
     );
   });
 
   test("executive assistant id-copy escalation scenario passes", async () => {
     await expectScenarioPasses(
       collectIdCopyScenario,
-      "lifeops-browser-id-copy-scenario",
+      "browser-bridge-id-copy-scenario",
     );
   });
 
   test("connector certification browser portal scenario passes", async () => {
     await expectScenarioPasses(
       browserPortalConnectorScenario,
-      "lifeops-browser-portal-connector-scenario",
+      "browser-bridge-portal-connector-scenario",
     );
   });
 });

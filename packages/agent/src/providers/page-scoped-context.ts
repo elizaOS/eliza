@@ -33,6 +33,12 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Apps view. They can browse the catalog, launch apps, stop running apps, view running app instances and their health, and favorite apps. Action vocabulary: launchAppAction, stopAppAction. The app catalog and running runs are surfaced via the Apps API; refer to apps by display name and never invent app names.",
   "page-wallet":
     "The user is in the Wallet view. Wallet operations are user-driven; do not initiate trades, transfers, or fund movements on the user's behalf. Provide read-only guidance only.",
+  "automation-draft":
+    "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
+    "- Recurring prompt or schedule (e.g. \"every morning summarize my inbox\") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
+    "- Goal to work toward until done (e.g. \"figure out the onboarding refactor\") → CREATE_TASK with name and description.\n" +
+    "- Deterministic pipeline of integration steps (e.g. \"when a Slack message matches X, post to Discord\") → create an n8n workflow via the n8n actions.\n" +
+    "Ask one short clarifying question only if the shape is genuinely ambiguous; otherwise create immediately. After creation, briefly confirm what you made and how to run it.",
 };
 
 interface SourceTailEntry {
@@ -134,20 +140,20 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 
-interface LifeOpsBrowserCompanionLiveStatus {
+interface BrowserBridgeCompanionLiveStatus {
   connectionState: string;
   browser: string;
   profileLabel?: string | null;
   extensionVersion?: string | null;
 }
 
-async function fetchLifeOpsBrowserCompanionLiveStatus(): Promise<
-  LifeOpsBrowserCompanionLiveStatus[] | null
+async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
+  BrowserBridgeCompanionLiveStatus[] | null
 > {
   const port = process.env.API_PORT || process.env.SERVER_PORT || "2138";
   try {
     const response = await fetch(
-      `http://127.0.0.1:${port}/api/lifeops/browser/companions`,
+      `http://127.0.0.1:${port}/api/browser-bridge/companions`,
       { signal: AbortSignal.timeout(1500) },
     );
     if (!response.ok) return null;
@@ -185,17 +191,17 @@ async function renderBrowserLiveState(): Promise<string | null> {
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
     }
 
-    // LifeOps Browser companion status — so the agent can tell the user to
-    // install the extension when it isn't connected and reference the
+    // Agent Browser Bridge companion status — so the agent can tell the user
+    // to install the extension when it isn't connected and reference the
     // connected profile accurately when it is.
-    const companions = await fetchLifeOpsBrowserCompanionLiveStatus();
+    const companions = await fetchBrowserBridgeCompanionLiveStatus();
     if (companions === null) {
       lines.push(
-        "LifeOps Browser companion: status unknown (companion API unreachable).",
+        "Agent Browser Bridge companion: status unknown (companion API unreachable).",
       );
     } else if (companions.length === 0) {
       lines.push(
-        "LifeOps Browser companion: not installed — tell the user to click 'Install LifeOps Browser' in the chat panel to build the extension and load it into Chrome.",
+        "Agent Browser Bridge companion: not installed — tell the user to click 'Install Agent Browser Bridge' in the chat panel to build the extension and load it into Chrome.",
       );
     } else {
       const connected = companions.filter(
@@ -203,11 +209,11 @@ async function renderBrowserLiveState(): Promise<string | null> {
       );
       if (connected.length === 0) {
         lines.push(
-          "LifeOps Browser companion: extension present but not connected — ask the user to open the LifeOps Browser extension in Chrome so it can pair.",
+          "Agent Browser Bridge companion: extension present but not connected — ask the user to open the Agent Browser Bridge extension in Chrome so it can pair.",
         );
       } else {
         lines.push(
-          `LifeOps Browser companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
+          `Agent Browser Bridge companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
         );
         for (const companion of connected.slice(0, 3)) {
           const browser =
@@ -260,6 +266,7 @@ async function renderLiveStateForScope(
     case "page-browser":
       return renderBrowserLiveState();
     case "page-automations":
+    case "automation-draft":
       return renderAutomationsLiveState(runtime);
     case "page-apps":
     case "page-wallet":
@@ -288,10 +295,12 @@ export const pageScopedContextProvider: Provider = {
     try {
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
-      if (!isPageScopedConversationMetadata(metadata)) {
+      const scope = metadata?.scope as ConversationScope | undefined;
+      const isPageScoped = isPageScopedConversationMetadata(metadata);
+      const acceptedScope = isPageScoped || scope === "automation-draft";
+      if (!acceptedScope || !scope) {
         return EMPTY_RESULT;
       }
-      const scope = metadata?.scope as ConversationScope;
       const brief = PAGE_SCOPE_BRIEF[scope];
       if (!brief) {
         return EMPTY_RESULT;

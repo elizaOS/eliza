@@ -12,7 +12,6 @@ import { useApp } from "@elizaos/app-core/state";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-  LifeOpsGmailMessageSummary,
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
@@ -20,6 +19,23 @@ import type {
 import { CalendarDays, Clock, Mail } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";
+import {
+  buildLifeOpsHash,
+  primeLifeOpsEvent,
+} from "../../../../lifeops-route.js";
+
+function writeHash(nextHash: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = `${window.location.pathname}${window.location.search}${nextHash}`;
+    window.history.replaceState(null, "", url || window.location.href);
+    // Fire hashchange manually so our own listeners pick it up; browsers
+    // don't emit it for history.replaceState calls.
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } catch {
+    // Best-effort — URL manipulation failures shouldn't break the click.
+  }
+}
 
 const REFRESH_INTERVAL_MS = 15_000;
 const CALENDAR_ROW_LIMIT = 6;
@@ -163,7 +179,26 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
 
   if (!showCalendar) return null;
 
-  const openLifeOps = () => setTab("lifeops");
+  const openLifeOps = () => {
+    writeHash(
+      buildLifeOpsHash(
+        typeof window === "undefined" ? "" : window.location.hash,
+        { section: "calendar", eventId: null, messageId: null },
+      ),
+    );
+    setTab("lifeops");
+  };
+
+  const openEventRow = (event: LifeOpsCalendarEvent) => {
+    primeLifeOpsEvent(event);
+    writeHash(
+      buildLifeOpsHash(
+        typeof window === "undefined" ? "" : window.location.hash,
+        { section: "calendar", eventId: event.id, messageId: null },
+      ),
+    );
+    setTab("lifeops");
+  };
 
   return (
     <WidgetSection
@@ -186,7 +221,7 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
               <button
                 key={event.id}
                 type="button"
-                onClick={openLifeOps}
+                onClick={() => openEventRow(event)}
                 data-testid={`lifeops-calendar-row-${event.id}`}
                 className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
               >
@@ -216,7 +251,7 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
   const showInbox =
     dataStatus?.connected === true && caps.has("google.gmail.triage");
 
-  const messages: LifeOpsGmailMessageSummary[] = gmailFeed?.messages ?? [];
+  const messages = gmailFeed?.messages ?? [];
   if (!showInbox) return null;
 
   const openLifeOps = () => setTab("lifeops");
