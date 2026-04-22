@@ -46,8 +46,7 @@ function resolveSourceExportPath(packageDir, exportPath) {
     : exportPath;
 }
 
-function rewriteDistExportsToSource(packageJsonPath, pkg) {
-  const packageDir = path.dirname(packageJsonPath);
+function rewriteDistExportsToSource(packageDir, pkg) {
   let changed = false;
 
   function rewrite(value) {
@@ -73,10 +72,47 @@ function rewriteDistExportsToSource(packageJsonPath, pkg) {
   nextPkg.types = rewrite(pkg.types);
   nextPkg.exports = rewrite(pkg.exports);
 
-  if (!changed) return pkg;
+  return { changed, pkg: changed ? nextPkg : pkg };
+}
 
-  fs.writeFileSync(packageJsonPath, `${JSON.stringify(nextPkg, null, 2)}\n`);
-  return nextPkg;
+const shimSkipEntries = new Set([
+  ".git",
+  ".turbo",
+  "node_modules",
+  "package.json",
+]);
+
+function linkPackageContents(packageDir, target) {
+  for (const entry of fs.readdirSync(packageDir, { withFileTypes: true })) {
+    if (shimSkipEntries.has(entry.name)) {
+      continue;
+    }
+    const sourcePath = path.join(packageDir, entry.name);
+    const targetPath = path.join(target, entry.name);
+    fs.symlinkSync(
+      path.relative(path.dirname(targetPath), sourcePath),
+      targetPath,
+    );
+  }
+}
+
+function linkPackageTarget({ packageDir, pkg, rewroteExports, target }) {
+  fs.rmSync(target, { force: true, recursive: true });
+  if (!rewroteExports) {
+    fs.symlinkSync(
+      path.relative(path.dirname(target), packageDir),
+      target,
+      "dir",
+    );
+    return;
+  }
+
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(
+    path.join(target, "package.json"),
+    `${JSON.stringify(pkg, null, 2)}\n`,
+  );
+  linkPackageContents(packageDir, target);
 }
 
 function pathExists(filePath) {
@@ -120,7 +156,8 @@ for (const packagePath of localPackages) {
       `Invalid local package name in ${path.relative(repoRoot, packageJsonPath)}`,
     );
   }
-  pkg = rewriteDistExportsToSource(packageJsonPath, pkg);
+  const rewriteResult = rewriteDistExportsToSource(packageDir, pkg);
+  pkg = rewriteResult.pkg;
 
   const packageName = pkg.name.slice("@elizaos/".length);
   for (const scopeDir of scopeDirs) {
@@ -130,12 +167,12 @@ for (const packagePath of localPackages) {
         continue;
       }
     }
-    fs.rmSync(target, { force: true, recursive: true });
-    fs.symlinkSync(
-      path.relative(path.dirname(target), packageDir),
+    linkPackageTarget({
+      packageDir,
+      pkg,
+      rewroteExports: rewriteResult.changed,
       target,
-      "dir",
-    );
+    });
     linked += 1;
   }
 }
