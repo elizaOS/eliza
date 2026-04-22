@@ -82,6 +82,20 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
+const ResetIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"
+  />
+);
+
+const CollapseIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M21 3H3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zM9 3v18M14 9l-3 3 3 3"
+  />
+);
+
 import {
   Button,
   Dialog,
@@ -263,6 +277,7 @@ export function CharacterEditor({
     | null
   >(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1561,6 +1576,8 @@ export function CharacterEditor({
               <Sidebar
                 testId="character-editor-sidebar"
                 collapsible
+                collapsed={sidebarCollapsed}
+                onCollapsedChange={setSidebarCollapsed}
                 contentIdentity="character-editor"
                 collapseButtonTestId="character-editor-sidebar-collapse-toggle"
                 expandButtonTestId="character-editor-sidebar-expand-toggle"
@@ -1570,47 +1587,115 @@ export function CharacterEditor({
                 headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
                 collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
                 footer={
-                  <div className="flex w-full items-center gap-1">
+                  <div className="flex w-full flex-col gap-1.5">
+                    {hasStandaloneHeaderFeedback ? (
+                      <div className="flex flex-col gap-1">
+                        {characterSaveSuccess && (
+                          <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
+                            {characterSaveSuccess}
+                          </span>
+                        )}
+                        {combinedSaveError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {combinedSaveError}
+                          </span>
+                        )}
+                        {generateError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {generateError}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                      onClick={() =>
-                        document
-                          .getElementById("ce-vrm-upload-standalone")
-                          ?.click()
+                      className="h-10 w-full justify-center rounded-sm text-sm font-bold tracking-[0.04em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+                      style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
+                      disabled={
+                        characterSaving ||
+                        voiceSaving ||
+                        !hasPendingChanges ||
+                        !currentCharacter
                       }
-                      title={t("charactereditor.UploadVRM", {
-                        defaultValue: "Upload VRM",
-                      })}
-                      aria-label={t("charactereditor.UploadVRM", {
-                        defaultValue: "Upload VRM",
-                      })}
+                      onClick={() => void handleSaveAll()}
                     >
-                      <UploadIcon className="h-4 w-4" />
+                      {characterSaving || voiceSaving
+                        ? t("charactereditor.Saving", {
+                            defaultValue: "saving...",
+                          })
+                        : t("charactereditor.Save", { defaultValue: "Save" })}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                      onClick={handleExportCharacter}
-                      disabled={!currentCharacter}
-                      title={t("charactereditor.ExportJSON", {
-                        defaultValue: "Export JSON",
-                      })}
-                      aria-label={t("charactereditor.ExportJSON", {
-                        defaultValue: "Export JSON",
-                      })}
-                    >
-                      <DownloadIcon className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-between">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={() => setSidebarCollapsed(true)}
+                        title="Collapse sidebar"
+                        aria-label="Collapse sidebar"
+                      >
+                        <CollapseIcon className="h-4 w-4" />
+                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={() =>
+                            document
+                              .getElementById("ce-vrm-upload-standalone")
+                              ?.click()
+                          }
+                          title={t("charactereditor.UploadVRM", {
+                            defaultValue: "Upload VRM",
+                          })}
+                          aria-label={t("charactereditor.UploadVRM", {
+                            defaultValue: "Upload VRM",
+                          })}
+                        >
+                          <UploadIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={handleExportCharacter}
+                          disabled={!currentCharacter}
+                          title={t("charactereditor.ExportJSON", {
+                            defaultValue: "Export JSON",
+                          })}
+                          aria-label={t("charactereditor.ExportJSON", {
+                            defaultValue: "Export JSON",
+                          })}
+                        >
+                          <DownloadIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={() => setResetConfirmOpen(true)}
+                          disabled={!activeCharacterRosterEntry || !currentCharacter}
+                          title={t("charactereditor.Reset", {
+                            defaultValue: "Reset",
+                          })}
+                          aria-label={t("charactereditor.Reset", {
+                            defaultValue: "Reset",
+                          })}
+                        >
+                          <ResetIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 }
-                footerClassName="!px-2 !pt-1.5 !pb-1.5 !justify-start"
+                footerClassName="!px-2 !pt-2 !pb-2 !justify-stretch"
               >
-                <SidebarScrollRegion className="px-1 pb-2 pt-0">
+                <SidebarScrollRegion className="px-1 pb-1 pt-0">
                   <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
                     <nav
                       className="flex flex-col"
@@ -1641,7 +1726,7 @@ export function CharacterEditor({
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
-                            className="items-center gap-1.5 px-2.5 py-2"
+                            className="items-center gap-1.5 px-2 py-1.5"
                           >
                             <SidebarContent.ItemTitle
                               className={
@@ -1656,56 +1741,6 @@ export function CharacterEditor({
                         );
                       })}
                     </nav>
-                    <div className="mt-3 flex flex-col gap-1 px-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-full justify-center rounded-sm text-xs-tight font-medium text-muted hover:bg-bg-muted/60 hover:text-txt"
-                        onClick={() => setResetConfirmOpen(true)}
-                        disabled={!activeCharacterRosterEntry || !currentCharacter}
-                      >
-                        {t("charactereditor.Reset", { defaultValue: "Reset" })}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-7 w-full justify-center rounded-sm text-xs-tight font-bold tracking-[0.04em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
-                        style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
-                        disabled={
-                          characterSaving ||
-                          voiceSaving ||
-                          !hasPendingChanges ||
-                          !currentCharacter
-                        }
-                        onClick={() => void handleSaveAll()}
-                      >
-                        {characterSaving || voiceSaving
-                          ? t("charactereditor.Saving", {
-                              defaultValue: "saving...",
-                            })
-                          : t("charactereditor.Save", { defaultValue: "Save" })}
-                      </Button>
-                      {hasStandaloneHeaderFeedback ? (
-                        <div className="flex flex-col gap-1 pt-1">
-                          {characterSaveSuccess && (
-                            <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
-                              {characterSaveSuccess}
-                            </span>
-                          )}
-                          {combinedSaveError && (
-                            <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-                              {combinedSaveError}
-                            </span>
-                          )}
-                          {generateError && (
-                            <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-                              {generateError}
-                            </span>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
                   </SidebarPanel>
                 </SidebarScrollRegion>
               </Sidebar>
