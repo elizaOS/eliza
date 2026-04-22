@@ -275,9 +275,9 @@ export async function maybeAugmentChatMessageWithKnowledge(
     );
 
   const loadMatchesAcrossScopes = async (queryText: string) => {
-    let matches = await loadMatches(roomId, queryText);
+    let matches = (await loadMatches(roomId, queryText)) ?? [];
     if (matches.length === 0 && roomId !== agentId) {
-      matches = await loadMatches(agentId, queryText);
+      matches = (await loadMatches(agentId, queryText)) ?? [];
     }
     return matches;
   };
