@@ -10,6 +10,7 @@ vi.mock("../src/lifeops/intent-sync.js", () => ({
     "state_sync",
   ],
   LIFE_INTENT_TARGETS: ["all", "desktop", "mobile", "specific"],
+  LIFE_INTENT_PRIORITIES: ["low", "medium", "high", "urgent"],
   broadcastIntent: vi.fn(async (_runtime, input) => ({
     id: "intent-local-1",
     agentId: "00000000-0000-0000-0000-000000000003",
