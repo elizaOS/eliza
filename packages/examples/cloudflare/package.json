@@ -20,7 +20,7 @@
   "dependencies": {
     "@elizaos/core": "alpha",
     "@elizaos/plugin-openai": "alpha",
-    "uuid": "^11.0.5"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",

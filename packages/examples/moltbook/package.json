@@ -22,7 +22,7 @@
     "@elizaos/plugin-moltbook": "alpha",
     "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

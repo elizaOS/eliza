@@ -18,7 +18,7 @@
     "@elizaos/plugin-localdb": "alpha",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/react": "19.2.3",
