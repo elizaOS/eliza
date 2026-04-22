@@ -409,6 +409,10 @@ describe("run-mobile-build", () => {
       path.join(iosTemplateRoot, "App", "Podfile"),
       "utf8",
     );
+    const iosInfoPlist = fs.readFileSync(
+      path.join(iosTemplateRoot, "App", "App", "Info.plist"),
+      "utf8",
+    );
     const androidSettings = fs.readFileSync(
       path.join(androidTemplateRoot, "capacitor.settings.gradle"),
       "utf8",
@@ -421,6 +425,7 @@ describe("run-mobile-build", () => {
     expect(iosPodfile).not.toContain("node_modules/.bun/");
     expect(iosPodfile).toContain("../../node_modules/@capacitor/ios");
     expect(iosPodfile).not.toContain("CapacitorStatusBar");
+    expect(iosInfoPlist).not.toContain("armv7");
 
     expect(androidSettings).not.toContain("node_modules/.bun/");
     expect(androidSettings).toContain(
@@ -496,6 +501,9 @@ describe("run-mobile-build", () => {
       "WebsiteBlockerContentExtension",
       "ActionRequestHandler.swift",
     );
+    const fastlaneAppfile = path.join(appDir, "ios", "fastlane", "Appfile");
+    const fastlaneFastfile = path.join(appDir, "ios", "fastlane", "Fastfile");
+    const fastlaneMatchfile = path.join(appDir, "ios", "fastlane", "Matchfile");
 
     writeFile(
       projectPath,
@@ -510,6 +518,26 @@ describe("run-mobile-build", () => {
     writeFile(
       extensionHandler,
       'static let appGroupIdentifier = "group.ai.elizaos.app"\n',
+    );
+    writeFile(
+      fastlaneAppfile,
+      'app_identifier(ENV["APP_IDENTIFIER"] || "ai.elizaos.app")\n',
+    );
+    writeFile(
+      fastlaneFastfile,
+      [
+        'APP_ID = ENV["APP_IDENTIFIER"] || "ai.elizaos.app"',
+        'EXTENSION_IDS = (ENV["APP_IDENTIFIER_EXTRA"] || "")',
+      ].join("\n"),
+    );
+    writeFile(
+      fastlaneMatchfile,
+      [
+        "app_identifier([",
+        '  ENV["APP_IDENTIFIER"] || "ai.elizaos.app",',
+        '  *(ENV["APP_IDENTIFIER_EXTRA"] || "").split(",")',
+        "])",
+      ].join("\n"),
     );
 
     const changed = applyIosAppIdentity({
@@ -534,6 +562,9 @@ describe("run-mobile-build", () => {
           "WebsiteBlockerContentExtension",
           "ActionRequestHandler.swift",
         ),
+        path.join("fastlane", "Appfile"),
+        path.join("fastlane", "Fastfile"),
+        path.join("fastlane", "Matchfile"),
       ]),
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
@@ -553,6 +584,15 @@ describe("run-mobile-build", () => {
     );
     expect(fs.readFileSync(extensionHandler, "utf8")).toContain(
       "group.com.example.milady",
+    );
+    expect(fs.readFileSync(fastlaneAppfile, "utf8")).toContain(
+      'ENV["APP_IDENTIFIER"] || "com.example.milady"',
+    );
+    expect(fs.readFileSync(fastlaneFastfile, "utf8")).toContain(
+      'ENV["APP_IDENTIFIER_EXTRA"] || "com.example.milady.WebsiteBlockerContentExtension"',
+    );
+    expect(fs.readFileSync(fastlaneMatchfile, "utf8")).toContain(
+      'ENV["APP_IDENTIFIER"] || "com.example.milady"',
     );
   });
 
