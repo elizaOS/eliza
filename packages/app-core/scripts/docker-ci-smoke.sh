@@ -181,13 +181,6 @@ if [[ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.ts ]]
   popd >/dev/null
 fi
 
-if [[ ! -f eliza/plugins/plugin-telegram/dist/account-auth-service.js ]]; then
-  log "Building Telegram plugin account-auth export"
-  pushd eliza/plugins/plugin-telegram >/dev/null
-  bunx tsup src/index.ts src/account-auth-service.ts --out-dir dist --format esm --sourcemap --clean --no-dts
-  popd >/dev/null
-fi
-
 log "Building Capacitor plugins"
 pushd apps/app >/dev/null
 bun scripts/plugin-build.mjs
