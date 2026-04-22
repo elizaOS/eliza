@@ -1411,6 +1411,7 @@ export interface GetLifeOpsGmailSearchRequest {
   maxResults?: number;
   query: string;
   replyNeededOnly?: boolean;
+  includeSpamTrash?: boolean;
   grantId?: string;
 }
 

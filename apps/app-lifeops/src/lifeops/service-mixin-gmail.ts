@@ -458,6 +458,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
       const query = normalizeGmailSearchQuery(request.query);
+      const includeSpamTrash =
+        normalizeOptionalBoolean(request.includeSpamTrash, "includeSpamTrash") ??
+        /\b(?:in|label):(spam|trash|anywhere)\b/i.test(query);
       const replyNeededOnly =
         normalizeOptionalBoolean(request.replyNeededOnly, "replyNeededOnly") ??
         false;
@@ -614,6 +617,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         selfEmail,
         maxResults,
         query,
+        includeSpamTrash,
       });
       const messages = filterGmailMessagesBySearch({
         messages: syncedMessages.map((message) =>
