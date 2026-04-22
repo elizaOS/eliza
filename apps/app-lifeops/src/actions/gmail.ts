@@ -207,6 +207,7 @@ const ACTION_NAME = "GMAIL_ACTION";
 const GMAIL_DETAIL_ALIASES = {
   forceSync: ["forcesync", "force_sync"],
   maxResults: ["maxresults", "max_results"],
+  includeSpamTrash: ["includespamtrash", "include_spam_trash"],
   olderThanDays: ["olderthandays", "older_than_days"],
   replyNeededOnly: ["replyneededonly", "reply_needed_only"],
   messageIds: ["messageids", "message_ids"],
