@@ -91,7 +91,7 @@ export function AutomationRoomChatPane({
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const messageListRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLUListElement>(null);
   const _conversationKey = useMemo(
     () =>
       JSON.stringify({
@@ -453,11 +453,11 @@ export function AutomationRoomChatPane({
 
   // ── Roving tabindex: arrow-key navigation between message bubbles ─────────
   const handleMessageListKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLUListElement>) => {
       if (!messageListRef.current) return;
       const items = Array.from(
         messageListRef.current.querySelectorAll<HTMLElement>(
-          '[role="article"]',
+          "[data-message-item]",
         ),
       );
       const focused = document.activeElement as HTMLElement | null;
@@ -559,6 +559,7 @@ export function AutomationRoomChatPane({
                 return (
                   <li
                     key={message.id}
+                    data-message-item="true"
                     tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
                     aria-label={ariaLabel}
                     className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
