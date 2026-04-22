@@ -3123,7 +3123,7 @@ function renderGooPaperPage(
   const fw = s.flywheelTotals ?? { totalProfitBnb: 0, reinvestedBnb: 0, elizaOKBoughtBnb: 0, airdropReservedBnb: 0 };
   const fmtBnb = (v: number) => v.toFixed(4);
   const pnlClass = s.totalPnlUsd >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
-  const pnlSign = s.totalPnlUsd >= 0 ? '+' : '';
+  const pnlSign = s.totalPnlUsd >= 0 ? '+' : '-';
   const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const statusBadge = (state: string) => {
@@ -3159,7 +3159,7 @@ function renderGooPaperPage(
         </div>
       </div>
       <div class="goo-agent-row__metrics">
-        <div class="goo-agent-row__pnl ${pnlCls}">${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)}</div>
+        <div class="goo-agent-row__pnl ${pnlCls}">${pnl >= 0 ? '+' : '-'}${fmtUsd(pnl)}</div>
         <div class="goo-agent-row__score">Score: ${a.acquisitionScore}</div>
       </div>
       <div class="goo-agent-row__actions">
@@ -3646,7 +3646,7 @@ if (_gooLangActive === 'zh') { setTimeout(applyGooLang, 50); }
 function renderGooAgentDetail(agent: GooPaperAgent): string {
   const pnl = agent.totalPnlUsd;
   const pnlCls = pnl >= 0 ? 'goo-pnl--pos' : 'goo-pnl--neg';
-  const pnlSign = pnl >= 0 ? '+' : '';
+  const pnlSign = pnl >= 0 ? '+' : '-';
   const fmtUsd = (v: number) => `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const fw = agent.flywheel ?? { totalProfitBnb: 0, reinvestedBnb: 0, elizaOKBoughtBnb: 0, airdropReservedBnb: 0, cycleCount: 0, lastCycleAt: null };
 
@@ -3701,7 +3701,7 @@ function renderGooAgentDetail(agent: GooPaperAgent): string {
       <td style="font-size:11px;color:var(--goo-text3)">${p.state.toUpperCase()}</td>
       <td>${fmtUsd(sizeVal)}</td>
       <td>${gain >= 0 ? '+' : ''}${gain.toFixed(1)}%</td>
-      <td class="${cls}" style="font-weight:600">${ppnl >= 0 ? '+' : ''}${fmtUsd(ppnl)}</td>
+      <td class="${cls}" style="font-weight:600">${ppnl >= 0 ? '+' : '-'}${fmtUsd(ppnl)}</td>
       <td style="font-size:10px;color:var(--goo-text3)">${dateStr}</td>
     </tr>`;
   };
@@ -6790,7 +6790,7 @@ function renderHtml(
                 <div class="metric"><span>Total Agents</span><strong>${paperAgents.length}</strong></div>
                 <div class="metric"><span>Active</span><strong class="g">${paperSummary.activeAgents}</strong></div>
                 <div class="metric"><span>Avg Win Rate</span><strong class="${paperSummary.averageWinRate > 0 ? 'g' : 'w'}">${paperSummary.averageWinRate.toFixed(1)}%</strong></div>
-                <div class="metric"><span>Total P&L</span><strong class="${paperSummary.totalPnlUsd >= 0 ? 'g' : 'r'}">${paperSummary.totalPnlUsd >= 0 ? '+' : ''}$${paperSummary.totalPnlUsd.toFixed(2)}</strong></div>
+                <div class="metric"><span>Total P&L</span><strong class="${paperSummary.totalPnlUsd >= 0 ? 'g' : 'r'}">${paperSummary.totalPnlUsd >= 0 ? '+' : '-'}$${Math.abs(paperSummary.totalPnlUsd).toFixed(2)}</strong></div>
               </div>` : ""}
               <div class="split-h">Agent Fleet (${paperAgents.length})</div>
               <div style="max-height:360px;overflow-y:auto;margin-top:6px">
@@ -6836,7 +6836,7 @@ function renderHtml(
           <div class="aside-stat"><span>Exited</span><strong class="w">${portfolioLifecycle.exitedPositions.length}</strong></div>
           <div class="aside-stat"><span>Win rate</span><strong class="${(winRatePct ?? 0) > 50 ? 'g' : 'w'}">${formatPct(winRatePct)}</strong></div>
           <div class="aside-stat"><span>ROI</span><strong class="${roiPct >= 0 ? 'g' : 'r'}">${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%</strong></div>
-          <div class="aside-stat"><span>Sim. P&L</span><strong class="${totalPnlUsd >= 0 ? 'g' : 'r'}">${totalPnlUsd >= 0 ? '+' : ''}${formatUsd(totalPnlUsd)}</strong></div>
+          <div class="aside-stat"><span>Sim. P&L</span><strong class="${totalPnlUsd >= 0 ? 'g' : 'r'}">${totalPnlUsd >= 0 ? '+' : '-'}${formatUsd(Math.abs(totalPnlUsd))}</strong></div>
           <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;border-top:1px solid var(--border);padding-top:8px">Execution</div>
           <div class="aside-stat"><span>Per position</span><strong class="y">${formatBnb(positionSizeBnb)}</strong></div>
           <div class="aside-stat"><span>Executed</span><strong class="g">${executionState.cycleSummary.executedCount}</strong></div>
@@ -7971,7 +7971,7 @@ function renderGooComparePage(agents: GooPaperAgent[]): string {
       <div class="cmp-card__name"><span class="cmp-dot" style="background:${statColor[a.chainState] || '#888'}"></span>${escapeHtml(a.agentName)}</div>
       <div class="cmp-card__strategy">${escapeHtml(a.strategy.label)}</div>
       <div class="cmp-stat-grid">
-        <div class="cmp-stat"><span>P&L</span><strong class="${pnlCls}">${pnl >= 0 ? '+' : ''}${fmtUsd(pnl)}</strong></div>
+        <div class="cmp-stat"><span>P&L</span><strong class="${pnlCls}">${pnl >= 0 ? '+' : '-'}${fmtUsd(pnl)}</strong></div>
         <div class="cmp-stat"><span>Win Rate</span><strong>${a.winRate.toFixed(1)}%</strong></div>
         <div class="cmp-stat"><span>Trades</span><strong>${a.totalTradesCount}</strong></div>
         <div class="cmp-stat"><span>Win / Loss</span><strong><span class="cmp-pos">${a.winCount}</span> / <span class="cmp-neg">${a.lossCount}</span></strong></div>
