@@ -1,4 +1,6 @@
 import type {
+  LifeOpsAwakeProbability,
+  LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealLabel,
   LifeOpsSchedulePhase,
@@ -49,6 +51,8 @@ export interface LifeOpsScheduleObservationSnapshot {
   localDate: string;
   phase: LifeOpsSchedulePhase;
   relativeTime: LifeOpsRelativeTime;
+  awakeProbability: LifeOpsAwakeProbability;
+  regularity: LifeOpsScheduleRegularity;
   sleepStatus: LifeOpsScheduleSleepStatus;
   isProbablySleeping: boolean;
   sleepConfidence: number;

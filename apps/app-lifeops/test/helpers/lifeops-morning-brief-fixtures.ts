@@ -12,15 +12,9 @@ import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
 import type { PluginModuleShape } from "@elizaos/agent/test-support/test-helpers";
 import { extractPlugin } from "@elizaos/agent/test-support/test-helpers";
 import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "../../src/lifeops/time.js";
-import {
   createApprovalQueue,
 } from "../../src/lifeops/approval-queue.js";
 import {
-  createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
@@ -29,7 +23,6 @@ import { InboxTriageRepository } from "../../src/inbox/repository.js";
 import type { DeferredInboxDraft } from "../../src/inbox/types.js";
 import { LifeOpsService } from "../../src/lifeops/service.js";
 
-export const TEST_TIME_ZONE = "America/Los_Angeles";
 export const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
 
 export type MorningBriefSeedContext = {
@@ -129,35 +122,6 @@ export async function seedRoomMessages(
   }
 }
 
-function localDayAtOffset(daysFromToday: number): {
-  year: number;
-  month: number;
-  day: number;
-} {
-  const now = getZonedDateParts(new Date(), TEST_TIME_ZONE);
-  return addDaysToLocalDate(
-    {
-      year: now.year,
-      month: now.month,
-      day: now.day,
-    },
-    daysFromToday,
-  );
-}
-
-function localIso(daysFromToday: number, hour: number, minute = 0): string {
-  const date = localDayAtOffset(daysFromToday);
-  return buildUtcDateFromLocalParts(TEST_TIME_ZONE, {
-    year: date.year,
-    month: date.month,
-    day: date.day,
-    hour,
-    minute,
-    second: 0,
-    millisecond: 0,
-  }).toISOString();
-}
-
 export async function seedMorningBriefFixtures(args: {
   runtime: AgentRuntime;
   ownerId: UUID;
@@ -173,16 +137,12 @@ export async function seedMorningBriefFixtures(args: {
     agentId: args.runtime.agentId,
   });
 
-  const calendarTitles = [
-    "Board prep with Lydia",
-    "Dentist appointment",
-  ];
+  const calendarTitles: string[] = [];
   const documentBlockers = [
     "Clinic intake packet",
     "Investor diligence packet",
   ];
 
-  await seedCalendar(repository, agentId, nowIso);
   await seedGmail(repository, agentId, nowIso);
   await seedUnreadChannels(args.runtime, args.ownerId, triageRepo);
 
@@ -401,77 +361,6 @@ async function seedGoogleConnector(
   );
 
   return repository;
-}
-
-async function seedCalendar(
-  repository: LifeOpsRepository,
-  agentId: string,
-  nowIso: string,
-): Promise<void> {
-  const events = [
-    {
-      id: "morning-brief-evt-board-prep",
-      externalId: "morning-brief-board-prep-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Board prep with Lydia",
-      description: "Bring the investor diligence packet and status notes.",
-      location: "Mission Room",
-      status: "confirmed",
-      startAt: localIso(0, 9, 0),
-      endAt: localIso(0, 10, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "work" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "morning-brief-evt-dentist",
-      externalId: "morning-brief-dentist-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Dentist appointment",
-      description: "Bring the insurance card.",
-      location: "Main St Dental",
-      status: "confirmed",
-      startAt: localIso(0, 11, 30),
-      endAt: localIso(0, 12, 30),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "health" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-  ];
-
-  for (const event of events) {
-    await repository.upsertCalendarEvent(event);
-  }
-
-  await repository.upsertCalendarSyncState(
-    createLifeOpsCalendarSyncState({
-      agentId,
-      provider: "google",
-      side: "owner",
-      calendarId: "primary",
-      windowStartAt: localIso(0, 0, 0),
-      windowEndAt: localIso(1, 0, 0),
-      syncedAt: nowIso,
-    }),
-  );
 }
 
 async function seedGmail(

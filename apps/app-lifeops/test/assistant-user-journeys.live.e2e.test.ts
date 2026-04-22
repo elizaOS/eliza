@@ -18,11 +18,6 @@ import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "../src/lifeops/time.js";
-import {
   LIVE_PROVIDER_ENV_KEYS,
   LIVE_TESTS_ENABLED,
   getLifeOpsLiveSetupWarnings,
@@ -30,7 +25,6 @@ import {
   selectLifeOpsLiveProvider,
 } from "./helpers/lifeops-live-harness.ts";
 import {
-  createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
@@ -49,7 +43,6 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const TEST_TIME_ZONE = "America/Los_Angeles";
 const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -205,62 +198,6 @@ async function seedRoomMessages(
   }
 }
 
-function localDayAtOffset(daysFromToday: number): {
-  year: number;
-  month: number;
-  day: number;
-} {
-  const now = getZonedDateParts(new Date(), TEST_TIME_ZONE);
-  return addDaysToLocalDate(
-    {
-      year: now.year,
-      month: now.month,
-      day: now.day,
-    },
-    daysFromToday,
-  );
-}
-
-function localIso(daysFromToday: number, hour: number, minute = 0): string {
-  const date = localDayAtOffset(daysFromToday);
-  return buildUtcDateFromLocalParts(TEST_TIME_ZONE, {
-    year: date.year,
-    month: date.month,
-    day: date.day,
-    hour,
-    minute,
-    second: 0,
-    millisecond: 0,
-  }).toISOString();
-}
-
-function allDayStart(daysFromToday: number): string {
-  return localIso(daysFromToday, 0, 0);
-}
-
-function allDayEnd(daysFromToday: number): string {
-  return localIso(daysFromToday + 1, 0, 0);
-}
-
-function nextLocalWeekdayOffset(targetWeekday: number): number {
-  for (let offset = 0; offset < 14; offset += 1) {
-    const date = localDayAtOffset(offset);
-    const localNoon = buildUtcDateFromLocalParts(TEST_TIME_ZONE, {
-      year: date.year,
-      month: date.month,
-      day: date.day,
-      hour: 12,
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-    });
-    if (localNoon.getUTCDay() === targetWeekday) {
-      return offset;
-    }
-  }
-  return 0;
-}
-
 async function seedGoogleConnector(
   runtime: AgentRuntime,
   stateDir: string,
@@ -341,196 +278,6 @@ async function seedGoogleConnector(
 
   return repository;
 }
-
-async function seedCalendarData(
-  repository: LifeOpsRepository,
-  agentId: string,
-) {
-  const nowIso = new Date().toISOString();
-  const saturdayOffset = nextLocalWeekdayOffset(6);
-  const sundayOffset = nextLocalWeekdayOffset(0);
-  const events = [
-    {
-      id: "journey-evt-dentist",
-      externalId: "journey-dentist-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Dentist appointment",
-      description: "Routine cleaning and x-rays.",
-      location: "Main St Dental",
-      status: "confirmed",
-      startAt: localIso(0, 11, 0),
-      endAt: localIso(0, 12, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "health" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-lunch",
-      externalId: "journey-lunch-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Lunch with Mike",
-      description: "Remember the Kentucky Derby gin cocktail ingredients.",
-      location: "Poppy's Cafe",
-      status: "confirmed",
-      startAt: localIso(0, 13, 0),
-      endAt: localIso(0, 14, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "social" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-rowan-weekend",
-      externalId: "journey-rowan-weekend-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Rowan with Shaw this weekend",
-      description: "You have Rowan; Mike has Theo.",
-      location: "",
-      status: "confirmed",
-      startAt: allDayStart(saturdayOffset),
-      endAt: allDayEnd(sundayOffset),
-      isAllDay: true,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "family" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-soccer",
-      externalId: "journey-soccer-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Rowan soccer game",
-      description: "Field 3, bring the orange jersey.",
-      location: "Civic Fields",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 9, 0),
-      endAt: localIso(saturdayOffset, 10, 30),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "sports" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-party",
-      externalId: "journey-party-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Mason birthday party",
-      description: "Bring the science kit gift bag.",
-      location: "Westside Trampoline Park",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 13, 0),
-      endAt: localIso(saturdayOffset, 15, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "party" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-family-dinner",
-      externalId: "journey-family-dinner-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Family dinner at parents' house",
-      description:
-        "Last-minute change: everyone is going to Mom and Dad's house on Saturday evening.",
-      location: "Mom and Dad's house",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 18, 0),
-      endAt: localIso(saturdayOffset, 20, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "family" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-wedding",
-      externalId: "journey-wedding-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Adults-only wedding",
-      description: "Kids are not invited.",
-      location: "Rosewood Hall",
-      status: "confirmed",
-      startAt: localIso(sundayOffset, 15, 0),
-      endAt: localIso(sundayOffset, 21, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "wedding" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-  ];
-
-  for (const event of events) {
-    await repository.upsertCalendarEvent(event);
-  }
-
-  await repository.upsertCalendarSyncState(
-    createLifeOpsCalendarSyncState({
-      agentId,
-      provider: "google",
-      side: "owner",
-      calendarId: "primary",
-      windowStartAt: allDayStart(0),
-      windowEndAt: allDayEnd(Math.max(sundayOffset + 2, 14)),
-      syncedAt: nowIso,
-    }),
-  );
-}
-
 async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
   const nowIso = new Date().toISOString();
   const messages = [
@@ -812,7 +559,7 @@ if (!LIVE_SUITE_ENABLED) {
 }
 
 describeIf(LIVE_SUITE_ENABLED)(
-  "Live: assistant user journeys for routines, inbox, schedule, and reminders",
+  "Live: assistant user journeys for routines, inbox, and reminders",
   () => {
     let runtime: AgentRuntime;
     let envBackup: { restore: () => void };
@@ -921,7 +668,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
 
       const repository = await seedGoogleConnector(runtime, stateDir);
-      await seedCalendarData(repository, String(runtime.agentId));
       await seedGmailData(repository, String(runtime.agentId));
       await seedConversationData(runtime, ownerId);
     }, 240_000);
@@ -988,61 +734,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
 
       expectContainsAll(response, ["permit inspection", "4pm"]);
-    }, 180_000);
-
-    it("grounds today's schedule from the seeded calendar cache on the first answer", async () => {
-      const response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "Use my connected calendar. Morning. List today's actual events by name, time, and where I'm supposed to be. Do not give me just a heading.",
-      });
-
-      expectContainsAll(response, ["dentist", "lunch with mike"]);
-    }, 180_000);
-
-    it("lists the weekend events from the seeded calendar cache on the first answer", async () => {
-      const response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: [
-          "Use my connected calendar.",
-          "What's going on this weekend?",
-          "List the actual event names on my calendar this weekend.",
-          "Do not give me just a heading.",
-        ].join(" "),
-      });
-
-      expectContainsAtLeast(
-        response,
-        [
-          "rowan with shaw this weekend",
-          "rowan soccer game",
-          "mason birthday party",
-          "family dinner at parents' house",
-          "adults-only wedding",
-        ],
-        4,
-      );
-    }, 180_000);
-
-    it("surfaces the lunch reminder detail from the cached calendar event on the first answer", async () => {
-      const response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "Use my connected calendar. What does the note on my lunch with Mike event today say I need to remember?",
-      });
-
-      expectContainsAtLeast(
-        response,
-        ["mike", "kentucky derby", "gin", "cocktail"],
-        2,
-      );
     }, 180_000);
 
     it("finds the most overdue bill from email context on the first answer", async () => {

@@ -1,7 +1,9 @@
 import type {
+  LifeOpsAwakeProbability,
   LifeOpsDayBoundary,
   LifeOpsRelativeTime,
   LifeOpsRelativeTimeAnchorSource,
+  LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
 } from "@elizaos/shared/contracts/lifeops";
 import {
@@ -14,6 +16,8 @@ import {
 type RelativeTimeScheduleFields = Pick<
   LifeOpsScheduleInsight,
   | "phase"
+  | "awakeProbability"
+  | "regularity"
   | "isProbablySleeping"
   | "sleepConfidence"
   | "currentSleepStartedAt"
@@ -23,6 +27,25 @@ type RelativeTimeScheduleFields = Pick<
   | "wakeAt"
   | "firstActiveAt"
 >;
+
+function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
+  return {
+    pAwake: 0,
+    pAsleep: 0,
+    pUnknown: 1,
+    contributingSources: [],
+    computedAt,
+  };
+}
+
+function allowsProjectedBedtime(
+  regularity: LifeOpsScheduleRegularity | null | undefined,
+): boolean {
+  return (
+    regularity?.regularityClass === "regular" ||
+    regularity?.regularityClass === "very_regular"
+  );
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -150,6 +173,9 @@ export function resolveLifeOpsRelativeTime(args: {
   schedule: RelativeTimeScheduleFields;
   dayBoundary?: Pick<LifeOpsDayBoundary, "startOfDayAt" | "endOfDayAt">;
 }): LifeOpsRelativeTime {
+  const awakeProbability =
+    args.schedule.awakeProbability ??
+    defaultAwakeProbability(new Date(args.nowMs).toISOString());
   const dayBoundary =
     args.dayBoundary ??
     localDayBoundary({ nowMs: args.nowMs, timezone: args.timezone });
@@ -173,6 +199,7 @@ export function resolveLifeOpsRelativeTime(args: {
   // of flipping to tomorrow night's target.
   const bedtimeAnchorMs = wakeAnchorMs ?? null;
   const typicalBedtimeMs =
+    allowsProjectedBedtime(args.schedule.regularity) &&
     args.schedule.typicalSleepHour !== null
       ? localHourInstantMs({
           timezone: args.timezone,
@@ -182,7 +209,9 @@ export function resolveLifeOpsRelativeTime(args: {
         })
       : null;
   const fallbackBedtimeMs =
-    typicalBedtimeMs === null && lastSleepStartedMs !== null
+    typicalBedtimeMs === null &&
+    allowsProjectedBedtime(args.schedule.regularity) &&
+    lastSleepStartedMs !== null
       ? localHourInstantMs({
           timezone: args.timezone,
           nowMs: args.nowMs,
@@ -197,12 +226,14 @@ export function resolveLifeOpsRelativeTime(args: {
           anchorMs: bedtimeAnchorMs,
         })
       : null;
+  const isProbablySleeping =
+    awakeProbability.pAsleep >= 0.65 || args.schedule.isProbablySleeping;
   const bedtimeTargetMs =
-    args.schedule.isProbablySleeping && currentSleepStartedMs !== null
+    isProbablySleeping && currentSleepStartedMs !== null
       ? currentSleepStartedMs
       : (typicalBedtimeMs ?? fallbackBedtimeMs);
   const bedtimeTargetSource: LifeOpsRelativeTimeAnchorSource | null =
-    args.schedule.isProbablySleeping && currentSleepStartedMs !== null
+    isProbablySleeping && currentSleepStartedMs !== null
       ? "sleep_cycle"
       : typicalBedtimeMs !== null
         ? "typical_sleep"
@@ -215,9 +246,10 @@ export function resolveLifeOpsRelativeTime(args: {
     wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
       ? minutesBetween(wakeAnchorMs, args.nowMs)
       : null;
-  const awakeState = args.schedule.isProbablySleeping
+  const awakeState = isProbablySleeping
     ? "probably_sleeping"
-    : wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
+    : awakeProbability.pAwake >= 0.65 ||
+          (wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs)
       ? "awake"
       : "unknown";
   const isAwake = awakeState === "awake";
@@ -236,7 +268,8 @@ export function resolveLifeOpsRelativeTime(args: {
       args.timezone,
     ),
     phase: args.schedule.phase,
-    isProbablySleeping: args.schedule.isProbablySleeping,
+    awakeProbability,
+    isProbablySleeping,
     isAwake,
     awakeState,
     wakeAnchorAt,
@@ -258,6 +291,8 @@ export function resolveLifeOpsRelativeTime(args: {
       : 0,
     confidence: roundConfidence(
       Math.max(
+        awakeProbability.pAwake,
+        awakeProbability.pAsleep,
         args.schedule.sleepConfidence,
         sourceConfidence(wakeAnchorSource),
         sourceConfidence(bedtimeTargetSource),

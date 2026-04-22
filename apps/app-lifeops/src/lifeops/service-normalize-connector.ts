@@ -172,6 +172,8 @@ export function normalizeWorkflowSchedule(
     "once",
     "interval",
     "cron",
+    "relative_to_wake",
+    "relative_to_bedtime",
   ] as const);
   if (kind === "once") {
     return {
@@ -188,6 +190,32 @@ export function normalizeWorkflowSchedule(
         "schedule.everyMinutes",
       ),
       timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
+    };
+  }
+  if (kind === "relative_to_wake" || kind === "relative_to_bedtime") {
+    return {
+      kind,
+      offsetMinutes: normalizeOptionalInteger(
+        schedule.offsetMinutes,
+        "schedule.offsetMinutes",
+      ) ?? 0,
+      timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
+      onDays: normalizeOptionalWeekdays(schedule.onDays, "schedule.onDays"),
+      requireRegularityAtLeast:
+        schedule.requireRegularityAtLeast === undefined ||
+        schedule.requireRegularityAtLeast === null
+          ? undefined
+          : normalizeEnumValue(
+              schedule.requireRegularityAtLeast,
+              "schedule.requireRegularityAtLeast",
+              [
+                "very_regular",
+                "regular",
+                "irregular",
+                "very_irregular",
+                "insufficient_data",
+              ] as const,
+            ),
     };
   }
   const cronExpression = requireNonEmptyString(
@@ -233,7 +261,144 @@ function normalizeEventTrigger(
       },
     };
   }
+  if (eventKind === "lifeops.wake.detected") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.wake.detected",
+        filters: normalizeWakeEventFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.wake.confirmed") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.wake.confirmed",
+        filters: normalizeWakeEventFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.sleep.started") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.sleep.started",
+        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.sleep.completed") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.sleep.completed",
+        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.bedtime.imminent") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.bedtime.imminent",
+        filters: normalizeBedtimeImminentFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
   return { kind, eventKind };
+}
+
+function normalizeOptionalInteger(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  const numeric = normalizeFiniteNumber(value, field);
+  if (!Number.isInteger(numeric)) {
+    fail(400, `${field} must be an integer`);
+  }
+  return numeric;
+}
+
+function normalizeOptionalConfidence(
+  value: unknown,
+  field: string,
+): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  const confidence = normalizeFiniteNumber(value, field);
+  if (confidence < 0 || confidence > 1) {
+    fail(400, `${field} must be between 0 and 1`);
+  }
+  return confidence;
+}
+
+function normalizeOptionalWeekdays(
+  value: unknown,
+  field: string,
+): number[] | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    fail(400, `${field} must be an array of weekday numbers`);
+  }
+  const weekdays: number[] = [];
+  for (const candidate of value) {
+    const weekday = normalizeFiniteNumber(candidate, `${field}[]`);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      fail(400, `${field}[] must be an integer between 0 and 6`);
+    }
+    weekdays.push(weekday);
+  }
+  return [...new Set(weekdays)].sort((left, right) => left - right);
+}
+
+function normalizeWakeEventFilters(
+  input: Record<string, unknown>,
+  field: string,
+): { offsetMinutes?: number; minConfidence?: number } {
+  return {
+    offsetMinutes: normalizeOptionalInteger(input.offsetMinutes, `${field}.offsetMinutes`),
+    minConfidence: normalizeOptionalConfidence(
+      input.minConfidence,
+      `${field}.minConfidence`,
+    ),
+  };
+}
+
+function normalizeMinConfidenceFilters(
+  input: Record<string, unknown>,
+  field: string,
+): { minConfidence?: number } {
+  return {
+    minConfidence: normalizeOptionalConfidence(
+      input.minConfidence,
+      `${field}.minConfidence`,
+    ),
+  };
+}
+
+function normalizeBedtimeImminentFilters(
+  input: Record<string, unknown>,
+  field: string,
+): { minutesBefore?: number; minConfidence?: number } {
+  return {
+    minutesBefore: normalizeOptionalInteger(
+      input.minutesBefore,
+      `${field}.minutesBefore`,
+    ),
+    minConfidence: normalizeOptionalConfidence(
+      input.minConfidence,
+      `${field}.minConfidence`,
+    ),
+  };
 }
 
 function normalizeCalendarEventEndedFilters(

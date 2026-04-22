@@ -79,7 +79,14 @@ export type LifeOpsWorkflowTriggerType =
  * publishes matching occurrences to `runDueEventWorkflows`, and — optionally —
  * a filter shape under {@link LifeOpsEventFilters}.
  */
-export const LIFEOPS_EVENT_KINDS = ["calendar.event.ended"] as const;
+export const LIFEOPS_EVENT_KINDS = [
+  "calendar.event.ended",
+  "lifeops.wake.detected",
+  "lifeops.wake.confirmed",
+  "lifeops.sleep.started",
+  "lifeops.sleep.completed",
+  "lifeops.bedtime.imminent",
+] as const;
 export type LifeOpsEventKind = (typeof LIFEOPS_EVENT_KINDS)[number];
 
 export interface LifeOpsCalendarEventEndedFilters {
@@ -93,10 +100,54 @@ export interface LifeOpsCalendarEventEndedFilters {
   attendeeEmailIncludesAny?: string[];
 }
 
-export type LifeOpsEventFilters = {
-  kind: "calendar.event.ended";
-  filters?: LifeOpsCalendarEventEndedFilters;
-};
+export interface LifeOpsWakeDetectedFilters {
+  offsetMinutes?: number;
+  minConfidence?: number;
+}
+
+export interface LifeOpsWakeConfirmedFilters {
+  offsetMinutes?: number;
+  minConfidence?: number;
+}
+
+export interface LifeOpsSleepStartedFilters {
+  minConfidence?: number;
+}
+
+export interface LifeOpsSleepCompletedFilters {
+  minConfidence?: number;
+}
+
+export interface LifeOpsBedtimeImminentFilters {
+  minutesBefore?: number;
+  minConfidence?: number;
+}
+
+export type LifeOpsEventFilters =
+  | {
+      kind: "calendar.event.ended";
+      filters?: LifeOpsCalendarEventEndedFilters;
+    }
+  | {
+      kind: "lifeops.wake.detected";
+      filters?: LifeOpsWakeDetectedFilters;
+    }
+  | {
+      kind: "lifeops.wake.confirmed";
+      filters?: LifeOpsWakeConfirmedFilters;
+    }
+  | {
+      kind: "lifeops.sleep.started";
+      filters?: LifeOpsSleepStartedFilters;
+    }
+  | {
+      kind: "lifeops.sleep.completed";
+      filters?: LifeOpsSleepCompletedFilters;
+    }
+  | {
+      kind: "lifeops.bedtime.imminent";
+      filters?: LifeOpsBedtimeImminentFilters;
+    };
 
 export const LIFEOPS_NEGOTIATION_STATES = [
   "initiated",
@@ -661,6 +712,20 @@ export type LifeOpsWorkflowSchedule =
       timezone: string;
     }
   | {
+      kind: "relative_to_wake";
+      offsetMinutes: number;
+      timezone: string;
+      onDays?: number[];
+      requireRegularityAtLeast?: LifeOpsRegularityClass;
+    }
+  | {
+      kind: "relative_to_bedtime";
+      offsetMinutes: number;
+      timezone: string;
+      onDays?: number[];
+      requireRegularityAtLeast?: LifeOpsRegularityClass;
+    }
+  | {
       kind: "event";
       eventKind: LifeOpsEventKind;
       filters?: LifeOpsEventFilters;
@@ -830,6 +895,9 @@ export const LIFEOPS_ACTIVITY_SIGNAL_SOURCES = [
   "app_lifecycle",
   "page_visibility",
   "desktop_power",
+  "desktop_interaction",
+  "connector_activity",
+  "imessage_outbound",
   "mobile_device",
   "mobile_health",
 ] as const;
@@ -960,6 +1028,7 @@ export type LifeOpsSchedulePhase =
   | "afternoon"
   | "evening"
   | "winding_down"
+  | "irregular_unknown"
   | "offline";
 
 export type LifeOpsScheduleSleepStatus =
@@ -970,6 +1039,42 @@ export type LifeOpsScheduleSleepStatus =
 
 export type LifeOpsSleepCycleEvidenceSource = "health" | "activity_gap";
 export type LifeOpsSleepCycleType = "nap" | "overnight" | "unknown";
+
+export type LifeOpsRegularityClass =
+  | "very_regular"
+  | "regular"
+  | "irregular"
+  | "very_irregular"
+  | "insufficient_data";
+
+export interface LifeOpsScheduleRegularity {
+  sri: number;
+  bedtimeStddevMin: number;
+  wakeStddevMin: number;
+  midSleepStddevMin: number;
+  regularityClass: LifeOpsRegularityClass;
+  sampleCount: number;
+  windowDays: number;
+}
+
+export type LifeOpsAwakeProbabilitySource =
+  | LifeOpsActivitySignalSource
+  | "prior"
+  | "health"
+  | "activity_gap";
+
+export interface LifeOpsAwakeProbabilityContributor {
+  source: LifeOpsAwakeProbabilitySource;
+  logLikelihoodRatio: number;
+}
+
+export interface LifeOpsAwakeProbability {
+  pAwake: number;
+  pAsleep: number;
+  pUnknown: number;
+  contributingSources: LifeOpsAwakeProbabilityContributor[];
+  computedAt: string;
+}
 
 export interface LifeOpsSleepCycleEvidence {
   startAt: string;
@@ -1016,6 +1121,7 @@ export interface LifeOpsRelativeTime {
   computedAt: string;
   localNowAt: string;
   phase: LifeOpsSchedulePhase;
+  awakeProbability: LifeOpsAwakeProbability;
   isProbablySleeping: boolean;
   isAwake: boolean;
   awakeState: "awake" | "probably_sleeping" | "unknown";
@@ -1055,6 +1161,8 @@ export interface LifeOpsScheduleInsight {
   inferredAt: string;
   phase: LifeOpsSchedulePhase;
   relativeTime: LifeOpsRelativeTime;
+  awakeProbability: LifeOpsAwakeProbability;
+  regularity: LifeOpsScheduleRegularity;
   sleepStatus: LifeOpsScheduleSleepStatus;
   isProbablySleeping: boolean;
   sleepConfidence: number;

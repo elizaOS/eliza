@@ -12,6 +12,12 @@ import type {
   LifeOpsRepository,
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
+import { computeAwakeProbability } from "./awake-probability.js";
+import { computeSleepRegularity, type SleepRegularityEpisodeLike } from "./sleep-regularity.js";
+import {
+  listHistoricalSleepEpisodes,
+  persistSleepEpisodes,
+} from "./sleep-episode-store.js";
 import {
   resolveLifeOpsDayBoundary,
   resolveLifeOpsSleepCycle,
@@ -424,6 +430,20 @@ function predictNextMeal(args: {
   };
 }
 
+function toHistoricalSleepEpisodes(
+  episodes: readonly LifeOpsSleepEpisode[],
+): SleepRegularityEpisodeLike[] {
+  return episodes.map((episode) => ({
+    startAt: new Date(episode.startMs).toISOString(),
+    endAt: toIso(episode.endMs),
+    cycleType:
+      episode.endMs !== null &&
+      intervalDurationMs(episode.startMs, episode.endMs, episode.endMs) < 4 * 60 * 60 * 1_000
+        ? "nap"
+        : "unknown",
+  }));
+}
+
 export function inferLifeOpsScheduleInsight(args: {
   nowMs: number;
   timezone: string;
@@ -438,6 +458,7 @@ function analyzeLifeOpsScheduleInsight(args: {
   timezone: string;
   windows: LifeOpsActivityWindow[];
   signals: LifeOpsActivitySignal[];
+  historicalSleepEpisodes?: readonly SleepRegularityEpisodeLike[];
 }): {
   insight: LifeOpsScheduleInsight;
   mergedWindows: LifeOpsActivityWindow[];
@@ -485,13 +506,35 @@ function analyzeLifeOpsScheduleInsight(args: {
     .filter((episode): episode is LifeOpsSleepEpisode & { endMs: number } => episode.endMs !== null)
     .map((episode) => localHour(episode.endMs, args.timezone));
   const typicalSleepHour = median(candidateSleepStarts);
+  const historicalEpisodes =
+    args.historicalSleepEpisodes ?? toHistoricalSleepEpisodes(sleepResolution.sleepEpisodes);
+  const regularity = computeSleepRegularity({
+    episodes: historicalEpisodes,
+    timezone: args.timezone,
+    nowMs: args.nowMs,
+  });
+  const awakeProbability = computeAwakeProbability({
+    nowMs: args.nowMs,
+    timezone: args.timezone,
+    signals: args.signals,
+    windows: mergedWindows,
+    sleepCycle,
+    regularity,
+  });
 
   const phase = (() => {
-    if (sleepCycle.isProbablySleeping) {
+    if (awakeProbability.pAsleep >= 0.65) {
       return "sleeping" as const;
     }
     if (wakeAtMs !== null && args.nowMs - wakeAtMs <= 90 * 60 * 1_000) {
       return "waking" as const;
+    }
+    if (
+      (regularity.regularityClass === "irregular" ||
+        regularity.regularityClass === "very_irregular") &&
+      awakeProbability.pUnknown >= 0.4
+    ) {
+      return "irregular_unknown" as const;
     }
     if (lastActiveAtMs !== null && args.nowMs - lastActiveAtMs >= 2 * 60 * 60 * 1_000) {
       return "offline" as const;
@@ -518,6 +561,8 @@ function analyzeLifeOpsScheduleInsight(args: {
     dayBoundary,
     schedule: {
       phase,
+      awakeProbability,
+      regularity,
       isProbablySleeping: sleepCycle.isProbablySleeping,
       sleepConfidence: sleepCycle.sleepConfidence,
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
@@ -537,9 +582,11 @@ function analyzeLifeOpsScheduleInsight(args: {
       inferredAt: new Date(args.nowMs).toISOString(),
       phase,
       relativeTime,
+      awakeProbability,
+      regularity,
       sleepStatus,
-      isProbablySleeping: sleepCycle.isProbablySleeping,
-      sleepConfidence: sleepCycle.sleepConfidence,
+      isProbablySleeping: awakeProbability.pAsleep >= 0.65,
+      sleepConfidence: Math.max(sleepCycle.sleepConfidence, awakeProbability.pAsleep),
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
       lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
       lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
@@ -593,11 +640,30 @@ export async function inspectLifeOpsSchedule(args: {
     ...windowsFromScreenTimeSessions(sessions, nowMs),
     ...windowsFromSignals(signals, nowMs),
   ];
+  const initialAnalysis = analyzeLifeOpsScheduleInsight({
+    nowMs,
+    timezone: args.timezone,
+    windows,
+    signals,
+  });
+  await persistSleepEpisodes({
+    repository: args.repository,
+    agentId: args.agentId,
+    episodes: initialAnalysis.sleepEpisodes,
+    nowMs,
+  });
+  const historicalSleepEpisodes = await listHistoricalSleepEpisodes({
+    repository: args.repository,
+    agentId: args.agentId,
+    nowMs,
+    windowDays: 60,
+  });
   const analysis = analyzeLifeOpsScheduleInsight({
     nowMs,
     timezone: args.timezone,
     windows,
     signals,
+    historicalSleepEpisodes,
   });
   const record: LifeOpsScheduleInsightRecord = {
     ...analysis.insight,

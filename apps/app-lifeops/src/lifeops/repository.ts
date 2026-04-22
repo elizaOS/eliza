@@ -8,6 +8,8 @@ import type {
   BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser-bridge/contracts";
 import type {
+  LifeOpsAwakeProbability,
+  LifeOpsAwakeProbabilityContributor,
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
   LifeOpsBrowserSession,
@@ -32,8 +34,11 @@ import type {
   LifeOpsRelationshipInteraction,
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
+  LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealInsight,
+  LifeOpsSleepCycleEvidence,
+  LifeOpsSleepCycleType,
   LifeOpsSchedulingNegotiation,
   LifeOpsSchedulingProposal,
   LifeOpsScreenTimeDaily,
@@ -133,6 +138,24 @@ export interface LifeOpsScheduleObservationRecord
 
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
+
+export type LifeOpsPersistedSleepEpisodeSource =
+  | LifeOpsSleepCycleEvidence["source"]
+  | "manual";
+
+export interface LifeOpsSleepEpisodeRecord {
+  id: string;
+  agentId: string;
+  startAt: string;
+  endAt: string | null;
+  source: LifeOpsPersistedSleepEpisodeSource;
+  confidence: number;
+  cycleType: LifeOpsSleepCycleType;
+  sealed: boolean;
+  evidence: LifeOpsSleepCycleEvidence[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -1199,6 +1222,93 @@ function parseScreenTimeDaily(
   };
 }
 
+function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
+  return {
+    pAwake: 0,
+    pAsleep: 0,
+    pUnknown: 1,
+    contributingSources: [],
+    computedAt,
+  };
+}
+
+function parseAwakeProbability(
+  value: unknown,
+  computedAt: string,
+): LifeOpsAwakeProbability {
+  if (value === null || value === undefined || value === "") {
+    return defaultAwakeProbability(computedAt);
+  }
+  const record = parseJsonRecord(value);
+  const contributors = Array.isArray(record.contributingSources)
+    ? record.contributingSources
+        .filter(
+          (candidate): candidate is Record<string, unknown> =>
+            Boolean(candidate) && typeof candidate === "object",
+        )
+        .map((candidate) => ({
+          source: toText(candidate.source) as LifeOpsAwakeProbabilityContributor["source"],
+          logLikelihoodRatio: toNumber(candidate.logLikelihoodRatio, 0),
+        }))
+    : [];
+  return {
+    pAwake: toNumber(record.pAwake, 0),
+    pAsleep: toNumber(record.pAsleep, 0),
+    pUnknown: toNumber(record.pUnknown, 1),
+    contributingSources: contributors,
+    computedAt: toText(record.computedAt, computedAt),
+  };
+}
+
+function defaultScheduleRegularity(): LifeOpsScheduleRegularity {
+  return {
+    sri: 0,
+    bedtimeStddevMin: 0,
+    wakeStddevMin: 0,
+    midSleepStddevMin: 0,
+    regularityClass: "insufficient_data",
+    sampleCount: 0,
+    windowDays: 28,
+  };
+}
+
+function parseScheduleRegularity(value: unknown): LifeOpsScheduleRegularity {
+  if (value === null || value === undefined || value === "") {
+    return defaultScheduleRegularity();
+  }
+  const record = parseJsonRecord(value);
+  return {
+    sri: toNumber(record.sri, 0),
+    bedtimeStddevMin: toNumber(record.bedtimeStddevMin, 0),
+    wakeStddevMin: toNumber(record.wakeStddevMin, 0),
+    midSleepStddevMin: toNumber(record.midSleepStddevMin, 0),
+    regularityClass: toText(
+      record.regularityClass,
+      "insufficient_data",
+    ) as LifeOpsScheduleRegularity["regularityClass"],
+    sampleCount: toNumber(record.sampleCount, 0),
+    windowDays: toNumber(record.windowDays, 28),
+  };
+}
+
+function parseSleepEpisode(
+  row: Record<string, unknown>,
+): LifeOpsSleepEpisodeRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    startAt: toText(row.start_at),
+    endAt: row.end_at ? toText(row.end_at) : null,
+    source: toText(row.source) as LifeOpsSleepEpisodeRecord["source"],
+    confidence: toNumber(row.confidence, 0),
+    cycleType: toText(row.cycle_type, "unknown") as LifeOpsSleepEpisodeRecord["cycleType"],
+    sealed: toBoolean(row.sealed, false),
+    evidence: parseJsonArray<LifeOpsSleepCycleEvidence>(row.evidence_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
 function parseScheduleObservation(
   row: Record<string, unknown>,
 ): LifeOpsScheduleObservationRecord {
@@ -1233,6 +1343,7 @@ function parseScheduleObservation(
 function parseScheduleMergedState(
   row: Record<string, unknown>,
 ): LifeOpsScheduleMergedStateRecord {
+  const inferredAt = toText(row.inferred_at);
   return refreshLifeOpsRelativeTime(
     {
       id: toText(row.id),
@@ -1242,8 +1353,13 @@ function parseScheduleMergedState(
       effectiveDayKey: toText(row.effective_day_key),
       localDate: toText(row.local_date),
       timezone: toText(row.timezone, "UTC"),
-      inferredAt: toText(row.inferred_at),
+      inferredAt,
       phase: toText(row.phase) as LifeOpsScheduleMergedStateRecord["phase"],
+      awakeProbability: parseAwakeProbability(
+        row.awake_probability_json,
+        inferredAt,
+      ),
+      regularity: parseScheduleRegularity(row.regularity_json),
       sleepStatus: toText(
         row.sleep_status,
       ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
@@ -4440,7 +4556,8 @@ export class LifeOpsRepository {
          last_sleep_duration_minutes, typical_wake_hour, typical_sleep_hour,
          wake_at, first_active_at, last_active_at, last_meal_at,
          next_meal_label, next_meal_window_start_at, next_meal_window_end_at,
-         next_meal_confidence, meals_json, metadata_json, created_at, updated_at
+         next_meal_confidence, meals_json, awake_probability_json,
+         regularity_json, metadata_json, created_at, updated_at
        ) VALUES (
          ${sqlQuote(insight.id)},
          ${sqlQuote(insight.agentId)},
@@ -4467,6 +4584,8 @@ export class LifeOpsRepository {
          ${sqlText(insight.nextMealWindowEndAt)},
          ${sqlNumber(insight.nextMealConfidence)},
          ${sqlJson(insight.meals)},
+         ${sqlJson(insight.awakeProbability)},
+         ${sqlJson(insight.regularity)},
          ${sqlJson(insight.metadata)},
          ${sqlQuote(insight.createdAt)},
          ${sqlQuote(insight.updatedAt)}
@@ -4494,9 +4613,68 @@ export class LifeOpsRepository {
          next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
          next_meal_confidence = EXCLUDED.next_meal_confidence,
          meals_json = EXCLUDED.meals_json,
+         awake_probability_json = EXCLUDED.awake_probability_json,
+         regularity_json = EXCLUDED.regularity_json,
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
+  }
+
+  async upsertSleepEpisode(episode: LifeOpsSleepEpisodeRecord): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_sleep_episodes (
+         id, agent_id, start_at, end_at, source, confidence, cycle_type,
+         sealed, evidence_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(episode.id)},
+         ${sqlQuote(episode.agentId)},
+         ${sqlQuote(episode.startAt)},
+         ${sqlText(episode.endAt)},
+         ${sqlQuote(episode.source)},
+         ${sqlNumber(episode.confidence)},
+         ${sqlQuote(episode.cycleType)},
+         ${sqlBoolean(episode.sealed)},
+         ${sqlJson(episode.evidence)},
+         ${sqlQuote(episode.createdAt)},
+         ${sqlQuote(episode.updatedAt)}
+       )
+       ON CONFLICT(agent_id, start_at) DO UPDATE SET
+         end_at = EXCLUDED.end_at,
+         source = EXCLUDED.source,
+         confidence = EXCLUDED.confidence,
+         cycle_type = EXCLUDED.cycle_type,
+         sealed = EXCLUDED.sealed,
+         evidence_json = EXCLUDED.evidence_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async listSleepEpisodesBetween(
+    agentId: string,
+    startAt: string,
+    endAt: string,
+    opts?: { includeOpen?: boolean; limit?: number },
+  ): Promise<LifeOpsSleepEpisodeRecord[]> {
+    const clauses = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `(end_at IS NULL OR end_at >= ${sqlQuote(startAt)})`,
+      `start_at <= ${sqlQuote(endAt)}`,
+    ];
+    if (opts?.includeOpen !== true) {
+      clauses.push("sealed = TRUE");
+    }
+    const limitClause =
+      typeof opts?.limit === "number" ? `LIMIT ${sqlInteger(opts.limit)}` : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_sleep_episodes
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY start_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseSleepEpisode);
   }
 
   async upsertScheduleObservation(
@@ -4582,6 +4760,7 @@ export class LifeOpsRepository {
          typical_sleep_hour, wake_at, first_active_at, last_active_at,
          last_meal_at, next_meal_label, next_meal_window_start_at,
          next_meal_window_end_at, next_meal_confidence, meals_json,
+         awake_probability_json, regularity_json,
          observation_count, device_count, contributing_device_kinds_json,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -4612,6 +4791,8 @@ export class LifeOpsRepository {
          ${sqlText(state.nextMealWindowEndAt)},
          ${sqlNumber(state.nextMealConfidence)},
          ${sqlJson(state.meals)},
+         ${sqlJson(state.awakeProbability)},
+         ${sqlJson(state.regularity)},
          ${sqlInteger(state.observationCount)},
          ${sqlInteger(state.deviceCount)},
          ${sqlJson(state.contributingDeviceKinds)},
@@ -4643,6 +4824,8 @@ export class LifeOpsRepository {
          next_meal_window_end_at = EXCLUDED.next_meal_window_end_at,
          next_meal_confidence = EXCLUDED.next_meal_confidence,
          meals_json = EXCLUDED.meals_json,
+         awake_probability_json = EXCLUDED.awake_probability_json,
+         regularity_json = EXCLUDED.regularity_json,
          observation_count = EXCLUDED.observation_count,
          device_count = EXCLUDED.device_count,
          contributing_device_kinds_json = EXCLUDED.contributing_device_kinds_json,
@@ -5112,6 +5295,18 @@ export function createLifeOpsActivitySignal(
     ...params,
     id: crypto.randomUUID(),
     createdAt: isoNow(),
+  };
+}
+
+export function createLifeOpsSleepEpisode(
+  params: Omit<LifeOpsSleepEpisodeRecord, "id" | "createdAt" | "updatedAt">,
+): LifeOpsSleepEpisodeRecord {
+  const timestamp = isoNow();
+  return {
+    ...params,
+    id: crypto.randomUUID(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
 }
 

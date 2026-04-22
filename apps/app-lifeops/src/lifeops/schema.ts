@@ -850,6 +850,28 @@ export const lifeScreenTimeDaily = pgTable(
   (t) => [unique().on(t.agentId, t.source, t.identifier, t.date)],
 );
 
+export const lifeSleepEpisodes = pgTable(
+  "life_sleep_episodes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at"),
+    source: text("source").notNull(),
+    confidence: real("confidence").notNull().default(0),
+    cycleType: text("cycle_type").notNull().default("unknown"),
+    sealed: boolean("sealed").notNull().default(false),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.startAt),
+    index("idx_life_sleep_episodes_agent_start").on(t.agentId, t.startAt),
+    index("idx_life_sleep_episodes_agent_sealed").on(t.agentId, t.sealed, t.startAt),
+  ],
+);
+
 export const lifeScheduleInsights = pgTable(
   "life_schedule_insights",
   {
@@ -878,6 +900,10 @@ export const lifeScheduleInsights = pgTable(
     nextMealWindowEndAt: text("next_meal_window_end_at"),
     nextMealConfidence: real("next_meal_confidence").notNull().default(0),
     mealsJson: text("meals_json").notNull().default("[]"),
+    awakeProbabilityJson: text("awake_probability_json")
+      .notNull()
+      .default("{}"),
+    regularityJson: text("regularity_json").notNull().default("{}"),
     metadataJson: text("metadata_json").notNull().default("{}"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -934,6 +960,10 @@ export const lifeScheduleMergedStates = pgTable(
     nextMealWindowEndAt: text("next_meal_window_end_at"),
     nextMealConfidence: real("next_meal_confidence").notNull().default(0),
     mealsJson: text("meals_json").notNull().default("[]"),
+    awakeProbabilityJson: text("awake_probability_json")
+      .notNull()
+      .default("{}"),
+    regularityJson: text("regularity_json").notNull().default("{}"),
     observationCount: integer("observation_count").notNull().default(0),
     deviceCount: integer("device_count").notNull().default(0),
     contributingDeviceKindsJson: text("contributing_device_kinds_json")
@@ -1065,6 +1095,7 @@ export const lifeOpsSchema = {
   lifeXSyncStates,
   lifeScreenTimeSessions,
   lifeScreenTimeDaily,
+  lifeSleepEpisodes,
   lifeScheduleInsights,
   lifeScheduleObservations,
   lifeScheduleMergedStates,
