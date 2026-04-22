@@ -23,7 +23,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "three": "^0.180.0",
-    "uuid": "^11.1.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.3",
