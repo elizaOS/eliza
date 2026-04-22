@@ -326,9 +326,8 @@ export function PageScopedChatPane({
         ) : null}
 
         {messages.map((message) => (
-          <div
+          <article
             key={message.id}
-            role="article"
             className={`rounded-lg px-3 py-2 text-sm leading-relaxed ${
               message.role === "user"
                 ? "ml-8 self-end bg-accent/10 text-txt"
@@ -339,7 +338,7 @@ export function PageScopedChatPane({
               {message.role === "user" ? "You" : "Eliza"}
             </div>
             <div className="whitespace-pre-wrap">{message.text}</div>
-          </div>
+          </article>
         ))}
 
         {sending && !firstTokenReceived ? (

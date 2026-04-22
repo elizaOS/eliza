@@ -217,7 +217,6 @@ export function AppWorkspaceChrome({
           data-testid={`${testId}-chat-sidebar`}
         >
           <hr
-            role="separator"
             aria-orientation="vertical"
             aria-valuemin={0}
             aria-valuemax={100}

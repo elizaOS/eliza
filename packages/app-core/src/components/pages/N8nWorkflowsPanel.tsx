@@ -89,8 +89,7 @@ function N8nStatusBanner({
     const headingId = "n8n-cta-heading";
     if (platform === "mobile") {
       return (
-        <div
-          role="region"
+        <section
           aria-labelledby={headingId}
           className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
         >
@@ -112,14 +111,13 @@ function N8nStatusBanner({
           >
             {t("automations.n8n.ctaSignInCloud")}
           </Button>
-        </div>
+        </section>
       );
     }
 
     // desktop: cloud (recommended) + local secondary
     return (
-      <div
-        role="region"
+      <section
         aria-labelledby={headingId}
         className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
       >
@@ -152,7 +150,7 @@ function N8nStatusBanner({
             {t("automations.n8n.ctaEnableLocal")}
           </Button>
         </div>
-      </div>
+      </section>
     );
   }
 

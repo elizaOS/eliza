@@ -699,7 +699,12 @@ export function WorkflowGraphViewer({
 
         {/* The graph (render even with 0 nodes so React Flow mounts cleanly) */}
         {!loading && (
-          <div className="h-full w-full" onClick={(e) => e.stopPropagation()}>
+          <div
+            role="presentation"
+            className="h-full w-full"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <ReactFlow
               nodes={nodes}
               edges={isGenerating ? generatingEdges(edges) : edges}

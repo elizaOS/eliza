@@ -201,7 +201,6 @@ export function TasksEventsPanel({
     >
       {!mobile ? (
         <hr
-          role="separator"
           aria-orientation="vertical"
           aria-valuemin={0}
           aria-valuemax={100}
