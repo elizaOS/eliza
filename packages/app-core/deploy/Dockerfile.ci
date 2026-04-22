@@ -22,6 +22,11 @@ COPY . .
 RUN node eliza/packages/app-core/scripts/relink-workspace-packages-to-dist.mjs \
   @elizaos/agent
 
+RUN test -d eliza/packages/agent/dist/packages/typescript/src/types/generated \
+  && mkdir -p eliza/packages/typescript/src/types/generated \
+  && cp -a eliza/packages/agent/dist/packages/typescript/src/types/generated/. \
+    eliza/packages/typescript/src/types/generated/
+
 # Patch plugin-agent-skills getCatalogStats crash (alpha.11 vs alpha.66 interface mismatch)
 RUN sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true
 ARG VERSION_CLEAN
