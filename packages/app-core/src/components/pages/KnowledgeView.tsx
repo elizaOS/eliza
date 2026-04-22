@@ -763,7 +763,7 @@ export function KnowledgeView({
     if (!hasSelectedDocument) {
       setSelectedDocId(documents[0]?.id ?? null);
     }
-  }, [documents, selectedDocId]);
+  }, [documents, selectedDocId, setSelectedDocId]);
 
   useEffect(() => {
     const query = searchQuery.trim();
