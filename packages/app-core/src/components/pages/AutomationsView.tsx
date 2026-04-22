@@ -20,7 +20,6 @@ import {
   SidebarScrollRegion,
   StatusBadge,
   Textarea,
-  TooltipHint,
 } from "@elizaos/ui";
 import {
   Calendar,
@@ -2010,7 +2009,7 @@ function WorkflowAutomationDetailPane({
     (automation.workflowId != null && workflowBusyId === automation.workflowId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <WorkflowRuntimeNotice
         status={n8nStatus}
         workflowFetchError={workflowFetchError}
@@ -2019,177 +2018,141 @@ function WorkflowAutomationDetailPane({
         onStartLocal={() => void onStartLocalN8n()}
       />
 
-      <PagePanel variant="padded" className="space-y-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <FieldLabel variant="kicker">
-                <Workflow className="mr-1.5 inline h-3.5 w-3.5" />
-                {automation.isDraft ? "Workflow Draft" : "Workflow Automation"}
-              </FieldLabel>
-              <StatusBadge
+      <DetailHeader
+        icon={<Workflow className="h-3.5 w-3.5" aria-hidden />}
+        title={automation.title}
+        description={
+          automation.description ||
+          (automation.isDraft
+            ? "Develop this workflow in chat, then have the agent deploy it."
+            : null)
+        }
+        statusLabel={
+          automation.isDraft
+            ? "Draft"
+            : automation.enabled
+              ? "Active"
+              : "Paused"
+        }
+        statusTone={
+          automation.isDraft
+            ? "warning"
+            : automation.enabled
+              ? "success"
+              : "muted"
+        }
+        actions={
+          automation.workflow && automation.workflowId ? (
+            <>
+              <IconAction
                 label={
-                  automation.isDraft
-                    ? "Draft"
-                    : automation.enabled
-                      ? "Active"
-                      : "Paused"
-                }
-                variant={
-                  automation.isDraft
-                    ? "warning"
-                    : automation.enabled
-                      ? "success"
-                      : "muted"
-                }
-                withDot
-              />
-              {automation.hasBackingWorkflow ? (
-                <span className="rounded-full bg-ok/10 px-2 py-0.5 text-[11px] text-ok">
-                  Backed by n8n
-                </span>
-              ) : (
-                <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] text-warning">
-                  Room only
-                </span>
-              )}
-            </div>
-            <h2 className="text-2xl font-semibold text-txt sm:text-[2rem]">
-              {automation.title}
-            </h2>
-            <p className="text-sm leading-relaxed text-muted">
-              {automation.description ||
-                (automation.isDraft
-                  ? "Develop this workflow in chat, then have the agent create and deploy the backing n8n workflow."
-                  : "Workflow automation.")}
-            </p>
-          </div>
-
-          {automation.workflow && automation.workflowId && (
-            <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                className={`h-8 px-3 text-xs ${
                   automation.workflow.active
-                    ? "border-warning/30 text-warning hover:bg-warning/10"
-                    : "border-ok/30 text-ok hover:bg-ok/10"
-                }`}
-                disabled={busy}
+                    ? t("automations.n8n.deactivate", {
+                        defaultValue: "Deactivate",
+                      })
+                    : t("automations.n8n.activate", {
+                        defaultValue: "Activate",
+                      })
+                }
                 onClick={() => void onToggleWorkflowActive(automation)}
-              >
-                {automation.workflow.active
-                  ? t("automations.n8n.deactivate", {
-                      defaultValue: "Deactivate",
-                    })
-                  : t("automations.n8n.activate", {
-                      defaultValue: "Activate",
-                    })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-3 text-xs border-danger/30 text-danger hover:bg-danger/10"
                 disabled={busy}
-                onClick={() => void onDeleteWorkflow(automation)}
-              >
-                {t("automations.n8n.deleteWorkflow", {
+                icon={
+                  automation.workflow.active ? (
+                    <Pause className="h-3.5 w-3.5" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5" />
+                  )
+                }
+                tone={automation.workflow.active ? "warning" : "ok"}
+              />
+              <IconAction
+                label={t("automations.n8n.deleteWorkflow", {
                   defaultValue: "Delete workflow",
                 })}
-              </Button>
-            </div>
-          )}
-        </div>
+                onClick={() => void onDeleteWorkflow(automation)}
+                disabled={busy}
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                tone="danger"
+              />
+            </>
+          ) : null
+        }
+      />
 
-        <dl className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          <PagePanel.SummaryCard className="px-4 py-4">
-            <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-              Workflow ID
-            </dt>
-            <dd className="mt-1 break-all font-mono text-xs text-txt">
-              {automation.workflowId ?? automation.draftId ?? "Pending"}
-            </dd>
-          </PagePanel.SummaryCard>
-          <PagePanel.SummaryCard className="px-4 py-4">
-            <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-              Nodes
-            </dt>
-            <dd className="mt-1 font-medium text-txt">{nodeCount}</dd>
-          </PagePanel.SummaryCard>
-          <PagePanel.SummaryCard className="px-4 py-4">
-            <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-              Attached Schedules
-            </dt>
-            <dd className="mt-1 font-medium text-txt">
-              {automation.schedules.length}
-            </dd>
-          </PagePanel.SummaryCard>
-          <PagePanel.SummaryCard className="px-4 py-4">
-            <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-              Updated
-            </dt>
-            <dd className="mt-1 font-medium text-txt">
-              {formatDateTime(automation.updatedAt, {
-                fallback: "Unknown",
-                locale: uiLanguage,
-              })}
-            </dd>
-          </PagePanel.SummaryCard>
-        </dl>
+      <DetailStatsRow
+        items={[
+          {
+            label: "ID",
+            value: (
+              <span className="break-all font-mono text-[10px]">
+                {automation.workflowId ?? automation.draftId ?? "—"}
+              </span>
+            ),
+          },
+          { label: "Nodes", value: nodeCount },
+          { label: "Schedules", value: automation.schedules.length },
+          {
+            label: "Updated",
+            value: formatDateTime(automation.updatedAt, {
+              fallback: "—",
+              locale: uiLanguage,
+            }),
+          },
+          {
+            label: "Backing",
+            value: automation.hasBackingWorkflow ? (
+              <span className="text-ok">n8n</span>
+            ) : (
+              <span className="text-warning">room</span>
+            ),
+          },
+        ]}
+      />
 
-        {automation.schedules.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Workflow Schedules
-            </div>
-            <div className="space-y-2">
-              {automation.schedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className="rounded-lg border border-border/30 bg-bg/20 px-4 py-3"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-medium text-txt">
-                      {schedule.displayName}
-                    </div>
-                    <StatusBadge
-                      label={schedule.enabled ? "Active" : "Paused"}
-                      variant={schedule.enabled ? "success" : "muted"}
-                      withDot
-                    />
-                  </div>
-                  <div className="mt-1 text-sm text-muted">
-                    {scheduleLabel(schedule, t, uiLanguage)}
-                  </div>
-                </div>
-              ))}
-            </div>
+      {automation.schedules.length > 0 && (
+        <DetailSection title="Schedules">
+          <div className="divide-y divide-border/20">
+            {automation.schedules.map((schedule) => (
+              <div
+                key={schedule.id}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs-tight"
+              >
+                <span className="truncate font-medium text-txt">
+                  {schedule.displayName}
+                </span>
+                <StatusBadge
+                  label={schedule.enabled ? "Active" : "Paused"}
+                  variant={schedule.enabled ? "success" : "muted"}
+                  withDot
+                />
+                <span className="ml-auto text-muted">
+                  {scheduleLabel(schedule, t, uiLanguage)}
+                </span>
+              </div>
+            ))}
           </div>
-        )}
+        </DetailSection>
+      )}
 
-        {automation.workflow?.nodes && automation.workflow.nodes.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-              Backing Workflow Graph
-            </div>
-            <div className="space-y-2">
-              {automation.workflow.nodes.map((node) => (
-                <div
-                  key={node.id ?? `${node.name}-${node.type}`}
-                  className="flex items-center justify-between rounded-lg border border-border/30 bg-bg/20 px-4 py-3 text-sm"
-                >
-                  <span className="font-medium text-txt">
-                    {node.name ?? "Unnamed node"}
-                  </span>
-                  <span className="font-mono text-xs text-muted">
-                    {node.type?.split(".").pop() ?? "node"}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {automation.workflow?.nodes && automation.workflow.nodes.length > 0 && (
+        <DetailSection title="Workflow graph">
+          <div className="divide-y divide-border/20">
+            {automation.workflow.nodes.map((node) => (
+              <div
+                key={node.id ?? `${node.name}-${node.type}`}
+                className="flex items-center justify-between gap-2 px-3 py-1 text-xs-tight"
+              >
+                <span className="truncate text-txt">
+                  {node.name ?? "Unnamed node"}
+                </span>
+                <span className="font-mono text-[10px] text-muted">
+                  {node.type?.split(".").pop() ?? "node"}
+                </span>
+              </div>
+            ))}
           </div>
-        )}
-      </PagePanel>
+        </DetailSection>
+      )}
 
       <AutomationNodePalette nodes={nodes} title="Node catalog" />
     </div>
@@ -2943,8 +2906,8 @@ function AutomationsLayout() {
       className="h-full bg-transparent"
       data-testid="automations-shell"
       sidebar={automationsSidebar}
-      contentInnerClassName="mx-auto w-full max-w-[96rem]"
-      footer={<WidgetHost slot="automations" className="py-3" />}
+      contentInnerClassName="w-full"
+      footer={<WidgetHost slot="automations" className="py-2" />}
       mobileSidebarLabel={mobileSidebarLabel}
     >
       <div className="flex min-h-0 flex-1 flex-col">
