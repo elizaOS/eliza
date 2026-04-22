@@ -7,10 +7,8 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
 } from "@elizaos/agent/services/browser-workspace";
-import type {
-  LifeOpsBrowserPageContext,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge/contracts";
+import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
@@ -225,7 +223,7 @@ function emptyDiscordTabProbe(url: string | null = null): DiscordTabProbe {
 export function probeDiscordCapturedPage(
   page:
     | Pick<
-        LifeOpsBrowserPageContext,
+        BrowserBridgePageContext,
         "url" | "title" | "mainText" | "links" | "forms"
       >
     | {
@@ -234,14 +232,16 @@ export function probeDiscordCapturedPage(
         mainText?: string | null;
         links?: Array<{ text: string; href: string }>;
         forms?: Array<{ action: string | null; fields: string[] }>;
-      },
+	      },
 ): DiscordTabProbe {
   const safeUrl = normalizeDiscordText(page.url);
   if (!safeUrl || !isDiscordUrl(safeUrl)) {
     return emptyDiscordTabProbe(safeUrl ?? null);
   }
 
-  const formFields = (page.forms ?? []).flatMap((form) => form.fields ?? []);
+  const forms: Array<{ action: string | null; fields: string[] }> =
+    page.forms ?? [];
+  const formFields = forms.flatMap((form) => form.fields);
   if (
     isDiscordLoginPage({
       url: safeUrl,

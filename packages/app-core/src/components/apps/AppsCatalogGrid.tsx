@@ -1,4 +1,3 @@
-import { Button, Input } from "@elizaos/ui";
 import type { MouseEvent } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
@@ -13,8 +12,6 @@ interface AppsCatalogGridProps {
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
-  onRefresh: () => void;
-  onSearchQueryChange: (value: string) => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -26,33 +23,12 @@ export function AppsCatalogGrid({
   searchQuery,
   visibleApps,
   onLaunch,
-  onRefresh,
-  onSearchQueryChange,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
   const sections = groupAppsForCatalog(visibleApps, favoriteAppNames);
   return (
     <div data-testid="apps-catalog-grid">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Input
-          type="text"
-          aria-label={t("appsview.Search", { defaultValue: "Search apps" })}
-          placeholder={t("appsview.SearchPlaceholder")}
-          value={searchQuery}
-          onChange={(event) => onSearchQueryChange(event.target.value)}
-          className="min-w-[200px] flex-1 rounded-xl border-border/50 bg-card/86 text-xs text-txt placeholder:text-muted focus:border-accent"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-xl px-3 shadow-sm"
-          onClick={onRefresh}
-        >
-          {t("common.refresh")}
-        </Button>
-      </div>
-
       {error ? (
         <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
           {error}

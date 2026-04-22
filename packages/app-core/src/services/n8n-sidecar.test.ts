@@ -164,6 +164,17 @@ describe("N8nSidecar", () => {
       // npx syntax: `--yes <pkg> start`. `--yes` auto-confirms the install
       // prompt on first run so we don't hang waiting for stdin.
       expect(args).toEqual(["--yes", "n8n@1.70.0", "start"]);
+      const spawnOptions = h.spawn.mock.calls[0][2] as {
+        cwd: string;
+        env: NodeJS.ProcessEnv;
+      };
+      expect(spawnOptions.cwd).toBe("/tmp/milady-n8n-test");
+      expect(spawnOptions.env.NPM_CONFIG_CACHE).toBe(
+        "/tmp/milady-n8n-test/.npm-cache",
+      );
+      expect(spawnOptions.env.npm_config_cache).toBe(
+        "/tmp/milady-n8n-test/.npm-cache",
+      );
 
       await sidecar.stop();
       await startPromise;

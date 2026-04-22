@@ -1094,8 +1094,8 @@ const server = http.createServer(async (req, res) => {
 
   if (
     req.method === "GET" &&
-    (url.pathname === "/api/lifeops/browser/companions" ||
-      url.pathname === "/api/lifeops/browser/packages")
+    (url.pathname === "/api/browser-bridge/companions" ||
+      url.pathname === "/api/browser-bridge/packages")
   ) {
     sendJson(req, res, 404, { error: "Not found" });
     return;

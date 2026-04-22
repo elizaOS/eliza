@@ -39,6 +39,12 @@
 			],
 			"@elizaos/shared/*": [
 				"./packages/shared/src/*"
+			],
+			"@elizaos/plugin-browser-bridge": [
+				"./packages/plugin-browser-bridge/src/index.ts"
+			],
+			"@elizaos/plugin-browser-bridge/*": [
+				"./packages/plugin-browser-bridge/src/*"
 			]
 		}
 	},

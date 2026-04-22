@@ -1,14 +1,16 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserPageContext,
-  LifeOpsBrowserPermissionState,
   LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
   LifeOpsCalendarEvent,
   LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
@@ -40,6 +42,7 @@ import type {
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
 } from "@elizaos/app-lifeops/contracts";
+import { browserBridgeSchema } from "@elizaos/plugin-browser-bridge/schema";
 import {
   executeRawSql,
   parseJsonArray,
@@ -78,7 +81,7 @@ import { lifeOpsSchema } from "./schema.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 
 type BrowserCompanionCredential = {
-  companion: LifeOpsBrowserCompanionStatus;
+  companion: BrowserBridgeCompanionStatus;
   pairingTokenHash: string | null;
   pendingPairingTokenHashes: string[];
 };
@@ -851,7 +854,7 @@ function parseBrowserSession(
 
 function parseBrowserPermissionState(
   value: unknown,
-): LifeOpsBrowserPermissionState {
+): BrowserBridgePermissionState {
   const input = parseJsonRecord(value);
   return {
     tabs: Boolean(input.tabs),
@@ -872,13 +875,13 @@ function parseBrowserPermissionState(
 
 function parseBrowserSettings(
   row: Record<string, unknown>,
-): LifeOpsBrowserSettings {
+): BrowserBridgeSettings {
   return {
     enabled: toBoolean(row.enabled, false),
     trackingMode: toText(
       row.tracking_mode,
       "current_tab",
-    ) as LifeOpsBrowserSettings["trackingMode"],
+    ) as BrowserBridgeSettings["trackingMode"],
     allowBrowserControl: toBoolean(row.allow_browser_control, false),
     requireConfirmationForAccountAffecting: toBoolean(
       row.require_confirmation_for_account_affecting,
@@ -888,7 +891,7 @@ function parseBrowserSettings(
     siteAccessMode: toText(
       row.site_access_mode,
       "current_site_only",
-    ) as LifeOpsBrowserSettings["siteAccessMode"],
+    ) as BrowserBridgeSettings["siteAccessMode"],
     grantedOrigins: parseJsonArray(row.granted_origins_json).filter(
       (candidate): candidate is string => typeof candidate === "string",
     ),
@@ -904,11 +907,11 @@ function parseBrowserSettings(
 
 function parseBrowserCompanion(
   row: Record<string, unknown>,
-): LifeOpsBrowserCompanionStatus {
+): BrowserBridgeCompanionStatus {
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
-    browser: toText(row.browser) as LifeOpsBrowserCompanionStatus["browser"],
+    browser: toText(row.browser) as BrowserBridgeCompanionStatus["browser"],
     profileId: toText(row.profile_id),
     profileLabel: toText(row.profile_label),
     label: toText(row.label),
@@ -917,7 +920,7 @@ function parseBrowserCompanion(
       : null,
     connectionState: toText(
       row.connection_state,
-    ) as LifeOpsBrowserCompanionStatus["connectionState"],
+    ) as BrowserBridgeCompanionStatus["connectionState"],
     permissions: parseBrowserPermissionState(row.permissions_json),
     lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : null,
     pairedAt: row.paired_at ? toText(row.paired_at) : null,
@@ -946,12 +949,12 @@ function parseBrowserCompanionCredential(
 
 function parseBrowserTabSummary(
   row: Record<string, unknown>,
-): LifeOpsBrowserTabSummary {
+): BrowserBridgeTabSummary {
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     companionId: row.companion_id ? toText(row.companion_id) : null,
-    browser: toText(row.browser) as LifeOpsBrowserTabSummary["browser"],
+    browser: toText(row.browser) as BrowserBridgeTabSummary["browser"],
     profileId: toText(row.profile_id),
     windowId: toText(row.window_id),
     tabId: toText(row.tab_id),
@@ -972,11 +975,11 @@ function parseBrowserTabSummary(
 
 function parseBrowserPageContext(
   row: Record<string, unknown>,
-): LifeOpsBrowserPageContext {
+): BrowserBridgePageContext {
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
-    browser: toText(row.browser) as LifeOpsBrowserPageContext["browser"],
+    browser: toText(row.browser) as BrowserBridgePageContext["browser"],
     profileId: toText(row.profile_id),
     windowId: toText(row.window_id),
     tabId: toText(row.tab_id),
@@ -988,7 +991,7 @@ function parseBrowserPageContext(
       (candidate): candidate is string => typeof candidate === "string",
     ),
     links: parseJsonArray(row.links_json).filter(
-      (candidate): candidate is LifeOpsBrowserPageContext["links"][number] =>
+      (candidate): candidate is BrowserBridgePageContext["links"][number] =>
         (() => {
           if (!candidate || typeof candidate !== "object") {
             return false;
@@ -1000,7 +1003,7 @@ function parseBrowserPageContext(
         })(),
     ),
     forms: parseJsonArray(row.forms_json).filter(
-      (candidate): candidate is LifeOpsBrowserPageContext["forms"][number] =>
+      (candidate): candidate is BrowserBridgePageContext["forms"][number] =>
         (() => {
           if (!candidate || typeof candidate !== "object") {
             return false;
@@ -1389,6 +1392,10 @@ export class LifeOpsRepository {
     await adapter.runPluginMigrations(
       [
         {
+          name: "@elizaos/plugin-browser-bridge",
+          schema: browserBridgeSchema,
+        },
+        {
           name: "@elizaos/app-lifeops",
           schema: lifeOpsSchema,
         },
@@ -1399,7 +1406,6 @@ export class LifeOpsRepository {
         dryRun: false,
       },
     );
-
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
@@ -3168,7 +3174,7 @@ export class LifeOpsRepository {
     );
     await executeRawSql(
       this.runtime,
-      `UPDATE life_browser_sessions
+      `UPDATE life_workflow_browser_sessions
          SET workflow_id = NULL
        WHERE agent_id = ${sqlQuote(agentId)}
          AND workflow_id = ${sqlQuote(workflowId)}`,
@@ -3312,7 +3318,7 @@ export class LifeOpsRepository {
   async createBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_browser_sessions (
+      `INSERT INTO life_workflow_browser_sessions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, workflow_id, browser, companion_id, profile_id,
         window_id, tab_id, title, status, actions_json,
@@ -3349,7 +3355,7 @@ export class LifeOpsRepository {
   async updateBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_browser_sessions
+      `UPDATE life_workflow_browser_sessions
           SET domain = ${sqlQuote(session.domain)},
               subject_type = ${sqlQuote(session.subjectType)},
               subject_id = ${sqlQuote(session.subjectId)},
@@ -3382,7 +3388,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_sessions
+         FROM life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sessionId)}
         LIMIT 1`,
@@ -3395,7 +3401,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_sessions
+         FROM life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC`,
     );
@@ -3404,11 +3410,11 @@ export class LifeOpsRepository {
 
   async getBrowserSettings(
     agentId: string,
-  ): Promise<LifeOpsBrowserSettings | null> {
+  ): Promise<BrowserBridgeSettings | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_settings
+         FROM browser_bridge_settings
         WHERE agent_id = ${sqlQuote(agentId)}
         LIMIT 1`,
     );
@@ -3418,12 +3424,12 @@ export class LifeOpsRepository {
 
   async upsertBrowserSettings(
     agentId: string,
-    settings: LifeOpsBrowserSettings,
+    settings: BrowserBridgeSettings,
   ): Promise<void> {
     const createdAt = settings.updatedAt ?? isoNow();
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_browser_settings (
+      `INSERT INTO browser_bridge_settings (
         agent_id, enabled, tracking_mode, allow_browser_control,
         require_confirmation_for_account_affecting, incognito_enabled,
         site_access_mode, granted_origins_json, blocked_origins_json,
@@ -3462,13 +3468,13 @@ export class LifeOpsRepository {
 
   async getBrowserCompanionByProfile(
     agentId: string,
-    browser: LifeOpsBrowserCompanionStatus["browser"],
+    browser: BrowserBridgeCompanionStatus["browser"],
     profileId: string,
-  ): Promise<LifeOpsBrowserCompanionStatus | null> {
+  ): Promise<BrowserBridgeCompanionStatus | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_companions
+         FROM browser_bridge_companions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND browser = ${sqlQuote(browser)}
           AND profile_id = ${sqlQuote(profileId)}
@@ -3485,7 +3491,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_companions
+         FROM browser_bridge_companions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}
         LIMIT 1`,
@@ -3495,11 +3501,11 @@ export class LifeOpsRepository {
   }
 
   async upsertBrowserCompanion(
-    companion: LifeOpsBrowserCompanionStatus,
+    companion: BrowserBridgeCompanionStatus,
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_browser_companions (
+      `INSERT INTO browser_bridge_companions (
         id, agent_id, browser, profile_id, profile_label, label,
         extension_version, connection_state, permissions_json, last_seen_at,
         paired_at, metadata_json, created_at, updated_at
@@ -3526,7 +3532,7 @@ export class LifeOpsRepository {
         connection_state = excluded.connection_state,
         permissions_json = excluded.permissions_json,
         last_seen_at = excluded.last_seen_at,
-        paired_at = COALESCE(life_browser_companions.paired_at, excluded.paired_at),
+        paired_at = COALESCE(browser_bridge_companions.paired_at, excluded.paired_at),
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
     );
@@ -3541,7 +3547,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_browser_companions
+      `UPDATE browser_bridge_companions
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
               pending_pairing_token_hashes_json = '[]',
               paired_at = ${sqlQuote(pairedAt)},
@@ -3559,7 +3565,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_browser_companions
+      `UPDATE browser_bridge_companions
           SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               updated_at = ${sqlQuote(updatedAt)}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -3577,7 +3583,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_browser_companions
+      `UPDATE browser_bridge_companions
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
               pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               paired_at = ${sqlQuote(pairedAt)},
@@ -3589,21 +3595,21 @@ export class LifeOpsRepository {
 
   async listBrowserCompanions(
     agentId: string,
-  ): Promise<LifeOpsBrowserCompanionStatus[]> {
+  ): Promise<BrowserBridgeCompanionStatus[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_companions
+         FROM browser_bridge_companions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY browser ASC, profile_label ASC, label ASC`,
     );
     return rows.map(parseBrowserCompanion);
   }
 
-  async upsertBrowserTab(tab: LifeOpsBrowserTabSummary): Promise<void> {
+  async upsertBrowserTab(tab: BrowserBridgeTabSummary): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_browser_tabs (
+      `INSERT INTO browser_bridge_tabs (
         id, agent_id, companion_id, browser, profile_id, window_id, tab_id,
         url, title, active_in_window, focused_window, focused_active,
         incognito, favicon_url, last_seen_at, last_focused_at, metadata_json,
@@ -3645,11 +3651,11 @@ export class LifeOpsRepository {
     );
   }
 
-  async listBrowserTabs(agentId: string): Promise<LifeOpsBrowserTabSummary[]> {
+  async listBrowserTabs(agentId: string): Promise<BrowserBridgeTabSummary[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_tabs
+         FROM browser_bridge_tabs
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY focused_active DESC,
                  active_in_window DESC,
@@ -3664,7 +3670,7 @@ export class LifeOpsRepository {
     const values = ids.map((id) => sqlQuote(id)).join(", ");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_browser_tabs
+      `DELETE FROM browser_bridge_tabs
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
@@ -3673,17 +3679,17 @@ export class LifeOpsRepository {
   async deleteAllBrowserTabs(agentId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_browser_tabs
+      `DELETE FROM browser_bridge_tabs
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
 
   async upsertBrowserPageContext(
-    context: LifeOpsBrowserPageContext,
+    context: BrowserBridgePageContext,
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_browser_page_contexts (
+      `INSERT INTO browser_bridge_page_contexts (
         id, agent_id, browser, profile_id, window_id, tab_id, url, title,
         selection_text, main_text, headings_json, links_json, forms_json,
         captured_at, metadata_json
@@ -3719,11 +3725,11 @@ export class LifeOpsRepository {
 
   async listBrowserPageContexts(
     agentId: string,
-  ): Promise<LifeOpsBrowserPageContext[]> {
+  ): Promise<BrowserBridgePageContext[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_browser_page_contexts
+         FROM browser_bridge_page_contexts
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY captured_at DESC`,
     );
@@ -3738,7 +3744,7 @@ export class LifeOpsRepository {
     const values = ids.map((id) => sqlQuote(id)).join(", ");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_browser_page_contexts
+      `DELETE FROM browser_bridge_page_contexts
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
@@ -3747,7 +3753,7 @@ export class LifeOpsRepository {
   async deleteAllBrowserPageContexts(agentId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_browser_page_contexts
+      `DELETE FROM browser_bridge_page_contexts
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
@@ -3758,7 +3764,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_browser_sessions
+      `DELETE FROM life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sessionId)}`,
     );
@@ -5208,12 +5214,12 @@ export function createLifeOpsBrowserSession(
   };
 }
 
-export function createLifeOpsBrowserCompanionStatus(
+export function createBrowserBridgeCompanionStatus(
   params: Omit<
-    LifeOpsBrowserCompanionStatus,
+    BrowserBridgeCompanionStatus,
     "id" | "createdAt" | "updatedAt" | "pairedAt"
   > & { pairedAt?: string | null },
-): LifeOpsBrowserCompanionStatus {
+): BrowserBridgeCompanionStatus {
   const timestamp = isoNow();
   return {
     ...params,
@@ -5224,9 +5230,9 @@ export function createLifeOpsBrowserCompanionStatus(
   };
 }
 
-export function createLifeOpsBrowserTabSummary(
-  params: Omit<LifeOpsBrowserTabSummary, "id" | "createdAt" | "updatedAt">,
-): LifeOpsBrowserTabSummary {
+export function createBrowserBridgeTabSummary(
+  params: Omit<BrowserBridgeTabSummary, "id" | "createdAt" | "updatedAt">,
+): BrowserBridgeTabSummary {
   const timestamp = isoNow();
   return {
     ...params,
@@ -5236,9 +5242,9 @@ export function createLifeOpsBrowserTabSummary(
   };
 }
 
-export function createLifeOpsBrowserPageContext(
-  params: Omit<LifeOpsBrowserPageContext, "id">,
-): LifeOpsBrowserPageContext {
+export function createBrowserBridgePageContext(
+  params: Omit<BrowserBridgePageContext, "id">,
+): BrowserBridgePageContext {
   return {
     ...params,
     id: crypto.randomUUID(),

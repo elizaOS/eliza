@@ -1,5 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { manageLifeOpsBrowserAction } from "./action.ts";
+import { manageBrowserBridgeAction } from "./action.ts";
 import {
   getSelfControlStatus,
   type SelfControlPluginConfig,
@@ -60,7 +60,7 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
-import { lifeOpsBrowserProvider } from "./provider.ts";
+import { browserBridgeProvider } from "./provider.ts";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
@@ -70,7 +70,7 @@ import { crossChannelContextProvider } from "./providers/cross-channel-context.j
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
-import { LifeOpsBrowserPluginService } from "./service.ts";
+import { BrowserBridgePluginService } from "./service.ts";
 import {
   blockUntilTaskCompleteAction,
   listActiveBlocksAction,
@@ -207,7 +207,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
   schema: lifeOpsSchema,
   actions: [
-    manageLifeOpsBrowserAction,
+    manageBrowserBridgeAction,
     ownerWebsiteBlockAction,
     blockUntilTaskCompleteAction,
     listActiveBlocksAction,
@@ -247,7 +247,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     chatThreadControlAction,
   ],
   providers: [
-    lifeOpsBrowserProvider,
+    browserBridgeProvider,
     websiteBlockerProvider,
     appBlockerProvider,
     lifeOpsProvider,
@@ -256,7 +256,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     activityProfileProvider,
   ],
   services: [
-    LifeOpsBrowserPluginService,
+    BrowserBridgePluginService,
     WebsiteBlockerService,
     ActivityTrackerService,
   ],
@@ -458,7 +458,7 @@ export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
 export * from "./website-blocker/public.ts";
 export {
-  LifeOpsBrowserPluginService,
-  lifeOpsBrowserProvider,
-  manageLifeOpsBrowserAction,
+  BrowserBridgePluginService,
+  browserBridgeProvider,
+  manageBrowserBridgeAction,
 };

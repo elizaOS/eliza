@@ -12,7 +12,7 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import { Copy, ExternalLink, GitBranch, Plug2 } from "lucide-react";
 import { useCallback, useState } from "react";
-import { LifeOpsBrowserSetupPanel } from "./LifeOpsBrowserSetupPanel";
+import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;

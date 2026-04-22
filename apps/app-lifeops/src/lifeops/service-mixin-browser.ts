@@ -1,26 +1,26 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
-  CreateLifeOpsBrowserCompanionAutoPairRequest,
+  BrowserBridgeCompanionAutoPairResponse,
+  BrowserBridgeCompanionConfig,
+  BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncResponse,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  CreateBrowserBridgeCompanionAutoPairRequest,
+  CreateBrowserBridgeCompanionPairingRequest,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import { BROWSER_BRIDGE_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserCompanionAutoPairResponse,
-  LifeOpsBrowserCompanionConfig,
-  CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserCompanionPairingResponse,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserCompanionSyncResponse,
-  LifeOpsBrowserPageContext,
   LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
-  SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
-} from "@elizaos/app-lifeops/contracts";
-import {
-  LIFEOPS_BROWSER_KINDS,
 } from "@elizaos/app-lifeops/contracts";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
@@ -55,27 +55,27 @@ import type {
   MixinClass,
 } from "./service-mixin-core.js";
 
-export interface LifeOpsBrowserService {
-  getBrowserSettings(): Promise<LifeOpsBrowserSettings>;
+export interface BrowserBridgeService {
+  getBrowserSettings(): Promise<BrowserBridgeSettings>;
   updateBrowserSettings(
-    request: UpdateLifeOpsBrowserSettingsRequest,
-  ): Promise<LifeOpsBrowserSettings>;
-  listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]>;
-  listBrowserTabs(): Promise<LifeOpsBrowserTabSummary[]>;
-  getCurrentBrowserPage(): Promise<LifeOpsBrowserPageContext | null>;
-  syncBrowserState(request: SyncLifeOpsBrowserStateRequest): Promise<{
-    companion: LifeOpsBrowserCompanionStatus;
-    tabs: LifeOpsBrowserTabSummary[];
-    currentPage: LifeOpsBrowserPageContext | null;
+    request: UpdateBrowserBridgeSettingsRequest,
+  ): Promise<BrowserBridgeSettings>;
+  listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
+  listBrowserTabs(): Promise<BrowserBridgeTabSummary[]>;
+  getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null>;
+  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
+    companion: BrowserBridgeCompanionStatus;
+    tabs: BrowserBridgeTabSummary[];
+    currentPage: BrowserBridgePageContext | null;
   }>;
   createBrowserCompanionPairing(
-    request: CreateLifeOpsBrowserCompanionPairingRequest,
-  ): Promise<LifeOpsBrowserCompanionPairingResponse>;
+    request: CreateBrowserBridgeCompanionPairingRequest,
+  ): Promise<BrowserBridgeCompanionPairingResponse>;
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncLifeOpsBrowserStateRequest,
-  ): Promise<LifeOpsBrowserCompanionSyncResponse>;
+    request: SyncBrowserBridgeStateRequest,
+  ): Promise<BrowserBridgeCompanionSyncResponse>;
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
   createBrowserSession(
@@ -102,9 +102,9 @@ export interface LifeOpsBrowserService {
     request: CompleteLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
   autoPairBrowserCompanion(
-    request: CreateLifeOpsBrowserCompanionAutoPairRequest,
+    request: CreateBrowserBridgeCompanionAutoPairRequest,
     apiBaseUrl: string,
-  ): Promise<LifeOpsBrowserCompanionAutoPairResponse>;
+  ): Promise<BrowserBridgeCompanionAutoPairResponse>;
   updateBrowserSessionProgress(
     sessionId: string,
     request: UpdateLifeOpsBrowserSessionProgressRequest,
@@ -138,9 +138,9 @@ function browserDomainFromUrl(url: string): string | null {
 }
 
 function normalizeBrowserSettingsUpdate(
-  request: UpdateLifeOpsBrowserSettingsRequest,
-  current: LifeOpsBrowserSettings,
-): LifeOpsBrowserSettings {
+  request: UpdateBrowserBridgeSettingsRequest,
+  current: BrowserBridgeSettings,
+): BrowserBridgeSettings {
   return {
     ...current,
     enabled: normalizeOptionalBoolean(request.enabled, "enabled") ?? current.enabled,
@@ -169,14 +169,14 @@ function normalizeOptionalBrowserKind(
   field: string,
 ): string | null {
   if (value === undefined || value === null) return null;
-  return normalizeEnumValue(value, field, LIFEOPS_BROWSER_KINDS);
+  return normalizeEnumValue(value, field, BROWSER_BRIDGE_KINDS);
 }
 
 // Imports from repository
 import {
-  createLifeOpsBrowserPageContext,
+  createBrowserBridgePageContext,
   createLifeOpsBrowserSession,
-  createLifeOpsBrowserTabSummary,
+  createBrowserBridgeTabSummary,
 } from "./repository.js";
 import {
   mergeBrowserTaskLifecycle,
@@ -193,7 +193,7 @@ import {
 /** @internal */
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-): MixinClass<TBase, LifeOpsBrowserService> {
+): MixinClass<TBase, BrowserBridgeService> {
   return class extends Base {
     protected async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
@@ -263,7 +263,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     public async requireBrowserCompanion(
       companionId: string,
       pairingToken: string,
-    ): Promise<LifeOpsBrowserCompanionStatus> {
+    ): Promise<BrowserBridgeCompanionStatus> {
       const credential = await this.repository.getBrowserCompanionCredential(
         this.agentId(),
         requireNonEmptyString(companionId, "companionId"),
@@ -333,7 +333,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     public async claimQueuedBrowserSession(
-      companion: LifeOpsBrowserCompanionStatus,
+      companion: BrowserBridgeCompanionStatus,
     ): Promise<LifeOpsBrowserSession | null> {
       const claimable = (await this.listBrowserSessions())
         .filter(
@@ -384,7 +384,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     public async requireBrowserSessionForCompanion(
-      companion: LifeOpsBrowserCompanionStatus,
+      companion: BrowserBridgeCompanionStatus,
       sessionId: string,
     ): Promise<LifeOpsBrowserSession> {
       const session = await this.getBrowserSession(sessionId);
@@ -394,13 +394,13 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return session;
     }
 
-    async getBrowserSettings(): Promise<LifeOpsBrowserSettings> {
+    async getBrowserSettings(): Promise<BrowserBridgeSettings> {
       return this.getBrowserSettingsInternal();
     }
 
     async updateBrowserSettings(
-      request: UpdateLifeOpsBrowserSettingsRequest,
-    ): Promise<LifeOpsBrowserSettings> {
+      request: UpdateBrowserBridgeSettingsRequest,
+    ): Promise<BrowserBridgeSettings> {
       const current = await this.getBrowserSettingsInternal();
       const next = normalizeBrowserSettingsUpdate(request, current);
       await this.repository.upsertBrowserSettings(this.agentId(), next);
@@ -415,11 +415,11 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return this.getBrowserSettingsInternal();
     }
 
-    async listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]> {
+    async listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]> {
       return this.repository.listBrowserCompanions(this.agentId());
     }
 
-    async listBrowserTabs(): Promise<LifeOpsBrowserTabSummary[]> {
+    async listBrowserTabs(): Promise<BrowserBridgeTabSummary[]> {
       const settings = await this.getBrowserSettingsInternal();
       if (
         !settings.enabled ||
@@ -435,7 +435,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    async getCurrentBrowserPage(): Promise<LifeOpsBrowserPageContext | null> {
+    async getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null> {
       const settings = await this.getBrowserSettingsInternal();
       if (
         !settings.enabled ||
@@ -466,16 +466,16 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    async syncBrowserState(request: SyncLifeOpsBrowserStateRequest): Promise<{
-      companion: LifeOpsBrowserCompanionStatus;
-      tabs: LifeOpsBrowserTabSummary[];
-      currentPage: LifeOpsBrowserPageContext | null;
+    async syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
+      companion: BrowserBridgeCompanionStatus;
+      tabs: BrowserBridgeTabSummary[];
+      currentPage: BrowserBridgePageContext | null;
     }> {
       const companionInput = requireRecord(request.companion, "companion");
       const browser = normalizeEnumValue(
         companionInput.browser,
         "companion.browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(
         companionInput.profileId,
@@ -555,7 +555,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         const tabBrowser = normalizeEnumValue(
           tabRecord.browser,
           `tabs[${index}].browser`,
-          LIFEOPS_BROWSER_KINDS,
+          BROWSER_BRIDGE_KINDS,
         );
         const tabProfileId = requireNonEmptyString(
           tabRecord.profileId,
@@ -628,7 +628,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
               ),
               updatedAt: nowIso,
             }
-          : createLifeOpsBrowserTabSummary({
+          : createBrowserBridgeTabSummary({
               agentId: this.agentId(),
               companionId: companion.id,
               browser: tabBrowser,
@@ -705,7 +705,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         const contextBrowser = normalizeEnumValue(
           contextRecord.browser,
           `pageContexts[${index}].browser`,
-          LIFEOPS_BROWSER_KINDS,
+          BROWSER_BRIDGE_KINDS,
         );
         const contextProfileId = requireNonEmptyString(
           contextRecord.profileId,
@@ -775,7 +775,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
                 ),
               ),
             }
-          : createLifeOpsBrowserPageContext({
+          : createBrowserBridgePageContext({
               agentId: this.agentId(),
               browser: contextBrowser,
               profileId: contextProfileId,
@@ -846,12 +846,12 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async createBrowserCompanionPairing(
-      request: CreateLifeOpsBrowserCompanionPairingRequest,
-    ): Promise<LifeOpsBrowserCompanionPairingResponse> {
+      request: CreateBrowserBridgeCompanionPairingRequest,
+    ): Promise<BrowserBridgeCompanionPairingResponse> {
       const browser = normalizeEnumValue(
         request.browser,
         "browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(request.profileId, "profileId");
       const currentCompanion = await this.repository.getBrowserCompanionByProfile(
@@ -866,7 +866,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const label =
         normalizeOptionalString(request.label) ??
         currentCompanion?.label ??
-        `LifeOps Browser ${browser} ${profileLabel}`;
+        `Agent Browser Bridge ${browser} ${profileLabel}`;
       const companion = this.buildBrowserCompanion(
         {
           browser,
@@ -922,15 +922,15 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async autoPairBrowserCompanion(
-      request: CreateLifeOpsBrowserCompanionAutoPairRequest,
+      request: CreateBrowserBridgeCompanionAutoPairRequest,
       apiBaseUrl: string,
-    ): Promise<LifeOpsBrowserCompanionAutoPairResponse> {
+    ): Promise<BrowserBridgeCompanionAutoPairResponse> {
       const profileId = normalizeOptionalString(request.profileId) ?? "default";
       const profileLabel =
         normalizeOptionalString(request.profileLabel) ?? "Default";
       const label =
         normalizeOptionalString(request.label) ??
-        `LifeOps Browser ${normalizeEnumValue(request.browser, "browser", LIFEOPS_BROWSER_KINDS)} ${profileLabel}`;
+        `Agent Browser Bridge ${normalizeEnumValue(request.browser, "browser", BROWSER_BRIDGE_KINDS)} ${profileLabel}`;
       const pairing = await this.createBrowserCompanionPairing({
         browser: request.browser,
         profileId,
@@ -939,7 +939,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         extensionVersion: request.extensionVersion ?? null,
         metadata: request.metadata,
       });
-      const config: LifeOpsBrowserCompanionConfig = {
+      const config: BrowserBridgeCompanionConfig = {
         apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl").replace(
           /\/+$/,
           "",
@@ -960,8 +960,8 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     async syncBrowserCompanion(
       companionId: string,
       pairingToken: string,
-      request: SyncLifeOpsBrowserStateRequest,
-    ): Promise<LifeOpsBrowserCompanionSyncResponse> {
+      request: SyncBrowserBridgeStateRequest,
+    ): Promise<BrowserBridgeCompanionSyncResponse> {
       const companion = await this.requireBrowserCompanion(
         companionId,
         pairingToken,
@@ -970,7 +970,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const browser = normalizeEnumValue(
         companionInput.browser,
         "companion.browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(
         companionInput.profileId,
@@ -1236,5 +1236,5 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  } as MixinClass<TBase, LifeOpsBrowserService>;
+  } as MixinClass<TBase, BrowserBridgeService>;
 }

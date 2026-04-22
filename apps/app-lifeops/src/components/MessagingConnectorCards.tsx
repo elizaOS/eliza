@@ -188,8 +188,8 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   if (access.source === "lifeops_browser") {
     if (!access.available && access.nextAction === "enable_browser_access") {
       return access.active
-        ? "Browser access is paused in LifeOps Browser settings."
-        : "Browser access is turned off in LifeOps Browser settings.";
+        ? "Browser access is paused in Agent Browser Bridge settings."
+        : "Browser access is turned off in Agent Browser Bridge settings.";
     }
     if (access.nextAction === "connect_browser") {
       return "No browser profile is connected yet. Install the extension, then open its popup in the browser profile that has your account.";

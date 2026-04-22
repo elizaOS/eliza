@@ -274,7 +274,7 @@ export function ChatComposer({
           className={
             isGameModal
               ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-3xl border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
-              : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-2xl border-0 bg-card/40 px-4 pt-[7px] pb-[9px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
+              : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-2xl border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}

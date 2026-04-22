@@ -555,57 +555,15 @@ export const lifeWorkflowRuns = pgTable(
   (t) => [index("idx_life_workflow_runs_workflow").on(t.agentId, t.workflowId, t.startedAt)],
 );
 
-export const lifeBrowserCompanions = pgTable(
-  "life_browser_companions",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    browser: text("browser").notNull(),
-    profileId: text("profile_id").notNull(),
-    profileLabel: text("profile_label").notNull().default(""),
-    label: text("label").notNull().default(""),
-    extensionVersion: text("extension_version"),
-    connectionState: text("connection_state").notNull().default("disconnected"),
-    permissionsJson: text("permissions_json").notNull().default("{}"),
-    pairingTokenHash: text("pairing_token_hash"),
-    pendingPairingTokenHashesJson: text("pending_pairing_token_hashes_json")
-      .notNull()
-      .default("[]"),
-    lastSeenAt: text("last_seen_at"),
-    pairedAt: text("paired_at"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    unique().on(t.agentId, t.browser, t.profileId),
-    index("idx_life_browser_companions_agent").on(t.agentId, t.browser, t.updatedAt),
-  ],
-);
-
-export const lifeBrowserSettings = pgTable("life_browser_settings", {
-  agentId: text("agent_id").primaryKey(),
-  enabled: boolean("enabled").notNull().default(false),
-  trackingMode: text("tracking_mode").notNull().default("current_tab"),
-  allowBrowserControl: boolean("allow_browser_control").notNull().default(false),
-  requireConfirmationForAccountAffecting: boolean(
-    "require_confirmation_for_account_affecting",
-  )
-    .notNull()
-    .default(true),
-  incognitoEnabled: boolean("incognito_enabled").notNull().default(false),
-  siteAccessMode: text("site_access_mode").notNull().default("current_site_only"),
-  grantedOriginsJson: text("granted_origins_json").notNull().default("[]"),
-  blockedOriginsJson: text("blocked_origins_json").notNull().default("[]"),
-  maxRememberedTabs: integer("max_remembered_tabs").notNull().default(10),
-  pauseUntil: text("pause_until"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
-
-export const lifeBrowserSessions = pgTable(
-  "life_browser_sessions",
+// Workflow-bound browser session table. The 4 generic browser tables
+// (companions, settings, tabs, page_contexts) moved to
+// `@elizaos/plugin-browser-bridge/schema`. Only `life_workflow_browser_sessions`
+// stays here because it carries `workflowId` plus LifeOps scoping columns.
+// The `companionId` column is a soft FK to
+// `browser_bridge_companions.id` (no hard constraint so the plugin package
+// remains the schema owner of that table).
+export const lifeWorkflowBrowserSessions = pgTable(
+  "life_workflow_browser_sessions",
   {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
@@ -634,8 +592,12 @@ export const lifeBrowserSessions = pgTable(
     finishedAt: text("finished_at"),
   },
   (t) => [
-    index("idx_life_browser_sessions_agent").on(t.agentId, t.status, t.updatedAt),
-    index("idx_life_browser_sessions_subject").on(
+    index("idx_life_workflow_browser_sessions_agent").on(
+      t.agentId,
+      t.status,
+      t.updatedAt,
+    ),
+    index("idx_life_workflow_browser_sessions_subject").on(
       t.agentId,
       t.domain,
       t.subjectType,
@@ -643,65 +605,6 @@ export const lifeBrowserSessions = pgTable(
       t.status,
       t.updatedAt,
     ),
-  ],
-);
-
-export const lifeBrowserTabs = pgTable(
-  "life_browser_tabs",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    companionId: text("companion_id"),
-    browser: text("browser").notNull(),
-    profileId: text("profile_id").notNull(),
-    windowId: text("window_id").notNull(),
-    tabId: text("tab_id").notNull(),
-    url: text("url").notNull().default(""),
-    title: text("title").notNull().default(""),
-    activeInWindow: boolean("active_in_window").notNull().default(false),
-    focusedWindow: boolean("focused_window").notNull().default(false),
-    focusedActive: boolean("focused_active").notNull().default(false),
-    incognito: boolean("incognito").notNull().default(false),
-    faviconUrl: text("favicon_url"),
-    lastSeenAt: text("last_seen_at").notNull(),
-    lastFocusedAt: text("last_focused_at"),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    unique().on(t.agentId, t.browser, t.profileId, t.windowId, t.tabId),
-    index("idx_life_browser_tabs_agent").on(
-      t.agentId,
-      t.focusedActive,
-      t.activeInWindow,
-      t.lastSeenAt,
-    ),
-  ],
-);
-
-export const lifeBrowserPageContexts = pgTable(
-  "life_browser_page_contexts",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    browser: text("browser").notNull(),
-    profileId: text("profile_id").notNull(),
-    windowId: text("window_id").notNull(),
-    tabId: text("tab_id").notNull(),
-    url: text("url").notNull().default(""),
-    title: text("title").notNull().default(""),
-    selectionText: text("selection_text"),
-    mainText: text("main_text"),
-    headingsJson: text("headings_json").notNull().default("[]"),
-    linksJson: text("links_json").notNull().default("[]"),
-    formsJson: text("forms_json").notNull().default("[]"),
-    capturedAt: text("captured_at").notNull(),
-    metadataJson: text("metadata_json").notNull().default("{}"),
-  },
-  (t) => [
-    unique().on(t.agentId, t.browser, t.profileId, t.windowId, t.tabId),
-    index("idx_life_browser_page_contexts_agent").on(t.agentId, t.capturedAt),
   ],
 );
 
@@ -1148,11 +1051,7 @@ export const lifeOpsSchema = {
   lifeGmailSyncStates,
   lifeWorkflowDefinitions,
   lifeWorkflowRuns,
-  lifeBrowserCompanions,
-  lifeBrowserSettings,
-  lifeBrowserSessions,
-  lifeBrowserTabs,
-  lifeBrowserPageContexts,
+  lifeWorkflowBrowserSessions,
   lifeEscalationStates,
   lifeIntents,
   lifeCheckinReports,

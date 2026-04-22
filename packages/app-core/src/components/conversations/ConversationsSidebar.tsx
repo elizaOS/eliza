@@ -188,6 +188,34 @@ export function ConversationsSidebar({
   // bar and put our own collapse button inline with the first section
   // header (Messages), keeping that row at the top of the rail.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const CHAT_SIDEBAR_WIDTH_KEY = "milady:chat:conversations-sidebar:width";
+  const CHAT_SIDEBAR_DEFAULT_WIDTH = 240;
+  const CHAT_SIDEBAR_MIN_WIDTH = 200;
+  const CHAT_SIDEBAR_MAX_WIDTH = 520;
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return CHAT_SIDEBAR_DEFAULT_WIDTH;
+    try {
+      const raw = window.localStorage.getItem(CHAT_SIDEBAR_WIDTH_KEY);
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed)) {
+        return Math.min(
+          Math.max(parsed, CHAT_SIDEBAR_MIN_WIDTH),
+          CHAT_SIDEBAR_MAX_WIDTH,
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    return CHAT_SIDEBAR_DEFAULT_WIDTH;
+  });
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    setSidebarWidth(next);
+    try {
+      window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const toggleSectionCollapsed = useCallback((key: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -577,30 +605,47 @@ export function ConversationsSidebar({
   const showNewChatAction = tab === "chat";
   const showNewTerminalAction = tab === "chat";
   const manageConnectionsButton = (
-    <button
-      type="button"
-      data-testid="chat-sidebar-manage-toggle"
-      aria-pressed={isManageConnectionsActive}
-      onClick={handleManageConnections}
-      className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] transition-colors ${
-        isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
-      }`}
-    >
-      {isManageConnectionsActive ? (
-        <X className="h-3.5 w-3.5" aria-hidden />
+    <div className="flex w-full items-center justify-between">
+      {!mobile && !isGameModal ? (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-label={t("conversations.closePanel", {
+            defaultValue: "Collapse sidebar",
+          })}
+          data-testid="chat-sidebar-collapse-inline"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
+        </button>
       ) : (
-        <Settings2 className="h-3.5 w-3.5" aria-hidden />
+        <span className="h-6 w-6" />
       )}
-      <span>
-        {isManageConnectionsActive
-          ? t("conversations.doneManagingConnections", {
-              defaultValue: "Done",
-            })
-          : t("conversations.manageConnections", {
-              defaultValue: "Manage",
-            })}
-      </span>
-    </button>
+      <button
+        type="button"
+        data-testid="chat-sidebar-manage-toggle"
+        aria-pressed={isManageConnectionsActive}
+        onClick={handleManageConnections}
+        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] transition-colors ${
+          isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
+        }`}
+      >
+        {isManageConnectionsActive ? (
+          <X className="h-3 w-3" aria-hidden />
+        ) : (
+          <Settings2 className="h-3 w-3" aria-hidden />
+        )}
+        <span>
+          {isManageConnectionsActive
+            ? t("conversations.channels", {
+                defaultValue: "Channels",
+              })
+            : t("conversations.manageConnections", {
+                defaultValue: "Manage",
+              })}
+        </span>
+      </button>
+    </div>
   );
 
   return (
@@ -677,6 +722,12 @@ export function ConversationsSidebar({
         onCollapsedChange={
           !mobile && !isGameModal ? setSidebarCollapsed : undefined
         }
+        resizable={!mobile && !isGameModal}
+        width={!mobile && !isGameModal ? sidebarWidth : undefined}
+        minWidth={CHAT_SIDEBAR_MIN_WIDTH}
+        maxWidth={CHAT_SIDEBAR_MAX_WIDTH}
+        onWidthChange={handleSidebarWidthChange}
+        onCollapseRequest={() => setSidebarCollapsed(true)}
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"
         }
@@ -706,7 +757,7 @@ export function ConversationsSidebar({
         footer={!mobile && !isGameModal ? manageConnectionsButton : undefined}
         footerClassName={
           !mobile && !isGameModal
-            ? "!px-2 !pt-1.5 !pb-1.5 !justify-start"
+            ? "!pl-2 !pr-2 !pt-1.5 !pb-2 !justify-stretch"
             : undefined
         }
         collapsedRailAction={
@@ -761,7 +812,7 @@ export function ConversationsSidebar({
       >
         <SidebarScrollRegion
           variant={isGameModal ? "game-modal" : "default"}
-          className={isGameModal ? undefined : "px-1 pb-2 pt-0"}
+          className={isGameModal ? undefined : "px-1 pb-2 pt-2"}
         >
           <SidebarPanel
             variant={isGameModal ? "game-modal" : "default"}
@@ -846,21 +897,6 @@ export function ConversationsSidebar({
                   collapsed={collapsedSections.has(messagesSection.key)}
                   onToggleCollapsed={toggleSectionCollapsed}
                   onAdd={showNewChatAction ? handleNewChat : undefined}
-                  trailing={
-                    !mobile && !isGameModal ? (
-                      <button
-                        type="button"
-                        onClick={() => setSidebarCollapsed(true)}
-                        aria-label={t("conversations.closePanel", {
-                          defaultValue: "Collapse sidebar",
-                        })}
-                        data-testid="chat-sidebar-collapse-inline"
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
-                      >
-                        <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
-                      </button>
-                    ) : undefined
-                  }
                   addLabel={t("conversations.newChat", {
                     defaultValue: "New chat",
                   })}
@@ -903,9 +939,6 @@ export function ConversationsSidebar({
                   }
                   addLabel={t("conversations.newTerminal", {
                     defaultValue: "New terminal",
-                  })}
-                  emptyLabel={t("conversations.noneTerminalIdle", {
-                    defaultValue: "No terminals running",
                   })}
                   activeListId={activeListId}
                   rowListId={rowListId}
@@ -990,9 +1023,7 @@ interface CollapsibleChannelSectionProps {
   onToggleCollapsed: (key: string) => void;
   onAdd?: () => void;
   addLabel?: string;
-  /** Extra element rendered after the add button (e.g. collapse sidebar). */
-  trailing?: React.ReactNode;
-  emptyLabel: string;
+  emptyLabel?: string;
   activeListId: string | null;
   rowListId: (row: ConversationsSidebarRow) => string;
   isTerminalRow: (row: ConversationsSidebarRow) => boolean;
@@ -1023,7 +1054,6 @@ function CollapsibleChannelSection({
   onToggleCollapsed,
   onAdd,
   addLabel,
-  trailing,
   emptyLabel,
   activeListId,
   rowListId,
@@ -1089,15 +1119,16 @@ function CollapsibleChannelSection({
             <Plus className="h-3.5 w-3.5" aria-hidden />
           </button>
         ) : null}
-        {trailing}
       </div>
       {collapsed ? null : rows.length === 0 ? (
-        <div
-          id={`channel-section-body-${sectionKey}`}
-          className="px-3 py-1 text-2xs text-muted"
-        >
-          {emptyLabel}
-        </div>
+        emptyLabel ? (
+          <div
+            id={`channel-section-body-${sectionKey}`}
+            className="px-3 py-1 text-2xs text-muted"
+          >
+            {emptyLabel}
+          </div>
+        ) : null
       ) : (
         <div
           id={`channel-section-body-${sectionKey}`}

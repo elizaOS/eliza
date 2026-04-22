@@ -82,6 +82,20 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
+const ResetIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"
+  />
+);
+
+const CollapseIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M21 3H3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zM9 3v18M14 9l-3 3 3 3"
+  />
+);
+
 import {
   Button,
   Dialog,
@@ -135,6 +149,7 @@ const CHARACTER_EDITOR_PAGES = [
   "examples",
   "knowledge",
 ] as const;
+type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
 
 /**
  * Cheap structural check — returns true when value already has the
@@ -251,18 +266,28 @@ export function CharacterEditor({
   /* ── Generation ─────────────────────────────────────────────────── */
   const [generating, setGenerating] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<
-    "personality" | "style" | "examples" | "knowledge"
-  >(tab === "knowledge" ? "knowledge" : "personality");
+  const [activePage, setActivePage] = useState<CharacterEditorPage>(
+    tab === "knowledge" ? "knowledge" : "personality",
+  );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<
-    | { kind: "page"; page: (typeof CHARACTER_EDITOR_PAGES)[number] }
+    | { kind: "page"; page: CharacterEditorPage }
     | { kind: "character"; entry: CharacterRosterEntry }
     | null
   >(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
+  const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Record<CharacterEditorPage, HTMLElement | null>>({
+    personality: null,
+    style: null,
+    examples: null,
+    knowledge: null,
+  });
+  const isProgrammaticScrollRef = useRef(false);
 
   // Sync rightTab with activePage (for overlay mode's right panel toggle)
   useEffect(() => {
@@ -276,6 +301,49 @@ export function CharacterEditor({
       setActivePage("knowledge");
     }
   }, [tab, activePage]);
+
+  useEffect(() => {
+    const container = standaloneScrollRef.current;
+    if (!container) return;
+
+    const updateActiveFromScroll = () => {
+      if (isProgrammaticScrollRef.current) return;
+      const containerTop = container.getBoundingClientRect().top;
+      const activationOffset = 80;
+      let current: CharacterEditorPage = "personality";
+      for (const page of CHARACTER_EDITOR_PAGES) {
+        const node = sectionRefs.current[page];
+        if (!node) continue;
+        const sectionTop = node.getBoundingClientRect().top - containerTop;
+        if (sectionTop - activationOffset <= 0) current = page;
+      }
+      setActivePage((prev) => (prev === current ? prev : current));
+    };
+
+    updateActiveFromScroll();
+    container.addEventListener("scroll", updateActiveFromScroll, {
+      passive: true,
+    });
+    return () =>
+      container.removeEventListener("scroll", updateActiveFromScroll);
+  }, []);
+
+  const scrollToSection = useCallback(
+    (page: CharacterEditorPage) => {
+      const node = sectionRefs.current[page];
+      if (!node) {
+        setActivePage(page);
+        return;
+      }
+      isProgrammaticScrollRef.current = true;
+      setActivePage(page);
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 600);
+    },
+    [],
+  );
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -491,6 +559,16 @@ export function CharacterEditor({
     (selectedCharacterId !== null && selectedCharacterId !== savedCharacterId);
 
   useEffect(() => {
+    if (!hasPendingChanges) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasPendingChanges]);
+
+  useEffect(() => {
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
@@ -692,16 +770,16 @@ export function CharacterEditor({
   );
 
   const requestPageChange = useCallback(
-    (page: (typeof CHARACTER_EDITOR_PAGES)[number]) => {
+    (page: CharacterEditorPage) => {
       if (page === activePage) return;
       if (hasPendingChanges) {
         setPendingNavigation({ kind: "page", page });
         return;
       }
-      setActivePage(page);
+      scrollToSection(page);
       if (page === "style" || page === "examples") setRightTab(page);
     },
-    [activePage, hasPendingChanges],
+    [activePage, hasPendingChanges, scrollToSection],
   );
 
   const requestCharacterSelection = useCallback(
@@ -993,7 +1071,7 @@ export function CharacterEditor({
       setPendingNavigation(null);
 
       if (target.kind === "page") {
-        setActivePage(target.page);
+        scrollToSection(target.page);
         if (target.page === "style" || target.page === "examples") {
           setRightTab(target.page);
         }
@@ -1002,7 +1080,7 @@ export function CharacterEditor({
 
       commitCharacterSelection(target.entry, true);
     },
-    [commitCharacterSelection, handleSaveAll, pendingNavigation],
+    [commitCharacterSelection, handleSaveAll, pendingNavigation, scrollToSection],
   );
 
   useEffect(() => {
@@ -1266,13 +1344,6 @@ export function CharacterEditor({
   const hasStandaloneHeaderFeedback = Boolean(
     characterSaveSuccess || combinedSaveError || generateError,
   );
-  const standaloneContentHeader =
-    activePage === "knowledge" ? null : (
-      <div className="flex flex-col items-end gap-2">
-        {renderContentActionButtons("ce-vrm-upload-standalone")}
-        {renderSaveFeedback()}
-      </div>
-    );
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
@@ -1299,7 +1370,7 @@ export function CharacterEditor({
       className={
         sceneOverlay
           ? "absolute inset-0 z-10 flex flex-col pointer-events-none pt-[4.5rem] px-6 pb-3 max-md:px-3 max-md:pb-2 max-md:pt-[4.5rem] [&>*]:pointer-events-auto"
-          : "flex flex-col w-full flex-1 gap-4"
+          : "flex flex-col w-full flex-1 min-h-0 gap-4"
       }
       data-no-camera-zoom={sceneOverlay ? "true" : undefined}
       data-no-camera-drag={sceneOverlay ? "true" : undefined}
@@ -1498,25 +1569,137 @@ export function CharacterEditor({
         {!sceneOverlay && (
           <PageLayout
             className="h-full"
-            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
+            contentPadding={false}
+            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col px-6 py-6 lg:px-8 lg:py-8"
             footer={<WidgetHost slot="character" className="pt-4" />}
             footerClassName="lg:px-8"
             sidebar={
               <Sidebar
                 testId="character-editor-sidebar"
                 collapsible
+                collapsed={sidebarCollapsed}
+                onCollapsedChange={setSidebarCollapsed}
                 contentIdentity="character-editor"
                 collapseButtonTestId="character-editor-sidebar-collapse-toggle"
                 expandButtonTestId="character-editor-sidebar-expand-toggle"
                 collapseButtonAriaLabel="Collapse character editor"
                 expandButtonAriaLabel="Expand character editor"
-                headerClassName="!px-2 !pt-1.5 !pb-1.5"
+                className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
+                headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
                 collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
+                footer={
+                  <div className="flex w-full flex-col gap-1.5">
+                    {hasStandaloneHeaderFeedback ? (
+                      <div className="flex flex-col gap-1">
+                        {characterSaveSuccess && (
+                          <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
+                            {characterSaveSuccess}
+                          </span>
+                        )}
+                        {combinedSaveError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {combinedSaveError}
+                          </span>
+                        )}
+                        {generateError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {generateError}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      className="h-10 w-full justify-center rounded-sm text-sm font-bold tracking-[0.04em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+                      style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
+                      disabled={
+                        characterSaving ||
+                        voiceSaving ||
+                        !hasPendingChanges ||
+                        !currentCharacter
+                      }
+                      onClick={() => void handleSaveAll()}
+                    >
+                      {characterSaving || voiceSaving
+                        ? t("charactereditor.Saving", {
+                            defaultValue: "saving...",
+                          })
+                        : t("charactereditor.Save", { defaultValue: "Save" })}
+                    </Button>
+                    <div className="flex items-center justify-between">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={() => setSidebarCollapsed(true)}
+                        title="Collapse sidebar"
+                        aria-label="Collapse sidebar"
+                      >
+                        <CollapseIcon className="h-4 w-4" />
+                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={() =>
+                            document
+                              .getElementById("ce-vrm-upload-standalone")
+                              ?.click()
+                          }
+                          title={t("charactereditor.UploadVRM", {
+                            defaultValue: "Upload VRM",
+                          })}
+                          aria-label={t("charactereditor.UploadVRM", {
+                            defaultValue: "Upload VRM",
+                          })}
+                        >
+                          <UploadIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={handleExportCharacter}
+                          disabled={!currentCharacter}
+                          title={t("charactereditor.ExportJSON", {
+                            defaultValue: "Export JSON",
+                          })}
+                          aria-label={t("charactereditor.ExportJSON", {
+                            defaultValue: "Export JSON",
+                          })}
+                        >
+                          <DownloadIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={() => setResetConfirmOpen(true)}
+                          disabled={!activeCharacterRosterEntry || !currentCharacter}
+                          title={t("charactereditor.Reset", {
+                            defaultValue: "Reset",
+                          })}
+                          aria-label={t("charactereditor.Reset", {
+                            defaultValue: "Reset",
+                          })}
+                        >
+                          <ResetIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                }
+                footerClassName="!px-2 !pt-2 !pb-2 !justify-stretch"
               >
-                <SidebarScrollRegion className="!pt-0">
-                  <SidebarPanel className="!px-0 !pt-3 !pb-0 !shadow-none">
+                <SidebarScrollRegion className="px-1 pb-1 pt-0">
+                  <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
                     <nav
-                      className="space-y-1"
+                      className="flex flex-col"
                       aria-label="Character editor sections"
                     >
                       {CHARACTER_EDITOR_PAGES.map((page) => {
@@ -1540,10 +1723,11 @@ export function CharacterEditor({
                           <SidebarContent.Item
                             key={page}
                             active={activePage === page}
-                            onClick={() => requestPageChange(page)}
+                            onClick={() => scrollToSection(page)}
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
+                            className="items-center gap-1.5 px-2 py-1.5"
                           >
                             <SidebarContent.ItemTitle
                               className={
@@ -1593,76 +1777,95 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
-            <div className="flex flex-row min-h-0 flex-1">
-              <div className="flex-1 min-w-0 overflow-auto flex flex-col">
-                {standaloneContentHeader ? (
-                  <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
-                ) : null}
-                <div className="flex min-h-0 flex-1 min-w-0 flex-col">
-                  {activePage === "personality" && (
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                      <CharacterIdentityPanel
-                        d={d}
-                        bioText={bioText}
-                        generating={generating}
-                        voiceSelectValue={voiceSelectValue}
-                        activeVoicePreset={activeVoicePreset}
-                        voiceTesting={voiceTesting}
-                        voiceLoading={voiceLoading}
-                        useElevenLabs={useElevenLabs}
-                        elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                        edgeVoiceGroups={edgeVoiceGroups}
-                        handleFieldEdit={handleFieldEdit}
-                        handleGenerate={handleGenerate}
-                        handleSelectPreset={handleSelectPreset}
-                        handleStopTest={handleStopTest}
-                        setVoiceTesting={setVoiceTesting}
-                        setVoiceTestAudio={setVoiceTestAudio}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "style" && (
-                    <div className="flex flex-col gap-5">
-                      <CharacterStylePanel
-                        d={d}
-                        generating={generating}
-                        pendingStyleEntries={pendingStyleEntries}
-                        styleEntryDrafts={styleEntryDrafts}
-                        handleGenerate={handleGenerate}
-                        handlePendingStyleEntryChange={
-                          handlePendingStyleEntryChange
-                        }
-                        handleAddStyleEntry={handleAddStyleEntry}
-                        handleRemoveStyleEntry={handleRemoveStyleEntry}
-                        handleStyleEntryDraftChange={
-                          handleStyleEntryDraftChange
-                        }
-                        handleCommitStyleEntry={handleCommitStyleEntry}
-                        handleReorderStyleEntries={handleReorderStyleEntries}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "examples" && (
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
-                      <CharacterExamplesPanel
-                        d={d}
-                        normalizedMessageExamples={normalizedMessageExamples}
-                        generating={generating}
-                        handleFieldEdit={handleFieldEdit}
-                        handleGenerate={handleGenerate}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "knowledge" && (
-                    <div className="flex flex-col flex-1 min-h-[60vh]">
-                      <KnowledgeView embedded />
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div
+              ref={standaloneScrollRef}
+              className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
+            >
+              <section
+                ref={(el) => {
+                  sectionRefs.current.personality = el;
+                }}
+                aria-label={t("charactereditor.TabPersonality", {
+                  defaultValue: "Personality",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 pt-2"
+              >
+                <CharacterIdentityPanel
+                  d={d}
+                  bioText={bioText}
+                  generating={generating}
+                  voiceSelectValue={voiceSelectValue}
+                  activeVoicePreset={activeVoicePreset}
+                  voiceTesting={voiceTesting}
+                  voiceLoading={voiceLoading}
+                  useElevenLabs={useElevenLabs}
+                  elevenLabsVoiceGroups={elevenLabsVoiceGroups}
+                  edgeVoiceGroups={edgeVoiceGroups}
+                  handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
+                  handleSelectPreset={handleSelectPreset}
+                  handleStopTest={handleStopTest}
+                  setVoiceTesting={setVoiceTesting}
+                  setVoiceTestAudio={setVoiceTestAudio}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.style = el;
+                }}
+                aria-label={t("charactereditor.TabStyles", {
+                  defaultValue: "Style",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+              >
+                <CharacterStylePanel
+                  d={d}
+                  generating={generating}
+                  pendingStyleEntries={pendingStyleEntries}
+                  styleEntryDrafts={styleEntryDrafts}
+                  handleGenerate={handleGenerate}
+                  handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+                  handleAddStyleEntry={handleAddStyleEntry}
+                  handleRemoveStyleEntry={handleRemoveStyleEntry}
+                  handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                  handleCommitStyleEntry={handleCommitStyleEntry}
+                  handleReorderStyleEntries={handleReorderStyleEntries}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.examples = el;
+                }}
+                aria-label={t("charactereditor.TabExamples", {
+                  defaultValue: "Examples",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+              >
+                <CharacterExamplesPanel
+                  d={d}
+                  normalizedMessageExamples={normalizedMessageExamples}
+                  generating={generating}
+                  handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.knowledge = el;
+                }}
+                aria-label={t("charactereditor.TabKnowledge", {
+                  defaultValue: "Knowledge",
+                })}
+                className="flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+              >
+                <KnowledgeView embedded />
+              </section>
             </div>
           </PageLayout>
         )}
@@ -1807,6 +2010,48 @@ export function CharacterEditor({
               type="button"
               variant="outline"
               onClick={() => setPendingNavigation(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resetConfirmOpen}
+        onOpenChange={(open: boolean) => {
+          if (!open) setResetConfirmOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+          <DialogHeader className="gap-3">
+            <DialogTitle>
+              {t("charactereditor.ResetToDefaults", {
+                defaultValue: "Reset to defaults?",
+              })}
+            </DialogTitle>
+            <DialogDescription className="text-muted-strong">
+              {t("charactereditor.ResetConfirmBody", {
+                defaultValue:
+                  "This will discard all unsaved changes and restore this character to its default values.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                handleResetToDefaults();
+                setResetConfirmOpen(false);
+              }}
+            >
+              {t("charactereditor.Reset", { defaultValue: "Reset" })}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetConfirmOpen(false)}
             >
               {t("common.cancel")}
             </Button>
