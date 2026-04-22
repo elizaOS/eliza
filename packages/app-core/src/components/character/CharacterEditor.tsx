@@ -254,9 +254,6 @@ export function CharacterEditor({
     [handleCharacterStyleInput],
   );
 
-  /* ── Generation ─────────────────────────────────────────────────── */
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
     tab === "knowledge" ? "knowledge" : "personality",
   );
@@ -1183,99 +1180,6 @@ export function CharacterEditor({
     </div>
   );
 
-  /* ── Generate field ─────────────────────────────────────────────── */
-  const getCharContext = useCallback(
-    () => ({
-      name: d.name ?? "",
-      system: d.system ?? "",
-      bio: bioText,
-      style: d.style ?? { all: [], chat: [], post: [] },
-      postExamples: d.postExamples ?? [],
-    }),
-    [bioText, d],
-  );
-
-  const handleGenerate = useCallback(
-    async (field: string, mode: "replace" | "append" = "replace") => {
-      setGenerating(field);
-      setGenerateError(null);
-      try {
-        const { generated } = await client.generateCharacterField(
-          field,
-          getCharContext(),
-          mode,
-        );
-        if (field === "bio") {
-          handleFieldEdit("bio", generated.trim());
-        } else if (field === "system") {
-          handleFieldEdit("system", generated.trim());
-        } else if (field === "style") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (mode === "append") {
-              handleStyleEdit(
-                "all",
-                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "chat",
-                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "post",
-                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
-              );
-            } else {
-              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
-              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
-              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
-            }
-          } catch {
-            setGenerateError("Generated style could not be parsed");
-          }
-        } else if (field === "chatExamples") {
-          const formatted = normalizeCharacterMessageExamples(
-            generated,
-            fallbackCharacterName,
-          );
-          if (formatted.length > 0) {
-            handleFieldEdit("messageExamples", formatted);
-          }
-        } else if (field === "postExamples") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (Array.isArray(parsed)) {
-              const generatedExamples = parsed.filter(
-                (example): example is string => typeof example === "string",
-              );
-              handleFieldEdit(
-                "postExamples",
-                mode === "append"
-                  ? [...(d.postExamples ?? []), ...generatedExamples]
-                  : generatedExamples,
-              );
-            }
-          } catch {
-            setGenerateError("Generated post examples could not be parsed");
-          }
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Generation failed";
-        setGenerateError(message);
-      } finally {
-        setGenerating(null);
-      }
-    },
-    [
-      d,
-      fallbackCharacterName,
-      getCharContext,
-      handleFieldEdit,
-      handleStyleEdit,
-    ],
-  );
-
   /* ── Style entry handlers ───────────────────────────────────────── */
   const handlePendingStyleEntryChange = useCallback(
     (key: string, value: string) => {
@@ -1567,11 +1471,11 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentPadding={false}
-            contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-5 py-5 sm:px-7 sm:py-7 lg:px-8"
+            contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5 lg:px-6"
             footer={
               <WidgetHost
                 slot="character"
-                className="px-5 pt-4 sm:px-7 lg:px-8"
+                className="px-4 pt-3 sm:px-5 lg:px-6"
               />
             }
             sidebar={
@@ -1579,6 +1483,8 @@ export function CharacterEditor({
                 testId="character-editor-sidebar"
                 collapsible={false}
                 contentIdentity="character-editor"
+                className="!mt-0 !h-full !rounded-none !border-0 !border-r !border-r-border/30 !bg-transparent !bg-none !shadow-none !backdrop-blur-none !ring-0"
+                footerClassName="!justify-start !px-1 !pb-2 !pt-1"
                 footer={
                   <div className="flex w-full flex-col gap-2">
                     {hasStandaloneHeaderFeedback ? (
@@ -1675,8 +1581,8 @@ export function CharacterEditor({
                   </div>
                 }
               >
-                <SidebarScrollRegion>
-                  <SidebarPanel>
+                <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
                     <nav
                       className="flex flex-col gap-1"
                       aria-label="Character editor sections"
@@ -1708,7 +1614,7 @@ export function CharacterEditor({
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
-                            className="items-center gap-2 py-2"
+                            className="items-center gap-2 px-2.5 py-2"
                           >
                             <SidebarContent.ItemTitle
                               className={
@@ -1726,7 +1632,7 @@ export function CharacterEditor({
                       <SidebarContent.Item
                         as="div"
                         active={activePage === "knowledge"}
-                        className="items-center gap-1 py-2"
+                        className="items-center gap-1 px-2.5 py-2"
                       >
                         <button
                           type="button"
@@ -1842,6 +1748,7 @@ export function CharacterEditor({
             />
             <div
               ref={standaloneScrollRef}
+              data-testid="character-editor-main-scroll"
               className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
             >
               <section
