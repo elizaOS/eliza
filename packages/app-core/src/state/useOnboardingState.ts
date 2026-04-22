@@ -14,6 +14,7 @@ import {
   activeServerKindToOnboardingServerTarget,
   type OnboardingServerTarget,
 } from "../onboarding/server-target";
+import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,
@@ -165,8 +166,12 @@ function loadInitialServerSelection(): Pick<
   }
 
   if (activeServer.kind === "cloud") {
+    const serverTarget =
+      readPersistedMobileRuntimeMode() === "cloud-hybrid"
+        ? "elizacloud-hybrid"
+        : activeServerKindToOnboardingServerTarget(activeServer.kind);
     return {
-      serverTarget: activeServerKindToOnboardingServerTarget(activeServer.kind),
+      serverTarget,
       remote: {
         status: "idle",
         error: null,
@@ -192,7 +197,9 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
   const defaultStyle = getDefaultStylePreset();
   const initialServer = loadInitialServerSelection();
   const initialServerTarget = cloudOnly
-    ? "elizacloud"
+    ? readPersistedMobileRuntimeMode() === "cloud-hybrid"
+      ? "elizacloud-hybrid"
+      : "elizacloud"
     : initialServer.serverTarget;
 
   const persistedStep = loadPersistedOnboardingStep();

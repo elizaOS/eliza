@@ -1,5 +1,6 @@
 import { Button, cn } from "@elizaos/app-core";
 import { useCallback, useMemo } from "react";
+import { isElizaCloudOnboardingTarget } from "../../onboarding/server-target";
 import { useApp } from "../../state";
 import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";
 import { onboardingReadableTextMutedClassName } from "./onboarding-form-primitives";
@@ -134,7 +135,7 @@ export function FeaturesStep() {
   } = useApp();
 
   const hasCloud =
-    elizaCloudConnected || onboardingServerTarget === "elizacloud";
+    elizaCloudConnected || isElizaCloudOnboardingTarget(onboardingServerTarget);
 
   const enabledMap: Record<string, boolean> = useMemo(
     () => ({

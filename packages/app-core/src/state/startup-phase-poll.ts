@@ -15,6 +15,7 @@ import {
   scanProviderCredentials,
 } from "../bridge";
 import type { UiLanguage } from "../i18n";
+import type { OnboardingServerTarget } from "../onboarding/server-target";
 import {
   asApiLikeError,
   clearPersistedOnboardingStep,
@@ -38,9 +39,7 @@ export interface PollingBackendDeps {
   setOnboardingLoading: (v: boolean) => void;
   setOnboardingOptions: (v: OnboardingOptions) => void;
   setOnboardingStep: (v: OnboardingStep) => void;
-  setOnboardingServerTarget: (
-    v: "" | "local" | "remote" | "elizacloud",
-  ) => void;
+  setOnboardingServerTarget: (v: OnboardingServerTarget) => void;
   setOnboardingCloudApiKey: (v: string) => void;
   setOnboardingProvider: (v: string) => void;
   setOnboardingVoiceProvider: (v: string) => void;

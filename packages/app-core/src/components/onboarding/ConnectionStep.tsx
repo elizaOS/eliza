@@ -10,6 +10,7 @@ import {
   type ConnectionStatePatch,
   resolveConnectionUiSpec,
 } from "../../onboarding/connection-flow";
+import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { isNative } from "../../platform/init";
 import { useApp } from "../../state";
 import type { AppState } from "../../state/types";
@@ -275,6 +276,11 @@ export function ConnectionStep() {
         }
         return;
       }
+      if (result.patch.onboardingServerTarget !== undefined) {
+        persistMobileRuntimeModeForServerTarget(
+          result.patch.onboardingServerTarget,
+        );
+      }
       applyOnboardingPatch(result.patch, setState);
     },
     [connectionSnapshot, handleOnboardingUseLocalBackend, setState],
@@ -297,6 +303,11 @@ export function ConnectionStep() {
       type: "forceCloudBootstrap",
     });
     if (result?.kind === "patch") {
+      if (result.patch.onboardingServerTarget !== undefined) {
+        persistMobileRuntimeModeForServerTarget(
+          result.patch.onboardingServerTarget,
+        );
+      }
       applyOnboardingPatch(result.patch, setState);
     }
   }, [

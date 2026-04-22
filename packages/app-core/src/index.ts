@@ -46,6 +46,8 @@ export * from "./i18n/index";
 export * from "./navigation/index";
 export * from "./onboarding/connection-flow";
 export * from "./onboarding/flow";
+export * from "./onboarding/mobile-runtime-mode";
+export * from "./onboarding/server-target";
 export * from "./onboarding/types";
 export * from "./platform/index";
 export { CHANNEL_PLUGIN_MAP } from "./runtime/channel-plugin-map";

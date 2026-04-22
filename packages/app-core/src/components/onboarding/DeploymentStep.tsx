@@ -10,6 +10,8 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
+import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import type { OnboardingServerTarget } from "../../onboarding/server-target";
 import { isDesktopPlatform } from "../../platform/init";
 import {
   addAgentProfile,
@@ -33,6 +35,10 @@ export function shouldShowLocalDeploymentOption(args: {
 }
 
 type SubView = "chooser" | "cloud" | "remote";
+type CloudDeploymentTarget = Extract<
+  OnboardingServerTarget,
+  "elizacloud" | "elizacloud-hybrid"
+>;
 
 type CloudStage =
   | "login"
@@ -74,6 +80,8 @@ export function DeploymentStep() {
   } = useApp();
 
   const [subView, setSubView] = useState<SubView>("chooser");
+  const [cloudTarget, setCloudTarget] =
+    useState<CloudDeploymentTarget>("elizacloud");
   const [_discoveryLoading, setDiscoveryLoading] = useState(false);
   const [discoveredGateways, setDiscoveredGateways] = useState<
     GatewayDiscoveryEndpoint[]
@@ -166,6 +174,7 @@ export function DeploymentStep() {
     client.setBaseUrl(null);
     client.setToken(null);
     clearPersistedActiveServer();
+    persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
     // Dispatch SPLASH_CONTINUE to start the local agent runtime
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
@@ -188,6 +197,7 @@ export function DeploymentStep() {
         label: gateway.name,
         apiBase,
       });
+      persistMobileRuntimeModeForServerTarget("remote");
       setState("onboardingServerTarget", "remote");
       startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
       handleOnboardingNext();
@@ -196,6 +206,17 @@ export function DeploymentStep() {
   );
 
   // ── Handlers: cloud ────────────────────────────────────────────────
+
+  const handleOpenCloud = useCallback((target: CloudDeploymentTarget) => {
+    setCloudTarget(target);
+    persistMobileRuntimeModeForServerTarget(target);
+    setSubView("cloud");
+  }, []);
+
+  const handleOpenRemote = useCallback(() => {
+    persistMobileRuntimeModeForServerTarget("remote");
+    setSubView("remote");
+  }, []);
 
   const handleLogin = useCallback(async () => {
     setError(null);
@@ -223,11 +244,12 @@ export function DeploymentStep() {
       if (apiBase) {
         client.setBaseUrl(apiBase);
       }
-      setState("onboardingServerTarget", "elizacloud");
+      persistMobileRuntimeModeForServerTarget(cloudTarget);
+      setState("onboardingServerTarget", cloudTarget);
       startupCoordinator.dispatch({ type: "SPLASH_CLOUD_SKIP" });
       handleOnboardingNext();
     },
-    [setState, startupCoordinator, handleOnboardingNext],
+    [cloudTarget, setState, startupCoordinator, handleOnboardingNext],
   );
 
   const handleCreate = useCallback(async () => {
@@ -332,6 +354,7 @@ export function DeploymentStep() {
       label: url,
       apiBase: url,
     });
+    persistMobileRuntimeModeForServerTarget("remote");
     setState("onboardingServerTarget", "remote");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
     handleOnboardingNext();
@@ -431,7 +454,7 @@ export function DeploymentStep() {
           <button
             type="button"
             className={cardDefault}
-            onClick={() => setSubView("cloud")}
+            onClick={() => handleOpenCloud("elizacloud")}
           >
             <span
               style={{ fontFamily: MONO_FONT }}
@@ -443,12 +466,38 @@ export function DeploymentStep() {
             </span>
             <span className="text-sm font-bold text-white/95">
               {t("startupshell.ManageCloudAgents", {
-                defaultValue: "Manage Cloud Agents",
+                defaultValue: "Run in Eliza Cloud",
               })}
             </span>
             <span className="text-xs-tight leading-snug text-white/60">
               {t("startupshell.ManageCloudAgentsDesc", {
-                defaultValue: "Host agents on Eliza Cloud infrastructure",
+                defaultValue: "Host the agent on Eliza Cloud infrastructure",
+              })}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={cardDefault}
+            onClick={() => handleOpenCloud("elizacloud-hybrid")}
+          >
+            <span
+              style={{ fontFamily: MONO_FONT }}
+              className="text-3xs uppercase text-white/60"
+            >
+              {t("startupshell.ElizaCloudHybridAgent", {
+                defaultValue: "Cloud + phone compute",
+              })}
+            </span>
+            <span className="text-sm font-bold text-white/95">
+              {t("startupshell.RunCloudHybridAgent", {
+                defaultValue: "Run in Cloud + Use This Phone",
+              })}
+            </span>
+            <span className="text-xs-tight leading-snug text-white/60">
+              {t("startupshell.RunCloudHybridAgentDesc", {
+                defaultValue:
+                  "Run the agent in Eliza Cloud and allow eligible local model work to use this device",
               })}
             </span>
           </button>
@@ -457,24 +506,25 @@ export function DeploymentStep() {
           <button
             type="button"
             className={cardDefault}
-            onClick={() => setSubView("remote")}
+            onClick={handleOpenRemote}
           >
             <span
               style={{ fontFamily: MONO_FONT }}
               className="text-3xs uppercase text-white/60"
             >
-              {t("startupshell.RemoteAgentLabel", {
-                defaultValue: "Existing server",
+              {t("startupshell.RemoteMacAgentLabel", {
+                defaultValue: "Remote Mac",
               })}
             </span>
             <span className="text-sm font-bold text-white/95">
               {t("startupshell.ConnectToRemote", {
-                defaultValue: "Connect to Remote Agent",
+                defaultValue: "Connect to Your Mac",
               })}
             </span>
             <span className="text-xs-tight leading-snug text-white/60">
               {t("startupshell.ConnectToRemoteDesc", {
-                defaultValue: "Connect to a server running on your network",
+                defaultValue:
+                  "Build to this phone and use the agent running on your Mac",
               })}
             </span>
           </button>

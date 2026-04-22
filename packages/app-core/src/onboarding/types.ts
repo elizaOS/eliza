@@ -53,6 +53,7 @@ export type ConnectionEvent =
   | { type: "selectLocalHosting" }
   | { type: "selectRemoteHosting" }
   | { type: "selectElizaCloudHosting" }
+  | { type: "selectElizaCloudHybridHosting" }
   /** Remote form or provider grid footer: use local backend if already connected, else reset hosting */
   | { type: "backRemoteOrGrid" }
   /** Eliza Cloud (pre-provider) panel footer back */

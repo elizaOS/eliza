@@ -43,6 +43,8 @@ export * from "./i18n/index.ts";
 export * from "./navigation/index.ts";
 export * from "./onboarding/connection-flow.ts";
 export * from "./onboarding/flow.ts";
+export * from "./onboarding/mobile-runtime-mode.ts";
+export * from "./onboarding/server-target.ts";
 export * from "./onboarding/types.ts";
 export * from "./platform/index.ts";
 export * from "./security/agent-vault-id.ts";

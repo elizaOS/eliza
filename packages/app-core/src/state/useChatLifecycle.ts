@@ -15,6 +15,7 @@ import type {
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
+import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
 import { alertDesktopMessage, confirmDesktopAction } from "../utils";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
@@ -613,6 +614,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setPostOnboardingChecklistDismissed(false);
           setOnboardingName(defaultOnboardingStyle.name);
           setOnboardingStyle(defaultOnboardingStyle.id);
+          persistMobileRuntimeModeForServerTarget("");
           setOnboardingServerTarget("");
           setOnboardingProvider("");
           setOnboardingApiKey("");

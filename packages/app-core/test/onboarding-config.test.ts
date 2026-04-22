@@ -29,4 +29,27 @@ describe("buildOnboardingRuntimeConfig", () => {
       llmApiKey: "gsk_test_valid_for_groq",
     });
   });
+
+  it("treats cloud-hybrid as a cloud deployment target", () => {
+    const runtimeConfig = buildOnboardingRuntimeConfig({
+      onboardingServerTarget: "elizacloud-hybrid",
+      onboardingCloudApiKey: "",
+      onboardingProvider: "elizacloud",
+      onboardingApiKey: "",
+      onboardingVoiceProvider: "",
+      onboardingVoiceApiKey: "",
+      onboardingPrimaryModel: "",
+      onboardingOpenRouterModel: "",
+      onboardingRemoteConnected: false,
+      onboardingRemoteApiBase: "",
+      onboardingRemoteToken: "",
+      onboardingSmallModel: "minimax/minimax-m2.7",
+      onboardingLargeModel: "anthropic/claude-sonnet-4.6",
+    });
+
+    expect(runtimeConfig.deploymentTarget).toEqual({
+      runtime: "cloud",
+      provider: "elizacloud",
+    });
+  });
 });

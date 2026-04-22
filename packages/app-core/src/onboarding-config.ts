@@ -14,7 +14,10 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "@elizaos/shared/contracts/service-routing";
-import type { OnboardingServerTarget } from "./onboarding/server-target";
+import {
+  isElizaCloudOnboardingTarget,
+  type OnboardingServerTarget,
+} from "./onboarding/server-target";
 
 export interface BuildOnboardingConnectionArgs {
   onboardingServerTarget?: OnboardingServerTarget;
@@ -105,6 +108,7 @@ export function buildOnboardingRuntimeConfig(
   const serverTarget = resolveArgsServerTarget(args);
   const persistRuntimeOnConnectedRemote =
     serverTarget === "remote" && args.onboardingRemoteConnected;
+  const useElizaCloudRuntime = isElizaCloudOnboardingTarget(serverTarget);
   const nanoModel = trimToUndefined(args.onboardingNanoModel);
   const smallModel = trimToUndefined(args.onboardingSmallModel);
   const mediumModel = trimToUndefined(args.onboardingMediumModel);
@@ -152,7 +156,7 @@ export function buildOnboardingRuntimeConfig(
                 }
               : {}),
           }
-        : serverTarget === "elizacloud" && !args.onboardingRemoteConnected
+        : useElizaCloudRuntime && !args.onboardingRemoteConnected
           ? {
               runtime: "cloud",
               provider: "elizacloud",

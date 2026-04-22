@@ -47,6 +47,8 @@ import {
   shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../onboarding/flow";
+import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
+import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
 import { buildOnboardingRuntimeConfig } from "../onboarding-config";
 import { PREMADE_VOICES } from "../voice/types";
 import { buildWalletRpcUpdateRequest } from "../wallet-rpc";
@@ -232,7 +234,7 @@ export interface OnboardingCallbacksDeps {
     v: AppState["onboardingDetectedProviders"],
   ) => void;
   setOnboardingServerTarget: (
-    v: "" | "local" | "remote" | "elizacloud",
+    v: AppState["onboardingServerTarget"],
   ) => void;
   setOnboardingCloudApiKey: (v: string) => void;
   setOnboardingProvider: (v: string) => void;
@@ -460,7 +462,9 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           const defaultName =
             style.name ?? getDefaultStylePreset(uiLanguage).name;
           const fastTrackSandboxMode =
-            onboardingServerTarget === "elizacloud" ? "standard" : "off";
+            isElizaCloudOnboardingTarget(onboardingServerTarget)
+              ? "standard"
+              : "off";
 
           await client.submitOnboarding({
             name: onboardingName || defaultName,
@@ -538,7 +542,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           ? style.system.replace(/\{\{name\}\}/g, onboardingName)
           : `You are ${onboardingName}, an autonomous AI agent powered by elizaOS. ${onboardingOptions.sharedStyleRules}`;
 
-        const isSandboxMode = onboardingServerTarget === "elizacloud";
+        const isSandboxMode =
+          isElizaCloudOnboardingTarget(onboardingServerTarget);
         const isLocalMode =
           onboardingServerTarget === "local" || !onboardingServerTarget;
         const isRemoteMode = onboardingServerTarget === "remote";
@@ -569,6 +574,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
           client.setBaseUrl(cloudApiBase);
           client.setToken(authToken);
+          persistMobileRuntimeModeForServerTarget(onboardingServerTarget);
           savePersistedActiveServer(
             createPersistedActiveServer({
               kind: "cloud",
@@ -764,6 +770,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
   const applyResetConnectionWizardToHostingStep = useCallback(() => {
     const patch = getResetConnectionWizardToHostingStepPatch();
     if (patch.onboardingServerTarget !== undefined) {
+      persistMobileRuntimeModeForServerTarget(patch.onboardingServerTarget);
       setOnboardingServerTarget(patch.onboardingServerTarget);
     }
     if (patch.onboardingCloudApiKey !== undefined) {
@@ -912,6 +919,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         applyResetConnectionWizardToHostingStep();
       }
       if (target === "deployment") {
+        persistMobileRuntimeModeForServerTarget("");
         setOnboardingServerTarget("");
       }
       setOnboardingStep(target);
@@ -943,6 +951,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
     setOnboardingRemoteConnected(false);
     setOnboardingRemoteApiBase("");
     setOnboardingRemoteToken("");
+    persistMobileRuntimeModeForServerTarget("");
     setOnboardingServerTarget("");
     setActionNotice(
       "Checking this device for an existing Eliza setup...",
@@ -994,6 +1003,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           ...(accessKey ? { accessToken: accessKey } : {}),
         }),
       );
+      persistMobileRuntimeModeForServerTarget("remote");
       setOnboardingServerTarget("remote");
       setOnboardingRemoteApiBase(normalizedBase);
       setOnboardingRemoteToken(accessKey);

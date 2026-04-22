@@ -1575,6 +1575,8 @@
   "onboarding.getOneHere": "여기서 받기",
   "onboarding.getStarted": "시작하기",
   "onboarding.hostingElizaCloudDesc": "매니지드 호스팅과 24/7 가용성을 위해 Eliza Cloud를 사용합니다.",
+  "onboarding.hostingElizaCloudHybrid": "클라우드 + 휴대폰 컴퓨트",
+  "onboarding.hostingElizaCloudHybridDesc": "Eliza Cloud에서 실행하고 이 기기의 적합한 로컬 모델 작업을 제공합니다.",
   "onboarding.hostingLocal": "로컬",
   "onboarding.hostingLocalDesc": "이 머신에서 백엔드를 실행합니다.",
   "onboarding.hostingQuestion": "{{appName}}을 어디서 실행할까요?",
