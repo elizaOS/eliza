@@ -42,6 +42,8 @@ import {
 import { addMinutes } from "./time.js";
 import type { LifeOpsWorkflowSchedulerState, ExecuteWorkflowResult } from "./service-types.js";
 import { LifeOpsServiceError } from "./service-types.js";
+import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
+import type { LifeOpsDerivedEvent } from "./sleep-wake-events.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -119,6 +121,43 @@ export function matchesCalendarEventEndedFilters(
   return true;
 }
 
+function matchesLifeOpsDerivedEventFilters(
+  event: LifeOpsDerivedEvent,
+  filters: unknown,
+  nowIso: string,
+): boolean {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    return true;
+  }
+  const record = filters as Record<string, unknown>;
+  if (
+    typeof record.minConfidence === "number" &&
+    event.confidence < record.minConfidence
+  ) {
+    return false;
+  }
+  if (typeof record.offsetMinutes === "number") {
+    const dueAtMs =
+      Date.parse(event.occurredAt) + record.offsetMinutes * 60_000;
+    if (Date.parse(nowIso) < dueAtMs) {
+      return false;
+    }
+  }
+  if (
+    event.kind === "lifeops.bedtime.imminent" &&
+    typeof record.minutesBefore === "number"
+  ) {
+    const payloadMinutes = event.payload.minutesUntilBedtimeTarget;
+    if (
+      typeof payloadMinutes !== "number" ||
+      payloadMinutes > record.minutesBefore
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsWorkflowService> {
@@ -139,7 +178,12 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         return null;
       }
       const schedule = workflow.schedule;
-      if (schedule.kind === "manual" || schedule.kind === "event") {
+      if (
+        schedule.kind === "manual" ||
+        schedule.kind === "event" ||
+        schedule.kind === "relative_to_wake" ||
+        schedule.kind === "relative_to_bedtime"
+      ) {
         return null;
       }
       if (schedule.kind === "once") {
@@ -267,6 +311,27 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
             updatedAt: new Date().toISOString(),
           } satisfies LifeOpsWorkflowSchedulerState);
         let stateChanged = existingSchedulerState === null;
+        if (
+          schedulerState.nextDueAt === null &&
+          (nextWorkflow.schedule.kind === "relative_to_wake" ||
+            nextWorkflow.schedule.kind === "relative_to_bedtime")
+        ) {
+          const effectiveSchedule = await this.readEffectiveScheduleState({
+            timezone: nextWorkflow.schedule.timezone,
+            now: new Date(args.now),
+          });
+          schedulerState = {
+            ...schedulerState,
+            nextDueAt: resolveNextRelativeScheduleInstant({
+              schedule: nextWorkflow.schedule,
+              state: effectiveSchedule,
+              cursorIso: schedulerState.lastDueAt,
+              nowMs: Date.parse(args.now),
+            }),
+            updatedAt: new Date().toISOString(),
+          };
+          stateChanged = true;
+        }
 
         while (
           runs.length < args.limit &&
@@ -286,9 +351,22 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
           );
           runs.push(run);
           await this.emitWorkflowRunNudge(nextWorkflow, run);
+          const nextDueAt =
+            nextWorkflow.schedule.kind === "relative_to_wake" ||
+            nextWorkflow.schedule.kind === "relative_to_bedtime"
+              ? resolveNextRelativeScheduleInstant({
+                  schedule: nextWorkflow.schedule,
+                  state: await this.readEffectiveScheduleState({
+                    timezone: nextWorkflow.schedule.timezone,
+                    now: new Date(args.now),
+                  }),
+                  cursorIso: dueAt,
+                  nowMs: Date.parse(args.now),
+                })
+              : this.computeWorkflowNextDueAt(nextWorkflow, dueAt);
           schedulerState = {
             managedBy: "task_worker",
-            nextDueAt: this.computeWorkflowNextDueAt(nextWorkflow, dueAt),
+            nextDueAt,
             lastDueAt: dueAt,
             lastRunId: run.id,
             lastRunStatus: run.status,
@@ -325,6 +403,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
     public async runDueEventWorkflows(args: {
       now: string;
       limit: number;
+      lifeOpsEvents?: LifeOpsDerivedEvent[];
     }): Promise<LifeOpsWorkflowRun[]> {
       const workflows = await this.repository.listWorkflows(this.agentId());
       const runs: LifeOpsWorkflowRun[] = [];
@@ -340,10 +419,6 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
-        if (workflow.schedule.eventKind !== "calendar.event.ended") {
-          continue;
-        }
-
         let nextWorkflow = workflow;
         const existingState = this.readWorkflowSchedulerState(nextWorkflow);
         let schedulerState: LifeOpsWorkflowSchedulerState =
@@ -360,77 +435,150 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         let stateChanged = existingState === null;
 
         const remaining = args.limit - runs.length;
-        const candidates =
-          await this.repository.listCalendarEventsEndedAfterCursor({
-            agentId: this.agentId(),
-            provider: "google",
-            side: "owner",
-            cursorEndAt: schedulerState.lastFiredEventEndAt ?? null,
-            cursorEventId: schedulerState.lastFiredEventId ?? null,
-            upToIso: args.now,
-            limit: Math.max(remaining * 4, 8),
-          });
+        if (workflow.schedule.eventKind === "calendar.event.ended") {
+          const candidates =
+            await this.repository.listCalendarEventsEndedAfterCursor({
+              agentId: this.agentId(),
+              provider: "google",
+              side: "owner",
+              cursorEndAt: schedulerState.lastFiredEventEndAt ?? null,
+              cursorEventId: schedulerState.lastFiredEventId ?? null,
+              upToIso: args.now,
+              limit: Math.max(remaining * 4, 8),
+            });
 
-        const filters =
-          workflow.schedule.filters?.kind === "calendar.event.ended"
-            ? workflow.schedule.filters.filters
-            : undefined;
+          const filters =
+            workflow.schedule.filters?.kind === "calendar.event.ended"
+              ? workflow.schedule.filters.filters
+              : undefined;
 
-        for (const event of candidates) {
-          if (runs.length >= args.limit) {
-            break;
-          }
-          if (!matchesCalendarEventEndedFilters(event, filters)) {
-            // Even when skipped we advance the cursor so the workflow never
-            // re-considers this event on the next tick.
+          for (const event of candidates) {
+            if (runs.length >= args.limit) {
+              break;
+            }
+            if (!matchesCalendarEventEndedFilters(event, filters)) {
+              schedulerState = {
+                ...schedulerState,
+                lastFiredEventEndAt: event.endAt,
+                lastFiredEventId: event.id,
+                updatedAt: new Date().toISOString(),
+              };
+              stateChanged = true;
+              continue;
+            }
+            const { run, error } = await this.executeWorkflowDefinition(
+              nextWorkflow,
+              {
+                startedAt: event.endAt,
+                confirmBrowserActions: false,
+                request: {
+                  scheduledExecution: false,
+                  event: {
+                    kind: "calendar.event.ended",
+                    eventId: event.id,
+                    calendarId: event.calendarId,
+                    title: event.title,
+                    startAt: event.startAt,
+                    endAt: event.endAt,
+                    htmlLink: event.htmlLink,
+                  },
+                },
+              },
+            );
+            runs.push(run);
+            await this.emitWorkflowRunNudge(nextWorkflow, run);
             schedulerState = {
               ...schedulerState,
+              lastDueAt: event.endAt,
+              lastRunId: run.id,
+              lastRunStatus: run.status,
               lastFiredEventEndAt: event.endAt,
               lastFiredEventId: event.id,
               updatedAt: new Date().toISOString(),
             };
             stateChanged = true;
-            continue;
+
+            if (error) {
+              this.logLifeOpsError("workflow_event_execution", error, {
+                workflowId: nextWorkflow.id,
+                workflowRunId: run.id,
+                eventId: event.id,
+                eventEndAt: event.endAt,
+              });
+            }
           }
-          const { run, error } = await this.executeWorkflowDefinition(
-            nextWorkflow,
-            {
-              startedAt: event.endAt,
-              confirmBrowserActions: false,
-              request: {
-                scheduledExecution: false,
-                event: {
-                  kind: "calendar.event.ended",
-                  eventId: event.id,
-                  calendarId: event.calendarId,
-                  title: event.title,
-                  startAt: event.startAt,
-                  endAt: event.endAt,
-                  htmlLink: event.htmlLink,
+        } else {
+          const candidates = (args.lifeOpsEvents ?? [])
+            .filter((event) => event.kind === workflow.schedule.eventKind)
+            .filter((event) => {
+              if (!schedulerState.lastFiredEventEndAt) {
+                return true;
+              }
+              if (event.occurredAt > schedulerState.lastFiredEventEndAt) {
+                return true;
+              }
+              return (
+                event.occurredAt === schedulerState.lastFiredEventEndAt &&
+                event.id !== schedulerState.lastFiredEventId
+              );
+            })
+            .slice(0, Math.max(remaining * 4, 8));
+
+          const filters =
+            workflow.schedule.filters?.kind === workflow.schedule.eventKind
+              ? workflow.schedule.filters.filters
+              : undefined;
+
+          for (const event of candidates) {
+            if (runs.length >= args.limit) {
+              break;
+            }
+            if (!matchesLifeOpsDerivedEventFilters(event, filters, args.now)) {
+              schedulerState = {
+                ...schedulerState,
+                updatedAt: new Date().toISOString(),
+              };
+              stateChanged = true;
+              continue;
+            }
+            const { run, error } = await this.executeWorkflowDefinition(
+              nextWorkflow,
+              {
+                startedAt: event.occurredAt,
+                confirmBrowserActions: false,
+                request: {
+                  scheduledExecution: false,
+                  event: {
+                    kind: event.kind,
+                    eventId: event.id,
+                    occurredAt: event.occurredAt,
+                    confidence: event.confidence,
+                    payload: event.payload,
+                  },
                 },
               },
-            },
-          );
-          runs.push(run);
-          await this.emitWorkflowRunNudge(nextWorkflow, run);
-          schedulerState = {
-            ...schedulerState,
-            lastDueAt: event.endAt,
-            lastRunId: run.id,
-            lastRunStatus: run.status,
-            lastFiredEventEndAt: event.endAt,
-            lastFiredEventId: event.id,
-            updatedAt: new Date().toISOString(),
-          };
-          stateChanged = true;
+            );
+            runs.push(run);
+            await this.emitWorkflowRunNudge(nextWorkflow, run);
+            schedulerState = {
+              ...schedulerState,
+              lastDueAt: event.occurredAt,
+              lastRunId: run.id,
+              lastRunStatus: run.status,
+              lastFiredEventEndAt: event.occurredAt,
+              lastFiredEventId: event.id,
+              updatedAt: new Date().toISOString(),
+            };
+            stateChanged = true;
 
-          if (error) {
-            this.logLifeOpsError("workflow_event_execution", error, {
-              workflowId: nextWorkflow.id,
-              workflowRunId: run.id,
-              eventId: event.id,
-              eventEndAt: event.endAt,
-            });
+            if (error) {
+              this.logLifeOpsError("workflow_event_execution", error, {
+                workflowId: nextWorkflow.id,
+                workflowRunId: run.id,
+                eventId: event.id,
+                eventEndAt: event.occurredAt,
+              });
+            }
           }
         }
 

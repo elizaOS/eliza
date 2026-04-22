@@ -53,6 +53,7 @@ import {
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
+import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -259,6 +260,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     BrowserBridgePluginService,
     WebsiteBlockerService,
     ActivityTrackerService,
+    PresenceSignalBridgeService,
   ],
   init: async (
     pluginConfig: Record<string, unknown>,

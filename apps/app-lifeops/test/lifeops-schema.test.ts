@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  lifeSleepEpisodes,
   lifeopsFeaturesTable,
   lifeOpsSchema,
   lifeScheduleMergedStates,
@@ -27,5 +28,6 @@ describe("life-ops plugin schema ownership", () => {
     expect(lifeOpsSchema.lifeScheduleMergedStates).toBe(
       lifeScheduleMergedStates,
     );
+    expect(lifeOpsSchema.lifeSleepEpisodes).toBe(lifeSleepEpisodes);
   });
 });

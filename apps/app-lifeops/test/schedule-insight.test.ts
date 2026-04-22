@@ -53,8 +53,10 @@ describe("lifeops schedule insight inference", () => {
     expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
     expect(insight.relativeTime.minutesSinceWake).toBe(330);
     expect(insight.regularity.regularityClass).toBe("insufficient_data");
-    expect(insight.relativeTime.bedtimeTargetAt).toBeNull();
-    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBeNull();
+    expect(insight.relativeTime.bedtimeTargetAt).toBe(
+      "2026-04-19T23:30:00.000Z",
+    );
+    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBe(630);
     expect(insight.relativeTime.minutesSinceBedtimeTarget).toBeNull();
     expect(insight.nextMealLabel).toBe("lunch");
   });

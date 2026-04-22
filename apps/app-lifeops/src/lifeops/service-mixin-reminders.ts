@@ -73,6 +73,10 @@ import {
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
 import {
+  deriveSleepWakeEvents,
+  type LifeOpsDerivedEvent,
+} from "./sleep-wake-events.js";
+import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
   mergeScheduleObservations,
@@ -306,6 +310,7 @@ type ScheduledWorkflowRunner = {
   runDueEventWorkflows(args: {
     now: string;
     limit: number;
+    lifeOpsEvents?: LifeOpsDerivedEvent[];
   }): Promise<LifeOpsWorkflowRun[]>;
 };
 
@@ -4071,6 +4076,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           ? DEFAULT_WORKFLOW_PROCESS_LIMIT
           : normalizePositiveInteger(request.workflowLimit, "workflowLimit");
       await this.syncWebsiteAccessState(now);
+      const previousSchedule = await this.readEffectiveScheduleState({ now });
+      const currentSchedule = await this.refreshEffectiveScheduleState({ now });
+      const lifeOpsEvents =
+        currentSchedule === null
+          ? []
+          : deriveSleepWakeEvents({
+              previous: previousSchedule,
+              current: currentSchedule,
+              now,
+            });
+      for (const event of lifeOpsEvents) {
+        await this.runtime.emitEvent(event.kind, {
+          occurredAt: event.occurredAt,
+          confidence: event.confidence,
+          payload: event.payload,
+        });
+      }
       const reminderResult = await this.processReminders({
         now: now.toISOString(),
         limit: reminderLimit,
@@ -4083,6 +4105,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       const eventWorkflowRuns = await workflowRunner.runDueEventWorkflows({
         now: now.toISOString(),
         limit: workflowLimit,
+        lifeOpsEvents,
       });
       return {
         now: now.toISOString(),
