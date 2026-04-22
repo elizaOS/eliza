@@ -13,11 +13,11 @@ import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
 import { useApp } from "../../state";
-import { getBrandIcon } from "../conversations/brand-icons";
 import {
   ConnectorSetupPanel,
   hasConnectorSetupPanel,
 } from "../connectors/ConnectorSetupPanel";
+import { getBrandIcon } from "../conversations/brand-icons";
 import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,
@@ -457,22 +457,16 @@ function ConnectorPluginCard({
       >
         <StatusIcon className="h-5 w-5" aria-hidden="true" />
       </span>
-      <span
+      <Switch
+        checked={plugin.enabled}
+        disabled={toggleDisabled}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
-        className={`inline-flex items-center ${
-          toggleDisabled ? "cursor-not-allowed opacity-60" : ""
-        }`}
-      >
-        <Switch
-          checked={plugin.enabled}
-          disabled={toggleDisabled}
-          onCheckedChange={(checked) => {
-            void handleTogglePlugin(plugin.id, checked);
-          }}
-          aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
-        />
-      </span>
+        onCheckedChange={(checked) => {
+          void handleTogglePlugin(plugin.id, checked);
+        }}
+        aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+      />
       <Button
         variant="ghost"
         size="icon"

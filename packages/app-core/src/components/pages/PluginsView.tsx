@@ -68,7 +68,6 @@ function PluginListView({
   contentHeader,
   mode = "all",
   inModal,
-  connectorDesktopPlacement = "left",
 }: PluginListViewProps) {
   const {
     plugins = [],
@@ -1152,7 +1151,6 @@ function PluginListView({
         onSearchClear={() => setState("pluginSearch", "")}
         onSubgroupFilterChange={(value: string) => setSubgroupFilter(value)}
         onTogglePlugin={handleTogglePlugin}
-        pluginDescriptionFallback={pluginDescriptionFallback}
         pluginSearch={pluginSearch}
         registerConnectorRailItem={registerConnectorRailItem}
         registerConnectorSidebarItem={registerConnectorSidebarItem}
