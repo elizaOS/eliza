@@ -582,7 +582,7 @@ export function AppsView() {
       data-testid="apps-shell"
       sidebar={appsSidebar}
       contentInnerClassName="w-full"
-      contentClassName="scrollbar-hide [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
     >
       <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
         {hasActiveRun ? (
