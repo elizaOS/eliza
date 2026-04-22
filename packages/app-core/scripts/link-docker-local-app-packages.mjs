@@ -49,7 +49,10 @@ function resolveSourceExportPath(packageDir, exportPath) {
 function rewriteDistExportsToSource(packageDir, pkg) {
   let changed = false;
 
-  function rewrite(value) {
+  function rewrite(value, key = "") {
+    if (key === "types") {
+      return value;
+    }
     if (typeof value === "string") {
       const next = resolveSourceExportPath(packageDir, value);
       changed ||= next !== value;
@@ -60,7 +63,10 @@ function rewriteDistExportsToSource(packageDir, pkg) {
     }
     if (value && typeof value === "object") {
       return Object.fromEntries(
-        Object.entries(value).map(([key, entry]) => [key, rewrite(entry)]),
+        Object.entries(value).map(([entryKey, entry]) => [
+          entryKey,
+          rewrite(entry, entryKey),
+        ]),
       );
     }
     return value;
@@ -69,7 +75,7 @@ function rewriteDistExportsToSource(packageDir, pkg) {
   const nextPkg = { ...pkg };
   nextPkg.main = rewrite(pkg.main);
   nextPkg.module = rewrite(pkg.module);
-  nextPkg.types = rewrite(pkg.types);
+  nextPkg.types = pkg.types;
   nextPkg.exports = rewrite(pkg.exports);
 
   return { changed, pkg: changed ? nextPkg : pkg };
