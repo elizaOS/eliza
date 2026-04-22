@@ -207,7 +207,7 @@ export const pageScopedContextProvider: Provider = {
   name: "page-scoped-context",
   description:
     "Operational context for the current page-scoped chat (Browser, Character, Apps, Automations, Wallet).",
-  dynamic: true,
+  dynamic: false,
   position: 5,
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {

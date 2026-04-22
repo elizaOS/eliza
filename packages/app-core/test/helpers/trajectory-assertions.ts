@@ -43,6 +43,16 @@ function parseRowMetadata(value: unknown): TrajectoryRowMetaShape {
   return {};
 }
 
+function readRowMetadata(row: Record<string, unknown>): unknown {
+  return (
+    row.metadata_json ??
+    row.metadataJson ??
+    row.metadataJSON ??
+    row.METADATA_JSON ??
+    row.metadata
+  );
+}
+
 async function settleTrajectories(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
 }
@@ -60,7 +70,7 @@ export async function loadLatestTrajectoryForScope(
   while (true) {
     const rows = (await loadPersistedTrajectoryRows(runtime, 200)) ?? [];
     for (const row of rows) {
-      const meta = parseRowMetadata(row.metadata);
+      const meta = parseRowMetadata(readRowMetadata(row));
       if (meta.webConversation?.scope !== scope) continue;
       const id = String(row.id ?? "");
       if (!id) continue;
