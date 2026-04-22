@@ -65,9 +65,9 @@ function TruncatingConversationTitle({
                 ? "text-txt text-shadow-glow"
                 : "text-white/90 group-hover:text-white"
             }`
-          : `block min-w-0 max-w-full flex-1 truncate text-left text-sm leading-snug transition-colors ${
+          : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-normal leading-snug transition-colors ${
               isActive
-                ? "font-semibold text-txt"
+                ? "text-txt"
                 : "text-[color:color-mix(in_srgb,var(--text-strong)_80%,var(--text)_20%)] group-hover:text-txt"
             }`
       }
