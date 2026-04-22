@@ -462,12 +462,14 @@ export async function fetchGoogleGmailSearchMessages(args: {
   selfEmail?: string | null;
   maxResults?: number;
   query: string;
+  includeSpamTrash?: boolean;
 }): Promise<SyncedGoogleGmailMessageSummary[]> {
   return fetchGoogleGmailMessages({
     accessToken: args.accessToken,
     selfEmail: args.selfEmail ?? null,
     maxResults: args.maxResults,
     query: args.query,
+    includeSpamTrash: args.includeSpamTrash,
   });
 }
 
@@ -555,12 +557,13 @@ async function fetchGoogleGmailMessages(args: {
   maxResults?: number;
   query?: string;
   labelIds?: string[];
+  includeSpamTrash?: boolean;
 }): Promise<SyncedGoogleGmailMessageSummary[]> {
   const maxResults =
     args.maxResults && args.maxResults > 0 ? Math.min(args.maxResults, 50) : 20;
   const listParams = new URLSearchParams({
     maxResults: String(maxResults),
-    includeSpamTrash: "false",
+    includeSpamTrash: args.includeSpamTrash === true ? "true" : "false",
   });
   for (const labelId of args.labelIds ?? []) {
     listParams.append("labelIds", labelId);
