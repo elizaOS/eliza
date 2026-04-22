@@ -23,6 +23,14 @@ interface AppsSidebarProps {
   /** Ordered list of recently launched app names, most-recent first. */
   recentAppNames: readonly string[];
   selectedAppName: string | null;
+  /** Controlled collapsed state. */
+  collapsed?: boolean;
+  onCollapsedChange?: (next: boolean) => void;
+  /** Controlled width in px (expanded only; ignored when collapsed). */
+  width?: number;
+  onWidthChange?: (next: number) => void;
+  minWidth?: number;
+  maxWidth?: number;
   onLaunchApp: (app: RegistryAppInfo) => void;
   onOpenRun: (run: AppRunSummary) => void;
 }
@@ -42,6 +50,12 @@ export function AppsSidebar({
   favoriteAppNames,
   recentAppNames,
   selectedAppName,
+  collapsed,
+  onCollapsedChange,
+  width,
+  onWidthChange,
+  minWidth = 220,
+  maxWidth = 420,
   onLaunchApp,
   onOpenRun,
 }: AppsSidebarProps) {
@@ -140,6 +154,14 @@ export function AppsSidebar({
       className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
       headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
       collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
+      collapsed={collapsed}
+      onCollapsedChange={onCollapsedChange}
+      resizable={typeof width === "number" && Boolean(onWidthChange)}
+      width={width}
+      onWidthChange={onWidthChange}
+      minWidth={minWidth}
+      maxWidth={maxWidth}
+      onCollapseRequest={() => onCollapsedChange?.(true)}
     >
       <SidebarScrollRegion className="px-1 pb-3 pt-1 !overflow-y-scroll [&::-webkit-scrollbar]:!w-2 [&::-webkit-scrollbar-thumb]:!rounded-full [&::-webkit-scrollbar-thumb]:!bg-border/60 hover:[&::-webkit-scrollbar-thumb]:!bg-border/80 [&::-webkit-scrollbar-track]:!bg-transparent">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">

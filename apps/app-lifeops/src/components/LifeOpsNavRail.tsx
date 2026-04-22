@@ -117,7 +117,7 @@ export function LifeOpsNavRail({
         collapseButtonAriaLabel="Collapse LifeOps sidebar"
         expandButtonAriaLabel="Expand LifeOps sidebar"
         header={undefined}
-        className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
+        className="!mt-0 !h-full !w-full !min-w-0 xl:!w-full xl:!min-w-0 !bg-none !bg-transparent !rounded-none !border-0 !shadow-none !backdrop-blur-none !ring-0"
         headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
         collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
         aria-label="LifeOps sections"

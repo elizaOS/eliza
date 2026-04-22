@@ -25,6 +25,7 @@ import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
 import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
 import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
+import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
@@ -943,9 +944,19 @@ function LifeOpsWorkspaceInner() {
       testId="lifeops-shell"
       main={
         <div className="flex h-full min-h-0">
-          <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
+          <LifeOpsResizableSidebar
+            storageKey="lifeops:nav-rail-width"
+            defaultWidth={296}
+            minWidth={220}
+            maxWidth={420}
+            side="right"
+            testId="lifeops-nav-rail-resizable"
+            className="border-r border-border/12"
+          >
+            <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
+          </LifeOpsResizableSidebar>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+            <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
               {mainContent}
             </div>
           </div>
