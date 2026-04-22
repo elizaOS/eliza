@@ -242,6 +242,10 @@ log "Starting container smoke boot"
 "$DOCKER_BIN" run -d \
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
+  -e APP_PORT="$CONTAINER_PORT" \
+  -e MILADY_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_PORT="$CONTAINER_PORT" \
   -e APP_API_BIND=0.0.0.0 \
   -e MILADY_STATE_DIR=/tmp/milady-smoke/state \
   -e ELIZA_STATE_DIR=/tmp/milady-smoke/state \
