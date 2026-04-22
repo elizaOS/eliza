@@ -45,6 +45,8 @@ export interface TelegramDialogLike {
   name?: string;
   title?: string;
   unreadCount?: number;
+  /** Highest outbound message ID that the other party has read */
+  readOutboxMaxId?: number;
   message?: {
     message?: string;
     date?: Date | number | string;
@@ -483,6 +485,16 @@ export async function getTelegramReadReceipts(args: {
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     const dialogs = Array.from(await client.getDialogs({ limit: MAX_RECENT_LIMIT }));
     const entity = await resolveTelegramTarget(client, args.target, dialogs);
+
+    // Find the dialog to get readOutboxMaxId for outbound read status
+    const targetLookup = normalizeLookup(args.target);
+    const targetDialog = dialogs.find((dialog) =>
+      collectDialogAliases(dialog).includes(targetLookup),
+    ) ?? dialogs.find((dialog) =>
+      collectDialogAliases(dialog).some((alias) => alias.includes(targetLookup)),
+    );
+    const readOutboxMaxId = targetDialog?.readOutboxMaxId;
+
     const messages = await client.getMessages(entity, {
       search: "",
       limit: Math.max(requested.size * 2, MAX_RECENT_LIMIT),
@@ -495,11 +507,23 @@ export async function getTelegramReadReceipts(args: {
         continue;
       }
 
+      // For outbound messages, use readOutboxMaxId comparison:
+      // If message.id <= readOutboxMaxId, the recipient has read it
+      const numericMsgId = typeof message.id === "number" ? message.id : null;
+      const isOutbound = message.out === true;
+      const readViaOutbox =
+        isOutbound &&
+        numericMsgId !== null &&
+        typeof readOutboxMaxId === "number" &&
+        numericMsgId <= readOutboxMaxId;
+
+      // Fallback to readCount for group messages or when outbox check unavailable
+      const readViaCount =
+        typeof message.readCount === "number" && message.readCount > 0;
+
       receipts.push({
         messageId,
-        read:
-          message.mentioned === true ||
-          (typeof message.readCount === "number" && message.readCount > 0),
+        read: readViaOutbox || readViaCount,
         readCount:
           typeof message.readCount === "number" && Number.isFinite(message.readCount)
             ? message.readCount
