@@ -21,7 +21,6 @@ export type ContextSignalKey =
   | "lifeops_skip"
   | "lifeops_snooze"
   | "lifeops_update"
-  | "link_entity"
   | "negative"
   | "read_channel"
   | "read_messages"
@@ -89,13 +88,6 @@ const CONTEXT_SIGNAL_SPECS: Record<ContextSignalKey, ContextSignalSpec> = {
     keywordKeys: {
       strong: "contextSignal.gmail.strong",
       weak: "contextSignal.gmail.weak",
-    },
-  },
-  link_entity: {
-    contextLimit: 10,
-    keywordKeys: {
-      strong: "contextSignal.search_entity.strong",
-      weak: "contextSignal.search_entity.weak",
     },
   },
   lifeops: {
