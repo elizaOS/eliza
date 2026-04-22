@@ -57,6 +57,10 @@ const SignalIcon = makeIcon(
   "m9.12.35.27 1.09a10.845 10.845 0 0 0-3.015 1.25l-.578-.96A11.955 11.955 0 0 1 9.12.35Zm5.76 0-.27 1.09a10.845 10.845 0 0 1 3.015 1.25l.581-.96A11.955 11.955 0 0 0 14.88.35ZM2.308 5.819a10.94 10.94 0 0 0-1.25 3.014L-.032 8.56a12.05 12.05 0 0 1 1.379-3.323Zm19.634 2.738a10.87 10.87 0 0 0-1.25-3.014l-.96.578a10.845 10.845 0 0 1 1.249 3.015ZM1.068 14.88a10.81 10.81 0 0 1-.01-5.762l-1.09-.271a11.94 11.94 0 0 0 0 6.304Zm20.652-5.762a10.81 10.81 0 0 1 .01 5.762l1.09.271a11.94 11.94 0 0 0 0-6.304ZM2.888 18.185a10.856 10.856 0 0 1-1.566-2.762l-1.054.372a12.01 12.01 0 0 0 1.734 3.053Zm16.262 2.026a10.945 10.945 0 0 1-2.762 1.566l.371 1.054a12.033 12.033 0 0 0 3.052-1.734ZM5.43 20.747a10.84 10.84 0 0 1-2.23-2.23l-.907.659a11.95 11.95 0 0 0 2.48 2.479Zm12.834-18.26a10.856 10.856 0 0 1 2.762 1.566l.747-.854a12.02 12.02 0 0 0-3.053-1.735zM3.2 5.483a10.84 10.84 0 0 1 2.23-2.23l-.657-.907a11.95 11.95 0 0 0-2.479 2.48ZM8.836 22.706a10.815 10.815 0 0 1-2.948-1.093l-2.323.767a.547.547 0 0 1-.692-.691l.767-2.324a10.91 10.91 0 0 1-1.093-2.947l-1.075.305a11.923 11.923 0 0 0 1.04 2.882l-.793 2.403a1.635 1.635 0 0 0 2.069 2.068l2.403-.793a11.896 11.896 0 0 0 2.882 1.04ZM23.885 17.24l-1.053-.374a10.81 10.81 0 0 1-1.566 2.762l.854.747a11.933 11.933 0 0 0 1.735-3.136Zm-11.879 4.944a10.8 10.8 0 0 1-2.868-.383l-.309 1.074a11.935 11.935 0 0 0 6.354 0l-.309-1.074a10.801 10.801 0 0 1-2.868.383z",
 );
 
+const GoogleChatIcon = makeIcon(
+  "M21 3H3a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h3v4l4.8-4H21a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-13 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z",
+);
+
 const BRAND_ICONS: Record<
   string,
   React.ComponentType<BrandIconProps> | undefined
@@ -72,10 +76,18 @@ const BRAND_ICONS: Record<
   teams: MsTeamsIcon,
   microsoftteams: MsTeamsIcon,
   signal: SignalIcon,
+  googlechat: GoogleChatIcon,
 };
 
+/**
+ * Look up a brand icon by a free-form source string (plugin id, display name,
+ * etc). Normalizes by stripping non-alphanumeric characters so `"google-chat"`,
+ * `"Google Chat"`, and `"googlechat"` all resolve to the same icon.
+ */
 export function getBrandIcon(
   source: string,
 ): React.ComponentType<BrandIconProps> | null {
-  return BRAND_ICONS[source.trim().toLowerCase()] ?? null;
+  const normalized = source.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!normalized) return null;
+  return BRAND_ICONS[normalized] ?? null;
 }
