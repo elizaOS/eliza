@@ -10,7 +10,7 @@ const createBrowserSession = vi.fn(async (request: Record<string, unknown>) => (
   tabId: null,
 }));
 
-vi.mock("@elizaos/agent/security", () => ({
+vi.mock("@elizaos/agent", () => ({
   hasAdminAccess: vi.fn(async () => true),
 }));
 
@@ -28,15 +28,15 @@ vi.mock("./lifeops/service.js", () => ({
   },
 }));
 
-describe("manageLifeOpsBrowserAction", () => {
+describe("manageBrowserBridgeAction", () => {
   beforeEach(() => {
     createBrowserSession.mockClear();
   });
 
   it("returns a structured failure for desktop-only aliases", async () => {
-    const { manageLifeOpsBrowserAction } = await import("./action.js");
+    const { manageBrowserBridgeAction } = await import("./action.js");
 
-    const result = await manageLifeOpsBrowserAction.handler(
+    const result = await manageBrowserBridgeAction.handler(
       {} as never,
       { content: { text: "Open Finder for me." } } as Memory,
       undefined,
@@ -55,9 +55,9 @@ describe("manageLifeOpsBrowserAction", () => {
   });
 
   it("maps start to an open browser session request", async () => {
-    const { manageLifeOpsBrowserAction } = await import("./action.js");
+    const { manageBrowserBridgeAction } = await import("./action.js");
 
-    const result = await manageLifeOpsBrowserAction.handler(
+    const result = await manageBrowserBridgeAction.handler(
       {} as never,
       {
         content: {

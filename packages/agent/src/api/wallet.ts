@@ -9,9 +9,8 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { logger } from "@elizaos/core";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
 import type {
@@ -488,11 +487,6 @@ export function importWallet(
 
 export const STEWARD_EVM_ADDRESS_ENV_KEY = "STEWARD_EVM_ADDRESS";
 export const STEWARD_SOLANA_ADDRESS_ENV_KEY = "STEWARD_SOLANA_ADDRESS";
-const STEWARD_CREDENTIALS_PATH = path.join(
-  os.homedir(),
-  ".eliza",
-  "steward-credentials.json",
-);
 
 type PersistedStewardCredentials = {
   apiUrl?: string;
@@ -517,12 +511,13 @@ function readPersistedStewardCredentials(): {
   apiKey: string | null;
   agentToken: string | null;
 } | null {
+  const credentialsPath = resolveStewardCredentialsPath();
   try {
-    if (!fs.existsSync(STEWARD_CREDENTIALS_PATH)) {
+    if (!fs.existsSync(credentialsPath)) {
       return null;
     }
     const parsed = JSON.parse(
-      fs.readFileSync(STEWARD_CREDENTIALS_PATH, "utf8"),
+      fs.readFileSync(credentialsPath, "utf8"),
     ) as PersistedStewardCredentials;
     return {
       apiUrl: normalizeOptionalString(parsed.apiUrl),

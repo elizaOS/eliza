@@ -1,5 +1,12 @@
 import { Button, PagePanel } from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import type {
   KnowledgeDocument,
@@ -19,6 +26,7 @@ import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
   isSupportedKnowledgeFile,
+  KNOWLEDGE_UPLOAD_ACCEPT,
   type KnowledgeUploadFile,
   type KnowledgeUploadOptions,
   LARGE_FILE_WARNING_BYTES,
@@ -140,11 +148,21 @@ function DocumentListItem({
 /* ── Main KnowledgeView Component ───────────────────────────────────── */
 
 export function KnowledgeView({
+  fileInputId,
   inModal,
-  embedded: _embedded,
+  embedded = false,
+  onDocumentsChange,
+  onSelectedDocumentIdChange,
+  selectedDocumentId,
+  showSelectorRail,
 }: {
+  fileInputId?: string;
   inModal?: boolean;
   embedded?: boolean;
+  onDocumentsChange?: (documents: KnowledgeDocument[]) => void;
+  onSelectedDocumentIdChange?: (documentId: string | null) => void;
+  selectedDocumentId?: string | null;
+  showSelectorRail?: boolean;
 } = {}) {
   const { t } = useApp();
   const { setActionNotice } = useApp();
@@ -164,10 +182,23 @@ export function KnowledgeView({
   } | null>(null);
   const [searching, setSearching] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [internalSelectedDocId, setInternalSelectedDocId] = useState<
+    string | null
+  >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
+  const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
+  const setSelectedDocId = useCallback(
+    (documentId: string | null) => {
+      if (selectedDocumentId === undefined) {
+        setInternalSelectedDocId(documentId);
+      }
+      onSelectedDocumentIdChange?.(documentId);
+    },
+    [onSelectedDocumentIdChange, selectedDocumentId],
+  );
+  const shouldShowSelectorRail = showSelectorRail ?? !embedded;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -175,6 +206,7 @@ export function KnowledgeView({
     try {
       const docsRes = await client.listKnowledgeDocuments({ limit: 100 });
       setDocuments(docsRes.documents);
+      onDocumentsChange?.(docsRes.documents);
       setIsServiceLoading(false);
       serviceRetryRef.current = 0;
     } catch (err) {
@@ -195,7 +227,7 @@ export function KnowledgeView({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [onDocumentsChange, t]);
 
   useEffect(() => {
     loadData().catch((err) => {
@@ -610,6 +642,19 @@ export function KnowledgeView({
     [loadData, setActionNotice, t],
   );
 
+  const handleExternalFileInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files && files.length > 0 && !uploading) {
+        void handleFilesUpload(Array.from(files) as KnowledgeUploadFile[], {
+          includeImageDescriptions: true,
+        });
+      }
+      event.target.value = "";
+    },
+    [handleFilesUpload, uploading],
+  );
+
   const handleSearch = useCallback(
     async (query: string) => {
       setSearching(true);
@@ -718,7 +763,7 @@ export function KnowledgeView({
     if (!hasSelectedDocument) {
       setSelectedDocId(documents[0]?.id ?? null);
     }
-  }, [documents, selectedDocId]);
+  }, [documents, selectedDocId, setSelectedDocId]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -800,6 +845,7 @@ export function KnowledgeView({
         className="p-3 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
       >
         <UploadZone
+          fileInputId={fileInputId}
           onFilesUpload={handleFilesUpload}
           onUrlUpload={handleUrlUpload}
           uploading={uploading}
@@ -891,6 +937,17 @@ export function KnowledgeView({
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="knowledge-view"
     >
+      {!shouldShowSelectorRail && fileInputId ? (
+        <input
+          id={fileInputId}
+          type="file"
+          className="hidden"
+          multiple
+          accept={KNOWLEDGE_UPLOAD_ACCEPT}
+          onChange={handleExternalFileInputChange}
+        />
+      ) : null}
+
       {isServiceLoading && (
         <PagePanel
           variant="inset"
@@ -921,7 +978,7 @@ export function KnowledgeView({
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {documentContent}
-        {selectorRail}
+        {shouldShowSelectorRail ? selectorRail : null}
       </div>
     </div>
   );

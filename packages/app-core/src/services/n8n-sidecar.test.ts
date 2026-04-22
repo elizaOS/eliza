@@ -164,6 +164,17 @@ describe("N8nSidecar", () => {
       // npx syntax: `--yes <pkg> start`. `--yes` auto-confirms the install
       // prompt on first run so we don't hang waiting for stdin.
       expect(args).toEqual(["--yes", "n8n@1.70.0", "start"]);
+      const spawnOptions = h.spawn.mock.calls[0][2] as {
+        cwd: string;
+        env: NodeJS.ProcessEnv;
+      };
+      expect(spawnOptions.cwd).toBe("/tmp/milady-n8n-test");
+      expect(spawnOptions.env.NPM_CONFIG_CACHE).toBe(
+        "/tmp/milady-n8n-test/.npm-cache",
+      );
+      expect(spawnOptions.env.npm_config_cache).toBe(
+        "/tmp/milady-n8n-test/.npm-cache",
+      );
 
       await sidecar.stop();
       await startPromise;
@@ -192,6 +203,50 @@ describe("N8nSidecar", () => {
       expect(sidecar.getState().status).toBe("ready");
       await sidecar.stop();
       await startPromise;
+    });
+
+    it("reuses a reachable n8n instance when the preferred port is already occupied", async () => {
+      const stateDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), "milady-n8n-existing-"),
+      );
+      await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
+
+      const pickPort = vi.fn(async () => 5679);
+      const preflightBinary = vi.fn(async () => undefined);
+      const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/rest/login")) {
+          return new Response(null, { status: 401 });
+        }
+        if (
+          url.includes("/api/v1/workflows") &&
+          (!init?.method || init.method === "GET")
+        ) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        return new Response(null, { status: 404 });
+      });
+      const h = makeHarness({ fetch: fetchFn, pickPort });
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        preflightBinary,
+      });
+
+      await sidecar.start();
+
+      const state = sidecar.getState();
+      expect(state.status).toBe("ready");
+      expect(state.host).toBe("http://127.0.0.1:5678");
+      expect(state.port).toBe(5678);
+      expect(state.pid).toBeNull();
+      expect(state.recentOutput).toContain(
+        "[attach] existing n8n detected at http://127.0.0.1:5678; reusing it",
+      );
+      expect(h.spawn).not.toHaveBeenCalled();
+      expect(preflightBinary).not.toHaveBeenCalled();
+      expect(sidecar.getApiKey()).toBe("cached_key_abc");
+
+      await sidecar.stop();
+      await fs.rm(stateDir, { recursive: true, force: true });
     });
   });
 

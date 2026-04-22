@@ -1,7 +1,8 @@
 import { client } from "@elizaos/app-core/api";
+import { openExternalUrl } from "@elizaos/app-core/utils";
 import type {
   LifeOpsConnectorMode,
-  LifeOpsXCapability,
+  LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
 } from "@elizaos/shared/contracts/lifeops";
@@ -14,46 +15,65 @@ function formatError(cause: unknown, fallback: string): string {
   return fallback;
 }
 
-function defaultCapabilities(
-  status: LifeOpsXConnectorStatus | null,
-): LifeOpsXCapability[] {
-  const grantedCapabilities = status?.grantedCapabilities ?? [];
-  if (grantedCapabilities.length > 0) {
-    return grantedCapabilities;
-  }
-  return ["x.read", "x.write", "x.dm.read", "x.dm.write"];
-}
-
-export function useLifeOpsXConnector() {
+export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
   const [status, setStatus] = useState<LifeOpsXConnectorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastPost, setLastPost] = useState<LifeOpsXPostResponse | null>(null);
+  const [pendingAuthUrl, setPendingAuthUrl] = useState<string | null>(null);
+  const resolveSuccessRedirectUrl = useCallback((): string | undefined => {
+    const baseUrl =
+      typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+    const origin =
+      baseUrl ||
+      (typeof window !== "undefined" &&
+      typeof window.location?.origin === "string" &&
+      window.location.origin.trim().length > 0
+        ? window.location.origin.trim()
+        : "");
+    if (!origin) return undefined;
+    const url = new URL("/auth/success?platform=twitter", origin);
+    url.searchParams.set("side", side);
+    url.searchParams.set("mode", "cloud_managed");
+    return url.toString();
+  }, [side]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const nextStatus = await client.getXLifeOpsConnectorStatus();
+      const nextStatus = await client.getXLifeOpsConnectorStatus(
+        undefined,
+        side,
+      );
       setStatus(nextStatus);
+      if (nextStatus.connected) {
+        setPendingAuthUrl(null);
+      }
       setError(null);
     } catch (cause) {
       setError(formatError(cause, "X connector status failed to load."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [side]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       setLoading(true);
       try {
-        const nextStatus = await client.getXLifeOpsConnectorStatus();
+        const nextStatus = await client.getXLifeOpsConnectorStatus(
+          undefined,
+          side,
+        );
         if (cancelled) {
           return;
         }
         setStatus(nextStatus);
+        if (nextStatus.connected) {
+          setPendingAuthUrl(null);
+        }
         setError(null);
       } catch (cause) {
         if (cancelled) {
@@ -70,20 +90,33 @@ export function useLifeOpsXConnector() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [side]);
 
   const connect = useCallback(
     async (mode?: LifeOpsConnectorMode) => {
       try {
         setActionPending(true);
-        const nextStatus = await client.upsertXLifeOpsConnector({
-          mode,
-          capabilities: defaultCapabilities(status),
-          grantedScopes: status?.grantedScopes ?? [],
-          identity: status?.identity ?? undefined,
-          metadata: {},
+        setPendingAuthUrl(null);
+        const connectMode =
+          mode ?? status?.mode ?? status?.defaultMode ?? "cloud_managed";
+        const result = await client.startXLifeOpsConnector({
+          mode: connectMode,
+          redirectUrl:
+            connectMode === "cloud_managed"
+              ? resolveSuccessRedirectUrl()
+              : undefined,
+          side,
         });
-        setStatus(nextStatus);
+        if (result.authUrl) {
+          await openExternalUrl(result.authUrl);
+          setPendingAuthUrl(result.authUrl);
+        } else {
+          const nextStatus = await client.getXLifeOpsConnectorStatus(
+            result.mode,
+            side,
+          );
+          setStatus(nextStatus);
+        }
         setError(null);
       } catch (cause) {
         setError(formatError(cause, "X connector connect failed."));
@@ -91,7 +124,7 @@ export function useLifeOpsXConnector() {
         setActionPending(false);
       }
     },
-    [status],
+    [resolveSuccessRedirectUrl, side, status],
   );
 
   const post = useCallback(
@@ -100,6 +133,7 @@ export function useLifeOpsXConnector() {
         setActionPending(true);
         setLastPost(null);
         const result = await client.createXLifeOpsPost({
+          side,
           mode: mode ?? status?.mode,
           text,
           confirmPost: true,
@@ -112,8 +146,29 @@ export function useLifeOpsXConnector() {
         setActionPending(false);
       }
     },
-    [status?.mode],
+    [side, status?.mode],
   );
+
+  const disconnect = useCallback(async () => {
+    try {
+      setActionPending(true);
+      await client.disconnectXLifeOpsConnector({
+        side,
+        mode: status?.mode,
+      });
+      setPendingAuthUrl(null);
+      const nextStatus = await client.getXLifeOpsConnectorStatus(
+        status?.mode,
+        side,
+      );
+      setStatus(nextStatus);
+      setError(null);
+    } catch (cause) {
+      setError(formatError(cause, "X connector disconnect failed."));
+    } finally {
+      setActionPending(false);
+    }
+  }, [side, status?.mode]);
 
   return {
     status,
@@ -121,8 +176,10 @@ export function useLifeOpsXConnector() {
     actionPending,
     error,
     lastPost,
+    pendingAuthUrl,
     refresh,
     connect,
+    disconnect,
     post,
   } as const;
 }

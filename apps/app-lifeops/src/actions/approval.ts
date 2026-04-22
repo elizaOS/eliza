@@ -9,7 +9,7 @@
  * the user's language.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -120,6 +120,7 @@ function approvalChannelToCrossChannelSend(
     case "discord":
     case "imessage":
     case "sms":
+    case "x_dm":
       return channel;
     default:
       return null;

@@ -55,6 +55,7 @@ export {
 
 import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
 import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
+import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
 import {
   AgentRuntime,
   AutonomyService,
@@ -325,6 +326,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   // trust: now built-in core capability (ENABLE_TRUST)
   "@elizaos/app-lifeops": pluginAppLifeops,
   "@elizaos/app-companion": pluginAppCompanion,
+  "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
 });

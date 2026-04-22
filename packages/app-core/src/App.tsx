@@ -147,9 +147,9 @@ function ViewRouter({
       case "apps":
         // Apps disabled in production builds; fall through to chat
         return APPS_ENABLED ? (
-          <TabScrollView>
+          <TabContentView>
             <AppsPageView />
-          </TabScrollView>
+          </TabContentView>
         ) : (
           <ChatView />
         );

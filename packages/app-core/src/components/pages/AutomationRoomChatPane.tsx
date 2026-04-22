@@ -456,7 +456,9 @@ export function AutomationRoomChatPane({
     (event: KeyboardEvent<HTMLUListElement>) => {
       if (!messageListRef.current) return;
       const items = Array.from(
-        messageListRef.current.querySelectorAll<HTMLElement>("article"),
+        messageListRef.current.querySelectorAll<HTMLElement>(
+          "[data-message-item]",
+        ),
       );
       const focused = document.activeElement as HTMLElement | null;
       const currentIndex = focused ? items.indexOf(focused) : -1;
@@ -555,23 +557,23 @@ export function AutomationRoomChatPane({
                     ? t("chat.messageAriaLabelUser", { preview })
                     : t("chat.messageAriaLabelAgent", { preview });
                 return (
-                  <li key={message.id} className="list-none">
-                    <article
-                      tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
-                      aria-label={ariaLabel}
-                      className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
-                        message.role === "user"
-                          ? "ml-8 self-end bg-accent/10 text-txt"
-                          : "mr-8 bg-bg/50 text-txt"
-                      }`}
-                    >
-                      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        {message.role === "user"
-                          ? t("automations.chat.roleUser")
-                          : t("automations.chat.roleAssistant")}
-                      </div>
-                      <div className="whitespace-pre-wrap">{message.text}</div>
-                    </article>
+                  <li
+                    key={message.id}
+                    data-message-item="true"
+                    tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
+                    aria-label={ariaLabel}
+                    className={`list-none rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
+                      message.role === "user"
+                        ? "ml-8 self-end bg-accent/10 text-txt"
+                        : "mr-8 bg-bg/50 text-txt"
+                    }`}
+                  >
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      {message.role === "user"
+                        ? t("automations.chat.roleUser")
+                        : t("automations.chat.roleAssistant")}
+                    </div>
+                    <div className="whitespace-pre-wrap">{message.text}</div>
                   </li>
                 );
               })}

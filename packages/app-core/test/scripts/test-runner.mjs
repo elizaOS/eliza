@@ -14,7 +14,6 @@ const nodeCmd = resolveNodeCmd();
 const appRoot = path.join(repoRoot, "apps", "app");
 const elizaRoot = path.join(repoRoot, "eliza");
 const appCoreRoot = path.join(elizaRoot, "packages", "app-core");
-const unitShardCount = 1;
 
 await runManagedTestCommand({
   repoRoot,
@@ -51,23 +50,7 @@ await runManagedTestCommand({
   env: buildTestEnv(appCoreRoot),
 });
 
-for (let shard = 1; shard <= unitShardCount; shard += 1) {
-  await runManagedTestCommand({
-    repoRoot,
-    lockName: `unit-${shard}`,
-    label: `unit ${shard}/${unitShardCount}`,
-    command: nodeCmd,
-    args: [
-      "./node_modules/.bin/vitest",
-      "run",
-      "--config",
-      "test/vitest/default.config.ts",
-      `--shard=${shard}/${unitShardCount}`,
-    ],
-    cwd: repoRoot,
-    env: buildTestEnv(repoRoot),
-  });
-}
+await import("./test-root-unit.mjs");
 
 await runManagedTestCommand({
   repoRoot,

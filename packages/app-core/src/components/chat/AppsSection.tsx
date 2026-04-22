@@ -5,8 +5,8 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { Button } from "@elizaos/ui";
-import { LayoutGrid, SquareArrowOutUpRight } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
@@ -41,7 +41,12 @@ function getRunRingClass(run: AppRunSummary): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function AppsSection() {
+export interface AppsSectionProps {
+  /** Optional action node rendered at the top-right of the section header. */
+  headerAction?: ReactNode;
+}
+
+export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   const {
     favoriteApps: favoriteAppsValue,
     appRuns,
@@ -160,49 +165,41 @@ export function AppsSection() {
     [setActionNotice, setState, setTab, t],
   );
 
-  // Nothing to show
-  if (orderedApps.length === 0) return null;
+  // Hide the section entirely when there is nothing to show AND no header
+  // action to render (i.e. no collapse-affordance owner).
+  if (orderedApps.length === 0 && !headerAction) return null;
 
   return (
     <WidgetSection
       title={t("chatsidebar.Apps", { defaultValue: "Apps" })}
       icon={<LayoutGrid className="h-4 w-4" />}
-      action={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setTab("apps")}
-          aria-label={t("chatsidebar.OpenView", { defaultValue: "Open View" })}
-          className="h-6 w-6 p-0"
-        >
-          <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-        </Button>
-      }
+      action={headerAction}
       testId="chat-widget-apps-section"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {orderedApps.map((app) => {
-          const run = runByName.get(app.name);
-          const displayName = app.displayName ?? getAppShortName(app);
-          const ringClass = run ? getRunRingClass(run) : "";
-          return (
-            <button
-              key={app.name}
-              type="button"
-              title={displayName}
-              aria-label={t("chatsidebar.launchApp", {
-                defaultValue: `Launch ${displayName}`,
-                name: displayName,
-              })}
-              className={`flex h-9 w-9 items-center justify-center rounded-xl border border-border/35 bg-card/72 text-base transition-all hover:border-accent/30 hover:bg-bg-hover/70 hover:scale-110 ${ringClass}`}
-              onClick={() => void handleLaunch(app)}
-            >
-              {getAppEmoji(app)}
-            </button>
-          );
-        })}
-      </div>
+      {orderedApps.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {orderedApps.map((app) => {
+            const run = runByName.get(app.name);
+            const displayName = app.displayName ?? getAppShortName(app);
+            const ringClass = run ? getRunRingClass(run) : "";
+            return (
+              <button
+                key={app.name}
+                type="button"
+                title={displayName}
+                aria-label={t("chatsidebar.launchApp", {
+                  defaultValue: `Launch ${displayName}`,
+                  name: displayName,
+                })}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border border-border/35 bg-card/72 text-base transition-all hover:border-accent/30 hover:bg-bg-hover/70 hover:scale-110 ${ringClass}`}
+                onClick={() => void handleLaunch(app)}
+              >
+                {getAppEmoji(app)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </WidgetSection>
   );
 }

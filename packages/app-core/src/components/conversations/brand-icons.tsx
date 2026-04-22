@@ -18,6 +18,7 @@ function makeIcon(path: string, title: string) {
         className={className}
         role="img"
         aria-label={title}
+        focusable="false"
       >
         <title>{title}</title>
         <path d={path} />
@@ -71,6 +72,10 @@ const SignalIcon = makeIcon(
   "Signal",
 );
 
+const GoogleChatIcon = makeIcon(
+  "M21 3H3a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h3v4l4.8-4H21a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-13 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z",
+);
+
 const BRAND_ICONS: Record<
   string,
   React.ComponentType<BrandIconProps> | undefined
@@ -86,10 +91,21 @@ const BRAND_ICONS: Record<
   teams: MsTeamsIcon,
   microsoftteams: MsTeamsIcon,
   signal: SignalIcon,
+  googlechat: GoogleChatIcon,
 };
 
+/**
+ * Look up a brand icon by a free-form source string (plugin id, display name,
+ * etc). Normalizes by stripping non-alphanumeric characters so `"google-chat"`,
+ * `"Google Chat"`, and `"googlechat"` all resolve to the same icon.
+ */
 export function getBrandIcon(
   source: string,
 ): React.ComponentType<BrandIconProps> | null {
-  return BRAND_ICONS[source.trim().toLowerCase()] ?? null;
+  const normalized = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (!normalized) return null;
+  return BRAND_ICONS[normalized] ?? null;
 }

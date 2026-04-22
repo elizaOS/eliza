@@ -26,7 +26,11 @@ const sidebarRootVariants = cva(
           "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
       },
       collapsed: {
-        true: "!w-[4.75rem] !min-w-[4.75rem] xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
+        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent z-40",
+        false: "",
+      },
+      resizable: {
+        true: "",
         false: "",
       },
     },
@@ -34,8 +38,15 @@ const sidebarRootVariants = cva(
       {
         variant: "default",
         collapsed: false,
+        resizable: false,
         className:
           "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] shadow-lg",
+      },
+      {
+        variant: "default",
+        collapsed: false,
+        resizable: true,
+        className: "shadow-lg",
       },
       {
         variant: "default",
@@ -46,6 +57,7 @@ const sidebarRootVariants = cva(
     defaultVariants: {
       variant: "default",
       collapsed: false,
+      resizable: false,
     },
   },
 );
@@ -431,8 +443,15 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       footerClassName,
       collapsedContentClassName,
       collapseButtonClassName,
+      resizable = false,
+      width,
+      onWidthChange,
+      minWidth = 200,
+      maxWidth = 560,
+      onCollapseRequest,
       className,
       children,
+      style,
       ...props
     }: SidebarProps,
     ref,
@@ -482,12 +501,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
     const [autoRailItems, setAutoRailItems] = React.useState(
       autoRailItemsFromTree,
     );
-    const showsCollapsedFallbackBody =
-      showsCollapsedState &&
-      !hasCustomCollapsedContent &&
-      !hasStructuredCollapsedRail &&
-      autoRailItems.length === 0 &&
-      !needsDomAutoRailFallback;
     const renderedContentIdentity = contentIdentity ?? variant;
 
     React.useEffect(() => {
@@ -660,36 +673,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           layerClassName,
         )}
       >
-        <div
-          className={cn(
-            sidebarHeaderVariants({
-              variant,
-              collapsed: true,
-            }),
-            headerClassName,
-          )}
-        >
-          <div
-            className={cn(
-              sidebarCollapsedContentClassName,
-              collapsedContentClassName,
-            )}
-          >
-            <div className="flex w-full flex-col items-center pb-2 pt-1">
-              <Button
-                variant="surface"
-                size="icon"
-                data-testid={expandButtonTestId}
-                className={cn(sidebarControlButtonClassName, collapseButtonClassName)}
-                aria-label={expandButtonAriaLabel}
-                onClick={handleExpand}
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </Button>
-            </div>
-            {renderCollapsedInner()}
-          </div>
-        </div>
         {renderHiddenAutoRailSource ? (
           <SidebarBody ref={autoRailSourceRef} className="hidden" aria-hidden>
             {children}
@@ -767,6 +750,60 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       </div>
     );
 
+    const resizeActive = resizable && variant === "default" && !showsCollapsedState;
+    const collapseThreshold = Math.max(minWidth - 40, 80);
+    const handleResizePointerDown = React.useCallback(
+      (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!resizeActive || typeof width !== "number") return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = width;
+        const target = event.currentTarget;
+        try {
+          target.setPointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+        const onMove = (ev: PointerEvent) => {
+          const delta = ev.clientX - startX;
+          const nextRaw = startWidth + delta;
+          if (nextRaw < collapseThreshold && onCollapseRequest) {
+            onCollapseRequest();
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            return;
+          }
+          const clamped = Math.min(Math.max(nextRaw, minWidth), maxWidth);
+          onWidthChange?.(clamped);
+        };
+        const onUp = () => {
+          try {
+            target.releasePointerCapture(event.pointerId);
+          } catch {
+            /* ignore */
+          }
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      },
+      [
+        collapseThreshold,
+        maxWidth,
+        minWidth,
+        onCollapseRequest,
+        onWidthChange,
+        resizeActive,
+        width,
+      ],
+    );
+
+    const resizeStyle: React.CSSProperties | undefined = resizeActive
+      ? { width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }
+      : undefined;
+    const mergedStyle = { ...style, ...resizeStyle };
+
     return (
       <aside
         ref={ref}
@@ -774,17 +811,39 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           sidebarRootVariants({
             variant,
             collapsed: variant === "default" ? showsCollapsedState : false,
+            resizable: resizeActive,
           }),
-          showsCollapsedFallbackBody
-            ? sidebarCollapsedFallbackRootClassName
-            : undefined,
           className,
         )}
         data-testid={testId}
         data-collapsed={showsCollapsedState || undefined}
         data-variant={variant}
+        style={mergedStyle}
         {...props}
       >
+        {resizeActive ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            data-testid="sidebar-resize-handle"
+            onPointerDown={handleResizePointerDown}
+            className="absolute inset-y-0 right-0 z-20 w-1.5 -mr-0.5 cursor-col-resize touch-none select-none hover:bg-accent/30 transition-colors"
+          />
+        ) : null}
+        {showsCollapsedState && variant === "default" ? (
+          <button
+            type="button"
+            data-testid={expandButtonTestId}
+            className={cn(
+              "fixed bottom-3 left-3 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt",
+              collapseButtonClassName,
+            )}
+            aria-label={expandButtonAriaLabel}
+            onClick={handleExpand}
+          >
+            <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        ) : null}
         <React.Fragment key={renderedContentIdentity}>
           {variant === "mobile" ? (
             <div className={sidebarMobileHeaderBarClassName}>

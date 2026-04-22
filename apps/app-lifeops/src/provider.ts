@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -6,6 +6,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import type { LifeOpsBrowserSession } from "@elizaos/shared/contracts/lifeops";
 import { LifeOpsService } from "./lifeops/service.js";
 
 function formatSettingsLine(
@@ -16,7 +17,7 @@ function formatSettingsLine(
   const paused = settings.pauseUntil
     ? `, paused until ${settings.pauseUntil}`
     : "";
-  return `LifeOps Browser: ${status}, ${control}${paused}.`;
+  return `Agent Browser Bridge: ${status}, ${control}${paused}.`;
 }
 
 function formatCompanionLine(
@@ -40,7 +41,7 @@ function formatTabLine(
 export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
-    "Owner/admin-only context for the user's real Chrome and Safari browsers connected through LifeOps Browser. Separate from Milady Desktop Browser.",
+    "Owner/admin-only context for the user's real Chrome and Safari browsers connected through Agent Browser Bridge. Separate from Milady Desktop Browser.",
   descriptionCompressed: "Owner: real Chrome/Safari browser context.",
   dynamic: true,
   position: 13,
@@ -63,14 +64,14 @@ export const lifeOpsBrowserProvider: Provider = {
         service.listBrowserSessions(),
       ]);
     const activeSessions = sessions.filter(
-      (session) =>
+      (session: LifeOpsBrowserSession) =>
         session.status === "awaiting_confirmation" ||
         session.status === "queued" ||
         session.status === "running",
     );
     const lines = [
-      "## LifeOps Browser",
-      "This is the user's real browser profile connected through LifeOps Browser, not Milady Desktop Browser.",
+      "## Agent Browser Bridge",
+      "This is the user's real browser profile connected through Agent Browser Bridge, not Milady Desktop Browser.",
       formatSettingsLine(settings),
       `Companions: ${companions.length}. Active sessions: ${activeSessions.length}.`,
     ];
@@ -104,3 +105,5 @@ export const lifeOpsBrowserProvider: Provider = {
     };
   },
 };
+
+export const browserBridgeProvider = lifeOpsBrowserProvider;

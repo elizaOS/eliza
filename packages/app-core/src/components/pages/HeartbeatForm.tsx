@@ -459,13 +459,11 @@ function TriggerKindSection({
       </FieldLabel>
       <fieldset
         aria-labelledby={toggleLabelId}
-        className="mt-1.5 flex gap-2 border-0 p-0 m-0 min-w-0"
+        className="mt-1.5 m-0 flex min-w-0 gap-2 border-0 p-0"
       >
-        {/* biome-ignore lint/a11y/useSemanticElements: styled segmented control; native radios diverge from shared button styling */}
         <button
           type="button"
-          role="radio"
-          aria-checked={form.kind === "text"}
+          aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
           className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "text"
@@ -475,11 +473,9 @@ function TriggerKindSection({
         >
           {t("triggers.kindText")}
         </button>
-        {/* biome-ignore lint/a11y/useSemanticElements: styled segmented control; native radios diverge from shared button styling */}
         <button
           type="button"
-          role="radio"
-          aria-checked={form.kind === "workflow"}
+          aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
           className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "workflow"

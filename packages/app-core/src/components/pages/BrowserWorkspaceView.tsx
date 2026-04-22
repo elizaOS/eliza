@@ -3,9 +3,9 @@ import {
   buildBrowserWorkspaceWalletState,
 } from "@elizaos/app-steward/browser-workspace-wallet";
 import type {
-  LifeOpsBrowserCompanionPackageStatus,
-  LifeOpsBrowserCompanionStatus,
-} from "@elizaos/shared/contracts/lifeops";
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+} from "@elizaos/plugin-browser-bridge/contracts";
 import { Button, Input } from "@elizaos/ui";
 import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
 import {
@@ -27,7 +27,7 @@ import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
-const LIFEOPS_BROWSER_POLL_INTERVAL_MS = 4_000;
+const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
 
 function isBrowserWorkspaceSessionMode(
@@ -154,15 +154,16 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [lifeOpsBrowserAvailable, setLifeOpsBrowserAvailable] = useState(false);
-  const [lifeOpsBrowserLoading, setLifeOpsBrowserLoading] = useState(true);
-  const [lifeOpsBrowserCompanions, setLifeOpsBrowserCompanions] = useState<
-    LifeOpsBrowserCompanionStatus[]
+  const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
+  const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
+  const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
+    BrowserBridgeCompanionStatus[]
   >([]);
-  const [lifeOpsBrowserPackageStatus, setLifeOpsBrowserPackageStatus] =
-    useState<LifeOpsBrowserCompanionPackageStatus | null>(null);
+  const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
+    useState<BrowserBridgeCompanionPackageStatus | null>(null);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
+  const initialBlankTabHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const getStewardPendingRef = useRef(getStewardPending);
   const getStewardStatusRef = useRef(getStewardStatus);
@@ -192,17 +193,17 @@ export function BrowserWorkspaceView(): JSX.Element {
     : null;
   const selectedTabLiveViewUrl =
     selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
-  const primaryLifeOpsBrowserCompanion = useMemo(
+  const primaryBrowserBridgeCompanion = useMemo(
     () =>
-      lifeOpsBrowserCompanions.find(
+      browserBridgeCompanions.find(
         (companion) => companion.connectionState === "connected",
       ) ??
-      lifeOpsBrowserCompanions[0] ??
+      browserBridgeCompanions[0] ??
       null,
-    [lifeOpsBrowserCompanions],
+    [browserBridgeCompanions],
   );
-  const lifeOpsBrowserConnected =
-    primaryLifeOpsBrowserCompanion?.connectionState === "connected";
+  const browserBridgeConnected =
+    primaryBrowserBridgeCompanion?.connectionState === "connected";
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -258,35 +259,35 @@ export function BrowserWorkspaceView(): JSX.Element {
     }
   }, []);
 
-  const loadLifeOpsBrowserState = useCallback(
+  const loadBrowserBridgeState = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) {
-        setLifeOpsBrowserLoading(true);
+        setBrowserBridgeLoading(true);
       }
       const [companionsResult, packageResult] = await Promise.allSettled([
-        client.fetch<{ companions: LifeOpsBrowserCompanionStatus[] }>(
-          "/api/lifeops/browser/companions",
+        client.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
+          "/api/browser-bridge/companions",
         ),
-        client.fetch<{ status: LifeOpsBrowserCompanionPackageStatus }>(
-          "/api/lifeops/browser/packages",
+        client.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
+          "/api/browser-bridge/packages",
         ),
       ]);
       if (companionsResult.status === "fulfilled") {
-        setLifeOpsBrowserCompanions(companionsResult.value.companions);
+        setBrowserBridgeCompanions(companionsResult.value.companions);
       } else {
-        setLifeOpsBrowserCompanions([]);
+        setBrowserBridgeCompanions([]);
       }
       if (packageResult.status === "fulfilled") {
-        setLifeOpsBrowserPackageStatus(packageResult.value.status);
+        setBrowserBridgePackageStatus(packageResult.value.status);
       } else {
-        setLifeOpsBrowserPackageStatus(null);
+        setBrowserBridgePackageStatus(null);
       }
-      setLifeOpsBrowserAvailable(
+      setBrowserBridgeAvailable(
         companionsResult.status === "fulfilled" ||
           packageResult.status === "fulfilled",
       );
       if (!options?.silent) {
-        setLifeOpsBrowserLoading(false);
+        setBrowserBridgeLoading(false);
       }
     },
     [],
@@ -478,11 +479,11 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   useEffect(() => {
     if (workspace.mode !== "web") {
-      setLifeOpsBrowserLoading(false);
+      setBrowserBridgeLoading(false);
       return;
     }
-    void loadLifeOpsBrowserState();
-  }, [loadLifeOpsBrowserState, workspace.mode]);
+    void loadBrowserBridgeState();
+  }, [loadBrowserBridgeState, workspace.mode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -521,10 +522,10 @@ export function BrowserWorkspaceView(): JSX.Element {
       return;
     }
     const timer = window.setInterval(() => {
-      void loadLifeOpsBrowserState({ silent: true });
-    }, LIFEOPS_BROWSER_POLL_INTERVAL_MS);
+      void loadBrowserBridgeState({ silent: true });
+    }, BROWSER_BRIDGE_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [loadLifeOpsBrowserState, workspace.mode]);
+  }, [loadBrowserBridgeState, workspace.mode]);
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
@@ -583,6 +584,36 @@ export function BrowserWorkspaceView(): JSX.Element {
     workspace.tabs,
   ]);
 
+  // When the workspace loads with no tabs (and the ?browse= path isn't going
+  // to open one), auto-open the Milady homepage so the user lands on a live
+  // page instead of a dead empty state. Runs exactly once per mount.
+  useEffect(() => {
+    if (initialBlankTabHandledRef.current) return;
+    if (loading || loadError) return;
+    if (initialBrowseUrlRef.current) return;
+    if (workspace.tabs.length > 0) {
+      initialBlankTabHandledRef.current = true;
+      return;
+    }
+    initialBlankTabHandledRef.current = true;
+    void runBrowserWorkspaceAction(
+      "open:initial-home",
+      async () => {
+        await openNewBrowserWorkspaceTab("https://milady.ai/");
+      },
+      t("browserworkspace.OpenInitialHomeFailed", {
+        defaultValue: "Failed to open the Milady homepage.",
+      }),
+    );
+  }, [
+    loadError,
+    loading,
+    openNewBrowserWorkspaceTab,
+    runBrowserWorkspaceAction,
+    t,
+    workspace.tabs.length,
+  ]);
+
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
     if (workspace.mode === "web") {
@@ -595,26 +626,26 @@ export function BrowserWorkspaceView(): JSX.Element {
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
   }, [selectedTab, workspace.mode]);
 
-  const installLifeOpsBrowserExtension = useCallback(async () => {
+  const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
-      "lifeops-browser:install",
+      "browser-bridge:install",
       async () => {
-        let nextPackageStatus = lifeOpsBrowserPackageStatus;
+        let nextPackageStatus = browserBridgePackageStatus;
         if (!nextPackageStatus?.chromeBuildPath) {
           const buildResponse = await client.fetch<{
-            status: LifeOpsBrowserCompanionPackageStatus;
-          }>("/api/lifeops/browser/packages/chrome/build", {
+            status: BrowserBridgeCompanionPackageStatus;
+          }>("/api/browser-bridge/packages/chrome/build", {
             method: "POST",
           });
           nextPackageStatus = buildResponse.status;
-          setLifeOpsBrowserPackageStatus(buildResponse.status);
+          setBrowserBridgePackageStatus(buildResponse.status);
         }
 
         const revealResponse = await client.fetch<{
           path: string;
           target: string;
           revealOnly: boolean;
-        }>("/api/lifeops/browser/packages/open-path", {
+        }>("/api/browser-bridge/packages/open-path", {
           method: "POST",
           body: JSON.stringify({
             target: "chrome_build",
@@ -625,7 +656,7 @@ export function BrowserWorkspaceView(): JSX.Element {
         let openedManager = true;
         try {
           await client.fetch(
-            "/api/lifeops/browser/packages/chrome/open-manager",
+            "/api/browser-bridge/packages/chrome/open-manager",
             {
               method: "POST",
             },
@@ -636,41 +667,41 @@ export function BrowserWorkspaceView(): JSX.Element {
 
         setActionNoticeRef.current(
           openedManager
-            ? t("browserworkspace.LifeOpsChromeReady", {
+            ? t("browserworkspace.BrowserBridgeChromeReady", {
                 defaultValue:
                   "Chrome is ready. Click Load unpacked and choose {{path}}.",
                 path: revealResponse.path,
               })
-            : t("browserworkspace.LifeOpsFolderReady", {
+            : t("browserworkspace.BrowserBridgeFolderReady", {
                 defaultValue:
-                  "The LifeOps Browser folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
+                  "The Agent Browser Bridge folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
                 path: revealResponse.path,
               }),
           "success",
           6_000,
         );
-        await loadLifeOpsBrowserState({ silent: true });
+        await loadBrowserBridgeState({ silent: true });
       },
-      t("browserworkspace.InstallLifeOpsBrowserFailed", {
-        defaultValue: "Failed to prepare the LifeOps Browser extension.",
+      t("browserworkspace.InstallBrowserBridgeFailed", {
+        defaultValue: "Failed to prepare the Agent Browser Bridge extension.",
       }),
     );
   }, [
-    lifeOpsBrowserPackageStatus,
-    loadLifeOpsBrowserState,
+    browserBridgePackageStatus,
+    loadBrowserBridgeState,
     runBrowserWorkspaceAction,
     t,
   ]);
 
-  const revealLifeOpsBrowserFolder = useCallback(async () => {
+  const revealBrowserBridgeFolder = useCallback(async () => {
     await runBrowserWorkspaceAction(
-      "lifeops-browser:reveal-folder",
+      "browser-bridge:reveal-folder",
       async () => {
         const response = await client.fetch<{
           path: string;
           target: string;
           revealOnly: boolean;
-        }>("/api/lifeops/browser/packages/open-path", {
+        }>("/api/browser-bridge/packages/open-path", {
           method: "POST",
           body: JSON.stringify({
             target: "chrome_build",
@@ -678,75 +709,62 @@ export function BrowserWorkspaceView(): JSX.Element {
           }),
         });
         setActionNoticeRef.current(
-          t("browserworkspace.LifeOpsFolderRevealed", {
-            defaultValue: "Revealed the LifeOps Browser folder at {{path}}.",
+          t("browserworkspace.BrowserBridgeFolderRevealed", {
+            defaultValue:
+              "Revealed the Agent Browser Bridge folder at {{path}}.",
             path: response.path,
           }),
           "success",
           4_000,
         );
       },
-      t("browserworkspace.OpenLifeOpsBrowserFolderFailed", {
-        defaultValue: "Failed to reveal the LifeOps Browser extension folder.",
+      t("browserworkspace.OpenBrowserBridgeFolderFailed", {
+        defaultValue:
+          "Failed to reveal the Agent Browser Bridge extension folder.",
       }),
     );
   }, [runBrowserWorkspaceAction, t]);
 
-  const openLifeOpsChromeExtensions = useCallback(async () => {
+  const openBrowserBridgeChromeExtensions = useCallback(async () => {
     await runBrowserWorkspaceAction(
-      "lifeops-browser:open-manager",
+      "browser-bridge:open-manager",
       async () => {
-        await client.fetch(
-          "/api/lifeops/browser/packages/chrome/open-manager",
-          {
-            method: "POST",
-          },
-        );
+        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
+          method: "POST",
+        });
         setActionNoticeRef.current(
-          t("browserworkspace.LifeOpsOpenedChromeExtensions", {
+          t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
             defaultValue:
-              "Opened Chrome extensions. Click Load unpacked and choose the LifeOps Browser folder.",
+              "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.",
           }),
           "success",
           4_000,
         );
       },
-      t("browserworkspace.OpenLifeOpsBrowserManagerFailed", {
+      t("browserworkspace.OpenBrowserBridgeManagerFailed", {
         defaultValue: "Failed to open Chrome extensions.",
       }),
     );
   }, [runBrowserWorkspaceAction, t]);
 
-  const openBlankBrowserWorkspaceTab = useCallback(async () => {
+  const refreshBrowserBridgeConnection = useCallback(async () => {
     await runBrowserWorkspaceAction(
-      "open:new-blank",
+      "browser-bridge:refresh",
       async () => {
-        await openNewBrowserWorkspaceTab("about:blank");
-      },
-      t("browserworkspace.OpenBlankTabFailed", {
-        defaultValue: "Failed to open a blank browser tab.",
-      }),
-    );
-  }, [openNewBrowserWorkspaceTab, runBrowserWorkspaceAction, t]);
-
-  const refreshLifeOpsBrowserConnection = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "lifeops-browser:refresh",
-      async () => {
-        await loadLifeOpsBrowserState({ silent: true });
+        await loadBrowserBridgeState({ silent: true });
         setActionNoticeRef.current(
-          t("browserworkspace.LifeOpsRefreshSuccess", {
-            defaultValue: "Refreshed LifeOps Browser connection status.",
+          t("browserworkspace.BrowserBridgeRefreshSuccess", {
+            defaultValue: "Refreshed Agent Browser Bridge connection status.",
           }),
           "success",
           3_000,
         );
       },
-      t("browserworkspace.RefreshLifeOpsBrowserFailed", {
-        defaultValue: "Failed to refresh LifeOps Browser status.",
+      t("browserworkspace.RefreshBrowserBridgeFailed", {
+        defaultValue: "Failed to refresh Agent Browser Bridge status.",
       }),
     );
-  }, [loadLifeOpsBrowserState, runBrowserWorkspaceAction, t]);
+  }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
   const navNode = (
     <>
@@ -923,163 +941,109 @@ export function BrowserWorkspaceView(): JSX.Element {
 
       {workspace.tabs.length === 0 ? (
         <div className="flex h-full items-center justify-center">
-          {workspace.mode === "web" && lifeOpsBrowserAvailable ? (
-            <div className="w-full max-w-2xl px-6">
-              <div className="rounded-3xl border border-border/24 bg-card/22 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("browserworkspace.LifeOpsTitle", {
-                        defaultValue: "LifeOps Browser",
+          <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+            <div className="text-sm font-semibold text-txt">
+              {loading
+                ? t("browserworkspace.Loading", {
+                    defaultValue: "Loading browser workspace",
+                  })
+                : t("browserworkspace.EmptyTitle", {
+                    defaultValue: "No browser tabs yet",
+                  })}
+            </div>
+            <div className="text-xs text-muted">
+              {isBrowserWorkspaceSessionMode(workspace.mode)
+                ? t("browserworkspace.EmptySessionDescription", {
+                    defaultValue:
+                      "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
+                  })
+                : t("browserworkspace.EmptyDescription", {
+                    defaultValue: "Open a page here to get started.",
+                  })}
+            </div>
+            {!loading && workspace.mode === "web" ? (
+              <div className="mt-3 flex w-full flex-col gap-3 rounded-md border border-border/40 bg-card/35 p-3 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-txt">
+                      {t("browserworkspace.BrowserBridgeTitle", {
+                        defaultValue: "Agent Browser Bridge",
                       })}
                     </div>
-                    <div className="text-lg font-semibold text-txt">
-                      {lifeOpsBrowserConnected
-                        ? t("browserworkspace.LifeOpsConnectedTitle", {
-                            defaultValue: "Your browser is connected",
+                    <div className="mt-1 text-xs leading-5 text-muted">
+                      {t("browserworkspace.BrowserBridgeDescription", {
+                        defaultValue:
+                          "The agent can drive your real Chrome tabs with the Agent Browser Bridge extension.",
+                      })}
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-muted">
+                      {browserBridgeConnected
+                        ? t("browserworkspace.BrowserBridgeConnected", {
+                            defaultValue: "Connected",
                           })
-                        : lifeOpsBrowserLoading
-                          ? t("browserworkspace.LifeOpsCheckingTitle", {
-                              defaultValue: "Checking your browser connection",
+                        : browserBridgeAvailable
+                          ? t("browserworkspace.BrowserBridgeAvailable", {
+                              defaultValue: "Extension available",
                             })
-                          : t("browserworkspace.LifeOpsUseRealBrowser", {
-                              defaultValue: "Use your real browser here",
+                          : t("browserworkspace.BrowserBridgeNotConnected", {
+                              defaultValue: "Not connected",
                             })}
-                    </div>
-                    <div className="max-w-xl text-sm leading-relaxed text-muted">
-                      {lifeOpsBrowserConnected
-                        ? t("browserworkspace.LifeOpsConnectedDescription", {
-                            defaultValue:
-                              "LifeOps Browser is active in {{browser}} / {{profile}}. Use that real browser profile for Discord, Google, and other sites that do not belong inside an embed.",
-                            browser:
-                              primaryLifeOpsBrowserCompanion?.browser ===
-                              "safari"
-                                ? "Safari"
-                                : "Chrome",
-                            profile:
-                              primaryLifeOpsBrowserCompanion?.profileLabel ??
-                              t("browserworkspace.DefaultProfile", {
-                                defaultValue: "Default",
-                              }),
-                          })
-                        : t("browserworkspace.LifeOpsInstallDescription", {
-                            defaultValue:
-                              "Install the LifeOps Browser extension in this Chrome profile so LifeOps can see and control your real tabs instead of falling back to embedded browsing.",
-                          })}
+                      {browserBridgePackageStatus?.chromeBuildPath
+                        ? ` - ${browserBridgePackageStatus.chromeBuildPath}`
+                        : ""}
                     </div>
                   </div>
-                  <div className="rounded-full border border-border/24 bg-bg/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                    {lifeOpsBrowserConnected
-                      ? t("common.connected", {
-                          defaultValue: "Connected",
-                        })
-                      : lifeOpsBrowserLoading
-                        ? t("browserworkspace.Checking", {
-                            defaultValue: "Checking",
-                          })
-                        : t("browserworkspace.Install", {
-                            defaultValue: "Install",
-                          })}
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {lifeOpsBrowserConnected ? (
-                    <Button
-                      type="button"
-                      onClick={() => void openBlankBrowserWorkspaceTab()}
-                      disabled={busyAction !== null}
-                    >
-                      <Plus className="mr-1.5 h-4 w-4" />
-                      {t("browserworkspace.OpenBlankTabHere", {
-                        defaultValue: "Open blank tab here",
-                      })}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      onClick={() => void installLifeOpsBrowserExtension()}
-                      disabled={busyAction !== null}
-                    >
-                      {t("browserworkspace.InstallLifeOpsBrowser", {
-                        defaultValue: "Install LifeOps Browser",
-                      })}
-                    </Button>
-                  )}
                   <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void refreshLifeOpsBrowserConnection()}
-                    disabled={busyAction !== null}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={t("browserworkspace.RefreshBrowserBridge", {
+                      defaultValue: "Refresh Agent Browser Bridge",
+                    })}
+                    disabled={browserBridgeLoading || busyAction !== null}
+                    onClick={() => void refreshBrowserBridgeConnection()}
                   >
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
-                    Refresh
+                    <RefreshCw className="h-4 w-4" />
                   </Button>
-                  {!lifeOpsBrowserConnected &&
-                  lifeOpsBrowserPackageStatus?.chromeBuildPath ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void revealLifeOpsBrowserFolder()}
-                      disabled={busyAction !== null}
-                    >
-                      <FolderOpen className="mr-1.5 h-4 w-4" />
-                      {t("browserworkspace.OpenExtensionFolder", {
-                        defaultValue: "Open extension folder",
-                      })}
-                    </Button>
-                  ) : null}
-                  {!lifeOpsBrowserConnected ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void openLifeOpsChromeExtensions()}
-                      disabled={busyAction !== null}
-                    >
-                      {t("browserworkspace.OpenChromeExtensions", {
-                        defaultValue: "Open Chrome extensions",
-                      })}
-                    </Button>
-                  ) : null}
                 </div>
-
-                {lifeOpsBrowserPackageStatus?.chromeBuildPath ? (
-                  <div className="mt-4 rounded-2xl bg-bg/70 px-3 py-2 text-[11px] text-muted">
-                    <div className="font-semibold uppercase tracking-[0.14em] text-muted">
-                      {t("browserworkspace.ChromeBuild", {
-                        defaultValue: "Chrome Build",
-                      })}
-                    </div>
-                    <div className="mt-1 truncate font-mono text-txt/85">
-                      {lifeOpsBrowserPackageStatus.chromeBuildPath}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-              <div className="text-sm font-semibold text-txt">
-                {loading
-                  ? t("browserworkspace.Loading", {
-                      defaultValue: "Loading browser workspace",
-                    })
-                  : t("browserworkspace.EmptyTitle", {
-                      defaultValue: "No browser tabs yet",
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busyAction !== null}
+                    onClick={() => void installBrowserBridgeExtension()}
+                  >
+                    {t("browserworkspace.InstallBrowserBridge", {
+                      defaultValue: "Install Agent Browser Bridge",
                     })}
-              </div>
-              <div className="text-xs text-muted">
-                {isBrowserWorkspaceSessionMode(workspace.mode)
-                  ? t("browserworkspace.EmptySessionDescription", {
-                      defaultValue:
-                        "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
-                    })
-                  : t("browserworkspace.EmptyDescription", {
-                      defaultValue: "Open a page here to get started.",
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      busyAction !== null ||
+                      !browserBridgePackageStatus?.chromeBuildPath
+                    }
+                    onClick={() => void revealBrowserBridgeFolder()}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    {t("browserworkspace.OpenBrowserBridgeFolder", {
+                      defaultValue: "Open extension folder",
                     })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busyAction !== null}
+                    onClick={() => void openBrowserBridgeChromeExtensions()}
+                  >
+                    {t("browserworkspace.OpenChromeExtensions", {
+                      defaultValue: "Open Chrome extensions",
+                    })}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            ) : null}
+          </div>
         </div>
       ) : workspace.mode === "web" ? (
         workspace.tabs.map((tab) => {

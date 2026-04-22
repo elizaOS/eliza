@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import { LifeOpsService } from "./service.js";
+import type { ManagedXConnectorStatusResponse } from "./x-managed-client.js";
 
 const ORIGINAL_ENV = {
   TWITTER_API_KEY: process.env.TWITTER_API_KEY,
@@ -34,13 +35,14 @@ describe("LifeOps X service mixin", () => {
     vi.restoreAllMocks();
   });
 
-  it("treats env token mode as connected and exposes read/write and DM capabilities", async () => {
+  it("treats agent env token mode as connected and exposes read/write and DM capabilities", async () => {
     const service = new LifeOpsService(makeRuntime());
     vi.spyOn(service.repository, "getConnectorGrant").mockResolvedValue(null);
 
-    const status = await service.getXConnectorStatus("local");
+    const status = await service.getXConnectorStatus("local", "agent");
 
     expect(status.mode).toBe("local");
+    expect(status.side).toBe("agent");
     expect(status.connected).toBe(true);
     expect(status.hasCredentials).toBe(true);
     expect(status.feedRead).toBe(true);
@@ -57,6 +59,20 @@ describe("LifeOps X service mixin", () => {
 
   it("preserves cloud_managed grants and dm-only capability splits", async () => {
     const service = new LifeOpsService(makeRuntime());
+    const managedStatus: ManagedXConnectorStatusResponse = {
+      provider: "x",
+      side: "owner",
+      mode: "cloud_managed",
+      configured: true,
+      connected: true,
+      reason: "connected",
+      identity: {},
+      grantedScopes: ["dm.read"],
+      grantedCapabilities: ["x.read", "x.dm.read"],
+      connectionId: "cloud-x-1",
+      linkedAt: null,
+      lastUsedAt: null,
+    };
     const grant = createLifeOpsConnectorGrant({
       agentId: "agent-x",
       provider: "x",
@@ -70,6 +86,10 @@ describe("LifeOps X service mixin", () => {
       cloudConnectionId: "cloud-x-1",
     });
     vi.spyOn(service.repository, "getConnectorGrant").mockResolvedValue(grant);
+    vi.spyOn(service.repository, "upsertConnectorGrant").mockResolvedValue();
+    vi.spyOn(service.xManagedClient, "getStatus").mockResolvedValue(
+      managedStatus,
+    );
 
     const status = await service.getXConnectorStatus("cloud_managed");
 

@@ -214,17 +214,37 @@ async function pickFreePortDefault(start: number): Promise<number> {
   for (let offset = 0; offset < maxAttempts; offset++) {
     const candidate = start + offset;
     if (candidate > 65535) break;
-    const free = await new Promise<boolean>((resolve) => {
-      const server = createServer();
-      server.once("error", () => resolve(false));
-      server.once("listening", () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(candidate, "127.0.0.1");
-    });
-    if (free) return candidate;
+    const ipv4Free = await canBindTcpPortDefault(candidate, "127.0.0.1");
+    const ipv6Free = await canBindTcpPortDefault(candidate, "::");
+    if (ipv4Free && ipv6Free) return candidate;
   }
   throw new Error(`no free port available starting from ${start}`);
+}
+
+function canBindTcpPortDefault(port: number, host: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const server = createServer();
+    let settled = false;
+    const finish = (free: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(free);
+    };
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (
+        host === "::" &&
+        (err.code === "EADDRNOTAVAIL" || err.code === "EAFNOSUPPORT")
+      ) {
+        finish(true);
+        return;
+      }
+      finish(false);
+    });
+    server.once("listening", () => {
+      server.close(() => finish(true));
+    });
+    server.listen({ port, host });
+  });
 }
 
 function sleepDefault(ms: number): Promise<void> {
@@ -625,12 +645,6 @@ export class N8nSidecar {
     try {
       while (!this.stopping) {
         try {
-          await this.deps.preflightBinary(this.config.binary);
-
-          const port = await this.deps.pickPort(this.config.startPort);
-          const host = `http://${this.config.host}:${port}`;
-          this.setState({ host, port });
-
           try {
             mkdirSync(this.config.stateDir, { recursive: true });
           } catch (err) {
@@ -638,6 +652,23 @@ export class N8nSidecar {
               `[n8n-sidecar] mkdir state dir failed: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
+
+          const port = await this.deps.pickPort(this.config.startPort);
+          const preferredHost = `http://${this.config.host}:${this.config.startPort}`;
+          if (
+            port !== this.config.startPort &&
+            (await this.attachExistingInstance(
+              preferredHost,
+              this.config.startPort,
+            ))
+          ) {
+            return;
+          }
+
+          const host = `http://${this.config.host}:${port}`;
+          this.setState({ host, port });
+
+          await this.deps.preflightBinary(this.config.binary);
 
           await this.reapOrphan();
 
@@ -677,6 +708,7 @@ export class N8nSidecar {
           this.setState({ status: "starting", pid: null });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          await this.clearNpmCacheAfterJsonParseFailure();
           if (!this.supervisorStartFailureWarned) {
             logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
             this.supervisorStartFailureWarned = true;
@@ -718,6 +750,9 @@ export class N8nSidecar {
     // cache and runs under the native Node runtime, which n8n's DI stack
     // depends on (bunx breaks both the Node version check for 1.70 and the
     // tsyringe decorator handling for 1.100+ — see `binary?` docs above).
+    const npmCacheDir = path.join(this.config.stateDir, ".npm-cache");
+    mkdirSync(npmCacheDir, { recursive: true });
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Force NODE_ENV=production for the child.
@@ -741,6 +776,8 @@ export class N8nSidecar {
       N8N_PERSONALIZATION_ENABLED: "false",
       N8N_HIRING_BANNER_ENABLED: "false",
       N8N_USER_FOLDER: this.config.stateDir,
+      NPM_CONFIG_CACHE: npmCacheDir,
+      npm_config_cache: npmCacheDir,
       DB_TYPE: "sqlite",
       DB_SQLITE_DATABASE: path.join(this.config.stateDir, "database.sqlite"),
       // Opt out of the Enterprise-Edition modules. n8n's module-registry
@@ -767,9 +804,10 @@ export class N8nSidecar {
           ? ["--", versioned, "start"]
           : [versioned, "start"];
     this.recordOutput(
-      `[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
+      `[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, npmCache ${npmCacheDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
     );
     const child = this.deps.spawn(this.config.binary, launcherArgs, {
+      cwd: this.config.stateDir,
       env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
@@ -841,6 +879,30 @@ export class N8nSidecar {
     // is snapshotted on every setState() call and served by getState().
   }
 
+  private async clearNpmCacheAfterJsonParseFailure(): Promise<void> {
+    const sawJsonParseFailure = this.recentOutput.some(
+      (line) =>
+        line.includes("EJSONPARSE") ||
+        line.includes("Invalid package.json") ||
+        line.includes("JSON.parse"),
+    );
+    if (!sawJsonParseFailure) return;
+
+    const npmCacheDir = path.join(this.config.stateDir, ".npm-cache");
+    try {
+      await fs.rm(npmCacheDir, { recursive: true, force: true });
+      logger.warn(
+        `[n8n-sidecar] cleared npm cache after package.json parse failure: ${npmCacheDir}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] failed to clear npm cache after package.json parse failure: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   /**
    * Block until the current child exits. Returns early if the child is null
    * or if `stop()` has flipped `stopping`. No timeout — n8n is a long-running
@@ -890,6 +952,47 @@ export class N8nSidecar {
       logger.warn(
         `[n8n-sidecar] kill error: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+
+  private async attachExistingInstance(
+    host: string,
+    port: number,
+  ): Promise<boolean> {
+    const reachable = await this.probeExistingInstance(host);
+    if (!reachable) return false;
+
+    this.child = null;
+    this.recordOutput(`[attach] existing n8n detected at ${host}; reusing it`);
+    logger.info(`[n8n-sidecar] reusing existing n8n at ${host}`);
+    this.setState({ host, port, pid: null });
+
+    try {
+      const key = await this.ensureApiKey(host);
+      if (key) {
+        this.apiKey = key;
+        logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
+      }
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    this.setState({ status: "ready", errorMessage: null });
+    this.armRetryResetTimer();
+    return true;
+  }
+
+  private async probeExistingInstance(host: string): Promise<boolean> {
+    try {
+      const res = await this.deps.fetch(`${host}/rest/login`, {
+        method: "GET",
+        signal: AbortSignal.timeout(2_000),
+      });
+      return res.status === 200 || res.status === 401;
+    } catch {
+      return false;
     }
   }
 

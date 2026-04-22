@@ -349,6 +349,31 @@ function buildWorkflowDraftItem(room: AutomationRoomRecord): AutomationItem {
   };
 }
 
+function buildAutomationDraftItem(room: AutomationRoomRecord): AutomationItem {
+  const metadata = room.metadata;
+  const trimmedTitle = room.title.trim();
+  const title =
+    trimmedTitle && trimmedTitle.toLowerCase() !== "default"
+      ? trimmedTitle
+      : "New automation";
+  return {
+    id: `automation-draft:${metadata.draftId}`,
+    type: "automation_draft",
+    source: "automation_draft",
+    title,
+    description: "",
+    status: "draft",
+    enabled: true,
+    system: false,
+    isDraft: true,
+    hasBackingWorkflow: false,
+    updatedAt: room.updatedAt,
+    draftId: metadata.draftId,
+    schedules: [],
+    room: buildRoomBinding(room),
+  };
+}
+
 function buildWorkflowItem(
   workflow: N8nWorkflow | undefined,
   room: AutomationRoomRecord | undefined,
@@ -442,6 +467,10 @@ async function buildAutomationListResponse(
     .filter((room) => room.metadata.scope === "automation-workflow-draft")
     .filter((room) => typeof room.metadata.draftId === "string")
     .map((room) => buildWorkflowDraftItem(room));
+  const automationDraftItems = rooms
+    .filter((room) => room.metadata.scope === "automation-draft")
+    .filter((room) => typeof room.metadata.draftId === "string")
+    .map((room) => buildAutomationDraftItem(room));
 
   const tasks = deduplicateSystemTasks(
     (await runtime.getTasks({}))
@@ -533,6 +562,7 @@ async function buildAutomationListResponse(
     );
 
   const automations = [
+    ...automationDraftItems,
     ...workflowDraftItems,
     ...taskItems,
     ...coordinatorTriggerItems,

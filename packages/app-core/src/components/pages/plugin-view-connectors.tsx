@@ -7,8 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
   StatusBadge,
+  Switch,
 } from "@elizaos/ui";
-import { ChevronRight } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
 import { useApp } from "../../state";
@@ -16,6 +17,7 @@ import {
   ConnectorSetupPanel,
   hasConnectorSetupPanel,
 } from "../connectors/ConnectorSetupPanel";
+import { getBrandIcon } from "../conversations/brand-icons";
 import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,
@@ -387,6 +389,7 @@ function ConnectorPluginCard({
     }
   };
 
+  const BrandIcon = getBrandIcon(plugin.id);
   const connectorHeaderMedia = (
     <span
       className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-xl)] border p-2.5 ${
@@ -395,10 +398,15 @@ function ConnectorPluginCard({
           : "border-border/50 bg-bg-accent/80 text-muted"
       }`}
     >
-      {renderResolvedIcon(plugin, {
-        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
-        emojiClassName: "text-base",
-      })}
+      {BrandIcon ? (
+        <BrandIcon className="h-5 w-5 shrink-0" />
+      ) : (
+        renderResolvedIcon(plugin, {
+          className:
+            "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
+          emojiClassName: "text-base",
+        })
+      )}
     </span>
   );
   const connectorHeaderHeading = (
@@ -435,39 +443,35 @@ function ConnectorPluginCard({
       </div>
     </div>
   );
+  const statusLabel = allParamsSet ? readyLabel : needsSetupLabel;
+  const StatusIcon = allParamsSet ? CheckCircle2 : AlertCircle;
   const connectorHeaderActions = (
     <>
-      <StatusBadge
-        label={allParamsSet ? readyLabel : needsSetupLabel}
-        tone={allParamsSet ? "success" : "warning"}
-      />
-      <Button
-        variant="outline"
-        size="sm"
-        className={`h-auto min-w-[3.75rem] rounded-[var(--radius-sm)] border px-3 py-1.5 text-2xs font-bold tracking-[0.16em] transition-colors ${
-          plugin.enabled
-            ? "border-accent bg-accent text-accent-fg"
-            : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
-        } ${toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-        onClick={(event) => {
-          event?.stopPropagation();
-          void handleTogglePlugin(plugin.id, !plugin.enabled);
-        }}
-        disabled={toggleDisabled}
+      <span
+        role="img"
+        aria-label={statusLabel}
+        title={statusLabel}
+        className={`inline-flex items-center ${
+          allParamsSet ? "text-ok" : "text-warn"
+        }`}
       >
-        {isToggleBusy
-          ? "..."
-          : plugin.enabled
-            ? t("common.on")
-            : t("common.off")}
-      </Button>
+        <StatusIcon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <Switch
+        checked={plugin.enabled}
+        disabled={toggleDisabled}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        onCheckedChange={(checked) => {
+          void handleTogglePlugin(plugin.id, checked);
+        }}
+        aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+      />
       <Button
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-[var(--radius-sm)] border border-border/40 transition-colors ${
-          isExpanded
-            ? "bg-bg/25 text-txt"
-            : "text-muted hover:border-accent/40 hover:text-txt"
+        className={`h-8 w-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
+          isExpanded ? "text-txt" : "text-muted hover:text-txt"
         }`}
         onClick={(event) => {
           event?.stopPropagation();

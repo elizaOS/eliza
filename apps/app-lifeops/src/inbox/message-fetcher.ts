@@ -6,6 +6,8 @@ import {
 import type {
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsXConnectorStatus,
+  LifeOpsXDm,
 } from "@elizaos/shared/contracts/lifeops";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
@@ -31,6 +33,12 @@ export interface GmailInboxSource {
     requestUrl: URL,
   ): Promise<LifeOpsGoogleConnectorStatus>;
   getGmailTriage(requestUrl: URL): Promise<LifeOpsGmailTriageFeed>;
+}
+
+export interface XDmInboxSource {
+  getXConnectorStatus(): Promise<LifeOpsXConnectorStatus>;
+  syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
+  getXDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
 }
 
 export async function fetchChatMessages(
@@ -209,6 +217,58 @@ export async function fetchGmailMessages(
   return results;
 }
 
+export async function fetchXDmMessages(
+  source: XDmInboxSource,
+  opts: {
+    sinceIso?: string;
+    limit?: number;
+  },
+): Promise<InboundMessage[]> {
+  const status = await source.getXConnectorStatus();
+  if (!status.connected || !status.dmRead) return [];
+
+  const limit = opts.limit ?? 50;
+  await source.syncXDms({ limit });
+  const dms = await source.getXDms({ limit });
+  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
+  const results: InboundMessage[] = [];
+
+  for (const dm of dms) {
+    if (!dm.isInbound) continue;
+    const receivedMs = Date.parse(dm.receivedAt);
+    if (sinceMs > 0 && receivedMs < sinceMs) continue;
+    const sender = dm.senderHandle ? `@${dm.senderHandle}` : dm.senderId;
+    const metadata = dm.metadata ?? {};
+    const participantIds = Array.isArray(metadata.participantIds)
+      ? metadata.participantIds.filter(
+          (participantId): participantId is string =>
+            typeof participantId === "string",
+        )
+      : [];
+    const participantId =
+      typeof metadata.participantId === "string" &&
+      metadata.participantId.trim()
+        ? metadata.participantId.trim()
+        : dm.senderId;
+    const isGroup = participantIds.length > 2;
+    results.push({
+      id: dm.id,
+      source: "x_dm",
+      entityId: participantId,
+      xConversationId: dm.conversationId,
+      xParticipantId: participantId,
+      senderName: sender || "X user",
+      channelName: isGroup ? "X group DM" : `X DM from ${sender || "unknown"}`,
+      channelType: isGroup ? "group" : "dm",
+      text: dm.text,
+      snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
+      timestamp: Number.isFinite(receivedMs) ? receivedMs : Date.now(),
+    });
+  }
+
+  return results;
+}
+
 export async function fetchAllMessages(
   runtime: IAgentRuntime,
   opts: {
@@ -217,6 +277,7 @@ export async function fetchAllMessages(
     limit?: number;
     includeGmail?: boolean;
     gmailSource?: GmailInboxSource;
+    xDmSource?: XDmInboxSource;
   },
 ): Promise<InboundMessage[]> {
   const includeGmail =
@@ -234,17 +295,25 @@ export async function fetchAllMessages(
           ),
         )
     : Promise.resolve([]);
+  const xDmMessagesPromise =
+    opts.xDmSource && (!opts.sources || opts.sources.includes("x_dm"))
+      ? fetchXDmMessages(opts.xDmSource, {
+          sinceIso: opts.sinceIso,
+          limit: opts.limit,
+        })
+      : Promise.resolve([]);
 
-  const [chatMessages, gmailMessages] = await Promise.all([
+  const [chatMessages, gmailMessages, xDmMessages] = await Promise.all([
     fetchChatMessages(runtime, {
-      sources: opts.sources?.filter((s) => s !== "gmail"),
+      sources: opts.sources?.filter((s) => s !== "gmail" && s !== "x_dm"),
       sinceIso: opts.sinceIso,
       limit: opts.limit,
     }),
     gmailMessagesPromise,
+    xDmMessagesPromise,
   ]);
 
-  const combined = [...chatMessages, ...gmailMessages];
+  const combined = [...chatMessages, ...gmailMessages, ...xDmMessages];
   combined.sort((a, b) => b.timestamp - a.timestamp);
   return opts.limit ? combined.slice(0, opts.limit) : combined;
 }

@@ -1,6 +1,7 @@
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
+import type { KnowledgeDocument } from "../../api/client-types-chat";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
@@ -68,18 +69,23 @@ const DownloadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-const SparklesIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2zm7 11l.9 2.7L22 17l-2.1.3L19 20l-.9-2.7L16 17l2.1-.3L19 13zm-14 0l.9 2.7L8 17l-2.1.3L5 20l-.9-2.7L2 17l2.1-.3L5 13z"
-  />
-);
-
 const UploadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
     d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"
   />
+);
+
+const ResetIcon = ({ className }: { className?: string }) => (
+  <Icon className={className} d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />
+);
+
+const ChevronIcon = ({ className }: { className?: string }) => (
+  <Icon className={className} d="M6 9l6 6 6-6" />
+);
+
+const PlusIcon = ({ className }: { className?: string }) => (
+  <Icon className={className} d="M12 5v14M5 12h14" />
 );
 
 import {
@@ -135,6 +141,7 @@ const CHARACTER_EDITOR_PAGES = [
   "examples",
   "knowledge",
 ] as const;
+type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
 
 /**
  * Cheap structural check — returns true when value already has the
@@ -184,7 +191,6 @@ export function CharacterEditor({
     chatAgentVoiceMuted: _chatAgentVoiceMuted,
     characterSaveError,
     handleCharacterFieldInput,
-    handleCharacterArrayInput,
     handleCharacterStyleInput,
     handleSaveCharacter,
     loadCharacter,
@@ -248,21 +254,33 @@ export function CharacterEditor({
     [handleCharacterStyleInput],
   );
 
-  /* ── Generation ─────────────────────────────────────────────────── */
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<
-    "personality" | "style" | "examples" | "knowledge"
-  >(tab === "knowledge" ? "knowledge" : "personality");
+  const [activePage, setActivePage] = useState<CharacterEditorPage>(
+    tab === "knowledge" ? "knowledge" : "personality",
+  );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<
-    | { kind: "page"; page: (typeof CHARACTER_EDITOR_PAGES)[number] }
+    | { kind: "page"; page: CharacterEditorPage }
     | { kind: "character"; entry: CharacterRosterEntry }
     | null
   >(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [knowledgeExpanded, setKnowledgeExpanded] = useState(true);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<
+    KnowledgeDocument[]
+  >([]);
+  const [selectedKnowledgeDocumentId, setSelectedKnowledgeDocumentId] =
+    useState<string | null>(null);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
+  const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Record<CharacterEditorPage, HTMLElement | null>>({
+    personality: null,
+    style: null,
+    examples: null,
+    knowledge: null,
+  });
+  const isProgrammaticScrollRef = useRef(false);
 
   // Sync rightTab with activePage (for overlay mode's right panel toggle)
   useEffect(() => {
@@ -276,6 +294,76 @@ export function CharacterEditor({
       setActivePage("knowledge");
     }
   }, [tab, activePage]);
+
+  useEffect(() => {
+    const container = standaloneScrollRef.current;
+    if (!container) return;
+
+    const updateActiveFromScroll = () => {
+      if (isProgrammaticScrollRef.current) return;
+      const containerTop = container.getBoundingClientRect().top;
+      const activationOffset = 80;
+      let current: CharacterEditorPage = "personality";
+      for (const page of CHARACTER_EDITOR_PAGES) {
+        const node = sectionRefs.current[page];
+        if (!node) continue;
+        const sectionTop = node.getBoundingClientRect().top - containerTop;
+        if (sectionTop - activationOffset <= 0) current = page;
+      }
+      setActivePage((prev) => (prev === current ? prev : current));
+    };
+
+    updateActiveFromScroll();
+    container.addEventListener("scroll", updateActiveFromScroll, {
+      passive: true,
+    });
+    return () =>
+      container.removeEventListener("scroll", updateActiveFromScroll);
+  }, []);
+
+  const scrollToSection = useCallback((page: CharacterEditorPage) => {
+    const node = sectionRefs.current[page];
+    if (!node) {
+      setActivePage(page);
+      return;
+    }
+    isProgrammaticScrollRef.current = true;
+    setActivePage(page);
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 600);
+  }, []);
+
+  const handleKnowledgeDocumentsChange = useCallback(
+    (documents: KnowledgeDocument[]) => {
+      setKnowledgeDocuments(documents);
+      setSelectedKnowledgeDocumentId((current) => {
+        if (current && documents.some((doc) => doc.id === current)) {
+          return current;
+        }
+        return documents[0]?.id ?? null;
+      });
+    },
+    [],
+  );
+
+  const handleKnowledgeDocumentSelect = useCallback(
+    (documentId: string) => {
+      setKnowledgeExpanded(true);
+      setSelectedKnowledgeDocumentId(documentId);
+      scrollToSection("knowledge");
+    },
+    [scrollToSection],
+  );
+
+  const handleKnowledgeUploadClick = useCallback(() => {
+    setKnowledgeExpanded(true);
+    scrollToSection("knowledge");
+    window.requestAnimationFrame(() => {
+      document.getElementById("ce-knowledge-upload-input")?.click();
+    });
+  }, [scrollToSection]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -491,6 +579,16 @@ export function CharacterEditor({
     (selectedCharacterId !== null && selectedCharacterId !== savedCharacterId);
 
   useEffect(() => {
+    if (!hasPendingChanges) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasPendingChanges]);
+
+  useEffect(() => {
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
@@ -692,16 +790,16 @@ export function CharacterEditor({
   );
 
   const requestPageChange = useCallback(
-    (page: (typeof CHARACTER_EDITOR_PAGES)[number]) => {
+    (page: CharacterEditorPage) => {
       if (page === activePage) return;
       if (hasPendingChanges) {
         setPendingNavigation({ kind: "page", page });
         return;
       }
-      setActivePage(page);
+      scrollToSection(page);
       if (page === "style" || page === "examples") setRightTab(page);
     },
-    [activePage, hasPendingChanges],
+    [activePage, hasPendingChanges, scrollToSection],
   );
 
   const requestCharacterSelection = useCallback(
@@ -993,7 +1091,7 @@ export function CharacterEditor({
       setPendingNavigation(null);
 
       if (target.kind === "page") {
-        setActivePage(target.page);
+        scrollToSection(target.page);
         if (target.page === "style" || target.page === "examples") {
           setRightTab(target.page);
         }
@@ -1002,7 +1100,12 @@ export function CharacterEditor({
 
       commitCharacterSelection(target.entry, true);
     },
-    [commitCharacterSelection, handleSaveAll, pendingNavigation],
+    [
+      commitCharacterSelection,
+      handleSaveAll,
+      pendingNavigation,
+      scrollToSection,
+    ],
   );
 
   useEffect(() => {
@@ -1011,27 +1114,6 @@ export function CharacterEditor({
       onHeaderActionsChange?.(null);
     };
   }, [onHeaderActionsChange]);
-
-  const renderSaveFeedback = () =>
-    hasStandaloneHeaderFeedback ? (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {characterSaveSuccess && (
-          <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
-            {characterSaveSuccess}
-          </span>
-        )}
-        {combinedSaveError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {combinedSaveError}
-          </span>
-        )}
-        {generateError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {generateError}
-          </span>
-        )}
-      </div>
-    ) : null;
 
   const renderContentActionButtons = (uploadInputId: string) => (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1096,103 +1178,6 @@ export function CharacterEditor({
           : t("charactereditor.Save", { defaultValue: "Save" })}
       </Button>
     </div>
-  );
-
-  /* ── Generate field ─────────────────────────────────────────────── */
-  const getCharContext = useCallback(
-    () => ({
-      name: d.name ?? "",
-      system: d.system ?? "",
-      bio: bioText,
-      style: d.style ?? { all: [], chat: [], post: [] },
-      postExamples: d.postExamples ?? [],
-    }),
-    [d, bioText],
-  );
-
-  const handleGenerate = useCallback(
-    async (field: string, mode: "replace" | "append" = "replace") => {
-      setGenerating(field);
-      setGenerateError(null);
-      try {
-        const { generated } = await client.generateCharacterField(
-          field,
-          getCharContext(),
-          mode,
-        );
-        if (field === "bio") {
-          handleFieldEdit("bio", generated.trim());
-        } else if (field === "system") {
-          handleFieldEdit("system", generated.trim());
-        } else if (field === "style") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (mode === "append") {
-              handleStyleEdit(
-                "all",
-                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "chat",
-                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "post",
-                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
-              );
-            } else {
-              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
-              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
-              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated style JSON:",
-              err,
-            );
-          }
-        } else if (field === "chatExamples") {
-          const formatted = normalizeCharacterMessageExamples(
-            generated,
-            fallbackCharacterName,
-          );
-          if (formatted.length > 0) {
-            handleFieldEdit("messageExamples", formatted);
-          }
-        } else if (field === "postExamples") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (Array.isArray(parsed)) {
-              if (mode === "append") {
-                handleCharacterArrayInput(
-                  "postExamples",
-                  [...(d.postExamples ?? []), ...parsed].join("\n"),
-                );
-              } else {
-                handleCharacterArrayInput("postExamples", parsed.join("\n"));
-              }
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated postExamples JSON:",
-              err,
-            );
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Generation failed";
-        setGenerateError(msg);
-      }
-      setGenerating(null);
-    },
-    [
-      fallbackCharacterName,
-      getCharContext,
-      d,
-      handleFieldEdit,
-      handleStyleEdit,
-      handleCharacterArrayInput,
-    ],
   );
 
   /* ── Style entry handlers ───────────────────────────────────────── */
@@ -1264,15 +1249,8 @@ export function CharacterEditor({
   const voiceSelectValue = selectedVoicePresetId ?? null;
   const combinedSaveError = voiceSaveError ?? characterSaveError;
   const hasStandaloneHeaderFeedback = Boolean(
-    characterSaveSuccess || combinedSaveError || generateError,
+    characterSaveSuccess || combinedSaveError,
   );
-  const standaloneContentHeader =
-    activePage === "knowledge" ? null : (
-      <div className="flex flex-col items-end gap-2">
-        {renderContentActionButtons("ce-vrm-upload-standalone")}
-        {renderSaveFeedback()}
-      </div>
-    );
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
@@ -1299,7 +1277,7 @@ export function CharacterEditor({
       className={
         sceneOverlay
           ? "absolute inset-0 z-10 flex flex-col pointer-events-none pt-[4.5rem] px-6 pb-3 max-md:px-3 max-md:pb-2 max-md:pt-[4.5rem] [&>*]:pointer-events-auto"
-          : "flex flex-col w-full flex-1 gap-4"
+          : "flex flex-col w-full flex-1 min-h-0 gap-4"
       }
       data-no-camera-zoom={sceneOverlay ? "true" : undefined}
       data-no-camera-drag={sceneOverlay ? "true" : undefined}
@@ -1429,7 +1407,6 @@ export function CharacterEditor({
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
-                  generating={generating}
                   voiceSelectValue={voiceSelectValue}
                   activeVoicePreset={activeVoicePreset}
                   voiceTesting={voiceTesting}
@@ -1438,7 +1415,6 @@ export function CharacterEditor({
                   elevenLabsVoiceGroups={elevenLabsVoiceGroups}
                   edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
-                  handleGenerate={handleGenerate}
                   handleSelectPreset={handleSelectPreset}
                   handleStopTest={handleStopTest}
                   setVoiceTesting={setVoiceTesting}
@@ -1455,10 +1431,8 @@ export function CharacterEditor({
                 >
                   <CharacterStylePanel
                     d={d}
-                    generating={generating}
                     pendingStyleEntries={pendingStyleEntries}
                     styleEntryDrafts={styleEntryDrafts}
-                    handleGenerate={handleGenerate}
                     handlePendingStyleEntryChange={
                       handlePendingStyleEntryChange
                     }
@@ -1478,9 +1452,7 @@ export function CharacterEditor({
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
                     handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
                     t={t}
                   />
                 </div>
@@ -1498,26 +1470,126 @@ export function CharacterEditor({
         {!sceneOverlay && (
           <PageLayout
             className="h-full"
-            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
-            footer={<WidgetHost slot="character" className="pt-4" />}
-            footerClassName="lg:px-8"
+            contentPadding={false}
+            contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5 lg:px-6"
+            footer={
+              <WidgetHost
+                slot="character"
+                className="px-4 pt-3 sm:px-5 lg:px-6"
+              />
+            }
             sidebar={
               <Sidebar
                 testId="character-editor-sidebar"
-                collapsible
+                collapsible={false}
                 contentIdentity="character-editor"
-                collapseButtonTestId="character-editor-sidebar-collapse-toggle"
-                expandButtonTestId="character-editor-sidebar-expand-toggle"
-                collapseButtonAriaLabel="Collapse character editor"
-                expandButtonAriaLabel="Expand character editor"
+                className="!mt-0 !h-full !rounded-none !border-0 !border-r !border-r-border/30 !bg-transparent !bg-none !shadow-none !backdrop-blur-none !ring-0"
+                footerClassName="!justify-start !px-1 !pb-2 !pt-1"
+                footer={
+                  <div className="flex w-full flex-col gap-2">
+                    {hasStandaloneHeaderFeedback ? (
+                      <div className="flex flex-col gap-1">
+                        {characterSaveSuccess && (
+                          <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
+                            {characterSaveSuccess}
+                          </span>
+                        )}
+                        {combinedSaveError && (
+                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                            {combinedSaveError}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      className="h-9 w-full justify-center rounded-sm text-sm font-semibold tracking-[0.02em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+                      style={
+                        hasPendingChanges
+                          ? accentGradientStyle
+                          : idleSaveBtnStyle
+                      }
+                      disabled={
+                        characterSaving ||
+                        voiceSaving ||
+                        !hasPendingChanges ||
+                        !currentCharacter
+                      }
+                      onClick={() => void handleSaveAll()}
+                    >
+                      {characterSaving || voiceSaving
+                        ? t("charactereditor.Saving", {
+                            defaultValue: "saving...",
+                          })
+                        : t("charactereditor.Save", { defaultValue: "Save" })}
+                    </Button>
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={() =>
+                          document
+                            .getElementById("ce-vrm-upload-standalone")
+                            ?.click()
+                        }
+                        title={t("charactereditor.UploadVRM", {
+                          defaultValue: "Upload VRM",
+                        })}
+                        aria-label={t("charactereditor.UploadVRM", {
+                          defaultValue: "Upload VRM",
+                        })}
+                      >
+                        <UploadIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={handleExportCharacter}
+                        disabled={!currentCharacter}
+                        title={t("charactereditor.ExportJSON", {
+                          defaultValue: "Export JSON",
+                        })}
+                        aria-label={t("charactereditor.ExportJSON", {
+                          defaultValue: "Export JSON",
+                        })}
+                      >
+                        <DownloadIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={() => setResetConfirmOpen(true)}
+                        disabled={
+                          !activeCharacterRosterEntry || !currentCharacter
+                        }
+                        title={t("charactereditor.Reset", {
+                          defaultValue: "Reset",
+                        })}
+                        aria-label={t("charactereditor.Reset", {
+                          defaultValue: "Reset",
+                        })}
+                      >
+                        <ResetIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                }
               >
-                <SidebarScrollRegion className="!pt-0">
-                  <SidebarPanel className="!px-0 !pt-3 !pb-0 !shadow-none">
+                <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
                     <nav
-                      className="space-y-1"
+                      className="flex flex-col gap-1"
                       aria-label="Character editor sections"
                     >
-                      {CHARACTER_EDITOR_PAGES.map((page) => {
+                      {CHARACTER_EDITOR_PAGES.filter(
+                        (page) => page !== "knowledge",
+                      ).map((page) => {
                         const label =
                           page === "personality"
                             ? t("charactereditor.TabPersonality", {
@@ -1538,10 +1610,11 @@ export function CharacterEditor({
                           <SidebarContent.Item
                             key={page}
                             active={activePage === page}
-                            onClick={() => requestPageChange(page)}
+                            onClick={() => scrollToSection(page)}
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
+                            className="items-center gap-2 px-2.5 py-2"
                           >
                             <SidebarContent.ItemTitle
                               className={
@@ -1555,6 +1628,88 @@ export function CharacterEditor({
                           </SidebarContent.Item>
                         );
                       })}
+
+                      <SidebarContent.Item
+                        as="div"
+                        active={activePage === "knowledge"}
+                        className="items-center gap-1 px-2.5 py-2"
+                      >
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          onClick={() => {
+                            setKnowledgeExpanded((current) => !current);
+                            scrollToSection("knowledge");
+                          }}
+                          aria-expanded={knowledgeExpanded}
+                          aria-controls="character-knowledge-sidebar-list"
+                        >
+                          <ChevronIcon
+                            className={`h-3.5 w-3.5 shrink-0 transition-transform ${knowledgeExpanded ? "" : "-rotate-90"}`}
+                          />
+                          <SidebarContent.ItemTitle
+                            className={
+                              activePage === "knowledge"
+                                ? "font-semibold"
+                                : "font-medium"
+                            }
+                          >
+                            {t("charactereditor.TabKnowledge", {
+                              defaultValue: "Knowledge",
+                            })}
+                          </SidebarContent.ItemTitle>
+                        </button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={handleKnowledgeUploadClick}
+                          aria-label={t("knowledgeview.ChooseFiles", {
+                            defaultValue: "Choose files",
+                          })}
+                          title={t("knowledgeview.ChooseFiles", {
+                            defaultValue: "Choose files",
+                          })}
+                        >
+                          <PlusIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </SidebarContent.Item>
+
+                      {knowledgeExpanded ? (
+                        <div
+                          id="character-knowledge-sidebar-list"
+                          className="ml-5 flex flex-col gap-0.5 border-l border-border/25 pl-2"
+                        >
+                          {knowledgeDocuments.length > 0 ? (
+                            knowledgeDocuments.map((doc) => (
+                              <SidebarContent.Item
+                                key={doc.id}
+                                active={selectedKnowledgeDocumentId === doc.id}
+                                onClick={() =>
+                                  handleKnowledgeDocumentSelect(doc.id)
+                                }
+                                aria-current={
+                                  selectedKnowledgeDocumentId === doc.id
+                                    ? "page"
+                                    : undefined
+                                }
+                                className="items-center py-1.5 pl-2 pr-2"
+                              >
+                                <SidebarContent.ItemTitle className="truncate text-xs-tight font-medium">
+                                  {doc.filename}
+                                </SidebarContent.ItemTitle>
+                              </SidebarContent.Item>
+                            ))
+                          ) : (
+                            <div className="px-2 py-2 text-xs-tight text-muted">
+                              {t("knowledgeview.NoDocumentsYet", {
+                                defaultValue: "No documents yet",
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </nav>
                   </SidebarPanel>
                 </SidebarScrollRegion>
@@ -1591,76 +1746,97 @@ export function CharacterEditor({
                 e.target.value = "";
               }}
             />
-            <div className="flex flex-row min-h-0 flex-1">
-              <div className="flex-1 min-w-0 overflow-auto flex flex-col">
-                {standaloneContentHeader ? (
-                  <div className="mb-3 shrink-0">{standaloneContentHeader}</div>
-                ) : null}
-                <div className="flex min-h-0 flex-1 min-w-0 flex-col">
-                  {activePage === "personality" && (
-                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                      <CharacterIdentityPanel
-                        d={d}
-                        bioText={bioText}
-                        generating={generating}
-                        voiceSelectValue={voiceSelectValue}
-                        activeVoicePreset={activeVoicePreset}
-                        voiceTesting={voiceTesting}
-                        voiceLoading={voiceLoading}
-                        useElevenLabs={useElevenLabs}
-                        elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                        edgeVoiceGroups={edgeVoiceGroups}
-                        handleFieldEdit={handleFieldEdit}
-                        handleGenerate={handleGenerate}
-                        handleSelectPreset={handleSelectPreset}
-                        handleStopTest={handleStopTest}
-                        setVoiceTesting={setVoiceTesting}
-                        setVoiceTestAudio={setVoiceTestAudio}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "style" && (
-                    <div className="flex flex-col gap-5">
-                      <CharacterStylePanel
-                        d={d}
-                        generating={generating}
-                        pendingStyleEntries={pendingStyleEntries}
-                        styleEntryDrafts={styleEntryDrafts}
-                        handleGenerate={handleGenerate}
-                        handlePendingStyleEntryChange={
-                          handlePendingStyleEntryChange
-                        }
-                        handleAddStyleEntry={handleAddStyleEntry}
-                        handleRemoveStyleEntry={handleRemoveStyleEntry}
-                        handleStyleEntryDraftChange={
-                          handleStyleEntryDraftChange
-                        }
-                        handleCommitStyleEntry={handleCommitStyleEntry}
-                        handleReorderStyleEntries={handleReorderStyleEntries}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "examples" && (
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
-                      <CharacterExamplesPanel
-                        d={d}
-                        normalizedMessageExamples={normalizedMessageExamples}
-                        generating={generating}
-                        handleFieldEdit={handleFieldEdit}
-                        handleGenerate={handleGenerate}
-                        t={t}
-                      />
-                    </div>
-                  )}
-                  {activePage === "knowledge" && (
-                    <div className="flex flex-col flex-1 min-h-[60vh]">
-                      <KnowledgeView embedded />
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div
+              ref={standaloneScrollRef}
+              data-testid="character-editor-main-scroll"
+              className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
+            >
+              <section
+                ref={(el) => {
+                  sectionRefs.current.personality = el;
+                }}
+                aria-label={t("charactereditor.TabPersonality", {
+                  defaultValue: "Personality",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6"
+              >
+                <CharacterIdentityPanel
+                  d={d}
+                  bioText={bioText}
+                  voiceSelectValue={voiceSelectValue}
+                  activeVoicePreset={activeVoicePreset}
+                  voiceTesting={voiceTesting}
+                  voiceLoading={voiceLoading}
+                  useElevenLabs={useElevenLabs}
+                  elevenLabsVoiceGroups={elevenLabsVoiceGroups}
+                  edgeVoiceGroups={edgeVoiceGroups}
+                  handleFieldEdit={handleFieldEdit}
+                  handleSelectPreset={handleSelectPreset}
+                  handleStopTest={handleStopTest}
+                  setVoiceTesting={setVoiceTesting}
+                  setVoiceTestAudio={setVoiceTestAudio}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.style = el;
+                }}
+                aria-label={t("charactereditor.TabStyles", {
+                  defaultValue: "Style",
+                })}
+                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
+              >
+                <CharacterStylePanel
+                  d={d}
+                  pendingStyleEntries={pendingStyleEntries}
+                  styleEntryDrafts={styleEntryDrafts}
+                  handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+                  handleAddStyleEntry={handleAddStyleEntry}
+                  handleRemoveStyleEntry={handleRemoveStyleEntry}
+                  handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                  handleCommitStyleEntry={handleCommitStyleEntry}
+                  handleReorderStyleEntries={handleReorderStyleEntries}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.examples = el;
+                }}
+                aria-label={t("charactereditor.TabExamples", {
+                  defaultValue: "Examples",
+                })}
+                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
+              >
+                <CharacterExamplesPanel
+                  d={d}
+                  normalizedMessageExamples={normalizedMessageExamples}
+                  handleFieldEdit={handleFieldEdit}
+                  t={t}
+                />
+              </section>
+
+              <section
+                ref={(el) => {
+                  sectionRefs.current.knowledge = el;
+                }}
+                aria-label={t("charactereditor.TabKnowledge", {
+                  defaultValue: "Knowledge",
+                })}
+                className="mt-8 flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 pb-16"
+              >
+                <KnowledgeView
+                  embedded
+                  fileInputId="ce-knowledge-upload-input"
+                  onDocumentsChange={handleKnowledgeDocumentsChange}
+                  onSelectedDocumentIdChange={setSelectedKnowledgeDocumentId}
+                  selectedDocumentId={selectedKnowledgeDocumentId}
+                  showSelectorRail={false}
+                />
+              </section>
             </div>
           </PageLayout>
         )}
@@ -1669,7 +1845,7 @@ export function CharacterEditor({
       {/* ── Footer (companion overlay only) ────────────────────────── */}
       {sceneOverlay && (
         <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
-          {(characterSaveSuccess || combinedSaveError || generateError) && (
+          {(characterSaveSuccess || combinedSaveError) && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               {characterSaveSuccess && (
                 <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
@@ -1679,11 +1855,6 @@ export function CharacterEditor({
               {combinedSaveError && (
                 <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
                   {combinedSaveError}
-                </span>
-              )}
-              {generateError && (
-                <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                  {generateError}
                 </span>
               )}
             </div>
@@ -1738,50 +1909,43 @@ export function CharacterEditor({
       >
         <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
           <DialogHeader className="gap-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
-                <SparklesIcon className="h-4 w-4" />
-              </div>
-              <div>
-                <DialogTitle>
-                  {t("charactereditor.UnsavedChangesTitle", {
-                    defaultValue: "Unsaved changes",
-                  })}
-                </DialogTitle>
-                <DialogDescription className="mt-1 whitespace-pre-line text-muted-strong">
-                  {t("charactereditor.UnsavedChangesBody", {
-                    defaultValue:
-                      "You have unsaved changes. Save before switching?",
-                  })}
-                  {pendingNavigation?.kind === "character"
-                    ? `\n${t("charactereditor.SwitchCharacterPrompt", {
-                        defaultValue: "Switch to {{name}}?",
-                        name: pendingNavigation.entry.name,
-                      })}`
-                    : pendingNavigation?.kind === "page"
-                      ? `\n${t("charactereditor.SwitchSectionPrompt", {
-                          defaultValue: "Switch to {{name}}?",
-                          name:
-                            pendingNavigation.page === "personality"
-                              ? t("charactereditor.TabPersonality", {
-                                  defaultValue: "Personality",
+            <DialogTitle>
+              {t("charactereditor.UnsavedChangesTitle", {
+                defaultValue: "Unsaved changes",
+              })}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-line text-muted-strong">
+              {t("charactereditor.UnsavedChangesBody", {
+                defaultValue:
+                  "You have unsaved changes. Save before switching?",
+              })}
+              {pendingNavigation?.kind === "character"
+                ? `\n${t("charactereditor.SwitchCharacterPrompt", {
+                    defaultValue: "Switch to {{name}}?",
+                    name: pendingNavigation.entry.name,
+                  })}`
+                : pendingNavigation?.kind === "page"
+                  ? `\n${t("charactereditor.SwitchSectionPrompt", {
+                      defaultValue: "Switch to {{name}}?",
+                      name:
+                        pendingNavigation.page === "personality"
+                          ? t("charactereditor.TabPersonality", {
+                              defaultValue: "Personality",
+                            })
+                          : pendingNavigation.page === "style"
+                            ? t("charactereditor.TabStyles", {
+                                defaultValue: "Style",
+                              })
+                            : pendingNavigation.page === "examples"
+                              ? t("charactereditor.TabExamples", {
+                                  defaultValue: "Examples",
                                 })
-                              : pendingNavigation.page === "style"
-                                ? t("charactereditor.TabStyles", {
-                                    defaultValue: "Style",
-                                  })
-                                : pendingNavigation.page === "examples"
-                                  ? t("charactereditor.TabExamples", {
-                                      defaultValue: "Examples",
-                                    })
-                                  : t("charactereditor.TabKnowledge", {
-                                      defaultValue: "Knowledge",
-                                    }),
-                        })}`
-                      : ""}
-                </DialogDescription>
-              </div>
-            </div>
+                              : t("charactereditor.TabKnowledge", {
+                                  defaultValue: "Knowledge",
+                                }),
+                    })}`
+                  : ""}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
@@ -1805,6 +1969,48 @@ export function CharacterEditor({
               type="button"
               variant="outline"
               onClick={() => setPendingNavigation(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resetConfirmOpen}
+        onOpenChange={(open: boolean) => {
+          if (!open) setResetConfirmOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+          <DialogHeader className="gap-3">
+            <DialogTitle>
+              {t("charactereditor.ResetToDefaults", {
+                defaultValue: "Reset to defaults?",
+              })}
+            </DialogTitle>
+            <DialogDescription className="text-muted-strong">
+              {t("charactereditor.ResetConfirmBody", {
+                defaultValue:
+                  "This will discard all unsaved changes and restore this character to its default values.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                handleResetToDefaults();
+                setResetConfirmOpen(false);
+              }}
+            >
+              {t("charactereditor.Reset", { defaultValue: "Reset" })}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetConfirmOpen(false)}
             >
               {t("common.cancel")}
             </Button>

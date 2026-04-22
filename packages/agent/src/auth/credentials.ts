@@ -140,16 +140,13 @@ export async function getAccessToken(
 }
 
 function readConfiguredAnthropicSetupToken(): string | null {
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "milady";
   const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim() ||
     path.join(
       process.env.ELIZA_STATE_DIR?.trim() ||
-        process.env.ELIZA_STATE_DIR?.trim() ||
-        path.join(os.homedir(), ".eliza"),
-      (process.env.ELIZA_NAMESPACE?.trim() || "eliza") === "eliza"
-        ? "eliza.json"
-        : `${process.env.ELIZA_NAMESPACE?.trim()}.json`,
+        path.join(os.homedir(), `.${namespace}`),
+      `${namespace}.json`,
     );
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8")) as {

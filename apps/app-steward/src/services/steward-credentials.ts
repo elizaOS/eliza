@@ -1,13 +1,14 @@
 /**
  * Steward credential persistence for non-sidecar (web/dev) mode.
  *
- * On first setup, saves steward credentials to `~/.eliza/steward-credentials.json`.
- * On subsequent launches, loads credentials from this file.
+ * On first setup, saves steward credentials to `<state-dir>/steward-credentials.json`.
+ * State dir honors MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.milady.
  * Environment variables always override file values.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 export interface PersistedStewardCredentials {
   apiUrl: string;
@@ -25,13 +26,8 @@ export interface PersistedStewardCredentials {
 
 const CREDENTIALS_FILENAME = "steward-credentials.json";
 
-function resolveCredentialsDir(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || "";
-  return path.join(home, ".eliza");
-}
-
 function resolveCredentialsPath(): string {
-  return path.join(resolveCredentialsDir(), CREDENTIALS_FILENAME);
+  return path.join(resolveStateDir(), CREDENTIALS_FILENAME);
 }
 
 /**
@@ -61,12 +57,11 @@ export function loadStewardCredentials(): PersistedStewardCredentials | null {
 export function saveStewardCredentials(
   credentials: PersistedStewardCredentials,
 ): void {
-  const dir = resolveCredentialsDir();
+  const credPath = resolveCredentialsPath();
+  const dir = path.dirname(credPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-
-  const credPath = resolveCredentialsPath();
   const data = {
     ...credentials,
     createdAt: credentials.createdAt ?? new Date().toISOString(),

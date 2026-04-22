@@ -1,15 +1,15 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
-  logger,
-} from "@elizaos/core";
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/app-lifeops/contracts";
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type State,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
 import {
   type LifeOpsOwnerProfile,
@@ -91,7 +91,8 @@ export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
     "Owner, explicitly granted users, and the agent only. Provides LifeOps overview plus live calendar and Gmail context. Route executable personal follow-through like todos, habits, goals, reminders, alarms, and live todo-status questions to LIFE; all owner calendar, scheduling, availability, and Calendly work to OWNER_CALENDAR; all owner inbox and Gmail/email work to OWNER_INBOX; morning/night self-review flows to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN; stable owner profile or travel preferences only to UPDATE_OWNER_PROFILE; subscription audits, cancellations, and cancellation-status checks to SUBSCRIPTIONS; direct email-list cleanup to EMAIL_UNSUBSCRIBE; meeting-prep and person-background briefs to DOSSIER; travel booking to BOOK_TRAVEL; X/Twitter reads and search to X_READ; fixed-duration or generic focus blocks to OWNER_WEBSITE_BLOCK; task-gated focus blocks only to BLOCK_UNTIL_TASK_COMPLETE; browser-companion management to MANAGE_LIFEOPS_BROWSER; password-manager field fill on a trusted site to REQUEST_FIELD_FILL; pending approval decisions to APPROVE_REQUEST / REJECT_REQUEST. Available in private owner or granted conversations, including Discord.",
-  descriptionCompressed: "LifeOps overview, upcoming calendar, email triage. Owner/granted only.",
+  descriptionCompressed:
+    "LifeOps overview, upcoming calendar, email triage. Owner/granted only.",
   dynamic: true,
   position: 12,
   async get(
@@ -205,7 +206,7 @@ export const lifeOpsProvider: Provider = {
         "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through OWNER_CALENDAR.",
         "Use UPDATE_OWNER_PROFILE only for stable owner-only profile details and reusable travel-preference checklists. Do not use it for goals, todos, reminders, temporary plans, or live task state.",
         "Use X_READ for X/Twitter reads and search: DMs, timeline, mentions, and topic search. Do not reply that X/Twitter access is unavailable when this action is available.",
-        "Use SCHEDULE_X_DM_REPLY when the owner wants an X/Twitter DM reply delivered later at a specific time, like 'schedule a reply to @devfriend's Twitter DM for 9am tomorrow'. Use immediate REPLY_X_DM only for draft-now or send-now behavior.",
+        "Use SCHEDULE_X_DM_REPLY when the owner wants an X/Twitter DM reply delivered later at a specific time, like 'schedule a reply to @devfriend's Twitter DM for 9am tomorrow'. Use OWNER_SEND_MESSAGE with channel=x_dm for immediate draft-now or send-now behavior.",
         "Use OWNER_WEBSITE_BLOCK for fixed-duration or generic focus blocks like 'block twitter and reddit for 2 hours' or 'turn on a focus block for all social media sites'. Use BLOCK_UNTIL_TASK_COMPLETE only when the unblock condition is finishing a task, workout, or todo, like 'block x.com until I finish my workout'.",
         "Use CHAT_THREAD_CONTROL for targeted connector chat mute/unmute when the owner names a Telegram/Discord/etc. room that is not the current chat, especially temporary mutes like 'mute the crypto signals Telegram group for 24 hours'. Do not fall back to generic MUTE_ROOM for named off-thread chat controls.",
         "Use PUBLISH_DEVICE_INTENT for multi-device reminders, push ladders, document-signing nudges, updated-ID interventions, and device-level warnings. Examples: 'for important meetings, remind me an hour before, ten minutes before, and right when they start on both my Mac and my phone', 'if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now', or 'if the only ID on file is expired, ask me for an updated copy so the workflow can continue'. Do not stay in REPLY just because the exact reservation, workflow item, or upload is still unspecified. Use LIFEOPS_COMPUTER_USE for portal uploads, Finder/Desktop work like taking screenshots or creating folders, browser workflows, and file-handling tasks on the owner's machine, including future instructions like 'when I send over the deck, upload it to the portal for me.'",

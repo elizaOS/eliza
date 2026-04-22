@@ -700,14 +700,12 @@ export function WorkflowGraphViewer({
 
         {/* The graph (render even with 0 nodes so React Flow mounts cleanly) */}
         {!loading && (
-          // biome-ignore lint/a11y/noStaticElementInteractions: outer click shield for modal; React Flow handles graph pointer events
+          // biome-ignore lint/a11y/noStaticElementInteractions: React Flow owns interactions inside this container.
           <div
             className="h-full w-full"
             role="presentation"
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") e.stopPropagation();
-            }}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <ReactFlow
               nodes={nodes}

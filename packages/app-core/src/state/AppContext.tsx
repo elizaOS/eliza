@@ -44,8 +44,10 @@ import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
   loadFavoriteApps,
+  loadRecentApps,
   saveFavoriteApps,
   savePersistedActiveServer,
+  saveRecentApps,
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
@@ -891,6 +893,15 @@ function AppProviderInner({
     saveFavoriteApps(apps);
   }, []);
 
+  // --- Recently launched apps ---
+  const [recentApps, setRecentAppsRaw] = useState<string[]>(() =>
+    loadRecentApps(),
+  );
+  const setRecentApps = useCallback((apps: string[]) => {
+    setRecentAppsRaw(apps);
+    saveRecentApps(apps);
+  }, []);
+
   // --- Config ---
   const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
   const [configText, setConfigText] = useState("");
@@ -1500,6 +1511,7 @@ function AppProviderInner({
         pluginsSubTab: setPluginsSubTab,
         databaseSubTab: setDatabaseSubTab,
         favoriteApps: setFavoriteApps,
+        recentApps: setRecentApps,
         configRaw: setConfigRaw,
         configText: setConfigText,
         onboardingComplete: setOnboardingComplete,
@@ -1650,6 +1662,7 @@ function AppProviderInner({
       setActivePackId,
       setActiveGameRunId,
       setActiveTerminalSessionId,
+      setRecentApps,
     ],
   );
 
@@ -2235,6 +2248,7 @@ function AppProviderInner({
       pluginsSubTab,
       databaseSubTab,
       favoriteApps,
+      recentApps,
       configRaw,
       configText,
       activeGamePostMessagePayload,
@@ -2646,6 +2660,7 @@ function AppProviderInner({
       pluginsSubTab,
       databaseSubTab,
       favoriteApps,
+      recentApps,
       configRaw,
       configText,
       activeGamePostMessagePayload,

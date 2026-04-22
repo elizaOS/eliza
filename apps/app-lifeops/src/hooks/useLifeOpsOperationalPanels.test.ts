@@ -227,6 +227,14 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
         dmInbound: false,
         grant: null,
       })),
+      startXLifeOpsConnector: vi.fn(async () => ({
+        provider: "x",
+        side: "agent",
+        mode: "local",
+        requestedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+        redirectUri: "",
+        authUrl: "",
+      })),
       upsertXLifeOpsConnector: vi.fn(async () => ({
         provider: "x",
         mode: "local",
@@ -298,7 +306,7 @@ describe("LifeOps operational hooks", () => {
     expect(clientMock.getLifeOpsCapabilitiesStatus).toHaveBeenCalledTimes(2);
   });
 
-  it("connects X and posts text through typed client methods", async () => {
+  it("connects owner X by default and posts from the explicit agent account", async () => {
     const { result } = renderHook(() => useLifeOpsXConnector());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -306,18 +314,22 @@ describe("LifeOps operational hooks", () => {
     await act(async () => {
       await result.current.connect("local");
     });
-    expect(clientMock.upsertXLifeOpsConnector).toHaveBeenCalledWith(
+    expect(clientMock.startXLifeOpsConnector).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "local",
-        capabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+        side: "owner",
       }),
     );
 
+    const agentHook = renderHook(() => useLifeOpsXConnector("agent"));
+    await waitFor(() => expect(agentHook.result.current.loading).toBe(false));
+
     await act(async () => {
-      await result.current.post("hello from LifeOps");
+      await agentHook.result.current.post("hello from LifeOps");
     });
     expect(clientMock.createXLifeOpsPost).toHaveBeenCalledWith(
       expect.objectContaining({
+        side: "agent",
         text: "hello from LifeOps",
         confirmPost: true,
       }),

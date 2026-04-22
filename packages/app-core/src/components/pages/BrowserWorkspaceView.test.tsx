@@ -55,8 +55,8 @@ function buildUseAppState(overrides?: Record<string, unknown>) {
 
 function buildPackageStatus() {
   return {
-    extensionPath: "/tmp/lifeops-browser",
-    chromeBuildPath: "/tmp/lifeops-browser/dist/chrome",
+    extensionPath: "/tmp/browser-bridge",
+    chromeBuildPath: "/tmp/browser-bridge/dist/chrome",
     chromePackagePath: null,
     safariWebExtensionPath: null,
     safariAppPath: null,
@@ -84,10 +84,10 @@ describe("BrowserWorkspaceView", () => {
     });
     clientMock.getWalletConfig.mockResolvedValue(null);
     clientMock.fetch.mockImplementation(async (path: string) => {
-      if (path === "/api/lifeops/browser/companions") {
+      if (path === "/api/browser-bridge/companions") {
         return { companions: [] };
       }
-      if (path === "/api/lifeops/browser/packages") {
+      if (path === "/api/browser-bridge/packages") {
         return { status: buildPackageStatus() };
       }
       throw new Error(`Unexpected client.fetch call: ${path}`);
@@ -98,14 +98,14 @@ describe("BrowserWorkspaceView", () => {
     cleanup();
   });
 
-  it("shows the LifeOps Browser install card in empty web mode", async () => {
+  it("shows the Agent Browser Bridge install card in empty web mode", async () => {
     render(<BrowserWorkspaceView />);
 
-    await screen.findByText("Use your real browser here");
+    await screen.findByText(/The agent can drive your real Chrome tabs/i);
 
     expect(screen.queryByText(/Embedded fallback only/i)).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Install LifeOps Browser" }),
+      screen.getByRole("button", { name: "Install Agent Browser Bridge" }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "Open extension folder" }),
@@ -117,20 +117,20 @@ describe("BrowserWorkspaceView", () => {
     useAppMock.mockReturnValue(buildUseAppState({ setActionNotice }));
     clientMock.fetch.mockImplementation(
       async (path: string, init?: RequestInit) => {
-        if (path === "/api/lifeops/browser/companions") {
+        if (path === "/api/browser-bridge/companions") {
           return { companions: [] };
         }
-        if (path === "/api/lifeops/browser/packages") {
+        if (path === "/api/browser-bridge/packages") {
           return { status: buildPackageStatus() };
         }
-        if (path === "/api/lifeops/browser/packages/open-path") {
+        if (path === "/api/browser-bridge/packages/open-path") {
           return {
-            path: "/tmp/lifeops-browser/dist/chrome",
+            path: "/tmp/browser-bridge/dist/chrome",
             target: "chrome_build",
             revealOnly: true,
           };
         }
-        if (path === "/api/lifeops/browser/packages/chrome/open-manager") {
+        if (path === "/api/browser-bridge/packages/chrome/open-manager") {
           expect(init?.method).toBe("POST");
           return { browser: "chrome" };
         }
@@ -141,18 +141,20 @@ describe("BrowserWorkspaceView", () => {
     render(<BrowserWorkspaceView />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Install LifeOps Browser" }),
+      await screen.findByRole("button", {
+        name: "Install Agent Browser Bridge",
+      }),
     );
 
     await waitFor(() => {
       expect(clientMock.fetch).toHaveBeenCalledWith(
-        "/api/lifeops/browser/packages/open-path",
+        "/api/browser-bridge/packages/open-path",
         expect.objectContaining({
           method: "POST",
         }),
       );
       expect(clientMock.fetch).toHaveBeenCalledWith(
-        "/api/lifeops/browser/packages/chrome/open-manager",
+        "/api/browser-bridge/packages/chrome/open-manager",
         expect.objectContaining({
           method: "POST",
         }),

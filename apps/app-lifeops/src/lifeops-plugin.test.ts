@@ -76,10 +76,9 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/definitions");
     expect(paths).toContain("/api/lifeops/workflows");
     expect(paths).toContain("/api/lifeops/overview");
-    expect(paths).toContain("/api/lifeops/browser/sessions");
     expect(paths).toContain("/api/lifeops/gmail/batch-reply-drafts");
-    expect(paths).toContain("/api/lifeops/browser/companions/pair");
-    expect(paths).toContain("/api/lifeops/browser/companions/sync");
+    // Browser routes moved to `@elizaos/plugin-browser-bridge`
+    // (mounted under `/api/browser-bridge/*`).
   });
 
   it("includes expected dynamic LifeOps routes", async () => {
@@ -90,12 +89,12 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/goals/:id/review");
     expect(paths).toContain("/api/lifeops/workflows/:id");
     expect(paths).toContain("/api/lifeops/workflows/:id/run");
-    expect(paths).toContain("/api/lifeops/browser/sessions/:id");
-    expect(paths).toContain("/api/lifeops/browser/sessions/:id/progress");
     expect(paths).toContain("/api/lifeops/occurrences/:id/complete");
     expect(paths).toContain(
       "/api/lifeops/website-access/callbacks/:key/resolve",
     );
+    // Browser session dynamic routes moved to
+    // `@elizaos/plugin-browser-bridge`.
   });
 
   it("includes website-blocker routes", async () => {

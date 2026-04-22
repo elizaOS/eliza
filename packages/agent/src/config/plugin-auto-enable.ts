@@ -1,5 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import type { ElizaConfig } from "./types.js";
 
 export interface ApplyPluginAutoEnableResult {
@@ -109,11 +110,9 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   OBSIDAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH: "@elizaos/plugin-repoprompt",
   CLAUDE_CODE_WORKBENCH_ENABLED: "@elizaos/plugin-claude-code-workbench",
-  // EVM plugin gated behind explicit opt-in flag instead of EVM_PRIVATE_KEY.
-  // plugin-evm's CROSS_CHAIN_TRANSFER action has a 'BRIDGE' simile that
-  // crashes with 'Action spec not found: BRIDGE' during startup.
-  // Gate behind ENABLE_EVM_PLUGIN=1 until the spec registration is fixed.
-  ENABLE_EVM_PLUGIN: "@elizaos/plugin-evm",
+  // NOTE: @elizaos/plugin-evm is NOT enabled via this map. Its auto-enable
+  // reasons (local key / Steward cloud / Steward self-hosted) are resolved by
+  // resolveEvmAutoEnableReason() below so a single code path owns the decision.
   SOLANA_PRIVATE_KEY: "@elizaos/plugin-solana",
   LASTFM_API_KEY: "@elizaos/plugin-music-library",
   GENIUS_API_KEY: "@elizaos/plugin-music-library",
@@ -160,18 +159,12 @@ const EVM_PLUGIN_SHORT_ID = "evm";
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
 
+// Delegates to resolveEvmSigningCapability so plugin-evm auto-enable and the
+// wallet-capability UI agree on whether a signing path exists. A cloud address
+// without signing (cloud-view-only) returns null — plugin-evm must not load
+// without a working signer.
 function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
-  if (env.EVM_PRIVATE_KEY?.trim()) {
-    return "env: EVM_PRIVATE_KEY";
-  }
-
-  const cloudProvisioned = env.ELIZA_CLOUD_PROVISIONED === "1";
-
-  if (cloudProvisioned && env.STEWARD_AGENT_TOKEN?.trim()) {
-    return "cloud-provisioned Steward wallet";
-  }
-
-  return null;
+  return evmAutoEnableReasonFromCapability(env);
 }
 
 export function isConnectorConfigured(

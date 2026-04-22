@@ -1,6 +1,9 @@
 export * from "./components/AppBlockerSettingsCard.tsx";
 // UI page views
-export * from "./components/LifeOpsBrowserSetupPanel.tsx";
+export {
+  BrowserBridgeSetupPanel,
+  BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
+} from "./components/BrowserBridgeSetupPanel.tsx";
 export * from "./components/LifeOpsPageSections.tsx";
 export * from "./components/LifeOpsPageView.tsx";
 export * from "./components/LifeOpsSettingsSection.tsx";
@@ -25,11 +28,11 @@ export {
   LIFEOPS_TASK_JITTER_MS,
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
-  LifeOpsBrowserPluginService,
+  BrowserBridgePluginService,
   lifeAction,
-  lifeOpsBrowserProvider,
+  browserBridgeProvider,
   lifeOpsProvider,
-  manageLifeOpsBrowserAction,
+  manageBrowserBridgeAction,
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
   updateOwnerProfileAction,

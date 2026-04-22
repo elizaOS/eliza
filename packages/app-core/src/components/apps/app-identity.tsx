@@ -74,7 +74,7 @@ function getAppPalette(name: string): readonly [string, string] {
   return APP_TILE_PALETTES[hashString(name) % APP_TILE_PALETTES.length];
 }
 
-function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
+export function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
   const blob = [
     app.name,
     app.displayName ?? "",

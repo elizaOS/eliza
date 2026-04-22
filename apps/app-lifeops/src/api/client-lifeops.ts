@@ -13,12 +13,27 @@
 
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import type {
+  BrowserBridgeCompanionAutoPairResponse,
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeKind,
+  BrowserBridgePackagePathTarget,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  CreateBrowserBridgeCompanionAutoPairRequest,
+  CreateBrowserBridgeCompanionPairingRequest,
+  OpenBrowserBridgeCompanionManagerResponse,
+  OpenBrowserBridgeCompanionPackagePathResponse,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   CaptureLifeOpsActivitySignalRequest,
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserCompanionAutoPairRequest,
-  CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
@@ -26,21 +41,13 @@ import type {
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
+  DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsUnifiedInboxRequest,
   LifeOpsActivitySignal,
-  LifeOpsBrowserCompanionAutoPairResponse,
-  LifeOpsBrowserCompanionPackageStatus,
-  LifeOpsBrowserCompanionPairingResponse,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserKind,
-  LifeOpsBrowserPackagePathTarget,
-  LifeOpsBrowserPageContext,
   LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
   LifeOpsCalendarEventMutationResult,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarFeed,
@@ -67,8 +74,6 @@ import type {
   LifeOpsTelegramConnectorStatus,
   LifeOpsUnifiedInbox,
   LifeOpsXConnectorStatus,
-  OpenLifeOpsBrowserCompanionManagerResponse,
-  OpenLifeOpsBrowserCompanionPackagePathResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
@@ -80,10 +85,10 @@ import type {
   StartLifeOpsSignalPairingResponse,
   StartLifeOpsTelegramAuthRequest,
   StartLifeOpsTelegramAuthResponse,
+  StartLifeOpsXConnectorRequest,
+  StartLifeOpsXConnectorResponse,
   SubmitLifeOpsTelegramAuthRequest,
-  SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
   VerifyLifeOpsTelegramConnectorRequest,
@@ -102,6 +107,7 @@ type LifeOpsSeedTemplatesResponse = {
 };
 
 type LifeOpsXConnectorRequest = {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   capabilities: LifeOpsXConnectorStatus["grantedCapabilities"];
   grantedScopes?: string[];
@@ -110,6 +116,7 @@ type LifeOpsXConnectorRequest = {
 };
 
 type LifeOpsXPostRequest = {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   text: string;
   confirmPost?: boolean;
@@ -137,46 +144,44 @@ declare module "@elizaos/app-core/api/client-base" {
       keys: string[];
       timezone?: string;
     }): Promise<LifeOpsSeedRoutinesResponse>;
-    getLifeOpsBrowserSettings(): Promise<{ settings: LifeOpsBrowserSettings }>;
-    updateLifeOpsBrowserSettings(
-      data: UpdateLifeOpsBrowserSettingsRequest,
-    ): Promise<{ settings: LifeOpsBrowserSettings }>;
-    listLifeOpsBrowserCompanions(): Promise<{
-      companions: LifeOpsBrowserCompanionStatus[];
+    getBrowserBridgeSettings(): Promise<{ settings: BrowserBridgeSettings }>;
+    updateBrowserBridgeSettings(
+      data: UpdateBrowserBridgeSettingsRequest,
+    ): Promise<{ settings: BrowserBridgeSettings }>;
+    listBrowserBridgeCompanions(): Promise<{
+      companions: BrowserBridgeCompanionStatus[];
     }>;
-    getLifeOpsBrowserPackageStatus(): Promise<{
-      status: LifeOpsBrowserCompanionPackageStatus;
+    getBrowserBridgePackageStatus(): Promise<{
+      status: BrowserBridgeCompanionPackageStatus;
     }>;
-    autoPairLifeOpsBrowserCompanion(
-      data: CreateLifeOpsBrowserCompanionAutoPairRequest,
-    ): Promise<LifeOpsBrowserCompanionAutoPairResponse>;
-    createLifeOpsBrowserCompanionPairing(
-      data: CreateLifeOpsBrowserCompanionPairingRequest,
-    ): Promise<LifeOpsBrowserCompanionPairingResponse>;
-    buildLifeOpsBrowserCompanionPackage(browser: LifeOpsBrowserKind): Promise<{
-      status: LifeOpsBrowserCompanionPackageStatus;
+    autoPairBrowserBridgeCompanion(
+      data: CreateBrowserBridgeCompanionAutoPairRequest,
+    ): Promise<BrowserBridgeCompanionAutoPairResponse>;
+    createBrowserBridgeCompanionPairing(
+      data: CreateBrowserBridgeCompanionPairingRequest,
+    ): Promise<BrowserBridgeCompanionPairingResponse>;
+    buildBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
+      status: BrowserBridgeCompanionPackageStatus;
     }>;
-    openLifeOpsBrowserCompanionPackagePath(data: {
-      target: LifeOpsBrowserPackagePathTarget;
+    openBrowserBridgeCompanionPackagePath(data: {
+      target: BrowserBridgePackagePathTarget;
       revealOnly?: boolean;
-    }): Promise<OpenLifeOpsBrowserCompanionPackagePathResponse>;
-    openLifeOpsBrowserCompanionManager(
-      browser: LifeOpsBrowserKind,
-    ): Promise<OpenLifeOpsBrowserCompanionManagerResponse>;
-    downloadLifeOpsBrowserCompanionPackage(
-      browser: LifeOpsBrowserKind,
-    ): Promise<{
+    }): Promise<OpenBrowserBridgeCompanionPackagePathResponse>;
+    openBrowserBridgeCompanionManager(
+      browser: BrowserBridgeKind,
+    ): Promise<OpenBrowserBridgeCompanionManagerResponse>;
+    downloadBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
       blob: Blob;
       filename: string;
     }>;
-    listLifeOpsBrowserTabs(): Promise<{ tabs: LifeOpsBrowserTabSummary[] }>;
-    getLifeOpsBrowserCurrentPage(): Promise<{
-      page: LifeOpsBrowserPageContext | null;
+    listBrowserBridgeTabs(): Promise<{ tabs: BrowserBridgeTabSummary[] }>;
+    getBrowserBridgeCurrentPage(): Promise<{
+      page: BrowserBridgePageContext | null;
     }>;
-    syncLifeOpsBrowserState(data: SyncLifeOpsBrowserStateRequest): Promise<{
-      companion: LifeOpsBrowserCompanionStatus;
-      tabs: LifeOpsBrowserTabSummary[];
-      currentPage: LifeOpsBrowserPageContext | null;
+    syncBrowserBridgeState(data: SyncBrowserBridgeStateRequest): Promise<{
+      companion: BrowserBridgeCompanionStatus;
+      tabs: BrowserBridgeTabSummary[];
+      currentPage: BrowserBridgePageContext | null;
     }>;
     listLifeOpsBrowserSessions(): Promise<{
       sessions: LifeOpsBrowserSession[];
@@ -288,6 +293,13 @@ declare module "@elizaos/app-core/api/client-base" {
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
     getXLifeOpsConnectorStatus(
       mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsXConnectorStatus>;
+    startXLifeOpsConnector(
+      data?: StartLifeOpsXConnectorRequest,
+    ): Promise<StartLifeOpsXConnectorResponse>;
+    disconnectXLifeOpsConnector(
+      data?: DisconnectLifeOpsXConnectorRequest,
     ): Promise<LifeOpsXConnectorStatus>;
     upsertXLifeOpsConnector(
       data: LifeOpsXConnectorRequest,
@@ -297,7 +309,13 @@ declare module "@elizaos/app-core/api/client-base" {
       status: number | null;
       postId?: string;
       error?: string;
-      category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+      category:
+        | "success"
+        | "auth"
+        | "rate_limit"
+        | "network"
+        | "invalid"
+        | "unknown";
     }>;
 
     // --- iMessage connector ---
@@ -323,7 +341,7 @@ declare module "@elizaos/app-core/api/client-base" {
     startLifeOpsSignalPairing(
       data?: StartLifeOpsSignalPairingRequest,
     ): Promise<StartLifeOpsSignalPairingResponse>;
-    getSignalPairingStatus(
+    getLifeOpsSignalPairingStatus(
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
     stopLifeOpsSignalPairing(
@@ -426,94 +444,94 @@ ElizaClient.prototype.seedLifeOpsRoutines = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsBrowserSettings = async function (
+ElizaClient.prototype.getBrowserBridgeSettings = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/settings");
+  return this.fetch("/api/browser-bridge/settings");
 };
 
-ElizaClient.prototype.updateLifeOpsBrowserSettings = async function (
+ElizaClient.prototype.updateBrowserBridgeSettings = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/settings", {
+  return this.fetch("/api/browser-bridge/settings", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.listLifeOpsBrowserCompanions = async function (
+ElizaClient.prototype.listBrowserBridgeCompanions = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/companions");
+  return this.fetch("/api/browser-bridge/companions");
 };
 
-ElizaClient.prototype.getLifeOpsBrowserPackageStatus = async function (
+ElizaClient.prototype.getBrowserBridgePackageStatus = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/packages");
+  return this.fetch("/api/browser-bridge/packages");
 };
 
-ElizaClient.prototype.autoPairLifeOpsBrowserCompanion = async function (
+ElizaClient.prototype.autoPairBrowserBridgeCompanion = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/companions/auto-pair", {
+  return this.fetch("/api/browser-bridge/companions/auto-pair", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.createLifeOpsBrowserCompanionPairing = async function (
+ElizaClient.prototype.createBrowserBridgeCompanionPairing = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/companions/pair", {
+  return this.fetch("/api/browser-bridge/companions/pair", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.buildLifeOpsBrowserCompanionPackage = async function (
+ElizaClient.prototype.buildBrowserBridgeCompanionPackage = async function (
   this: ElizaClient,
   browser,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/packages/${encodeURIComponent(browser)}/build`,
+    `/api/browser-bridge/packages/${encodeURIComponent(browser)}/build`,
     {
       method: "POST",
     },
   );
 };
 
-ElizaClient.prototype.openLifeOpsBrowserCompanionPackagePath = async function (
+ElizaClient.prototype.openBrowserBridgeCompanionPackagePath = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/packages/open-path", {
+  return this.fetch("/api/browser-bridge/packages/open-path", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-ElizaClient.prototype.openLifeOpsBrowserCompanionManager = async function (
+ElizaClient.prototype.openBrowserBridgeCompanionManager = async function (
   this: ElizaClient,
   browser,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/packages/${encodeURIComponent(browser)}/open-manager`,
+    `/api/browser-bridge/packages/${encodeURIComponent(browser)}/open-manager`,
     {
       method: "POST",
     },
   );
 };
 
-ElizaClient.prototype.downloadLifeOpsBrowserCompanionPackage = async function (
+ElizaClient.prototype.downloadBrowserBridgeCompanionPackage = async function (
   this: ElizaClient,
   browser,
 ) {
   const response = await this.rawRequest(
-    `/api/lifeops/browser/packages/${encodeURIComponent(browser)}/download`,
+    `/api/browser-bridge/packages/${encodeURIComponent(browser)}/download`,
     {
       method: "GET",
     },
@@ -524,27 +542,27 @@ ElizaClient.prototype.downloadLifeOpsBrowserCompanionPackage = async function (
     blob: await response.blob(),
     filename:
       filenameMatch?.[1] ??
-      `lifeops-browser-${browser === "safari" ? "safari" : "chrome"}.zip`,
+      `browser-bridge-${browser === "safari" ? "safari" : "chrome"}.zip`,
   };
 };
 
-ElizaClient.prototype.listLifeOpsBrowserTabs = async function (
+ElizaClient.prototype.listBrowserBridgeTabs = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/tabs");
+  return this.fetch("/api/browser-bridge/tabs");
 };
 
-ElizaClient.prototype.getLifeOpsBrowserCurrentPage = async function (
+ElizaClient.prototype.getBrowserBridgeCurrentPage = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/current-page");
+  return this.fetch("/api/browser-bridge/current-page");
 };
 
-ElizaClient.prototype.syncLifeOpsBrowserState = async function (
+ElizaClient.prototype.syncBrowserBridgeState = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/sync", {
+  return this.fetch("/api/browser-bridge/sync", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -553,7 +571,7 @@ ElizaClient.prototype.syncLifeOpsBrowserState = async function (
 ElizaClient.prototype.listLifeOpsBrowserSessions = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/browser/sessions");
+  return this.fetch("/api/browser-bridge/sessions");
 };
 
 ElizaClient.prototype.getLifeOpsBrowserSession = async function (
@@ -561,7 +579,7 @@ ElizaClient.prototype.getLifeOpsBrowserSession = async function (
   sessionId,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}`,
+    `/api/browser-bridge/sessions/${encodeURIComponent(sessionId)}`,
   );
 };
 
@@ -569,7 +587,7 @@ ElizaClient.prototype.createLifeOpsBrowserSession = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/browser/sessions", {
+  return this.fetch("/api/browser-bridge/sessions", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -581,7 +599,7 @@ ElizaClient.prototype.confirmLifeOpsBrowserSession = async function (
   data,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}/confirm`,
+    `/api/browser-bridge/sessions/${encodeURIComponent(sessionId)}/confirm`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -595,7 +613,7 @@ ElizaClient.prototype.updateLifeOpsBrowserSessionProgress = async function (
   data,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}/progress`,
+    `/api/browser-bridge/sessions/${encodeURIComponent(sessionId)}/progress`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -609,7 +627,7 @@ ElizaClient.prototype.completeLifeOpsBrowserSession = async function (
   data,
 ) {
   return this.fetch(
-    `/api/lifeops/browser/sessions/${encodeURIComponent(sessionId)}/complete`,
+    `/api/browser-bridge/sessions/${encodeURIComponent(sessionId)}/complete`,
     {
       method: "POST",
       body: JSON.stringify(data),
@@ -983,13 +1001,37 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
 ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
   this: ElizaClient,
   mode,
+  side,
 ) {
   const params = new URLSearchParams();
   if (mode) {
     params.set("mode", mode);
   }
+  if (side) {
+    params.set("side", side);
+  }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return this.fetch(`/api/lifeops/connectors/x/status${query}`);
+};
+
+ElizaClient.prototype.startXLifeOpsConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/x/start", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.disconnectXLifeOpsConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/x/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.upsertXLifeOpsConnector = async function (
@@ -1085,12 +1127,12 @@ ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   );
 };
 
-ElizaClient.prototype.getSignalPairingStatus = async function (
+ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
   this: ElizaClient,
-  sessionId,
-) {
+  sessionId: string,
+): Promise<LifeOpsSignalPairingStatus> {
   const params = new URLSearchParams({ sessionId });
-  return this.fetch(
+  return this.fetch<LifeOpsSignalPairingStatus>(
     `/api/lifeops/connectors/signal/pairing-status?${params.toString()}`,
   );
 };

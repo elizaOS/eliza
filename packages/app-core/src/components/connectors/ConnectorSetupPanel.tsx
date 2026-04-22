@@ -40,7 +40,10 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   if (connectorSetupRegistry.has(normalized)) {
     return true;
   }
-  if (normalized.includes("lifeopsbrowser")) {
+  if (
+    normalized.includes("lifeopsbrowser") ||
+    normalized.includes("browserbridg")
+  ) {
     return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
   }
   if (normalized.includes("telegramaccount")) {
@@ -72,9 +75,12 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
   }
 
   // Fall back to hardcoded components
-  if (normalized.includes("lifeopsbrowser")) {
-    const LifeOpsBrowserSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
-    return LifeOpsBrowserSetupPanel ? <LifeOpsBrowserSetupPanel /> : null;
+  if (
+    normalized.includes("lifeopsbrowser") ||
+    normalized.includes("browserbridg")
+  ) {
+    const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
+    return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
   }
   if (normalized.includes("telegramaccount")) {
     return <TelegramAccountConnectorPanel />;

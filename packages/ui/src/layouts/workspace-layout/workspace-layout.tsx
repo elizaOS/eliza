@@ -119,7 +119,12 @@ export function WorkspaceLayout({
         )}
       >
         {desktopSidebarElement ? (
-          <div className="hidden min-h-0 w-full shrink-0 items-stretch px-0 pb-0 pt-2 sm:pt-3 md:flex md:w-auto lg:pt-4">
+          <div
+            className={cn(
+              "hidden min-h-0 w-full shrink-0 items-stretch px-0 pb-0 md:flex md:w-auto",
+              contentPadding && "pt-2 sm:pt-3 lg:pt-4",
+            )}
+          >
             {desktopSidebarElement}
           </div>
         ) : null}

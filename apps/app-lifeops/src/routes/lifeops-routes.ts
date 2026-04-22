@@ -1,18 +1,12 @@
-import fs from "node:fs";
 import type http from "node:http";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsPhoneConsentRequest,
-  CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserCompanionAutoPairRequest,
-  CreateLifeOpsBrowserCompanionPairingRequest,
-  CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailBatchReplyDraftsRequest,
@@ -39,7 +33,6 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
-  SendLifeOpsIMessageRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -47,9 +40,6 @@ import type {
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
-  SyncLifeOpsBrowserStateRequest,
-  UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
   UpdateLifeOpsWorkflowRequest,
@@ -58,7 +48,6 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
-  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_INBOX_CHANNELS,
@@ -74,13 +63,6 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
 } from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import {
-  buildLifeOpsBrowserCompanionPackage,
-  getLifeOpsBrowserCompanionDownloadFile,
-  getLifeOpsBrowserCompanionPackageStatus,
-  openLifeOpsBrowserCompanionManager,
-  openLifeOpsBrowserCompanionPackagePath,
-} from "./lifeops-browser-packaging.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -114,62 +96,6 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
   return new LifeOpsService(ctx.state.runtime, {
     ownerEntityId: ctx.state.adminEntityId,
   });
-}
-
-function getBrowserCompanionAuth(
-  ctx: LifeOpsRouteContext,
-): { companionId: string; pairingToken: string } | null {
-  const companionHeader =
-    ctx.req.headers["x-lifeops-browser-companion-id"] ??
-    ctx.req.headers["x-eliza-browser-companion-id"];
-  const companionId =
-    typeof companionHeader === "string" ? companionHeader.trim() : "";
-  if (!companionId) {
-    ctx.error(ctx.res, "Missing X-LifeOps-Browser-Companion-Id header", 401);
-    return null;
-  }
-  const authHeader =
-    typeof ctx.req.headers.authorization === "string"
-      ? ctx.req.headers.authorization.trim()
-      : "";
-  const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const pairingToken = match?.[1]?.trim() ?? "";
-  if (!pairingToken) {
-    ctx.error(ctx.res, "Missing browser companion bearer token", 401);
-    return null;
-  }
-  return {
-    companionId,
-    pairingToken,
-  };
-}
-
-function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
-  const originHeader =
-    typeof ctx.req.headers.origin === "string"
-      ? ctx.req.headers.origin.trim()
-      : "";
-  if (!originHeader) {
-    return true;
-  }
-  if (originHeader === ctx.url.origin) {
-    return true;
-  }
-  return (
-    originHeader.startsWith("chrome-extension://") ||
-    originHeader.startsWith("safari-web-extension://")
-  );
-}
-
-function requestIsLoopback(ctx: LifeOpsRouteContext): boolean {
-  const remoteAddress = ctx.req.socket.remoteAddress?.trim().toLowerCase();
-  return (
-    remoteAddress === "127.0.0.1" ||
-    remoteAddress === "::1" ||
-    remoteAddress === "0:0:0:0:0:0:0:1" ||
-    remoteAddress === "::ffff:127.0.0.1" ||
-    remoteAddress === "::ffff:0:127.0.0.1"
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -560,56 +486,6 @@ async function runRoute(
       errorKind: "unhandled_error",
     });
     throw error;
-  }
-}
-
-async function runStatelessRoute(
-  ctx: LifeOpsRouteContext,
-  fn: () => Promise<void>,
-): Promise<boolean> {
-  const operation = routeOperation(ctx);
-  const span = createIntegrationTelemetrySpan({
-    boundary: "lifeops",
-    operation,
-  });
-  try {
-    await fn();
-    span.success({
-      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
-    });
-    return true;
-  } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
-      logger.warn(
-        {
-          boundary: "lifeops",
-          operation,
-          statusCode: error.status,
-        },
-        `[lifeops] Route failed: ${error.message}`,
-      );
-      span.failure({
-        statusCode: error.status,
-        error,
-        errorKind: "lifeops_service_error",
-      });
-      ctx.error(ctx.res, error.message, error.status);
-      return true;
-    }
-    logger.error(
-      {
-        boundary: "lifeops",
-        operation,
-      },
-      `[lifeops] Route crashed: ${errorMessage(error)}`,
-    );
-    span.failure({
-      statusCode: 500,
-      error,
-      errorKind: "lifeops_route_crash",
-    });
-    ctx.error(ctx.res, errorMessage(error), 500);
-    return true;
   }
 }
 
@@ -1204,7 +1080,41 @@ export async function handleLifeOpsRoutes(
         res,
         await service.getXConnectorStatus(
           parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
         ),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.startXConnector({
+          mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
+          redirectUrl: parseOptionalBodyString(body, "redirectUrl"),
+        }),
+        201,
+      );
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/x/disconnect"
+  ) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.disconnectXConnector({
+          mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
+        }),
       );
     });
   }
@@ -1269,6 +1179,7 @@ export async function handleLifeOpsRoutes(
           text: requireBodyString(body, "text"),
           confirmSend: parseOptionalBodyBoolean(body, "confirmSend"),
           mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
         }),
         201,
       );
@@ -1722,260 +1633,9 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/browser/sessions") {
-    return runRoute(ctx, async (service) => {
-      json(res, { sessions: await service.listBrowserSessions() });
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/browser/settings") {
-    return runRoute(ctx, async (service) => {
-      json(res, { settings: await service.getBrowserSettings() });
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/browser/settings") {
-    const body = await readJsonBody<UpdateLifeOpsBrowserSettingsRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, { settings: await service.updateBrowserSettings(body) });
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/browser/companions/pair"
-  ) {
-    const body =
-      await readJsonBody<CreateLifeOpsBrowserCompanionPairingRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.createBrowserCompanionPairing(body), 201);
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/browser/companions/auto-pair"
-  ) {
-    if (!browserAutoPairOriginAllowed(ctx)) {
-      ctx.error(
-        res,
-        "browser auto-pair must come from the LifeOps app or a browser extension",
-        403,
-      );
-      return true;
-    }
-    const body =
-      await readJsonBody<CreateLifeOpsBrowserCompanionAutoPairRequest>(
-        req,
-        res,
-      );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.autoPairBrowserCompanion(body, ctx.url.origin),
-        201,
-      );
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/browser/companions") {
-    return runRoute(ctx, async (service) => {
-      json(res, { companions: await service.listBrowserCompanions() });
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/browser/packages") {
-    return runStatelessRoute(ctx, async () => {
-      json(res, { status: getLifeOpsBrowserCompanionPackageStatus() });
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/browser/packages/open-path"
-  ) {
-    if (!requestIsLoopback(ctx)) {
-      ctx.error(
-        res,
-        "Local extension install helpers can only run on the same machine as LifeOps",
-        403,
-      );
-      return true;
-    }
-    const body = await readJsonBody<{
-      target?: string;
-      revealOnly?: boolean;
-    }>(req, res);
-    if (!body) return true;
-    if (
-      typeof body.target !== "string" ||
-      !LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.includes(
-        body.target as (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number],
-      )
-    ) {
-      ctx.error(
-        res,
-        `target must be one of: ${LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS.join(", ")}`,
-        400,
-      );
-      return true;
-    }
-    const validatedTarget =
-      body.target as (typeof LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS)[number];
-    return runStatelessRoute(ctx, async () => {
-      json(
-        res,
-        await openLifeOpsBrowserCompanionPackagePath(validatedTarget, {
-          revealOnly: body.revealOnly === true,
-        }),
-      );
-    });
-  }
-
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/browser/companions/sync"
-  ) {
-    const body = await readJsonBody<SyncLifeOpsBrowserStateRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const auth = getBrowserCompanionAuth(ctx);
-      if (!auth) {
-        return;
-      }
-      json(
-        res,
-        await service.syncBrowserCompanion(
-          auth.companionId,
-          auth.pairingToken,
-          body,
-        ),
-      );
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/browser/tabs") {
-    return runRoute(ctx, async (service) => {
-      json(res, { tabs: await service.listBrowserTabs() });
-    });
-  }
-
-  const browserPackageBuildMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/packages\/([^/]+)\/build$/,
-  );
-  if (method === "POST" && browserPackageBuildMatch) {
-    const browser = decodeMatchedPathComponent(
-      ctx,
-      browserPackageBuildMatch,
-      1,
-      res,
-      "browser package target",
-    );
-    if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
-      return true;
-    }
-    return runStatelessRoute(ctx, async () => {
-      json(res, {
-        status: await buildLifeOpsBrowserCompanionPackage(browser),
-      });
-    });
-  }
-
-  const browserPackageOpenManagerMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/packages\/([^/]+)\/open-manager$/,
-  );
-  if (method === "POST" && browserPackageOpenManagerMatch) {
-    if (!requestIsLoopback(ctx)) {
-      ctx.error(
-        res,
-        "Local extension install helpers can only run on the same machine as LifeOps",
-        403,
-      );
-      return true;
-    }
-    const browser = decodeMatchedPathComponent(
-      ctx,
-      browserPackageOpenManagerMatch,
-      1,
-      res,
-      "browser package target",
-    );
-    if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
-      return true;
-    }
-    return runStatelessRoute(ctx, async () => {
-      json(res, await openLifeOpsBrowserCompanionManager(browser));
-    });
-  }
-
-  const browserPackageDownloadMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/packages\/([^/]+)\/download$/,
-  );
-  if (method === "GET" && browserPackageDownloadMatch) {
-    const browser = decodeMatchedPathComponent(
-      ctx,
-      browserPackageDownloadMatch,
-      1,
-      res,
-      "browser package target",
-    );
-    if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
-      return true;
-    }
-    return runStatelessRoute(ctx, async () => {
-      const artifact = getLifeOpsBrowserCompanionDownloadFile(browser);
-      res.statusCode = 200;
-      res.setHeader("Content-Type", artifact.contentType);
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${artifact.filename}"`,
-      );
-      await new Promise<void>((resolve, reject) => {
-        const stream = fs.createReadStream(artifact.path);
-        stream.on("error", reject);
-        res.on("error", reject);
-        stream.on("end", resolve);
-        stream.pipe(res);
-      });
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/browser/current-page") {
-    return runRoute(ctx, async (service) => {
-      json(res, { page: await service.getCurrentBrowserPage() });
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/browser/sync") {
-    const body = await readJsonBody<SyncLifeOpsBrowserStateRequest>(req, res);
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, await service.syncBrowserState(body));
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/lifeops/browser/sessions") {
-    const body = await readJsonBody<CreateLifeOpsBrowserSessionRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, { session: await service.createBrowserSession(body) }, 201);
-    });
-  }
+  // Browser companion + package routes extracted to
+  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `/api/browser-bridge/*`).
 
   if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
     const body = await readJsonBody<SyncLifeOpsScheduleObservationsRequest>(
@@ -2219,162 +1879,9 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  const browserSessionMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/sessions\/([^/]+)$/,
-  );
-  if (browserSessionMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserSessionMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    if (method === "GET") {
-      return runRoute(ctx, async (service) => {
-        json(res, { session: await service.getBrowserSession(sessionId) });
-      });
-    }
-  }
-
-  const browserConfirmMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/confirm$/,
-  );
-  if (method === "POST" && browserConfirmMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserConfirmMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    const body = await readJsonBody<ConfirmLifeOpsBrowserSessionRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, {
-        session: await service.confirmBrowserSession(sessionId, body),
-      });
-    });
-  }
-
-  const browserProgressMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/progress$/,
-  );
-  if (method === "POST" && browserProgressMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserProgressMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    const body = await readJsonBody<UpdateLifeOpsBrowserSessionProgressRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, {
-        session: await service.updateBrowserSessionProgress(sessionId, body),
-      });
-    });
-  }
-
-  const browserCompleteMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/sessions\/([^/]+)\/complete$/,
-  );
-  if (method === "POST" && browserCompleteMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserCompleteMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    const body = await readJsonBody<CompleteLifeOpsBrowserSessionRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      json(res, {
-        session: await service.completeBrowserSession(sessionId, body),
-      });
-    });
-  }
-
-  const browserCompanionProgressMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/progress$/,
-  );
-  if (method === "POST" && browserCompanionProgressMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserCompanionProgressMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    const body = await readJsonBody<UpdateLifeOpsBrowserSessionProgressRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const auth = getBrowserCompanionAuth(ctx);
-      if (!auth) {
-        return;
-      }
-      json(res, {
-        session: await service.updateBrowserSessionProgressFromCompanion(
-          auth.companionId,
-          auth.pairingToken,
-          sessionId,
-          body,
-        ),
-      });
-    });
-  }
-
-  const browserCompanionCompleteMatch = pathname.match(
-    /^\/api\/lifeops\/browser\/companions\/sessions\/([^/]+)\/complete$/,
-  );
-  if (method === "POST" && browserCompanionCompleteMatch) {
-    const sessionId = decodeMatchedPathComponent(
-      ctx,
-      browserCompanionCompleteMatch,
-      1,
-      res,
-      "browser session id",
-    );
-    if (!sessionId) return true;
-    const body = await readJsonBody<CompleteLifeOpsBrowserSessionRequest>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    return runRoute(ctx, async (service) => {
-      const auth = getBrowserCompanionAuth(ctx);
-      if (!auth) {
-        return;
-      }
-      json(res, {
-        session: await service.completeBrowserSessionFromCompanion(
-          auth.companionId,
-          auth.pairingToken,
-          sessionId,
-          body,
-        ),
-      });
-    });
-  }
+  // Browser session + companion progress/complete routes extracted to
+  // `@elizaos/plugin-browser-bridge/routes` (mounted under
+  // `/api/browser-bridge/*`).
 
   const occurrenceExplanationMatch = pathname.match(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/explanation$/,

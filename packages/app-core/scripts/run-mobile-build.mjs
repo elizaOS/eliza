@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|ios>
+ * Usage: node scripts/run-mobile-build.mjs <android|ios|ios-overlay>
  *
  * Phases:
  *   1. Resolve config  — read app.config.ts for appId / appName
@@ -33,8 +33,19 @@ const appDir = path.join(repoRoot, "apps", "app");
 const iosPlatformDir = path.join(appDir, "ios");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const platformsDir = path.join(repoRoot, "eliza", "packages", "app-core", "platforms");
-const nativePluginsDir = path.join(repoRoot, "eliza", "packages", "native-plugins");
+const platformsDir = path.join(
+  repoRoot,
+  "eliza",
+  "packages",
+  "app-core",
+  "platforms",
+);
+const nativePluginsDir = path.join(
+  repoRoot,
+  "eliza",
+  "packages",
+  "native-plugins",
+);
 const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
 
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
@@ -63,7 +74,8 @@ function run(command, args, { cwd, env = process.env } = {}) {
     const child = spawn(command, args, { cwd, env, stdio: "inherit" });
     child.on("exit", (code, signal) => {
       if (signal) return reject(new Error(`${command} killed by ${signal}`));
-      if ((code ?? 1) !== 0) return reject(new Error(`${command} exited with code ${code ?? 1}`));
+      if ((code ?? 1) !== 0)
+        return reject(new Error(`${command} exited with code ${code ?? 1}`));
       resolve();
     });
   });
@@ -99,7 +111,9 @@ function resolveJavaHome() {
 function prependPath(env, entries) {
   const sep = process.platform === "win32" ? ";" : ":";
   const valid = entries.filter(Boolean);
-  return valid.length ? `${valid.join(sep)}${sep}${env.PATH ?? ""}` : env.PATH ?? "";
+  return valid.length
+    ? `${valid.join(sep)}${sep}${env.PATH ?? ""}`
+    : (env.PATH ?? "");
 }
 
 function escapeJavaString(value) {
@@ -138,15 +152,28 @@ function templateFilePriority(platform, relPath) {
     path.join("App", "App.xcodeproj", "project.pbxproj"),
     path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
     path.join("App", "App", "MiladyIntentPlugin.swift"),
-    path.join("App", "App", "WebsiteBlockerContentExtension", "ActionRequestHandler.swift"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
     path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
-    path.join("App", "App", "WebsiteBlockerContentExtension", "WebsiteBlockerContentExtension.entitlements"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
   ];
   const index = priority.indexOf(relPath);
   return `${String(index === -1 ? priority.length : index).padStart(4, "0")}:${relPath}`;
 }
 
-export function resolvePlatformTemplateRoot(platform, { repoRootValue = repoRoot } = {}) {
+export function resolvePlatformTemplateRoot(
+  platform,
+  { repoRootValue = repoRoot } = {},
+) {
   const templateRoot = path.join(
     repoRootValue,
     "eliza",
@@ -166,7 +193,9 @@ export function syncPlatformTemplateFiles(
   if (!templateRoot) return [];
   const targetRoot = path.join(appDirValue, platform);
   const files = collectTemplateFiles(templateRoot).sort((a, b) =>
-    templateFilePriority(platform, a).localeCompare(templateFilePriority(platform, b)),
+    templateFilePriority(platform, a).localeCompare(
+      templateFilePriority(platform, b),
+    ),
   );
   const copied = [];
   for (const relPath of files) {
@@ -177,17 +206,28 @@ export function syncPlatformTemplateFiles(
     copied.push(relPath);
   }
   if (copied.length > 0) {
-    log(`[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`);
+    log(
+      `[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`,
+    );
   }
   return copied;
 }
 
-export function isCapacitorPlatformReady(platform, { appDirValue = appDir } = {}) {
+export function isCapacitorPlatformReady(
+  platform,
+  { appDirValue = appDir } = {},
+) {
   if (platform === "ios") {
     return (
       fs.existsSync(path.join(appDirValue, "ios", "App", "Podfile")) &&
       fs.existsSync(
-        path.join(appDirValue, "ios", "App", "App.xcodeproj", "project.pbxproj"),
+        path.join(
+          appDirValue,
+          "ios",
+          "App",
+          "App.xcodeproj",
+          "project.pbxproj",
+        ),
       )
     );
   }
@@ -236,7 +276,10 @@ export function applyIosAppIdentity({
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
     );
     if (developmentTeam) {
-      project = project.replace(/DEVELOPMENT_TEAM = [A-Z0-9]+;/g, `DEVELOPMENT_TEAM = ${developmentTeam};`);
+      project = project.replace(
+        /DEVELOPMENT_TEAM = [A-Z0-9]+;/g,
+        `DEVELOPMENT_TEAM = ${developmentTeam};`,
+      );
     }
     if (project !== original) {
       fs.writeFileSync(projectPath, project, "utf8");
@@ -251,11 +294,41 @@ export function applyIosAppIdentity({
   for (const relPath of [
     path.join("App", "App.entitlements"),
     path.join("App", "ScreenTimeSupport.swift"),
-    path.join("App", "WebsiteBlockerContentExtension", "WebsiteBlockerContentExtension.entitlements"),
-    path.join("App", "WebsiteBlockerContentExtension", "ActionRequestHandler.swift"),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
     if (replaceInFile(filePath, replacements)) {
+      changed.push(relPath);
+    }
+  }
+
+  const extensionId = `${appId}.WebsiteBlockerContentExtension`;
+  const fastlaneReplacements = [
+    [
+      'ENV["APP_IDENTIFIER"] || "ai.elizaos.app"',
+      `ENV["APP_IDENTIFIER"] || "${appId}"`,
+    ],
+    [
+      'ENV["APP_IDENTIFIER_EXTRA"] || ""',
+      `ENV["APP_IDENTIFIER_EXTRA"] || "${extensionId}"`,
+    ],
+  ];
+  for (const relPath of [
+    path.join("fastlane", "Appfile"),
+    path.join("fastlane", "Fastfile"),
+    path.join("fastlane", "Matchfile"),
+  ]) {
+    const filePath = path.join(path.dirname(iosAppRoot), relPath);
+    if (replaceInFile(filePath, fastlaneReplacements)) {
       changed.push(relPath);
     }
   }
@@ -288,17 +361,34 @@ async function ensurePlatform(platform) {
 
 /** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
 const ANDROID_PERMISSIONS = [
-  "RECORD_AUDIO", "CAMERA",
-  "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "ACCESS_BACKGROUND_LOCATION",
-  "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC", "POST_NOTIFICATIONS",
+  "RECORD_AUDIO",
+  "CAMERA",
+  "ACCESS_FINE_LOCATION",
+  "ACCESS_COARSE_LOCATION",
+  "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE",
+  "FOREGROUND_SERVICE_DATA_SYNC",
+  "POST_NOTIFICATIONS",
   "WAKE_LOCK",
 ];
 
 function overlayAndroid() {
-  const srcJava = path.join(platformsDir, "android", "app", "src", "main", "java", "ai", "elizaos", "app");
+  const srcJava = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
   const gradlePath = path.join(androidDir, "app", "build.gradle");
   const namespace = fs.existsSync(gradlePath)
-    ? fs.readFileSync(gradlePath, "utf8").match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
+    ? fs
+        .readFileSync(gradlePath, "utf8")
+        .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
     : APP.appId;
   const androidPackage = namespace || APP.appId;
   const dstJava = path.join(
@@ -339,9 +429,18 @@ function overlayAndroid() {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
-      code = code.replace(/^package\s+ai\.elizaos\.app;/m, `package ${androidPackage};`);
-      code = code.replaceAll("ai.elizaos.app.action.", `${androidPackage}.action.`);
-      code = code.replaceAll("elizaOS Gateway", `${escapeJavaString(APP.appName)} Gateway`);
+      code = code.replace(
+        /^package\s+ai\.elizaos\.app;/m,
+        `package ${androidPackage};`,
+      );
+      code = code.replaceAll(
+        "ai.elizaos.app.action.",
+        `${androidPackage}.action.`,
+      );
+      code = code.replaceAll(
+        "elizaOS Gateway",
+        `${escapeJavaString(APP.appName)} Gateway`,
+      );
       code = code.replaceAll(
         "Shows elizaOS gateway connection status",
         `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
@@ -352,18 +451,29 @@ function overlayAndroid() {
   }
 
   // Merge AndroidManifest.xml
-  const manifestPath = path.join(androidDir, "app", "src", "main", "AndroidManifest.xml");
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
   if (fs.existsSync(manifestPath)) {
     let xml = fs.readFileSync(manifestPath, "utf8");
     let dirty = false;
 
     if (!xml.includes("usesCleartextTraffic")) {
-      xml = xml.replace("<application", '<application\n        android:usesCleartextTraffic="true"');
+      xml = xml.replace(
+        "<application",
+        '<application\n        android:usesCleartextTraffic="true"',
+      );
       dirty = true;
     }
     if (!xml.includes("<queries>")) {
-      xml = xml.replace(/(\s*)<application/,
-        '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application');
+      xml = xml.replace(
+        /(\s*)<application/,
+        '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application',
+      );
       dirty = true;
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
@@ -374,35 +484,51 @@ function overlayAndroid() {
       xml = withoutGatewayServices;
       dirty = true;
     }
-    xml = xml.replace("</application>",
-      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`);
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
     dirty = true;
     for (const perm of ANDROID_PERMISSIONS) {
       const full = `android.permission.${perm}`;
       if (!xml.includes(full)) {
-        xml = xml.replace("</manifest>", `    <uses-permission android:name="${full}" />\n</manifest>`);
+        xml = xml.replace(
+          "</manifest>",
+          `    <uses-permission android:name="${full}" />\n</manifest>`,
+        );
         dirty = true;
       }
     }
     // Storage permissions with maxSdkVersion
     if (!xml.includes("WRITE_EXTERNAL_STORAGE")) {
-      xml = xml.replace("</manifest>",
-        '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>');
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>',
+      );
       dirty = true;
     }
     if (!xml.includes("READ_EXTERNAL_STORAGE")) {
-      xml = xml.replace("</manifest>",
-        '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>');
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>',
+      );
       dirty = true;
     }
     if (dirty) {
       fs.writeFileSync(manifestPath, xml, "utf8");
-      console.log("[mobile-build] Merged permissions and service into AndroidManifest.xml.");
+      console.log(
+        "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+      );
     }
   }
 
   // Copy ProGuard rules
-  const srcPro = path.join(platformsDir, "android", "app", "proguard-rules.pro");
+  const srcPro = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "proguard-rules.pro",
+  );
   if (fs.existsSync(srcPro)) {
     fs.copyFileSync(srcPro, path.join(androidDir, "app", "proguard-rules.pro"));
     console.log("[mobile-build] Copied ProGuard rules.");
@@ -412,7 +538,10 @@ function overlayAndroid() {
   if (fs.existsSync(gradlePath)) {
     let g = fs.readFileSync(gradlePath, "utf8");
     if (g.includes("minifyEnabled false")) {
-      g = g.replace("minifyEnabled false", "minifyEnabled true\n            shrinkResources true");
+      g = g.replace(
+        "minifyEnabled false",
+        "minifyEnabled true\n            shrinkResources true",
+      );
       fs.writeFileSync(gradlePath, g, "utf8");
       console.log("[mobile-build] Enabled release minification.");
     }
@@ -422,16 +551,46 @@ function overlayAndroid() {
 // ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
 const IOS_PERMISSION_KEYS = [
-  ["NSCameraUsageDescription", "This app uses your camera to capture photos and video when you ask it to."],
-  ["NSMicrophoneUsageDescription", "This app needs microphone access for voice wake, talk mode, and video capture."],
-  ["NSLocationWhenInUseUsageDescription", "This app uses your location to provide location-aware responses when you allow it."],
-  ["NSLocationAlwaysAndWhenInUseUsageDescription", "This app can share your location in the background so it stays up to date even when the app is not in use."],
-  ["NSPhotoLibraryUsageDescription", "This app accesses your photo library to attach and share photos or videos."],
-  ["NSPhotoLibraryAddUsageDescription", "This app saves captured photos and videos to your photo library."],
-  ["NSHealthShareUsageDescription", "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders."],
-  ["NSHealthUpdateUsageDescription", "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled."],
-  ["NSSpeechRecognitionUsageDescription", "This app uses on-device speech recognition to listen for voice commands and wake words."],
-  ["NSLocalNetworkUsageDescription", "This app discovers and connects to your elizaOS gateway on the local network."],
+  [
+    "NSCameraUsageDescription",
+    "This app uses your camera to capture photos and video when you ask it to.",
+  ],
+  [
+    "NSMicrophoneUsageDescription",
+    "This app needs microphone access for voice wake, talk mode, and video capture.",
+  ],
+  [
+    "NSLocationWhenInUseUsageDescription",
+    "This app uses your location to provide location-aware responses when you allow it.",
+  ],
+  [
+    "NSLocationAlwaysAndWhenInUseUsageDescription",
+    "This app can share your location in the background so it stays up to date even when the app is not in use.",
+  ],
+  [
+    "NSPhotoLibraryUsageDescription",
+    "This app accesses your photo library to attach and share photos or videos.",
+  ],
+  [
+    "NSPhotoLibraryAddUsageDescription",
+    "This app saves captured photos and videos to your photo library.",
+  ],
+  [
+    "NSHealthShareUsageDescription",
+    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
+  ],
+  [
+    "NSHealthUpdateUsageDescription",
+    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
+  ],
+  [
+    "NSSpeechRecognitionUsageDescription",
+    "This app uses on-device speech recognition to listen for voice commands and wake words.",
+  ],
+  [
+    "NSLocalNetworkUsageDescription",
+    "This app discovers and connects to your elizaOS gateway on the local network.",
+  ],
 ];
 
 const IOS_OFFICIAL_COMPATIBLE_PODS = [
@@ -454,13 +613,18 @@ function overlayIos() {
     let dirty = false;
     for (const [key, desc] of IOS_PERMISSION_KEYS) {
       if (!plist.includes(key)) {
-        plist = plist.replace("</dict>", `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`);
+        plist = plist.replace(
+          "</dict>",
+          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
+        );
         dirty = true;
       }
     }
     if (!plist.includes("NSBonjourServices")) {
-      plist = plist.replace("</dict>",
-        `\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_elizaos-gw._tcp</string>\n\t</array>\n</dict>`);
+      plist = plist.replace(
+        "</dict>",
+        `\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_elizaos-gw._tcp</string>\n\t</array>\n</dict>`,
+      );
       dirty = true;
     }
     if (dirty) {
@@ -470,12 +634,20 @@ function overlayIos() {
   }
 
   // Copy entitlements with app group derived from appId
-  const srcEnt = path.join(platformsDir, "ios", "App", "App", "App.entitlements");
+  const srcEnt = path.join(
+    platformsDir,
+    "ios",
+    "App",
+    "App",
+    "App.entitlements",
+  );
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
     ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
-    console.log(`[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`);
+    console.log(
+      `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
+    );
   }
 
   // Patch xcconfigs to include CocoaPods settings
@@ -495,11 +667,20 @@ function overlayIos() {
   applyIosAppIdentity();
 }
 
+export function prepareIosOverlay() {
+  const syncedFiles = syncPlatformTemplateFiles("ios");
+  overlayIos();
+  stripSpmIncompatiblePlugins();
+  return syncedFiles;
+}
+
 function generatePodfile() {
   const podfileDir = path.join(appDir, "ios", "App");
   const iosPath = resolvePackagePath("@capacitor/ios", podfileDir);
   if (!iosPath) {
-    console.warn("[mobile-build] Could not resolve @capacitor/ios — skipping Podfile.");
+    console.warn(
+      "[mobile-build] Could not resolve @capacitor/ios — skipping Podfile.",
+    );
     return;
   }
 
@@ -534,7 +715,9 @@ function generatePodfile() {
     }
   }
 
-  fs.writeFileSync(path.join(podfileDir, "Podfile"), `\
+  fs.writeFileSync(
+    path.join(podfileDir, "Podfile"),
+    `\
 require_relative '${iosPath}/scripts/pods_helpers'
 
 platform :ios, '15.0'
@@ -553,7 +736,9 @@ end
 post_install do |installer|
   assertDeploymentTarget(installer)
 end
-`, "utf8");
+`,
+    "utf8",
+  );
   console.log("[mobile-build] Generated Podfile.");
 }
 
@@ -561,7 +746,13 @@ end
 
 /** Strip incompatible official plugins from SPM Package.swift. */
 function stripSpmIncompatiblePlugins() {
-  const pkgPath = path.join(appDir, "ios", "App", "CapApp-SPM", "Package.swift");
+  const pkgPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "CapApp-SPM",
+    "Package.swift",
+  );
   if (!fs.existsSync(pkgPath)) return;
 
   let content = fs.readFileSync(pkgPath, "utf8");
@@ -576,9 +767,7 @@ function stripSpmIncompatiblePlugins() {
   content = filtered.join("\n");
 
   if (changed) {
-    content = content
-      .replace(/,(\s*[\]\)])/g, "$1")
-      .replace(/\n{3,}/g, "\n\n");
+    content = content.replace(/,(\s*[\]\)])/g, "$1").replace(/\n{3,}/g, "\n\n");
     fs.writeFileSync(pkgPath, content, "utf8");
     console.log(
       `[mobile-build] Stripped incompatible SPM plugins: ${Array.from(
@@ -680,7 +869,10 @@ export function resolveIosBuildTarget({
 async function buildAndroid() {
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
-  if (!sdk) throw new Error("Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.");
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
   await buildWeb();
@@ -695,32 +887,52 @@ async function buildAndroid() {
     ANDROID_HOME: sdk,
     ANDROID_SDK_ROOT: sdk,
     JAVA_HOME: jdk,
-    PATH: prependPath(process.env, [path.join(jdk, "bin"), path.join(sdk, "platform-tools")]),
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
   };
 
-  await run("./gradlew", [":elizaos-capacitor-websiteblocker:testDebugUnitTest", ":app:assembleDebug"], {
-    cwd: androidDir, env,
-  });
+  await run(
+    "./gradlew",
+    [
+      ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
+      ":app:assembleDebug",
+    ],
+    {
+      cwd: androidDir,
+      env,
+    },
+  );
 }
 
 async function buildIos() {
-  if (process.platform !== "darwin") throw new Error("iOS builds require macOS and Xcode.");
+  if (process.platform !== "darwin")
+    throw new Error("iOS builds require macOS and Xcode.");
 
-  const cocoapodsScript = path.join(repoRoot, "eliza", "packages", "app-core", "scripts", "prepare-ios-cocoapods.sh");
+  const cocoapodsScript = path.join(
+    repoRoot,
+    "eliza",
+    "packages",
+    "app-core",
+    "scripts",
+    "prepare-ios-cocoapods.sh",
+  );
 
   await buildWeb();
   await ensurePlatform("ios");
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
   }
-  const syncedFiles = syncPlatformTemplateFiles("ios");
   await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
 
-  overlayIos();
-  stripSpmIncompatiblePlugins();
+  const syncedFiles = prepareIosOverlay();
 
   // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
-  if (fs.existsSync(path.join(iosDir, "Podfile")) || shouldRunIosPodInstall(syncedFiles)) {
+  if (
+    fs.existsSync(path.join(iosDir, "Podfile")) ||
+    shouldRunIosPodInstall(syncedFiles)
+  ) {
     await run("pod", ["install"], { cwd: iosDir });
   }
 
@@ -730,29 +942,41 @@ async function buildIos() {
     : ["-project", "App.xcodeproj"];
   const buildTarget = resolveIosBuildTarget();
 
-  await run("xcodebuild", [
-    ...projectArgs,
-    "-scheme", "App",
-    "-configuration", "Debug",
-    "-destination", buildTarget.destination,
-    "-sdk", buildTarget.sdk,
-    "CODE_SIGNING_ALLOWED=NO",
-    "build",
-  ], { cwd: iosDir });
+  await run(
+    "xcodebuild",
+    [
+      ...projectArgs,
+      "-scheme",
+      "App",
+      "-configuration",
+      "Debug",
+      "-destination",
+      buildTarget.destination,
+      "-sdk",
+      buildTarget.sdk,
+      "CODE_SIGNING_ALLOWED=NO",
+      "build",
+    ],
+    { cwd: iosDir },
+  );
 }
 
 // ── Entry point ─────────────────────────────────────────────────────────
 
 export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
-  if (target !== "android" && target !== "ios") {
-    console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
+  if (target !== "android" && target !== "ios" && target !== "ios-overlay") {
+    console.error(
+      "Usage: node scripts/run-mobile-build.mjs <android|ios|ios-overlay>",
+    );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
-  } else {
+  } else if (target === "ios") {
     await buildIos();
+  } else {
+    prepareIosOverlay();
   }
 }
 

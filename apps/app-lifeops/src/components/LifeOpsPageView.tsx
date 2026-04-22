@@ -25,6 +25,7 @@ import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
 import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
 import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
+import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
@@ -34,7 +35,10 @@ import {
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
+import {
+  LifeOpsSelectionProvider,
+  useLifeOpsSelection,
+} from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
@@ -356,21 +360,32 @@ function LifeOpsSettingsSectionView({
   t,
 }: LifeOpsSettingsSectionViewProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-txt">
+        <h2 className="text-base font-semibold tracking-tight text-txt">
           {t("lifeopspage.setupTitle", { defaultValue: "Settings" })}
         </h2>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={onRunSetupAgain}
-        >
-          {t("lifeopspage.runSetupAgain", {
-            defaultValue: "Run setup again",
-          })}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            onClick={onRunSetupAgain}
+          >
+            {t("lifeopspage.runSetupAgain", {
+              defaultValue: "Run setup again",
+            })}
+          </Button>
+          <Button
+            variant="surfaceDestructive"
+            size="sm"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            onClick={onDisableLifeOps}
+            disabled={disableLifeOpsDisabled}
+          >
+            {t("lifeopspage.disable", { defaultValue: "Disable LifeOps" })}
+          </Button>
+        </div>
       </div>
 
       <LifeOpsSettingsSection
@@ -388,18 +403,6 @@ function LifeOpsSettingsSectionView({
       </div>
 
       <PermissionsPanel />
-
-      <div className="flex justify-end border-t border-border/16 pt-2">
-        <Button
-          variant="surfaceDestructive"
-          size="sm"
-          className="rounded-full px-4 text-xs-tight font-semibold"
-          onClick={onDisableLifeOps}
-          disabled={disableLifeOpsDisabled}
-        >
-          {t("lifeopspage.disable", { defaultValue: "Disable LifeOps" })}
-        </Button>
-      </div>
     </div>
   );
 }
@@ -438,7 +441,16 @@ function LifeOpsWorkspaceInner() {
     null,
   );
 
-  const { section, navigate } = useLifeOpsSection();
+  const { section, navigate, eventId, messageId } = useLifeOpsSection();
+  const { select } = useLifeOpsSelection();
+  // Bridge URL hash → selection context. When the widget row writes the hash
+  // and the app navigates to /lifeops, the section-scoped UIs
+  // (EventEditorDrawer, InboxReaderPane, …) react off `selection.eventId` /
+  // `selection.messageId`, not off the hash directly. Push the hook's hash
+  // state into the selection context whenever it changes.
+  useEffect(() => {
+    select({ eventId, messageId });
+  }, [eventId, messageId, select]);
   const appEnabled = lifeOpsApp.enabled;
 
   const runtimeReady =
@@ -942,15 +954,23 @@ function LifeOpsWorkspaceInner() {
   return (
     <AppWorkspaceChrome
       testId="lifeops-shell"
-      nav={<LifeOpsNavRail activeSection={section} onNavigate={navigate} />}
       main={
-        <div className="flex h-full min-h-0 flex-col">
-          <PagePanel.Header
-            heading="LifeOps"
-            className="px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6"
-          />
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
-            {mainContent}
+        <div className="flex h-full min-h-0">
+          <LifeOpsResizableSidebar
+            storageKey="lifeops:nav-rail-width"
+            defaultWidth={296}
+            minWidth={220}
+            maxWidth={420}
+            side="right"
+            testId="lifeops-nav-rail-resizable"
+            className="border-r border-border/12"
+          >
+            <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
+          </LifeOpsResizableSidebar>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+              {mainContent}
+            </div>
           </div>
         </div>
       }

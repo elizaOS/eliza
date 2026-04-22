@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
 
 import type { InboundMessage } from "../inbox/types.js";
 import {
@@ -28,9 +29,10 @@ describe("resolveUnifiedInboxRequest", () => {
     const { limit, allowed } = resolveUnifiedInboxRequest({});
     expect(limit).toBe(100);
     expect(allowed.has("gmail")).toBe(true);
+    expect(allowed.has("x_dm")).toBe(true);
     expect(allowed.has("telegram")).toBe(true);
     expect(allowed.has("sms")).toBe(true);
-    expect(allowed.size).toBe(7);
+    expect(allowed.size).toBe(LIFEOPS_INBOX_CHANNELS.length);
   });
 
   it("clamps limit to the maximum of 500", () => {

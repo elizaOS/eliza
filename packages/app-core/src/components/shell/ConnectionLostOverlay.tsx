@@ -1,11 +1,4 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Button, Card, CardContent, CardHeader } from "@elizaos/ui";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
@@ -55,14 +48,6 @@ export function ConnectionLostOverlay() {
       <Card className={OVERLAY_CARD_CLASS}>
         <CardHeader className="bg-danger/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
-            <StatusBadge
-              label={t("connectionlostoverlay.ConnectionLost", {
-                defaultValue: "Connection Lost",
-              })}
-              variant="danger"
-              withDot
-              className="self-start"
-            />
             <div className="space-y-2">
               <h1
                 id="connection-lost-title"
@@ -72,12 +57,6 @@ export function ConnectionLostOverlay() {
                   defaultValue: "Lost backend connection.",
                 })}
               </h1>
-              <CardDescription className="max-w-[54ch] leading-relaxed">
-                {t("connectionlostoverlay.ConnectionLostBody", {
-                  defaultValue:
-                    "The app lost connection to the local backend. Restart the app or retry the connection once the server is back.",
-                })}
-              </CardDescription>
             </div>
           </div>
         </CardHeader>

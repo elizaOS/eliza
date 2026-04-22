@@ -1,4 +1,4 @@
-import type { LifeOpsBrowserSettings } from "@elizaos/app-lifeops/contracts";
+import type { BrowserBridgeSettings } from "@elizaos/plugin-browser-bridge/contracts";
 import { describe, expect, it } from "vitest";
 import {
   browserUrlAllowedBySettings,
@@ -8,7 +8,7 @@ import {
 } from "./service-helpers-browser.js";
 import { LifeOpsServiceError } from "./service-types.js";
 
-const baseSettings: LifeOpsBrowserSettings = {
+const baseSettings: BrowserBridgeSettings = {
   enabled: true,
   trackingMode: "current_tab",
   allowBrowserControl: true,
@@ -25,7 +25,7 @@ const baseSettings: LifeOpsBrowserSettings = {
 
 describe("service-helpers-browser", () => {
   it("enforces granted browser origins exactly", () => {
-    const settings: LifeOpsBrowserSettings = {
+    const settings: BrowserBridgeSettings = {
       ...baseSettings,
       siteAccessMode: "granted_sites",
       grantedOrigins: ["https://example.com"],
