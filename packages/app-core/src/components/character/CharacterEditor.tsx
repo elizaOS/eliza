@@ -1,6 +1,7 @@
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
+import type { KnowledgeDocument } from "../../api/client-types-chat";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
@@ -68,13 +69,6 @@ const DownloadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-const SparklesIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2zm7 11l.9 2.7L22 17l-2.1.3L19 20l-.9-2.7L16 17l2.1-.3L19 13zm-14 0l.9 2.7L8 17l-2.1.3L5 20l-.9-2.7L2 17l2.1-.3L5 13z"
-  />
-);
-
 const UploadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
@@ -89,10 +83,17 @@ const ResetIcon = ({ className }: { className?: string }) => (
   />
 );
 
-const CollapseIcon = ({ className }: { className?: string }) => (
+const ChevronIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
-    d="M21 3H3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zM9 3v18M14 9l-3 3 3 3"
+    d="M6 9l6 6 6-6"
+  />
+);
+
+const PlusIcon = ({ className }: { className?: string }) => (
+  <Icon
+    className={className}
+    d="M12 5v14M5 12h14"
   />
 );
 
@@ -277,7 +278,12 @@ export function CharacterEditor({
     | null
   >(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [knowledgeExpanded, setKnowledgeExpanded] = useState(true);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<
+    KnowledgeDocument[]
+  >([]);
+  const [selectedKnowledgeDocumentId, setSelectedKnowledgeDocumentId] =
+    useState<string | null>(null);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
@@ -344,6 +350,36 @@ export function CharacterEditor({
     },
     [],
   );
+
+  const handleKnowledgeDocumentsChange = useCallback(
+    (documents: KnowledgeDocument[]) => {
+      setKnowledgeDocuments(documents);
+      setSelectedKnowledgeDocumentId((current) => {
+        if (current && documents.some((doc) => doc.id === current)) {
+          return current;
+        }
+        return documents[0]?.id ?? null;
+      });
+    },
+    [],
+  );
+
+  const handleKnowledgeDocumentSelect = useCallback(
+    (documentId: string) => {
+      setKnowledgeExpanded(true);
+      setSelectedKnowledgeDocumentId(documentId);
+      scrollToSection("knowledge");
+    },
+    [scrollToSection],
+  );
+
+  const handleKnowledgeUploadClick = useCallback(() => {
+    setKnowledgeExpanded(true);
+    scrollToSection("knowledge");
+    window.requestAnimationFrame(() => {
+      document.getElementById("ce-knowledge-upload-input")?.click();
+    });
+  }, [scrollToSection]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -1570,25 +1606,15 @@ export function CharacterEditor({
           <PageLayout
             className="h-full"
             contentPadding={false}
-            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col px-6 py-6 lg:px-8 lg:py-8"
-            footer={<WidgetHost slot="character" className="pt-4" />}
-            footerClassName="lg:px-8"
+            contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-5 py-5 sm:px-7 sm:py-7 lg:px-8"
+            footer={<WidgetHost slot="character" className="px-5 pt-4 sm:px-7 lg:px-8" />}
             sidebar={
               <Sidebar
                 testId="character-editor-sidebar"
-                collapsible
-                collapsed={sidebarCollapsed}
-                onCollapsedChange={setSidebarCollapsed}
+                collapsible={false}
                 contentIdentity="character-editor"
-                collapseButtonTestId="character-editor-sidebar-collapse-toggle"
-                expandButtonTestId="character-editor-sidebar-expand-toggle"
-                collapseButtonAriaLabel="Collapse character editor"
-                expandButtonAriaLabel="Expand character editor"
-                className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
-                headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-                collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
                 footer={
-                  <div className="flex w-full flex-col gap-1.5">
+                  <div className="flex w-full flex-col gap-2">
                     {hasStandaloneHeaderFeedback ? (
                       <div className="flex flex-col gap-1">
                         {characterSaveSuccess && (
@@ -1610,7 +1636,7 @@ export function CharacterEditor({
                     ) : null}
                     <Button
                       type="button"
-                      className="h-10 w-full justify-center rounded-sm text-sm font-bold tracking-[0.04em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+                      className="h-9 w-full justify-center rounded-sm text-sm font-semibold tracking-[0.02em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
                       style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
                       disabled={
                         characterSaving ||
@@ -1626,83 +1652,71 @@ export function CharacterEditor({
                           })
                         : t("charactereditor.Save", { defaultValue: "Save" })}
                     </Button>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-0.5">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                        onClick={() => setSidebarCollapsed(true)}
-                        title="Collapse sidebar"
-                        aria-label="Collapse sidebar"
+                        onClick={() =>
+                          document
+                            .getElementById("ce-vrm-upload-standalone")
+                            ?.click()
+                        }
+                        title={t("charactereditor.UploadVRM", {
+                          defaultValue: "Upload VRM",
+                        })}
+                        aria-label={t("charactereditor.UploadVRM", {
+                          defaultValue: "Upload VRM",
+                        })}
                       >
-                        <CollapseIcon className="h-4 w-4" />
+                        <UploadIcon className="h-4 w-4" />
                       </Button>
-                      <div className="flex items-center gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                          onClick={() =>
-                            document
-                              .getElementById("ce-vrm-upload-standalone")
-                              ?.click()
-                          }
-                          title={t("charactereditor.UploadVRM", {
-                            defaultValue: "Upload VRM",
-                          })}
-                          aria-label={t("charactereditor.UploadVRM", {
-                            defaultValue: "Upload VRM",
-                          })}
-                        >
-                          <UploadIcon className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                          onClick={handleExportCharacter}
-                          disabled={!currentCharacter}
-                          title={t("charactereditor.ExportJSON", {
-                            defaultValue: "Export JSON",
-                          })}
-                          aria-label={t("charactereditor.ExportJSON", {
-                            defaultValue: "Export JSON",
-                          })}
-                        >
-                          <DownloadIcon className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                          onClick={() => setResetConfirmOpen(true)}
-                          disabled={!activeCharacterRosterEntry || !currentCharacter}
-                          title={t("charactereditor.Reset", {
-                            defaultValue: "Reset",
-                          })}
-                          aria-label={t("charactereditor.Reset", {
-                            defaultValue: "Reset",
-                          })}
-                        >
-                          <ResetIcon className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={handleExportCharacter}
+                        disabled={!currentCharacter}
+                        title={t("charactereditor.ExportJSON", {
+                          defaultValue: "Export JSON",
+                        })}
+                        aria-label={t("charactereditor.ExportJSON", {
+                          defaultValue: "Export JSON",
+                        })}
+                      >
+                        <DownloadIcon className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="ml-auto h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                        onClick={() => setResetConfirmOpen(true)}
+                        disabled={!activeCharacterRosterEntry || !currentCharacter}
+                        title={t("charactereditor.Reset", {
+                          defaultValue: "Reset",
+                        })}
+                        aria-label={t("charactereditor.Reset", {
+                          defaultValue: "Reset",
+                        })}
+                      >
+                        <ResetIcon className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 }
-                footerClassName="!px-2 !pt-2 !pb-2 !justify-stretch"
               >
-                <SidebarScrollRegion className="px-1 pb-1 pt-0">
-                  <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
+                <SidebarScrollRegion>
+                  <SidebarPanel>
                     <nav
-                      className="flex flex-col"
+                      className="flex flex-col gap-1"
                       aria-label="Character editor sections"
                     >
-                      {CHARACTER_EDITOR_PAGES.map((page) => {
+                      {CHARACTER_EDITOR_PAGES.filter(
+                        (page) => page !== "knowledge",
+                      ).map((page) => {
                         const label =
                           page === "personality"
                             ? t("charactereditor.TabPersonality", {
@@ -1727,7 +1741,7 @@ export function CharacterEditor({
                             aria-current={
                               activePage === page ? "page" : undefined
                             }
-                            className="items-center gap-1.5 px-2 py-1.5"
+                            className="items-center gap-2 py-2"
                           >
                             <SidebarContent.ItemTitle
                               className={
@@ -1741,6 +1755,88 @@ export function CharacterEditor({
                           </SidebarContent.Item>
                         );
                       })}
+
+                      <SidebarContent.Item
+                        as="div"
+                        active={activePage === "knowledge"}
+                        className="items-center gap-1 py-2"
+                      >
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          onClick={() => {
+                            setKnowledgeExpanded((current) => !current);
+                            scrollToSection("knowledge");
+                          }}
+                          aria-expanded={knowledgeExpanded}
+                          aria-controls="character-knowledge-sidebar-list"
+                        >
+                          <ChevronIcon
+                            className={`h-3.5 w-3.5 shrink-0 transition-transform ${knowledgeExpanded ? "" : "-rotate-90"}`}
+                          />
+                          <SidebarContent.ItemTitle
+                            className={
+                              activePage === "knowledge"
+                                ? "font-semibold"
+                                : "font-medium"
+                            }
+                          >
+                            {t("charactereditor.TabKnowledge", {
+                              defaultValue: "Knowledge",
+                            })}
+                          </SidebarContent.ItemTitle>
+                        </button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          onClick={handleKnowledgeUploadClick}
+                          aria-label={t("knowledgeview.ChooseFiles", {
+                            defaultValue: "Choose files",
+                          })}
+                          title={t("knowledgeview.ChooseFiles", {
+                            defaultValue: "Choose files",
+                          })}
+                        >
+                          <PlusIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </SidebarContent.Item>
+
+                      {knowledgeExpanded ? (
+                        <div
+                          id="character-knowledge-sidebar-list"
+                          className="ml-5 flex flex-col gap-0.5 border-l border-border/25 pl-2"
+                        >
+                          {knowledgeDocuments.length > 0 ? (
+                            knowledgeDocuments.map((doc) => (
+                              <SidebarContent.Item
+                                key={doc.id}
+                                active={selectedKnowledgeDocumentId === doc.id}
+                                onClick={() =>
+                                  handleKnowledgeDocumentSelect(doc.id)
+                                }
+                                aria-current={
+                                  selectedKnowledgeDocumentId === doc.id
+                                    ? "page"
+                                    : undefined
+                                }
+                                className="items-center py-1.5 pl-2 pr-2"
+                              >
+                                <SidebarContent.ItemTitle className="truncate text-xs-tight font-medium">
+                                  {doc.filename}
+                                </SidebarContent.ItemTitle>
+                              </SidebarContent.Item>
+                            ))
+                          ) : (
+                            <div className="px-2 py-2 text-xs-tight text-muted">
+                              {t("knowledgeview.NoDocumentsYet", {
+                                defaultValue: "No documents yet",
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </nav>
                   </SidebarPanel>
                 </SidebarScrollRegion>
@@ -1788,7 +1884,7 @@ export function CharacterEditor({
                 aria-label={t("charactereditor.TabPersonality", {
                   defaultValue: "Personality",
                 })}
-                className="flex min-w-0 flex-col scroll-mt-6 pt-2"
+                className="flex min-w-0 flex-col scroll-mt-6"
               >
                 <CharacterIdentityPanel
                   d={d}
@@ -1818,7 +1914,7 @@ export function CharacterEditor({
                 aria-label={t("charactereditor.TabStyles", {
                   defaultValue: "Style",
                 })}
-                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
               >
                 <CharacterStylePanel
                   d={d}
@@ -1843,7 +1939,7 @@ export function CharacterEditor({
                 aria-label={t("charactereditor.TabExamples", {
                   defaultValue: "Examples",
                 })}
-                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
               >
                 <CharacterExamplesPanel
                   d={d}
@@ -1862,9 +1958,16 @@ export function CharacterEditor({
                 aria-label={t("charactereditor.TabKnowledge", {
                   defaultValue: "Knowledge",
                 })}
-                className="flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
+                className="mt-8 flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 pb-16"
               >
-                <KnowledgeView embedded />
+                <KnowledgeView
+                  embedded
+                  fileInputId="ce-knowledge-upload-input"
+                  onDocumentsChange={handleKnowledgeDocumentsChange}
+                  onSelectedDocumentIdChange={setSelectedKnowledgeDocumentId}
+                  selectedDocumentId={selectedKnowledgeDocumentId}
+                  showSelectorRail={false}
+                />
               </section>
             </div>
           </PageLayout>
