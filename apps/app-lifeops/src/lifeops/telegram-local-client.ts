@@ -401,24 +401,55 @@ export async function searchTelegramMessages(args: {
   const limit = normalizeRecentLimit(args.limit);
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     const dialogs = Array.from(await client.getDialogs({ limit: MAX_RECENT_LIMIT }));
-    const scopedDialogs =
-      typeof args.scope === "string" && args.scope.trim().length > 0
-        ? dialogs.filter((dialog) =>
-            collectDialogAliases(dialog).some(
-              (alias) => alias === normalizeLookup(args.scope ?? ""),
-            ),
-          )
-        : dialogs;
+    const hasScope = typeof args.scope === "string" && args.scope.trim().length > 0;
+    const scopedDialogs = hasScope
+      ? dialogs.filter((dialog) =>
+          collectDialogAliases(dialog).some(
+            (alias) => alias === normalizeLookup(args.scope ?? ""),
+          ),
+        )
+      : dialogs;
+
+    // If scope was provided but no matching dialog found, attempt entity resolution or throw
+    if (hasScope && scopedDialogs.length === 0) {
+      try {
+        const entity = await client.getEntity(args.scope!.trim());
+        const messages = await client.getMessages(entity, { search: query, limit });
+        return messages.map((message, idx) => ({
+          id: serializeTelegramId(message.id) || `${args.scope}:${idx}`,
+          chatId: null,
+          target: args.scope!.trim(),
+          text:
+            typeof message.message === "string" && message.message.trim().length > 0
+              ? message.message.trim()
+              : null,
+          sentAt: toIsoDate(message.date),
+          outbound: message.out === true,
+        })).slice(0, limit);
+      } catch {
+        throw new Error(`Telegram scope "${args.scope}" was not found.`);
+      }
+    }
 
     const results: TelegramMessageSearchResult[] = [];
+    // Calculate per-dialog budget to avoid over-fetching
+    const perDialogLimit = scopedDialogs.length > 0
+      ? Math.max(1, Math.ceil(limit / scopedDialogs.length))
+      : limit;
+
     for (const dialog of scopedDialogs) {
+      if (results.length >= limit) break;
       const entity = dialog.inputEntity ?? dialog.entity ?? dialog;
-      const messages = await client.getMessages(entity, { search: query, limit });
+      const messages = await client.getMessages(entity, { search: query, limit: perDialogLimit });
+      const title = normalizeDialogTitle(dialog);
+      let dialogMsgIdx = 0;
       for (const message of messages) {
+        if (results.length >= limit) break;
         results.push({
-          id: serializeTelegramId(message.id) || `${normalizeDialogTitle(dialog)}:${results.length}`,
+          // Scope fallback ID counter per-dialog to avoid collisions
+          id: serializeTelegramId(message.id) || `${title}:${dialogMsgIdx++}`,
           chatId: serializeTelegramId(dialog.id) || null,
-          target: normalizeDialogTitle(dialog),
+          target: title,
           text:
             typeof message.message === "string" && message.message.trim().length > 0
               ? message.message.trim()
