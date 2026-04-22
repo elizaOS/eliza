@@ -1,11 +1,3 @@
-/**
- * AppsSidebar — left navigation for the Apps page.
- *
- * Groups apps into Running, Favorites and genre sections (Games, Finance,
- * Life Management, Developer Utilities, Other). Clicking an entry launches
- * the app or attaches to an existing run.
- */
-
 import {
   Sidebar,
   SidebarContent,
@@ -13,7 +5,7 @@ import {
   SidebarScrollRegion,
 } from "@elizaos/ui";
 import { Play, Search, Star } from "lucide-react";
-import { useMemo } from "react";
+import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
 import {
@@ -272,9 +264,9 @@ function AppsSidebarSection({
   children,
 }: {
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   count: number;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div>
