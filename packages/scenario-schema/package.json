@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/scenario-schema",
-  "version": "2.0.0-alpha.286",
+  "version": "2.0.0-alpha.287",
   "type": "module",
   "publishConfig": {
     "access": "public"
