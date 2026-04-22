@@ -666,6 +666,16 @@ async function handler(
 		}),
 	]);
 
+	// Strip bloated metadata (indicators arrays grow unbounded over time and
+	// blow the prompt past the long-context threshold). Keep only the fields
+	// the reflection LLM needs to dedupe relationships: ids, type, tags.
+	const slimRelationships = existingRelationships.map((r) => ({
+		sourceEntityId: r.sourceEntityId,
+		targetEntityId: r.targetEntityId,
+		tags: r.tags,
+		relationshipType: (r.metadata as { relationshipType?: string } | undefined)
+			?.relationshipType,
+	}));
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
@@ -673,7 +683,7 @@ async function handler(
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(existingRelationships),
+			existingRelationships: JSON.stringify(slimRelationships),
 			senderId: message.entityId,
 		},
 		template:
