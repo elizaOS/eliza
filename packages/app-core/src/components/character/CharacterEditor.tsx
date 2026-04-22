@@ -1245,14 +1245,15 @@ export function CharacterEditor({
           try {
             const parsed = JSON.parse(generated);
             if (Array.isArray(parsed)) {
-              if (mode === "append") {
-                handleCharacterArrayInput(
-                  "postExamples",
-                  [...(d.postExamples ?? []), ...parsed].join("\n"),
-                );
-              } else {
-                handleCharacterArrayInput("postExamples", parsed.join("\n"));
-              }
+              const generatedExamples = parsed.filter(
+                (example): example is string => typeof example === "string",
+              );
+              handleFieldEdit(
+                "postExamples",
+                mode === "append"
+                  ? [...(d.postExamples ?? []), ...generatedExamples]
+                  : generatedExamples,
+              );
             }
           } catch {
             setGenerateError("Generated post examples could not be parsed");
@@ -1270,7 +1271,6 @@ export function CharacterEditor({
       d,
       fallbackCharacterName,
       getCharContext,
-      handleCharacterArrayInput,
       handleFieldEdit,
       handleStyleEdit,
     ],
