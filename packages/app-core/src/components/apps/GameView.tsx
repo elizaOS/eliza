@@ -814,9 +814,10 @@ export function GameView() {
         // ghost session that no longer exists server-side.
         const status = getApiStatus(err);
         if (status === 404) {
-          setState("appRuns", appRunsRef.current.filter(
-            (run) => run.runId !== activeGameRunId,
-          ));
+          setState(
+            "appRuns",
+            appRunsRef.current.filter((run) => run.runId !== activeGameRunId),
+          );
           setState("activeGameRunId", "");
         }
       });

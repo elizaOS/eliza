@@ -98,9 +98,7 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/hardware probes real hardware", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/hardware`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/hardware`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       totalRamGb: number;
@@ -116,9 +114,7 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/installed returns a list (may include external-scan results)", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/installed`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/installed`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { models: unknown[] };
     expect(Array.isArray(body.models)).toBe(true);
@@ -187,7 +183,9 @@ describe("local-inference-compat-routes e2e", () => {
       },
     );
     expect(clear.status).toBe(200);
-    const body = (await clear.json()) as { assignments: Record<string, string> };
+    const body = (await clear.json()) as {
+      assignments: Record<string, string>;
+    };
     expect(body.assignments.TEXT_SMALL).toBeUndefined();
   });
 
@@ -237,17 +235,15 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/providers returns the full provider list", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/providers`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/providers`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       providers: Array<{ id: string; kind: string }>;
     };
     expect(Array.isArray(body.providers)).toBe(true);
-    expect(
-      body.providers.some((p) => p.id === "milady-local-inference"),
-    ).toBe(true);
+    expect(body.providers.some((p) => p.id === "milady-local-inference")).toBe(
+      true,
+    );
     expect(body.providers.some((p) => p.id === "anthropic")).toBe(true);
   });
 

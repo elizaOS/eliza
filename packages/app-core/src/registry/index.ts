@@ -2,33 +2,30 @@
 // exposes typed accessors. The single import path the rest of the codebase
 // uses to consume the registry.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  type LoadedRegistry,
-  loadRegistryFromRawEntries,
-} from "./loader";
+import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
-export * from "./schema";
 export {
-  type LoadedRegistry,
-  type RegistryValidationError,
+  entriesToLegacyManifest,
+  entryToLegacyManifestEntry,
+  type LegacyManifest,
+  type LegacyManifestEntry,
+  type LegacyManifestParameter,
+} from "./legacy-adapter";
+export {
   getApps,
   getConnectors,
   getEntry,
   getEntryByNpmName,
   getPlugins,
   indexEntries,
+  type LoadedRegistry,
   mergeWithRuntime,
+  type RegistryValidationError,
 } from "./loader";
-export {
-  type LegacyManifest,
-  type LegacyManifestEntry,
-  type LegacyManifestParameter,
-  entriesToLegacyManifest,
-  entryToLegacyManifestEntry,
-} from "./legacy-adapter";
+export * from "./schema";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const entriesDir = join(moduleDir, "entries");

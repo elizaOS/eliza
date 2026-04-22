@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-social-alpha",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "social-alpha",
-    "trust-score",
-    "shill-tracker",
-    "social",
-    "alpha"
-  ],
+  "tags": ["social-alpha", "trust-score", "shill-tracker", "social", "alpha"],
   "config": {
     "HELIUS_API_KEY": {
       "type": "secret",
@@ -69,10 +63,7 @@
     "icon": "Layers",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

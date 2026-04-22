@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-rolodex",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "rolodex"
-  ],
+  "tags": ["rolodex"],
   "config": {},
   "render": {
     "visible": true,
@@ -15,10 +13,7 @@
     "style": "card",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

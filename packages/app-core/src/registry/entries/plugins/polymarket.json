@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-polymarket",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "polymarket",
-    "prediction-markets",
-    "web3",
-    "polygon"
-  ],
+  "tags": ["polymarket", "prediction-markets", "web3", "polygon"],
   "config": {
     "CLOB_WS_URL": {
       "type": "url",
@@ -70,10 +65,7 @@
     "icon": "Gamepad2",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-polymarket#readme",

@@ -645,79 +645,76 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       </div>
 
       {/* Cloud model tiers (when Cloud is selected) */}
-      {isCloudSelected && (
-        <>
-          {!elizaCloudConnected ? (
-            <div className="border-t border-border/40 pt-4">
-              {elizaCloudLoginBusy ? (
-                <div className="text-xs text-muted">
-                  {t("providerswitcher.waitingForBrowser")}
-                </div>
-              ) : (
-                <>
+      {isCloudSelected &&
+        (!elizaCloudConnected ? (
+          <div className="border-t border-border/40 pt-4">
+            {elizaCloudLoginBusy ? (
+              <div className="text-xs text-muted">
+                {t("providerswitcher.waitingForBrowser")}
+              </div>
+            ) : (
+              <>
+                {elizaCloudLoginError && (
+                  <div className="mb-2 text-xs text-danger">
+                    {elizaCloudLoginError}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="rounded-lg font-semibold"
+                    onClick={() => void handleCloudLogin()}
+                  >
+                    {t("providerswitcher.logInToElizaCloud")}
+                  </Button>
                   {elizaCloudLoginError && (
-                    <div className="mb-2 text-xs text-danger">
-                      {elizaCloudLoginError}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
                     <Button
-                      variant="default"
+                      variant="link"
                       size="sm"
-                      className="rounded-lg font-semibold"
-                      onClick={() => void handleCloudLogin()}
+                      type="button"
+                      className="h-auto p-0 text-xs-tight"
+                      onClick={() => openExternalUrl(branding.bugReportUrl)}
                     >
-                      {t("providerswitcher.logInToElizaCloud")}
+                      {t("providerswitcher.reportIssueWithTemplate")}
                     </Button>
-                    {elizaCloudLoginError && (
-                      <Button
-                        variant="link"
-                        size="sm"
-                        type="button"
-                        className="h-auto p-0 text-xs-tight"
-                        onClick={() => openExternalUrl(branding.bugReportUrl)}
-                      >
-                        {t("providerswitcher.reportIssueWithTemplate")}
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-1.5 text-xs-tight text-muted">
-                    {t("providerswitcher.opensABrowserWindow")}
-                  </div>
-                </>
-              )}
-            </div>
-          ) : cloudModelSchema ? (
-            <div className="border-t border-border/40 pt-4">
-              <ConfigRenderer
-                schema={cloudModelSchema.schema}
-                hints={cloudModelSchema.hints}
-                values={modelValues.values}
-                setKeys={modelValues.setKeys}
-                registry={defaultRegistry}
-                onChange={handleModelFieldChange}
-              />
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <p className="text-xs-tight text-muted">
-                  {t("providerswitcher.restartRequiredHint")}
-                </p>
-                <div className="flex items-center gap-2">
-                  {modelSaving && (
-                    <span className="text-xs-tight text-muted">
-                      {t("providerswitcher.savingRestarting")}
-                    </span>
-                  )}
-                  {modelSaveSuccess && (
-                    <span className="text-xs-tight text-ok">
-                      {t("providerswitcher.savedRestartingAgent")}
-                    </span>
                   )}
                 </div>
+                <div className="mt-1.5 text-xs-tight text-muted">
+                  {t("providerswitcher.opensABrowserWindow")}
+                </div>
+              </>
+            )}
+          </div>
+        ) : cloudModelSchema ? (
+          <div className="border-t border-border/40 pt-4">
+            <ConfigRenderer
+              schema={cloudModelSchema.schema}
+              hints={cloudModelSchema.hints}
+              values={modelValues.values}
+              setKeys={modelValues.setKeys}
+              registry={defaultRegistry}
+              onChange={handleModelFieldChange}
+            />
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <p className="text-xs-tight text-muted">
+                {t("providerswitcher.restartRequiredHint")}
+              </p>
+              <div className="flex items-center gap-2">
+                {modelSaving && (
+                  <span className="text-xs-tight text-muted">
+                    {t("providerswitcher.savingRestarting")}
+                  </span>
+                )}
+                {modelSaveSuccess && (
+                  <span className="text-xs-tight text-ok">
+                    {t("providerswitcher.savedRestartingAgent")}
+                  </span>
+                )}
               </div>
             </div>
-          ) : null}
-        </>
-      )}
+          </div>
+        ) : null)}
 
       {/* Subscription provider settings */}
       {isSubscriptionSelected && (

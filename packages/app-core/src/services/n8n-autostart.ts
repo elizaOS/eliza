@@ -86,9 +86,7 @@ export interface N8nAutoStartHandle {
   poke: () => Promise<void>;
 }
 
-function resolveSidecarConfig(
-  cfg: N8nAutoStartConfigLike,
-): N8nSidecarConfig {
+function resolveSidecarConfig(cfg: N8nAutoStartConfigLike): N8nSidecarConfig {
   const sidecar: N8nSidecarConfig = {
     enabled: cfg.n8n?.localEnabled ?? true,
   };

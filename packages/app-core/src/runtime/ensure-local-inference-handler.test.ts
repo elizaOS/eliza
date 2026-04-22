@@ -81,7 +81,9 @@ describe("ensureLocalInferenceHandler", () => {
     );
 
     expect(
-      runtime.registrations.filter((r) => r.provider === "milady-device-bridge"),
+      runtime.registrations.filter(
+        (r) => r.provider === "milady-device-bridge",
+      ),
     ).toHaveLength(2);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
   });

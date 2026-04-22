@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-todo",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "todo",
-    "task-management",
-    "multi-language"
-  ],
+  "tags": ["todo", "task-management", "multi-language"],
   "config": {
     "ENABLE_REMINDERS": {
       "type": "boolean",
@@ -39,10 +35,7 @@
     "icon": "ClipboardList",
     "group": "automation",
     "groupOrder": 9,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-todo#readme",

@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-browser",
   "version": "2.0.0-alpha.6",
   "source": "bundled",
-  "tags": [
-    "browser",
-    "automation",
-    "stagehand",
-    "playwright",
-    "web-scraping"
-  ],
+  "tags": ["browser", "automation", "stagehand", "playwright", "web-scraping"],
   "config": {
     "OPENAI_API_KEY": {
       "type": "secret",
@@ -69,10 +63,7 @@
     "icon": "Globe",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

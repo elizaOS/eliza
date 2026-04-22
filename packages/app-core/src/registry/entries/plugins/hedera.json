@@ -4,11 +4,7 @@
   "description": "ElizaOS plugin for Hedera blockchain",
   "npmName": "@elizaos/plugin-hedera",
   "source": "bundled",
-  "tags": [
-    "hedera",
-    "hedera-agent-kit",
-    "llm"
-  ],
+  "tags": ["hedera", "hedera-agent-kit", "llm"],
   "config": {
     "HEDERA_NETWORK": {
       "type": "string",
@@ -43,10 +39,7 @@
     "style": "card",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

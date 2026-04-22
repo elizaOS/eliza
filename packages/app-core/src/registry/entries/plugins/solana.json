@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-solana",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "crypto",
-    "solana"
-  ],
+  "tags": ["crypto", "solana"],
   "config": {
     "SOL_ADDRESS": {
       "type": "string",
@@ -107,10 +104,7 @@
     "icon": "CircleDot",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-solana#readme",

@@ -141,7 +141,9 @@ describe("BrowserWorkspaceView", () => {
     render(<BrowserWorkspaceView />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Install Agent Browser Bridge" }),
+      await screen.findByRole("button", {
+        name: "Install Agent Browser Bridge",
+      }),
     );
 
     await waitFor(() => {

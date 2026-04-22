@@ -14,7 +14,7 @@ import {
   type JsonSchemaObject,
 } from "../../config";
 import { useApp } from "../../state";
-import type { ConfigUiHint, TranslateFn as AppTranslateFn } from "../../types";
+import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

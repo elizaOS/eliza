@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-google-genai",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "google-genai",
-    "google",
-    "genai"
-  ],
+  "tags": ["ai-provider", "llm", "google-genai", "google", "genai"],
   "config": {
     "GOOGLE_GENERATIVE_AI_API_KEY": {
       "type": "secret",
@@ -99,10 +93,7 @@
     "icon": "Sparkles",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-google-genai#readme",

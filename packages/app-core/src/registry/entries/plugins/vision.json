@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-vision",
   "version": "2.0.0-alpha.5",
   "source": "bundled",
-  "tags": [
-    "vision",
-    "camera",
-    "ai-vision"
-  ],
+  "tags": ["vision", "camera", "ai-vision"],
   "config": {
     "CAMERA_NAME": {
       "type": "string",
@@ -35,10 +31,7 @@
     "icon": "Eye",
     "group": "media",
     "groupOrder": 8,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

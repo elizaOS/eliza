@@ -901,9 +901,12 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
   try {
-    const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
-      method: "POST",
-    });
+    const res = await this.fetch<{ status: AgentStatus }>(
+      "/api/agent/restart",
+      {
+        method: "POST",
+      },
+    );
     return res.status;
   } catch {
     // Back-compat for older runtimes that still expose the legacy restart path.

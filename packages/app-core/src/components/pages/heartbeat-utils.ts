@@ -14,9 +14,10 @@ import type {
 } from "../../api/client";
 
 export type TriggerKind = "text" | "workflow";
+
+import { CronExpressionParser } from "cron-parser";
 import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
-import { CronExpressionParser } from "cron-parser";
 
 // ── Translation helper type ────────────────────────────────────────
 

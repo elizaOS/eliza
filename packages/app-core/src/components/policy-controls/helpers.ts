@@ -1,8 +1,4 @@
-import type {
-  ApprovedAddressEntry,
-  PolicyRule,
-  PolicyType,
-} from "./types";
+import type { ApprovedAddressEntry, PolicyRule, PolicyType } from "./types";
 
 export function findPolicy(
   policies: PolicyRule[],

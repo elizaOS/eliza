@@ -1,12 +1,12 @@
-import { Button } from "@elizaos/ui";
 import {
-  LanguageDropdown,
-  LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME,
-} from "../shared/LanguageDropdown";
-import { ThemeToggle } from "../shared/ThemeToggle";
-import { useMediaQuery } from "../../hooks";
-import type { UiLanguage } from "../../i18n";
-import type { ShellView, UiTheme } from "../../state";
+  HEADER_BUTTON_STYLE,
+  SHELL_EXPANDED_BUTTON_CLASSNAME,
+  SHELL_ICON_BUTTON_CLASSNAME,
+  SHELL_SEGMENT_ACTIVE_CLASSNAME,
+  SHELL_SEGMENT_INACTIVE_CLASSNAME,
+  SHELL_SEGMENTED_CONTROL_CLASSNAME,
+} from "@elizaos/app-companion/components/companion/shell-control-styles";
+import { Button } from "@elizaos/ui";
 import {
   Check,
   Loader2,
@@ -21,14 +21,14 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useMediaQuery } from "../../hooks";
+import type { UiLanguage } from "../../i18n";
+import type { ShellView, UiTheme } from "../../state";
 import {
-  HEADER_BUTTON_STYLE,
-  SHELL_EXPANDED_BUTTON_CLASSNAME,
-  SHELL_ICON_BUTTON_CLASSNAME,
-  SHELL_SEGMENT_ACTIVE_CLASSNAME,
-  SHELL_SEGMENT_INACTIVE_CLASSNAME,
-  SHELL_SEGMENTED_CONTROL_CLASSNAME,
-} from "@elizaos/app-companion/components/companion/shell-control-styles";
+  LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME,
+  LanguageDropdown,
+} from "../shared/LanguageDropdown";
+import { ThemeToggle } from "../shared/ThemeToggle";
 
 export {
   HEADER_BUTTON_STYLE,
@@ -135,34 +135,34 @@ export function ShellHeaderControls({
 
   const renderVoiceButton = (iconOnly: boolean) =>
     onToggleVoiceMute ? (
-    <Button
-      size="icon"
-      variant="outline"
-      aria-label={voiceToggleLabel}
-      aria-pressed={!chatAgentVoiceMuted}
-      title={voiceToggleLabel}
-      className={
-        iconOnly
-          ? compactCompanionActionClassName
-          : expandedCompanionActionClassName
-      }
-      onClick={onToggleVoiceMute}
-      onPointerDown={(event) => event.stopPropagation()}
-      style={HEADER_BUTTON_STYLE}
-      data-no-camera-drag="true"
-    >
-      {chatAgentVoiceMuted ? (
-        <VolumeX className="pointer-events-none h-4 w-4 shrink-0" />
-      ) : (
-        <Volume2 className="pointer-events-none h-4 w-4 shrink-0" />
-      )}
-      {iconOnly ? null : (
-        <span className="pointer-events-none">
-          {t("companion.voiceToggle")}
-        </span>
-      )}
-    </Button>
-  ) : null;
+      <Button
+        size="icon"
+        variant="outline"
+        aria-label={voiceToggleLabel}
+        aria-pressed={!chatAgentVoiceMuted}
+        title={voiceToggleLabel}
+        className={
+          iconOnly
+            ? compactCompanionActionClassName
+            : expandedCompanionActionClassName
+        }
+        onClick={onToggleVoiceMute}
+        onPointerDown={(event) => event.stopPropagation()}
+        style={HEADER_BUTTON_STYLE}
+        data-no-camera-drag="true"
+      >
+        {chatAgentVoiceMuted ? (
+          <VolumeX className="pointer-events-none h-4 w-4 shrink-0" />
+        ) : (
+          <Volume2 className="pointer-events-none h-4 w-4 shrink-0" />
+        )}
+        {iconOnly ? null : (
+          <span className="pointer-events-none">
+            {t("companion.voiceToggle")}
+          </span>
+        )}
+      </Button>
+    ) : null;
 
   const renderNewChatButton = (iconOnly: boolean) => (
     <Button

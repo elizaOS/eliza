@@ -53,10 +53,21 @@ export function MarketplaceCard({
   const installed = Boolean(installedSkill);
   const enabled = installed && installedSkill?.enabled === true;
   const stateBadge = !installed
-    ? { label: t("skillsview.statusNotInstalled", { defaultValue: "Not installed" }), tone: "muted" as const }
+    ? {
+        label: t("skillsview.statusNotInstalled", {
+          defaultValue: "Not installed",
+        }),
+        tone: "muted" as const,
+      }
     : enabled
-      ? { label: t("skillsview.statusActive", { defaultValue: "Enabled" }), tone: "success" as const }
-      : { label: t("skillsview.statusInactive", { defaultValue: "Disabled" }), tone: "warning" as const };
+      ? {
+          label: t("skillsview.statusActive", { defaultValue: "Enabled" }),
+          tone: "success" as const,
+        }
+      : {
+          label: t("skillsview.statusInactive", { defaultValue: "Disabled" }),
+          tone: "warning" as const,
+        };
 
   return (
     <div
@@ -158,7 +169,9 @@ export function MarketplaceCard({
             >
               {isCopying
                 ? t("skillsview.copying", { defaultValue: "Copying..." })
-                : t("skillsview.copySkillMd", { defaultValue: "Copy SKILL.md" })}
+                : t("skillsview.copySkillMd", {
+                    defaultValue: "Copy SKILL.md",
+                  })}
             </Button>
             <Button
               variant="ghost"
@@ -194,7 +207,9 @@ export function MarketplaceCard({
             >
               {isCopying
                 ? t("skillsview.copying", { defaultValue: "Copying..." })
-                : t("skillsview.copySkillMd", { defaultValue: "Copy SKILL.md" })}
+                : t("skillsview.copySkillMd", {
+                    defaultValue: "Copy SKILL.md",
+                  })}
             </Button>
             <Button
               variant="ghost"

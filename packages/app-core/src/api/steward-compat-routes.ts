@@ -1,17 +1,5 @@
 import type http from "node:http";
 import { getWalletAddresses } from "@elizaos/agent/api/wallet";
-import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
-import { ensureCompatApiAuthorized } from "./auth";
-import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "./response";
-import {
-  getConfiguredCompatAgentName,
-  isLoopbackRemoteAddress,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 import {
   approveStewardTransaction,
   createStewardClient,
@@ -31,6 +19,18 @@ import {
   signViaSteward,
 } from "@elizaos/app-steward/routes/steward-bridge";
 import { logger } from "@elizaos/core";
+import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
+import { ensureCompatApiAuthorized } from "./auth";
+import {
+  type CompatRuntimeState,
+  getConfiguredCompatAgentName,
+  isLoopbackRemoteAddress,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
 
 const STEWARD_POLICY_TYPES = new Set<StewardPolicyRule["type"]>([
   "spending-limit",

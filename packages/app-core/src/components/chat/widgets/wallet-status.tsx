@@ -10,15 +10,15 @@
  * Title-click opens the full /wallet (inventory) view.
  */
 
+import type { EvmChainBalance } from "@elizaos/shared/contracts/wallet";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { EvmChainBalance } from "@elizaos/shared/contracts/wallet";
 import { useApp } from "../../../state";
-import {
-  type ChatSidebarWidgetDefinition,
-  type ChatSidebarWidgetProps,
-} from "./types";
 import { EmptyWidgetState, WidgetSection } from "./shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "./types";
 
 const DUST_THRESHOLD_USD = 0.01;
 const COPY_FEEDBACK_MS = 1200;
@@ -105,8 +105,13 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
 }
 
 export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const { walletEnabled, walletAddresses, walletBalances, loadBalances, setTab } =
-    useApp();
+  const {
+    walletEnabled,
+    walletAddresses,
+    walletBalances,
+    loadBalances,
+    setTab,
+  } = useApp();
 
   // Auto-fetch balances when the widget first mounts if nothing is cached.
   // `loadBalances` is a stable useCallback on the app context.
@@ -125,7 +130,8 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const solanaShort = shortenAddress(solanaAddress);
 
   const evmChainRows = useMemo(() => {
-    if (!walletBalances?.evm) return [] as Array<{ chain: string; usd: number }>;
+    if (!walletBalances?.evm)
+      return [] as Array<{ chain: string; usd: number }>;
     return walletBalances.evm.chains
       .map((chain) => ({ chain: chain.chain, usd: chainTotalUsd(chain) }))
       .filter((entry) => entry.usd >= DUST_THRESHOLD_USD)

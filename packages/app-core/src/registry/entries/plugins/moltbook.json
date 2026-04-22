@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-moltbook",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "moltbook",
-    "social",
-    "reddit",
-    "agents",
-    "autonomous"
-  ],
+  "tags": ["moltbook", "social", "reddit", "agents", "autonomous"],
   "config": {
     "MOLTBOOK_MODEL": {
       "type": "string",
@@ -80,10 +74,7 @@
     "icon": "ScrollText",
     "group": "gaming",
     "groupOrder": 11,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

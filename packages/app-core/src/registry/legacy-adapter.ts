@@ -90,9 +90,7 @@ function envKeyFor(entry: RegistryEntry): string | undefined {
   return undefined;
 }
 
-function fieldToLegacyParameter(
-  field: ConfigField,
-): LegacyManifestParameter {
+function fieldToLegacyParameter(field: ConfigField): LegacyManifestParameter {
   const param: LegacyManifestParameter = {
     type: FIELD_TYPE_TO_LEGACY[field.type],
     description: field.help ?? field.label ?? "",

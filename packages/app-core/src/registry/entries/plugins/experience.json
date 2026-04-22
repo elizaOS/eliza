@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-experience",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "experience",
-    "learning",
-    "memory"
-  ],
+  "tags": ["experience", "learning", "memory"],
   "config": {
     "AUTO_RECORD_THRESHOLD": {
       "type": "number",
@@ -27,10 +23,7 @@
     "icon": "Star",
     "group": "storage",
     "groupOrder": 10,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

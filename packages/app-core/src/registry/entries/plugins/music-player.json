@@ -78,10 +78,7 @@
     "style": "card",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "repository": "https://github.com/elizaos-plugins/plugin-music-player"

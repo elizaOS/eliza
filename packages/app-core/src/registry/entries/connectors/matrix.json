@@ -5,14 +5,7 @@
   "npmName": "@elizaos/plugin-matrix",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "messaging",
-    "matrix",
-    "chat",
-    "social",
-    "social-chat"
-  ],
+  "tags": ["connector", "messaging", "matrix", "chat", "social", "social-chat"],
   "config": {
     "MATRIX_ROOMS": {
       "type": "string",
@@ -86,11 +79,7 @@
     "icon": "Link",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#matrix"
@@ -100,8 +89,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "MATRIX_ACCESS_TOKEN"
-    ]
+    "credentialKeys": ["MATRIX_ACCESS_TOKEN"]
   }
 }

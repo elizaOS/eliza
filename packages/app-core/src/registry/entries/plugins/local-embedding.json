@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-local-embedding",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "local-embedding",
-    "local",
-    "embedding"
-  ],
+  "tags": ["local-embedding", "local", "embedding"],
   "config": {
     "MODELS_DIR": {
       "type": "file-path",
@@ -98,10 +94,7 @@
     "icon": "Binary",
     "group": "knowledge",
     "groupOrder": 6,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

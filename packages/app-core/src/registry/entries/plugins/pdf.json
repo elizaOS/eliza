@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-pdf",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "pdf"
-  ],
+  "tags": ["pdf"],
   "config": {},
   "render": {
     "visible": true,
@@ -16,10 +14,7 @@
     "icon": "FileText",
     "group": "knowledge",
     "groupOrder": 6,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-pdf#readme",

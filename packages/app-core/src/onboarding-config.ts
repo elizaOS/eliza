@@ -140,20 +140,24 @@ export function buildOnboardingRuntimeConfig(
     persistRuntimeOnConnectedRemote
       ? { runtime: "local" }
       : serverTarget === "remote"
-      ? {
-          runtime: "remote",
-          provider: "remote",
-          remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
-          ...(trimToUndefined(args.onboardingRemoteToken)
-            ? { remoteAccessToken: trimToUndefined(args.onboardingRemoteToken) }
-            : {}),
-        }
-      : serverTarget === "elizacloud" && !args.onboardingRemoteConnected
         ? {
-            runtime: "cloud",
-            provider: "elizacloud",
+            runtime: "remote",
+            provider: "remote",
+            remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
+            ...(trimToUndefined(args.onboardingRemoteToken)
+              ? {
+                  remoteAccessToken: trimToUndefined(
+                    args.onboardingRemoteToken,
+                  ),
+                }
+              : {}),
           }
-        : { runtime: "local" };
+        : serverTarget === "elizacloud" && !args.onboardingRemoteConnected
+          ? {
+              runtime: "cloud",
+              provider: "elizacloud",
+            }
+          : { runtime: "local" };
 
   const serviceRouting: ServiceRoutingConfig = {};
   let llmTextRoute: ServiceRouteConfig | undefined;

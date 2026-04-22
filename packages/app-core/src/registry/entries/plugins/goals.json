@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-goals",
   "version": "2.0.0-alpha.6",
   "source": "bundled",
-  "tags": [
-    "goals",
-    "objectives",
-    "task-management"
-  ],
+  "tags": ["goals", "objectives", "task-management"],
   "config": {
     "GOAL_BATCH_SIZE": {
       "type": "number",
@@ -69,10 +65,7 @@
     "icon": "Target",
     "group": "agents",
     "groupOrder": 7,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

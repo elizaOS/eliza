@@ -44,9 +44,12 @@ export function useNavigation(): NavState {
           }
         }
       } catch (err) {
-        logger.warn("[navigation] failed to restore navigation from preferences", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        logger.warn(
+          "[navigation] failed to restore navigation from preferences",
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
         setStack([DEFAULT_VIEW]);
         setView(DEFAULT_VIEW);
       } finally {

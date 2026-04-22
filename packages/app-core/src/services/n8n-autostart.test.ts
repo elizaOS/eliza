@@ -17,8 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startN8nAutoStart } from "./n8n-autostart";
 import {
   disposeN8nSidecar,
-  type N8nSidecarConfig,
   type N8nSidecar,
+  type N8nSidecarConfig,
   type N8nSidecarStatus,
 } from "./n8n-sidecar";
 
@@ -40,9 +40,7 @@ interface SidecarStubHandle {
   ) => Promise<{ start: () => Promise<void> }>;
 }
 
-function makeSidecarStub(
-  start?: () => Promise<void>,
-): SidecarStubHandle {
+function makeSidecarStub(start?: () => Promise<void>): SidecarStubHandle {
   const sidecar = {
     start: vi.fn(async () => {
       if (start) await start();

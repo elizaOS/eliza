@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-localdb",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "database",
-    "storage",
-    "localdb"
-  ],
+  "tags": ["database", "storage", "localdb"],
   "config": {},
   "render": {
     "visible": false,
@@ -17,10 +13,7 @@
     "style": "card",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-localdb#readme",

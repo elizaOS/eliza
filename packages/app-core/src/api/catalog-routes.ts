@@ -16,7 +16,8 @@ import { ensureCompatApiAuthorized } from "./auth";
 import { sendJson as sendJsonResponse } from "./response";
 
 function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
-  const launchType = entry.launch.type === "server-launch" ? "server" : entry.launch.type;
+  const launchType =
+    entry.launch.type === "server-launch" ? "server" : entry.launch.type;
   return {
     name: entry.npmName ?? entry.id,
     displayName: entry.name,

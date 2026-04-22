@@ -66,12 +66,15 @@ function sanitizeOverrides(value: unknown): Record<string, boolean> {
 }
 
 export function loadChatSidebarVisibility(): WidgetVisibilityState {
-  return tryLocalStorage(() => {
-    const raw = localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY);
-    if (!raw) return { overrides: {} };
-    const parsed = JSON.parse(raw) as unknown;
-    return { overrides: sanitizeOverrides(parsed) };
-  }, { overrides: {} });
+  return tryLocalStorage(
+    () => {
+      const raw = localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY);
+      if (!raw) return { overrides: {} };
+      const parsed = JSON.parse(raw) as unknown;
+      return { overrides: sanitizeOverrides(parsed) };
+    },
+    { overrides: {} },
+  );
 }
 
 export function saveChatSidebarVisibility(state: WidgetVisibilityState): void {
@@ -113,9 +116,9 @@ export function isWidgetVisible(
 export function applyChatSidebarVisibility<
   T extends { declaration: VisibilityCandidate },
 >(resolved: readonly T[], overrides: Record<string, boolean>): T[] {
-  return resolved.filter((entry) => isWidgetVisible(entry.declaration, overrides));
+  return resolved.filter((entry) =>
+    isWidgetVisible(entry.declaration, overrides),
+  );
 }
 
-export {
-  CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
-};
+export { CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY };

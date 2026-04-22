@@ -16,11 +16,11 @@ import {
   client,
 } from "../../../api";
 import { useApp } from "../../../state";
-import {
-  type ChatSidebarWidgetDefinition,
-  type ChatSidebarWidgetProps,
-} from "./types";
 import { EmptyWidgetState, WidgetSection } from "./shared";
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "./types";
 
 const POLL_INTERVAL_MS = 4_000;
 

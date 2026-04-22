@@ -34,7 +34,9 @@ describe("page-scoped-conversations helper", () => {
       expect(
         isPageScopedConversationMetadata({ scope: "automation-workflow" }),
       ).toBe(false);
-      expect(isPageScopedConversationMetadata({ scope: "general" })).toBe(false);
+      expect(isPageScopedConversationMetadata({ scope: "general" })).toBe(
+        false,
+      );
       expect(isPageScopedConversationMetadata(undefined)).toBe(false);
       expect(isPageScopedConversationMetadata(null)).toBe(false);
       expect(isPageScopedConversation(null)).toBe(false);

@@ -16,8 +16,8 @@ import { PanelRightClose, PanelRightOpen, Pencil } from "lucide-react";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
-import { resolveWidgetsForSlot, WidgetHost } from "../../widgets";
 import { useApp } from "../../state";
+import { resolveWidgetsForSlot, WidgetHost } from "../../widgets";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
   APPS_SECTION_VISIBILITY_KEY,
@@ -27,8 +27,8 @@ import {
 import { AppsSection } from "./AppsSection";
 import {
   buildAppsSectionVisibilityCandidate,
-  WidgetVisibilityEditor,
   type WidgetVisibilityCandidate,
+  WidgetVisibilityEditor,
 } from "./WidgetVisibilityPanel";
 
 interface TasksEventsPanelProps {
@@ -66,10 +66,7 @@ export function TasksEventsPanel({
       const raw = window.localStorage.getItem(WIDGETS_WIDTH_KEY);
       const parsed = raw ? Number.parseInt(raw, 10) : NaN;
       if (Number.isFinite(parsed)) {
-        return Math.min(
-          Math.max(parsed, WIDGETS_MIN_WIDTH),
-          WIDGETS_MAX_WIDTH,
-        );
+        return Math.min(Math.max(parsed, WIDGETS_MIN_WIDTH), WIDGETS_MAX_WIDTH);
       }
     } catch {
       /* ignore */

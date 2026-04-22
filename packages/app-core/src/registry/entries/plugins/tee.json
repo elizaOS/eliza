@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-tee",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "crypto",
-    "tee"
-  ],
+  "tags": ["crypto", "tee"],
   "config": {
     "TEE_MODE": {
       "type": "string",
@@ -44,10 +41,7 @@
     "icon": "LockKeyhole",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-tee#readme",

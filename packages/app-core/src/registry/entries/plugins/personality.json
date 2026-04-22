@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-personality",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "personality",
-    "character-evolution",
-    "self-modification"
-  ],
+  "tags": ["personality", "character-evolution", "self-modification"],
   "config": {
     "ADMIN_USERS": {
       "type": "string",
@@ -27,10 +23,7 @@
     "icon": "Target",
     "group": "gaming",
     "groupOrder": 11,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

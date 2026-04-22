@@ -156,16 +156,12 @@ declare module "./client-base" {
       skillId: string,
       autoRefresh: boolean,
     ): Promise<void>;
-    enableSkill(
-      skillId: string,
-    ): Promise<{
+    enableSkill(skillId: string): Promise<{
       ok: boolean;
       skill: SkillInfo;
       scanStatus: string | null;
     }>;
-    disableSkill(
-      skillId: string,
-    ): Promise<{
+    disableSkill(skillId: string): Promise<{
       ok: boolean;
       skill: SkillInfo;
       scanStatus: string | null;
@@ -868,10 +864,9 @@ ElizaClient.prototype.heartbeatAppRun = async function (
   this: ElizaClient,
   runId,
 ) {
-  return this.fetch(
-    `/api/apps/runs/${encodeURIComponent(runId)}/heartbeat`,
-    { method: "POST" },
-  );
+  return this.fetch(`/api/apps/runs/${encodeURIComponent(runId)}/heartbeat`, {
+    method: "POST",
+  });
 };
 
 ElizaClient.prototype.getAppInfo = async function (this: ElizaClient, name) {

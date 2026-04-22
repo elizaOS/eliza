@@ -190,7 +190,8 @@ export function PolicyControlsView() {
   );
 
   const normalizedAddresses = useMemo(
-    () => (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
+    () =>
+      (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
     [addressConfig.addresses],
   );
 
@@ -558,7 +559,9 @@ function AddressSection({
       setAddrError("Invalid address (EVM 0x... or Solana base58)");
       return;
     }
-    if (config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)) {
+    if (
+      config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
+    ) {
       setAddrError("Already in list");
       return;
     }

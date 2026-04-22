@@ -4,11 +4,7 @@
   "description": "Browse memory, fact, and extraction activity.",
   "npmName": "@elizaos/app-memory-viewer",
   "source": "bundled",
-  "tags": [
-    "memory",
-    "facts",
-    "viewer"
-  ],
+  "tags": ["memory", "facts", "viewer"],
   "config": {},
   "render": {
     "visible": true,
@@ -17,9 +13,7 @@
     "icon": "Dna",
     "group": "Apps",
     "groupOrder": 5,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -28,10 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "memories",
-    "capabilities": [
-      "memory",
-      "facts",
-      "viewer"
-    ]
+    "capabilities": ["memory", "facts", "viewer"]
   }
 }

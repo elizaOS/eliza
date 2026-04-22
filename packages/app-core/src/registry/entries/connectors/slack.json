@@ -5,14 +5,7 @@
   "npmName": "@elizaos/plugin-slack",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "slack",
-    "chat",
-    "messaging",
-    "connector",
-    "social",
-    "social-chat"
-  ],
+  "tags": ["slack", "chat", "messaging", "connector", "social", "social-chat"],
   "config": {
     "SLACK_APP_TOKEN": {
       "type": "secret",
@@ -78,11 +71,7 @@
     "icon": "Briefcase",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-slack#readme",
@@ -94,8 +83,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "SLACK_APP_TOKEN"
-    ]
+    "credentialKeys": ["SLACK_APP_TOKEN"]
   }
 }

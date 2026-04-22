@@ -5,14 +5,7 @@
   "npmName": "@elizaos/plugin-prose",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "openprose",
-    "prose",
-    "llm",
-    "vm",
-    "workflow",
-    "orchestration"
-  ],
+  "tags": ["openprose", "prose", "llm", "vm", "workflow", "orchestration"],
   "config": {
     "PROSE_SKILLS_DIR": {
       "type": "file-path",
@@ -46,10 +39,7 @@
     "icon": "PenTool",
     "group": "media",
     "groupOrder": 8,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

@@ -4,11 +4,7 @@
   "description": "Inspect runtime objects, plugin order, providers, and services.",
   "npmName": "@elizaos/app-runtime-debugger",
   "source": "bundled",
-  "tags": [
-    "runtime",
-    "debug",
-    "viewer"
-  ],
+  "tags": ["runtime", "debug", "viewer"],
   "config": {},
   "render": {
     "visible": true,
@@ -17,9 +13,7 @@
     "icon": "Settings",
     "group": "Apps",
     "groupOrder": 6,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -28,10 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "runtime",
-    "capabilities": [
-      "runtime",
-      "debug",
-      "viewer"
-    ]
+    "capabilities": ["runtime", "debug", "viewer"]
   }
 }

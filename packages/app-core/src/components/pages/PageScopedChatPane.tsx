@@ -10,10 +10,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
-import type {
-  Conversation,
-  ConversationMessage,
-} from "../../api/client-types";
+import type { Conversation, ConversationMessage } from "../../api/client-types";
 import { useApp } from "../../state";
 import {
   buildPageScopedConversationMetadata,
@@ -189,7 +186,7 @@ export function PageScopedChatPane({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, sending]);
+  }, []);
 
   const handleSend = useCallback(async () => {
     const raw = input.trim();
