@@ -153,9 +153,7 @@ export function AppsView() {
         (app, index, items) =>
           !items
             .slice(index + 1)
-            .some(
-              (candidate: RegistryAppInfo) => candidate.name === app.name,
-            ),
+            .some((candidate: RegistryAppInfo) => candidate.name === app.name),
       );
       setApps(list);
     } catch (err) {

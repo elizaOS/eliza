@@ -296,9 +296,7 @@ function AppsSidebarAppButton({
       onClick={onClick}
       aria-current={selected ? "page" : undefined}
       className={`group flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left transition-colors ${
-        selected
-          ? "bg-accent/15 text-txt"
-          : "text-txt hover:bg-bg-muted/50"
+        selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
       }`}
     >
       <Icon
@@ -311,6 +309,7 @@ function AppsSidebarAppButton({
       </span>
       {active ? (
         <span
+          role="img"
           aria-label="Running"
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
         />
