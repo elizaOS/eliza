@@ -242,8 +242,9 @@ export async function handleTriggerRoutes(
       error(res, kindParsed.error, 400);
       return true;
     }
-    const kind: TriggerKind | undefined =
-      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const kind: TriggerKind | undefined = kindParsed?.ok
+      ? kindParsed.kind
+      : undefined;
     const workflowId = parseNonEmptyString(body.workflowId);
     const workflowName = parseNonEmptyString(body.workflowName);
     if (kind === "workflow" && !workflowId) {
@@ -263,7 +264,7 @@ export async function handleTriggerRoutes(
         typeof body.wakeMode === "string"
           ? (body.wakeMode as TriggerWakeMode)
           : undefined,
-      enabled: (body.enabled ?? true) ? true : false,
+      enabled: !!(body.enabled ?? true),
       createdBy: creator,
       timezone: typeof body.timezone === "string" ? body.timezone : undefined,
       intervalMs:
@@ -486,8 +487,9 @@ export async function handleTriggerRoutes(
       error(res, kindParsed.error, 400);
       return true;
     }
-    const parsedKind: TriggerKind | undefined =
-      kindParsed !== undefined && kindParsed.ok ? kindParsed.kind : undefined;
+    const parsedKind: TriggerKind | undefined = kindParsed?.ok
+      ? kindParsed.kind
+      : undefined;
     const nextKind: TriggerKind | undefined =
       parsedKind ?? parseTriggerKind(current.kind);
     const nextWorkflowId =

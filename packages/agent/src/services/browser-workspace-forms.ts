@@ -2,7 +2,6 @@ import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceElementSelector,
   findClosestBrowserWorkspaceForm,
-  resolveBrowserWorkspaceElement,
 } from "./browser-workspace-elements.js";
 import {
   assertBrowserWorkspaceUrl,

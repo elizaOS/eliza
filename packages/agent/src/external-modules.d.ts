@@ -296,9 +296,9 @@ declare module "@elizaos/plugin-sql" {
 }
 
 declare module "ws" {
-  import type { EventEmitter } from "events";
-  import type { Server as HttpServer, IncomingMessage } from "http";
-  import type { Duplex } from "stream";
+  import type { EventEmitter } from "node:events";
+  import type { Server as HttpServer, IncomingMessage } from "node:http";
+  import type { Duplex } from "node:stream";
 
   export class WebSocket extends EventEmitter {
     static readonly CONNECTING: 0;

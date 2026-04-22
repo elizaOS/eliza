@@ -35,7 +35,6 @@ import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import { TxService } from "@elizaos/app-steward/api/tx-service";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
-import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -155,7 +154,6 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
 import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
@@ -321,7 +319,7 @@ import {
   type PluginEntry,
 } from "./plugin-discovery-helpers.js";
 
-const nodeRequire = createRequire(import.meta.url);
+const _nodeRequire = createRequire(import.meta.url);
 // Dynamic import (not require) because the plugin is ESM-only and bun's
 // createRequire cannot load ESM packages. Top-level await is settled before
 // any consumer reads the binding.
@@ -536,7 +534,6 @@ export type {
 
 import type {
   AgentStartupDiagnostics,
-  ConversationMeta,
   ServerState,
   StreamEventEnvelope,
 } from "./server-types.js";

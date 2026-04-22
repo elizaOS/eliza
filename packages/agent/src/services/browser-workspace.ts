@@ -73,8 +73,6 @@ export { __resetBrowserWorkspaceStateForTests } from "./browser-workspace-state.
 
 // ── Re-export desktop bridge ─────────────────────────────────────────
 import {
-  createDesktopBrowserWorkspaceCommandScript,
-  createDesktopBrowserWorkspaceUtilityScript,
   evaluateBrowserWorkspaceTab as evaluateBrowserWorkspaceTabDesktop,
   executeDesktopBrowserWorkspaceDomCommand,
   executeDesktopBrowserWorkspaceUtilityCommand,
@@ -85,7 +83,6 @@ import {
   loadDesktopBrowserWorkspaceSessionState,
   requestBrowserWorkspace,
   resolveBrowserWorkspaceBridgeConfig,
-  resolveBrowserWorkspaceCurrentTab,
   resolveDesktopBrowserWorkspaceTargetTabId,
   snapshotBrowserWorkspaceTab as snapshotBrowserWorkspaceTabDesktop,
 } from "./browser-workspace-desktop.js";

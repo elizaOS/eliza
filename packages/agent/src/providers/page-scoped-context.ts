@@ -217,7 +217,7 @@ export const pageScopedContextProvider: Provider = {
       if (!isPageScopedConversationMetadata(metadata)) {
         return EMPTY_RESULT;
       }
-      const scope = metadata!.scope as ConversationScope;
+      const scope = metadata?.scope as ConversationScope;
       const brief = PAGE_SCOPE_BRIEF[scope];
       if (!brief) {
         return EMPTY_RESULT;

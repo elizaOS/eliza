@@ -23,7 +23,6 @@ import type {
 } from "../types/trajectory.js";
 import {
   asRecord,
-  type BufferedExchange,
   type CompleteStepOptions,
   capScriptForPersistence,
   computeBySource,
@@ -59,7 +58,6 @@ import {
   shouldSuppressNoInputEmbeddingCall,
   sqlQuote,
   stepWriteQueues,
-  type TrajectoryLoggerLike,
   toArchiveSafeTimestamp,
   toNumber,
   toOptionalNumber,

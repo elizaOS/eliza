@@ -3,7 +3,6 @@
  */
 
 import type http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
