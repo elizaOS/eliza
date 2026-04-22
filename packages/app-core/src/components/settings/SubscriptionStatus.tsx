@@ -155,61 +155,58 @@ function SubscriptionProviderPanel({
 
       {preOauthSlot}
 
-      {bodyOverride ?? (
-        <>
-          {connected ? (
-            <p className="text-xs text-muted">{connectedSummary}</p>
-          ) : !oauthStarted ? (
-            <div className="space-y-1.5">
+      {bodyOverride ??
+        (connected ? (
+          <p className="text-xs text-muted">{connectedSummary}</p>
+        ) : !oauthStarted ? (
+          <div className="space-y-1.5">
+            <Button
+              variant="default"
+              size="sm"
+              className="!mt-0 h-9 rounded-lg font-semibold"
+              onClick={onStartOauth}
+            >
+              {loginLabel}
+            </Button>
+            <p className="text-xs-tight text-muted">{loginHint}</p>
+            {oauthError && (
+              <p className="text-xs-tight text-danger">{oauthError}</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {oauthInstructions}
+            <Input
+              type={oauthInputType}
+              className="h-9 rounded-lg bg-card text-xs"
+              placeholder={oauthInputPlaceholder}
+              value={oauthCode}
+              onChange={(e) => setOauthCode(e.target.value)}
+            />
+            {oauthError && (
+              <p className="text-xs-tight text-danger">{oauthError}</p>
+            )}
+            <div className="flex items-center gap-2">
               <Button
                 variant="default"
                 size="sm"
                 className="!mt-0 h-9 rounded-lg font-semibold"
-                onClick={onStartOauth}
+                disabled={oauthExchangeBusy || !oauthCode.trim()}
+                onClick={onExchange}
               >
-                {loginLabel}
+                {oauthExchangeBusy ? exchangeBusyLabel : exchangeButtonLabel}
               </Button>
-              <p className="text-xs-tight text-muted">{loginHint}</p>
-              {oauthError && (
-                <p className="text-xs-tight text-danger">{oauthError}</p>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="!mt-0 h-9 rounded-lg"
+                onClick={onResetFlow}
+              >
+                {t("onboarding.startOver")}
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {oauthInstructions}
-              <Input
-                type={oauthInputType}
-                className="h-9 rounded-lg bg-card text-xs"
-                placeholder={oauthInputPlaceholder}
-                value={oauthCode}
-                onChange={(e) => setOauthCode(e.target.value)}
-              />
-              {oauthError && (
-                <p className="text-xs-tight text-danger">{oauthError}</p>
-              )}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="!mt-0 h-9 rounded-lg font-semibold"
-                  disabled={oauthExchangeBusy || !oauthCode.trim()}
-                  onClick={onExchange}
-                >
-                  {oauthExchangeBusy ? exchangeBusyLabel : exchangeButtonLabel}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="!mt-0 h-9 rounded-lg"
-                  onClick={onResetFlow}
-                >
-                  {t("onboarding.startOver")}
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+          </div>
+        ))}
     </div>
   );
 }

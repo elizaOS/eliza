@@ -89,10 +89,7 @@
     "icon": "Circle",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

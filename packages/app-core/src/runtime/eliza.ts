@@ -172,9 +172,7 @@ interface RuntimeModelCompat {
   ) => Promise<unknown>;
 }
 
-function getAutonomyService(
-  runtime: AgentRuntime,
-): AutonomyServiceLike | null {
+function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
   const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
   if (isAutonomyService(svc)) {
     return svc;
@@ -418,7 +416,7 @@ async function registerTrackCTrainingCrons(
     })
     .catch((err) => {
       logger.error(
-        `[eliza] bootstrapOptimizationFromAccumulatedTrajectories failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`,
+        `[eliza] bootstrapOptimizationFromAccumulatedTrajectories failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
     });
 }

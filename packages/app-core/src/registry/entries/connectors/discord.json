@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-discord",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "social",
-    "social-chat",
-    "messaging",
-    "discord"
-  ],
+  "tags": ["connector", "social", "social-chat", "messaging", "discord"],
   "config": {
     "DISCORD_API_TOKEN": {
       "type": "secret",
@@ -93,11 +87,7 @@
     "icon": "MessageCircle",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-discord#readme",
@@ -109,8 +99,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "DISCORD_API_TOKEN"
-    ]
+    "credentialKeys": ["DISCORD_API_TOKEN"]
   }
 }

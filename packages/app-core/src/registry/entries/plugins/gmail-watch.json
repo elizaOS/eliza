@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-gmail-watch",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "gmail-watch",
-    "gmail",
-    "watch"
-  ],
+  "tags": ["gmail-watch", "gmail", "watch"],
   "config": {},
   "render": {
     "visible": true,
@@ -18,10 +14,7 @@
     "icon": "Mail",
     "group": "media",
     "groupOrder": 8,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#gmail-watch"

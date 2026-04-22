@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-lp-manager",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "lp-manager",
-    "lp",
-    "manager"
-  ],
+  "tags": ["lp-manager", "lp", "manager"],
   "config": {
     "BSC_RPC_URL": {
       "type": "url",
@@ -139,10 +135,7 @@
     "icon": "Wallet",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

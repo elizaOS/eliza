@@ -85,10 +85,7 @@
     "icon": "Monitor",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-local-ai#readme",

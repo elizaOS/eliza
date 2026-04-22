@@ -3,7 +3,7 @@
  *
  * Handles all /api/workbench/todos routes backed by AgentRuntime tasks.
  */
-import http from "node:http";
+import type http from "node:http";
 import { type AgentRuntime, logger, type Task } from "@elizaos/core";
 import { ensureCompatApiAuthorized } from "./auth";
 import {

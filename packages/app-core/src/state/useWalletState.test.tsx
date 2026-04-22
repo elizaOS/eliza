@@ -86,20 +86,20 @@ function createGenerateWalletResponse(
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
-      updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(
-        async () => ({ ok: true }),
-      ),
+      updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
+        ok: true,
+      })),
       refreshCloudWallets: vi.fn<() => Promise<RefreshCloudWalletsResponse>>(
         async () => createRefreshCloudWalletsResponse(),
       ),
-      generateWallet: vi.fn<() => Promise<GenerateWalletResponse>>(
-        async () => createGenerateWalletResponse(),
+      generateWallet: vi.fn<() => Promise<GenerateWalletResponse>>(async () =>
+        createGenerateWalletResponse(),
       ),
-      setWalletPrimary: vi.fn<() => Promise<{ ok: boolean }>>(
-        async () => ({ ok: true }),
-      ),
-      getWalletConfig: vi.fn<() => Promise<WalletConfigStatus>>(
-        async () => createWalletConfig(),
+      setWalletPrimary: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
+        ok: true,
+      })),
+      getWalletConfig: vi.fn<() => Promise<WalletConfigStatus>>(async () =>
+        createWalletConfig(),
       ),
       getWalletBalances: vi.fn<() => Promise<WalletBalancesResponse>>(
         async () => createWalletBalances(),

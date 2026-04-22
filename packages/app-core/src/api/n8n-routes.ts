@@ -88,7 +88,10 @@ export interface N8nWorkflow {
   nodes?: N8nWorkflowNodeLike[];
   nodeCount: number;
   /** Connection graph — only present on single-workflow GET, not on list. */
-  connections?: Record<string, { main?: Array<Array<{ node: string; type: "main"; index: number }>> }>;
+  connections?: Record<
+    string,
+    { main?: Array<Array<{ node: string; type: "main"; index: number }>> }
+  >;
 }
 
 /**

@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-directives",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "directives"
-  ],
+  "tags": ["directives"],
   "config": {
     "ALLOW_EXEC": {
       "type": "boolean",
@@ -53,10 +51,7 @@
     "icon": "ClipboardList",
     "group": "agents",
     "groupOrder": 7,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

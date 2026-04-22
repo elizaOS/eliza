@@ -24,8 +24,8 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
-import { getBrowserPageScopeCopy } from "./page-scoped-conversations.js";
 import { PageScopedChatPane } from "./PageScopedChatPane.js";
+import { getBrowserPageScopeCopy } from "./page-scoped-conversations.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -157,7 +157,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
-  const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
+  const [_browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
     BrowserBridgeCompanionStatus[]
   >([]);
@@ -712,7 +712,8 @@ export function BrowserWorkspaceView(): JSX.Element {
         });
         setActionNoticeRef.current(
           t("browserworkspace.BrowserBridgeFolderRevealed", {
-            defaultValue: "Revealed the Agent Browser Bridge folder at {{path}}.",
+            defaultValue:
+              "Revealed the Agent Browser Bridge folder at {{path}}.",
             path: response.path,
           }),
           "success",
@@ -720,7 +721,8 @@ export function BrowserWorkspaceView(): JSX.Element {
         );
       },
       t("browserworkspace.OpenBrowserBridgeFolderFailed", {
-        defaultValue: "Failed to reveal the Agent Browser Bridge extension folder.",
+        defaultValue:
+          "Failed to reveal the Agent Browser Bridge extension folder.",
       }),
     );
   }, [runBrowserWorkspaceAction, t]);
@@ -729,12 +731,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     await runBrowserWorkspaceAction(
       "browser-bridge:open-manager",
       async () => {
-        await client.fetch(
-          "/api/browser-bridge/packages/chrome/open-manager",
-          {
-            method: "POST",
-          },
-        );
+        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
+          method: "POST",
+        });
         setActionNoticeRef.current(
           t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
             defaultValue:

@@ -1,7 +1,11 @@
 import { Button, Input } from "@elizaos/ui";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { approvedAddressValue, chainTypeLabel, isValidAddress } from "./helpers";
+import {
+  approvedAddressValue,
+  chainTypeLabel,
+  isValidAddress,
+} from "./helpers";
 import type { ApprovedAddressEntry, ApprovedAddressesConfig } from "./types";
 
 export function ApprovedAddressesSection({
@@ -39,7 +43,9 @@ export function ApprovedAddressesSection({
       setAddressError("Invalid address format (EVM 0x... or Solana base58)");
       return;
     }
-    if (config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)) {
+    if (
+      config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
+    ) {
       setAddressError("Already in list");
       return;
     }

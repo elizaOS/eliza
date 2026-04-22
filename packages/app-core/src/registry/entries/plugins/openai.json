@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-openai",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "openai"
-  ],
+  "tags": ["ai-provider", "llm", "openai"],
   "config": {
     "OPENAI_API_KEY": {
       "type": "secret",
@@ -180,10 +176,7 @@
     "icon": "CircleDashed",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-openai#readme",

@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-clipboard",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "clipboard",
-    "memory",
-    "notes",
-    "storage"
-  ],
+  "tags": ["clipboard", "memory", "notes", "storage"],
   "config": {
     "CLIPBOARD_BASE_PATH": {
       "type": "file-path",
@@ -37,10 +32,7 @@
     "icon": "StickyNote",
     "group": "knowledge",
     "groupOrder": 6,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-clipboard#readme",

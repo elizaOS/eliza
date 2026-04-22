@@ -9,11 +9,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
+  isWidgetVisible,
   loadChatSidebarVisibility,
   saveChatSidebarVisibility,
   type VisibilityCandidate,
   type WidgetVisibilityState,
-  isWidgetVisible,
   widgetVisibilityKey,
 } from "./visibility";
 
@@ -69,7 +69,8 @@ export function useChatSidebarVisibility(): ChatSidebarVisibilityHook {
   }, []);
 
   const isVisible = useCallback(
-    (candidate: VisibilityCandidate) => isWidgetVisible(candidate, state.overrides),
+    (candidate: VisibilityCandidate) =>
+      isWidgetVisible(candidate, state.overrides),
     [state.overrides],
   );
 

@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-farcaster",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "social",
-    "farcaster",
-    "messaging",
-    "social-feed"
-  ],
+  "tags": ["connector", "social", "farcaster", "messaging", "social-feed"],
   "config": {
     "ENABLE_CAST": {
       "type": "boolean",
@@ -163,11 +157,7 @@
     "icon": "Circle",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-farcaster#readme",
@@ -179,8 +169,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "FARCASTER_NEYNAR_API_KEY"
-    ]
+    "credentialKeys": ["FARCASTER_NEYNAR_API_KEY"]
   }
 }

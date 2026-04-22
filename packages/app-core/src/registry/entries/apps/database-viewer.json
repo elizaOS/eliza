@@ -4,11 +4,7 @@
   "description": "Inspect tables, media, vectors, and ad-hoc SQL.",
   "npmName": "@elizaos/app-database-viewer",
   "source": "bundled",
-  "tags": [
-    "database",
-    "sql",
-    "viewer"
-  ],
+  "tags": ["database", "sql", "viewer"],
   "config": {},
   "render": {
     "visible": true,
@@ -17,9 +13,7 @@
     "icon": "Server",
     "group": "Apps",
     "groupOrder": 7,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -28,10 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "database",
-    "capabilities": [
-      "database",
-      "sql",
-      "viewer"
-    ]
+    "capabilities": ["database", "sql", "viewer"]
   }
 }

@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-minecraft",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "app",
-    "games",
-    "minecraft",
-    "automation",
-    "mineflayer"
-  ],
+  "tags": ["app", "games", "minecraft", "automation", "mineflayer"],
   "config": {
     "MC_AUTH": {
       "type": "string",
@@ -73,10 +67,7 @@
     "icon": "Pickaxe",
     "group": "gaming",
     "groupOrder": 11,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

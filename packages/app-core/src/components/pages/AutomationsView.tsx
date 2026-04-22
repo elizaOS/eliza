@@ -33,7 +33,6 @@ import {
   FileText,
   GitBranch,
   Grid3x3,
-  LayoutDashboard,
   type LucideIcon,
   Mail,
   Pause,
@@ -973,7 +972,10 @@ function AutomationCollapsibleSection({
           </span>
           <span className="truncate">{label}</span>
           <span className="ml-0.5 text-muted/60 tabular-nums">{count}</span>
-          <Chevron aria-hidden className="ml-auto h-3 w-3 shrink-0 text-muted opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100" />
+          <Chevron
+            aria-hidden
+            className="ml-auto h-3 w-3 shrink-0 text-muted opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100"
+          />
         </button>
         {onAdd ? (
           <button
@@ -1488,7 +1490,9 @@ function AutomationNodePalette({
   );
 
   const enabledCount = nodes.filter((n) => n.availability === "enabled").length;
-  const disabledCount = nodes.filter((n) => n.availability === "disabled").length;
+  const disabledCount = nodes.filter(
+    (n) => n.availability === "disabled",
+  ).length;
 
   return (
     <section className="rounded-[var(--radius-sm)] border border-border/25 bg-bg/20">
@@ -1514,9 +1518,7 @@ function AutomationNodePalette({
               {group.nodes.map((node) => (
                 <div
                   key={node.id}
-                  title={
-                    node.disabledReason || node.description || node.label
-                  }
+                  title={node.disabledReason || node.description || node.label}
                   className={`flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 text-xs-tight ${
                     node.availability === "enabled"
                       ? "border-border/20 bg-bg/30"
@@ -1578,11 +1580,8 @@ function TaskAutomationDetailPane({
     : task.isCompleted
       ? "Completed"
       : "Active";
-  const statusTone: "success" | "warning" | "muted" | "danger" = automation.system
-    ? "muted"
-    : task.isCompleted
-      ? "muted"
-      : "success";
+  const statusTone: "success" | "warning" | "muted" | "danger" =
+    automation.system ? "muted" : task.isCompleted ? "muted" : "success";
 
   return (
     <div className="space-y-3">
@@ -1686,7 +1685,10 @@ const AUTOMATION_DRAFT_EXAMPLES: Array<{
 
 function formatRelativeFuture(
   targetMs: number,
-  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+  t?: (
+    key: string,
+    options?: { defaultValue?: string; value?: number },
+  ) => string,
 ): string {
   const delta = targetMs - Date.now();
   if (delta <= 0) return "now";
@@ -1695,7 +1697,10 @@ function formatRelativeFuture(
 
 function formatRelativePast(
   iso: string | number | null | undefined,
-  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+  t?: (
+    key: string,
+    options?: { defaultValue?: string; value?: number },
+  ) => string,
 ): string {
   if (!iso) return "—";
   const ts = typeof iso === "string" ? Date.parse(iso) : iso;
@@ -1705,7 +1710,7 @@ function formatRelativePast(
   return `${formatDurationMs(delta, { t })} ago`;
 }
 
-function AutomationsDashboard({
+function _AutomationsDashboard({
   items,
   onSelectItem,
   onCreateDraft,
@@ -1723,9 +1728,11 @@ function AutomationsDashboard({
   );
 
   const triggerItems = useMemo(
-    () => visibleItems.filter((item): item is AutomationItem & { trigger: TriggerSummary } =>
-      item.trigger != null,
-    ),
+    () =>
+      visibleItems.filter(
+        (item): item is AutomationItem & { trigger: TriggerSummary } =>
+          item.trigger != null,
+      ),
     [visibleItems],
   );
 
@@ -1748,8 +1755,7 @@ function AutomationsDashboard({
             item.trigger.nextRunAtMs > now,
         )
         .sort(
-          (a, b) =>
-            (a.trigger.nextRunAtMs ?? 0) - (b.trigger.nextRunAtMs ?? 0),
+          (a, b) => (a.trigger.nextRunAtMs ?? 0) - (b.trigger.nextRunAtMs ?? 0),
         )
         .slice(0, 6),
     [triggerItems, now],
@@ -1786,9 +1792,7 @@ function AutomationsDashboard({
     return (
       <div className="space-y-3 px-2 pt-6 text-center">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-txt">
-            No automations yet
-          </h2>
+          <h2 className="text-lg font-semibold text-txt">No automations yet</h2>
           <p className="text-xs-tight text-muted/80">
             Click + to describe one in chat — Eliza picks the right shape.
           </p>
@@ -1812,17 +1816,13 @@ function AutomationsDashboard({
           { label: "Total", value: totalCount },
           {
             label: "Active",
-            value: (
-              <span className="text-ok tabular-nums">{activeCount}</span>
-            ),
+            value: <span className="text-ok tabular-nums">{activeCount}</span>,
           },
           {
             label: "Failing",
             value:
               failingCount > 0 ? (
-                <span className="text-danger tabular-nums">
-                  {failingCount}
-                </span>
+                <span className="text-danger tabular-nums">{failingCount}</span>
               ) : (
                 <span className="text-muted tabular-nums">0</span>
               ),
@@ -1854,7 +1854,10 @@ function AutomationsDashboard({
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
               >
-                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+                <span
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger"
+                  aria-hidden
+                />
                 <span className="truncate font-medium text-txt">{title}</span>
                 <span className="ml-auto text-muted/70 tabular-nums">
                   {formatRelativePast(trigger.lastRunAtIso, t)}
@@ -1883,7 +1886,10 @@ function AutomationsDashboard({
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
               >
-                <Clock3 className="h-3.5 w-3.5 shrink-0 text-muted/60" aria-hidden />
+                <Clock3
+                  className="h-3.5 w-3.5 shrink-0 text-muted/60"
+                  aria-hidden
+                />
                 <span className="truncate text-txt">{title}</span>
                 <span className="ml-auto text-muted tabular-nums">
                   {trigger.nextRunAtMs
@@ -1919,7 +1925,10 @@ function AutomationsDashboard({
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
                 >
-                  <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                  <span
+                    className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`}
+                    aria-hidden
+                  />
                   <span className="truncate text-txt">{title}</span>
                   <span className="ml-auto text-muted/70 tabular-nums">
                     {formatRelativePast(trigger.lastRunAtIso, t)}
@@ -1987,8 +1996,8 @@ function AutomationDraftPane({
         </h2>
         <p className="text-xs-tight text-muted/80">
           Describe it in chat. Eliza will pick the right shape — a recurring
-          prompt, a goal-oriented task, or a deterministic workflow — and set
-          it up.
+          prompt, a goal-oriented task, or a deterministic workflow — and set it
+          up.
         </p>
       </div>
 
@@ -2002,7 +2011,10 @@ function AutomationDraftPane({
               onClick={() => void sendPrompt(example.prompt)}
               className="group flex items-start gap-2 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-2 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
             >
-              <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent/80" aria-hidden />
+              <Icon
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent/80"
+                aria-hidden
+              />
               <div className="min-w-0 flex-1 space-y-0.5">
                 <div className="text-xs-tight font-semibold text-txt">
                   {example.label}
@@ -2083,9 +2095,7 @@ function DetailHeader({
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-1.5 text-muted">
           {icon}
-          <h2 className="truncate text-base font-semibold text-txt">
-            {title}
-          </h2>
+          <h2 className="truncate text-base font-semibold text-txt">{title}</h2>
           <StatusBadge label={statusLabel} variant={statusTone} withDot />
         </div>
         {description ? (
@@ -2109,10 +2119,7 @@ function DetailStatsRow({
   return (
     <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 px-1 text-xs-tight">
       {items.map((item) => (
-        <div
-          key={item.label}
-          className="flex items-baseline gap-1.5"
-        >
+        <div key={item.label} className="flex items-baseline gap-1.5">
           <dt className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
             {item.label}
           </dt>
@@ -2341,10 +2348,7 @@ function TriggerAutomationDetailPane({
         )}
       </DetailSection>
 
-      <AutomationNodePalette
-        nodes={nodes}
-        title="Automation nodes"
-      />
+      <AutomationNodePalette nodes={nodes} title="Automation nodes" />
     </div>
   );
 }
@@ -2602,9 +2606,7 @@ function AutomationSidebarItem({
       onDoubleClick={onDoubleClick}
       aria-current={selected ? "page" : undefined}
       className={`group flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left transition-colors ${
-        selected
-          ? "bg-accent/15 text-txt"
-          : "text-txt hover:bg-bg-muted/50"
+        selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
       } ${item.system ? "opacity-60" : ""}`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted/70" aria-hidden />
@@ -2662,7 +2664,7 @@ function AutomationsLayout() {
     workflowFetchError,
   } = ctx;
   const [searchQuery, setSearchQuery] = useState("");
-  const [showDashboard, setShowDashboard] = useState(true);
+  const [_showDashboard, _setShowDashboard] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -2808,12 +2810,12 @@ function AutomationsLayout() {
       const previousTriggerIds = new Set(
         ctx.allItems
           .filter((item) => item.trigger?.id)
-          .map((item) => item.trigger!.id),
+          .map((item) => item.trigger?.id),
       );
       const previousTaskIds = new Set(
         ctx.allItems
           .filter((item) => item.task?.id)
-          .map((item) => item.task!.id),
+          .map((item) => item.task?.id),
       );
 
       const data = await ctx.refreshAutomations();
@@ -2877,7 +2879,9 @@ function AutomationsLayout() {
           ) ?? [];
 
         const createdCount =
-          createdTriggers.length + createdTasks.length + createdWorkflows.length;
+          createdTriggers.length +
+          createdTasks.length +
+          createdWorkflows.length;
         if (createdCount !== 1) {
           return data;
         }
@@ -3383,9 +3387,7 @@ function AutomationsLayout() {
             </div>
           )}
 
-          {!isLoading &&
-          normalizedSearchQuery &&
-          visibleItems.length === 0 ? (
+          {!isLoading && normalizedSearchQuery && visibleItems.length === 0 ? (
             <div className="px-3 py-3 text-2xs text-muted/70">
               No matching automations
             </div>

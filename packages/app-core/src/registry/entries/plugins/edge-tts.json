@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-edge-tts",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "edge-tts",
-    "edge",
-    "text-to-speech"
-  ],
+  "tags": ["edge-tts", "edge", "text-to-speech"],
   "config": {
     "EDGE_TTS_VOICE": {
       "type": "string",
@@ -89,10 +85,7 @@
     "icon": "Volume2",
     "group": "voice",
     "groupOrder": 3,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

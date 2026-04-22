@@ -5,6 +5,7 @@ import type {
   PermissionStatus,
   SystemPermissionId,
 } from "../api/client";
+
 export type * from "./types";
 
 // ── Onboarding permissions ──────────────────────────────────────────────

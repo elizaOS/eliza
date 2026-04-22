@@ -27,6 +27,7 @@ const ensureOnboardedAgentRunning = async (
     // Non-fatal: agent manager may not be ready yet. Onboarding will retry.
   }
 };
+
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -498,7 +499,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               voiceProvider: onboardingVoiceProvider,
               voiceApiKey: onboardingVoiceApiKey,
               cloudTtsSelected:
-                runtimeConfig.serviceRouting?.tts?.transport === "cloud-proxy" &&
+                runtimeConfig.serviceRouting?.tts?.transport ===
+                  "cloud-proxy" &&
                 runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
               clientRef: client,
             });

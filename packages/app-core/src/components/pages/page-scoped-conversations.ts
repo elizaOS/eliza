@@ -1,8 +1,8 @@
+import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
-import { client } from "../../api";
 
 export type PageScope =
   | "page-browser"
@@ -178,8 +178,7 @@ function findPageScopedConversation(
   if (matching.length === 0) return null;
   return matching.sort(
     (left, right) =>
-      new Date(right.updatedAt).getTime() -
-      new Date(left.updatedAt).getTime(),
+      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
   )[0];
 }
 

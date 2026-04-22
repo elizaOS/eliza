@@ -7,17 +7,14 @@ import type {
   ConversationMetadata,
   ConversationScope,
 } from "@elizaos/agent/api/server-types";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { listTriggerTasks, taskToTriggerSummary } from "@elizaos/agent/triggers/runtime";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  listTriggerTasks,
+  taskToTriggerSummary,
+} from "@elizaos/agent/triggers/runtime";
 import type { TriggerSummary } from "@elizaos/agent/triggers/types";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
-import type {
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsSignalConnectorStatus,
-  LifeOpsTelegramConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
 import {
   type AgentRuntime,
   logger,
@@ -26,6 +23,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type {
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsGoogleConnectorStatus,
+  LifeOpsSignalConnectorStatus,
+  LifeOpsTelegramConnectorStatus,
+} from "@elizaos/shared/contracts/lifeops";
+import { ensureCompatApiAuthorized } from "./auth";
+import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
+import type {
   AutomationItem,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
@@ -33,16 +38,11 @@ import type {
   AutomationSummary,
   WorkbenchTask,
 } from "./client-types-config";
-import type {
-  N8nStatusResponse,
-  N8nWorkflow,
-} from "./client-types-chat";
-import { ensureCompatApiAuthorized } from "./auth";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleN8nRoutes } from "./n8n-routes";
 import {
-  sendJson as sendJsonResponse,
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
 } from "./response";
 
 interface AutomationListResponse {
@@ -238,7 +238,9 @@ async function listAutomationRooms(
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const rooms = await runtime.getRooms(worldId);
   return rooms
-    .map((room) => readAutomationRoomRecord(room as unknown as Record<string, unknown>))
+    .map((room) =>
+      readAutomationRoomRecord(room as unknown as Record<string, unknown>),
+    )
     .filter((room): room is AutomationRoomRecord => room !== null);
 }
 
@@ -415,7 +417,10 @@ function buildWorkflowItem(
   };
 }
 
-function compareAutomationItems(left: AutomationItem, right: AutomationItem): number {
+function compareAutomationItems(
+  left: AutomationItem,
+  right: AutomationItem,
+): number {
   if (left.system !== right.system) {
     return left.system ? 1 : -1;
   }
@@ -469,8 +474,8 @@ async function buildAutomationListResponse(
 
   const tasks = deduplicateSystemTasks(
     (await runtime.getTasks({}))
-    .map((task) => toWorkbenchTask(task))
-    .filter((task): task is WorkbenchTask => task !== null),
+      .map((task) => toWorkbenchTask(task))
+      .filter((task): task is WorkbenchTask => task !== null),
   );
 
   const triggerItems = (await listTriggerTasks(runtime))
@@ -497,8 +502,8 @@ async function buildAutomationListResponse(
   const workflowFetchError =
     n8nWorkflowsResult.status === 200
       ? null
-      : extractErrorMessage(n8nWorkflowsResult.payload) ??
-        "Unable to load workflows";
+      : (extractErrorMessage(n8nWorkflowsResult.payload) ??
+        "Unable to load workflows");
   const workflowList =
     n8nWorkflowsResult.status === 200 &&
     Array.isArray(n8nWorkflowsResult.payload?.workflows)
@@ -529,15 +534,11 @@ async function buildAutomationListResponse(
       }
       workflowItemsById.set(
         trigger.workflowId,
-        buildWorkflowItem(
-          undefined,
-          workflowRooms.get(trigger.workflowId),
-          {
-            workflowId: trigger.workflowId,
-            workflowName: trigger.workflowName,
-            trigger,
-          },
-        ),
+        buildWorkflowItem(undefined, workflowRooms.get(trigger.workflowId), {
+          workflowId: trigger.workflowId,
+          workflowName: trigger.workflowName,
+          trigger,
+        }),
       );
     }
   }
@@ -736,9 +737,7 @@ async function buildAutomationNodeCatalog(
 
   const runtimeProviderNodes: AutomationNodeDescriptor[] = runtime.providers
     .slice()
-    .filter(
-      (provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name),
-    )
+    .filter((provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name))
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((provider) => ({
       id: `provider:${provider.name}`,
@@ -764,7 +763,9 @@ async function buildAutomationNodeCatalog(
       "Owner-scoped Gmail triage, drafting, and send operations.",
       Boolean(
         googleStatus?.connected &&
-          [...googleCapabilities].some((capability) => capability.includes("gmail")),
+          [...googleCapabilities].some((capability) =>
+            capability.includes("gmail"),
+          ),
       ),
       "Connect the owner Google account with Gmail access.",
     ),

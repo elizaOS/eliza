@@ -92,9 +92,10 @@ ElizaClient.prototype.navigateBrowserWorkspaceTab = async function (
     `/api/browser-workspace/tabs/${encodeURIComponent(id)}/navigate`,
     {
       method: "POST",
-      body: JSON.stringify(
-        { url } satisfies Pick<NavigateBrowserWorkspaceTabRequest, "url">,
-      ),
+      body: JSON.stringify({ url } satisfies Pick<
+        NavigateBrowserWorkspaceTabRequest,
+        "url"
+      >),
     },
   );
 };

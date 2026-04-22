@@ -163,7 +163,7 @@ function buildViewerUrl(ingressUrl: URL, payload: PairingPayload): string {
   const viewerUrl = new URL(ingressUrl.toString());
   viewerUrl.protocol = ingressUrl.protocol === "wss:" ? "https:" : "http:";
   viewerUrl.pathname = ingressUrl.pathname.replace(/\/input\/?$/, "") || "/";
-  viewerUrl.pathname = viewerUrl.pathname.replace(/\/$/, "") + "/vnc";
+  viewerUrl.pathname = `${viewerUrl.pathname.replace(/\/$/, "")}/vnc`;
   viewerUrl.searchParams.set("token", payload.sessionToken);
   viewerUrl.searchParams.set("agent", payload.agentId);
   viewerUrl.hash = "";
@@ -173,7 +173,7 @@ function buildViewerUrl(ingressUrl: URL, payload: PairingPayload): string {
 function buildInputUrl(ingressUrl: URL): string {
   const inputUrl = new URL(ingressUrl.toString());
   if (!/\/input\/?$/.test(inputUrl.pathname)) {
-    inputUrl.pathname = inputUrl.pathname.replace(/\/$/, "") + "/input";
+    inputUrl.pathname = `${inputUrl.pathname.replace(/\/$/, "")}/input`;
   }
   inputUrl.hash = "";
   return inputUrl.toString();

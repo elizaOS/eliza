@@ -4,18 +4,6 @@
  */
 
 import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
-import type {
-  CreateBrowserBridgeCompanionPairingRequest,
-  BrowserBridgeCompanionPackageStatus,
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeKind,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import type {
-  CaptureLifeOpsActivitySignalRequest,
-  LifeOpsActivitySignal,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/app-lifeops/contracts";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -23,10 +11,10 @@ import type {
   ConnectionTestResult,
   ContentBlock,
   Conversation,
-  ConversationMetadata,
   ConversationChannelType,
   ConversationGreeting,
   ConversationMessage,
+  ConversationMetadata,
   ConversationMode,
   CreateConversationOptions,
   DatabaseConfigResponse,

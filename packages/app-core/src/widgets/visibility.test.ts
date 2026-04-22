@@ -40,7 +40,10 @@ describe("widgetVisibilityKey", () => {
 describe("isWidgetVisible — precedence", () => {
   it("returns true when defaultEnabled is true and no override exists", () => {
     expect(
-      isWidgetVisible({ pluginId: "lifeops", id: "lifeops.calendar", defaultEnabled: true }, {}),
+      isWidgetVisible(
+        { pluginId: "lifeops", id: "lifeops.calendar", defaultEnabled: true },
+        {},
+      ),
     ).toBe(true);
   });
 
@@ -131,9 +134,13 @@ describe("load/save round-trip", () => {
     saveChatSidebarVisibility({
       overrides: { "lifeops/lifeops.calendar": false },
     });
-    expect(localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY)).not.toBeNull();
+    expect(
+      localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY),
+    ).not.toBeNull();
     saveChatSidebarVisibility({ overrides: {} });
-    expect(localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY)).toBeNull();
+    expect(
+      localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY),
+    ).toBeNull();
   });
 
   it("returns empty overrides when storage is empty", () => {

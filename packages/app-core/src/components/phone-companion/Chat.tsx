@@ -1,6 +1,9 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { agentUrl as configuredAgentUrl, logger } from "../../services/phone-companion";
+import {
+  agentUrl as configuredAgentUrl,
+  logger,
+} from "../../services/phone-companion";
 
 interface ChatProps {
   pairedAgentUrl: string | null;

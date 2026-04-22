@@ -1,15 +1,5 @@
-import {
-  Button,
-  Spinner,
-  Textarea,
-} from "@elizaos/ui";
-import {
-  ChevronDown,
-  ChevronUp,
-  Send,
-  Square,
-  Zap,
-} from "lucide-react";
+import { Button, Spinner, Textarea } from "@elizaos/ui";
+import { ChevronDown, ChevronUp, Send, Square, Zap } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
@@ -102,7 +92,7 @@ export function AutomationRoomChatPane({
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
-  const conversationKey = useMemo(
+  const _conversationKey = useMemo(
     () =>
       JSON.stringify({
         title,
@@ -177,7 +167,7 @@ export function AutomationRoomChatPane({
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, [conversationKey, metadata, onConversationResolved, title]);
+  }, [metadata, onConversationResolved, title, t]);
 
   // ── Scroll-position tracking ─────────────────────────────────────────────
   useEffect(() => {
@@ -210,7 +200,7 @@ export function AutomationRoomChatPane({
     } else {
       setShowNewMessages(true);
     }
-  }, [messages, sending]);
+  }, []);
 
   // ── Composer height resize ───────────────────────────────────────────────
   useEffect(() => {
@@ -225,8 +215,7 @@ export function AutomationRoomChatPane({
     textarea.style.overflowY = "hidden";
     const nextHeight = Math.min(textarea.scrollHeight, 150);
     textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > 150 ? "auto" : "hidden";
+    textarea.style.overflowY = textarea.scrollHeight > 150 ? "auto" : "hidden";
   }, [composerRef, input]);
 
   // ── milady:automations:workflow-generating listener ──────────────────────
@@ -245,9 +234,7 @@ export function AutomationRoomChatPane({
         return;
       }
       setActiveToolCall(
-        detail.inProgress
-          ? t("chat.toolCallChip.buildingWorkflow")
-          : null,
+        detail.inProgress ? t("chat.toolCallChip.buildingWorkflow") : null,
       );
     };
 
@@ -263,7 +250,8 @@ export function AutomationRoomChatPane({
   // ── milady:automations:seed-composer listener ───────────────────────────
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; select?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ text: string; select?: boolean }>)
+        .detail;
       if (!detail?.text) return;
       setInput(detail.text);
       window.requestAnimationFrame(() => {
@@ -311,7 +299,11 @@ export function AutomationRoomChatPane({
   useEffect(() => {
     const markInteraction = (event: MouseEvent | FocusEvent) => {
       const composer = composerRef.current;
-      if (composer && event.target instanceof Node && composer.contains(event.target)) {
+      if (
+        composer &&
+        event.target instanceof Node &&
+        composer.contains(event.target)
+      ) {
         return;
       }
       lastExternalInteractionRef.current = Date.now();
@@ -464,7 +456,9 @@ export function AutomationRoomChatPane({
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!messageListRef.current) return;
       const items = Array.from(
-        messageListRef.current.querySelectorAll<HTMLElement>('[role="article"]'),
+        messageListRef.current.querySelectorAll<HTMLElement>(
+          '[role="article"]',
+        ),
       );
       const focused = document.activeElement as HTMLElement | null;
       const currentIndex = focused ? items.indexOf(focused) : -1;
@@ -548,9 +542,7 @@ export function AutomationRoomChatPane({
         >
           {visibleMessages.length === 0 && !sending ? (
             <div className="flex flex-1 items-center justify-center px-4 py-5 text-center">
-              <p className="text-sm text-muted">
-                {loadError ?? placeholder}
-              </p>
+              <p className="text-sm text-muted">{loadError ?? placeholder}</p>
             </div>
           ) : (
             <div
@@ -609,7 +601,9 @@ export function AutomationRoomChatPane({
                   className="mr-8 flex items-center gap-2 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5"
                 >
                   <Spinner size={12} className="text-accent/70" />
-                  <span className="text-[11px] text-muted">{activeToolCall}</span>
+                  <span className="text-[11px] text-muted">
+                    {activeToolCall}
+                  </span>
                 </div>
               )}
             </div>

@@ -271,13 +271,20 @@ export async function handleLocalInferenceCompatRoutes(
   }
 
   // ── POST: set preferred provider for a slot (manual override) ──────
-  if (method === "POST" && pathname === "/api/local-inference/routing/preferred") {
+  if (
+    method === "POST" &&
+    pathname === "/api/local-inference/routing/preferred"
+  ) {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     const body = await readCompatJsonBody(req, res);
     if (!body) return true;
     const slot = stringBody(body, "slot") as AgentModelSlot | null;
     if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-      sendJsonErrorResponse(res, 400, "slot is required and must be a valid AgentModelSlot");
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
       return true;
     }
     const raw = body.provider;
@@ -294,7 +301,9 @@ export async function handleLocalInferenceCompatRoutes(
       sendJsonErrorResponse(
         res,
         500,
-        err instanceof Error ? err.message : "Failed to write preferred provider",
+        err instanceof Error
+          ? err.message
+          : "Failed to write preferred provider",
       );
     }
     return true;
@@ -307,7 +316,11 @@ export async function handleLocalInferenceCompatRoutes(
     if (!body) return true;
     const slot = stringBody(body, "slot") as AgentModelSlot | null;
     if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-      sendJsonErrorResponse(res, 400, "slot is required and must be a valid AgentModelSlot");
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
       return true;
     }
     const raw = body.policy;
@@ -321,7 +334,8 @@ export async function handleLocalInferenceCompatRoutes(
     const policy =
       raw === null
         ? null
-        : typeof raw === "string" && validPolicies.includes(raw as RoutingPolicy)
+        : typeof raw === "string" &&
+            validPolicies.includes(raw as RoutingPolicy)
           ? (raw as RoutingPolicy)
           : null;
     if (raw !== null && policy === null) {

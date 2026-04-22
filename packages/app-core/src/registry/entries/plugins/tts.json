@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-tts",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "llm",
-    "text-to-speech"
-  ],
+  "tags": ["llm", "text-to-speech"],
   "config": {
     "TTS_AUTO_MODE": {
       "type": "string",
@@ -62,10 +59,7 @@
     "icon": "Volume2",
     "group": "voice",
     "groupOrder": 3,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

@@ -105,7 +105,9 @@ export function StartupShell() {
         retryStartup();
       } catch (err) {
         setActionNotice(
-          err instanceof Error ? err.message : "Failed to connect remote backend.",
+          err instanceof Error
+            ? err.message
+            : "Failed to connect remote backend.",
           "error",
           8000,
         );

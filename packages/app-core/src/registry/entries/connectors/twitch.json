@@ -95,11 +95,7 @@
     "icon": "Gamepad2",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twitch"
@@ -109,8 +105,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "TWITCH_ACCESS_TOKEN"
-    ]
+    "credentialKeys": ["TWITCH_ACCESS_TOKEN"]
   }
 }

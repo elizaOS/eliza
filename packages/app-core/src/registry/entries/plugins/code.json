@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-code",
   "version": "2.0.0-alpha.5",
   "source": "bundled",
-  "tags": [
-    "coding",
-    "filesystem",
-    "shell",
-    "git",
-    "code"
-  ],
+  "tags": ["coding", "filesystem", "shell", "git", "code"],
   "config": {
     "CODER_ENABLED": {
       "type": "boolean",
@@ -55,10 +49,7 @@
     "icon": "Puzzle",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

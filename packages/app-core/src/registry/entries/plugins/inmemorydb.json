@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-inmemorydb",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "database",
-    "storage",
-    "inmemorydb"
-  ],
+  "tags": ["database", "storage", "inmemorydb"],
   "config": {},
   "render": {
     "visible": false,
@@ -17,10 +13,7 @@
     "style": "card",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-inmemorydb#readme",

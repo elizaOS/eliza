@@ -5,14 +5,7 @@
   "npmName": "@elizaos/plugin-zalo",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "messaging",
-    "zalo",
-    "chat",
-    "social",
-    "social-chat"
-  ],
+  "tags": ["connector", "messaging", "zalo", "chat", "social", "social-chat"],
   "config": {
     "ZALO_APP_ID": {
       "type": "string",
@@ -104,11 +97,7 @@
     "icon": "Circle",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-vietnam-messaging"
@@ -118,8 +107,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "ZALO_ACCESS_TOKEN"
-    ]
+    "credentialKeys": ["ZALO_ACCESS_TOKEN"]
   }
 }

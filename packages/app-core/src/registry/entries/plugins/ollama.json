@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-ollama",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "ollama",
-    "local-models"
-  ],
+  "tags": ["ai-provider", "llm", "ollama", "local-models"],
   "config": {
     "OLLAMA_API_ENDPOINT": {
       "type": "url",
@@ -88,10 +83,7 @@
     "icon": "Bot",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-ollama#readme",

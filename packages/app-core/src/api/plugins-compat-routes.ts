@@ -19,14 +19,11 @@ import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "../config/plugin-auto-enable";
+import { entriesToLegacyManifest, loadRegistry } from "../registry";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
 } from "./auth";
-import {
-  entriesToLegacyManifest,
-  loadRegistry,
-} from "../registry";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -447,7 +444,11 @@ export function analyzePluginStateDrift(
       category === "connector"
         ? readCompatSectionEnabled(
             configRecord.connectors,
-            resolveCompatConfigKey(pluginId, npmName ?? undefined, CONNECTOR_PLUGINS),
+            resolveCompatConfigKey(
+              pluginId,
+              npmName ?? undefined,
+              CONNECTOR_PLUGINS,
+            ),
           )
         : category === "streaming"
           ? readCompatSectionEnabled(
@@ -500,7 +501,9 @@ export function analyzePluginStateDrift(
     };
   });
 
-  const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
+  const withDrift = diagnostics.filter(
+    (plugin) => plugin.drift_flags.length > 0,
+  );
   const byFlag: Record<PluginDriftFlag, number> = {
     entries_vs_compat: 0,
     entries_vs_allowlist: 0,

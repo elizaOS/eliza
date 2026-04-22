@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-openrouter",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "openrouter",
-    "routing"
-  ],
+  "tags": ["ai-provider", "llm", "openrouter", "routing"],
   "config": {
     "OPENROUTER_API_KEY": {
       "type": "secret",
@@ -180,10 +175,7 @@
     "icon": "Shuffle",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-openrouter#readme",
