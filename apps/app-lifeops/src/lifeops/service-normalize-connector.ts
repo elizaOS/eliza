@@ -311,6 +311,19 @@ function normalizeEventTrigger(
       },
     };
   }
+  if (
+    eventKind === "gmail.message.received" ||
+    eventKind === "gmail.thread.needs_response"
+  ) {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: eventKind,
+        filters: normalizeGmailEventFilters(filtersRecord),
+      },
+    };
+  }
   return { kind, eventKind };
 }
 
@@ -432,6 +445,47 @@ function normalizeCalendarEventEndedFilters(
     filters.attendeeEmailIncludesAny = normalizeStringArray(
       input.attendeeEmailIncludesAny,
       "schedule.filters.attendeeEmailIncludesAny",
+    );
+  }
+  return filters;
+}
+
+function normalizeGmailEventFilters(input: Record<string, unknown>) {
+  const filters: {
+    grantIds?: string[];
+    fromIncludesAny?: string[];
+    subjectIncludesAny?: string[];
+    labelIds?: string[];
+    requiresReplyNeeded?: boolean;
+  } = {};
+  if (input.grantIds !== undefined) {
+    filters.grantIds = normalizeStringArray(
+      input.grantIds,
+      "schedule.filters.grantIds",
+    );
+  }
+  if (input.fromIncludesAny !== undefined) {
+    filters.fromIncludesAny = normalizeStringArray(
+      input.fromIncludesAny,
+      "schedule.filters.fromIncludesAny",
+    );
+  }
+  if (input.subjectIncludesAny !== undefined) {
+    filters.subjectIncludesAny = normalizeStringArray(
+      input.subjectIncludesAny,
+      "schedule.filters.subjectIncludesAny",
+    );
+  }
+  if (input.labelIds !== undefined) {
+    filters.labelIds = normalizeStringArray(
+      input.labelIds,
+      "schedule.filters.labelIds",
+    );
+  }
+  if (input.requiresReplyNeeded !== undefined) {
+    filters.requiresReplyNeeded = normalizeOptionalBoolean(
+      input.requiresReplyNeeded,
+      "schedule.filters.requiresReplyNeeded",
     );
   }
   return filters;
