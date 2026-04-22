@@ -16,7 +16,8 @@ export function rewriteGoogleUrlForMock(url: string): string {
   if (
     mockUrl.hostname !== "127.0.0.1" &&
     mockUrl.hostname !== "localhost" &&
-    mockUrl.hostname !== "::1"
+    mockUrl.hostname !== "::1" &&
+    mockUrl.hostname !== "[::1]"
   ) {
     throw new GoogleApiError(
       409,
