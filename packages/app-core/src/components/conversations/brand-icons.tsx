@@ -8,14 +8,17 @@ const baseSvgProps = {
   xmlns: "http://www.w3.org/2000/svg",
   viewBox: "0 0 24 24",
   fill: "currentColor",
-  "aria-hidden": true,
-  focusable: "false",
 } as const;
 
 function makeIcon(path: string) {
   return function BrandIcon({ className }: BrandIconProps) {
     return (
-      <svg {...baseSvgProps} className={className}>
+      <svg
+        {...baseSvgProps}
+        aria-hidden="true"
+        focusable="false"
+        className={className}
+      >
         <path d={path} />
       </svg>
     );
