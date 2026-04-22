@@ -699,6 +699,7 @@ export function WorkflowGraphViewer({
 
         {/* The graph (render even with 0 nodes so React Flow mounts cleanly) */}
         {!loading && (
+          // biome-ignore lint/a11y/noStaticElementInteractions: React Flow owns interactions inside this container.
           <div
             role="presentation"
             className="h-full w-full"
