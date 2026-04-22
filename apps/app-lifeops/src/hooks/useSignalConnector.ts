@@ -90,7 +90,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       clearPairingPoll();
       pairingPollRef.current = setInterval(async () => {
         try {
-          const ps = await client.getSignalPairingStatus(sessionId);
+          const ps = await client.getLifeOpsSignalPairingStatus(sessionId);
           setPairingStatus(ps);
           setError(null);
           if (ps.state === "connected" || ps.state === "failed") {

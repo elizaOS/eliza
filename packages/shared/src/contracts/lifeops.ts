@@ -249,6 +249,8 @@ export const LIFEOPS_REMINDER_CHANNELS = [
   "signal",
   "whatsapp",
   "imessage",
+  "email",
+  "push",
 ] as const;
 export type LifeOpsReminderChannel = (typeof LIFEOPS_REMINDER_CHANNELS)[number];
 
@@ -263,6 +265,9 @@ export const LIFEOPS_CHANNEL_TYPES = [
   "imessage",
   "x",
   "browser",
+  "email",
+  "push",
+  // Note: "cloud" in LIFEOPS_REMINDER_CHANNELS is a deployment target, not a user-facing delivery channel
 ] as const;
 export type LifeOpsChannelType = (typeof LIFEOPS_CHANNEL_TYPES)[number];
 

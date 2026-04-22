@@ -6,7 +6,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import { InboxTriageRepository } from "../inbox/repository.js";
 import type { TriageEntry } from "../inbox/types.js";
 

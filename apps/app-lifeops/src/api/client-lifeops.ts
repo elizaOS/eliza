@@ -323,7 +323,7 @@ declare module "@elizaos/app-core/api/client-base" {
     startLifeOpsSignalPairing(
       data?: StartLifeOpsSignalPairingRequest,
     ): Promise<StartLifeOpsSignalPairingResponse>;
-    getSignalPairingStatus(
+    getLifeOpsSignalPairingStatus(
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
     stopLifeOpsSignalPairing(
@@ -1085,12 +1085,12 @@ ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   );
 };
 
-ElizaClient.prototype.getSignalPairingStatus = async function (
+ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
   this: ElizaClient,
-  sessionId,
-) {
+  sessionId: string,
+): Promise<LifeOpsSignalPairingStatus> {
   const params = new URLSearchParams({ sessionId });
-  return this.fetch(
+  return this.fetch<LifeOpsSignalPairingStatus>(
     `/api/lifeops/connectors/signal/pairing-status?${params.toString()}`,
   );
 };

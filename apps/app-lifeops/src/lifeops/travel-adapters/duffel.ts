@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import {
   PaymentRequiredError,
   parseX402Response,

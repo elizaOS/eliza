@@ -25,7 +25,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 1;
+export const PAGE_SCOPE_VERSION = 2;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
