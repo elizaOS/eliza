@@ -138,3 +138,10 @@ export function isAutomationConversationMetadata(
     metadata?.scope === "automation-workflow-draft"
   );
 }
+
+export function isPageScopedConversationMetadata(
+  metadata: ConversationMetadata | null | undefined,
+): boolean {
+  const scope = metadata?.scope;
+  return typeof scope === "string" && scope.startsWith("page-");
+}

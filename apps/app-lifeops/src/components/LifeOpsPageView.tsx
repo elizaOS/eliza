@@ -942,15 +942,17 @@ function LifeOpsWorkspaceInner() {
   return (
     <AppWorkspaceChrome
       testId="lifeops-shell"
-      nav={<LifeOpsNavRail activeSection={section} onNavigate={navigate} />}
       main={
-        <div className="flex h-full min-h-0 flex-col">
-          <PagePanel.Header
-            heading="LifeOps"
-            className="px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6"
-          />
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
-            {mainContent}
+        <div className="flex h-full min-h-0">
+          <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <PagePanel.Header
+              heading="LifeOps"
+              className="px-4 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6"
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+              {mainContent}
+            </div>
           </div>
         </div>
       }

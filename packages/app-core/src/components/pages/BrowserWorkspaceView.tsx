@@ -24,6 +24,7 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
+import { PageScopedChatPane } from "./PageScopedChatPane.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -1219,6 +1220,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       testId="browser-workspace-view"
       nav={navNode}
       main={mainNode}
+      chat={<PageScopedChatPane scope="page-browser" />}
     />
   );
 }

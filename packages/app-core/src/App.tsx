@@ -37,6 +37,8 @@ import { AppsPageView } from "./components/pages/AppsPageView";
 import { AutomationsView } from "./components/pages/AutomationsView";
 import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 import { ChatView } from "./components/pages/ChatView";
+import { PageScopedChatPane } from "./components/pages/PageScopedChatPane";
+import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { InventoryView } from "./components/pages/InventoryView";
@@ -121,6 +123,37 @@ function TabContentView({ children }: { children: ReactNode }) {
   );
 }
 
+function PageChatTab({
+  scope,
+  variant = "content",
+  children,
+}: {
+  scope: PageScope;
+  variant?: "content" | "scroll";
+  children: ReactNode;
+}) {
+  const main =
+    variant === "scroll" ? (
+      <div
+        data-shell-scroll-region="true"
+        className="flex-1 min-h-0 min-w-0 w-full overflow-y-auto"
+      >
+        {children}
+      </div>
+    ) : (
+      <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+        {children}
+      </div>
+    );
+  return (
+    <AppWorkspaceChrome
+      testId={`tab-page-chat-${scope}`}
+      main={main}
+      chat={<PageScopedChatPane scope={scope} />}
+    />
+  );
+}
+
 function ViewRouter({
   onCharacterHeaderActionsChange,
 }: {
@@ -148,9 +181,9 @@ function ViewRouter({
       case "apps":
         // Apps disabled in production builds; fall through to chat
         return APPS_ENABLED ? (
-          <TabScrollView>
+          <PageChatTab scope="page-apps" variant="scroll">
             <AppsPageView />
-          </TabScrollView>
+          </PageChatTab>
         ) : (
           <ChatView />
         );
@@ -164,11 +197,11 @@ function ViewRouter({
       case "character-select":
       case "knowledge":
         return (
-          <TabContentView>
+          <PageChatTab scope="page-character">
             <CharacterEditor
               onHeaderActionsChange={onCharacterHeaderActionsChange}
             />
-          </TabContentView>
+          </PageChatTab>
         );
       case "inventory":
         return (
@@ -185,9 +218,9 @@ function ViewRouter({
       case "automations":
       case "triggers":
         return (
-          <TabContentView>
+          <PageChatTab scope="page-automations">
             <AutomationsView />
-          </TabContentView>
+          </PageChatTab>
         );
       case "voice":
         return (

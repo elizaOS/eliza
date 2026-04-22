@@ -110,4 +110,63 @@ describe("applyPrivacyFilter", () => {
     expect(call?.userPrompt).toContain("<REDACTED:env-secret>");
     expect(call?.userPrompt).not.toContain("supersecret-value-1234567890");
   });
+
+  it("preserves every page-scoped sortable metadata dimension verbatim", () => {
+    // Pinning contract: the privacy filter operates on LLM call text only.
+    // It MUST NOT silently strip any of the dimensions we stamp at send time
+    // (webConversation.scope, taskId, surface, surfaceVersion, pageId,
+    // sourceConversationId) — those are the only handles we have for sorting,
+    // filtering, and per-scope MIPRO/GEPA optimization later. If a future
+    // filter change starts touching metadata, this test breaks loudly.
+    const trajectory: FilterableTrajectory = {
+      trajectoryId: "t-page-scope",
+      metadata: {
+        webConversation: {
+          conversationId: "conv-7",
+          scope: "page-browser",
+          pageId: "tab-99",
+          sourceConversationId: "main-1",
+        },
+        taskId: "page-browser",
+        surface: "page-scoped",
+        surfaceVersion: 1,
+        pageId: "tab-99",
+        sourceConversationId: "main-1",
+      },
+      steps: [
+        {
+          llmCalls: [
+            {
+              userPrompt: "open hacker news with my key sk-abc1234567890XYZ",
+              response: "Opening tab.",
+            },
+          ],
+        },
+      ],
+    };
+    const result = applyPrivacyFilter([trajectory]);
+    expect(result.trajectories.length).toBe(1);
+    const out = result.trajectories[0];
+    expect(out?.metadata).toEqual(trajectory.metadata);
+    // Sanity: the filter did still run on LLM text.
+    expect(
+      out?.steps?.[0]?.llmCalls?.[0]?.userPrompt,
+    ).toContain("<REDACTED:openai-key>");
+  });
+
+  it("preserves automation-scope metadata too (parity with page-scopes)", () => {
+    const trajectory: FilterableTrajectory = {
+      trajectoryId: "t-auto-scope",
+      metadata: {
+        webConversation: {
+          conversationId: "auto-1",
+          scope: "automation-workflow",
+          workflowId: "wf-1",
+        },
+      },
+      steps: [{ llmCalls: [{ userPrompt: "run workflow" }] }],
+    };
+    const result = applyPrivacyFilter([trajectory]);
+    expect(result.trajectories[0]?.metadata).toEqual(trajectory.metadata);
+  });
 });

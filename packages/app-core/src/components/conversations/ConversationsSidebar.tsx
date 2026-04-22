@@ -691,18 +691,11 @@ export function ConversationsSidebar({
             ? "!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
             : undefined
         }
-        collapseButtonLeading={
-          <>
-            <div className="flex items-center gap-1.5 px-1 text-2xs font-semibold uppercase tracking-wider text-muted">
-              <MessagesSquare className="h-3 w-3" aria-hidden />
-              <span>
-                {t("conversations.filterScope", {
-                  defaultValue: "Channels",
-                })}
-              </span>
-            </div>
-            <div className="ml-auto">{manageConnectionsButton}</div>
-          </>
+        footer={!mobile && !isGameModal ? manageConnectionsButton : undefined}
+        footerClassName={
+          !mobile && !isGameModal
+            ? "!px-2 !pt-1.5 !pb-1.5 !justify-start"
+            : undefined
         }
         collapsedRailAction={
           showNewTerminalAction ? (
