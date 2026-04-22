@@ -801,6 +801,8 @@ export async function handleWalletRoutes(
       pluginEvmRequired: capability.pluginEvmRequired,
       executionReady: capability.executionReady,
       executionBlockedReason: capability.executionBlockedReason,
+      evmSigningCapability: capability.evmSigningCapability,
+      evmSigningReason: capability.evmSigningReason,
       solanaSigningAvailable: primaryAddresses.solanaAddress
         ? localSolanaSignerAvailable || primary.solana === "cloud"
         : false,
