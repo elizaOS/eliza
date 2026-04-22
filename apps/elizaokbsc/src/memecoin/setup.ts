@@ -1,9 +1,19 @@
-import type { AgentRuntime } from "@elizaos/core";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { AgentRuntime } from "@elizaos/core";
 import { getDiscoveryConfig } from "./config";
-import { loadPaperAgents, savePaperAgents, spawnDefaultAgentFleet, buildGooPaperSummary } from "./goo-paper-engine";
-import { pushNotification, setLatestSnapshot, setPaperAgents, setPaperSummary } from "./store";
+import {
+  buildGooPaperSummary,
+  loadPaperAgents,
+  savePaperAgents,
+  spawnDefaultAgentFleet,
+} from "./goo-paper-engine";
+import {
+  pushNotification,
+  setLatestSnapshot,
+  setPaperAgents,
+  setPaperSummary,
+} from "./store";
 import { runElizaOkDiscoveryCycle } from "./worker";
 
 export async function setupElizaOkDiscovery(
@@ -13,7 +23,10 @@ export async function setupElizaOkDiscovery(
   const reportsDir = path.resolve(config.reportsDir);
 
   try {
-    const snapshotRaw = await readFile(path.join(reportsDir, "latest.json"), "utf-8");
+    const snapshotRaw = await readFile(
+      path.join(reportsDir, "latest.json"),
+      "utf-8",
+    );
     const snapshot = JSON.parse(snapshotRaw);
     setLatestSnapshot(snapshot);
     runtime.logger.info("ElizaOK: Pre-loaded latest snapshot from disk");
@@ -46,26 +59,32 @@ export async function setupElizaOkDiscovery(
     }
     setPaperAgents(agents);
     setPaperSummary(buildGooPaperSummary(agents));
-  } catch (e) {
+  } catch {
     runtime.logger.warn("ElizaOK: Failed to pre-load Goo agents at startup");
   }
 
   if (config.enabled && config.runOnStartup) {
     runElizaOkDiscoveryCycle(runtime, "startup").catch((e) => {
-      console.error("ElizaOK: Startup discovery cycle failed:", e instanceof Error ? e.message : e);
+      console.error(
+        "ElizaOK: Startup discovery cycle failed:",
+        e instanceof Error ? e.message : e,
+      );
     });
   }
 
   if (config.enabled) {
     const intervalMs = config.intervalMs || 900_000;
     setInterval(() => {
-      runElizaOkDiscoveryCycle(runtime, "interval").catch((e) => {
-        console.error("ElizaOK: Interval discovery cycle failed:", e instanceof Error ? e.message : e);
+      runElizaOkDiscoveryCycle(runtime, "scheduled").catch((e) => {
+        console.error(
+          "ElizaOK: Interval discovery cycle failed:",
+          e instanceof Error ? e.message : e,
+        );
       });
     }, intervalMs);
     runtime.logger.info(
       { intervalMinutes: Math.round(intervalMs / 60_000) },
-      "ElizaOK: Discovery interval started (no PGlite task system)",
+      "ElizaOK: Discovery interval started (setInterval; not TaskService)",
     );
   }
 }

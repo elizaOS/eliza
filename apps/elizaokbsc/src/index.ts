@@ -4,7 +4,8 @@ import { AgentRuntime, createCharacter } from "@elizaos/core";
 import { type MoltbookService, moltbookPlugin } from "@elizaos/plugin-moltbook";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 // sqlPlugin disabled: PGlite WASM abort() kills the process on this VPS.
-// Dashboard and Goo Arena use JSON file persistence only.
+// ALLOW_NO_DATABASE keeps AgentRuntime on an in-memory DB adapter (createMemory
+// for scan artifacts); dashboard + Goo paper agents also write JSON under reports.
 // import sqlPlugin from "@elizaos/plugin-sql";
 import { getDiscoveryConfig } from "./memecoin/config";
 import { startDashboardServer } from "./memecoin/server";
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
   const character = createCharacter({
     name: "elizaOK_BSC",
     bio: [
-      "An ElizaOS-native social agent for the ElizaOK BSC project.",
+      "An elizaOS-native social agent for the ElizaOK BSC project.",
       "Operates on Moltbook as the public voice and community-facing presence of elizaOK_BSC.",
     ],
     topics: [
@@ -148,7 +149,7 @@ async function main(): Promise<void> {
               MOLTBOOK_MODEL: process.env.MOLTBOOK_MODEL || "gpt-4o-mini",
               MOLTBOOK_PERSONALITY:
                 process.env.MOLTBOOK_PERSONALITY ||
-                "A community-native ElizaOS agent representing ElizaOK on BNB Chain.",
+                "A community-native elizaOS agent representing ElizaOK on BNB Chain.",
             },
           }
         : {}),

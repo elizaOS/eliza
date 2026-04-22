@@ -1,5 +1,3 @@
-export const ELIZAOK_DISCOVERY_TASK = "elizaok_bnb_discovery_cycle";
-
 export const GECKO_TERMINAL_API_BASE = "https://api.geckoterminal.com/api/v2";
 export const GECKO_TERMINAL_NETWORK = "bsc";
 
@@ -19,7 +17,8 @@ export const DEFAULT_HISTORY_LIMIT = 24;
 export const DEFAULT_TREASURY_PAPER_CAPITAL_USD = 10_000;
 export const DEFAULT_TREASURY_MAX_ACTIVE_POSITIONS = 5;
 export const DEFAULT_TREASURY_RESERVE_PCT = 35;
-export const DEFAULT_TREASURY_TAKE_PROFIT_RULES = "30:20,60:25,100:30,200:35,400:40";
+export const DEFAULT_TREASURY_TAKE_PROFIT_RULES =
+  "30:20,60:25,100:30,200:35,400:40";
 export const DEFAULT_TREASURY_STOP_LOSS_PCT = -18;
 export const DEFAULT_TREASURY_EXIT_SCORE_THRESHOLD = 48;
 export const DEFAULT_TREASURY_TRAILING_STOP_PCT = 15;
