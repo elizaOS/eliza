@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,

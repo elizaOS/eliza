@@ -134,6 +134,43 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 
+interface LifeOpsBrowserCompanionLiveStatus {
+  connectionState: string;
+  browser: string;
+  profileLabel?: string | null;
+  extensionVersion?: string | null;
+}
+
+async function fetchLifeOpsBrowserCompanionLiveStatus(): Promise<
+  LifeOpsBrowserCompanionLiveStatus[] | null
+> {
+  const port = process.env.API_PORT || process.env.SERVER_PORT || "2138";
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/lifeops/browser/companions`,
+      { signal: AbortSignal.timeout(1500) },
+    );
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      companions?: Array<{
+        connectionState?: string;
+        browser?: string;
+        profileLabel?: string | null;
+        extensionVersion?: string | null;
+      }>;
+    };
+    if (!Array.isArray(payload.companions)) return [];
+    return payload.companions.map((companion) => ({
+      connectionState: companion.connectionState ?? "unknown",
+      browser: companion.browser ?? "chrome",
+      profileLabel: companion.profileLabel ?? null,
+      extensionVersion: companion.extensionVersion ?? null,
+    }));
+  } catch {
+    return null;
+  }
+}
+
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
     const { getBrowserWorkspaceSnapshot } = await import(
@@ -147,6 +184,43 @@ async function renderBrowserLiveState(): Promise<string | null> {
       const flags = tab.visible ? "[visible]" : "";
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
     }
+
+    // LifeOps Browser companion status — so the agent can tell the user to
+    // install the extension when it isn't connected and reference the
+    // connected profile accurately when it is.
+    const companions = await fetchLifeOpsBrowserCompanionLiveStatus();
+    if (companions === null) {
+      lines.push(
+        "LifeOps Browser companion: status unknown (companion API unreachable).",
+      );
+    } else if (companions.length === 0) {
+      lines.push(
+        "LifeOps Browser companion: not installed — tell the user to click 'Install LifeOps Browser' in the chat panel to build the extension and load it into Chrome.",
+      );
+    } else {
+      const connected = companions.filter(
+        (companion) => companion.connectionState === "connected",
+      );
+      if (connected.length === 0) {
+        lines.push(
+          "LifeOps Browser companion: extension present but not connected — ask the user to open the LifeOps Browser extension in Chrome so it can pair.",
+        );
+      } else {
+        lines.push(
+          `LifeOps Browser companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
+        );
+        for (const companion of connected.slice(0, 3)) {
+          const browser =
+            companion.browser === "safari" ? "Safari" : "Chrome";
+          const profile = companion.profileLabel?.trim() || "Default";
+          const version = companion.extensionVersion
+            ? ` v${companion.extensionVersion}`
+            : "";
+          lines.push(`- ${browser} / ${profile}${version}`);
+        }
+      }
+    }
+
     return lines.join("\n");
   } catch {
     return null;

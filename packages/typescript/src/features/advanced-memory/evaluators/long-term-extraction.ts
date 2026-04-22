@@ -101,7 +101,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? true,
-	examples: (spec.examples ?? []) as EvaluationExample[],
+	examples: (spec.examples ?? []) as unknown as EvaluationExample[],
 
 	validate: async (
 		runtime: IAgentRuntime,
