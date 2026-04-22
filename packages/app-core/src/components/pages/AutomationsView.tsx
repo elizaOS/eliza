@@ -74,6 +74,7 @@ import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome";
 import {
+  buildAutomationDraftConversationMetadata,
   buildAutomationResponseRoutingMetadata,
   buildWorkflowConversationMetadata,
   buildWorkflowDraftConversationMetadata,
@@ -112,6 +113,21 @@ const WORKFLOW_SYSTEM_ADDENDUM =
   "workflow. Use the linked terminal conversation only when it directly " +
   "informs the workflow. Request keys and connector setup when needed, and " +
   "prefer owner-scoped LifeOps integrations for personal services.";
+
+const AUTOMATION_DRAFT_TITLE = "New automation";
+const AUTOMATION_DRAFT_SYSTEM_ADDENDUM =
+  "You are in an automation-creation room. The user wants to create one " +
+  "automation. Decide the right shape based on their description and call " +
+  "the matching action exactly once:\n" +
+  '- Recurring prompt or schedule, for example "every morning summarize my inbox": ' +
+  "CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
+  '- Goal to work toward until done, for example "figure out the onboarding refactor": ' +
+  "CREATE_TASK with name and description.\n" +
+  '- Deterministic pipeline of integration steps, for example "when a Slack message matches X, post to Discord": ' +
+  "create an n8n workflow via the n8n actions.\n" +
+  "Ask one short clarifying question only if the shape is genuinely " +
+  "ambiguous; otherwise create immediately. After creation, briefly " +
+  "confirm what you made and how to run it.";
 
 const NODE_CLASS_ORDER = [
   "agent",
@@ -2198,6 +2214,9 @@ function AutomationSidebarItem({
   if (item.type === "n8n_workflow") {
     Icon = Workflow;
     tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
+  } else if (item.type === "automation_draft") {
+    Icon = Zap;
+    tone = "warning";
   } else if (item.trigger) {
     Icon = Clock3;
     tone = item.trigger.enabled ? "success" : "muted";
@@ -2894,7 +2913,7 @@ function AutomationsLayout() {
                 className="w-full rounded-[var(--radius-sm)] border border-border/30 bg-bg/40 px-2 py-1 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
               />
             </div>
-            {newWorkflowButton}
+            {newAutomationButton}
           </div>
 
           {isLoading && (
