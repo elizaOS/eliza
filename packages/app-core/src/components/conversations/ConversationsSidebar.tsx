@@ -22,7 +22,6 @@ import {
   Plus,
   Settings2,
   Terminal as TerminalIcon,
-  X,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -592,30 +591,37 @@ export function ConversationsSidebar({
       ) : (
         <span className="h-6 w-6" />
       )}
-      <button
-        type="button"
-        data-testid="chat-sidebar-manage-toggle"
-        aria-pressed={isManageConnectionsActive}
-        onClick={handleManageConnections}
-        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] transition-colors ${
-          isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
-        }`}
-      >
-        {isManageConnectionsActive ? (
-          <X className="h-3 w-3" aria-hidden />
-        ) : (
-          <Settings2 className="h-3 w-3" aria-hidden />
-        )}
-        <span>
-          {isManageConnectionsActive
-            ? t("conversations.channels", {
-                defaultValue: "Channels",
-              })
-            : t("conversations.manageConnections", {
-                defaultValue: "Manage",
-              })}
-        </span>
-      </button>
+      {(() => {
+        const channelsLabel = t("conversations.channels", {
+          defaultValue: "Channels",
+        });
+        const manageLabel = t("conversations.manageConnections", {
+          defaultValue: "Manage",
+        });
+        const toggleLabel = isManageConnectionsActive
+          ? channelsLabel
+          : manageLabel;
+        const ToggleIcon = isManageConnectionsActive
+          ? MessagesSquare
+          : Settings2;
+        return (
+          <button
+            type="button"
+            data-testid="chat-sidebar-manage-toggle"
+            aria-pressed={isManageConnectionsActive}
+            aria-label={toggleLabel}
+            title={toggleLabel}
+            onClick={handleManageConnections}
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent transition-colors ${
+              isManageConnectionsActive
+                ? "text-txt"
+                : "text-muted hover:text-txt"
+            }`}
+          >
+            <ToggleIcon className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        );
+      })()}
     </div>
   );
 
@@ -1044,7 +1050,7 @@ function CollapsibleChannelSection({
           aria-expanded={!collapsed}
           aria-controls={`channel-section-body-${sectionKey}`}
           data-testid={`channel-section-toggle-${sectionKey}`}
-          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-1.5 py-1 text-left text-2xs font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
+          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">
