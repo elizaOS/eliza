@@ -349,7 +349,11 @@ function buildWorkflowDraftItem(room: AutomationRoomRecord): AutomationItem {
 
 function buildAutomationDraftItem(room: AutomationRoomRecord): AutomationItem {
   const metadata = room.metadata;
-  const title = room.title.trim() || "New automation";
+  const trimmedTitle = room.title.trim();
+  const title =
+    trimmedTitle && trimmedTitle.toLowerCase() !== "default"
+      ? trimmedTitle
+      : "New automation";
   return {
     id: `automation-draft:${metadata.draftId}`,
     type: "automation_draft",
