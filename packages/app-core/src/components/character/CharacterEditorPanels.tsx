@@ -212,8 +212,8 @@ export function CharacterIdentityPanel({
   t,
 }: CharacterIdentityPanelProps) {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
         <div className="flex flex-col gap-2 min-w-0">
           <span
             id="character-editor-name-label"
@@ -313,7 +313,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-y min-h-[12rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          className="w-full resize-y min-h-[8rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
       </div>
 
@@ -333,7 +333,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className="w-full resize-y min-h-[12rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          className="w-full resize-y min-h-[8rem] rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
       </div>
     </div>
