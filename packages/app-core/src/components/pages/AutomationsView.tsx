@@ -2379,8 +2379,7 @@ function AutomationSidebarItem({
 }
 
 function AutomationsLayout() {
-  const { activeConversationId, conversations, handleSelectConversation } =
-    useApp();
+  const { activeConversationId, conversations } = useApp();
   const ctx = useAutomationsViewContext();
   const {
     closeEditor,
@@ -2513,14 +2512,9 @@ function AutomationsLayout() {
       if (item.trigger) {
         void loadTriggerRuns(item.trigger.id);
       }
-      const roomConversationId = item.room?.conversationId;
-      if (roomConversationId) {
-        void handleSelectConversation(roomConversationId);
-      }
     },
     [
       ctx,
-      handleSelectConversation,
       loadTriggerRuns,
       setEditingId,
       setEditorOpen,
@@ -2730,7 +2724,6 @@ function AutomationsLayout() {
         setEditorOpen(false);
         setEditingId(null);
         ctx.setEditingTaskId(null);
-        await handleSelectConversation(conversation.id);
       } catch (error) {
         setPageNotice(
           error instanceof Error
@@ -2744,7 +2737,6 @@ function AutomationsLayout() {
       conversations,
       ctx,
       findAutomationForConversation,
-      handleSelectConversation,
       refreshAutomationsWithDraftBinding,
       resolvedSelectedItem,
       setEditingId,

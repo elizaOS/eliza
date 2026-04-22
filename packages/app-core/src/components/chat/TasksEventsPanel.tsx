@@ -41,19 +41,19 @@ export function TasksEventsPanel({
   if (!mobile && collapsed) {
     return (
       <aside
-        className="flex w-10 shrink-0 flex-col border-l border-border/30 bg-bg"
+        className="w-0 min-w-0 shrink-0"
         data-testid="chat-widgets-bar"
+        data-collapsed
       >
-        <div className="flex h-10 items-center justify-center">
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-            aria-label="Expand widgets"
-            onClick={() => onToggleCollapsed?.(false)}
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          data-testid="chat-widgets-expand-floating"
+          className="fixed bottom-3 right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
+          aria-label="Expand widgets"
+          onClick={() => onToggleCollapsed?.(false)}
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
       </aside>
     );
   }
@@ -78,7 +78,7 @@ export function TasksEventsPanel({
         </div>
       </div>
       {showCollapseFooter ? (
-        <div className="flex items-center justify-start border-t border-border/30 px-2 py-1.5">
+        <div className="flex items-center justify-end border-t border-border/30 pl-2 pr-2 pt-1.5 pb-2">
           <button
             type="button"
             data-testid="chat-widgets-collapse-inline"
