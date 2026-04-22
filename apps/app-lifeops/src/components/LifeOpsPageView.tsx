@@ -35,7 +35,10 @@ import {
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsSelectionProvider } from "./LifeOpsSelectionContext.js";
+import {
+  LifeOpsSelectionProvider,
+  useLifeOpsSelection,
+} from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
@@ -438,7 +441,16 @@ function LifeOpsWorkspaceInner() {
     null,
   );
 
-  const { section, navigate } = useLifeOpsSection();
+  const { section, navigate, eventId, messageId } = useLifeOpsSection();
+  const { select } = useLifeOpsSelection();
+  // Bridge URL hash → selection context. When the widget row writes the hash
+  // and the app navigates to /lifeops, the section-scoped UIs
+  // (EventEditorDrawer, InboxReaderPane, …) react off `selection.eventId` /
+  // `selection.messageId`, not off the hash directly. Push the hook's hash
+  // state into the selection context whenever it changes.
+  useEffect(() => {
+    select({ eventId, messageId });
+  }, [eventId, messageId, select]);
   const appEnabled = lifeOpsApp.enabled;
 
   const runtimeReady =

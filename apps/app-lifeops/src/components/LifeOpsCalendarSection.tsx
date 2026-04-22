@@ -10,7 +10,8 @@
 import { Button, SegmentedControl, Spinner, useApp } from "@elizaos/app-core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getPrimedLifeOpsEvent } from "../lifeops-route.js";
 import {
   type CalendarViewMode,
   useCalendarWeek,
@@ -751,6 +752,30 @@ export function LifeOpsCalendarSection(
     },
     [onSelect],
   );
+
+  // When an external caller (widget row, deep link) selects an event, the
+  // grid's local `drawerEvent` state is still null. Look up the id first in
+  // the currently-loaded calendar feed, then fall back to the widget prime
+  // cache so the drawer can open with the right event even if it's outside
+  // the current week view.
+  useEffect(() => {
+    if (!selectedEventId) {
+      if (drawerEvent !== null) setDrawerEvent(null);
+      return;
+    }
+    if (drawerEvent?.id === selectedEventId) return;
+    const fromFeed = calendar.events.find(
+      (event) => event.id === selectedEventId,
+    );
+    if (fromFeed) {
+      setDrawerEvent(fromFeed);
+      return;
+    }
+    const primed = getPrimedLifeOpsEvent<LifeOpsCalendarEvent>(selectedEventId);
+    if (primed) {
+      setDrawerEvent(primed);
+    }
+  }, [selectedEventId, calendar.events, drawerEvent]);
 
   const rangeLabel = useMemo(
     () => formatMonthHeader(calendar.windowStart, calendar.windowEnd),
