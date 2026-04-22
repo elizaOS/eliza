@@ -164,19 +164,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/reminders/inspection" },
   { type: "GET", path: "/api/lifeops/workflows" },
   { type: "POST", path: "/api/lifeops/workflows" },
-  { type: "GET", path: "/api/lifeops/browser/sessions" },
-  { type: "GET", path: "/api/lifeops/browser/settings" },
-  { type: "POST", path: "/api/lifeops/browser/settings" },
-  { type: "POST", path: "/api/lifeops/browser/companions/pair" },
-  { type: "POST", path: "/api/lifeops/browser/companions/auto-pair" },
-  { type: "GET", path: "/api/lifeops/browser/companions" },
-  { type: "GET", path: "/api/lifeops/browser/packages" },
-  { type: "POST", path: "/api/lifeops/browser/packages/open-path" },
-  { type: "POST", path: "/api/lifeops/browser/companions/sync" },
-  { type: "GET", path: "/api/lifeops/browser/tabs" },
-  { type: "GET", path: "/api/lifeops/browser/current-page" },
-  { type: "POST", path: "/api/lifeops/browser/sync" },
-  { type: "POST", path: "/api/lifeops/browser/sessions" },
+  // Browser companion + package static routes moved to
+  // `@elizaos/plugin-browser-bridge/plugin` (served under `/api/browser-bridge/*`).
   { type: "POST", path: "/api/lifeops/schedule/observations" },
   { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/overview" },
@@ -212,30 +201,8 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
   { type: "PUT", path: "/api/lifeops/workflows/:id" },
   // /api/lifeops/workflows/:id/run
   { type: "POST", path: "/api/lifeops/workflows/:id/run" },
-  // /api/lifeops/browser/sessions/:id
-  { type: "GET", path: "/api/lifeops/browser/sessions/:id" },
-  // /api/lifeops/browser/sessions/:id/confirm
-  { type: "POST", path: "/api/lifeops/browser/sessions/:id/confirm" },
-  // /api/lifeops/browser/sessions/:id/progress
-  { type: "POST", path: "/api/lifeops/browser/sessions/:id/progress" },
-  // /api/lifeops/browser/sessions/:id/complete
-  { type: "POST", path: "/api/lifeops/browser/sessions/:id/complete" },
-  // /api/lifeops/browser/companions/sessions/:id/progress
-  {
-    type: "POST",
-    path: "/api/lifeops/browser/companions/sessions/:id/progress",
-  },
-  // /api/lifeops/browser/companions/sessions/:id/complete
-  {
-    type: "POST",
-    path: "/api/lifeops/browser/companions/sessions/:id/complete",
-  },
-  // /api/lifeops/browser/packages/:browser/build
-  { type: "POST", path: "/api/lifeops/browser/packages/:browser/build" },
-  // /api/lifeops/browser/packages/:browser/open-manager
-  { type: "POST", path: "/api/lifeops/browser/packages/:browser/open-manager" },
-  // /api/lifeops/browser/packages/:browser/download
-  { type: "GET", path: "/api/lifeops/browser/packages/:browser/download" },
+  // Browser session + package dynamic routes moved to
+  // `@elizaos/plugin-browser-bridge/plugin` (served under `/api/browser-bridge/*`).
   // /api/lifeops/occurrences/:id/explanation
   { type: "GET", path: "/api/lifeops/occurrences/:id/explanation" },
   // /api/lifeops/occurrences/:id/complete
