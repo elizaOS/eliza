@@ -434,7 +434,8 @@ export async function searchTelegramMessages(args: {
     }
 
     const results: TelegramMessageSearchResult[] = [];
-    // Calculate per-dialog budget to avoid over-fetching
+    // Note: Global search (messages.searchGlobal) would reduce round-trips but requires
+    // GramJS API changes; current approach iterates recent dialogs with per-dialog budget.
     const perDialogLimit = scopedDialogs.length > 0
       ? Math.max(1, Math.ceil(limit / scopedDialogs.length))
       : limit;
@@ -508,7 +509,9 @@ export async function getTelegramReadReceipts(args: {
       }
 
       // For outbound messages, use readOutboxMaxId comparison:
-      // If message.id <= readOutboxMaxId, the recipient has read it
+      // If message.id <= readOutboxMaxId, the recipient has read it.
+      // Note: For group read participants, messages.getMessagesReadParticipants would be
+      // more accurate but requires GramJS interface extension; readCount is used as fallback.
       const numericMsgId = typeof message.id === "number" ? message.id : null;
       const isOutbound = message.out === true;
       const readViaOutbox =
