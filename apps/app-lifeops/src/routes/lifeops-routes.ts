@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import type http from "node:http";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
@@ -7,12 +6,7 @@ import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsPhoneConsentRequest,
-  CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserCompanionAutoPairRequest,
-  CreateLifeOpsBrowserCompanionPairingRequest,
-  CreateLifeOpsBrowserSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailBatchReplyDraftsRequest,
@@ -47,9 +41,6 @@ import type {
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
-  SyncLifeOpsBrowserStateRequest,
-  UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
   UpdateLifeOpsWorkflowRequest,
@@ -58,7 +49,6 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
-  LIFEOPS_BROWSER_PACKAGE_PATH_TARGETS,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_INBOX_CHANNELS,
@@ -74,13 +64,6 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
 } from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import {
-  buildLifeOpsBrowserCompanionPackage,
-  getLifeOpsBrowserCompanionDownloadFile,
-  getLifeOpsBrowserCompanionPackageStatus,
-  openLifeOpsBrowserCompanionManager,
-  openLifeOpsBrowserCompanionPackagePath,
-} from "./lifeops-browser-packaging.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -114,62 +97,6 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
   return new LifeOpsService(ctx.state.runtime, {
     ownerEntityId: ctx.state.adminEntityId,
   });
-}
-
-function getBrowserCompanionAuth(
-  ctx: LifeOpsRouteContext,
-): { companionId: string; pairingToken: string } | null {
-  const companionHeader =
-    ctx.req.headers["x-lifeops-browser-companion-id"] ??
-    ctx.req.headers["x-eliza-browser-companion-id"];
-  const companionId =
-    typeof companionHeader === "string" ? companionHeader.trim() : "";
-  if (!companionId) {
-    ctx.error(ctx.res, "Missing X-LifeOps-Browser-Companion-Id header", 401);
-    return null;
-  }
-  const authHeader =
-    typeof ctx.req.headers.authorization === "string"
-      ? ctx.req.headers.authorization.trim()
-      : "";
-  const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const pairingToken = match?.[1]?.trim() ?? "";
-  if (!pairingToken) {
-    ctx.error(ctx.res, "Missing browser companion bearer token", 401);
-    return null;
-  }
-  return {
-    companionId,
-    pairingToken,
-  };
-}
-
-function browserAutoPairOriginAllowed(ctx: LifeOpsRouteContext): boolean {
-  const originHeader =
-    typeof ctx.req.headers.origin === "string"
-      ? ctx.req.headers.origin.trim()
-      : "";
-  if (!originHeader) {
-    return true;
-  }
-  if (originHeader === ctx.url.origin) {
-    return true;
-  }
-  return (
-    originHeader.startsWith("chrome-extension://") ||
-    originHeader.startsWith("safari-web-extension://")
-  );
-}
-
-function requestIsLoopback(ctx: LifeOpsRouteContext): boolean {
-  const remoteAddress = ctx.req.socket.remoteAddress?.trim().toLowerCase();
-  return (
-    remoteAddress === "127.0.0.1" ||
-    remoteAddress === "::1" ||
-    remoteAddress === "0:0:0:0:0:0:0:1" ||
-    remoteAddress === "::ffff:127.0.0.1" ||
-    remoteAddress === "::ffff:0:127.0.0.1"
-  );
 }
 
 // ---------------------------------------------------------------------------
