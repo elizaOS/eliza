@@ -7,7 +7,7 @@ import type {
   BrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser-bridge/contracts";
 import { Button, Input } from "@elizaos/ui";
-import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
+import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -154,7 +154,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
+  const [_browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
   const [_browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
     BrowserBridgeCompanionStatus[]
@@ -202,7 +202,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       null,
     [browserBridgeCompanions],
   );
-  const browserBridgeConnected =
+  const _browserBridgeConnected =
     primaryBrowserBridgeCompanion?.connectionState === "connected";
 
   useEffect(() => {
@@ -626,7 +626,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
   }, [selectedTab, workspace.mode]);
 
-  const installBrowserBridgeExtension = useCallback(async () => {
+  const _installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
       "browser-bridge:install",
       async () => {
@@ -693,7 +693,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     t,
   ]);
 
-  const revealBrowserBridgeFolder = useCallback(async () => {
+  const _revealBrowserBridgeFolder = useCallback(async () => {
     await runBrowserWorkspaceAction(
       "browser-bridge:reveal-folder",
       async () => {
@@ -725,7 +725,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     );
   }, [runBrowserWorkspaceAction, t]);
 
-  const openBrowserBridgeChromeExtensions = useCallback(async () => {
+  const _openBrowserBridgeChromeExtensions = useCallback(async () => {
     await runBrowserWorkspaceAction(
       "browser-bridge:open-manager",
       async () => {
@@ -747,7 +747,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     );
   }, [runBrowserWorkspaceAction, t]);
 
-  const refreshBrowserBridgeConnection = useCallback(async () => {
+  const _refreshBrowserBridgeConnection = useCallback(async () => {
     await runBrowserWorkspaceAction(
       "browser-bridge:refresh",
       async () => {
