@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import type {
-  LifeOpsBrowserAction,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserPageContext,
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
   LifeOpsCalendarEvent,
   LifeOpsOccurrenceView,
   LifeOpsWorkflowRun,
@@ -82,8 +84,8 @@ export function collectNearbyReminderTitles(args: {
 }
 
 export function createBrowserSessionActions(
-  actions: Array<Omit<LifeOpsBrowserAction, "id">>,
-): LifeOpsBrowserAction[] {
+  actions: Array<Omit<BrowserBridgeAction, "id">>,
+): BrowserBridgeAction[] {
   return actions.map((action) => ({
     ...action,
     id: crypto.randomUUID(),
@@ -124,7 +126,7 @@ export function normalizePendingBrowserPairingTokenHashes(
 
 export function browserSessionMatchesCompanion(
   session: LifeOpsBrowserSession,
-  companion: LifeOpsBrowserCompanionStatus,
+  companion: BrowserBridgeCompanionStatus,
 ): boolean {
   if (session.browser && session.browser !== companion.browser) {
     return false;
@@ -152,7 +154,7 @@ export function normalizeBrowserSessionActionIndex(
 }
 
 export function resolveAwaitingBrowserActionId(
-  actions: LifeOpsBrowserAction[],
+  actions: BrowserBridgeAction[],
 ): string | null {
   const next = actions.find(
     (action) => action.accountAffecting || action.requiresConfirmation,
@@ -161,7 +163,7 @@ export function resolveAwaitingBrowserActionId(
 }
 
 export function browserActionChangesState(
-  action: Pick<LifeOpsBrowserAction, "kind">,
+  action: Pick<BrowserBridgeAction, "kind">,
 ): boolean {
   return (
     action.kind === "open" ||
@@ -178,7 +180,7 @@ export function browserActionChangesState(
 
 export function browserTabIdentityKey(
   tab: Pick<
-    LifeOpsBrowserTabSummary,
+    BrowserBridgeTabSummary,
     "browser" | "profileId" | "windowId" | "tabId"
   >,
 ): string {
@@ -187,14 +189,14 @@ export function browserTabIdentityKey(
 
 export function browserPageContextIdentityKey(
   context: Pick<
-    LifeOpsBrowserPageContext,
+    BrowserBridgePageContext,
     "browser" | "profileId" | "windowId" | "tabId"
   >,
 ): string {
   return `${context.browser}:${context.profileId}:${context.windowId}:${context.tabId}`;
 }
 
-export function rankBrowserTab(tab: LifeOpsBrowserTabSummary): [number, number] {
+export function rankBrowserTab(tab: BrowserBridgeTabSummary): [number, number] {
   const anchor = Date.parse(tab.lastFocusedAt ?? tab.lastSeenAt);
   return [
     tab.focusedActive ? 3 : tab.activeInWindow ? 2 : 1,
@@ -203,8 +205,8 @@ export function rankBrowserTab(tab: LifeOpsBrowserTabSummary): [number, number] 
 }
 
 export function sortBrowserTabs(
-  tabs: readonly LifeOpsBrowserTabSummary[],
-): LifeOpsBrowserTabSummary[] {
+  tabs: readonly BrowserBridgeTabSummary[],
+): BrowserBridgeTabSummary[] {
   return [...tabs].sort((left, right) => {
     const [leftTier, leftAnchor] = rankBrowserTab(left);
     const [rightTier, rightAnchor] = rankBrowserTab(right);
@@ -219,9 +221,9 @@ export function sortBrowserTabs(
 }
 
 export function selectRememberedBrowserTabs(
-  tabs: readonly LifeOpsBrowserTabSummary[],
+  tabs: readonly BrowserBridgeTabSummary[],
   limit: number,
-): LifeOpsBrowserTabSummary[] {
+): BrowserBridgeTabSummary[] {
   if (limit <= 0 || tabs.length === 0) {
     return [];
   }
@@ -256,7 +258,7 @@ export function browserOriginFromUrl(url: string): string | null {
 
 export function browserUrlAllowedBySettings(
   url: string,
-  settings: LifeOpsBrowserSettings,
+  settings: BrowserBridgeSettings,
 ): boolean {
   const origin = browserOriginFromUrl(url);
   if (!origin) {
@@ -274,7 +276,7 @@ export function browserUrlAllowedBySettings(
 export function normalizePageLinks(
   value: unknown,
   field: string,
-): LifeOpsBrowserPageContext["links"] {
+): BrowserBridgePageContext["links"] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     fail(400, `${field} must be an array`);
@@ -291,7 +293,7 @@ export function normalizePageLinks(
 export function normalizePageHeadings(
   value: unknown,
   field: string,
-): LifeOpsBrowserPageContext["headings"] {
+): BrowserBridgePageContext["headings"] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     fail(400, `${field} must be an array`);
@@ -304,7 +306,7 @@ export function normalizePageHeadings(
 export function normalizePageForms(
   value: unknown,
   field: string,
-): LifeOpsBrowserPageContext["forms"] {
+): BrowserBridgePageContext["forms"] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     fail(400, `${field} must be an array`);

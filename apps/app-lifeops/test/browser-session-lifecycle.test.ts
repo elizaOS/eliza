@@ -68,7 +68,7 @@ async function createService(agentId: string): Promise<LifeOpsService> {
 
 describe("browser session lifecycle", () => {
   test("tracks blocked intervention, resume, uploaded asset, and provenance", async () => {
-    const service = await createService("lifeops-browser-session-lifecycle");
+    const service = await createService("browser-bridge-session-lifecycle");
     const session = await service.createBrowserSession({
       title: "Upload keynote deck",
       browser: "chrome",
@@ -190,7 +190,7 @@ describe("browser session lifecycle", () => {
   });
 
   test("owner progress route preserves browser task summary before completion", async () => {
-    const service = await createService("lifeops-browser-session-progress-owner");
+    const service = await createService("browser-bridge-session-progress-owner");
     const session = await service.createBrowserSession({
       title: "Upload ID copy",
       browser: "chrome",

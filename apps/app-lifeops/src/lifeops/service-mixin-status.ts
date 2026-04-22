@@ -1,7 +1,9 @@
 import type { IAgentRuntime, Task } from "@elizaos/core";
 import type {
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserSettings,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsCapabilityEvidence,
   LifeOpsCapabilityState,
@@ -36,8 +38,8 @@ export type StatusMixinDependencies = LifeOpsServiceBase & {
     refresh?: boolean;
     now?: Date;
   }): Promise<LifeOpsScheduleMergedState | null>;
-  getBrowserSettings(): Promise<LifeOpsBrowserSettings>;
-  listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]>;
+  getBrowserSettings(): Promise<BrowserBridgeSettings>;
+  listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
   getXConnectorStatus(
     mode?: LifeOpsConnectorMode,
   ): Promise<LifeOpsXConnectorStatus>;

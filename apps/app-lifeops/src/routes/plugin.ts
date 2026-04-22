@@ -164,8 +164,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/reminders/inspection" },
   { type: "GET", path: "/api/lifeops/workflows" },
   { type: "POST", path: "/api/lifeops/workflows" },
-  // Browser companion + package static routes moved to
-  // `@elizaos/plugin-browser-bridge/plugin` (served under `/api/browser-bridge/*`).
+  // Browser companion + package routes moved to
+  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
   { type: "POST", path: "/api/lifeops/schedule/observations" },
   { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/overview" },
@@ -202,7 +202,7 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
   // /api/lifeops/workflows/:id/run
   { type: "POST", path: "/api/lifeops/workflows/:id/run" },
   // Browser session + package dynamic routes moved to
-  // `@elizaos/plugin-browser-bridge/plugin` (served under `/api/browser-bridge/*`).
+  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
   // /api/lifeops/occurrences/:id/explanation
   { type: "GET", path: "/api/lifeops/occurrences/:id/explanation" },
   // /api/lifeops/occurrences/:id/complete
@@ -308,6 +308,6 @@ const lifeOpsPluginRoutes: Route[] = [
 export const lifeopsPlugin: Plugin = {
   name: "@elizaos/app-lifeops-routes",
   description:
-    "LifeOps dashboard, Google Workspace, browser companion, website blocker, and scheduling routes",
+    "LifeOps dashboard, Google Workspace, website blocker, and scheduling routes",
   routes: lifeOpsPluginRoutes,
 };

@@ -1,6 +1,8 @@
 import type {
-  LifeOpsBrowserPermissionState,
-  LifeOpsBrowserSettings,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge/contracts"
+import type {
   LifeOpsReminderIntensity,
   LifeOpsReminderStep,
   LifeOpsReminderUrgency,
@@ -98,7 +100,7 @@ export const DEFAULT_WORKFLOW_PERMISSION_POLICY: LifeOpsWorkflowPermissionPolicy
   requireConfirmationForBrowserActions: true,
   requireConfirmationForXPosts: true,
 }
-export const DEFAULT_BROWSER_PERMISSION_STATE: LifeOpsBrowserPermissionState = {
+export const DEFAULT_BROWSER_PERMISSION_STATE: BrowserBridgePermissionState = {
   tabs: false,
   scripting: false,
   activeTab: false,
@@ -106,7 +108,7 @@ export const DEFAULT_BROWSER_PERMISSION_STATE: LifeOpsBrowserPermissionState = {
   grantedOrigins: [],
   incognitoEnabled: false,
 }
-export const DEFAULT_BROWSER_SETTINGS: LifeOpsBrowserSettings = {
+export const DEFAULT_BROWSER_SETTINGS: BrowserBridgeSettings = {
   enabled: false,
   trackingMode: "current_tab",
   allowBrowserControl: false,
