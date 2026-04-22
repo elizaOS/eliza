@@ -3142,6 +3142,26 @@ export class LifeOpsRepository {
     return row ? parseGmailMessageSummary(row) : null;
   }
 
+  async deleteGmailMessages(
+    agentId: string,
+    provider: LifeOpsConnectorGrant["provider"],
+    messageIds: readonly string[],
+    side?: LifeOpsConnectorSide,
+  ): Promise<void> {
+    if (messageIds.length === 0) {
+      return;
+    }
+    const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_gmail_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          ${sideClause}
+          AND id IN (${messageIds.map((messageId) => sqlQuote(messageId)).join(", ")})`,
+    );
+  }
+
   async deleteGmailMessagesForProvider(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],

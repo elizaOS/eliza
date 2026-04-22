@@ -2,19 +2,23 @@ import crypto from "node:crypto";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsConnectorGrant,
+  LifeOpsGmailBulkOperation,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
+  LifeOpsGmailUnrespondedFeed,
 } from "@elizaos/app-lifeops/contracts";
 import {
+  LIFEOPS_GMAIL_BULK_OPERATIONS,
   LIFEOPS_GMAIL_DRAFT_TONES,
 } from "@elizaos/app-lifeops/contracts";
 import {
   fail,
   normalizeEnumValue,
+  normalizeFiniteNumber,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
@@ -30,6 +34,25 @@ export function normalizeGmailSearchQuery(value: unknown): string {
     fail(400, "query must be 500 characters or fewer");
   }
   return query;
+}
+
+export function normalizeGmailBulkOperation(
+  value: unknown,
+): LifeOpsGmailBulkOperation {
+  return normalizeEnumValue(value, "operation", LIFEOPS_GMAIL_BULK_OPERATIONS);
+}
+
+export function normalizeGmailUnrespondedOlderThanDays(
+  value: unknown,
+): number {
+  if (value === undefined || value === null || value === "") {
+    return 3;
+  }
+  const days = Math.trunc(normalizeFiniteNumber(value, "olderThanDays"));
+  if (days < 1 || days > 3650) {
+    fail(400, "olderThanDays must be between 1 and 3650");
+  }
+  return days;
 }
 
 export function parseGmailRelativeDuration(value: string): number | null {
@@ -168,6 +191,38 @@ export function normalizeOptionalMessageIdArray(
   }
   if (items.length > 50) {
     fail(400, `${field} must contain 50 items or fewer`);
+  }
+  return items;
+}
+
+export function normalizeOptionalGmailLabelIdArray(
+  value: unknown,
+  field: string,
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    fail(400, `${field} must be an array`);
+  }
+  const items: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, candidate] of value.entries()) {
+    const item = requireNonEmptyString(candidate, `${field}[${index}]`);
+    if (item.length > 128) {
+      fail(400, `${field}[${index}] must be 128 characters or fewer`);
+    }
+    if (!/^[A-Za-z0-9_:\-]+$/.test(item)) {
+      fail(400, `${field}[${index}] is not a valid Gmail label id`);
+    }
+    if (seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    items.push(item);
+  }
+  if (items.length > 20) {
+    fail(400, `${field} must contain 20 items or fewer`);
   }
   return items;
 }
@@ -564,6 +619,18 @@ export function summarizeGmailNeedsResponse(
     totalCount: messages.length,
     unreadCount: messages.filter((message) => message.isUnread).length,
     importantCount: messages.filter((message) => message.isImportant).length,
+  };
+}
+
+export function summarizeGmailUnresponded(
+  threads: LifeOpsGmailUnrespondedFeed["threads"],
+): LifeOpsGmailUnrespondedFeed["summary"] {
+  return {
+    totalCount: threads.length,
+    oldestDaysWaiting:
+      threads.length > 0
+        ? Math.max(...threads.map((thread) => thread.daysWaiting))
+        : null,
   };
 }
 

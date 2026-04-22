@@ -19,12 +19,15 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsUnifiedInboxRequest,
+  IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsInboxChannel,
+  ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
@@ -827,6 +830,28 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (method === "GET" && pathname === "/api/lifeops/gmail/unresponded") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: GetLifeOpsGmailUnrespondedRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        maxResults:
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
+        olderThanDays:
+          parsePositiveIntegerQuery(
+            url.searchParams.get("olderThanDays"),
+            "olderThanDays",
+          ) ?? undefined,
+        grantId: url.searchParams.get("grantId") ?? undefined,
+      };
+      json(res, await service.getGmailUnresponded(url, request));
+    });
+  }
+
   if (method === "POST" && pathname === "/api/lifeops/calendar/events") {
     if (rateLimitRequest(ctx, "calendar_create")) return true;
     const body = await readJsonBody<CreateLifeOpsCalendarEventRequest>(
@@ -962,6 +987,27 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.sendGmailReplies(url, body));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/gmail/manage") {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const body = await readJsonBody<ManageLifeOpsGmailMessagesRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.manageGmailMessages(url, body));
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/gmail/events/ingest") {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const body = await readJsonBody<IngestLifeOpsGmailEventRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.ingestGmailEvent(url, body), 202);
     });
   }
 

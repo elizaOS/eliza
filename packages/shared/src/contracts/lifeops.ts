@@ -81,6 +81,8 @@ export type LifeOpsWorkflowTriggerType =
  */
 export const LIFEOPS_EVENT_KINDS = [
   "calendar.event.ended",
+  "gmail.message.received",
+  "gmail.thread.needs_response",
   "lifeops.wake.detected",
   "lifeops.wake.confirmed",
   "lifeops.sleep.started",
@@ -98,6 +100,19 @@ export interface LifeOpsCalendarEventEndedFilters {
   minDurationMinutes?: number;
   /** Only fire when one attendee email contains one of these substrings. */
   attendeeEmailIncludesAny?: string[];
+}
+
+export interface LifeOpsGmailEventFilters {
+  /** Only fire for these Google connector grant ids. */
+  grantIds?: string[];
+  /** Only fire when the sender email/display contains one of these substrings. */
+  fromIncludesAny?: string[];
+  /** Only fire when the subject contains one of these case-insensitive substrings. */
+  subjectIncludesAny?: string[];
+  /** Only fire when at least one Gmail label id is present. */
+  labelIds?: string[];
+  /** Only fire when LifeOps classified the message/thread as needing a reply. */
+  requiresReplyNeeded?: boolean;
 }
 
 export interface LifeOpsWakeDetectedFilters {
@@ -127,6 +142,14 @@ export type LifeOpsEventFilters =
   | {
       kind: "calendar.event.ended";
       filters?: LifeOpsCalendarEventEndedFilters;
+    }
+  | {
+      kind: "gmail.message.received";
+      filters?: LifeOpsGmailEventFilters;
+    }
+  | {
+      kind: "gmail.thread.needs_response";
+      filters?: LifeOpsGmailEventFilters;
     }
   | {
       kind: "lifeops.wake.detected";
@@ -812,6 +835,15 @@ export type LifeOpsWorkflowAction =
       request?: GetLifeOpsGmailTriageRequest;
     })
   | (LifeOpsWorkflowActionBase & {
+      kind: "get_gmail_unresponded";
+      request?: GetLifeOpsGmailUnrespondedRequest;
+    })
+  | (LifeOpsWorkflowActionBase & {
+      kind: "dispatch_n8n_workflow";
+      workflowId: string;
+      payload?: Record<string, unknown>;
+    })
+  | (LifeOpsWorkflowActionBase & {
       kind: "summarize";
       sourceKey?: string;
       prompt?: string;
@@ -1395,6 +1427,99 @@ export interface LifeOpsGmailSearchFeed {
   source: "cache" | "synced";
   syncedAt: string | null;
   summary: LifeOpsGmailSearchSummary;
+}
+
+export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
+  "archive",
+  "trash",
+  "delete",
+  "report_spam",
+  "mark_read",
+  "mark_unread",
+  "apply_label",
+  "remove_label",
+] as const;
+export type LifeOpsGmailBulkOperation =
+  (typeof LIFEOPS_GMAIL_BULK_OPERATIONS)[number];
+
+export interface ManageLifeOpsGmailMessagesRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+  operation: LifeOpsGmailBulkOperation;
+  messageIds?: string[];
+  query?: string;
+  maxResults?: number;
+  labelIds?: string[];
+  confirmDestructive?: boolean;
+}
+
+export interface LifeOpsGmailManageResult {
+  ok: true;
+  operation: LifeOpsGmailBulkOperation;
+  messageIds: string[];
+  affectedCount: number;
+  labelIds: string[];
+  destructive: boolean;
+  grantId?: string;
+  accountEmail?: string;
+}
+
+export interface LifeOpsGmailUnrespondedThread {
+  threadId: string;
+  messageId: string;
+  subject: string;
+  to: string[];
+  cc: string[];
+  lastOutboundAt: string;
+  lastInboundAt: string | null;
+  daysWaiting: number;
+  snippet: string;
+  labels: string[];
+  htmlLink: string | null;
+  grantId?: string;
+  accountEmail?: string;
+}
+
+export interface LifeOpsGmailUnrespondedSummary {
+  totalCount: number;
+  oldestDaysWaiting: number | null;
+}
+
+export interface LifeOpsGmailUnrespondedFeed {
+  threads: LifeOpsGmailUnrespondedThread[];
+  source: "synced";
+  syncedAt: string;
+  summary: LifeOpsGmailUnrespondedSummary;
+}
+
+export interface GetLifeOpsGmailUnrespondedRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+  olderThanDays?: number;
+  maxResults?: number;
+}
+
+export interface IngestLifeOpsGmailEventRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+  messageId: string;
+  eventKind?: "gmail.message.received" | "gmail.thread.needs_response";
+  occurredAt?: string;
+  maxWorkflowRuns?: number;
+}
+
+export interface LifeOpsGmailEventIngestResult {
+  ok: true;
+  event: {
+    id: string;
+    kind: "gmail.message.received" | "gmail.thread.needs_response";
+    occurredAt: string;
+    payload: Record<string, unknown>;
+  };
+  workflowRunIds: string[];
 }
 
 export const LIFEOPS_GMAIL_DRAFT_TONES = ["brief", "neutral", "warm"] as const;

@@ -1,9 +1,16 @@
-import type { LifeOpsGmailMessageSummary } from "@elizaos/app-lifeops/contracts";
+import type {
+  LifeOpsGmailBulkOperation,
+  LifeOpsGmailMessageSummary,
+  LifeOpsGmailUnrespondedThread,
+} from "@elizaos/app-lifeops/contracts";
 import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
 
+const GOOGLE_GMAIL_USER_ENDPOINT =
+  "https://gmail.googleapis.com/gmail/v1/users/me";
 const GOOGLE_GMAIL_MESSAGES_ENDPOINT =
-  "https://gmail.googleapis.com/gmail/v1/users/me/messages";
+  `${GOOGLE_GMAIL_USER_ENDPOINT}/messages`;
+const GOOGLE_GMAIL_THREADS_ENDPOINT = `${GOOGLE_GMAIL_USER_ENDPOINT}/threads`;
 
 const GMAIL_METADATA_HEADERS = [
   "Subject",
@@ -53,6 +60,11 @@ interface GoogleGmailMetadataResponse {
   payload?: GoogleGmailPayload;
 }
 
+interface GoogleGmailThreadResponse {
+  id?: string;
+  messages?: GoogleGmailMetadataResponse[];
+}
+
 export interface SyncedGoogleGmailMessageSummary
   extends Omit<
     LifeOpsGmailMessageSummary,
@@ -62,6 +74,14 @@ export interface SyncedGoogleGmailMessageSummary
 export interface SyncedGoogleGmailMessageDetail {
   message: SyncedGoogleGmailMessageSummary;
   bodyText: string;
+}
+
+export interface SyncedGoogleGmailUnrespondedThread
+  extends Omit<
+    LifeOpsGmailUnrespondedThread,
+    "messageId" | "grantId" | "accountEmail"
+  > {
+  externalMessageId: string;
 }
 
 function readGoogleGmailErrorPrefix(status: number): string {
@@ -474,6 +494,34 @@ export async function fetchGoogleGmailMessage(args: {
   return normalizeGoogleGmailMessage(parsed, args.selfEmail ?? null);
 }
 
+export async function fetchGoogleGmailThread(args: {
+  accessToken: string;
+  selfEmail?: string | null;
+  threadId: string;
+}): Promise<SyncedGoogleGmailMessageSummary[]> {
+  const params = new URLSearchParams({
+    format: "metadata",
+  });
+  for (const header of GMAIL_METADATA_HEADERS) {
+    params.append("metadataHeaders", header);
+  }
+  const response = await googleApiFetch(
+    `${GOOGLE_GMAIL_THREADS_ENDPOINT}/${encodeURIComponent(args.threadId)}?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+  );
+  const parsed = (await response.json()) as GoogleGmailThreadResponse;
+  return (parsed.messages ?? [])
+    .map((message) => normalizeGoogleGmailMessage(message, args.selfEmail ?? null))
+    .filter(
+      (message): message is SyncedGoogleGmailMessageSummary => message !== null,
+    )
+    .sort((left, right) => Date.parse(left.receivedAt) - Date.parse(right.receivedAt));
+}
+
 export async function fetchGoogleGmailMessageDetail(args: {
   accessToken: string;
   selfEmail?: string | null;
@@ -573,6 +621,210 @@ async function fetchGoogleGmailMessages(args: {
       }
       return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
     });
+}
+
+function isGoogleGmailMessageFromSelf(
+  message: SyncedGoogleGmailMessageSummary,
+  selfEmail: string | null,
+): boolean {
+  const labels = new Set(message.labels.map((label) => label.toUpperCase()));
+  if (labels.has("SENT")) {
+    return true;
+  }
+  const fromEmail = message.fromEmail?.trim().toLowerCase() || null;
+  return Boolean(selfEmail && fromEmail && fromEmail === selfEmail);
+}
+
+function isGoogleGmailAutomatedMessage(
+  message: SyncedGoogleGmailMessageSummary,
+): boolean {
+  const precedence =
+    typeof message.metadata.precedence === "string"
+      ? message.metadata.precedence.trim().toLowerCase()
+      : "";
+  const autoSubmitted =
+    typeof message.metadata.autoSubmitted === "string"
+      ? message.metadata.autoSubmitted.trim().toLowerCase()
+      : "";
+  return (
+    Boolean(message.metadata.listId) ||
+    precedence === "bulk" ||
+    precedence === "list" ||
+    precedence === "junk" ||
+    precedence === "auto-reply" ||
+    (autoSubmitted.length > 0 && autoSubmitted !== "no")
+  );
+}
+
+export async function fetchGoogleGmailUnrespondedThreads(args: {
+  accessToken: string;
+  selfEmail?: string | null;
+  olderThanDays?: number;
+  maxResults?: number;
+  now?: Date;
+}): Promise<SyncedGoogleGmailUnrespondedThread[]> {
+  const olderThanDays =
+    typeof args.olderThanDays === "number" && args.olderThanDays > 0
+      ? Math.min(Math.trunc(args.olderThanDays), 3650)
+      : 3;
+  const maxResults =
+    typeof args.maxResults === "number" && args.maxResults > 0
+      ? Math.min(Math.trunc(args.maxResults), 50)
+      : 20;
+  const now = args.now ?? new Date();
+  const selfEmail = args.selfEmail?.trim().toLowerCase() || null;
+  const sentCandidates = await fetchGoogleGmailSearchMessages({
+    accessToken: args.accessToken,
+    selfEmail,
+    maxResults,
+    query: `in:sent older_than:${olderThanDays}d`,
+  });
+  const seenThreads = new Set<string>();
+  const threads: SyncedGoogleGmailUnrespondedThread[] = [];
+
+  for (const sentMessage of sentCandidates) {
+    if (seenThreads.has(sentMessage.threadId)) {
+      continue;
+    }
+    seenThreads.add(sentMessage.threadId);
+    const threadMessages = await fetchGoogleGmailThread({
+      accessToken: args.accessToken,
+      selfEmail,
+      threadId: sentMessage.threadId,
+    });
+    const humanMessages = threadMessages.filter(
+      (message) => !isGoogleGmailAutomatedMessage(message),
+    );
+    const lastOutbound = [...humanMessages]
+      .reverse()
+      .find((message) => isGoogleGmailMessageFromSelf(message, selfEmail));
+    if (!lastOutbound) {
+      continue;
+    }
+    const lastOutboundAtMs = Date.parse(lastOutbound.receivedAt);
+    if (!Number.isFinite(lastOutboundAtMs)) {
+      continue;
+    }
+    const hasLaterInbound = humanMessages.some(
+      (message) =>
+        !isGoogleGmailMessageFromSelf(message, selfEmail) &&
+        Date.parse(message.receivedAt) > lastOutboundAtMs,
+    );
+    if (hasLaterInbound) {
+      continue;
+    }
+    const ageMs = now.getTime() - lastOutboundAtMs;
+    if (ageMs < olderThanDays * 24 * 60 * 60 * 1000) {
+      continue;
+    }
+    const lastInbound = [...humanMessages]
+      .reverse()
+      .find((message) => !isGoogleGmailMessageFromSelf(message, selfEmail));
+    threads.push({
+      threadId: lastOutbound.threadId,
+      externalMessageId: lastOutbound.externalId,
+      subject: lastOutbound.subject,
+      to: lastOutbound.to,
+      cc: lastOutbound.cc,
+      lastOutboundAt: lastOutbound.receivedAt,
+      lastInboundAt: lastInbound?.receivedAt ?? null,
+      daysWaiting: Math.max(0, Math.floor(ageMs / (24 * 60 * 60 * 1000))),
+      snippet: lastOutbound.snippet,
+      labels: lastOutbound.labels,
+      htmlLink: lastOutbound.htmlLink,
+    });
+  }
+
+  return threads
+    .sort((left, right) => right.daysWaiting - left.daysWaiting)
+    .slice(0, maxResults);
+}
+
+function requireLabelIdsForGmailOperation(
+  operation: LifeOpsGmailBulkOperation,
+  labelIds: readonly string[] | undefined,
+): string[] {
+  const labels = (labelIds ?? [])
+    .map((labelId) => labelId.trim())
+    .filter(Boolean);
+  if (
+    (operation === "apply_label" || operation === "remove_label") &&
+    labels.length === 0
+  ) {
+    throw new GoogleApiError(400, `${operation} requires at least one labelId`);
+  }
+  return labels;
+}
+
+export async function modifyGoogleGmailMessages(args: {
+  accessToken: string;
+  messageIds: readonly string[];
+  operation: LifeOpsGmailBulkOperation;
+  labelIds?: readonly string[];
+}): Promise<void> {
+  const ids = args.messageIds
+    .map((messageId) => messageId.trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    throw new GoogleApiError(400, "Gmail operation requires message ids");
+  }
+  const headers = {
+    Authorization: `Bearer ${args.accessToken}`,
+    "Content-Type": "application/json",
+  };
+  const labelIds = requireLabelIdsForGmailOperation(
+    args.operation,
+    args.labelIds,
+  );
+
+  if (args.operation === "trash") {
+    await Promise.all(
+      ids.map((messageId) =>
+        googleApiFetch(
+          `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}/trash`,
+          { method: "POST", headers },
+        ),
+      ),
+    );
+    return;
+  }
+
+  if (args.operation === "delete") {
+    await googleApiFetch(`${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/batchDelete`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ids }),
+    });
+    return;
+  }
+
+  const labelsForOperation: Record<
+    LifeOpsGmailBulkOperation,
+    { addLabelIds?: string[]; removeLabelIds?: string[] }
+  > = {
+    archive: { removeLabelIds: ["INBOX"] },
+    trash: {},
+    delete: {},
+    report_spam: { addLabelIds: ["SPAM"], removeLabelIds: ["INBOX"] },
+    mark_read: { removeLabelIds: ["UNREAD"] },
+    mark_unread: { addLabelIds: ["UNREAD"] },
+    apply_label: { addLabelIds: labelIds },
+    remove_label: { removeLabelIds: labelIds },
+  };
+  const labelPatch = labelsForOperation[args.operation];
+  await googleApiFetch(`${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/batchModify`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      ids,
+      ...(labelPatch.addLabelIds && labelPatch.addLabelIds.length > 0
+        ? { addLabelIds: labelPatch.addLabelIds }
+        : {}),
+      ...(labelPatch.removeLabelIds && labelPatch.removeLabelIds.length > 0
+        ? { removeLabelIds: labelPatch.removeLabelIds }
+        : {}),
+    }),
+  });
 }
 
 export interface GmailSendResult {

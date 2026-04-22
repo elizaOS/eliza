@@ -8,17 +8,23 @@ import type {
   CreateLifeOpsGmailReplyDraftRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
+  IngestLifeOpsGmailEventRequest,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailBatchReplySendResult,
+  LifeOpsGmailEventIngestResult,
+  LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
+  LifeOpsGmailUnrespondedFeed,
   LifeOpsSubjectType,
+  ManageLifeOpsGmailMessagesRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -32,6 +38,8 @@ import {
   fetchGoogleGmailMessageDetail,
   fetchGoogleGmailSearchMessages,
   fetchGoogleGmailTriageMessages,
+  fetchGoogleGmailUnrespondedThreads,
+  modifyGoogleGmailMessages,
   type SyncedGoogleGmailMessageDetail,
   sendGoogleGmailMessage,
   sendGoogleGmailReply,
@@ -51,6 +59,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
   normalizeOptionalBoolean,
+  normalizeIsoString,
 } from "./service-normalize.js";
 import {
   normalizeOptionalConnectorMode,
@@ -58,6 +67,7 @@ import {
 } from "./service-normalize-connector.js";
 import {
   hasGoogleGmailBodyReadScope,
+  hasGoogleGmailManageCapability,
   hasGoogleGmailSendCapability,
   normalizeGmailTriageMaxResults,
 } from "./service-normalize-calendar.js";
@@ -68,10 +78,13 @@ import {
   createGmailMessageId,
   filterGmailMessagesBySearch,
   materializeGmailMessageSummary,
+  normalizeGmailBulkOperation,
   normalizeGeneratedGmailReplyDraftBody,
   normalizeGmailDraftTone,
+  normalizeGmailUnrespondedOlderThanDays,
   normalizeGmailReplyBody,
   normalizeGmailSearchQuery,
+  normalizeOptionalGmailLabelIdArray,
   normalizeOptionalMessageIdArray,
   normalizeOptionalStringArray,
   isGmailSyncStateFresh,
@@ -79,6 +92,7 @@ import {
   summarizeGmailNeedsResponse,
   summarizeGmailSearch,
   summarizeGmailTriage,
+  summarizeGmailUnresponded,
 } from "./service-normalize-gmail.js";
 import { buildReminderVoiceContext } from "./service-helpers-misc.js";
 import type {
@@ -123,6 +137,20 @@ export interface LifeOpsGmailService {
     request?: GetLifeOpsGmailTriageRequest,
     now?: Date,
   ): Promise<LifeOpsGmailNeedsResponseFeed>;
+  getGmailUnresponded(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailUnrespondedRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailUnrespondedFeed>;
+  manageGmailMessages(
+    requestUrl: URL,
+    request: ManageLifeOpsGmailMessagesRequest,
+  ): Promise<LifeOpsGmailManageResult>;
+  ingestGmailEvent(
+    requestUrl: URL,
+    request: IngestLifeOpsGmailEventRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailEventIngestResult>;
   createGmailBatchReplyDrafts(
     requestUrl: URL,
     request: CreateLifeOpsGmailBatchReplyDraftsRequest,
@@ -159,6 +187,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
     public async recordGmailAudit(
       eventType:
         | "gmail_triage_synced"
+        | "gmail_messages_managed"
+        | "gmail_event_ingested"
         | "gmail_reply_drafted"
         | "gmail_reply_sent"
         | "gmail_message_sent",
@@ -173,7 +203,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           eventType,
           ownerType:
             eventType === "gmail_triage_synced" ||
-            eventType === "gmail_message_sent"
+            eventType === "gmail_message_sent" ||
+            eventType === "gmail_messages_managed" ||
+            eventType === "gmail_event_ingested"
               ? "connector"
               : "gmail_message",
           ownerId: ownerId ?? this.agentId(),
@@ -781,6 +813,434 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         source: triage.source,
         syncedAt: triage.syncedAt,
         summary: summarizeGmailNeedsResponse(messages),
+      };
+    }
+
+    async getGmailUnresponded(
+      requestUrl: URL,
+      request: GetLifeOpsGmailUnrespondedRequest = {},
+      now = new Date(),
+    ): Promise<LifeOpsGmailUnrespondedFeed> {
+      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+      const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
+      const olderThanDays = normalizeGmailUnrespondedOlderThanDays(
+        request.olderThanDays,
+      );
+      const maxResults = normalizeGmailTriageMaxResults(request.maxResults);
+
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
+      if (resolveGoogleExecutionTarget(grant) === "cloud") {
+        fail(
+          409,
+          "Thread-level Gmail unresponded detection requires local Google OAuth until the managed Gmail API exposes thread reads.",
+        );
+      }
+      if (!hasGoogleGmailBodyReadScope(grant)) {
+        fail(
+          409,
+          "Thread-level Gmail unresponded detection requires Gmail read access. Reconnect Google and grant Gmail read access.",
+        );
+      }
+
+      const syncedAt = new Date().toISOString();
+      const accessToken = (
+        await ensureFreshGoogleAccessToken(
+          grant.tokenRef ?? fail(409, "Google Gmail token reference is missing."),
+        )
+      ).accessToken;
+      const threads = (
+        await fetchGoogleGmailUnrespondedThreads({
+          accessToken,
+          selfEmail:
+            typeof grant.identity.email === "string"
+              ? grant.identity.email.trim().toLowerCase()
+              : null,
+          olderThanDays,
+          maxResults,
+          now,
+        })
+      ).map((thread) => ({
+        threadId: thread.threadId,
+        messageId: createGmailMessageId(
+          this.agentId(),
+          "google",
+          grant.side,
+          thread.externalMessageId,
+        ),
+        subject: thread.subject,
+        to: thread.to,
+        cc: thread.cc,
+        lastOutboundAt: thread.lastOutboundAt,
+        lastInboundAt: thread.lastInboundAt,
+        daysWaiting: thread.daysWaiting,
+        snippet: thread.snippet,
+        labels: thread.labels,
+        htmlLink: thread.htmlLink,
+        grantId: grant.id,
+        accountEmail: grant.identityEmail ?? undefined,
+      }));
+      await this.clearGoogleGrantAuthFailure(grant);
+      return {
+        threads,
+        source: "synced",
+        syncedAt,
+        summary: summarizeGmailUnresponded(threads),
+      };
+    }
+
+    public async resolveGmailMessagesForManagement(args: {
+      requestUrl: URL;
+      grant: LifeOpsConnectorGrant;
+      mode?: LifeOpsConnectorMode;
+      query?: string;
+      messageIds?: string[];
+      maxResults: number;
+    }): Promise<LifeOpsGmailMessageSummary[]> {
+      if (args.messageIds && args.messageIds.length > 0) {
+        const messages: LifeOpsGmailMessageSummary[] = [];
+        const accessToken = (
+          await ensureFreshGoogleAccessToken(
+            args.grant.tokenRef ??
+              fail(409, "Google Gmail token reference is missing."),
+          )
+        ).accessToken;
+        const selfEmail =
+          typeof args.grant.identity.email === "string"
+            ? args.grant.identity.email.trim().toLowerCase()
+            : null;
+        for (const messageId of args.messageIds) {
+          let message = await this.repository.getGmailMessage(
+            this.agentId(),
+            "google",
+            messageId,
+            args.grant.side,
+          );
+          if (!message) {
+            const fetched = await fetchGoogleGmailMessage({
+              accessToken,
+              selfEmail,
+              messageId,
+            });
+            message = fetched
+              ? materializeGmailMessageSummary({
+                  agentId: this.agentId(),
+                  side: args.grant.side,
+                  message: fetched,
+                  syncedAt: new Date().toISOString(),
+                })
+              : null;
+            if (message) {
+              await this.repository.upsertGmailMessage(message, args.grant.side);
+            }
+          }
+          if (message) {
+            messages.push(message);
+          }
+        }
+        if (messages.length !== args.messageIds.length) {
+          fail(404, "One or more Gmail messages were not found.");
+        }
+        return messages;
+      }
+
+      const query = args.query ? normalizeGmailSearchQuery(args.query) : null;
+      if (!query) {
+        fail(400, "Either messageIds or query must be provided.");
+      }
+      return (
+        await this.getGmailSearch(
+          args.requestUrl,
+          {
+            mode: args.mode,
+            side: args.grant.side,
+            grantId: args.grant.id,
+            query,
+            maxResults: args.maxResults,
+            forceSync: true,
+          },
+          new Date(),
+        )
+      ).messages;
+    }
+
+    async manageGmailMessages(
+      requestUrl: URL,
+      request: ManageLifeOpsGmailMessagesRequest,
+    ): Promise<LifeOpsGmailManageResult> {
+      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+      const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
+      const operation = normalizeGmailBulkOperation(request.operation);
+      const messageIds = normalizeOptionalMessageIdArray(
+        request.messageIds,
+        "messageIds",
+      );
+      const query =
+        request.query === undefined
+          ? null
+          : normalizeGmailSearchQuery(request.query);
+      const maxResults = normalizeGmailTriageMaxResults(request.maxResults);
+      const labelIds = normalizeOptionalGmailLabelIdArray(
+        request.labelIds,
+        "labelIds",
+      ) ?? [];
+      const confirmDestructive =
+        normalizeOptionalBoolean(
+          request.confirmDestructive,
+          "confirmDestructive",
+        ) ?? false;
+      const destructive =
+        operation === "trash" ||
+        operation === "delete" ||
+        operation === "report_spam";
+      if (destructive && !confirmDestructive) {
+        fail(409, `${operation} requires explicit destructive confirmation.`);
+      }
+
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
+      if (resolveGoogleExecutionTarget(grant) === "cloud") {
+        fail(
+          409,
+          "Gmail bulk operations require local Google OAuth until the managed Gmail API exposes modify/delete.",
+        );
+      }
+      if (!hasGoogleGmailManageCapability(grant)) {
+        fail(
+          409,
+          "Gmail bulk operations require Gmail manage access. Reconnect Google and grant the Gmail manage capability.",
+        );
+      }
+      const messages = await this.resolveGmailMessagesForManagement({
+        requestUrl,
+        grant,
+        mode,
+        query: query ?? undefined,
+        messageIds,
+        maxResults,
+      });
+      if (messages.length === 0) {
+        fail(404, "No Gmail messages matched the requested operation.");
+      }
+
+      const accessToken = (
+        await ensureFreshGoogleAccessToken(
+          grant.tokenRef ?? fail(409, "Google Gmail token reference is missing."),
+        )
+      ).accessToken;
+      await modifyGoogleGmailMessages({
+        accessToken,
+        operation,
+        messageIds: messages.map((message) => message.externalId),
+        labelIds,
+      });
+      await this.updateCachedGmailMessagesAfterManage({
+        messages,
+        operation,
+        labelIds,
+        side: grant.side,
+      });
+      await this.clearGoogleGrantAuthFailure(grant);
+      await this.recordGmailAudit(
+        "gmail_messages_managed",
+        `google:${grant.mode}:gmail`,
+        "gmail messages managed",
+        {
+          operation,
+          query,
+          messageIds: messages.map((message) => message.id),
+          labelIds,
+          confirmDestructive,
+        },
+        {
+          affectedCount: messages.length,
+          destructive,
+        },
+      );
+      return {
+        ok: true,
+        operation,
+        messageIds: messages.map((message) => message.id),
+        affectedCount: messages.length,
+        labelIds,
+        destructive,
+        grantId: grant.id,
+        accountEmail: grant.identityEmail ?? undefined,
+      };
+    }
+
+    public async updateCachedGmailMessagesAfterManage(args: {
+      messages: LifeOpsGmailMessageSummary[];
+      operation: LifeOpsGmailManageResult["operation"];
+      labelIds: string[];
+      side: LifeOpsConnectorSide;
+    }): Promise<void> {
+      if (args.operation === "delete") {
+        await this.repository.deleteGmailMessages(
+          this.agentId(),
+          "google",
+          args.messages.map((message) => message.id),
+          args.side,
+        );
+        return;
+      }
+      for (const message of args.messages) {
+        const labels = new Set(message.labels);
+        if (args.operation === "archive") {
+          labels.delete("INBOX");
+        } else if (args.operation === "trash") {
+          labels.delete("INBOX");
+          labels.add("TRASH");
+        } else if (args.operation === "report_spam") {
+          labels.delete("INBOX");
+          labels.add("SPAM");
+        } else if (args.operation === "mark_read") {
+          labels.delete("UNREAD");
+        } else if (args.operation === "mark_unread") {
+          labels.add("UNREAD");
+        } else if (args.operation === "apply_label") {
+          for (const labelId of args.labelIds) {
+            labels.add(labelId);
+          }
+        } else if (args.operation === "remove_label") {
+          for (const labelId of args.labelIds) {
+            labels.delete(labelId);
+          }
+        }
+        await this.repository.upsertGmailMessage(
+          {
+            ...message,
+            labels: [...labels],
+            isUnread: labels.has("UNREAD"),
+            updatedAt: new Date().toISOString(),
+          },
+          args.side,
+        );
+      }
+    }
+
+    async ingestGmailEvent(
+      requestUrl: URL,
+      request: IngestLifeOpsGmailEventRequest,
+      now = new Date(),
+    ): Promise<LifeOpsGmailEventIngestResult> {
+      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
+      const side = normalizeOptionalConnectorSide(request.side, "side");
+      const grantId = normalizeOptionalString(request.grantId);
+      const messageId = requireNonEmptyString(request.messageId, "messageId");
+      const occurredAt =
+        request.occurredAt === undefined
+          ? now.toISOString()
+          : normalizeIsoString(request.occurredAt, "occurredAt");
+      const maxWorkflowRuns =
+        request.maxWorkflowRuns === undefined
+          ? 10
+          : normalizeGmailTriageMaxResults(request.maxWorkflowRuns);
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        mode,
+        side,
+        grantId,
+      );
+      if (resolveGoogleExecutionTarget(grant) === "cloud") {
+        fail(
+          409,
+          "Gmail event ingestion requires local Google OAuth until the managed Gmail API exposes message lookup.",
+        );
+      }
+      const fetched = await fetchGoogleGmailMessage({
+        accessToken: (
+          await ensureFreshGoogleAccessToken(
+            grant.tokenRef ??
+              fail(409, "Google Gmail token reference is missing."),
+          )
+        ).accessToken,
+        selfEmail:
+          typeof grant.identity.email === "string"
+            ? grant.identity.email.trim().toLowerCase()
+            : null,
+        messageId,
+      });
+      if (!fetched) {
+        fail(404, "life-ops Gmail message not found");
+      }
+      const syncedAt = new Date().toISOString();
+      const messageSummary = materializeGmailMessageSummary({
+        agentId: this.agentId(),
+        side: grant.side,
+        message: fetched,
+        syncedAt,
+      });
+      await this.repository.upsertGmailMessage(messageSummary, grant.side);
+      const requestedKind = request.eventKind;
+      const kind =
+        requestedKind === "gmail.thread.needs_response" ||
+        requestedKind === "gmail.message.received"
+          ? requestedKind
+          : messageSummary.likelyReplyNeeded
+            ? "gmail.thread.needs_response"
+            : "gmail.message.received";
+      const event = {
+        id: `${kind}:${messageSummary.externalId}:${occurredAt}`,
+        kind,
+        occurredAt,
+        confidence: messageSummary.likelyReplyNeeded ? 0.9 : 0.7,
+        payload: {
+          messageId: messageSummary.id,
+          externalMessageId: messageSummary.externalId,
+          threadId: messageSummary.threadId,
+          subject: messageSummary.subject,
+          from: messageSummary.from,
+          fromEmail: messageSummary.fromEmail,
+          labels: messageSummary.labels,
+          isUnread: messageSummary.isUnread,
+          likelyReplyNeeded: messageSummary.likelyReplyNeeded,
+          triageScore: messageSummary.triageScore,
+          grantId: grant.id,
+          accountEmail: grant.identityEmail ?? null,
+          htmlLink: messageSummary.htmlLink,
+        },
+      };
+      const runs =
+        typeof this.runDueEventWorkflows === "function"
+          ? await this.runDueEventWorkflows({
+              now: now.toISOString(),
+              limit: maxWorkflowRuns,
+              lifeOpsEvents: [event],
+            })
+          : [];
+      await this.clearGoogleGrantAuthFailure(grant);
+      await this.recordGmailAudit(
+        "gmail_event_ingested",
+        `google:${grant.mode}:gmail`,
+        "gmail event ingested",
+        {
+          messageId: messageSummary.id,
+          eventKind: kind,
+        },
+        {
+          workflowRunIds: runs.map((run) => run.id),
+        },
+      );
+      return {
+        ok: true,
+        event: {
+          id: event.id,
+          kind,
+          occurredAt,
+          payload: event.payload,
+        },
+        workflowRunIds: runs.map((run) => run.id),
       };
     }
 

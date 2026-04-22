@@ -1,11 +1,15 @@
 import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
   LifeOpsCalendarFeed,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsGmailManageResult,
   LifeOpsGmailTriageFeed,
+  LifeOpsGmailUnrespondedFeed,
   LifeOpsGoogleConnectorStatus,
+  ManageLifeOpsGmailMessagesRequest,
 } from "@elizaos/app-lifeops/contracts";
 import { ElizaClient } from "./client-base";
 
@@ -21,6 +25,12 @@ declare module "./client-base" {
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
+    getLifeOpsGmailUnresponded(
+      options?: GetLifeOpsGmailUnrespondedRequest,
+    ): Promise<LifeOpsGmailUnrespondedFeed>;
+    manageLifeOpsGmailMessages(
+      data: ManageLifeOpsGmailMessagesRequest,
+    ): Promise<LifeOpsGmailManageResult>;
     getGoogleLifeOpsConnectorStatus(
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
@@ -87,6 +97,29 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   appendOptionalParam(params, "forceSync", options.forceSync);
   appendOptionalParam(params, "maxResults", options.maxResults);
   return this.fetch(`/api/lifeops/gmail/triage${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "mode", options.mode);
+  appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
+  appendOptionalParam(params, "maxResults", options.maxResults);
+  appendOptionalParam(params, "olderThanDays", options.olderThanDays);
+  return this.fetch(`/api/lifeops/gmail/unresponded${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/gmail/manage", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
