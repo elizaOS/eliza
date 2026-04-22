@@ -136,7 +136,7 @@ export function applyCors(
   const origin =
     typeof req.headers.origin === "string" ? req.headers.origin : undefined;
   const allowBrowserCompanionOrigin =
-    pathname.startsWith("/api/lifeops/browser/companions/") &&
+    pathname.startsWith("/api/browser-bridge/companions/") &&
     isBrowserCompanionExtensionOrigin(origin);
   const allowed = allowBrowserCompanionOrigin
     ? (origin?.trim() ?? null)
@@ -153,7 +153,7 @@ export function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-LifeOps-Browser-Companion-Id, X-Eliza-Browser-Companion-Id",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id",
     );
   }
 

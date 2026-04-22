@@ -139,9 +139,9 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   appBrowser: "@elizaos/app-browser",
   "eliza-browser": "@elizaos/app-browser",
   elizaBrowser: "@elizaos/app-browser",
-  /** Legacy LifeOps browser entry (separate package from `@elizaos/app-lifeops`). */
-  "lifeops-browser": "@elizaos/plugin-lifeops-browser",
-  lifeopsBrowser: "@elizaos/plugin-lifeops-browser",
+  /** Agent Browser Bridge: Chrome/Safari companion + packaging. Core plugin; aliased here so short IDs resolve in plugins.allow and config.features. */
+  "browser-bridge": "@elizaos/plugin-browser-bridge",
+  browserBridge: "@elizaos/plugin-browser-bridge",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/app-lifeops",

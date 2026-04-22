@@ -46,6 +46,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",
+    "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/shared": "workspace:*",
