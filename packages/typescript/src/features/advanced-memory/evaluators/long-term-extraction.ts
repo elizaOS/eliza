@@ -1,7 +1,6 @@
 import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
-	type EvaluationExample,
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
@@ -17,6 +16,7 @@ import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
+import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
 const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));
@@ -101,7 +101,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? true,
-	examples: (spec.examples ?? []) as unknown as EvaluationExample[],
+	examples: toEvaluationExamples(spec.examples),
 
 	validate: async (
 		runtime: IAgentRuntime,
