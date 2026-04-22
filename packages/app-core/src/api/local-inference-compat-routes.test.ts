@@ -98,9 +98,7 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/hardware probes real hardware", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/hardware`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/hardware`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       totalRamGb: number;
@@ -116,12 +114,19 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/installed returns a list (may include external-scan results)", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/installed`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/installed`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { models: unknown[] };
     expect(Array.isArray(body.models)).toBe(true);
+  });
+
+  it("GET /api/local-inference/hub?forceExternal=1 still returns a snapshot", async () => {
+    const res = await fetch(
+      `${harness.baseUrl}/api/local-inference/hub?forceExternal=1`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { externalRuntimes: unknown[] };
+    expect(Array.isArray(body.externalRuntimes)).toBe(true);
   });
 
   it("GET /api/local-inference/hub merges catalog + installed + hardware + assignments", async () => {
@@ -132,11 +137,20 @@ describe("local-inference-compat-routes e2e", () => {
       installed: unknown[];
       hardware: { totalRamGb: number };
       assignments: Record<string, string>;
+      externalRuntimes: Array<{ id: string }>;
     };
     expect(Array.isArray(body.catalog)).toBe(true);
     expect(Array.isArray(body.installed)).toBe(true);
     expect(body.hardware.totalRamGb).toBeGreaterThan(0);
     expect(body.assignments).toEqual({});
+    expect(Array.isArray(body.externalRuntimes)).toBe(true);
+    expect(body.externalRuntimes).toHaveLength(4);
+    expect(body.externalRuntimes.map((r) => r.id).sort()).toEqual([
+      "jan",
+      "lmstudio",
+      "ollama",
+      "vllm",
+    ]);
   });
 
   it("GET /api/local-inference/assignments starts empty", async () => {
@@ -187,7 +201,9 @@ describe("local-inference-compat-routes e2e", () => {
       },
     );
     expect(clear.status).toBe(200);
-    const body = (await clear.json()) as { assignments: Record<string, string> };
+    const body = (await clear.json()) as {
+      assignments: Record<string, string>;
+    };
     expect(body.assignments.TEXT_SMALL).toBeUndefined();
   });
 
@@ -237,17 +253,15 @@ describe("local-inference-compat-routes e2e", () => {
   });
 
   it("GET /api/local-inference/providers returns the full provider list", async () => {
-    const res = await fetch(
-      `${harness.baseUrl}/api/local-inference/providers`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/local-inference/providers`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       providers: Array<{ id: string; kind: string }>;
     };
     expect(Array.isArray(body.providers)).toBe(true);
-    expect(
-      body.providers.some((p) => p.id === "milady-local-inference"),
-    ).toBe(true);
+    expect(body.providers.some((p) => p.id === "milady-local-inference")).toBe(
+      true,
+    );
     expect(body.providers.some((p) => p.id === "anthropic")).toBe(true);
   });
 
@@ -311,6 +325,82 @@ describe("local-inference-compat-routes e2e", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ slot: "NOT_A_SLOT", provider: "openai" }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/local-inference/routing/external-llm-focus persists + clears", async () => {
+    const pin = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/external-llm-focus`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ focus: "ollama" }),
+      },
+    );
+    expect(pin.status).toBe(200);
+    const pinnedBody = (await pin.json()) as {
+      preferences: { externalLlmAutodetectFocus?: string };
+    };
+    expect(pinnedBody.preferences.externalLlmAutodetectFocus).toBe("ollama");
+
+    const getPinned = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing`,
+    );
+    const getBody = (await getPinned.json()) as {
+      preferences: { externalLlmAutodetectFocus?: string };
+    };
+    expect(getBody.preferences.externalLlmAutodetectFocus).toBe("ollama");
+
+    const clear = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/external-llm-focus`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ focus: null }),
+      },
+    );
+    expect(clear.status).toBe(200);
+    const cleared = (await clear.json()) as {
+      preferences: { externalLlmAutodetectFocus?: string };
+    };
+    expect(cleared.preferences.externalLlmAutodetectFocus).toBeUndefined();
+  });
+
+  it("POST /api/local-inference/routing/external-llm-focus persists milady-gguf", async () => {
+    const pin = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/external-llm-focus`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ focus: "milady-gguf" }),
+      },
+    );
+    expect(pin.status).toBe(200);
+    const pinnedBody = (await pin.json()) as {
+      preferences: { externalLlmAutodetectFocus?: string };
+    };
+    expect(pinnedBody.preferences.externalLlmAutodetectFocus).toBe(
+      "milady-gguf",
+    );
+
+    const getPinned = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing`,
+    );
+    const getBody = (await getPinned.json()) as {
+      preferences: { externalLlmAutodetectFocus?: string };
+    };
+    expect(getBody.preferences.externalLlmAutodetectFocus).toBe("milady-gguf");
+  });
+
+  it("POST /api/local-inference/routing/external-llm-focus rejects invalid focus", async () => {
+    const res = await fetch(
+      `${harness.baseUrl}/api/local-inference/routing/external-llm-focus`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ focus: "foo" }),
       },
     );
     expect(res.status).toBe(400);

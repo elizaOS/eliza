@@ -17,6 +17,8 @@ import type {
   AgentModelSlot,
   CatalogModel,
   DownloadJob,
+  ExternalLlmAutodetectFocus,
+  ExternalLlmRuntimeRow,
   HardwareProbe,
   InstalledModel,
   ModelAssignments,
@@ -32,6 +34,8 @@ export type {
   CatalogModel,
   DeviceBridgeStatus,
   DownloadJob,
+  ExternalLlmAutodetectFocus,
+  ExternalLlmRuntimeRow,
   HardwareProbe,
   InstalledModel,
   ModelAssignments,
@@ -46,7 +50,10 @@ export type {
 
 declare module "./client-base" {
   interface ElizaClient {
-    getLocalInferenceHub(): Promise<ModelHubSnapshot>;
+    getLocalInferenceHub(options?: {
+      /** Append `?forceExternal=1` so Ollama / LM Studio / vLLM probes re-run. */
+      forceExternalProbe?: boolean;
+    }): Promise<ModelHubSnapshot>;
     getLocalInferenceHardware(): Promise<HardwareProbe>;
     getLocalInferenceCatalog(): Promise<{ models: CatalogModel[] }>;
     getLocalInferenceInstalled(): Promise<{ models: InstalledModel[] }>;
@@ -86,13 +93,18 @@ declare module "./client-base" {
       slot: AgentModelSlot,
       policy: RoutingPolicy | null,
     ): Promise<{ preferences: RoutingPreferences }>;
+    setLocalInferenceExternalLlmAutodetectFocus(
+      focus: ExternalLlmAutodetectFocus,
+    ): Promise<{ preferences: RoutingPreferences }>;
   }
 }
 
 ElizaClient.prototype.getLocalInferenceHub = async function (
   this: ElizaClient,
+  options?: { forceExternalProbe?: boolean },
 ) {
-  return this.fetch("/api/local-inference/hub");
+  const suffix = options?.forceExternalProbe ? "?forceExternal=1" : "";
+  return this.fetch(`/api/local-inference/hub${suffix}`);
 };
 
 ElizaClient.prototype.getLocalInferenceHardware = async function (
@@ -247,3 +259,13 @@ ElizaClient.prototype.setLocalInferencePolicy = async function (
     body: JSON.stringify({ slot, policy }),
   });
 };
+
+ElizaClient.prototype.setLocalInferenceExternalLlmAutodetectFocus =
+  async function (this: ElizaClient, focus: ExternalLlmAutodetectFocus) {
+    return this.fetch("/api/local-inference/routing/external-llm-focus", {
+      method: "POST",
+      body: JSON.stringify({
+        focus: focus === "any" ? null : focus,
+      }),
+    });
+  };

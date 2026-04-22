@@ -1,4 +1,8 @@
-import { Button, cn } from "@elizaos/app-core";
+// WHY @elizaos/ui (not @elizaos/app-core): the app-core package entry re-exports the full
+// components barrel. Importing it from onboarding recreates App → … → FeaturesStep → barrel
+// → ProviderSwitcher → … and breaks Vite HMR for ProviderSwitcher (circular graph). Primitives
+// live in @elizaos/ui anyway.
+import { Button, cn } from "@elizaos/ui";
 import { useCallback, useMemo } from "react";
 import { useApp } from "../../state";
 import { FeatureCard, type FeatureStatus } from "./features/FeatureCard";

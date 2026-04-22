@@ -1,8 +1,8 @@
+import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
-import { client } from "../../api";
 
 const AUTOMATION_SCOPES = new Set([
   "automation-coordinator",
@@ -16,7 +16,9 @@ function sortByUpdatedAtDesc(left: Conversation, right: Conversation): number {
   );
 }
 
-function trimOptionalString(value: string | null | undefined): string | undefined {
+function trimOptionalString(
+  value: string | null | undefined,
+): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -169,7 +171,9 @@ function normalizedMetadata(
   const draftId = trimOptionalString(metadata?.draftId);
   if (draftId) next.draftId = draftId;
 
-  const sourceConversationId = trimOptionalString(metadata?.sourceConversationId);
+  const sourceConversationId = trimOptionalString(
+    metadata?.sourceConversationId,
+  );
   if (sourceConversationId) next.sourceConversationId = sourceConversationId;
 
   const terminalBridgeConversationId = trimOptionalString(

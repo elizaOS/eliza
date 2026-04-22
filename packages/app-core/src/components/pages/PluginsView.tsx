@@ -68,7 +68,7 @@ function PluginListView({
   contentHeader,
   mode = "all",
   inModal,
-  connectorDesktopPlacement = "left",
+  connectorDesktopPlacement: _connectorDesktopPlacement = "left",
 }: PluginListViewProps) {
   const {
     plugins = [],

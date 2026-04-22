@@ -27,6 +27,9 @@ import {
 import type { PluginInstallRecord } from "../config/types.eliza.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+import { maybeEnableOllamaFromLocalProbe } from "./ollama-local-probe.js";
+import { ensureOfficialOpenAiBaseUnlessConfigured } from "./openai-base-url-default.js";
+import { maybeEnableOpenAiCompatibleFromLocalProbe } from "./openai-compatible-local-probe.js";
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -855,6 +858,12 @@ export async function resolvePlugins(
   const plugins: ResolvedPlugin[] = [];
   const failedPlugins: Array<{ name: string; error: string }> = [];
   const repairedInstallRecords = new Set<string>();
+
+  // If Ollama is running with pulled models but OLLAMA_BASE_URL is unset,
+  // set it for this process so @elizaos/plugin-ollama can auto-enable.
+  await maybeEnableOllamaFromLocalProbe(process.env);
+  await maybeEnableOpenAiCompatibleFromLocalProbe(process.env);
+  ensureOfficialOpenAiBaseUnlessConfigured(config);
 
   // NOTE: Auto-enable runs before dependency validation intentionally.
   // It returns a new config object (structuredClone under the hood) with

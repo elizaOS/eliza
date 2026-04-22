@@ -4,11 +4,7 @@
   "description": "Search runtime and service logs.",
   "npmName": "@elizaos/app-log-viewer",
   "source": "bundled",
-  "tags": [
-    "logs",
-    "debug",
-    "viewer"
-  ],
+  "tags": ["logs", "debug", "viewer"],
   "config": {},
   "render": {
     "visible": true,
@@ -17,9 +13,7 @@
     "icon": "FileText",
     "group": "Apps",
     "groupOrder": 8,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -28,10 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "logs",
-    "capabilities": [
-      "logs",
-      "debug",
-      "viewer"
-    ]
+    "capabilities": ["logs", "debug", "viewer"]
   }
 }

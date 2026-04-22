@@ -24,13 +24,7 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type { PluginInfo } from "../../api/client-types-config";
 import {
@@ -118,7 +112,7 @@ function rowListId(row: ConversationsSidebarRow): string {
   return row.kind === "inbox" ? `${INBOX_ID_PREFIX}${row.id}` : row.id;
 }
 
-function renderPluginIcon(plugin: PluginInfo): React.ReactNode | null {
+function _renderPluginIcon(plugin: PluginInfo): React.ReactNode | null {
   const icon = resolveIcon(plugin);
   if (!icon) return null;
   if (typeof icon === "string") {
@@ -682,9 +676,7 @@ export function ConversationsSidebar({
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={undefined}
         headerClassName={
-          !mobile && !isGameModal
-            ? "!px-2 !pt-1.5 !pb-1.5"
-            : undefined
+          !mobile && !isGameModal ? "!px-2 !pt-1.5 !pb-1.5" : undefined
         }
         collapseButtonClassName={
           !mobile && !isGameModal
@@ -954,10 +946,7 @@ export function ConversationsSidebar({
   );
 }
 
-type TranslateFn = (
-  key: string,
-  options?: Record<string, unknown>,
-) => string;
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 interface CollapsibleChannelSectionProps {
   sectionKey: string;
@@ -1075,10 +1064,7 @@ function CollapsibleChannelSection({
           {emptyLabel}
         </div>
       ) : (
-        <div
-          id={`channel-section-body-${sectionKey}`}
-          className="space-y-0"
-        >
+        <div id={`channel-section-body-${sectionKey}`} className="space-y-0">
           {rows.map((row) => {
             const conversationId = rowListId(row);
             return (

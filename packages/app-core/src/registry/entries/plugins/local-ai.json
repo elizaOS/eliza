@@ -1,6 +1,6 @@
 {
   "id": "local-ai",
-  "name": "Local Ai",
+  "name": "Local AI",
   "description": "LocalAI provider for self-hosted, OpenAI-compatible local model inference.",
   "npmName": "@elizaos/plugin-local-ai",
   "version": "2.0.0-alpha.4",
@@ -85,10 +85,7 @@
     "icon": "Monitor",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-local-ai#readme",

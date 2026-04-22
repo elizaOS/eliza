@@ -64,7 +64,7 @@ export function ConnectorSidebar({
   expandLabel,
   hasPluginToggleInFlight,
   mode,
-  pluginDescriptionFallback,
+  pluginDescriptionFallback: _pluginDescriptionFallback,
   pluginSearch,
   registerConnectorRailItem,
   registerConnectorSidebarItem,

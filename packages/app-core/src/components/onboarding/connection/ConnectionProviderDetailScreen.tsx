@@ -1,4 +1,5 @@
 import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
+import { ELIZA_CLOUD_URLS } from "@elizaos/shared/eliza-cloud-presets";
 import { Button, Input } from "@elizaos/ui";
 import type { ChangeEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -155,7 +156,6 @@ export function ConnectionProviderDetailScreen({
     onboardingSubscriptionTab,
     onboardingCloudApiKey,
     onboardingApiKey,
-    onboardingPrimaryModel,
     onboardingElizaCloudTab,
     onboardingOpenRouterModel,
     elizaCloudConnected,
@@ -633,7 +633,7 @@ export function ConnectionProviderDetailScreen({
                     <>
                       {t("onboarding.useExistingKey")}{" "}
                       <a
-                        href="https://elizacloud.ai/dashboard/settings"
+                        href={ELIZA_CLOUD_URLS.marketingDashboardSettings}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[var(--onboarding-link)] underline underline-offset-2 transition-colors duration-200 hover:text-[var(--onboarding-text-strong)]"

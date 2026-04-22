@@ -460,14 +460,14 @@ describe("N8nSidecar", () => {
     it("raises a clear error when the spawn binary is missing", async () => {
       const preflightBinary = vi.fn(async () => {
         throw new Error(
-          "bunx runtime not found on PATH — required for local n8n. Install from https://bun.sh.",
+          'npx not found or failed to run — required for local n8n. Install Node.js LTS (npm includes `npx`): https://nodejs.org/en/download — Bun does not ship `npx`. (Executable not found in $PATH: "npx")',
         );
       });
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ maxRetries: 0 }),
-        { ...h.deps, preflightBinary },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ maxRetries: 0 }), {
+        ...h.deps,
+        preflightBinary,
+      });
 
       const errorPromise = new Promise<N8nSidecarState>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -481,7 +481,7 @@ describe("N8nSidecar", () => {
       const finalState = await errorPromise;
 
       expect(finalState.status).toBe("error");
-      expect(finalState.errorMessage).toMatch(/bun.sh/i);
+      expect(finalState.errorMessage).toMatch(/nodejs\.org|npx/i);
       expect(h.spawn).not.toHaveBeenCalled();
 
       await sidecar.stop();
@@ -507,15 +507,12 @@ describe("N8nSidecar", () => {
       });
 
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ stateDir }),
-        {
-          ...h.deps,
-          isProcessAlive,
-          readProcessCommand,
-          killPid,
-        },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        isProcessAlive,
+        readProcessCommand,
+        killPid,
+      });
 
       const readyPromise = new Promise<void>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -553,15 +550,12 @@ describe("N8nSidecar", () => {
       const killPid = vi.fn();
 
       const h = makeHarness();
-      const sidecar = new N8nSidecar(
-        baseConfig({ stateDir }),
-        {
-          ...h.deps,
-          isProcessAlive,
-          readProcessCommand,
-          killPid,
-        },
-      );
+      const sidecar = new N8nSidecar(baseConfig({ stateDir }), {
+        ...h.deps,
+        isProcessAlive,
+        readProcessCommand,
+        killPid,
+      });
 
       const readyPromise = new Promise<void>((resolve) => {
         const unsub = sidecar.subscribe((s) => {
@@ -697,7 +691,9 @@ describe("N8nSidecar", () => {
           url.includes("/api/v1/workflows") &&
           (!init?.method || init.method === "GET")
         ) {
-          const key = (init?.headers as Record<string, string>)["X-N8N-API-KEY"];
+          const key = (init?.headers as Record<string, string>)[
+            "X-N8N-API-KEY"
+          ];
           if (key === "cached_key_abc") {
             return new Response(JSON.stringify({ data: [] }), { status: 200 });
           }
@@ -814,9 +810,11 @@ describe("N8nSidecar", () => {
       );
       sidecar.updateConfig({ readinessTimeoutMs: 5000 });
       // Internal field — exercise via a cast only to assert the merge.
-      const cfg = (sidecar as unknown as {
-        config: { readinessTimeoutMs: number; startPort: number };
-      }).config;
+      const cfg = (
+        sidecar as unknown as {
+          config: { readinessTimeoutMs: number; startPort: number };
+        }
+      ).config;
       expect(cfg.readinessTimeoutMs).toBe(5000);
     });
 
@@ -835,9 +833,11 @@ describe("N8nSidecar", () => {
       await readyPromise;
 
       sidecar.updateConfig({ startPort: 9999, version: "2.0.0" });
-      const cfg = (sidecar as unknown as {
-        config: { startPort: number; version: string };
-      }).config;
+      const cfg = (
+        sidecar as unknown as {
+          config: { startPort: number; version: string };
+        }
+      ).config;
       // Live values unchanged until explicit restart.
       expect(cfg.startPort).toBe(5678);
       expect(cfg.version).toBe("1.70.0");
@@ -856,9 +856,11 @@ describe("N8nSidecar", () => {
       const first = getN8nSidecar({ readinessTimeoutMs: 1000 });
       const second = getN8nSidecar({ readinessTimeoutMs: 8000 });
       expect(first).toBe(second);
-      const cfg = (second as unknown as {
-        config: { readinessTimeoutMs: number };
-      }).config;
+      const cfg = (
+        second as unknown as {
+          config: { readinessTimeoutMs: number };
+        }
+      ).config;
       expect(cfg.readinessTimeoutMs).toBe(8000);
     });
 

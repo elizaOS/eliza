@@ -1,4 +1,11 @@
-import { Button, useTimeout } from "@elizaos/ui";
+/**
+ * Per-provider env / API key fields under **AI Model**.
+ *
+ * WHY visibility is controlled upstream: `ProviderSwitcher` hides this while `providerSelectLocked`
+ * so Radix `Select` and dense inputs are not both active during `switchProvider` + `loadPlugins`
+ * (see `ProviderSwitcher.tsx` file header).
+ */
+import { Button, Input, useTimeout } from "@elizaos/ui";
 import { useCallback, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {
@@ -6,9 +13,20 @@ import {
   defaultRegistry,
   type JsonSchemaObject,
 } from "../../config";
+import {
+  formatOnboardingPluginProviderLabel,
+  getOnboardingProviderOption,
+} from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
+
+function normalizeAiProviderPluginId(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^@[^/]+\//, "")
+    .replace(/^plugin-/, "");
+}
 
 interface ProviderPlugin {
   id: string;
@@ -29,6 +47,14 @@ export interface ApiKeyConfigProps {
     values: Record<string, string>,
   ) => void;
   loadPlugins: () => Promise<void>;
+  /**
+   * For catalog-backed providers that are not yet present in the plugin list
+   * (no parameter schema). Persists the key via `switchProvider` + restart.
+   */
+  onSaveCatalogApiKey?: (
+    onboardingProviderId: string,
+    apiKey: string,
+  ) => Promise<void>;
 }
 
 export function ApiKeyConfig({
@@ -37,10 +63,13 @@ export function ApiKeyConfig({
   pluginSaveSuccess,
   handlePluginConfigSave,
   loadPlugins,
+  onSaveCatalogApiKey,
 }: ApiKeyConfigProps) {
   const { setTimeout } = useTimeout();
 
-  const { t } = useApp();
+  const { t, setActionNotice } = useApp();
+  const [catalogApiKeyDraft, setCatalogApiKeyDraft] = useState("");
+  const [catalogKeySaving, setCatalogKeySaving] = useState(false);
   const [pluginFieldValues, setPluginFieldValues] = useState<
     Record<string, Record<string, string>>
   >({});
@@ -96,8 +125,113 @@ export function ApiKeyConfig({
     [loadPlugins, setTimeout, t],
   );
 
-  if (!selectedProvider || selectedProvider.parameters.length === 0)
+  if (!selectedProvider) return null;
+
+  const onboardingProviderId =
+    getOnboardingProviderOption(
+      normalizeAiProviderPluginId(selectedProvider.id),
+    )?.id ?? normalizeAiProviderPluginId(selectedProvider.id);
+  const catalogOption = getOnboardingProviderOption(onboardingProviderId);
+
+  if (selectedProvider.parameters.length === 0) {
+    if (typeof onSaveCatalogApiKey !== "function") {
+      return null;
+    }
+    if (catalogOption?.envKey) {
+      const isSaving = catalogKeySaving;
+      return (
+        <div className="border-t border-border/40 pt-6">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold text-txt">
+              {formatOnboardingPluginProviderLabel(
+                selectedProvider.id,
+                selectedProvider.name,
+                t,
+              )}
+            </h3>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t("apikeyconfig.catalogDirectKeyHelp")}
+          </p>
+          <div className="space-y-2">
+            <label
+              className="block text-xs font-medium text-foreground"
+              htmlFor="catalog-direct-api-key"
+            >
+              {catalogOption.envKey}
+            </label>
+            <Input
+              id="catalog-direct-api-key"
+              type="password"
+              autoComplete="off"
+              className="h-9 w-full max-w-md rounded-lg border border-input bg-background text-sm"
+              value={catalogApiKeyDraft}
+              onChange={(e) => setCatalogApiKeyDraft(e.target.value)}
+              placeholder={t("apikeyconfig.apiKeyPlaceholder")}
+            />
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-9 rounded-lg font-semibold"
+              disabled={isSaving || !catalogApiKeyDraft.trim()}
+              onClick={() => {
+                const key = catalogApiKeyDraft.trim();
+                if (!key) return;
+                setCatalogKeySaving(true);
+                void (async () => {
+                  try {
+                    await onSaveCatalogApiKey(String(catalogOption.id), key);
+                    setCatalogApiKeyDraft("");
+                    setActionNotice?.(
+                      t("apikeyconfig.catalogKeyActivated"),
+                      "success",
+                      4000,
+                    );
+                  } catch (err) {
+                    setActionNotice?.(
+                      t("apikeyconfig.error", {
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : t("apikeyconfig.failed"),
+                      }),
+                      "error",
+                      5000,
+                    );
+                  } finally {
+                    setCatalogKeySaving(false);
+                  }
+                })();
+              }}
+            >
+              {isSaving
+                ? t("apikeyconfig.saving")
+                : t("apikeyconfig.saveAndActivate")}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    if (catalogOption) {
+      return (
+        <div className="border-t border-border/40 pt-6">
+          <h3 className="mb-2 text-xs font-semibold text-txt">
+            {formatOnboardingPluginProviderLabel(
+              selectedProvider.id,
+              selectedProvider.name,
+              t,
+            )}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {catalogOption.description}
+          </p>
+        </div>
+      );
+    }
     return null;
+  }
 
   const isSaving = pluginSaving.has(selectedProvider.id);
   const saveSuccess = pluginSaveSuccess.has(selectedProvider.id);
@@ -141,7 +275,7 @@ export function ApiKeyConfig({
   }
 
   return (
-    <div className="border-t border-border/40 pt-4">
+    <div className="border-t border-border/40 pt-6">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold text-txt">
           {selectedProvider.name}
@@ -174,7 +308,7 @@ export function ApiKeyConfig({
         }
       />
 
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <div className="mt-6 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="outline"

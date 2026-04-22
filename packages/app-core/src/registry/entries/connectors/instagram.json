@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-instagram",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "social",
-    "social-feed",
-    "instagram"
-  ],
+  "tags": ["connector", "social", "social-feed", "instagram"],
   "config": {
     "INSTAGRAM_PROXY": {
       "type": "string",
@@ -52,11 +47,7 @@
     "icon": "Video",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

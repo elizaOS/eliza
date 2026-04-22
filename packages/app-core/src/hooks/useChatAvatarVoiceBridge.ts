@@ -18,7 +18,7 @@ export interface UseChatAvatarVoiceBridgeOptions {
 export function useChatAvatarVoiceBridge({
   mouthOpen,
   isSpeaking,
-  usingAudioAnalysis,
+  usingAudioAnalysis: _usingAudioAnalysis,
   onSpeakingChange,
 }: UseChatAvatarVoiceBridgeOptions): void {
   const prevSpeakingRef = useRef(isSpeaking);

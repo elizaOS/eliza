@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-linear",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "linear",
-    "typescript",
-    "project-management"
-  ],
+  "tags": ["linear", "typescript", "project-management"],
   "config": {
     "LINEAR_API_KEY": {
       "type": "secret",
@@ -43,10 +39,7 @@
     "icon": "Square",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

@@ -42,7 +42,9 @@ export function computeSingleChainFocus(
     (k): k is PrimaryInventoryChainKey =>
       isPrimaryInventoryChainKey(k) && normalizedFilters[k],
   );
-  return enabled.length === 1 ? enabled[0]! : null;
+  if (enabled.length !== 1) return null;
+  const only = enabled[0];
+  return only ?? null;
 }
 
 export function normalizeInventoryChainFilters(

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import { ELIZA_CLOUD_PRIMARY_ORIGIN } from "@elizaos/shared/eliza-cloud-presets";
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
@@ -30,6 +31,8 @@ export interface ProviderSwitchRouteContext {
   providerSwitchInProgress: boolean;
   setProviderSwitchInProgress: (value: boolean) => void;
   restartRuntime?: (reason: string) => Promise<boolean>;
+  /** When true, runtime reload is in flight — reject new switches until it settles. */
+  isRuntimeRestarting?: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +62,15 @@ export async function handleProviderSwitchRoutes(
       return true;
     }
 
+    if (ctx.isRuntimeRestarting?.()) {
+      error(
+        res,
+        "Agent runtime is restarting — try again in a few seconds.",
+        503,
+      );
+      return true;
+    }
+
     if (ctx.providerSwitchInProgress) {
       error(res, "Provider switch already in progress", 409);
       return true;
@@ -69,7 +81,6 @@ export async function handleProviderSwitchRoutes(
       const trimmedApiKey =
         typeof body.apiKey === "string" ? body.apiKey.trim() : undefined;
       if (trimmedApiKey && trimmedApiKey.length > 512) {
-        ctx.setProviderSwitchInProgress(false);
         error(res, "API key is too long", 400);
         return true;
       }
@@ -91,7 +102,7 @@ export async function handleProviderSwitchRoutes(
         };
         if (trimmedApiKey) {
           const cloudApiKey = trimmedApiKey;
-          const cloudBaseUrl = "https://www.elizacloud.ai";
+          const cloudBaseUrl = ELIZA_CLOUD_PRIMARY_ORIGIN;
           process.env.ANTHROPIC_BASE_URL = `${cloudBaseUrl}/api/v1`;
           process.env.ANTHROPIC_API_KEY = cloudApiKey;
           process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;
@@ -111,14 +122,23 @@ export async function handleProviderSwitchRoutes(
       }
 
       if (!connection) {
-        ctx.setProviderSwitchInProgress(false);
         error(res, "Invalid provider", 400);
         return true;
       }
 
       await applyOnboardingConnectionConfig(config, connection);
       ctx.saveElizaConfig(config);
+    } catch (err) {
+      logger.error(
+        `[api] Provider switch failed: ${err instanceof Error ? err.stack : err}`,
+      );
+      error(res, "Provider switch failed", 500);
+      return true;
+    } finally {
+      ctx.setProviderSwitchInProgress(false);
+    }
 
+    try {
       const restartReason = `provider switch to ${normalizedProvider}`;
       const restarted = ctx.restartRuntime
         ? await ctx.restartRuntime(restartReason)
@@ -127,17 +147,16 @@ export async function handleProviderSwitchRoutes(
         ctx.scheduleRuntimeRestart(restartReason);
       }
 
-      ctx.setProviderSwitchInProgress(false);
-
       json(res, {
         success: true,
         provider: normalizedProvider,
         restarting: restarted,
       });
     } catch (err) {
-      ctx.setProviderSwitchInProgress(false);
       logger.error(
-        `[api] Provider switch failed: ${err instanceof Error ? err.stack : err}`,
+        `[api] Provider switch restart failed (config was saved): ${
+          err instanceof Error ? err.stack : err
+        }`,
       );
       error(res, "Provider switch failed", 500);
     }

@@ -1316,11 +1316,20 @@ export class AgentRuntime implements IAgentRuntime {
 			"Stopping runtime",
 		);
 
-		// Wait for any in-flight service starts so we don't leave services running
+		// Wait for any in-flight service starts so we don't leave services running.
+		// WHY await: tearing down while Service.start() still mutates this.services / maps
+		// races stop() and can leak subprocesses (e.g. Bun PTY worker). WHY log serviceTypes:
+		// operators need to see *which* key(s) in startingServices blocked shutdown (not only count).
 		const inFlight = Array.from(this.startingServices.values());
 		if (inFlight.length > 0) {
+			const serviceTypes = Array.from(this.startingServices.keys());
 			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, count: inFlight.length },
+				{
+					src: "agent",
+					agentId: this.agentId,
+					count: inFlight.length,
+					serviceTypes,
+				},
 				"Waiting for in-flight service starts before stopping",
 			);
 			await Promise.all(inFlight);

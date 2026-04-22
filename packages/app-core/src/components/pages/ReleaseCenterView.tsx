@@ -324,10 +324,10 @@ export function ReleaseCenterView() {
       </div>
 
       {/* Release notes URL */}
-      <div className="border-t border-border/40 pt-4">
+      <div className="border-t border-border/40 pt-6">
         <label
           htmlFor="release-notes-url"
-          className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
+          className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted"
         >
           {t("releasecenterview.ReleaseNotes", {
             defaultValue: "Release Notes",

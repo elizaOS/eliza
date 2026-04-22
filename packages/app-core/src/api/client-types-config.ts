@@ -3,8 +3,8 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
-import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
 import type { ConversationScope } from "@elizaos/agent/api/server-types";
+import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
 import type {
   CreateTriggerRequest as _CreateTriggerRequest,
   TriggerHealthSnapshot as _TriggerHealthSnapshot,
@@ -12,10 +12,6 @@ import type {
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
 } from "@elizaos/agent/triggers";
-import type {
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "@elizaos/app-lifeops/contracts";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
 
@@ -537,11 +533,7 @@ export interface AutomationNodeDescriptor {
   label: string;
   description: string;
   class: AutomationNodeClass;
-  source:
-    | "runtime_action"
-    | "runtime_provider"
-    | "lifeops"
-    | "lifeops_event";
+  source: "runtime_action" | "runtime_provider" | "lifeops" | "lifeops_event";
   backingCapability: string;
   ownerScoped: boolean;
   requiresSetup: boolean;

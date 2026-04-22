@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-memory",
   "version": "2.0.1",
   "source": "bundled",
-  "tags": [
-    "memory",
-    "summarization"
-  ],
+  "tags": ["memory", "summarization"],
   "config": {
     "MEMORY_ENABLE_BM25": {
       "type": "boolean",
@@ -118,10 +115,7 @@
     "icon": "Dna",
     "group": "knowledge",
     "groupOrder": 6,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

@@ -63,7 +63,7 @@ const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
 const LIVE_PROVIDER_LABELS = {
-  anthropic: "Anthropic",
+  anthropic: "Claude Platform (api key)",
   google: "Gemini",
   groq: "Groq",
   openai: "OpenAI",

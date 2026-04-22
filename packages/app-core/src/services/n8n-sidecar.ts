@@ -291,6 +291,18 @@ function killPidDefault(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
+function binaryInstallHint(binary: string): string {
+  const base =
+    binary.split(/[/\\]/).pop()?.toLowerCase() ?? binary.toLowerCase();
+  if (base === "npx") {
+    return "Install Node.js LTS (npm includes `npx`): https://nodejs.org/en/download — Bun does not ship `npx`.";
+  }
+  if (base === "bunx" || base === "bun") {
+    return "Install Bun: https://bun.sh";
+  }
+  return `Ensure \`${binary}\` is installed and on your PATH.`;
+}
+
 async function preflightBinaryDefault(binary: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const proc = nodeSpawn(binary, ["--version"], {
@@ -304,7 +316,7 @@ async function preflightBinaryDefault(binary: string): Promise<void> {
       }
       reject(
         new Error(
-          `${binary} --version timed out; bun runtime not found on PATH — required for local n8n. Install from https://bun.sh.`,
+          `${binary} --version timed out after 5s — required for local n8n. ${binaryInstallHint(binary)}`,
         ),
       );
     }, 5_000);
@@ -313,7 +325,7 @@ async function preflightBinaryDefault(binary: string): Promise<void> {
       clearTimeout(timer);
       reject(
         new Error(
-          `${binary} runtime not found on PATH — required for local n8n. Install from https://bun.sh. (${err.message})`,
+          `${binary} not found or failed to run — required for local n8n. ${binaryInstallHint(binary)} (${err.message})`,
         ),
       );
     });
@@ -324,7 +336,7 @@ async function preflightBinaryDefault(binary: string): Promise<void> {
       } else {
         reject(
           new Error(
-            `${binary} --version exited with code ${code ?? "null"} — required for local n8n. Install from https://bun.sh.`,
+            `${binary} --version exited with code ${code ?? "null"} — required for local n8n. ${binaryInstallHint(binary)}`,
           ),
         );
       }
@@ -351,9 +363,9 @@ function extractAuthCookie(res: Response): string | null {
   const list =
     typeof headers.getSetCookie === "function"
       ? headers.getSetCookie()
-      : ((headers.get("set-cookie") ?? "")
+      : (headers.get("set-cookie") ?? "")
           .split(/,(?=\s*[\w-]+=)/)
-          .filter((s) => s.length > 0));
+          .filter((s) => s.length > 0);
   for (const raw of list) {
     const first = raw.split(";")[0]?.trim();
     if (first?.startsWith("n8n-auth=")) return first;
@@ -415,6 +427,8 @@ export class N8nSidecar {
    * so a future crash doesn't count as part of the original burst.
    */
   private retryResetTimer: unknown = null;
+  /** After one `start attempt failed` warn, further retries stay silent until `ready`, `start()`, or `stop()`. */
+  private supervisorStartFailureWarned = false;
 
   constructor(config: N8nSidecarConfig = {}, deps: N8nSidecarDeps = {}) {
     this.config = resolveConfig(config);
@@ -570,6 +584,7 @@ export class N8nSidecar {
     }
 
     this.stopping = false;
+    this.supervisorStartFailureWarned = false;
     this.setState({
       status: "starting",
       errorMessage: null,
@@ -641,9 +656,7 @@ export class N8nSidecar {
             const key = await this.ensureApiKey(host);
             if (key) {
               this.apiKey = key;
-              logger.info(
-                `[n8n-sidecar] using api key ${fingerprint(key)}`,
-              );
+              logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
             }
           } catch (err) {
             logger.warn(
@@ -651,6 +664,7 @@ export class N8nSidecar {
             );
           }
 
+          this.supervisorStartFailureWarned = false;
           this.setState({ status: "ready", errorMessage: null });
           this.armRetryResetTimer();
 
@@ -663,7 +677,10 @@ export class N8nSidecar {
           this.setState({ status: "starting", pid: null });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
+          if (!this.supervisorStartFailureWarned) {
+            logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
+            this.supervisorStartFailureWarned = true;
+          }
           this.cancelRetryResetTimer();
           this.setState({
             status: "starting",
@@ -741,7 +758,8 @@ export class N8nSidecar {
     //   npx:  --yes <pkg> <args...>   (auto-confirm install prompt)
     //   bunx: -- <pkg> <args...>       (still supported for manual overrides)
     // Anything else is passed through as <pkg> <args...>.
-    const binaryBase = this.config.binary.split("/").pop() ?? this.config.binary;
+    const binaryBase =
+      this.config.binary.split("/").pop() ?? this.config.binary;
     const launcherArgs =
       binaryBase === "npx"
         ? ["--yes", versioned, "start"]
@@ -893,11 +911,7 @@ export class N8nSidecar {
       // some spawn topologies (bun's child_process.spawn in particular),
       // so a 0 here is not a real failure.
       const child = this.child;
-      if (
-        child &&
-        typeof child.exitCode === "number" &&
-        child.exitCode !== 0
-      ) {
+      if (child && typeof child.exitCode === "number" && child.exitCode !== 0) {
         throw new Error(
           `n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
         );
@@ -1057,9 +1071,7 @@ export class N8nSidecar {
           res.status === 500 &&
           /already\s+an?\s+entry\s+with\s+this\s+name/i.test(bodyText)
         ) {
-          log(
-            "api-key label already exists in n8n — deleting and re-creating",
-          );
+          log("api-key label already exists in n8n — deleting and re-creating");
           const deleted = await this.deleteApiKeysByLabel(host, cookie, label);
           if (deleted > 0) {
             res = await createKey();
@@ -1308,6 +1320,7 @@ export class N8nSidecar {
   /** Stop the sidecar. Idempotent. */
   async stop(): Promise<void> {
     this.stopping = true;
+    this.supervisorStartFailureWarned = false;
     this.cancelRetryResetTimer();
     this.killChild();
     await this.removePidfile();
@@ -1334,7 +1347,9 @@ export class N8nSidecar {
   }
 
   private async readPidfile(): Promise<number | null> {
-    const raw = await fs.readFile(this.pidfilePath(), "utf-8").catch(() => null);
+    const raw = await fs
+      .readFile(this.pidfilePath(), "utf-8")
+      .catch(() => null);
     if (!raw) return null;
     const parsed = Number.parseInt(raw.trim(), 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -1383,8 +1398,7 @@ export class N8nSidecar {
       `[n8n-sidecar] reaping orphan n8n pid=${pid} before spawn (cmd=${cmd.slice(0, 120)})`,
     );
     this.deps.killPid(pid, "SIGTERM");
-    const deadline =
-      this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
+    const deadline = this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
     while (this.deps.now() < deadline) {
       if (!this.deps.isProcessAlive(pid)) {
         await this.removePidfile();

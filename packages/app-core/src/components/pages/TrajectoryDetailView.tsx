@@ -121,7 +121,7 @@ function formatProviderPayload(value: unknown): string {
 
 export function TrajectoryDetailView({
   trajectoryId,
-  onBack,
+  onBack: _onBack,
 }: TrajectoryDetailViewProps) {
   const { t, copyToClipboard } = useApp();
   const [loading, setLoading] = useState(true);

@@ -8,6 +8,7 @@
  * Layer: feature (packages/app-core/src/components/pages/)
  */
 
+import { ELIZA_CLOUD_DEFAULT_SITE_URL } from "@elizaos/shared/eliza-cloud-presets";
 import {
   Button,
   Dialog,
@@ -319,7 +320,7 @@ function buildEditorUrl(
   }
   if (status.mode === "cloud" && cloudAgentId) {
     const cloudBase =
-      getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+      getBootConfig().cloudApiBase ?? ELIZA_CLOUD_DEFAULT_SITE_URL;
     return `${cloudBase}/agents/${encodeURIComponent(cloudAgentId)}/n8n/workflow/${encodeURIComponent(workflow.id)}`;
   }
   return null;
@@ -699,7 +700,15 @@ export function WorkflowGraphViewer({
 
         {/* The graph (render even with 0 nodes so React Flow mounts cleanly) */}
         {!loading && (
-          <div className="h-full w-full" onClick={(e) => e.stopPropagation()}>
+          // biome-ignore lint/a11y/noStaticElementInteractions: outer click shield for modal; React Flow handles graph pointer events
+          <div
+            className="h-full w-full"
+            role="presentation"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") e.stopPropagation();
+            }}
+          >
             <ReactFlow
               nodes={nodes}
               edges={isGenerating ? generatingEdges(edges) : edges}

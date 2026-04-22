@@ -576,8 +576,19 @@ describe("n8n get single workflow", () => {
       name: "Graph Workflow",
       active: true,
       nodes: [
-        { id: "n1", name: "Schedule Trigger", type: "n8n-nodes-base.scheduleTrigger", position: [250, 300] },
-        { id: "n2", name: "Send Email", type: "n8n-nodes-base.gmail", position: [450, 300], parameters: { to: "test@example.com" } },
+        {
+          id: "n1",
+          name: "Schedule Trigger",
+          type: "n8n-nodes-base.scheduleTrigger",
+          position: [250, 300],
+        },
+        {
+          id: "n2",
+          name: "Send Email",
+          type: "n8n-nodes-base.gmail",
+          position: [450, 300],
+          parameters: { to: "test@example.com" },
+        },
       ],
       connections: {
         "Schedule Trigger": {
@@ -609,7 +620,9 @@ describe("n8n get single workflow", () => {
     const nodes = w.nodes as Array<Record<string, unknown>>;
     expect(nodes[0]?.position).toEqual([250, 300]);
     expect(nodes[1]?.position).toEqual([450, 300]);
-    expect((nodes[1]?.parameters as Record<string, unknown>)?.to).toBe("test@example.com");
+    expect((nodes[1]?.parameters as Record<string, unknown>)?.to).toBe(
+      "test@example.com",
+    );
 
     // connections must be forwarded from upstream
     const connections = w.connections as Record<string, unknown>;
@@ -617,7 +630,8 @@ describe("n8n get single workflow", () => {
     expect(Object.keys(connections)).toContain("Schedule Trigger");
 
     // Confirm the right URL was called
-    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
     const [calledUrl] = calls[0] as [string];
     expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w-graph");
   });
@@ -629,7 +643,9 @@ describe("n8n get single workflow", () => {
       active: false,
       nodes: [
         {
-          id: "n1", name: "HTTP", type: "n8n-nodes-base.httpRequest",
+          id: "n1",
+          name: "HTTP",
+          type: "n8n-nodes-base.httpRequest",
           position: [100, 100],
           credentials: { api: "SECRET" },
           parameters: { url: "https://example.com" },
@@ -653,9 +669,13 @@ describe("n8n get single workflow", () => {
       fetchImpl,
     });
     expect(JSON.stringify(payload)).not.toContain("SECRET");
-    const nodes = (payload as Record<string, unknown>).nodes as Array<Record<string, unknown>>;
+    const nodes = (payload as Record<string, unknown>).nodes as Array<
+      Record<string, unknown>
+    >;
     expect(nodes[0]?.position).toEqual([100, 100]);
-    expect((nodes[0]?.parameters as Record<string, unknown>)?.url).toBe("https://example.com");
+    expect((nodes[0]?.parameters as Record<string, unknown>)?.url).toBe(
+      "https://example.com",
+    );
   });
 
   it("returns 503 when sidecar not ready", async () => {
@@ -697,7 +717,9 @@ describe("n8n toggle workflow", () => {
     const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
       .mock.calls;
     const [calledUrl, init] = calls[0] as [string, RequestInit];
-    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w1/activate");
+    expect(calledUrl).toBe(
+      "http://127.0.0.1:5678/api/v1/workflows/w1/activate",
+    );
     expect(init.method).toBe("POST");
   });
 

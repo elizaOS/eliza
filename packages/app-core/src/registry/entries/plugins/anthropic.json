@@ -1,23 +1,18 @@
 {
   "id": "anthropic",
-  "name": "Anthropic",
-  "description": "Anthropic model provider for Claude chat and reasoning models.",
+  "name": "Claude Platform (api key)",
+  "description": "Claude Platform provider for Claude chat and reasoning models.",
   "npmName": "@elizaos/plugin-anthropic",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "anthropic",
-    "chat"
-  ],
+  "tags": ["ai-provider", "llm", "anthropic", "chat"],
   "config": {
     "ANTHROPIC_API_KEY": {
       "type": "secret",
       "required": true,
       "sensitive": true,
       "label": "Api Key",
-      "help": "API key used to authenticate requests to Anthropic services",
+      "help": "API key used to authenticate requests to Claude Platform",
       "advanced": false
     },
     "ANTHROPIC_SMALL_MODEL": {
@@ -65,10 +60,7 @@
     "icon": "Brain",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-anthropic#readme",

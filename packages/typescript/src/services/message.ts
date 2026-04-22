@@ -475,6 +475,13 @@ export function resolvePlannerActionName(
 	return [];
 }
 
+/**
+ * Map planner `<providers>` names onto **registered** `runtime.providers`.
+ * **WHY:** LLMs invent labels (e.g. `ELIZA`) that are not real provider ids;
+ * passing them through would fail later or pull wrong context. Aliases exist
+ * only for known renames (`PLANNER_PROVIDER_ALIASES`). See
+ * `docs/runtime/self-hosted-llm-inference-whys.md` §6.
+ */
 function normalizePlannerProviders(
 	parsedXml: Record<string, unknown>,
 	runtime?: IAgentRuntime,
@@ -1799,6 +1806,14 @@ export function suggestOwnedActionFromMetadata(
 	};
 }
 
+/**
+ * Replace the planner’s non-passive action when **message text** matches
+ * another registered action’s ownership metadata materially better.
+ * **WHY:** planners pick plausible umbrella names that do not match the
+ * handler that actually owns the workflow; user text is the ground-truth tie-break.
+ * Tradeoff: overlapping action descriptions can cause surprising overrides — see
+ * `docs/runtime/self-hosted-llm-inference-whys.md` §7.
+ */
 function findOwnedActionCorrectionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,

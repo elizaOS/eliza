@@ -156,6 +156,21 @@ export function WorkspaceLayout({
           </div>
         </main>
       </div>
+      {/* Footer sits outside scrollable `main` so widget strips stay visible; horizontal
+          padding matches `main` when `contentPadding` is on. WHY: callers (e.g. Settings)
+          passed `footer` for years but it was never rendered — fixing that avoids “dead”
+          layout props and keeps the strip visually aligned with page content. */}
+      {footer ? (
+        <div
+          className={cn(
+            "shrink-0 border-t border-border/40 bg-bg/40",
+            contentPadding && "px-4 sm:px-6 lg:px-7",
+            footerClassName,
+          )}
+        >
+          {footer}
+        </div>
+      ) : null}
     </div>
   );
 }

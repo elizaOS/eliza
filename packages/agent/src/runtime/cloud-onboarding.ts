@@ -8,6 +8,7 @@
  */
 
 import { logger } from "@elizaos/core";
+import { ELIZA_CLOUD_DEFAULT_SITE_URL } from "@elizaos/shared/eliza-cloud-presets";
 import { type CloudLoginResult, cloudLogin } from "../cloud/auth.js";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import {
@@ -35,7 +36,7 @@ export interface CloudOnboardingResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_BASE_URL = ELIZA_CLOUD_DEFAULT_SITE_URL;
 const PROVISION_TIMEOUT_MS = 120_000; // 2 minutes
 const PROVISION_POLL_INTERVAL_MS = 3_000;
 

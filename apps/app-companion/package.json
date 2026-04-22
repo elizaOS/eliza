@@ -27,6 +27,7 @@
     "./emotes/*": "./src/emotes/*.ts"
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@elizaos/core": "workspace:*",

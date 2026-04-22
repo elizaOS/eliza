@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-acp",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "agents",
-    "gateway",
-    "realtime",
-    "acp"
-  ],
+  "tags": ["connector", "agents", "gateway", "realtime", "acp"],
   "config": {
     "ACP_VERBOSE": {
       "type": "boolean",
@@ -149,10 +143,7 @@
     "icon": "Construction",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#acp-agent-communication-protocol"

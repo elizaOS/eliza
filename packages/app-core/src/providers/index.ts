@@ -2,6 +2,7 @@
 
 export {
   getOnboardingProviderFamily,
+  getOnboardingProviderListLabelKey,
   getOnboardingProviderOption,
   getStoredOnboardingProviderId,
   getStoredSubscriptionProvider,
@@ -17,6 +18,8 @@ export {
   type SubscriptionProviderSelectionId,
   sortOnboardingProviders,
 } from "@elizaos/shared/contracts/onboarding";
+
+export { formatOnboardingPluginProviderLabel } from "./onboarding-provider-label";
 
 import { resolveAppAssetUrl } from "../utils/asset-url";
 

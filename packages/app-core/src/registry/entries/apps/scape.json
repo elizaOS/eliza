@@ -103,11 +103,7 @@
     "icon": "Gamepad2",
     "group": "Curated",
     "groupOrder": 4,
-    "actions": [
-      "launch",
-      "configure",
-      "uninstall"
-    ]
+    "actions": ["launch", "configure", "uninstall"]
   },
   "resources": {},
   "dependsOn": [],

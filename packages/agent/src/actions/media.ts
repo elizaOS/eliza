@@ -20,6 +20,7 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
+import { ELIZA_CLOUD_API_V1_DEFAULT } from "@elizaos/shared/eliza-cloud-presets";
 import { loadElizaConfig } from "../config/config.js";
 import {
   createAudioProvider,
@@ -36,7 +37,7 @@ function getMediaProviderOptions(): MediaProviderFactoryOptions {
     "media",
   );
   return {
-    elizaCloudBaseUrl: config.cloud?.baseUrl ?? "https://elizacloud.ai/api/v1",
+    elizaCloudBaseUrl: config.cloud?.baseUrl ?? ELIZA_CLOUD_API_V1_DEFAULT,
     elizaCloudApiKey: config.cloud?.apiKey,
     cloudMediaDisabled: !cloudMediaSelected,
   };

@@ -13,6 +13,7 @@
  * hidden rather than surfacing as opaque hashes.
  */
 
+import crypto from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -270,9 +271,18 @@ async function scanOllama(root: string): Promise<InstalledModel[]> {
   return results;
 }
 
+function externalScanModelId(origin: ExternalOrigin, realPath: string): string {
+  const digest = crypto
+    .createHash("sha256")
+    .update(realPath)
+    .digest("base64url");
+  return `external-${origin}-${digest}`;
+}
+
 export async function scanExternalModels(): Promise<InstalledModel[]> {
   const roots = candidateRoots();
   const seenRealPaths = new Set<string>();
+  const usedIds = new Set<string>();
   const results: InstalledModel[] = [];
 
   await Promise.all(
@@ -294,8 +304,16 @@ export async function scanExternalModels(): Promise<InstalledModel[]> {
         seenRealPaths.add(found.realPath);
 
         const displayName = path.basename(found.absPath, ".gguf");
+        const baseId = externalScanModelId(root.origin, found.realPath);
+        let id = baseId;
+        let suffix = 0;
+        while (usedIds.has(id)) {
+          suffix += 1;
+          id = `${baseId}_${suffix}`;
+        }
+        usedIds.add(id);
         results.push({
-          id: `external-${root.origin}-${Buffer.from(found.realPath).toString("base64url").slice(0, 16)}`,
+          id,
           displayName: `${displayName} (${root.origin})`,
           path: found.realPath,
           sizeBytes: found.size,
@@ -308,5 +326,22 @@ export async function scanExternalModels(): Promise<InstalledModel[]> {
     }),
   );
 
-  return results;
+  return dedupeScannedInstalledModels(results);
+}
+
+/** Last line of defense: concurrent roots can race; ids must stay unique for React keys. */
+function dedupeScannedInstalledModels(
+  models: InstalledModel[],
+): InstalledModel[] {
+  const seenId = new Set<string>();
+  const seenPath = new Set<string>();
+  const out: InstalledModel[] = [];
+  for (const m of models) {
+    const rp = path.resolve(m.path);
+    if (seenId.has(m.id) || seenPath.has(rp)) continue;
+    seenId.add(m.id);
+    seenPath.add(rp);
+    out.push(m);
+  }
+  return out;
 }

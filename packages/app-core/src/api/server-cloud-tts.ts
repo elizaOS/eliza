@@ -1,5 +1,5 @@
 /**
- * Cloud TTS helpers — proxy to Eliza Cloud (`elizacloud.ai`).
+ * Cloud TTS helpers — proxy to Eliza Cloud (`ElizaCloud.ai`).
  *
  * Upstream routes (see eliza-cloud-v2): `POST /api/v1/voice/tts` and legacy
  * `POST /api/elevenlabs/tts`. Both accept `{ text, voiceId?, modelId? }` with
@@ -8,6 +8,7 @@
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
+import { ELIZA_CLOUD_API_V1_DEFAULT } from "@elizaos/shared/eliza-cloud-presets";
 import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
 import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import { getCloudSecret } from "./cloud-secrets";
@@ -352,7 +353,7 @@ export function resolveCloudTtsBaseUrl(
   const fromConfig =
     fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
   const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
-  const fallback = "https://www.elizacloud.ai/api/v1";
+  const fallback = ELIZA_CLOUD_API_V1_DEFAULT;
   const base = configured.length > 0 ? configured : fallback;
 
   try {
@@ -477,7 +478,8 @@ export async function handleCloudTtsPreviewRoute(
     let lastDetails = "unknown error";
     let cloudResponse: Response | null = null;
     for (let i = 0; i < cloudUrls.length; i++) {
-      const cloudUrl = cloudUrls[i]!;
+      const cloudUrl = cloudUrls[i];
+      if (cloudUrl === undefined) continue;
       const attempt = await fetch(cloudUrl, {
         method: "POST",
         headers: {

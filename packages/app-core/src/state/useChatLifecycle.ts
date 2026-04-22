@@ -205,7 +205,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setPendingRestartReasons,
     setBackendDisconnectedBannerDismissed,
     resetBackendConnection,
-    loadConversations,
+    loadConversations: _loadConversations,
     loadPlugins,
     hydrateInitialConversationState,
     requestGreetingWhenRunning,

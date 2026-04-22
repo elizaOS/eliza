@@ -4,10 +4,7 @@
   "description": "Create, enable, review, and install custom agent skills.",
   "npmName": "@elizaos/app-skills-viewer",
   "source": "bundled",
-  "tags": [
-    "skills",
-    "viewer"
-  ],
+  "tags": ["skills", "viewer"],
   "config": {},
   "render": {
     "visible": true,
@@ -16,9 +13,7 @@
     "icon": "Wrench",
     "group": "Apps",
     "groupOrder": 2,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -27,9 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "skills",
-    "capabilities": [
-      "skills",
-      "viewer"
-    ]
+    "capabilities": ["skills", "viewer"]
   }
 }

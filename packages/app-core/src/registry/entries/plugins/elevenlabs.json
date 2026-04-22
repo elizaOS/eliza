@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-elevenlabs",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "voice",
-    "text-to-speech",
-    "audio",
-    "elevenlabs"
-  ],
+  "tags": ["voice", "text-to-speech", "audio", "elevenlabs"],
   "config": {
     "ELEVENLABS_API_KEY": {
       "type": "secret",
@@ -162,10 +157,7 @@
     "icon": "Mic",
     "group": "voice",
     "groupOrder": 3,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-elevenlabs#readme",

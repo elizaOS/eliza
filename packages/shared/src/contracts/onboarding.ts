@@ -1,5 +1,8 @@
 /**
  * Shared onboarding contracts.
+ *
+ * **Eliza Cloud URLs / hostnames** — edit `../eliza-cloud-presets.ts`, not
+ * literals here. This file owns provider ids, plugin names, and ordering.
  */
 
 import { isTruthyEnvValue } from "../env-utils.impl.js";
@@ -62,6 +65,7 @@ export type OnboardingProviderFamily =
   | "gemini"
   | "grok"
   | "groq"
+  | "local-ai"
   | "mistral"
   | "ollama"
   | "openai"
@@ -78,6 +82,7 @@ export type OnboardingProviderId =
   | "gemini"
   | "grok"
   | "groq"
+  | "local-ai"
   | "mistral"
   | "ollama"
   | "openai"
@@ -250,7 +255,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
   },
   {
     id: "anthropic",
-    name: "Anthropic",
+    name: "Claude Platform (api key)",
     envKey: "ANTHROPIC_API_KEY",
     pluginName: "@elizaos/plugin-anthropic",
     keyPrefix: "sk-ant-",
@@ -284,6 +289,19 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     group: "local",
     order: 70,
     supportsPrimaryModelOverride: true,
+  },
+  {
+    id: "local-ai",
+    name: "Local AI",
+    envKey: null,
+    pluginName: "@elizaos/plugin-local-ai",
+    keyPrefix: null,
+    description:
+      "Milady-local GGUF and OpenAI-compatible local inference (no cloud API key).",
+    family: "local-ai",
+    authMode: "local",
+    group: "local",
+    order: 75,
   },
   {
     id: "gemini",
@@ -541,6 +559,7 @@ const ONBOARDING_PROVIDER_ALIASES: Record<string, OnboardingProviderId> = {
   grok: "grok",
   "together-ai": "together",
   together: "together",
+  "plugin-local-ai": "local-ai",
   "z.ai": "zai",
   zai: "zai",
 };
@@ -645,6 +664,22 @@ export function getOnboardingProviderOption(
       (provider) => provider.id === normalized,
     ) ?? null
   );
+}
+
+/**
+ * Stable i18n key for short provider labels (AI provider picker, etc.).
+ * Subscription rows set **labelKey** explicitly; **elizacloud** maps to
+ * **`provider.elizaCloud`** (historic casing); everything else defaults to
+ * **`provider.<id>`**.
+ */
+export function getOnboardingProviderListLabelKey(
+  providerId: unknown,
+): string | null {
+  const option = getOnboardingProviderOption(providerId);
+  if (!option) return null;
+  if (option.labelKey) return option.labelKey;
+  if (option.id === "elizacloud") return "provider.elizaCloud";
+  return `provider.${option.id}`;
 }
 
 export function getOnboardingProviderFamily(

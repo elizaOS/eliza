@@ -11,7 +11,7 @@
 // directly — the heuristics never run again.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   type ConfigField,
   type RegistryEntry,
@@ -33,7 +33,13 @@ interface LegacyPlugin {
   npmName?: string;
   description?: string;
   tags?: string[];
-  category: "ai-provider" | "connector" | "streaming" | "database" | "app" | "feature";
+  category:
+    | "ai-provider"
+    | "connector"
+    | "streaming"
+    | "database"
+    | "app"
+    | "feature";
   envKey?: string;
   configKeys?: string[];
   version?: string;
@@ -351,10 +357,7 @@ function autoLabel(key: string): string {
     .join(" ");
 }
 
-function convertField(
-  key: string,
-  param: LegacyPluginParameter,
-): ConfigField {
+function convertField(key: string, param: LegacyPluginParameter): ConfigField {
   const type = detectFieldType(key, param);
   const k = key.toUpperCase();
 
@@ -518,7 +521,8 @@ function convert(p: LegacyPlugin): RegistryEntry {
     render: {
       visible: cat.visible,
       pinTo: [],
-      style: cat.kind === "connector" ? ("setup-panel" as const) : ("card" as const),
+      style:
+        cat.kind === "connector" ? ("setup-panel" as const) : ("card" as const),
       icon: p.icon ?? DEFAULT_ICONS[p.id],
       group: cat.group,
       groupOrder: cat.groupOrder,

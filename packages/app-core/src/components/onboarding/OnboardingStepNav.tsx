@@ -7,7 +7,10 @@ function PureOnboardingStepNav(props: {
   currentStep: OnboardingStep;
   onboardingNavMetas: OnboardingStepMeta[];
   handleOnboardingJumpToStep: (step: OnboardingStep) => void;
-  t: (key: any, params?: any) => string;
+  t: (
+    key: string,
+    params?: Record<string, string | number | boolean>,
+  ) => string;
 }) {
   const { currentStep, onboardingNavMetas, handleOnboardingJumpToStep, t } =
     props;

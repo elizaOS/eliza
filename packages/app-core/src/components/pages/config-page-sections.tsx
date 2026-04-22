@@ -5,6 +5,7 @@
 
 import { normalizeOnboardingProviderId } from "@elizaos/shared/contracts";
 import { WALLET_RPC_PROVIDER_OPTIONS } from "@elizaos/shared/contracts/wallet";
+import { ELIZA_CLOUD_PUBLIC_HOST } from "@elizaos/shared/eliza-cloud-presets";
 import { Button, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
@@ -14,7 +15,7 @@ import {
   type JsonSchemaObject,
 } from "../../config";
 import { useApp } from "../../state";
-import type { ConfigUiHint, TranslateFn as AppTranslateFn } from "../../types";
+import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -235,7 +236,10 @@ export function RpcConfigSection<T extends string>({
         (key: string) => {
           // hack to get t function without breaking hook rules
           return key === "providerswitcher.elizaCloud"
-            ? t("providerswitcher.elizaCloud", { defaultValue: "Eliza Cloud" })
+            ? t("providerswitcher.elizaCloud", {
+                cloudPublicHost: ELIZA_CLOUD_PUBLIC_HOST,
+                defaultValue: ELIZA_CLOUD_PUBLIC_HOST,
+              })
             : key;
         },
       )}

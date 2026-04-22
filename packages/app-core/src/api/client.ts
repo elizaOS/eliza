@@ -119,6 +119,7 @@ export type {
   ActiveModelState,
   CatalogModel,
   DownloadJob,
+  ExternalLlmRuntimeRow,
   HardwareProbe,
   InstalledModel,
   ModelHubSnapshot,

@@ -1,4 +1,12 @@
+import { getOnboardingProviderOption } from "@elizaos/shared/contracts/onboarding";
 import { VRM_COUNT } from "../../state";
+
+function catalogProviderName(
+  id: Parameters<typeof getOnboardingProviderOption>[0],
+  fallback: string,
+): string {
+  return getOnboardingProviderOption(id)?.name ?? fallback;
+}
 
 export function getLocalizedConversationTitle(
   title: string | undefined | null,
@@ -68,29 +76,46 @@ export function resolveProviderLabel(model: string | undefined): string {
 
   const lower = value.toLowerCase();
   const knownProviders: Array<{ match: string; label: string }> = [
-    { match: "elizacloud", label: "Eliza Cloud" },
-    { match: "openrouter", label: "OpenRouter" },
-    { match: "openai", label: "OpenAI" },
-    { match: "anthropic", label: "Anthropic" },
-    { match: "gemini", label: "Google" },
-    { match: "google", label: "Google" },
-    { match: "grok", label: "xAI" },
-    { match: "xai", label: "xAI" },
-    { match: "groq", label: "Groq" },
-    { match: "ollama", label: "Ollama" },
-    { match: "deepseek", label: "DeepSeek" },
-    { match: "mistral", label: "Mistral" },
-    { match: "together", label: "Together AI" },
-    { match: "zai", label: "z.ai" },
+    {
+      match: "elizacloud",
+      label: catalogProviderName("elizacloud", "Eliza Cloud"),
+    },
+    {
+      match: "openrouter",
+      label: catalogProviderName("openrouter", "OpenRouter"),
+    },
+    { match: "openai", label: catalogProviderName("openai", "OpenAI") },
+    {
+      match: "anthropic",
+      label: catalogProviderName("anthropic", "Claude Platform (api key)"),
+    },
+    { match: "gemini", label: catalogProviderName("gemini", "Gemini") },
+    { match: "google", label: catalogProviderName("gemini", "Google") },
+    { match: "grok", label: catalogProviderName("grok", "xAI (Grok)") },
+    { match: "xai", label: catalogProviderName("grok", "xAI") },
+    { match: "groq", label: catalogProviderName("groq", "Groq") },
+    { match: "ollama", label: catalogProviderName("ollama", "Ollama") },
+    {
+      match: "deepseek",
+      label: catalogProviderName("deepseek", "DeepSeek"),
+    },
+    { match: "mistral", label: catalogProviderName("mistral", "Mistral") },
+    {
+      match: "together",
+      label: catalogProviderName("together", "Together AI"),
+    },
+    { match: "zai", label: catalogProviderName("zai", "z.ai") },
     { match: "cohere", label: "Cohere" },
   ];
   for (const provider of knownProviders) {
     if (lower.includes(provider.match)) return provider.label;
   }
 
-  if (lower.startsWith("gpt")) return "OpenAI";
-  if (lower.startsWith("claude")) return "Anthropic";
-  if (lower.startsWith("gemini")) return "Google";
+  if (lower.startsWith("gpt")) return catalogProviderName("openai", "OpenAI");
+  if (lower.startsWith("claude"))
+    return catalogProviderName("anthropic", "Claude Platform (api key)");
+  if (lower.startsWith("gemini"))
+    return catalogProviderName("gemini", "Gemini");
 
   const splitToken = value.split(/[/:|]/)[0]?.trim();
   if (splitToken) return splitToken.toUpperCase();

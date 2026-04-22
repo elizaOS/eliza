@@ -1,15 +1,32 @@
+/**
+ * Per-slot model assignments (which GGUF / scan id backs each agent slot).
+ *
+ * WHY: Router and runtime lazy-load from `assignments` — this UI is the operator-facing source of
+ * those ids; keep labels and embedding special-case (`embeddingSlotMode`) aligned with hub catalog.
+ */
 import { useCallback, useState } from "react";
 import { client } from "../../api";
 import type {
   AgentModelSlot,
+  CatalogModel,
   InstalledModel,
   ModelAssignments,
 } from "../../api/client-local-inference";
+import { EmbeddingCatalogModelField } from "./EmbeddingCatalogModelField";
+import { installedMiladyEmbeddingFromCatalog } from "./hub-utils";
 
 interface SlotAssignmentsProps {
   installed: InstalledModel[];
   assignments: ModelAssignments;
   onChange: (assignments: ModelAssignments) => void;
+  /**
+   * When set, controls the TEXT_EMBEDDING row: hidden unless Milady in-app GGUF
+   * is the chosen local engine; when visible, only curated catalog embedding
+   * installs appear in that slot’s picker (same pool as Local AI embedding).
+   */
+  embeddingSlotMode?: "hidden" | "milady-gguf-only";
+  /** Required for `milady-gguf-only` embedding filtering; hub catalog from the panel. */
+  embeddingCatalog?: CatalogModel[];
 }
 
 const SLOTS: Array<{
@@ -32,7 +49,8 @@ const SLOTS: Array<{
   {
     slot: "TEXT_EMBEDDING",
     label: "Embedding model (TEXT_EMBEDDING)",
-    description: "Vector embeddings for search and memory. Separate model.",
+    description:
+      "Vector embeddings for search and memory. When Milady GGUF is the local engine, only curated catalog embedding installs are listed.",
   },
   {
     slot: "OBJECT_SMALL",
@@ -56,6 +74,8 @@ export function SlotAssignments({
   installed,
   assignments,
   onChange,
+  embeddingSlotMode,
+  embeddingCatalog,
 }: SlotAssignmentsProps) {
   const [busySlot, setBusySlot] = useState<AgentModelSlot | null>(null);
 
@@ -74,6 +94,20 @@ export function SlotAssignments({
     },
     [onChange],
   );
+
+  const visibleSlots = SLOTS.filter(
+    ({ slot }) => slot !== "TEXT_EMBEDDING" || embeddingSlotMode !== "hidden",
+  );
+
+  const installedForSlot = (slot: AgentModelSlot): InstalledModel[] => {
+    if (slot === "TEXT_EMBEDDING" && embeddingSlotMode === "milady-gguf-only") {
+      if (embeddingCatalog?.length) {
+        return installedMiladyEmbeddingFromCatalog(installed, embeddingCatalog);
+      }
+      return installed.filter((m) => m.source === "milady-download");
+    }
+    return installed;
+  };
 
   if (installed.length === 0) {
     return (
@@ -94,36 +128,77 @@ export function SlotAssignments({
         demand and swaps when needed.
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {SLOTS.map(({ slot, label, description }) => {
+        {visibleSlots.map(({ slot, label, description }) => {
           const currentId = assignments[slot] ?? "";
+          const options = installedForSlot(slot);
+          const optionIds = new Set(options.map((m) => m.id));
+          const selectValue =
+            slot === "TEXT_EMBEDDING" &&
+            embeddingSlotMode === "milady-gguf-only" &&
+            !optionIds.has(currentId)
+              ? ""
+              : currentId;
+          const selectId = `slot-assign-${slot}`;
+          const useEmbeddingCatalog =
+            slot === "TEXT_EMBEDDING" &&
+            embeddingSlotMode === "milady-gguf-only" &&
+            embeddingCatalog &&
+            embeddingCatalog.length > 0;
           return (
-            <label
+            <div
               key={slot}
               className="rounded-xl border border-border bg-card p-3 flex flex-col gap-1.5"
             >
-              <span className="text-sm font-medium">{label}</span>
+              {useEmbeddingCatalog ? (
+                <span className="text-sm font-medium">{label}</span>
+              ) : (
+                <label htmlFor={selectId} className="text-sm font-medium">
+                  {label}
+                </label>
+              )}
               <span className="text-xs text-muted-foreground">
                 {description}
               </span>
-              <select
-                value={currentId}
-                disabled={busySlot === slot}
-                onChange={(e) =>
-                  void handleChange(slot, e.target.value || null)
-                }
-                className="mt-1 rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm"
-              >
-                <option value="">— unset (use active model) —</option>
-                {installed.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.displayName}
-                    {m.source === "external-scan"
-                      ? ` · via ${m.externalOrigin}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+              {useEmbeddingCatalog ? (
+                <div className="mt-1">
+                  <EmbeddingCatalogModelField
+                    catalog={embeddingCatalog ?? []}
+                    installedChoices={options}
+                    value={selectValue}
+                    onChange={(id) => void handleChange(slot, id)}
+                    disabled={busySlot === slot}
+                    unsetLabel="— unset (use active model) —"
+                    emptyMessage={
+                      <p className="text-xs text-muted-foreground">
+                        No curated embedding GGUFs on disk yet. Download one
+                        from the Local models hub (embedding section), then
+                        assign it here.
+                      </p>
+                    }
+                  />
+                </div>
+              ) : (
+                <select
+                  id={selectId}
+                  value={selectValue}
+                  disabled={busySlot === slot}
+                  onChange={(e) =>
+                    void handleChange(slot, e.target.value || null)
+                  }
+                  className="mt-1 rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm"
+                >
+                  <option value="">— unset (use active model) —</option>
+                  {options.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.displayName}
+                      {m.source === "external-scan"
+                        ? ` · via ${m.externalOrigin}`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           );
         })}
       </div>

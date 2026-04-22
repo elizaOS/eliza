@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-line",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "messaging",
-    "line",
-    "social",
-    "social-chat"
-  ],
+  "tags": ["connector", "messaging", "line", "social", "social-chat"],
   "config": {
     "LINE_ENABLED": {
       "type": "boolean",
@@ -77,11 +71,7 @@
     "icon": "Circle",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {
     "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#line"
@@ -91,8 +81,6 @@
   "subtype": "messaging",
   "auth": {
     "kind": "token",
-    "credentialKeys": [
-      "LINE_CHANNEL_ACCESS_TOKEN"
-    ]
+    "credentialKeys": ["LINE_CHANNEL_ACCESS_TOKEN"]
   }
 }

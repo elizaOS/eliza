@@ -1,13 +1,11 @@
 {
   "id": "elizacloud",
-  "name": "Elizacloud",
+  "name": "Eliza Cloud",
   "description": "elizaOS plugin to connect with elizaOS Cloud services",
   "npmName": "@elizaos/plugin-elizacloud",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "elizacloud"
-  ],
+  "tags": ["elizacloud"],
   "config": {
     "ELIZAOS_CLOUD_API_KEY": {
       "type": "secret",
@@ -196,10 +194,7 @@
     "icon": "Cloud",
     "group": "feature-other",
     "groupOrder": 12,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/milady-ai/milady/tree/develop/packages/plugin-elizacloud#readme",

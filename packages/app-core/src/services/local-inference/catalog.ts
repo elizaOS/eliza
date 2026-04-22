@@ -10,6 +10,23 @@
 import type { CatalogModel } from "./types";
 
 export const MODEL_CATALOG: CatalogModel[] = [
+  // ─── embeddings (Milady-local TEXT_EMBEDDING GGUF) ───────────────────
+  {
+    id: "bge-small-en-v1.5-embed",
+    displayName: "BGE small English v1.5 (embedding)",
+    hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
+    ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
+    params: "33M",
+    quant: "Q4_K_M",
+    sizeGb: 133 / 1024,
+    minRamGb: 2,
+    category: "embedding",
+    bucket: "small",
+    embeddingDimensions: 384,
+    blurb:
+      "384-dim sentence embeddings. Same compact default as Milady’s local-embedding preset — ideal for CPU-only vectors while chat stays on Eliza Cloud.",
+  },
+
   // ─── tiny / testing ─────────────────────────────────────────────────
   {
     id: "smollm2-1.7b",

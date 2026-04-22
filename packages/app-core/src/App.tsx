@@ -32,7 +32,6 @@ import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
 import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { AutomationsView } from "./components/pages/AutomationsView";
 import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
@@ -852,8 +851,6 @@ export function App() {
           t={t}
         />
       )}
-      <MusicPlayerGlobal />
-
       {/* Persistent game overlay — stays visible across all tabs */}
       {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && (
         <GameViewOverlay />

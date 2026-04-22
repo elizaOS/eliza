@@ -1,5 +1,5 @@
 import { type AgentPreflightResult, client, useApp } from "@elizaos/app-core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentTabsSection } from "./AgentTabsSection";
 import {
   ADAPTER_NAME_TO_TAB,
@@ -169,9 +169,11 @@ export function CodingAgentSettingsSection() {
     (agent) => preflightByAgent[agent]?.installed === true,
   );
   // Gemini CLI can't route through cloud (no Google-native proxy)
-  const providerFilteredAgents = isCloud
-    ? AGENT_TABS.filter((agent) => agent !== "gemini")
-    : AGENT_TABS;
+  const providerFilteredAgents = useMemo(
+    () =>
+      isCloud ? AGENT_TABS.filter((agent) => agent !== "gemini") : AGENT_TABS,
+    [isCloud],
+  );
   const availableAgents =
     preflightLoaded && installedAgents.length > 0
       ? installedAgents.filter((a) => providerFilteredAgents.includes(a))
@@ -187,16 +189,28 @@ export function CodingAgentSettingsSection() {
   };
 
   useEffect(() => {
-    if (loading || availableAgents.length === 0) return;
+    if (loading) return;
+    // Cloud mode hides Gemini; if that was the only installed CLI, the filtered
+    // list is empty and we must still pick a tab — otherwise `activeTab` stays
+    // null forever and the panel shows "Loading task-agent configuration...".
+    const tabPool =
+      availableAgents.length > 0 ? availableAgents : providerFilteredAgents;
+    if (tabPool.length === 0) return;
     if (activeTab === null) {
       const saved = prefs.PARALLAX_DEFAULT_AGENT_TYPE as AgentTab | undefined;
       setActiveTab(
-        saved && availableAgents.includes(saved) ? saved : availableAgents[0],
+        saved && tabPool.includes(saved) ? saved : (tabPool[0] ?? null),
       );
-    } else if (!availableAgents.includes(activeTab)) {
-      setActiveTab(availableAgents[0]);
+    } else if (!tabPool.includes(activeTab)) {
+      setActiveTab(tabPool[0] ?? null);
     }
-  }, [loading, activeTab, availableAgents, prefs.PARALLAX_DEFAULT_AGENT_TYPE]);
+  }, [
+    loading,
+    activeTab,
+    availableAgents,
+    providerFilteredAgents,
+    prefs.PARALLAX_DEFAULT_AGENT_TYPE,
+  ]);
 
   // `setPref` is a pure state updater. It must NOT perform network I/O
   // inside `setPrefs((prev) => ...)` — React may invoke state updaters

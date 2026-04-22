@@ -51,6 +51,18 @@ async function writeMiladyOwned(models: InstalledModel[]): Promise<void> {
   await fs.rename(tmp, registryPath());
 }
 
+/** First occurrence wins (Milady-owned rows precede external scan). */
+function dedupeInstalledModelsById(models: InstalledModel[]): InstalledModel[] {
+  const seen = new Set<string>();
+  const out: InstalledModel[] = [];
+  for (const m of models) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out;
+}
+
 /**
  * Return all models currently usable: persisted Milady downloads plus a
  * fresh external-tool scan. External duplicates of Milady-owned files are
@@ -69,7 +81,7 @@ export async function listInstalledModels(): Promise<InstalledModel[]> {
     (m) => !ownedPaths.has(path.resolve(m.path)),
   );
 
-  return [...owned, ...dedupedExternal];
+  return dedupeInstalledModelsById([...owned, ...dedupedExternal]);
 }
 
 /** Add or update a Milady-owned entry. External entries are rejected. */

@@ -84,6 +84,10 @@ import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import {
+  ELIZA_CLOUD_DEFAULT_SITE_URL,
+  ELIZA_CLOUD_LEGACY_API_ORIGIN,
+} from "@elizaos/shared/eliza-cloud-presets";
 import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
 import {
   getOnboardingProviderOption,
@@ -1268,7 +1272,7 @@ export async function autoFetchCloudGithubToken(
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.elizacloud.ai";
+    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || ELIZA_CLOUD_LEGACY_API_ORIGIN;
   if (!cloudApiKey || !agentId) return;
 
   const managedNs = process.env.ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT?.trim();
@@ -1550,7 +1554,7 @@ export function applyN8nConfigToEnv(
   const cloud = config.cloud;
   const cloudAuthed = Boolean(cloud?.apiKey) && cloud?.enabled !== false;
   if (cloudAuthed && cloud?.apiKey) {
-    const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
+    const rawBase = cloud.baseUrl ?? ELIZA_CLOUD_DEFAULT_SITE_URL;
     // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
     // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
     const siteUrl = rawBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");

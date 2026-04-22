@@ -5,13 +5,7 @@
   "npmName": "@elizaos/plugin-bluebubbles",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "connector",
-    "social",
-    "social-chat",
-    "messaging",
-    "bluebubbles"
-  ],
+  "tags": ["connector", "social", "social-chat", "messaging", "bluebubbles"],
   "config": {
     "BLUEBUBBLES_ENABLED": {
       "type": "boolean",
@@ -92,11 +86,7 @@
     "style": "setup-panel",
     "group": "connector",
     "groupOrder": 1,
-    "actions": [
-      "enable",
-      "configure",
-      "setup-guide"
-    ]
+    "actions": ["enable", "configure", "setup-guide"]
   },
   "resources": {},
   "dependsOn": [],

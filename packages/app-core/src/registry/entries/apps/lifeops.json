@@ -4,12 +4,7 @@
   "description": "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
   "npmName": "@elizaos/app-lifeops",
   "source": "bundled",
-  "tags": [
-    "lifeops",
-    "tasks",
-    "calendar",
-    "gmail"
-  ],
+  "tags": ["lifeops", "tasks", "calendar", "gmail"],
   "config": {},
   "render": {
     "visible": true,
@@ -18,9 +13,7 @@
     "icon": "Calendar",
     "group": "Apps",
     "groupOrder": 0,
-    "actions": [
-      "launch"
-    ]
+    "actions": ["launch"]
   },
   "resources": {},
   "dependsOn": [],
@@ -29,11 +22,6 @@
   "launch": {
     "type": "internal-tab",
     "target": "lifeops",
-    "capabilities": [
-      "lifeops",
-      "tasks",
-      "calendar",
-      "gmail"
-    ]
+    "capabilities": ["lifeops", "tasks", "calendar", "gmail"]
   }
 }

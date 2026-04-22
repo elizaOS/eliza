@@ -1,9 +1,12 @@
-const DEFAULT_CLOUD_SITE_URL = "https://www.elizacloud.ai";
+import {
+  ELIZA_CLOUD_DEFAULT_SITE_URL,
+  ELIZA_CLOUD_LEGACY_HOSTNAMES,
+  ELIZA_CLOUD_PRIMARY_ORIGIN,
+} from "@elizaos/shared/eliza-cloud-presets";
 
-const LEGACY_CLOUD_HOST_ALIASES = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-]);
+const DEFAULT_CLOUD_SITE_URL = ELIZA_CLOUD_DEFAULT_SITE_URL;
+
+const LEGACY_CLOUD_HOST_ALIASES = ELIZA_CLOUD_LEGACY_HOSTNAMES;
 
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
@@ -45,7 +48,7 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
     parsed.pathname = pathname;
 
     if (LEGACY_CLOUD_HOST_ALIASES.has(host)) {
-      parsed.hostname = "www.elizacloud.ai";
+      parsed.hostname = new URL(ELIZA_CLOUD_PRIMARY_ORIGIN).hostname;
       parsed.pathname = "";
     }
 

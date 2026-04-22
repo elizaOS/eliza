@@ -24,7 +24,7 @@ function gatewayLabel(
 }
 
 export function SplashServerChooser({
-  discoveryLoading,
+  discoveryLoading: _discoveryLoading,
   gateways,
   showCreateLocal,
   t,

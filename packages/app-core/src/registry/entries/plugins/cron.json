@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-cron",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "cron"
-  ],
+  "tags": ["cron"],
   "config": {},
   "render": {
     "visible": true,
@@ -16,10 +14,7 @@
     "icon": "Clock",
     "group": "automation",
     "groupOrder": 9,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

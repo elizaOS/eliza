@@ -17,6 +17,10 @@
  * `submitOnboardingAndComplete`, which is defined later in AppContext's render order).
  */
 
+import {
+  ELIZA_CLOUD_DEFAULT_SITE_URL,
+  ELIZA_CLOUD_PUBLIC_HOST,
+} from "@elizaos/shared/eliza-cloud-presets";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import {
@@ -71,7 +75,10 @@ interface CloudStateParams {
   /** From useWalletState — called after successful cloud login to reload wallet. */
   loadWalletConfig: () => Promise<void>;
   /** Translation function — used for the auth-rejected notice. */
-  t: (key: string) => string;
+  t: (
+    key: string,
+    options?: Record<string, string | number | boolean>,
+  ) => string;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────
@@ -269,7 +276,7 @@ export function useCloudState({
     // go through the local agent's proxy.
     const hasBackend = Boolean(client.getBaseUrl());
     const cloudApiBase =
-      getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+      getBootConfig().cloudApiBase ?? ELIZA_CLOUD_DEFAULT_SITE_URL;
     const useDirectAuth = !hasBackend;
 
     if (hasBackend) {
@@ -594,7 +601,13 @@ export function useCloudState({
     if (elizaCloudAuthRejected) {
       if (!elizaCloudAuthNoticeSentRef.current) {
         elizaCloudAuthNoticeSentRef.current = true;
-        setActionNotice(t("notice.elizaCloudAuthRejected"), "error", 14_000);
+        setActionNotice(
+          t("notice.elizaCloudAuthRejected", {
+            cloudPublicHost: ELIZA_CLOUD_PUBLIC_HOST,
+          }),
+          "error",
+          14_000,
+        );
       }
     } else {
       elizaCloudAuthNoticeSentRef.current = false;

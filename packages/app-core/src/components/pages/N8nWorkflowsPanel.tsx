@@ -12,12 +12,7 @@
  */
 
 import { Button, FieldLabel, StatusBadge } from "@elizaos/ui";
-import {
-  RefreshCw,
-  Workflow,
-  X,
-  Zap,
-} from "lucide-react";
+import { RefreshCw, Workflow, X, Zap } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
@@ -94,15 +89,11 @@ function N8nStatusBanner({
     const headingId = "n8n-cta-heading";
     if (platform === "mobile") {
       return (
-        <div
-          role="region"
+        <section
           aria-labelledby={headingId}
           className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
         >
-          <h3
-            id={headingId}
-            className="text-sm font-semibold text-txt-strong"
-          >
+          <h3 id={headingId} className="text-sm font-semibold text-txt-strong">
             {t("automations.n8n.ctaHeadingMobile")}
           </h3>
           <p className="text-xs text-muted">
@@ -120,21 +111,17 @@ function N8nStatusBanner({
           >
             {t("automations.n8n.ctaSignInCloud")}
           </Button>
-        </div>
+        </section>
       );
     }
 
     // desktop: cloud (recommended) + local secondary
     return (
-      <div
-        role="region"
+      <section
         aria-labelledby={headingId}
         className="rounded-xl border border-border/30 bg-bg/30 px-4 py-5 mb-3 space-y-3"
       >
-        <h3
-          id={headingId}
-          className="text-sm font-semibold text-txt-strong"
-        >
+        <h3 id={headingId} className="text-sm font-semibold text-txt-strong">
           {t("automations.n8n.ctaHeadingDesktop")}
         </h3>
         <p className="text-xs text-muted">
@@ -163,7 +150,7 @@ function N8nStatusBanner({
             {t("automations.n8n.ctaEnableLocal")}
           </Button>
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -343,9 +330,9 @@ function WorkflowDetailPane({
 }: {
   workflow: N8nWorkflow | null;
   conversationTitle: string;
-  conversationMetadata: ReturnType<
-    typeof buildWorkflowConversationMetadata
-  > | ReturnType<typeof buildWorkflowDraftConversationMetadata>;
+  conversationMetadata:
+    | ReturnType<typeof buildWorkflowConversationMetadata>
+    | ReturnType<typeof buildWorkflowDraftConversationMetadata>;
   busy: string | null;
   onToggleActive: (wf: N8nWorkflow) => void;
   onDelete: (wf: N8nWorkflow) => void;
@@ -587,56 +574,61 @@ export function N8nWorkflowsPanel({
 
   const loadWorkflows = useCallback(
     async (options?: { bindDraftConversation?: Conversation | null }) => {
-    setWorkflowsLoading(true);
-    try {
-      const previousWorkflowIds = new Set(workflowsRef.current.map((wf) => wf.id));
-      const list = await client.listN8nWorkflows();
-      setWorkflows(list);
-      setErrors([]);
-
-      const draftConversation = options?.bindDraftConversation;
-      if (
-        draftConversation?.metadata?.scope === "automation-workflow-draft" &&
-        draftConversation.metadata.automationType === "n8n_workflow"
-      ) {
-        const createdWorkflows = list.filter(
-          (workflow) => !previousWorkflowIds.has(workflow.id),
+      setWorkflowsLoading(true);
+      try {
+        const previousWorkflowIds = new Set(
+          workflowsRef.current.map((wf) => wf.id),
         );
-        if (createdWorkflows.length === 1) {
-          const createdWorkflow = createdWorkflows[0];
-          const reboundMetadata = buildWorkflowConversationMetadata(
-            createdWorkflow.id,
-            createdWorkflow.name,
-            draftConversation.metadata.terminalBridgeConversationId,
-          );
-          const { conversation } = await client.updateConversation(
-            draftConversation.id,
-            {
-              title: createdWorkflow.name,
-              metadata: reboundMetadata,
-            },
-          );
-          setActiveAutomationConversation(conversation);
-          setSelectedId(createdWorkflow.id);
-          return;
-        }
-      }
+        const list = await client.listN8nWorkflows();
+        setWorkflows(list);
+        setErrors([]);
 
-      setSelectedId((currentSelectedId) =>
-        currentSelectedId && list.some((workflow) => workflow.id === currentSelectedId)
-          ? currentSelectedId
-          : null,
-      );
-    } catch (err) {
-      pushError(
-        t("automations.n8n.errorLoadWorkflows", {
-          message: err instanceof Error ? err.message : "network error",
-        }),
-      );
-    } finally {
-      setWorkflowsLoading(false);
-    }
-  }, [pushError, t]);
+        const draftConversation = options?.bindDraftConversation;
+        if (
+          draftConversation?.metadata?.scope === "automation-workflow-draft" &&
+          draftConversation.metadata.automationType === "n8n_workflow"
+        ) {
+          const createdWorkflows = list.filter(
+            (workflow) => !previousWorkflowIds.has(workflow.id),
+          );
+          if (createdWorkflows.length === 1) {
+            const createdWorkflow = createdWorkflows[0];
+            const reboundMetadata = buildWorkflowConversationMetadata(
+              createdWorkflow.id,
+              createdWorkflow.name,
+              draftConversation.metadata.terminalBridgeConversationId,
+            );
+            const { conversation } = await client.updateConversation(
+              draftConversation.id,
+              {
+                title: createdWorkflow.name,
+                metadata: reboundMetadata,
+              },
+            );
+            setActiveAutomationConversation(conversation);
+            setSelectedId(createdWorkflow.id);
+            return;
+          }
+        }
+
+        setSelectedId((currentSelectedId) =>
+          currentSelectedId &&
+          list.some((workflow) => workflow.id === currentSelectedId)
+            ? currentSelectedId
+            : null,
+        );
+      } catch (err) {
+        pushError(
+          t("automations.n8n.errorLoadWorkflows", {
+            message: err instanceof Error ? err.message : "network error",
+          }),
+        );
+      } finally {
+        setWorkflowsLoading(false);
+      }
+    },
+    [pushError, t],
+  );
 
   // Bootstrap on mount.
   useEffect(() => {

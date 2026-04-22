@@ -13,10 +13,7 @@
     "icon": "Gamepad2",
     "group": "Curated",
     "groupOrder": 3,
-    "actions": [
-      "launch",
-      "configure"
-    ]
+    "actions": ["launch", "configure"]
   },
   "resources": {},
   "dependsOn": [],

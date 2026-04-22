@@ -1,4 +1,5 @@
 import { modelLooksLikeElizaCloudHosted } from "@elizaos/app-core";
+import { ELIZA_CLOUD_PUBLIC_HOST } from "@elizaos/shared/eliza-cloud-presets";
 
 export type CompanionInferenceNotice =
   | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }
@@ -11,7 +12,7 @@ export function resolveCompanionInferenceNotice(args: {
   elizaCloudEnabled: boolean;
   chatLastUsageModel?: string;
   hasInterruptedAssistant: boolean;
-  t: (key: string) => string;
+  t: (key: string, options?: Record<string, string | number | boolean>) => string;
 }): CompanionInferenceNotice | null {
   const {
     elizaCloudConnected,
@@ -31,7 +32,9 @@ export function resolveCompanionInferenceNotice(args: {
       kind: "cloud",
       variant: elizaCloudAuthRejected ? "danger" : "warn",
       tooltip: elizaCloudAuthRejected
-        ? t("notice.elizaCloudAuthRejected")
+        ? t("notice.elizaCloudAuthRejected", {
+            cloudPublicHost: ELIZA_CLOUD_PUBLIC_HOST,
+          })
         : (elizaCloudCreditsError?.trim() ?? ""),
     };
   }

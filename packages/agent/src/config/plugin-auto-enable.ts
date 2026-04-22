@@ -83,6 +83,8 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
   CLAUDE_API_KEY: "@elizaos/plugin-anthropic",
   OPENAI_API_KEY: "@elizaos/plugin-openai",
+  /** LM Studio / vLLM / local OpenAI proxies (also set by startup probe). */
+  OPENAI_BASE_URL: "@elizaos/plugin-openai",
   AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   GOOGLE_API_KEY: "@elizaos/plugin-google-genai",

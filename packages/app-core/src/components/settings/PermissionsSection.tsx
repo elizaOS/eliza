@@ -340,10 +340,12 @@ function DesktopPermissionsView() {
       ) : null}
 
       {/* Capability Toggles */}
-      <section className="space-y-2 border-t border-border/40 pt-5">
+      <section className="space-y-2 border-t border-border/40 pt-6">
         <header className="space-y-0.5">
           <h3 className="text-sm font-semibold text-txt">
-            {t("appsview.Capabilities")}
+            {t("permissionssection.pluginTogglesHeading", {
+              defaultValue: "Plugin toggles",
+            })}
           </h3>
           <p className="max-w-2xl text-xs-tight leading-5 text-muted">
             {t("permissionssection.CapabilitiesDescription", {
@@ -556,7 +558,7 @@ function DesktopOnboardingPermissions({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <header className="text-center">
         <h2 className="mb-1 text-xl font-bold text-txt">
           {t("permissionssection.SystemPermissions", {
@@ -622,7 +624,7 @@ function DesktopOnboardingPermissions({
         })}
       </div>
 
-      <div className="space-y-3 border-t border-border/40 pt-4">
+      <div className="space-y-3 border-t border-border/40 pt-6">
         <div className="space-y-1 text-xs-tight leading-5 text-muted">
           <p>{footerStatusMessage}</p>
           {!canProceed && (

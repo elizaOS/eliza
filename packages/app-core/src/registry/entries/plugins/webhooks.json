@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-webhooks",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "webhooks"
-  ],
+  "tags": ["webhooks"],
   "config": {},
   "render": {
     "visible": true,
@@ -16,10 +14,7 @@
     "icon": "Webhook",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

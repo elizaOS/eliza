@@ -37,6 +37,12 @@ export function DownloadQueue({
       {downloads.map((job) => {
         const entry = findCatalogModel(job.modelId, catalog);
         const label = entry?.displayName ?? job.modelId;
+        const dimSuffix =
+          entry?.category === "embedding" &&
+          typeof entry.embeddingDimensions === "number" &&
+          entry.embeddingDimensions > 0
+            ? ` · ${entry.embeddingDimensions} dimensions`
+            : "";
         const isActive = job.state === "downloading" || job.state === "queued";
         return (
           <li
@@ -45,7 +51,10 @@ export function DownloadQueue({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-medium truncate">{label}</div>
+                <div className="font-medium truncate">
+                  {label}
+                  {dimSuffix}
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {job.state === "queued" && "Queued"}
                   {job.state === "downloading" && "Downloading"}

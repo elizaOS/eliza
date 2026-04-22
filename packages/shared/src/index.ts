@@ -3,6 +3,7 @@
  * Use subpath imports for granular access (e.g. @elizaos/shared/contracts).
  */
 
+export * from "./eliza-cloud-presets";
 export * from "./connectors";
 export { migrateLegacyRuntimeConfig } from "./contracts/onboarding";
 export * from "./env-utils";

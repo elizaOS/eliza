@@ -11,7 +11,13 @@ import {
   Switch,
 } from "@elizaos/ui";
 import { ChevronDown, X } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import type {
   FieldRenderer,
@@ -379,9 +385,12 @@ export function RenderSelectField(props: FieldRenderProps) {
     );
   }
 
+  const radixValue =
+    effectiveValue === "" && !props.required ? "__none__" : effectiveValue;
+
   return (
     <Select
-      defaultValue={effectiveValue}
+      value={radixValue}
       disabled={props.readonly}
       onValueChange={(value: string) => {
         props.onChange(value === "__none__" ? "" : value);
@@ -434,10 +443,11 @@ function SearchableSelectInner({
   effectiveValue: string;
 }) {
   const { t } = useApp();
-  const matchingOpt = options.find((o) => o.value === effectiveValue);
-  const [inputVal, setInputVal] = useState(
-    matchingOpt?.label ?? effectiveValue,
-  );
+  const displayLabel = useMemo(() => {
+    if (!effectiveValue) return "";
+    const m = options.find((o) => o.value === effectiveValue);
+    return m?.label ?? effectiveValue;
+  }, [effectiveValue, options]);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -455,7 +465,6 @@ function SearchableSelectInner({
   const select = useCallback(
     (opt: { value: string; label: string }) => {
       props.onChange(opt.value);
-      setInputVal(opt.label);
       setOpen(false);
       setFilter("");
       fireAction(props, "change");
@@ -522,8 +531,9 @@ function SearchableSelectInner({
         data-config-key={props.key}
         data-field-type="select"
       >
-        <span className={inputVal ? "" : "text-muted opacity-60"}>
-          {inputVal || "Select..."}
+        <span className={displayLabel ? "" : "text-muted opacity-60"}>
+          {displayLabel ||
+            t("config-field.Select", { defaultValue: "Select..." })}
         </span>
         <span className="text-muted text-2xs shrink-0">
           {open ? "\u25B2" : "\u25BC"}
@@ -568,7 +578,6 @@ function SearchableSelectInner({
                   className="w-full text-left px-3 py-1.5 text-xs text-muted hover:bg-bg-hover transition-colors italic rounded-none justify-start h-auto"
                   onClick={() => {
                     props.onChange("");
-                    setInputVal("");
                     setOpen(false);
                     setFilter("");
                     fireAction(props, "change");
@@ -1895,6 +1904,13 @@ export function ConfigField({
   const errors = renderProps.errors ?? [];
   const hasError = errors.length > 0;
   const isRequiredEmpty = renderProps.required && !renderProps.isSet;
+  /** Green “Configured” chip: only for secrets and optional fields. Required
+   *  non-sensitive fields (e.g. tier selects) already show the value — repeating
+   *  “Configured” on every row is noise. A future hint could distinguish file vs
+   *  in-app override once the renderer receives that metadata per key. */
+  const showConfiguredChip =
+    renderProps.isSet &&
+    (renderProps.hint.sensitive === true || !renderProps.required);
 
   const renderFn =
     renderer ??
@@ -1934,7 +1950,7 @@ export function ConfigField({
               {t("secretsview.Required")}
             </span>
           )}
-          {renderProps.isSet && (
+          {showConfiguredChip && (
             <span className="inline-flex items-center gap-1 text-2xs text-ok font-medium shrink-0">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-ok" />
 

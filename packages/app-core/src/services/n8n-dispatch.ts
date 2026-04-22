@@ -177,8 +177,7 @@ export function createN8nDispatchService(
     } else {
       // mode === "local"
       const sidecar = peekSidecar();
-      const host =
-        sidecar?.getState().host ?? config.n8n?.host ?? null;
+      const host = sidecar?.getState().host ?? config.n8n?.host ?? null;
       if (!host) {
         return { ok: false, error: "n8n local host unknown" };
       }

@@ -8,7 +8,13 @@
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
 
-export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
+export type ModelCategory =
+  | "chat"
+  | "code"
+  | "tools"
+  | "tiny"
+  | "reasoning"
+  | "embedding";
 
 export interface CatalogModel {
   /** Stable Milady id — used as the primary key. */
@@ -19,6 +25,7 @@ export interface CatalogModel {
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   params:
+    | "33M"
     | "1B"
     | "1.7B"
     | "3B"
@@ -39,6 +46,8 @@ export interface CatalogModel {
   category: ModelCategory;
   bucket: ModelBucket;
   blurb: string;
+  /** Output width for `category === "embedding"` models; shown in hub UI. */
+  embeddingDimensions?: number;
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";
@@ -158,6 +167,59 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
 /** User-configured mapping of agent model slots → installed model ids. */
 export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
 
+/** Probed HTTP backends for local AI engines (hub diagnostics). */
+export type ExternalLlmRuntimeId = "ollama" | "lmstudio" | "vllm" | "jan";
+
+/**
+ * Which source gates **`isExternalLocalLlmInferenceReady`** for Milady-local GGUF
+ * suppression against HTTP hubs. **`any`** = any ready local AI engine probe row
+ * row (default). A hub id = only that probe row. **`milady-gguf`** = ignore those
+ * probes (always “not externally ready” here) so in-app llama.cpp is not
+ * auto-suppressed on their account.
+ */
+export type ExternalLlmAutodetectFocus =
+  | "any"
+  | ExternalLlmRuntimeId
+  | "milady-gguf";
+
+export interface ExternalLlmRuntimeRow {
+  id: ExternalLlmRuntimeId;
+  displayName: string;
+  reachable: boolean;
+  endpoint: string;
+  models: string[];
+  hasDownloadedModels: boolean;
+  error?: string;
+  /**
+   * Ollama only: `GET /api/ps` — models currently resident in memory when the
+   * endpoint is supported (undefined if the probe failed or returned non-JSON).
+   */
+  ollamaRunningModelCount?: number;
+  /**
+   * Ollama only: names from `/api/tags` that look **fully local** (no
+   * `remote_model` / `remote_host`, positive `size` when present). Used for
+   * `OPENAI_EMBEDDING_MODEL` listing so cloud/registry entries are not offered as
+   * “downloaded”.
+   */
+  ollamaLocalModelNames?: string[];
+  /**
+   * LM Studio only: sum of `loaded_instances` lengths from **`GET /api/v1/models`**
+   * when that native response parses (0 means models are on disk but ejected /
+   * not loaded in the LM Studio UI — stricter than OpenAI’s `/v1/models` list).
+   */
+  lmStudioLoadedInstanceCount?: number;
+  /**
+   * When true, the Milady model router may skip in-app GGUF for this host to
+   * avoid loading a second huge stack. **Ollama:** pulled models **and**
+   * (`/api/ps` shows ≥1 runner **or** `/api/ps` unavailable). **LM Studio:**
+   * OpenAI-compat `/v1/models` lists ids **and** native `/api/v1/models` shows
+   * ≥1 `loaded_instances` entry when that probe succeeds (otherwise falls back
+   * to list-only). **vLLM / Jan:** listed **`/v1/models`** ids only (Jan’s local
+   * server defaults to **1337**; set **`JAN_API_KEY`** Bearer or probes may get 401).
+   */
+  routerInferenceReady?: boolean;
+}
+
 export interface ModelHubSnapshot {
   catalog: CatalogModel[];
   installed: InstalledModel[];
@@ -165,4 +227,6 @@ export interface ModelHubSnapshot {
   downloads: DownloadJob[];
   hardware: HardwareProbe;
   assignments: ModelAssignments;
+  /** Fixed probe rows (see `ExternalLlmRuntimeId`) from a quick HTTP probe. */
+  externalRuntimes: ExternalLlmRuntimeRow[];
 }

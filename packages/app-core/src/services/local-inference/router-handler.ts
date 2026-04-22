@@ -25,9 +25,29 @@
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { handlerRegistry } from "./handler-registry";
+import { readAssignments } from "./assignments";
+import { localInferenceEngine } from "./engine";
+import {
+  invalidateExternalLlmRuntimeCache,
+  isExternalLocalLlmInferenceReady,
+} from "./external-llm-runtime";
+import { type HandlerRegistration, handlerRegistry } from "./handler-registry";
+import {
+  allowLocalGgufAlongsideExternalLlm,
+  computeSuppressMiladyLocalGguf,
+  hasAlternativeInferenceProviders,
+  MILADY_LOCAL_INFERENCE_PROVIDER,
+  prefersMiladyLocalInferenceSlot,
+} from "./local-gguf-vs-external";
+import {
+  shouldAttemptHotplugRetry,
+  shouldInvalidateExternalProbeCache,
+} from "./routing-hotplug-recovery";
 import { policyEngine } from "./routing-policy";
-import { readRoutingPreferences } from "./routing-preferences";
+import {
+  type RoutingPreferences,
+  readRoutingPreferences,
+} from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
 
 export const ROUTER_PROVIDER = "milady-router";
@@ -37,6 +57,8 @@ export const ROUTER_PROVIDER = "milady-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
+/** LM Studio / Ollama vanish mid-session; try other handlers after probe refresh. */
+const ROUTER_HOTPLUG_MAX_ATTEMPTS = 8;
 
 /**
  * Runtime's registerModel type, narrowed for our use. The core signature
@@ -70,6 +92,63 @@ function modelTypeToSlot(modelType: string): AgentModelSlot | null {
   return null;
 }
 
+/**
+ * Shapes which handlers the policy engine may pick for this slot.
+ *
+ * 1. **No in-app GGUF intent (nothing loaded, no assignment):** never offer
+ *    `milady-local-inference` — otherwise "cheapest" picks $0 local and every
+ *    TEXT_* call fails when no model is installed.
+ * 2. **In-app GGUF intent but external local LLM autodetected:** when Ollama /
+ *    LM Studio / vLLM probes as reachable with models and another handler exists
+ *    for this slot, drop Milady local so we do not stack two huge residents on
+ *    one machine. Override: set preferred provider to `milady-local-inference`,
+ *    or `MILADY_ALLOW_LOCAL_GGUF_WITH_EXTERNAL_LLM=1` / `ELIZA_ALLOW_*`.
+ *
+ * **WHY autodetect:** Probes are the same lightweight signal the hub already
+ * uses; we only suppress when there is a real alternative provider registered.
+ * See `docs/runtime/self-hosted-llm-inference-whys.md` §4.
+ */
+async function filterExecutableLocalGgufCandidates(
+  candidates: HandlerRegistration[],
+  slot: AgentModelSlot,
+  prefs: RoutingPreferences,
+): Promise<HandlerRegistration[]> {
+  const out: HandlerRegistration[] = [];
+  const assignments = await readAssignments();
+  const assignedId = assignments[slot];
+  const hasExplicitLocalIntent =
+    localInferenceEngine.hasLoadedModel() || Boolean(assignedId);
+
+  const shouldProbeExternal =
+    hasExplicitLocalIntent &&
+    !allowLocalGgufAlongsideExternalLlm() &&
+    !prefersMiladyLocalInferenceSlot(prefs, slot) &&
+    hasAlternativeInferenceProviders(candidates);
+
+  const externalFocus = prefs.externalLlmAutodetectFocus ?? "any";
+  const externalReady = shouldProbeExternal
+    ? await isExternalLocalLlmInferenceReady(externalFocus)
+    : false;
+
+  const suppressSecondLocal = computeSuppressMiladyLocalGguf({
+    candidates,
+    slot,
+    prefs,
+    hasExplicitLocalIntent,
+    externalLocalLlmReady: externalReady,
+  });
+  const canUseLocalGguf = hasExplicitLocalIntent && !suppressSecondLocal;
+
+  for (const c of candidates) {
+    if (c.provider !== MILADY_LOCAL_INFERENCE_PROVIDER) {
+      out.push(c);
+      continue;
+    }
+    if (canUseLocalGguf) out.push(c);
+  }
+  return out;
+}
+
 function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
   return async (runtime, params) => {
     const modelType = slotToModelType(slot);
@@ -82,37 +161,87 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
     const policy = prefs.policy[slot] ?? "manual";
     const preferred = prefs.preferredProvider[slot] ?? null;
 
-    // Ask the policy engine which handler to dispatch to.
-    const candidates = handlerRegistry.getForTypeExcluding(
+    const rawCandidates = handlerRegistry.getForTypeExcluding(
       modelType,
       ROUTER_PROVIDER,
     );
-    const pick = policyEngine.pickProvider({
-      modelType,
-      policy,
-      preferredProvider: preferred,
-      candidates,
-      selfProvider: ROUTER_PROVIDER,
-    });
 
-    if (!pick) {
-      throw new Error(
-        `[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
+    const triedProviders = new Set<string>();
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < ROUTER_HOTPLUG_MAX_ATTEMPTS; attempt++) {
+      const remaining = rawCandidates.filter(
+        (c) => !triedProviders.has(c.provider),
       );
+      if (remaining.length === 0) {
+        break;
+      }
+
+      const candidates = await filterExecutableLocalGgufCandidates(
+        remaining,
+        slot,
+        prefs,
+      );
+      const pick = policyEngine.pickProvider({
+        modelType,
+        policy,
+        preferredProvider: preferred,
+        candidates,
+        selfProvider: ROUTER_PROVIDER,
+      });
+
+      if (!pick) {
+        break;
+      }
+
+      policyEngine.recordPick(pick.provider, modelType);
+      const start = Date.now();
+      try {
+        const result = await pick.handler(runtime, params);
+        policyEngine.recordLatency(
+          pick.provider,
+          modelType,
+          Date.now() - start,
+        );
+        return result;
+      } catch (err) {
+        lastError = err;
+        policyEngine.recordLatency(
+          pick.provider,
+          modelType,
+          Date.now() - start,
+        );
+        triedProviders.add(pick.provider);
+
+        if (shouldInvalidateExternalProbeCache(pick.provider, err)) {
+          invalidateExternalLlmRuntimeCache();
+          runtime.logger.debug(
+            {
+              src: "milady-router",
+              modelType,
+              slot,
+              provider: pick.provider,
+              attempt,
+            },
+            "Invalidated external LLM probe cache after hot-plug style failure; will re-pick providers",
+          );
+        }
+
+        if (!shouldAttemptHotplugRetry(pick.provider, err)) {
+          throw err;
+        }
+      }
     }
 
-    policyEngine.recordPick(pick.provider, modelType);
-    const start = Date.now();
-    try {
-      const result = await pick.handler(runtime, params);
-      policyEngine.recordLatency(pick.provider, modelType, Date.now() - start);
-      return result;
-    } catch (err) {
-      // Record the timing even on failure so "fastest" doesn't silently
-      // prefer providers that error out fast.
-      policyEngine.recordLatency(pick.provider, modelType, Date.now() - start);
-      throw err;
+    if (lastError !== undefined) {
+      throw lastError;
     }
+
+    throw new Error(
+      `[router] No model provider available for ${slot}. Add a cloud API key, ` +
+        `set OLLAMA_BASE_URL (Ollama) or OPENAI_BASE_URL (LM Studio / vLLM / Jan + openai plugin), ` +
+        `or activate a chat GGUF under Settings → Local models.`,
+    );
   };
 }
 

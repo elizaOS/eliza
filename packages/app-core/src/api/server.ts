@@ -123,29 +123,18 @@ import {
   sqlLiteral,
 } from "../utils/sql-compat";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
 import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
-import {
-  buildCorsAllowedPorts,
-  getCorsAllowedPorts,
-  isAllowedLocalOrigin,
-} from "./server-cors";
-// Phase 2 extraction: Vincent routes → app-vincent/src/plugin.ts (vincentPlugin)
-// Phase 2 extraction: Shopify routes → app-shopify/src/plugin.ts (shopifyPlugin)
-import {
-  isAllowedDevConsoleLogPath,
-  readDevConsoleLogTail,
-} from "./dev-console-log";
-
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
-import { handleCatalogRoutes } from "./catalog-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
+import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
+import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,

@@ -50,6 +50,7 @@
     "./eliza-core-roles": "./src/eliza-core-roles.ts",
     "./validation-keywords": "./src/validation-keywords.ts",
     "./onboarding-presets": "./src/onboarding-presets.ts",
+    "./eliza-cloud-presets": "./src/eliza-cloud-presets.ts",
     "./dev-settings-table": "./src/dev-settings-table.ts",
     "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
     "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",

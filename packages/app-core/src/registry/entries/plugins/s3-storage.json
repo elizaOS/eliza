@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-s3-storage",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "storage",
-    "files",
-    "s3",
-    "s3-storage"
-  ],
+  "tags": ["storage", "files", "s3", "s3-storage"],
   "config": {
     "AWS_REGION": {
       "type": "string",
@@ -84,10 +79,7 @@
     "icon": "Server",
     "group": "storage",
     "groupOrder": 10,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-storage-s3#readme",

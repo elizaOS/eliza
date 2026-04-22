@@ -39,7 +39,9 @@ ElizaClient.prototype.getN8nWorkflow = async function (
   this: ElizaClient,
   id: string,
 ): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>(`/api/n8n/workflows/${encodeURIComponent(id)}`);
+  return this.fetch<N8nWorkflow>(
+    `/api/n8n/workflows/${encodeURIComponent(id)}`,
+  );
 };
 
 ElizaClient.prototype.listN8nWorkflows = async function (

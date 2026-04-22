@@ -10,6 +10,10 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { isCloudInferenceSelectedInConfig } from "@elizaos/shared/contracts/onboarding";
+import {
+  ELIZA_CLOUD_API_V1_DEFAULT,
+  ELIZA_CLOUD_URLS,
+} from "@elizaos/shared/eliza-cloud-presets";
 import { normalizeEnvValue } from "../utils/env";
 import {
   clearCloudSecrets,
@@ -17,9 +21,8 @@ import {
   scrubCloudSecretsFromEnv,
 } from "./cloud-secrets";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
-export const CLOUD_BILLING_URL =
-  "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+const DEFAULT_CLOUD_API_BASE_URL = ELIZA_CLOUD_API_V1_DEFAULT;
+export const CLOUD_BILLING_URL = ELIZA_CLOUD_URLS.billingSettings;
 
 const CLOUD_ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",

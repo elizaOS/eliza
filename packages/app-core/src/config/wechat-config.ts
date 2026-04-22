@@ -13,14 +13,18 @@ export function isWechatConfigured(
 
   const accounts = config.accounts;
   if (accounts && typeof accounts === "object") {
-    return Object.values(accounts as Record<string, Record<string, unknown>>).some(
-      (account) => {
-        if (!account || typeof account !== "object" || account.enabled === false) {
-          return false;
-        }
-        return Boolean(account.apiKey);
-      },
-    );
+    return Object.values(
+      accounts as Record<string, Record<string, unknown>>,
+    ).some((account) => {
+      if (
+        !account ||
+        typeof account !== "object" ||
+        account.enabled === false
+      ) {
+        return false;
+      }
+      return Boolean(account.apiKey);
+    });
   }
 
   return false;

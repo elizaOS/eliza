@@ -9,6 +9,7 @@
  * lifecycle lives elsewhere (plugins view, dedicated cloud app).
  */
 
+import { ELIZA_CLOUD_PUBLIC_HOST } from "@elizaos/shared/eliza-cloud-presets";
 import {
   Button,
   Dialog,
@@ -187,7 +188,7 @@ export function CloudDashboard() {
       setActionNotice(
         t("elizaclouddashboard.AutoTopUpAmountRange", {
           defaultValue:
-            "Auto top-up amount must be between ${{min}} and ${{max}}.",
+            "Auto top-up amount must be between {{min}} and {{max}}.",
           min: minAmount,
           max: maxAmount,
         }),
@@ -205,7 +206,7 @@ export function CloudDashboard() {
       setActionNotice(
         t("elizaclouddashboard.AutoTopUpThresholdRange", {
           defaultValue:
-            "Auto top-up threshold must be between ${{min}} and ${{max}}.",
+            "Auto top-up threshold must be between {{min}} and {{max}}.",
           min: minThreshold,
           max: maxThreshold,
         }),
@@ -280,7 +281,7 @@ export function CloudDashboard() {
     if (!Number.isFinite(amountUsd) || amountUsd < minimumTopUp) {
       setActionNotice(
         t("elizaclouddashboard.EnterTopUpAmountMinimum", {
-          defaultValue: "Enter a top-up amount of at least ${{amount}}.",
+          defaultValue: "Enter a top-up amount of at least {{amount}}.",
           amount: minimumTopUp,
         }),
         "error",
@@ -470,7 +471,9 @@ export function CloudDashboard() {
   const autoTopUpMinThreshold = readNumber(billingLimits.minThreshold) ?? 0;
   const autoTopUpMaxThreshold = readNumber(billingLimits.maxThreshold) ?? 1000;
   const creditStatusTone = elizaCloudAuthRejected
-    ? t("notice.elizaCloudAuthRejected")
+    ? t("notice.elizaCloudAuthRejected", {
+        cloudPublicHost: ELIZA_CLOUD_PUBLIC_HOST,
+      })
     : summaryCritical
       ? t("elizaclouddashboard.CreditsCritical")
       : summaryLow
@@ -561,7 +564,9 @@ export function CloudDashboard() {
           role="alert"
           className="mb-5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
-          {t("notice.elizaCloudAuthRejected")}
+          {t("notice.elizaCloudAuthRejected", {
+            cloudPublicHost: ELIZA_CLOUD_PUBLIC_HOST,
+          })}
         </div>
       )}
 
@@ -598,7 +603,7 @@ export function CloudDashboard() {
           <dd className="text-txt">
             {billingAutoTopUp.enabled
               ? t("elizaclouddashboard.OnAmount", {
-                  defaultValue: "On · ${{amount}} when below ${{threshold}}",
+                  defaultValue: "On · {{amount}} when below {{threshold}}",
                   amount: Number(autoTopUpForm.amount).toFixed(0),
                   threshold: Number(autoTopUpForm.threshold).toFixed(0),
                 })
@@ -722,7 +727,7 @@ export function CloudDashboard() {
             onChange={(e) => setBillingAmount(e.target.value)}
             className="h-9 flex-1 rounded-lg bg-bg text-sm"
             placeholder={t("elizaclouddashboard.MinAmountPlaceholder", {
-              defaultValue: "Min ${{amount}}",
+              defaultValue: "Min {{amount}}",
               amount: minimumTopUp.toFixed(2),
             })}
           />

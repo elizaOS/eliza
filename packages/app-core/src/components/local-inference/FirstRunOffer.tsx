@@ -39,7 +39,8 @@ export function FirstRunOffer({
   const miladyOwned = installed.filter((m) => m.source === "milady-download");
   if (miladyOwned.length > 0 || dismissed) return null;
 
-  const recommended = pickRecommended(catalog, installed, hardware);
+  const catalogForChat = catalog.filter((m) => m.category !== "embedding");
+  const recommended = pickRecommended(catalogForChat, installed, hardware);
   if (!recommended) return null;
 
   const handleDismiss = () => {

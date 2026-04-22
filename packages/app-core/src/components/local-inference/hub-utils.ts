@@ -4,6 +4,7 @@
  */
 
 import type {
+  ActiveModelState,
   CatalogModel,
   DownloadJob,
   HardwareProbe,
@@ -112,4 +113,143 @@ export function groupByBucket(
     groups.get(model.bucket)?.push(model);
   }
   return groups;
+}
+
+const EMBEDDING_CATEGORY = "embedding" as CatalogModel["category"];
+
+/**
+ * Curated embedding GGUF to offer when nothing suitable is installed yet.
+ * Prefers the hardware bucket, then steps through smaller buckets, skipping
+ * models that are already on disk or clearly won’t fit.
+ */
+export function pickRecommendedEmbedding(
+  catalog: CatalogModel[],
+  installed: InstalledModel[],
+  hardware: HardwareProbe,
+): CatalogModel | null {
+  const emb = catalog.filter((m) => m.category === EMBEDDING_CATEGORY);
+  if (emb.length === 0) return null;
+  const bucket = hardware.recommendedBucket;
+  const order: ModelBucket[] = [bucket, "small", "mid", "large", "xl"];
+  const seen = new Set<ModelBucket>();
+  for (const b of order) {
+    if (seen.has(b)) continue;
+    seen.add(b);
+    const inBucket = emb.filter((m) => m.bucket === b);
+    for (const m of inBucket) {
+      if (findInstalled(m, installed)) continue;
+      if (computeFit(m, hardware) === "wontfit") continue;
+      return m;
+    }
+  }
+  return null;
+}
+
+/** Hub catalog ids for `category === "embedding"` (same pool as Local AI embedding offer). */
+export function embeddingCatalogModelIds(catalog: CatalogModel[]): Set<string> {
+  return new Set(
+    catalog.filter((m) => m.category === EMBEDDING_CATEGORY).map((m) => m.id),
+  );
+}
+
+/**
+ * Milady-download installs whose id is in the curated embedding catalog — the
+ * only ids the cloud/local embedding strip and TEXT_EMBEDDING slot should list.
+ */
+export function installedMiladyEmbeddingFromCatalog(
+  installed: InstalledModel[],
+  catalog: CatalogModel[],
+): InstalledModel[] {
+  const ids = embeddingCatalogModelIds(catalog);
+  return installed.filter(
+    (m) => m.source === "milady-download" && ids.has(m.id),
+  );
+}
+
+/** Label for embedding picker rows when catalog may include `embeddingDimensions`. */
+export function formatEmbeddingChoiceLabel(
+  model: InstalledModel,
+  catalog: CatalogModel[],
+): string {
+  const entry = catalog.find((c) => c.id === model.id);
+  const dims = entry?.embeddingDimensions;
+  if (typeof dims === "number" && Number.isFinite(dims) && dims > 0) {
+    return `${model.displayName} · ${dims} dimensions`;
+  }
+  return model.displayName;
+}
+
+export interface EmbeddingInUseSummary {
+  primaryLabel: string;
+  detail?: string;
+}
+
+/**
+ * Best-effort description of which embedding GGUF applies for TEXT_EMBEDDING:
+ * explicit pin → hub active model if it is a catalog embedding → single on-disk
+ * embedding → otherwise “not pinned” / none.
+ */
+export function summarizeEmbeddingInUse(args: {
+  assignmentId: string;
+  catalog: CatalogModel[];
+  installedForPicker: InstalledModel[];
+  active: ActiveModelState;
+}): EmbeddingInUseSummary {
+  const { assignmentId, catalog, installedForPicker, active } = args;
+  const embIds = embeddingCatalogModelIds(catalog);
+  const byId = (id: string) => installedForPicker.find((m) => m.id === id);
+
+  if (assignmentId && embIds.has(assignmentId)) {
+    const m = byId(assignmentId);
+    if (m) {
+      return {
+        primaryLabel: formatEmbeddingChoiceLabel(m, catalog),
+        detail: "Pinned for TEXT_EMBEDDING",
+      };
+    }
+    return {
+      primaryLabel: assignmentId,
+      detail: "Pinned id not found on disk — reinstall or pick another model",
+    };
+  }
+
+  const activeId = active.modelId;
+  const st = active.status;
+  if (
+    activeId &&
+    embIds.has(activeId) &&
+    (st === "ready" || st === "loading")
+  ) {
+    const m = byId(activeId);
+    if (m) {
+      return {
+        primaryLabel: formatEmbeddingChoiceLabel(m, catalog),
+        detail:
+          st === "loading"
+            ? "Hub active model (loading)"
+            : "Hub active model (no embedding pin)",
+      };
+    }
+  }
+
+  const onDisk = installedMiladyEmbeddingFromCatalog(
+    installedForPicker,
+    catalog,
+  );
+  if (onDisk.length === 1) {
+    return {
+      primaryLabel: formatEmbeddingChoiceLabel(onDisk[0], catalog),
+      detail: "Only curated embedding installed",
+    };
+  }
+  if (onDisk.length === 0) {
+    return {
+      primaryLabel: "No curated embedding GGUF on disk",
+      detail: "Download one above to use local embeddings",
+    };
+  }
+  return {
+    primaryLabel: "Not pinned",
+    detail: `${onDisk.length} curated embeddings on disk — pick one below or activate one in Local models`,
+  };
 }

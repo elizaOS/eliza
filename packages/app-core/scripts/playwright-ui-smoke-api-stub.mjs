@@ -237,6 +237,41 @@ const emptyLocalInferenceHub = {
   active: emptyLocalInferenceActive,
   downloads: [],
   hardware: emptyLocalInferenceHardware,
+  assignments: {},
+  externalRuntimes: [
+    {
+      id: "ollama",
+      displayName: "Ollama",
+      reachable: false,
+      endpoint: "http://localhost:11434",
+      models: [],
+      hasDownloadedModels: false,
+    },
+    {
+      id: "lmstudio",
+      displayName: "LM Studio",
+      reachable: false,
+      endpoint: "http://127.0.0.1:1234",
+      models: [],
+      hasDownloadedModels: false,
+    },
+    {
+      id: "vllm",
+      displayName: "vLLM",
+      reachable: false,
+      endpoint: "http://127.0.0.1:8000",
+      models: [],
+      hasDownloadedModels: false,
+    },
+    {
+      id: "jan",
+      displayName: "Jan",
+      reachable: false,
+      endpoint: "http://127.0.0.1:1337",
+      models: [],
+      hasDownloadedModels: false,
+    },
+  ],
 };
 
 function parsePositiveInt(value, fallback) {

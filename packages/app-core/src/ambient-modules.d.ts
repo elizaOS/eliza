@@ -73,7 +73,6 @@ declare global {
     gpu?: unknown;
   }
   /** WebXR frame type used by Three.js animation loop */
-  // biome-ignore lint/suspicious/noEmptyInterface: stub for three.js XR callback signature
   interface XRFrame {}
 }
 

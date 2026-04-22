@@ -248,8 +248,11 @@ export function diagnoseNoAIProvider(
   if (failedProviders.length === 0) {
     return (
       "No AI provider plugin was loaded. Set an API key environment variable " +
-      "(e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY) or log in " +
-      "to Eliza Cloud (ELIZAOS_CLOUD_API_KEY) to enable at least one model provider."
+      "(e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY), log in " +
+      "to Eliza Cloud (ELIZAOS_CLOUD_API_KEY), or set OLLAMA_BASE_URL when Ollama " +
+      "is running. For LM Studio / vLLM, start their local server on the default port " +
+      "(Milady auto-sets OPENAI_BASE_URL when /v1/models responds), or set OPENAI_BASE_URL " +
+      "to their /v1 root with @elizaos/plugin-openai. For GGUF-only chat, activate a model under Settings → Local models."
     );
   }
 

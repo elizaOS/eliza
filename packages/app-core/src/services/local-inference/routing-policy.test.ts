@@ -82,6 +82,17 @@ describe("policyEngine.pickProvider", () => {
     expect(pick?.provider).toBe("milady-local-inference");
   });
 
+  it("prefer-local → picks ollama when in-app GGUF absent (loopback local)", () => {
+    const pick = policyEngine.pickProvider({
+      modelType: "TEXT_LARGE",
+      policy: "prefer-local",
+      preferredProvider: null,
+      candidates: [reg("anthropic", 10), reg("ollama", 5)],
+      selfProvider: "milady-router",
+    });
+    expect(pick?.provider).toBe("ollama");
+  });
+
   it("prefer-local → falls back to device-bridge when local absent", () => {
     const pick = policyEngine.pickProvider({
       modelType: "TEXT_LARGE",

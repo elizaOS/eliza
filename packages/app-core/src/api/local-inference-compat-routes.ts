@@ -17,9 +17,11 @@ import {
   handlerRegistry,
   toPublicRegistration,
 } from "../services/local-inference/handler-registry";
+import { snapshotProviders } from "../services/local-inference/providers";
 import {
   type RoutingPolicy,
   readRoutingPreferences,
+  setExternalLlmAutodetectFocus,
   setPolicy,
   setPreferredProvider,
 } from "../services/local-inference/routing-preferences";
@@ -27,6 +29,7 @@ import { localInferenceService } from "../services/local-inference/service";
 import type {
   AgentModelSlot,
   CatalogModel,
+  ExternalLlmAutodetectFocus,
 } from "../services/local-inference/types";
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import {
@@ -91,6 +94,15 @@ function matchInstalledId(pathname: string): string | null {
   const match = /^\/api\/local-inference\/installed\/([^/]+)$/.exec(pathname);
   return match?.[1] ?? null;
 }
+
+const EXTERNAL_LLM_AUTODETECT_FOCUS_VALUES = new Set<string>([
+  "any",
+  "milady-gguf",
+  "ollama",
+  "lmstudio",
+  "vllm",
+  "jan",
+]);
 
 export async function handleLocalInferenceCompatRoutes(
   req: http.IncomingMessage,
@@ -163,7 +175,10 @@ export async function handleLocalInferenceCompatRoutes(
   if (method === "GET" && pathname === "/api/local-inference/hub") {
     if (!ensureCompatApiAuthorized(req, res)) return true;
     try {
-      const snapshot = await localInferenceService.snapshot();
+      const forceExternal = url.searchParams.get("forceExternal") === "1";
+      const snapshot = await localInferenceService.snapshot({
+        forceExternalLlmProbe: forceExternal,
+      });
       sendJsonResponse(res, 200, snapshot);
     } catch (err) {
       sendJsonErrorResponse(
@@ -271,13 +286,20 @@ export async function handleLocalInferenceCompatRoutes(
   }
 
   // ── POST: set preferred provider for a slot (manual override) ──────
-  if (method === "POST" && pathname === "/api/local-inference/routing/preferred") {
+  if (
+    method === "POST" &&
+    pathname === "/api/local-inference/routing/preferred"
+  ) {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     const body = await readCompatJsonBody(req, res);
     if (!body) return true;
     const slot = stringBody(body, "slot") as AgentModelSlot | null;
     if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-      sendJsonErrorResponse(res, 400, "slot is required and must be a valid AgentModelSlot");
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
       return true;
     }
     const raw = body.provider;
@@ -294,7 +316,9 @@ export async function handleLocalInferenceCompatRoutes(
       sendJsonErrorResponse(
         res,
         500,
-        err instanceof Error ? err.message : "Failed to write preferred provider",
+        err instanceof Error
+          ? err.message
+          : "Failed to write preferred provider",
       );
     }
     return true;
@@ -307,7 +331,11 @@ export async function handleLocalInferenceCompatRoutes(
     if (!body) return true;
     const slot = stringBody(body, "slot") as AgentModelSlot | null;
     if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-      sendJsonErrorResponse(res, 400, "slot is required and must be a valid AgentModelSlot");
+      sendJsonErrorResponse(
+        res,
+        400,
+        "slot is required and must be a valid AgentModelSlot",
+      );
       return true;
     }
     const raw = body.policy;
@@ -321,7 +349,8 @@ export async function handleLocalInferenceCompatRoutes(
     const policy =
       raw === null
         ? null
-        : typeof raw === "string" && validPolicies.includes(raw as RoutingPolicy)
+        : typeof raw === "string" &&
+            validPolicies.includes(raw as RoutingPolicy)
           ? (raw as RoutingPolicy)
           : null;
     if (raw !== null && policy === null) {
@@ -340,6 +369,50 @@ export async function handleLocalInferenceCompatRoutes(
         res,
         500,
         err instanceof Error ? err.message : "Failed to write routing policy",
+      );
+    }
+    return true;
+  }
+
+  // ── POST: which external stack gates “external ready” for GGUF suppression ─
+  if (
+    method === "POST" &&
+    pathname === "/api/local-inference/routing/external-llm-focus"
+  ) {
+    if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (!body) return true;
+    const raw = body.focus;
+    const focus =
+      raw === null || raw === undefined
+        ? "any"
+        : typeof raw === "string" && raw.trim().length > 0
+          ? raw.trim()
+          : null;
+    if (focus === null) {
+      sendJsonErrorResponse(res, 400, "focus must be a string or null");
+      return true;
+    }
+    if (!EXTERNAL_LLM_AUTODETECT_FOCUS_VALUES.has(focus)) {
+      sendJsonErrorResponse(
+        res,
+        400,
+        "focus must be any, milady-gguf, ollama, lmstudio, vllm, jan, or null",
+      );
+      return true;
+    }
+    try {
+      const prefs = await setExternalLlmAutodetectFocus(
+        focus as ExternalLlmAutodetectFocus,
+      );
+      sendJsonResponse(res, 200, { preferences: prefs });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error
+          ? err.message
+          : "Failed to write external LLM focus",
       );
     }
     return true;
@@ -403,6 +476,22 @@ export async function handleLocalInferenceCompatRoutes(
   if (method === "GET" && pathname === "/api/local-inference/device") {
     if (!ensureCompatApiAuthorized(req, res)) return true;
     sendJsonResponse(res, 200, deviceBridge.status());
+    return true;
+  }
+
+  // ── GET: unified provider matrix (cloud + local + device) ───────────
+  if (method === "GET" && pathname === "/api/local-inference/providers") {
+    if (!ensureCompatApiAuthorized(req, res)) return true;
+    try {
+      const providers = await snapshotProviders();
+      sendJsonResponse(res, 200, { providers });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to load providers",
+      );
+    }
     return true;
   }
 

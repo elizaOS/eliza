@@ -18,13 +18,13 @@
  *    `handleCloudLogin` flow from `useApp`.
  */
 
-import { Button, Switch } from "@elizaos/ui";
 import type {
   LifeOpsFeatureFlagRowDto,
   LifeOpsFeatureFlagsResponse,
   LifeOpsFeatureFlagsSyncResponse,
   LifeOpsFeatureToggleResponse,
 } from "@elizaos/app-lifeops/lifeops/feature-flags.types";
+import { Button, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
@@ -46,7 +46,6 @@ function sourceBadge(source: FeatureSource): {
         label: "Local",
         className: "border-ok/40 bg-ok/10 text-ok",
       };
-    case "default":
     default:
       return {
         label: "Default",
@@ -175,7 +174,7 @@ export function FeatureTogglesSection() {
   }, [elizaCloudConnected, handleSignIn, handleSync, signInBusy, syncing]);
 
   return (
-    <div className="border-t border-border/40 pt-4">
+    <div className="border-t border-border/40 pt-6">
       <div className="flex items-center justify-between gap-3 pb-3">
         <div>
           <h3 className="text-xs font-semibold">Feature opt-ins</h3>
@@ -209,9 +208,7 @@ export function FeatureTogglesSection() {
             const showCloudBillingTag =
               feature.cloudDefaultOn && isCloudManaged;
             const showCloudHint =
-              feature.cloudDefaultOn &&
-              !elizaCloudConnected &&
-              !isCloudManaged;
+              feature.cloudDefaultOn && !elizaCloudConnected && !isCloudManaged;
             return (
               <li
                 key={feature.featureKey}
@@ -219,7 +216,9 @@ export function FeatureTogglesSection() {
               >
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold">{feature.label}</span>
+                    <span className="text-xs font-semibold">
+                      {feature.label}
+                    </span>
                     <span
                       className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
                       title={
@@ -246,8 +245,8 @@ export function FeatureTogglesSection() {
                   </p>
                   {isCloudManaged && (
                     <p className="text-xs-tight text-muted">
-                      Managed by your Eliza Cloud package — disable it from
-                      the Cloud dashboard.
+                      Managed by your Eliza Cloud package — disable it from the
+                      Cloud dashboard.
                     </p>
                   )}
                   {showCloudHint && (

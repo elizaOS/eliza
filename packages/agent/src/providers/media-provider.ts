@@ -19,6 +19,7 @@ import type {
   VideoConfig,
   VisionConfig,
 } from "@elizaos/agent/config";
+import { ELIZA_CLOUD_API_V1_DEFAULT } from "@elizaos/shared/eliza-cloud-presets";
 
 // ============================================================================
 // Fetch Utilities
@@ -1412,7 +1413,7 @@ export function createImageProvider(
     );
   }
   return new ElizaCloudImageProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
+    options.elizaCloudBaseUrl ?? ELIZA_CLOUD_API_V1_DEFAULT,
     options.elizaCloudApiKey,
   );
 }
@@ -1449,7 +1450,7 @@ export function createVideoProvider(
     );
   }
   return new ElizaCloudVideoProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
+    options.elizaCloudBaseUrl ?? ELIZA_CLOUD_API_V1_DEFAULT,
     options.elizaCloudApiKey,
   );
 }
@@ -1472,7 +1473,7 @@ export function createAudioProvider(
     );
   }
   return new ElizaCloudAudioProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
+    options.elizaCloudBaseUrl ?? ELIZA_CLOUD_API_V1_DEFAULT,
     options.elizaCloudApiKey,
   );
 }
@@ -1517,7 +1518,7 @@ export function createVisionProvider(
     );
   }
   return new ElizaCloudVisionProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
+    options.elizaCloudBaseUrl ?? ELIZA_CLOUD_API_V1_DEFAULT,
     options.elizaCloudApiKey,
   );
 }

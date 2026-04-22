@@ -12,6 +12,7 @@ import { ActiveModelCoordinator } from "./active-model";
 import { readAssignments, setAssignment } from "./assignments";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
+import { snapshotExternalLlmRuntimes } from "./external-llm-runtime";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
 import {
@@ -66,12 +67,17 @@ export class LocalInferenceService {
     return setAssignment(slot, modelId);
   }
 
-  async snapshot(): Promise<ModelHubSnapshot> {
-    const [installed, hardware, assignments] = await Promise.all([
-      this.getInstalled(),
-      this.getHardware(),
-      this.getAssignments(),
-    ]);
+  async snapshot(options?: {
+    /** Bypass TTL so hub refresh picks up new probe base URLs immediately. */
+    forceExternalLlmProbe?: boolean;
+  }): Promise<ModelHubSnapshot> {
+    const [installed, hardware, assignments, externalRuntimes] =
+      await Promise.all([
+        this.getInstalled(),
+        this.getHardware(),
+        this.getAssignments(),
+        snapshotExternalLlmRuntimes(Boolean(options?.forceExternalLlmProbe)),
+      ]);
     return {
       catalog: this.getCatalog(),
       installed,
@@ -79,6 +85,7 @@ export class LocalInferenceService {
       downloads: this.getDownloads(),
       hardware,
       assignments,
+      externalRuntimes,
     };
   }
 

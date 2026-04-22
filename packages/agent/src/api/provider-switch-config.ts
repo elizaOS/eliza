@@ -247,6 +247,21 @@ function clearPersistedEnvValue(config: MutableElizaConfig, key: string): void {
   }
 }
 
+/** Env value stored in eliza config only (not process.env). */
+function readPersistedEnvString(
+  config: MutableElizaConfig,
+  key: string,
+): string | undefined {
+  const env = asRecord(config.env);
+  if (!env) return undefined;
+  const vars = asRecord(env.vars);
+  const fromVars = vars?.[key];
+  if (typeof fromVars === "string" && fromVars.trim()) return fromVars.trim();
+  const top = env[key];
+  if (typeof top === "string" && top.trim()) return top.trim();
+  return undefined;
+}
+
 function clearCloudModelSelections(config: MutableElizaConfig): void {
   const models = asRecord(config.models);
   if (!models) {
@@ -377,6 +392,18 @@ function applyLocalProviderCapabilities(
       if (value) {
         setEnvValue(config, envKey, value);
       }
+    }
+  }
+
+  // OpenAI plugin: use api.openai.com unless OPENAI_BASE_URL is explicitly
+  // persisted in config (custom proxy / LM Studio / Azure). Clears probe- or
+  // shell-only localhost bases when the user selects the OpenAI API-key path.
+  // WHY persisted check only: LM Studio / local probes often set OPENAI_BASE_URL in the
+  // process environment; persisting the key in milady.json is the user's explicit signal
+  // they want a non-default base. Without this, "switch to OpenAI" would keep chat on localhost.
+  if (normalizedProvider === "openai") {
+    if (!readPersistedEnvString(config, "OPENAI_BASE_URL")) {
+      setEnvValue(config, "OPENAI_BASE_URL", undefined);
     }
   }
 
@@ -647,6 +674,7 @@ export function clearPersistedOnboardingConfig(
     "gemini",
     "grok",
     "groq",
+    "local-ai",
     "mistral",
     "ollama",
     "openai",

@@ -262,8 +262,13 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
+    const rawApprovalId = match[1];
+    if (rawApprovalId === undefined) {
+      sendJsonErrorResponse(res, 400, "Invalid approval path");
+      return true;
+    }
     const resolution = service.resolveApproval(
-      decodeURIComponent(match[1]!),
+      decodeURIComponent(rawApprovalId),
       body.approved,
       typeof body.reason === "string" ? body.reason : undefined,
     );

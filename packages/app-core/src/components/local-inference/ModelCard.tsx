@@ -69,6 +69,11 @@ export function ModelCard({
           <div className="font-semibold truncate">{model.displayName}</div>
           <div className="text-xs text-muted-foreground truncate">
             {model.params} · {model.quant} · {model.sizeGb.toFixed(1)} GB
+            {model.category === "embedding" &&
+            typeof model.embeddingDimensions === "number" &&
+            model.embeddingDimensions > 0
+              ? ` · ${model.embeddingDimensions} dimensions`
+              : ""}
           </div>
         </div>
         <span

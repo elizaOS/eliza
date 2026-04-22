@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-plugin-manager",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "plugin-manager",
-    "manager"
-  ],
+  "tags": ["plugin-manager", "manager"],
   "config": {
     "API_KEY": {
       "type": "string",
@@ -26,10 +23,7 @@
     "icon": "Package",
     "group": "agents",
     "groupOrder": 7,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

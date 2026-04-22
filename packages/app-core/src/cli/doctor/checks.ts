@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent/config/paths";
+import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
 import {
   resolveApiSecurityConfig,
   resolveServerOnlyPort,
@@ -42,34 +43,74 @@ export interface CheckResult {
 // Model provider API key env vars (order = display preference)
 // ---------------------------------------------------------------------------
 
+function onboardingCatalogNameForEnvVar(
+  primaryKey: string,
+  alias?: string,
+): string | null {
+  const keys = alias ? [primaryKey, alias] : [primaryKey];
+  for (const provider of ONBOARDING_PROVIDER_CATALOG) {
+    if (!provider.envKey) continue;
+    if (keys.includes(provider.envKey)) return provider.name;
+  }
+  return null;
+}
+
+/** Env vars not represented in `ONBOARDING_PROVIDER_CATALOG`. */
+const MODEL_KEY_ENV_FALLBACK_LABELS: Record<string, string> = {
+  COHERE_API_KEY: "Cohere",
+  PERPLEXITY_API_KEY: "Perplexity",
+  AI_GATEWAY_API_KEY: "Vercel AI Gateway",
+  ELIZAOS_CLOUD_API_KEY: "elizaOS Cloud",
+  OLLAMA_BASE_URL: "Ollama (local)",
+};
+
+function modelKeyVarLabel(key: string, alias?: string): string {
+  return (
+    onboardingCatalogNameForEnvVar(key, alias) ??
+    MODEL_KEY_ENV_FALLBACK_LABELS[key] ??
+    key
+  );
+}
+
 export const MODEL_KEY_VARS = [
   {
     key: "ANTHROPIC_API_KEY",
     alias: "CLAUDE_API_KEY",
-    label: "Anthropic (Claude)",
+    label: modelKeyVarLabel("ANTHROPIC_API_KEY", "CLAUDE_API_KEY"),
   },
-  { key: "OPENAI_API_KEY", label: "OpenAI" },
+  { key: "OPENAI_API_KEY", label: modelKeyVarLabel("OPENAI_API_KEY") },
   {
     key: "GOOGLE_API_KEY",
     alias: "GOOGLE_GENERATIVE_AI_API_KEY",
-    label: "Google (Gemini)",
+    label: modelKeyVarLabel("GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"),
   },
-  { key: "GROQ_API_KEY", label: "Groq" },
-  { key: "XAI_API_KEY", alias: "GROK_API_KEY", label: "xAI (Grok)" },
-  { key: "OPENROUTER_API_KEY", label: "OpenRouter" },
-  { key: "DEEPSEEK_API_KEY", label: "DeepSeek" },
-  { key: "TOGETHER_API_KEY", label: "Together AI" },
-  { key: "MISTRAL_API_KEY", label: "Mistral" },
-  { key: "COHERE_API_KEY", label: "Cohere" },
-  { key: "PERPLEXITY_API_KEY", label: "Perplexity" },
-  { key: "ZAI_API_KEY", alias: "Z_AI_API_KEY", label: "Zai" },
+  { key: "GROQ_API_KEY", label: modelKeyVarLabel("GROQ_API_KEY") },
+  {
+    key: "XAI_API_KEY",
+    alias: "GROK_API_KEY",
+    label: modelKeyVarLabel("XAI_API_KEY", "GROK_API_KEY"),
+  },
+  { key: "OPENROUTER_API_KEY", label: modelKeyVarLabel("OPENROUTER_API_KEY") },
+  { key: "DEEPSEEK_API_KEY", label: modelKeyVarLabel("DEEPSEEK_API_KEY") },
+  { key: "TOGETHER_API_KEY", label: modelKeyVarLabel("TOGETHER_API_KEY") },
+  { key: "MISTRAL_API_KEY", label: modelKeyVarLabel("MISTRAL_API_KEY") },
+  { key: "COHERE_API_KEY", label: modelKeyVarLabel("COHERE_API_KEY") },
+  { key: "PERPLEXITY_API_KEY", label: modelKeyVarLabel("PERPLEXITY_API_KEY") },
+  {
+    key: "ZAI_API_KEY",
+    alias: "Z_AI_API_KEY",
+    label: modelKeyVarLabel("ZAI_API_KEY", "Z_AI_API_KEY"),
+  },
   {
     key: "AI_GATEWAY_API_KEY",
     alias: "AIGATEWAY_API_KEY",
-    label: "Vercel AI Gateway",
+    label: modelKeyVarLabel("AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"),
   },
-  { key: "ELIZAOS_CLOUD_API_KEY", label: "elizaOS Cloud" },
-  { key: "OLLAMA_BASE_URL", label: "Ollama (local)" },
+  {
+    key: "ELIZAOS_CLOUD_API_KEY",
+    label: modelKeyVarLabel("ELIZAOS_CLOUD_API_KEY"),
+  },
+  { key: "OLLAMA_BASE_URL", label: modelKeyVarLabel("OLLAMA_BASE_URL") },
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@
  * and applyDetectedProviders.
  */
 
+import { ELIZA_CLOUD_DEFAULT_SITE_URL } from "@elizaos/shared/eliza-cloud-presets";
 import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
 import { type RefObject, useCallback } from "react";
 import type { StylePreset } from "../api";
@@ -27,6 +28,7 @@ const ensureOnboardedAgentRunning = async (
     // Non-fatal: agent manager may not be ready yet. Onboarding will retry.
   }
 };
+
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -498,7 +500,8 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               voiceProvider: onboardingVoiceProvider,
               voiceApiKey: onboardingVoiceApiKey,
               cloudTtsSelected:
-                runtimeConfig.serviceRouting?.tts?.transport === "cloud-proxy" &&
+                runtimeConfig.serviceRouting?.tts?.transport ===
+                  "cloud-proxy" &&
                 runtimeConfig.serviceRouting?.tts?.backend === "elizacloud",
               clientRef: client,
             });
@@ -543,7 +546,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
         if (isSandboxMode) {
           const cloudApiBase =
-            getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+            getBootConfig().cloudApiBase ?? ELIZA_CLOUD_DEFAULT_SITE_URL;
           const authToken = String(
             (globalThis as Record<string, unknown>)
               .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "",

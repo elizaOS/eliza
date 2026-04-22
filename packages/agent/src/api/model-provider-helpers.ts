@@ -258,6 +258,11 @@ const PROVIDER_ENV_KEYS: Record<
   anthropic: { envKey: "ANTHROPIC_API_KEY" },
   openai: { envKey: "OPENAI_API_KEY" },
   groq: { envKey: "GROQ_API_KEY", baseUrl: "https://api.groq.com/openai/v1" },
+  mistral: { envKey: "MISTRAL_API_KEY", baseUrl: "https://api.mistral.ai/v1" },
+  together: {
+    envKey: "TOGETHER_API_KEY",
+    baseUrl: "https://api.together.xyz/v1",
+  },
   xai: { envKey: "XAI_API_KEY", baseUrl: "https://api.x.ai/v1" },
   openrouter: {
     envKey: "OPENROUTER_API_KEY",
@@ -271,6 +276,10 @@ const PROVIDER_ENV_KEYS: Record<
   "vercel-ai-gateway": {
     envKey: "AI_GATEWAY_API_KEY",
     altEnvKeys: ["AIGATEWAY_API_KEY"],
+  },
+  elizacloud: {
+    envKey: "ELIZAOS_CLOUD_API_KEY",
+    baseUrl: "https://www.elizacloud.ai/api/v1",
   },
 };
 
@@ -540,6 +549,18 @@ export async function fetchProviderModels(
         apiKey,
         baseUrl ?? "https://api.groq.com/openai/v1",
       );
+    case "mistral":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.mistral.ai/v1",
+      );
+    case "together":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.together.xyz/v1",
+      );
     case "xai":
       return fetchModelsREST(
         providerId,
@@ -549,6 +570,12 @@ export async function fetchProviderModels(
     case "vercel-ai-gateway":
       return fetchVercelGatewayModels(
         baseUrl ?? "https://ai-gateway.vercel.sh/v1",
+      );
+    case "elizacloud":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://www.elizacloud.ai/api/v1",
       );
     default:
       return [];
@@ -581,6 +608,12 @@ export async function getOrFetchProvider(
     baseUrl =
       process.env.AI_GATEWAY_BASE_URL?.trim() ||
       "https://ai-gateway.vercel.sh/v1";
+  }
+  if (providerId === "elizacloud") {
+    baseUrl =
+      process.env.ELIZAOS_CLOUD_BASE_URL?.trim() ||
+      cfg.baseUrl ||
+      "https://www.elizacloud.ai/api/v1";
   }
 
   // Skip remote providers that need an API key when none is configured

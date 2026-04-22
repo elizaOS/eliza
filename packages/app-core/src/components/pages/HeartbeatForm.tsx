@@ -304,11 +304,7 @@ export function HeartbeatForm({
           )}
 
           {form.triggerType === "cron" && (
-            <CronInputSection
-              form={form}
-              setField={setField}
-              t={t}
-            />
+            <CronInputSection form={form} setField={setField} t={t} />
           )}
 
           <SchedulePreview form={form} t={t} />
@@ -461,11 +457,11 @@ function TriggerKindSection({
       <FieldLabel variant="form" id={toggleLabelId}>
         {t("triggers.whatToRun")}
       </FieldLabel>
-      <div
-        role="radiogroup"
+      <fieldset
         aria-labelledby={toggleLabelId}
-        className="mt-1.5 flex gap-2"
+        className="mt-1.5 flex gap-2 border-0 p-0 m-0 min-w-0"
       >
+        {/* biome-ignore lint/a11y/useSemanticElements: styled segmented control; native radios diverge from shared button styling */}
         <button
           type="button"
           role="radio"
@@ -479,6 +475,7 @@ function TriggerKindSection({
         >
           {t("triggers.kindText")}
         </button>
+        {/* biome-ignore lint/a11y/useSemanticElements: styled segmented control; native radios diverge from shared button styling */}
         <button
           type="button"
           role="radio"
@@ -492,7 +489,7 @@ function TriggerKindSection({
         >
           {t("triggers.kindWorkflow")}
         </button>
-      </div>
+      </fieldset>
 
       {/* Text prompt */}
       {form.kind === "text" && (
@@ -645,7 +642,10 @@ function SchedulePreview({
     if (form.triggerType === "interval") {
       const value = Number(form.durationValue);
       if (!Number.isFinite(value) || value <= 0) {
-        return { kind: "error" as const, message: t("triggers.scheduleIntervalError") };
+        return {
+          kind: "error" as const,
+          message: t("triggers.scheduleIntervalError"),
+        };
       }
       const intervalMs = durationToMs(value, form.durationUnit);
       const dates = nextRunsForInterval(intervalMs, 3, now);
@@ -708,7 +708,10 @@ function SchedulePreview({
           </p>
           <ul className="space-y-0.5">
             {preview.dates.map((date) => (
-              <li key={date.getTime()} className="text-xs text-txt/80 before:mr-1.5 before:content-['•']">
+              <li
+                key={date.getTime()}
+                className="text-xs text-txt/80 before:mr-1.5 before:content-['•']"
+              >
                 {formatDateTime(date)}
               </li>
             ))}

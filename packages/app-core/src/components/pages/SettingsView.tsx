@@ -1,3 +1,4 @@
+import { ELIZA_CLOUD_PUBLIC_HOST } from "@elizaos/shared/eliza-cloud-presets";
 import {
   Button,
   Checkbox,
@@ -28,12 +29,20 @@ import {
   useRef,
   useState,
 } from "react";
+import { client } from "../../api";
 import { CodingAgentSettingsSection } from "../../app-shell/task-coordinator-slots.js";
 import { useApp } from "../../state";
 import { WidgetHost } from "../../widgets";
+import { LocalAiExternalRuntimesStrip } from "../local-inference/LocalAiExternalRuntimesStrip";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { LocalInferenceHubProvider } from "../local-inference/local-inference-hub-context";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
+import {
+  type EmbeddingApiSource,
+  EmbeddingGenerationSettings,
+  readEmbeddingSource,
+} from "../settings/EmbeddingGenerationSettings";
 import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
 import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
@@ -43,6 +52,17 @@ import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
+/**
+ * Settings shell — layout and spacing
+ *
+ * **Design doc (read before changing paddings or dividers):** `docs/settings-ui-design.md`
+ *
+ * **WHY this file owns scroll + section gap tokens:** `WorkspaceLayout` already applies
+ * default `main` padding; we only override tint, scroll behavior, and vertical rhythm here.
+ * Section stacks must not add a second competing bottom gutter (see `SETTINGS_CONTENT_CLASS`
+ * vs `SETTINGS_SECTION_STACK_CLASS` in the doc).
+ */
+
 interface SettingsSectionDef {
   id: string;
   label: string;
@@ -51,17 +71,31 @@ interface SettingsSectionDef {
   keywordKeys?: string[];
 }
 
+/**
+ * Scroll surface (`WorkspaceLayout` `main`): horizontal padding stays on the layout;
+ * we add tint + scroll tuning + **single** bottom gutter (see `docs/settings-ui-design.md`).
+ * WHY no `pb-*` on `SETTINGS_SECTION_STACK_CLASS`: stacking outer + inner bottom padding
+ * looked like broken layout; one owner makes end-scroll whitespace predictable.
+ */
 const SETTINGS_CONTENT_CLASS =
-  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-6 pt-4 sm:pb-8 sm:pt-5 lg:pb-10 lg:pt-6";
+  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pt-4 pb-10 sm:pt-5 sm:pb-12 lg:pt-6";
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
-const SETTINGS_SECTION_STACK_CLASS = "space-y-6 pb-14 sm:space-y-8 sm:pb-16";
+const SETTINGS_SECTION_STACK_CLASS = "space-y-6 sm:space-y-8";
 
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "cloud",
-    label: "providerswitcher.elizaCloud",
+    label: "settings.sections.cloud.label",
     description: "settings.sections.cloud.desc",
-    keywords: ["cloud", "billing", "credits", "auth", "subscription"],
+    keywords: [
+      ELIZA_CLOUD_PUBLIC_HOST,
+      "elizacloud",
+      "cloud",
+      "billing",
+      "credits",
+      "auth",
+      "subscription",
+    ],
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
   },
   {
@@ -99,6 +133,24 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.apiKey",
       "settings.keyword.inference",
     ],
+  },
+  {
+    id: "embeddings",
+    label: "settings.sections.embeddings.label",
+    description: "settings.sections.embeddings.desc",
+    keywords: [
+      "embedding",
+      "embeddings",
+      "vector",
+      "memory",
+      "recall",
+      "rag",
+      "knowledge",
+      "document",
+      "search",
+      "index",
+    ],
+    keywordKeys: ["settings.keyword.embeddings"],
   },
   {
     id: "coding-agents",
@@ -680,10 +732,39 @@ export function SettingsView({
   onClose?: () => void;
   initialSection?: string;
 } = {}) {
-  const { t, loadPlugins } = useApp();
+  const { t, loadPlugins, elizaCloudConnected } = useApp();
   const [activeSection, setActiveSection] = useState(initialSection ?? "cloud");
   const [searchQuery, setSearchQuery] = useState("");
+  /** Mirrored from ProviderSwitcher: hide Milady-local hub when Eliza Cloud is selected. */
+  const [showLocalModelSettings, setShowLocalModelSettings] = useState(false);
+  /** Local AI engines strip: chat uses local auth-mode provider. */
+  const [aiUsesExternalLocalRuntimes, setAiUsesExternalLocalRuntimes] =
+    useState(false);
+  /** Mirrors `ui.embeddingApiSource` for strip visibility when Embeddings UI is not mounted. */
+  const [embeddingApiSource, setEmbeddingApiSource] = useState<
+    EmbeddingApiSource | undefined
+  >(undefined);
   const shellRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cfg = (await client.getConfig()) as Record<string, unknown>;
+        const ui = cfg.ui as Record<string, unknown> | undefined;
+        let next = readEmbeddingSource(ui);
+        if (next === "elizacloud" && !elizaCloudConnected) {
+          next = "own-key";
+        }
+        if (!cancelled) setEmbeddingApiSource(next);
+      } catch {
+        if (!cancelled) setEmbeddingApiSource("elizacloud");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [elizaCloudConnected]);
 
   const visibleSections = useMemo(
     () =>
@@ -798,7 +879,6 @@ export function SettingsView({
       collapseButtonAriaLabel="Collapse settings"
       expandButtonAriaLabel="Expand settings"
       mobileTitle={t("nav.settings")}
-      mobileMeta={activeSectionDef ? t(activeSectionDef.label) : undefined}
       header={
         <SidebarHeader
           search={{
@@ -820,7 +900,7 @@ export function SettingsView({
               {t("settingsview.NoMatchingSettings")}
             </SidebarContent.EmptyState>
           ) : (
-            <nav className="space-y-1.5" aria-label={t("nav.settings")}>
+            <nav className="space-y-2" aria-label={t("nav.settings")}>
               {visibleSections.map((section) => {
                 const isActive = activeSection === section.id;
                 return (
@@ -858,8 +938,14 @@ export function SettingsView({
     </Sidebar>
   );
 
+  const showExternalLocalRuntimeStrip =
+    (visibleSectionIds.has("ai-model") ||
+      visibleSectionIds.has("embeddings")) &&
+    (embeddingApiSource === "local" || aiUsesExternalLocalRuntimes);
+
+  /** DOM order here must match `SETTINGS_SECTIONS` so sidebar nav + scroll spy stay aligned. */
   const sectionsContent = (
-    <>
+    <LocalInferenceHubProvider>
       {visibleSectionIds.has("cloud") && (
         <SettingsSection
           id="cloud"
@@ -879,21 +965,47 @@ export function SettingsView({
           ref={registerContentItem("ai-model")}
         >
           {/*
-            Cloud providers + subscriptions (Eliza Cloud, Anthropic, OpenAI,
-            Grok, Claude/ChatGPT subscriptions). Sets API keys and small /
+            Cloud providers + subscriptions (ElizaCloud.ai, Claude Platform,
+            OpenAI, Grok, Claude/ChatGPT subscriptions). Sets API keys and small /
             large tier defaults.
           */}
-          <ProviderSwitcher />
+          <ProviderSwitcher
+            onLocalInferenceSettingsVisibilityChange={setShowLocalModelSettings}
+            onAiUsesExternalLocalRuntimesChange={setAiUsesExternalLocalRuntimes}
+          />
 
-          {/*
-            Local llama.cpp engine + paired-device bridge. Lives in the same
-            section because "what's running inference?" is one mental
-            question — multiple providers can coexist and the runtime
-            dispatches each ModelType to the highest-priority handler.
-          */}
-          <div className="mt-8 border-t border-border/40 pt-6">
-            <LocalInferencePanel />
+          <div
+            id="local-inference-panel"
+            className={
+              showLocalModelSettings
+                ? "mt-6 border-t border-border/40 pt-6"
+                : undefined
+            }
+          >
+            {showLocalModelSettings ? <LocalInferencePanel /> : null}
           </div>
+        </SettingsSection>
+      )}
+
+      {showExternalLocalRuntimeStrip ? (
+        <div className="mt-6 border-t border-border/40 pt-6">
+          <LocalAiExternalRuntimesStrip />
+        </div>
+      ) : null}
+
+      {visibleSectionIds.has("embeddings") && (
+        <SettingsSection
+          id="embeddings"
+          title={t("settings.sections.embeddings.label")}
+          description={t("settings.sections.embeddings.desc")}
+          ref={registerContentItem("embeddings")}
+        >
+          <p className="text-sm text-muted-foreground max-w-prose leading-relaxed mb-4">
+            {t("settings.sections.embeddings.detail")}
+          </p>
+          <EmbeddingGenerationSettings
+            onEmbeddingApiSourceChange={setEmbeddingApiSource}
+          />
         </SettingsSection>
       )}
 
@@ -940,23 +1052,9 @@ export function SettingsView({
           title={t("settings.sections.capabilities.label", {
             defaultValue: "Capabilities",
           })}
-          description={t("settings.sections.capabilities.desc", {
-            defaultValue: "Enable or disable agent capabilities",
-          })}
           ref={registerContentItem("capabilities")}
         >
           <CapabilitiesSection />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("permissions") && (
-        <SettingsSection
-          id="permissions"
-          title={t("settings.sections.permissions.label")}
-          description={t("settings.sections.permissions.desc")}
-          ref={registerContentItem("permissions")}
-        >
-          <PermissionsSection />
         </SettingsSection>
       )}
 
@@ -973,6 +1071,17 @@ export function SettingsView({
           ref={registerContentItem("feature-toggles")}
         >
           <FeatureTogglesSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("permissions") && (
+        <SettingsSection
+          id="permissions"
+          title={t("settings.sections.permissions.label")}
+          description={t("settings.sections.permissions.desc")}
+          ref={registerContentItem("permissions")}
+        >
+          <PermissionsSection />
         </SettingsSection>
       )}
 
@@ -1040,7 +1149,7 @@ export function SettingsView({
           </Button>
         </SettingsSection>
       )}
-    </>
+    </LocalInferenceHubProvider>
   );
 
   return (
@@ -1048,7 +1157,7 @@ export function SettingsView({
       className={cn("h-full", inModal && "min-h-0")}
       data-testid="settings-shell"
       footer={<WidgetHost slot="settings" />}
-      footerClassName="pt-2"
+      footerClassName="py-3 sm:py-4"
       sidebar={settingsSidebar}
       contentRef={contentContainerRef}
       contentClassName={SETTINGS_CONTENT_CLASS}

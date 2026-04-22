@@ -5,9 +5,7 @@
   "npmName": "@elizaos/plugin-commands",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "commands"
-  ],
+  "tags": ["commands"],
   "config": {
     "COMMANDS_ENABLED": {
       "type": "boolean",
@@ -62,10 +60,7 @@
     "icon": "Command",
     "group": "automation",
     "groupOrder": 9,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

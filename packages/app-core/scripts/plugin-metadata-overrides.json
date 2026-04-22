@@ -4,7 +4,7 @@
     "tags": ["connector", "agents", "gateway", "realtime"]
   },
   "anthropic": {
-    "description": "Anthropic model provider for Claude chat and reasoning models.",
+    "description": "Claude Platform provider for Claude chat and reasoning models.",
     "tags": ["ai-provider", "llm", "anthropic", "chat"]
   },
   "blooio": {

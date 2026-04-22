@@ -18,6 +18,7 @@ import type {
   StewardPendingApproval,
   StewardTxRecord,
 } from "@elizaos/app-steward/types/steward";
+import { ELIZA_CLOUD_DEFAULT_SITE_URL } from "@elizaos/shared/eliza-cloud-presets";
 import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";
@@ -94,7 +95,10 @@ export interface ResolveCompanionInferenceNoticeArgs {
   elizaCloudEnabled: boolean;
   chatLastUsageModel?: string;
   hasInterruptedAssistant: boolean;
-  t: (key: string) => string;
+  t: (
+    key: string,
+    options?: Record<string, string | number | boolean>,
+  ) => string;
 }
 
 export interface CompanionSceneStatus {
@@ -260,12 +264,13 @@ export interface AppBootConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Defaults (brand-agnostic — no product-specific references)
+// Defaults
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://www.elizacloud.ai",
+  /** Default Eliza Cloud site origin — see `@elizaos/shared/eliza-cloud-presets`. */
+  cloudApiBase: ELIZA_CLOUD_DEFAULT_SITE_URL,
 };
 
 // ---------------------------------------------------------------------------

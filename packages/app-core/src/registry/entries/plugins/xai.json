@@ -5,11 +5,7 @@
   "npmName": "@elizaos/plugin-xai",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "ai-provider",
-    "llm",
-    "xai"
-  ],
+  "tags": ["ai-provider", "llm", "xai"],
   "config": {
     "XAI_MODEL": {
       "type": "string",
@@ -176,10 +172,7 @@
     "icon": "Hash",
     "group": "ai-provider",
     "groupOrder": 0,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-xai#readme",

@@ -5,10 +5,7 @@
   "npmName": "@elizaos/plugin-evm",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "crypto",
-    "evm"
-  ],
+  "tags": ["crypto", "evm"],
   "config": {
     "EVM_PRIVATE_KEY": {
       "type": "secret",
@@ -125,10 +122,7 @@
     "icon": "Link",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-evm#readme",

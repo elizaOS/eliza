@@ -17,6 +17,7 @@
  */
 
 import fs from "node:fs/promises";
+import { getOnboardingProviderOption } from "@elizaos/shared/contracts/onboarding";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
@@ -62,6 +63,20 @@ export interface ProviderDefinition {
 }
 
 /** Resolve which slots have at least one registered handler from this provider. */
+function catalogProviderName(
+  id: Parameters<typeof getOnboardingProviderOption>[0],
+  fallback: string,
+): string {
+  return getOnboardingProviderOption(id)?.name ?? fallback;
+}
+
+function catalogProviderDescription(
+  id: Parameters<typeof getOnboardingProviderOption>[0],
+  fallback: string,
+): string {
+  return getOnboardingProviderOption(id)?.description ?? fallback;
+}
+
 export function getRegisteredSlotsForProvider(providerId: string): string[] {
   const regs = handlerRegistry.getAll();
   const slots = new Set<string>();
@@ -159,9 +174,12 @@ const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
 
 const ANTHROPIC_PROVIDER: ProviderDefinition = {
   id: "anthropic",
-  label: "Anthropic API",
+  label: catalogProviderName("anthropic", "Claude Platform (api key)"),
   kind: "cloud-api",
-  description: "Claude models via the Anthropic API. Requires an API key.",
+  description: catalogProviderDescription(
+    "anthropic",
+    "Claude models via the Claude Platform API. Requires an API key.",
+  ),
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.ANTHROPIC_API_KEY?.trim();
@@ -174,9 +192,12 @@ const ANTHROPIC_PROVIDER: ProviderDefinition = {
 
 const OPENAI_PROVIDER: ProviderDefinition = {
   id: "openai",
-  label: "OpenAI API",
+  label: catalogProviderName("openai", "OpenAI"),
   kind: "cloud-api",
-  description: "GPT models via the OpenAI API. Requires an API key.",
+  description: catalogProviderDescription(
+    "openai",
+    "GPT models via the OpenAI API. Requires an API key.",
+  ),
   supportedSlots: [
     "TEXT_SMALL",
     "TEXT_LARGE",
@@ -195,9 +216,12 @@ const OPENAI_PROVIDER: ProviderDefinition = {
 
 const GROK_PROVIDER: ProviderDefinition = {
   id: "grok",
-  label: "Grok API",
+  label: catalogProviderName("grok", "xAI (Grok)"),
   kind: "cloud-api",
-  description: "xAI Grok models. Requires an API key.",
+  description: catalogProviderDescription(
+    "grok",
+    "xAI Grok models. Requires an API key.",
+  ),
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key =
@@ -211,10 +235,12 @@ const GROK_PROVIDER: ProviderDefinition = {
 
 const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   id: "elizacloud",
-  label: "Eliza Cloud",
+  label: catalogProviderName("elizacloud", "Eliza Cloud"),
   kind: "cloud-subscription",
-  description:
+  description: catalogProviderDescription(
+    "elizacloud",
     "Milady-hosted inference routed through your subscription. No API key to manage.",
+  ),
   supportedSlots: [
     "TEXT_SMALL",
     "TEXT_LARGE",
@@ -236,9 +262,12 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
 
 const GOOGLE_PROVIDER: ProviderDefinition = {
   id: "google",
-  label: "Google (Gemini)",
+  label: catalogProviderName("gemini", "Gemini"),
   kind: "cloud-api",
-  description: "Gemini models via Google Generative AI. Requires an API key.",
+  description: catalogProviderDescription(
+    "gemini",
+    "Gemini models via Google Generative AI. Requires an API key.",
+  ),
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key =
@@ -252,9 +281,12 @@ const GOOGLE_PROVIDER: ProviderDefinition = {
 
 const MISTRAL_PROVIDER: ProviderDefinition = {
   id: "mistral",
-  label: "Mistral API",
+  label: catalogProviderName("mistral", "Mistral"),
   kind: "cloud-api",
-  description: "Mistral models via la Plateforme. Requires an API key.",
+  description: catalogProviderDescription(
+    "mistral",
+    "Mistral models via la Plateforme. Requires an API key.",
+  ),
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const key = process.env.MISTRAL_API_KEY?.trim();

@@ -133,7 +133,8 @@ export function useStartupCoordinator(
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {
     if (state.phase !== "restoring-session" || !depsReady) return;
-    const d = depsRef.current!;
+    const d = depsRef.current;
+    if (!d) return;
     effectRunRef.current += 1;
     const cancelled = { current: false };
 
@@ -144,7 +145,6 @@ export function useStartupCoordinator(
     return () => {
       cancelled.current = true;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Phase: resolving-target (auto-advance) ──────────────────────
@@ -161,8 +161,10 @@ export function useStartupCoordinator(
     const cancelled = { current: false };
     const tidRef = { current: null as ReturnType<typeof setTimeout> | null };
 
+    const deps = depsRef.current;
+    if (!deps) return;
     runPollingBackend(
-      depsRef.current!,
+      deps,
       dispatch,
       policy,
       _ctx.current,
@@ -178,7 +180,6 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (tidRef.current) clearTimeout(tidRef.current);
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, policy.backendTimeoutMs, depsReady, policy]);
 
   // ── Phase: starting-runtime ─────────────────────────────────────
@@ -189,8 +190,10 @@ export function useStartupCoordinator(
     const cancelled = { current: false };
     const tidRef = { current: null as ReturnType<typeof setTimeout> | null };
 
+    const deps = depsRef.current;
+    if (!deps) return;
     runStartingRuntime(
-      depsRef.current!,
+      deps,
       dispatch,
       runId,
       effectRunRef,
@@ -204,7 +207,6 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (tidRef.current) clearTimeout(tidRef.current);
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Phase: hydrating — one-time data load, then HYDRATION_COMPLETE ─
@@ -212,14 +214,15 @@ export function useStartupCoordinator(
     if (state.phase !== "hydrating" || !depsReady) return;
     const cancelled = { current: false };
 
-    runHydrating(depsRef.current!, dispatch, cancelled).catch((err) => {
+    const deps = depsRef.current;
+    if (!deps) return;
+    runHydrating(deps, dispatch, cancelled).catch((err) => {
       console.error("[eliza][startup:hydrate] Unexpected error:", err);
     });
 
     return () => {
       cancelled.current = true;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Ready phase — persistent WS bindings + nav listener ─────────
@@ -241,7 +244,6 @@ export function useStartupCoordinator(
       wsBindingsActiveRef.current = false;
       cleanup();
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on ready, deps via ref
   }, [readyPhaseReached, depsReady]);
 
   // ── Public interface ─────────────────────────────────────────────

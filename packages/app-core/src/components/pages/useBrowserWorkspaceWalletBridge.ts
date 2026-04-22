@@ -213,8 +213,7 @@ async function handleSolanaSignMessage(
   if (!message && !messageBase64) {
     return {
       ok: false,
-      error:
-        "Solana browser wallet signing requires message or messageBase64.",
+      error: "Solana browser wallet signing requires message or messageBase64.",
     };
   }
   try {
@@ -273,7 +272,10 @@ async function handleEthSign(
   }
   const message = resolveMessageToSign(params, walletState.address);
   if (!message) {
-    return { ok: false, error: "Browser wallet signing requires a message payload." };
+    return {
+      ok: false,
+      error: "Browser wallet signing requires a message payload.",
+    };
   }
   try {
     const result = await client.signBrowserWalletMessage(message);
@@ -303,8 +305,7 @@ async function handleSendTransaction(
   if (!transaction) {
     return {
       ok: false,
-      error:
-        "Browser wallet sendTransaction requires to, value, and chainId.",
+      error: "Browser wallet sendTransaction requires to, value, and chainId.",
     };
   }
   try {

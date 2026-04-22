@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { analyzePluginStateDrift } from "./plugins-compat-routes";
 
+type PluginListArg = Parameters<typeof analyzePluginStateDrift>[0];
+
 describe("analyzePluginStateDrift", () => {
   it("reports no drift when entries, compat, allow-list, and runtime agree", () => {
     const report = analyzePluginStateDrift(
@@ -13,7 +15,7 @@ describe("analyzePluginStateDrift", () => {
           enabled: true,
           isActive: true,
         },
-      ] as any[],
+      ] as PluginListArg,
       {
         connectors: {
           discord: { enabled: true },
@@ -43,7 +45,7 @@ describe("analyzePluginStateDrift", () => {
           enabled: true,
           isActive: true,
         },
-      ] as any[],
+      ] as PluginListArg,
       {
         connectors: {
           discord: { enabled: false },
@@ -70,7 +72,7 @@ describe("analyzePluginStateDrift", () => {
           enabled: false,
           isActive: false,
         },
-      ] as any[],
+      ] as PluginListArg,
       {
         connectors: {
           discord: { enabled: false },
@@ -97,7 +99,7 @@ describe("analyzePluginStateDrift", () => {
           enabled: true,
           isActive: true,
         },
-      ] as any[],
+      ] as PluginListArg,
       {
         connectors: {
           discord: { enabled: true },
@@ -124,7 +126,7 @@ describe("analyzePluginStateDrift", () => {
           enabled: false,
           isActive: true,
         },
-      ] as any[],
+      ] as PluginListArg,
       {
         connectors: {
           discord: { enabled: false },

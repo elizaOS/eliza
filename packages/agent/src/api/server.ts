@@ -1323,6 +1323,7 @@ async function handleRequest(
         providerSwitchInProgress = v;
       },
       restartRuntime,
+      isRuntimeRestarting: () => state.agentState === "restarting",
     })
   ) {
     return;

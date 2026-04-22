@@ -1,3 +1,4 @@
+import { ELIZA_CLOUD_URLS } from "@elizaos/shared/eliza-cloud-presets";
 import type {
   CloudBillingCheckoutResponse,
   CloudBillingSettings,
@@ -6,10 +7,9 @@ import type {
 } from "../../api";
 import { pathForTab } from "../../navigation";
 
-export const ELIZA_CLOUD_INSTANCES_URL =
-  "https://www.elizacloud.ai/dashboard/app";
+export const ELIZA_CLOUD_INSTANCES_URL = ELIZA_CLOUD_URLS.dashboardApp;
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */
-export const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
+export const ELIZA_CLOUD_WEB_URL = ELIZA_CLOUD_URLS.marketingSite;
 export const BILLING_PRESET_AMOUNTS = [10, 25, 100];
 export const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";
 export const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([

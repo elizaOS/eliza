@@ -26,6 +26,11 @@
 import type { HandlerRegistration } from "./handler-registry";
 import type { RoutingPolicy } from "./routing-preferences";
 
+/** Must match `ROUTER_PROVIDER` in `router-handler.ts`. */
+const ROUTER_SELF_ID = "milady-router";
+
+const STUB_HANDLER: HandlerRegistration["handler"] = async () => undefined;
+
 const RING_SIZE = 32;
 
 interface LatencySample {
@@ -61,6 +66,8 @@ const COST_PER_MILLION_TOKENS: Partial<
   "milady-local-inference": { input: 0, output: 0 },
   "milady-device-bridge": { input: 0, output: 0 },
   "capacitor-llama": { input: 0, output: 0 },
+  /** Loopback Ollama — treat as $0 like other on-device inference for "cheapest". */
+  ollama: { input: 0, output: 0 },
   anthropic: { input: 3, output: 15 },
   openai: { input: 2.5, output: 10 },
   grok: { input: 5, output: 15 },
@@ -177,10 +184,16 @@ class PolicyEngine {
         return ranked[0] ?? null;
       }
       case "prefer-local": {
+        // Same-machine inference: in-app GGUF, on-device Capacitor, then Ollama
+        // (typical loopback server). **WHY include ollama:** when the router
+        // suppresses milady-local-inference because LM Studio/Ollama already
+        // holds weights, "prefer-local" should still prefer loopback Ollama
+        // before falling through to cloud OpenAI / Anthropic.
         const local = eligible.find(
           (c) =>
             c.provider === "milady-local-inference" ||
-            c.provider === "capacitor-llama",
+            c.provider === "capacitor-llama" ||
+            c.provider === "ollama",
         );
         if (local) return local;
         const bridge = eligible.find(
@@ -217,3 +230,43 @@ class PolicyEngine {
 }
 
 export const policyEngine = new PolicyEngine();
+
+/**
+ * Preview which provider `pickProvider` would choose for `modelType` using
+ * the same policy rules as the live router. Handlers are stubs — this is
+ * for UI copy only. Excludes `milady-router` by default. Does **not** apply
+ * `filterExecutableLocalGgufCandidates` (GGUF suppression) from
+ * `router-handler.ts`.
+ */
+export function previewRouterPickFromRegistrations(args: {
+  modelType: string;
+  policy: RoutingPolicy;
+  preferredProvider: string | null;
+  registrations: ReadonlyArray<{
+    modelType: string;
+    provider: string;
+    priority: number;
+  }>;
+  selfProvider?: string;
+}): string | null {
+  const self = args.selfProvider ?? ROUTER_SELF_ID;
+  const candidates: HandlerRegistration[] = args.registrations
+    .filter((r) => r.modelType === args.modelType && r.provider !== self)
+    .map((r) => ({
+      provider: r.provider,
+      priority: r.priority,
+      modelType: r.modelType,
+      registeredAt: "",
+      handler: STUB_HANDLER,
+    }));
+  if (candidates.length === 0) return null;
+  return (
+    policyEngine.pickProvider({
+      modelType: args.modelType,
+      policy: args.policy,
+      preferredProvider: args.preferredProvider,
+      candidates,
+      selfProvider: self,
+    })?.provider ?? null
+  );
+}

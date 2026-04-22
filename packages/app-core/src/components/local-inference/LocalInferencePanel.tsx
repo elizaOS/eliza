@@ -1,3 +1,15 @@
+/**
+ * Settings → **Local models** hub: downloads, external stacks (Ollama / LM Studio / vLLM / Jan),
+ * routing matrix, slot assignments.
+ *
+ * WHY this panel exists alongside **AI Model**: external stacks are discovered via HTTP probes
+ * (`services/local-inference/external-llm-runtime.ts` header) for human clarity *and* for
+ * `routerInferenceReady` / `isExternalLocalLlmInferenceReady` — same signal the router uses to avoid
+ * loading two huge residents (see `router-handler.ts` + `local-gguf-vs-external.ts` headers). Child
+ * components: `ExternalRuntimesSection` (per-backend rows + refresh), `RoutingMatrix` (`routing.json`
+ * policies), `SlotAssignments` (per-slot model ids the router reads). Embedding listing vs
+ * `OPENAI_BASE_URL` is resolved in `embedding-external-stack.ts` (JSDoc on listing helpers).
+ */
 import { Button } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -5,10 +17,12 @@ import type {
   ActiveModelState,
   CatalogModel,
   DownloadJob,
+  ExternalLlmAutodetectFocus,
   HardwareProbe,
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { sortExternalRuntimes } from "../../services/local-inference/sort-external-runtimes";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
@@ -16,6 +30,7 @@ import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
+import { ExternalRuntimesSection } from "./ExternalRuntimesSection";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
@@ -24,30 +39,39 @@ import { ProvidersList } from "./ProvidersList";
 import { RoutingMatrix } from "./RoutingMatrix";
 import { SlotAssignments } from "./SlotAssignments";
 
-/**
- * Settings page entry for local inference. Owns the hub snapshot state,
- * subscribes to the download SSE stream, and dispatches mutations back
- * through the typed client helpers.
- */
 type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
   const { setActionNotice } = useApp();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
+  /** Mirrors Local AI engine preference; embedding slot only when `milady-gguf`. */
+  const [llmEngineFocus, setLlmEngineFocus] =
+    useState<ExternalLlmAutodetectFocus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const snapshot = await client.getLocalInferenceHub();
-      setHub(snapshot);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load models");
-    }
-  }, []);
+  const refresh = useCallback(
+    async (opts?: { forceExternalProbe?: boolean }) => {
+      try {
+        const [snapshot, routing] = await Promise.all([
+          client.getLocalInferenceHub(
+            opts?.forceExternalProbe ? { forceExternalProbe: true } : undefined,
+          ),
+          client.getLocalInferenceRouting(),
+        ]);
+        setHub(snapshot);
+        setLlmEngineFocus(
+          routing.preferences.externalLlmAutodetectFocus ?? "any",
+        );
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load models");
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void refresh();
@@ -261,7 +285,7 @@ export function LocalInferencePanel() {
           size="sm"
           variant="outline"
           className="h-8 rounded-lg"
-          onClick={refresh}
+          onClick={() => void refresh()}
         >
           Retry
         </Button>
@@ -282,13 +306,18 @@ export function LocalInferencePanel() {
           Local models
         </h3>
         <p className="text-xs text-muted-foreground">
-          Run llama.cpp on this machine, this mobile device, or on a paired
-          device. Enable alongside cloud providers — the agent will prefer
-          whichever handler has the highest priority for each ModelType. Use the
-          slot assignments below to pin a specific local model to a slot, or
-          leave them unset to let cloud take priority when configured.
+          Shown when your AI model source is not Eliza Cloud. Run llama.cpp on
+          this machine, a mobile device, or a paired device; edit probe URLs on
+          the server cards below. The agent picks the highest-priority handler
+          per slot — use assignments below to pin Milady-local models.
         </p>
       </header>
+      <ExternalRuntimesSection
+        backends={sortExternalRuntimes(hub.externalRuntimes ?? [])}
+        onRefresh={() => void refresh({ forceExternalProbe: true })}
+        onExternalLlmAutodetectFocusChange={setLlmEngineFocus}
+        busy={busy}
+      />
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
       <FirstRunOffer
@@ -372,13 +401,17 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <ProvidersList />
       <RoutingMatrix />
       <SlotAssignments
         installed={hub.installed}
         assignments={hub.assignments}
         onChange={handleAssignmentsChange}
+        embeddingCatalog={hub.catalog}
+        embeddingSlotMode={
+          llmEngineFocus === "milady-gguf" ? "milady-gguf-only" : "hidden"
+        }
       />
+      <ProvidersList />
       <DevicesPanel />
       <ExternalInstalledSummary
         installed={hub.installed}
@@ -407,7 +440,7 @@ function ExternalInstalledSummary({
   if (external.length === 0) return null;
 
   return (
-    <section className="space-y-2 border-t border-border/40 pt-4">
+    <section className="space-y-2 border-t border-border/40 pt-6">
       <header className="space-y-0.5">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           Discovered from other tools

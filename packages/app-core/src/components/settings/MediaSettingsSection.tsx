@@ -21,7 +21,6 @@ import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";
-import { MusicPlayerSettingsPanel } from "./MusicPlayerSettingsPanel";
 import { ProviderModelSelectors } from "./media-settings-providers";
 import {
   CATEGORY_LABELS,
@@ -203,8 +202,6 @@ export function MediaSettingsSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MusicPlayerSettingsPanel />
-
       {COMPANION_ENABLED && (
         <div
           className="rounded-xl border border-border bg-card/60 px-3 py-3 flex flex-col gap-3"
@@ -422,7 +419,9 @@ export function MediaSettingsSection() {
                         >
                           <div className="font-semibold">
                             {p.id === "cloud"
-                              ? t("providerswitcher.elizaCloud")
+                              ? t("settings.sections.cloud.label", {
+                                  defaultValue: "ElizaCloud.ai",
+                                })
                               : t(p.labelKey)}
                           </div>
                           <div className="text-2xs text-muted mt-0.5">

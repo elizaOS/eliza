@@ -1,15 +1,5 @@
-import {
-  Button,
-  Spinner,
-  Textarea,
-} from "@elizaos/ui";
-import {
-  ChevronDown,
-  ChevronUp,
-  Send,
-  Square,
-  Zap,
-} from "lucide-react";
+import { Button, Spinner, Textarea } from "@elizaos/ui";
+import { ChevronDown, ChevronUp, Send, Square, Zap } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
@@ -101,8 +91,8 @@ export function AutomationRoomChatPane({
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const messageListRef = useRef<HTMLDivElement>(null);
-  const conversationKey = useMemo(
+  const messageListRef = useRef<HTMLUListElement>(null);
+  const _conversationKey = useMemo(
     () =>
       JSON.stringify({
         title,
@@ -177,7 +167,7 @@ export function AutomationRoomChatPane({
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, [conversationKey, metadata, onConversationResolved, title]);
+  }, [metadata, onConversationResolved, title, t]);
 
   // ── Scroll-position tracking ─────────────────────────────────────────────
   useEffect(() => {
@@ -210,7 +200,7 @@ export function AutomationRoomChatPane({
     } else {
       setShowNewMessages(true);
     }
-  }, [messages, sending]);
+  }, []);
 
   // ── Composer height resize ───────────────────────────────────────────────
   useEffect(() => {
@@ -225,8 +215,7 @@ export function AutomationRoomChatPane({
     textarea.style.overflowY = "hidden";
     const nextHeight = Math.min(textarea.scrollHeight, 150);
     textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > 150 ? "auto" : "hidden";
+    textarea.style.overflowY = textarea.scrollHeight > 150 ? "auto" : "hidden";
   }, [composerRef, input]);
 
   // ── milady:automations:workflow-generating listener ──────────────────────
@@ -245,9 +234,7 @@ export function AutomationRoomChatPane({
         return;
       }
       setActiveToolCall(
-        detail.inProgress
-          ? t("chat.toolCallChip.buildingWorkflow")
-          : null,
+        detail.inProgress ? t("chat.toolCallChip.buildingWorkflow") : null,
       );
     };
 
@@ -263,7 +250,8 @@ export function AutomationRoomChatPane({
   // ── milady:automations:seed-composer listener ───────────────────────────
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; select?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ text: string; select?: boolean }>)
+        .detail;
       if (!detail?.text) return;
       setInput(detail.text);
       window.requestAnimationFrame(() => {
@@ -311,7 +299,11 @@ export function AutomationRoomChatPane({
   useEffect(() => {
     const markInteraction = (event: MouseEvent | FocusEvent) => {
       const composer = composerRef.current;
-      if (composer && event.target instanceof Node && composer.contains(event.target)) {
+      if (
+        composer &&
+        event.target instanceof Node &&
+        composer.contains(event.target)
+      ) {
         return;
       }
       lastExternalInteractionRef.current = Date.now();
@@ -461,10 +453,10 @@ export function AutomationRoomChatPane({
 
   // ── Roving tabindex: arrow-key navigation between message bubbles ─────────
   const handleMessageListKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLUListElement>) => {
       if (!messageListRef.current) return;
       const items = Array.from(
-        messageListRef.current.querySelectorAll<HTMLElement>('[role="article"]'),
+        messageListRef.current.querySelectorAll<HTMLElement>("article"),
       );
       const focused = document.activeElement as HTMLElement | null;
       const currentIndex = focused ? items.indexOf(focused) : -1;
@@ -548,14 +540,12 @@ export function AutomationRoomChatPane({
         >
           {visibleMessages.length === 0 && !sending ? (
             <div className="flex flex-1 items-center justify-center px-4 py-5 text-center">
-              <p className="text-sm text-muted">
-                {loadError ?? placeholder}
-              </p>
+              <p className="text-sm text-muted">{loadError ?? placeholder}</p>
             </div>
           ) : (
-            <div
+            <ul
               ref={messageListRef}
-              className="w-full space-y-1"
+              className="w-full list-none space-y-1 p-0"
               onKeyDown={handleMessageListKeyDown}
             >
               {visibleMessages.map((message, index) => {
@@ -565,54 +555,59 @@ export function AutomationRoomChatPane({
                     ? t("chat.messageAriaLabelUser", { preview })
                     : t("chat.messageAriaLabelAgent", { preview });
                 return (
-                  <div
-                    key={message.id}
-                    role="article"
-                    // biome-ignore lint/a11y/noNoninteractiveTabindex: roving tabindex for keyboard navigation
-                    tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
-                    aria-label={ariaLabel}
-                    className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
-                      message.role === "user"
-                        ? "ml-8 self-end bg-accent/10 text-txt"
-                        : "mr-8 bg-bg/50 text-txt"
-                    }`}
-                  >
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                      {message.role === "user"
-                        ? t("automations.chat.roleUser")
-                        : t("automations.chat.roleAssistant")}
-                    </div>
-                    <div className="whitespace-pre-wrap">{message.text}</div>
-                  </div>
+                  <li key={message.id} className="list-none">
+                    <article
+                      tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
+                      aria-label={ariaLabel}
+                      className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
+                        message.role === "user"
+                          ? "ml-8 self-end bg-accent/10 text-txt"
+                          : "mr-8 bg-bg/50 text-txt"
+                      }`}
+                    >
+                      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                        {message.role === "user"
+                          ? t("automations.chat.roleUser")
+                          : t("automations.chat.roleAssistant")}
+                      </div>
+                      <div className="whitespace-pre-wrap">{message.text}</div>
+                    </article>
+                  </li>
                 );
               })}
 
               {/* Typing indicator while waiting for first token */}
               {sending && !firstTokenReceived && (
-                <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
-                  <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    {t("automations.chat.roleAssistant")}
+                <li className="list-none">
+                  <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
+                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      {t("automations.chat.roleAssistant")}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:0ms]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:300ms]" />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:0ms]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:150ms]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:300ms]" />
-                  </div>
-                </div>
+                </li>
               )}
 
               {/* Tool-call chip — rendered as last transcript item */}
               {activeToolCall && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="mr-8 flex items-center gap-2 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5"
-                >
-                  <Spinner size={12} className="text-accent/70" />
-                  <span className="text-[11px] text-muted">{activeToolCall}</span>
-                </div>
+                <li className="list-none">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="mr-8 flex items-center gap-2 rounded-lg border border-border/30 bg-bg/30 px-3 py-1.5"
+                  >
+                    <Spinner size={12} className="text-accent/70" />
+                    <span className="text-[11px] text-muted">
+                      {activeToolCall}
+                    </span>
+                  </div>
+                </li>
               )}
-            </div>
+            </ul>
           )}
         </div>
 

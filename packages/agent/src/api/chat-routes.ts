@@ -308,8 +308,40 @@ const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
 const GENERIC_NO_RESPONSE_CHAT_REPLY = PROVIDER_ISSUE_CHAT_REPLY;
+/**
+ * Wall-clock cap for the whole generate/stream promise (race with `withTimeout`).
+ * **WHY two defaults:** cloud APIs should fail fast on hung upstreams; local
+ * OpenAI-compat + Ollama often need minutes for long-context prefill/decode.
+ * See `resolveChatGenerationTimeoutMs` and `docs/runtime/self-hosted-llm-inference-whys.md`.
+ */
+/** Default when using cloud APIs (fast fail on hung upstream). */
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 90_000;
+/**
+ * Ollama / LM Studio / vLLM / Jan / custom OpenAI base can spend many minutes on
+ * long-context prefill + decode. Used when env looks self-hosted unless
+ * ELIZA_CHAT_GENERATION_TIMEOUT_MS / _SEC overrides.
+ */
+const DEFAULT_SELF_HOSTED_CHAT_GENERATION_TIMEOUT_MS = 600_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
+
+function isSelfHostedLlmInferenceEnv(env: NodeJS.ProcessEnv): boolean {
+  if (env.ELIZA_SELF_HOSTED_CHAT_LONG_TIMEOUT?.trim() === "1") return true;
+  if (env.OLLAMA_BASE_URL?.trim()) return true;
+  const openai = env.OPENAI_BASE_URL?.trim().toLowerCase() ?? "";
+  if (openai.length > 0 && !openai.includes("api.openai.com")) return true;
+  if (env.LM_STUDIO_BASE_URL?.trim()) return true;
+  for (const key of [
+    "VLLM_BASE_URL",
+    "VLLM_API_BASE",
+    "VLLM_OPENAI_API_BASE",
+    "JAN_BASE_URL",
+    "JAN_SERVER_URL",
+    "JAN_API_BASE",
+  ] as const) {
+    if (env[key]?.trim()) return true;
+  }
+  return false;
+}
 
 function isExecutableFallbackAction(action: { name: string }): boolean {
   return !NON_EXECUTABLE_FALLBACK_ACTIONS.has(action.name);
@@ -447,17 +479,26 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
     return Math.max(1, Math.floor(explicit));
   }
 
-  const fromEnv =
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ||
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
-  if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
-
-  const parsed = Number.parseInt(fromEnv, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+  const msEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
+  if (msEnv) {
+    const parsedMs = Number.parseInt(msEnv, 10);
+    if (Number.isFinite(parsedMs) && parsedMs > 0) {
+      return Math.max(1_000, parsedMs);
+    }
   }
 
-  return Math.max(1_000, parsed);
+  const secEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_SEC?.trim();
+  if (secEnv) {
+    const parsedSec = Number.parseInt(secEnv, 10);
+    if (Number.isFinite(parsedSec) && parsedSec > 0) {
+      return Math.max(1_000, parsedSec * 1_000);
+    }
+  }
+
+  if (isSelfHostedLlmInferenceEnv(process.env)) {
+    return DEFAULT_SELF_HOSTED_CHAT_GENERATION_TIMEOUT_MS;
+  }
+  return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
 }
 
 function createChatGenerationTimeoutError(timeoutMs: number): Error {

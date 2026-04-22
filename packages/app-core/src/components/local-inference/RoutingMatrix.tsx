@@ -1,3 +1,9 @@
+/**
+ * Per-slot routing policy + preferred provider UI → persists `routing.json`.
+ *
+ * WHY: `router-handler.ts` reads these preferences at dispatch to pick a handler; policies like
+ * `prefer-local` / `cheapest` encode product intent without hard-coding in the router core.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import type {

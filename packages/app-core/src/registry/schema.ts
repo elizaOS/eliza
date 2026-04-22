@@ -159,9 +159,7 @@ const appViewerSchema = z.object({
 const appSessionSchema = z.object({
   mode: z.enum(["viewer", "spectate-and-steer", "external"]),
   features: z
-    .array(
-      z.enum(["commands", "telemetry", "pause", "resume", "suggestions"]),
-    )
+    .array(z.enum(["commands", "telemetry", "pause", "resume", "suggestions"]))
     .optional(),
 });
 

@@ -11,7 +11,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { localInferenceRoot } from "./paths";
-import type { AgentModelSlot } from "./types";
+import type {
+  AgentModelSlot,
+  ExternalLlmAutodetectFocus,
+  ExternalLlmRuntimeId,
+} from "./types";
 
 export type RoutingPolicy =
   | "manual"
@@ -32,6 +36,12 @@ export interface RoutingPreferences {
    * policy rule set. Absent = "manual" (matches the legacy behaviour).
    */
   policy: Partial<Record<AgentModelSlot, RoutingPolicy>>;
+  /**
+   * When suppressing in-app GGUF against external stacks, which probed row
+   * counts as “external ready”. **`any`** (default) = any Ollama/LM Studio/vLLM/Jan
+   * row with `routerInferenceReady`; a stack id = only that row.
+   */
+  externalLlmAutodetectFocus?: ExternalLlmAutodetectFocus;
 }
 
 interface RoutingFile {
@@ -40,6 +50,25 @@ interface RoutingFile {
 }
 
 const EMPTY: RoutingPreferences = { preferredProvider: {}, policy: {} };
+
+const EXTERNAL_LLM_RUNTIME_IDS: readonly ExternalLlmRuntimeId[] = [
+  "ollama",
+  "lmstudio",
+  "vllm",
+  "jan",
+];
+
+function parseStoredExternalLlmAutodetectFocus(
+  raw: unknown,
+): ExternalLlmAutodetectFocus | undefined {
+  if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
+  const v = raw.trim() as ExternalLlmAutodetectFocus;
+  if (v === "any") return undefined;
+  if (v === "milady-gguf") return "milady-gguf";
+  return EXTERNAL_LLM_RUNTIME_IDS.includes(v as ExternalLlmRuntimeId)
+    ? (v as ExternalLlmRuntimeId)
+    : undefined;
+}
 
 function routingPath(): string {
   return path.join(localInferenceRoot(), "routing.json");
@@ -54,9 +83,13 @@ export async function readRoutingPreferences(): Promise<RoutingPreferences> {
     const raw = await fs.readFile(routingPath(), "utf8");
     const parsed = JSON.parse(raw) as RoutingFile;
     if (!parsed || parsed.version !== 1 || !parsed.preferences) return EMPTY;
+    const focus = parseStoredExternalLlmAutodetectFocus(
+      parsed.preferences.externalLlmAutodetectFocus,
+    );
     return {
       preferredProvider: parsed.preferences.preferredProvider ?? {},
       policy: parsed.preferences.policy ?? {},
+      ...(focus ? { externalLlmAutodetectFocus: focus } : {}),
     };
   } catch {
     return EMPTY;
@@ -81,6 +114,9 @@ export async function setPreferredProvider(
   const next: RoutingPreferences = {
     preferredProvider: { ...current.preferredProvider },
     policy: { ...current.policy },
+    ...(current.externalLlmAutodetectFocus !== undefined
+      ? { externalLlmAutodetectFocus: current.externalLlmAutodetectFocus }
+      : {}),
   };
   if (provider) {
     next.preferredProvider[slot] = provider;
@@ -99,11 +135,40 @@ export async function setPolicy(
   const next: RoutingPreferences = {
     preferredProvider: { ...current.preferredProvider },
     policy: { ...current.policy },
+    ...(current.externalLlmAutodetectFocus !== undefined
+      ? { externalLlmAutodetectFocus: current.externalLlmAutodetectFocus }
+      : {}),
   };
   if (policy) {
     next.policy[slot] = policy;
   } else {
     delete next.policy[slot];
+  }
+  await writeRoutingPreferences(next);
+  return next;
+}
+
+const EXTERNAL_LLM_AUTODETECT_IDS = new Set<ExternalLlmAutodetectFocus>([
+  "any",
+  "milady-gguf",
+  ...EXTERNAL_LLM_RUNTIME_IDS,
+]);
+
+export async function setExternalLlmAutodetectFocus(
+  focus: ExternalLlmAutodetectFocus,
+): Promise<RoutingPreferences> {
+  if (!EXTERNAL_LLM_AUTODETECT_IDS.has(focus)) {
+    throw new Error(`Invalid externalLlmAutodetectFocus: ${focus}`);
+  }
+  const current = await readRoutingPreferences();
+  const next: RoutingPreferences = {
+    preferredProvider: { ...current.preferredProvider },
+    policy: { ...current.policy },
+  };
+  if (focus === "any") {
+    delete next.externalLlmAutodetectFocus;
+  } else {
+    next.externalLlmAutodetectFocus = focus;
   }
   await writeRoutingPreferences(next);
   return next;

@@ -5,12 +5,7 @@
   "npmName": "@elizaos/plugin-trust",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
-  "tags": [
-    "trust",
-    "permissions",
-    "security",
-    "rbac"
-  ],
+  "tags": ["trust", "permissions", "security", "rbac"],
   "config": {
     "OWNER_ENTITY_ID": {
       "type": "string",
@@ -36,10 +31,7 @@
     "icon": "Handshake",
     "group": "blockchain",
     "groupOrder": 4,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {},
   "dependsOn": [],

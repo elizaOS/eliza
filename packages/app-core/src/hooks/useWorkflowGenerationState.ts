@@ -47,9 +47,8 @@ export function useWorkflowGenerationState(
     }
 
     const handler = (event: Event) => {
-      const detail = (
-        event as CustomEvent<WorkflowGeneratingEventDetail>
-      ).detail;
+      const detail = (event as CustomEvent<WorkflowGeneratingEventDetail>)
+        .detail;
       if (detail?.workflowId === workflowId) {
         setGenerating(detail.inProgress);
       }
@@ -67,7 +66,7 @@ export function useWorkflowGenerationState(
   // Reset when the workflowId changes (different workflow selected)
   useEffect(() => {
     setGenerating(false);
-  }, [workflowId]);
+  }, []);
 
   return generating;
 }

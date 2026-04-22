@@ -91,9 +91,7 @@ function readIsAuthenticated(runtime: AgentRuntime | null): boolean {
   return Boolean(auth?.isAuthenticated?.());
 }
 
-function resolveSidecarConfig(
-  cfg: N8nAuthBridgeConfigLike,
-): N8nSidecarConfig {
+function resolveSidecarConfig(cfg: N8nAuthBridgeConfigLike): N8nSidecarConfig {
   const sidecar: N8nSidecarConfig = {
     enabled: cfg.n8n?.localEnabled ?? true,
   };
@@ -141,9 +139,7 @@ export function startN8nAuthBridge(
       const sidecar = peekN8nSidecar();
       const status = sidecar?.getState().status;
       if (sidecar && (status === "starting" || status === "ready")) {
-        logger.info(
-          "[n8n] cloud authenticated — releasing local sidecar",
-        );
+        logger.info("[n8n] cloud authenticated — releasing local sidecar");
         void disposeN8nSidecar().catch((err: unknown) => {
           logger.warn(
             `[n8n-auth-bridge] disposeN8nSidecar failed: ${
@@ -160,9 +156,7 @@ export function startN8nAuthBridge(
       const localEnabled = cfg.n8n?.localEnabled ?? false;
       if (!localEnabled) return;
       if (isMobile()) return;
-      logger.info(
-        "[n8n] cloud signed out — starting local sidecar",
-      );
+      logger.info("[n8n] cloud signed out — starting local sidecar");
       const sidecar = getN8nSidecar(resolveSidecarConfig(cfg));
       void sidecar.start().catch((err: unknown) => {
         logger.warn(
@@ -182,7 +176,9 @@ export function startN8nAuthBridge(
 
   const timer = setInterval(tick, pollIntervalMs);
   // Don't keep the event loop alive just for this poller.
-  if (typeof (timer as unknown as { unref?: () => void }).unref === "function") {
+  if (
+    typeof (timer as unknown as { unref?: () => void }).unref === "function"
+  ) {
     (timer as unknown as { unref: () => void }).unref();
   }
 
