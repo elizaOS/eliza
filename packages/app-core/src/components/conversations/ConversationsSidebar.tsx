@@ -626,14 +626,14 @@ export function ConversationsSidebar({
         data-testid="chat-sidebar-manage-toggle"
         aria-pressed={isManageConnectionsActive}
         onClick={handleManageConnections}
-        className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-2xs font-semibold uppercase tracking-[0.12em] transition-colors ${
+        className={`inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-3xs font-semibold uppercase tracking-[0.1em] transition-colors ${
           isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
         }`}
       >
         {isManageConnectionsActive ? (
-          <X className="h-3.5 w-3.5" aria-hidden />
+          <X className="h-3 w-3" aria-hidden />
         ) : (
-          <Settings2 className="h-3.5 w-3.5" aria-hidden />
+          <Settings2 className="h-3 w-3" aria-hidden />
         )}
         <span>
           {isManageConnectionsActive
