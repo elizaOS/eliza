@@ -42,7 +42,7 @@ export function WidgetSection({
         )}
         {action}
       </div>
-      <div>{children}</div>
+      <div className="text-xs">{children}</div>
     </section>
   );
 }
