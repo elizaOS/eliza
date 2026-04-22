@@ -663,6 +663,7 @@ export class N8nSidecar {
           this.setState({ status: "starting", pid: null });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          await this.clearNpmCacheAfterJsonParseFailure();
           logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
           this.cancelRetryResetTimer();
           this.setState({
@@ -701,6 +702,9 @@ export class N8nSidecar {
     // cache and runs under the native Node runtime, which n8n's DI stack
     // depends on (bunx breaks both the Node version check for 1.70 and the
     // tsyringe decorator handling for 1.100+ — see `binary?` docs above).
+    const npmCacheDir = path.join(this.config.stateDir, ".npm-cache");
+    mkdirSync(npmCacheDir, { recursive: true });
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       // Force NODE_ENV=production for the child.
@@ -724,6 +728,8 @@ export class N8nSidecar {
       N8N_PERSONALIZATION_ENABLED: "false",
       N8N_HIRING_BANNER_ENABLED: "false",
       N8N_USER_FOLDER: this.config.stateDir,
+      NPM_CONFIG_CACHE: npmCacheDir,
+      npm_config_cache: npmCacheDir,
       DB_TYPE: "sqlite",
       DB_SQLITE_DATABASE: path.join(this.config.stateDir, "database.sqlite"),
       // Opt out of the Enterprise-Edition modules. n8n's module-registry
@@ -749,9 +755,10 @@ export class N8nSidecar {
           ? ["--", versioned, "start"]
           : [versioned, "start"];
     this.recordOutput(
-      `[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
+      `[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, npmCache ${npmCacheDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
     );
     const child = this.deps.spawn(this.config.binary, launcherArgs, {
+      cwd: this.config.stateDir,
       env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
@@ -821,6 +828,30 @@ export class N8nSidecar {
     this.state = { ...this.state, recentOutput: [...this.recentOutput] };
     // Don't re-emit on every line — that would spam listeners. The buffer
     // is snapshotted on every setState() call and served by getState().
+  }
+
+  private async clearNpmCacheAfterJsonParseFailure(): Promise<void> {
+    const sawJsonParseFailure = this.recentOutput.some(
+      (line) =>
+        line.includes("EJSONPARSE") ||
+        line.includes("Invalid package.json") ||
+        line.includes("JSON.parse"),
+    );
+    if (!sawJsonParseFailure) return;
+
+    const npmCacheDir = path.join(this.config.stateDir, ".npm-cache");
+    try {
+      await fs.rm(npmCacheDir, { recursive: true, force: true });
+      logger.warn(
+        `[n8n-sidecar] cleared npm cache after package.json parse failure: ${npmCacheDir}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[n8n-sidecar] failed to clear npm cache after package.json parse failure: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**
@@ -1057,9 +1088,7 @@ export class N8nSidecar {
           res.status === 500 &&
           /already\s+an?\s+entry\s+with\s+this\s+name/i.test(bodyText)
         ) {
-          log(
-            "api-key label already exists in n8n — deleting and re-creating",
-          );
+          log("api-key label already exists in n8n — deleting and re-creating");
           const deleted = await this.deleteApiKeysByLabel(host, cookie, label);
           if (deleted > 0) {
             res = await createKey();
@@ -1334,7 +1363,9 @@ export class N8nSidecar {
   }
 
   private async readPidfile(): Promise<number | null> {
-    const raw = await fs.readFile(this.pidfilePath(), "utf-8").catch(() => null);
+    const raw = await fs
+      .readFile(this.pidfilePath(), "utf-8")
+      .catch(() => null);
     if (!raw) return null;
     const parsed = Number.parseInt(raw.trim(), 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -1383,8 +1414,7 @@ export class N8nSidecar {
       `[n8n-sidecar] reaping orphan n8n pid=${pid} before spawn (cmd=${cmd.slice(0, 120)})`,
     );
     this.deps.killPid(pid, "SIGTERM");
-    const deadline =
-      this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
+    const deadline = this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
     while (this.deps.now() < deadline) {
       if (!this.deps.isProcessAlive(pid)) {
         await this.removePidfile();
