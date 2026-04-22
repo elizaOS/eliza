@@ -22,6 +22,8 @@ COPY . .
 RUN node eliza/packages/app-core/scripts/relink-workspace-packages-to-dist.mjs \
   @elizaos/agent
 
+RUN node eliza/packages/app-core/scripts/link-docker-local-app-packages.mjs
+
 RUN node eliza/packages/app-core/scripts/ensure-generated-core-proto-js.mjs
 
 # Patch plugin-agent-skills getCatalogStats crash (alpha.11 vs alpha.66 interface mismatch)
