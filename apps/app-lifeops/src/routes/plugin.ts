@@ -124,6 +124,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
+  { type: "POST", path: "/api/lifeops/connectors/x/start" },
+  { type: "POST", path: "/api/lifeops/connectors/x/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
   { type: "GET", path: "/api/lifeops/x/dms/digest" },

@@ -9,8 +9,8 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-  ModelType,
   logger,
+  ModelType,
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
@@ -20,8 +20,8 @@ import type {
   LifeOpsXFeedType,
 } from "@elizaos/shared/contracts/lifeops";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
 
 type XReadSubaction = "read_dms" | "read_feed" | "search";
 
@@ -54,7 +54,11 @@ function normalizeSubaction(value: unknown): XReadSubaction | null {
 function normalizeFeedType(value: unknown): LifeOpsXFeedType {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (normalized === "home_timeline" || normalized === "home" || normalized === "timeline") {
+    if (
+      normalized === "home_timeline" ||
+      normalized === "home" ||
+      normalized === "timeline"
+    ) {
       return "home_timeline";
     }
     if (normalized === "mentions") return "mentions";
@@ -149,6 +153,7 @@ async function resolveXReadPlanWithLlm(args: {
   ].join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -189,28 +194,216 @@ async function resolveXReadPlanWithLlm(args: {
   }
 }
 
-function summarizeDms(dms: LifeOpsXDm[]): string {
-  if (dms.length === 0) return "No X DMs found.";
-  const preview = dms
-    .slice(0, 10)
-    .map((dm) => {
-      const who = dm.senderHandle ? `@${dm.senderHandle}` : dm.senderId || "unknown";
-      return `- ${who}: ${dm.text}`;
-    })
-    .join("\n");
-  return `X DMs (${dms.length}):\n${preview}`;
+type RankedItem<T> = {
+  item: T;
+  score: number;
+  reasons: string[];
+};
+
+const ACTION_PHRASE_PATTERN =
+  /\b(urgent|asap|blocked|help|deadline|today|tonight|tomorrow|confirm|review|send|reply|respond|need|can you|could you|please|important)\b/i;
+
+function clip(text: string, maxLength = 220): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
-function summarizeFeedItems(items: LifeOpsXFeedItem[], feedType: LifeOpsXFeedType): string {
+function formatWhen(value: string | null | undefined): string {
+  if (!value) return "";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  const ageHours = Math.max(0, (Date.now() - parsed) / 3_600_000);
+  if (ageHours < 1) return "just now";
+  if (ageHours < 24) return `${Math.floor(ageHours)}h ago`;
+  return `${Math.floor(ageHours / 24)}d ago`;
+}
+
+function rankDm(dm: LifeOpsXDm): RankedItem<LifeOpsXDm> {
+  const reasons: string[] = [];
+  let score = 0;
+  if (dm.isInbound) {
+    score += 35;
+    reasons.push("incoming");
+  }
+  if (dm.readAt === null) {
+    score += 15;
+    reasons.push("unread");
+  }
+  if (dm.repliedAt === null && dm.isInbound) {
+    score += 15;
+    reasons.push("not replied");
+  }
+  if (dm.text.includes("?")) {
+    score += 15;
+    reasons.push("question");
+  }
+  if (ACTION_PHRASE_PATTERN.test(dm.text)) {
+    score += 25;
+    reasons.push("action requested");
+  }
+  const when = Date.parse(dm.receivedAt);
+  if (Number.isFinite(when) && Date.now() - when <= 24 * 3_600_000) {
+    score += 15;
+    reasons.push("recent");
+  }
+  const participantIds = Array.isArray(dm.metadata?.participantIds)
+    ? dm.metadata.participantIds
+    : [];
+  if (participantIds.length > 2) {
+    score += 10;
+    reasons.push("group DM");
+  }
+  return { item: dm, score, reasons };
+}
+
+function rankFeedItem(item: LifeOpsXFeedItem): RankedItem<LifeOpsXFeedItem> {
+  const reasons: string[] = [];
+  let score = 0;
+  if (ACTION_PHRASE_PATTERN.test(item.text)) {
+    score += 25;
+    reasons.push("action language");
+  }
+  if (item.text.includes("?")) {
+    score += 15;
+    reasons.push("question");
+  }
+  const raw = (item.metadata?.raw ?? {}) as {
+    referenced_tweets?: Array<{ type?: string }>;
+    public_metrics?: Record<string, number>;
+  };
+  const referenceTypes = (raw.referenced_tweets ?? [])
+    .map((reference) => reference.type)
+    .filter((type): type is string => typeof type === "string");
+  if (referenceTypes.includes("replied_to")) {
+    score += 25;
+    reasons.push("reply");
+  }
+  if (referenceTypes.includes("quoted")) {
+    score += 15;
+    reasons.push("quote");
+  }
+  const metrics = raw.public_metrics ?? {};
+  const engagement =
+    (metrics.like_count ?? 0) +
+    (metrics.reply_count ?? 0) * 3 +
+    (metrics.retweet_count ?? 0) * 2 +
+    (metrics.quote_count ?? 0) * 2;
+  if (engagement >= 25) {
+    score += 20;
+    reasons.push("high engagement");
+  } else if (engagement >= 5) {
+    score += 10;
+    reasons.push("some engagement");
+  }
+  const when = Date.parse(item.createdAtSource);
+  if (Number.isFinite(when) && Date.now() - when <= 24 * 3_600_000) {
+    score += 10;
+    reasons.push("recent");
+  }
+  return { item, score, reasons };
+}
+
+function formatDmLine(dm: LifeOpsXDm, reasons: string[]): string {
+  const who = dm.senderHandle
+    ? `@${dm.senderHandle}`
+    : dm.senderId || "unknown";
+  const when = formatWhen(dm.receivedAt);
+  const suffix = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
+  return `- ${who}${when ? `, ${when}` : ""}: ${clip(dm.text)}${suffix}`;
+}
+
+function formatFeedLine(item: LifeOpsXFeedItem, reasons: string[]): string {
+  const who = item.authorHandle
+    ? `@${item.authorHandle}`
+    : item.authorId || "unknown";
+  const when = formatWhen(item.createdAtSource);
+  const suffix = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
+  return `- ${who}${when ? `, ${when}` : ""}: ${clip(item.text)}${suffix}`;
+}
+
+function summarizeDms(dms: LifeOpsXDm[]): string {
+  if (dms.length === 0) return "No X DMs found.";
+  const ranked = dms.map(rankDm).sort((a, b) => b.score - a.score);
+  const actionNeeded = ranked.filter((entry) => entry.score >= 60).slice(0, 5);
+  const otherRecent = ranked
+    .filter((entry) => !actionNeeded.includes(entry))
+    .slice(0, 5);
+  const lines = [`X DM rundown (${dms.length} messages)`];
+  lines.push(
+    actionNeeded.length > 0
+      ? [
+          "Action-needed",
+          ...actionNeeded.map((entry) =>
+            formatDmLine(entry.item, entry.reasons),
+          ),
+        ].join("\n")
+      : "Action-needed\n- No obvious urgent or reply-needed DMs.",
+  );
+  if (otherRecent.length > 0) {
+    lines.push(
+      [
+        "Other recent",
+        ...otherRecent.map((entry) => formatDmLine(entry.item, entry.reasons)),
+      ].join("\n"),
+    );
+  }
+  const nextSteps =
+    actionNeeded.length > 0
+      ? "Next steps\n- Draft replies for the action-needed DMs, or ask me to schedule a specific X DM reply."
+      : "Next steps\n- No reply looks required from this batch.";
+  lines.push(nextSteps);
+  return lines.join("\n\n");
+}
+
+function summarizeFeedItems(
+  items: LifeOpsXFeedItem[],
+  feedType: LifeOpsXFeedType,
+): string {
   if (items.length === 0) return `No items in X ${feedType}.`;
-  const preview = items
-    .slice(0, 10)
-    .map((item) => {
-      const who = item.authorHandle ? `@${item.authorHandle}` : item.authorId || "unknown";
-      return `- ${who}: ${item.text}`;
-    })
-    .join("\n");
-  return `X ${feedType} (${items.length}):\n${preview}`;
+  const ranked = items.map(rankFeedItem).sort((a, b) => b.score - a.score);
+  const important = ranked.filter((entry) => entry.score >= 35).slice(0, 6);
+  const replies = ranked
+    .filter((entry) => entry.reasons.includes("reply"))
+    .slice(0, 5);
+  const recent = ranked.slice(0, 6);
+  const lines = [`X ${feedType} rundown (${items.length} items)`];
+  lines.push(
+    important.length > 0
+      ? [
+          "Interesting or important",
+          ...important.map((entry) =>
+            formatFeedLine(entry.item, entry.reasons),
+          ),
+        ].join("\n")
+      : "Interesting or important\n- No high-signal posts stood out in this batch.",
+  );
+  if (feedType === "mentions" || replies.length > 0) {
+    lines.push(
+      replies.length > 0
+        ? [
+            "Replies or mentions to review",
+            ...replies.map((entry) =>
+              formatFeedLine(entry.item, entry.reasons),
+            ),
+          ].join("\n")
+        : "Replies or mentions to review\n- No replies or mentions needing review were found.",
+    );
+  }
+  lines.push(
+    [
+      "Recent context",
+      ...recent.map((entry) => formatFeedLine(entry.item, entry.reasons)),
+    ].join("\n"),
+  );
+  lines.push(
+    important.length > 0
+      ? "Next steps\n- Ask me to search deeper, read DMs, or draft a response for a specific post."
+      : "Next steps\n- Nothing here appears urgent; ask for a narrower search if you want more signal.",
+  );
+  return lines.join("\n\n");
 }
 
 export const xReadAction: Action & {
@@ -242,7 +435,9 @@ export const xReadAction: Action & {
       const status = await service.getXConnectorStatus();
       return Boolean(
         status.grant &&
-          (status.feedRead || status.dmRead || status.grantedCapabilities.includes("x.read")),
+          (status.feedRead ||
+            status.dmRead ||
+            status.grantedCapabilities.includes("x.read")),
       );
     } catch (error) {
       logger.warn(
@@ -287,7 +482,7 @@ export const xReadAction: Action & {
     const query =
       typeof params.query === "string" && params.query.trim().length > 0
         ? params.query.trim()
-        : llmPlan.query ?? "";
+        : (llmPlan.query ?? "");
 
     const service = new LifeOpsService(runtime);
     const respond = async (payload: ActionResult): Promise<ActionResult> => {

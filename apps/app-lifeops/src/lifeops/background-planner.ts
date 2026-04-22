@@ -80,7 +80,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import type {
   ApprovalAction,
   ApprovalChannel,
@@ -181,6 +181,7 @@ const ALL_CHANNELS: ReadonlyArray<ApprovalChannel> = [
   "slack",
   "imessage",
   "sms",
+  "x_dm",
   "email",
   "google_calendar",
   "browser",
@@ -207,8 +208,7 @@ export class BackgroundPlannerError extends Error {
 
 function isApprovalAction(value: unknown): value is ApprovalAction {
   return (
-    typeof value === "string" &&
-    SENSITIVE_ACTIONS.has(value as ApprovalAction)
+    typeof value === "string" && SENSITIVE_ACTIONS.has(value as ApprovalAction)
   );
 }
 
@@ -227,7 +227,7 @@ function buildPrompt(jobContext: BackgroundJobContext): string {
     "which action and through which channel. The assistant MUST NOT execute",
     "sensitive actions directly — anything that contacts a person, modifies a",
     "calendar, books travel, makes a call, runs a workflow, or spends money",
-    'returns requiresApproval=true so the user can confirm.',
+    "returns requiresApproval=true so the user can confirm.",
     "",
     "Return ONLY valid JSON with exactly these fields:",
     `{"action":${ALL_ACTIONS.map((a) => `"${a}"`).join("|")},`,
@@ -260,14 +260,19 @@ function coercePayload(
   action: ApprovalAction,
   rawPayload: unknown,
 ): ApprovalPayload | null {
-  if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
+  if (
+    !rawPayload ||
+    typeof rawPayload !== "object" ||
+    Array.isArray(rawPayload)
+  ) {
     return emptyPayloadFor(action);
   }
   const record = rawPayload as Record<string, unknown>;
 
   switch (action) {
     case "send_message": {
-      const recipient = typeof record.recipient === "string" ? record.recipient : null;
+      const recipient =
+        typeof record.recipient === "string" ? record.recipient : null;
       const body = typeof record.body === "string" ? record.body : null;
       if (!recipient || !body) return null;
       return {
@@ -275,11 +280,14 @@ function coercePayload(
         recipient,
         body,
         replyToMessageId:
-          typeof record.replyToMessageId === "string" ? record.replyToMessageId : null,
+          typeof record.replyToMessageId === "string"
+            ? record.replyToMessageId
+            : null,
       };
     }
     case "send_email": {
-      const subject = typeof record.subject === "string" ? record.subject : null;
+      const subject =
+        typeof record.subject === "string" ? record.subject : null;
       const body = typeof record.body === "string" ? record.body : null;
       const to = Array.isArray(record.to)
         ? record.to.filter((v): v is string => typeof v === "string")
@@ -300,13 +308,24 @@ function coercePayload(
       };
     }
     case "execute_workflow": {
-      const workflowId = typeof record.workflowId === "string" ? record.workflowId : null;
+      const workflowId =
+        typeof record.workflowId === "string" ? record.workflowId : null;
       if (!workflowId) return null;
       const inputRaw = record.input;
       const input: Record<string, string | number | boolean> = {};
-      if (inputRaw && typeof inputRaw === "object" && !Array.isArray(inputRaw)) {
-        for (const [k, v] of Object.entries(inputRaw as Record<string, unknown>)) {
-          if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      if (
+        inputRaw &&
+        typeof inputRaw === "object" &&
+        !Array.isArray(inputRaw)
+      ) {
+        for (const [k, v] of Object.entries(
+          inputRaw as Record<string, unknown>,
+        )) {
+          if (
+            typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean"
+          ) {
             input[k] = v;
           }
         }
@@ -314,26 +333,35 @@ function coercePayload(
       return { action, workflowId, input };
     }
     case "book_travel": {
-      const provider = typeof record.provider === "string" ? record.provider : null;
+      const provider =
+        typeof record.provider === "string" ? record.provider : null;
       const itineraryRef =
         typeof record.itineraryRef === "string" ? record.itineraryRef : null;
       const totalCents =
-        typeof record.totalCents === "number" && Number.isFinite(record.totalCents)
+        typeof record.totalCents === "number" &&
+        Number.isFinite(record.totalCents)
           ? Math.round(record.totalCents)
           : null;
-      const currency = typeof record.currency === "string" ? record.currency : null;
+      const currency =
+        typeof record.currency === "string" ? record.currency : null;
       const kind =
-        record.kind === "flight" || record.kind === "hotel" || record.kind === "ground"
+        record.kind === "flight" ||
+        record.kind === "hotel" ||
+        record.kind === "ground"
           ? record.kind
           : null;
       const search =
-        record.search && typeof record.search === "object" && !Array.isArray(record.search)
+        record.search &&
+        typeof record.search === "object" &&
+        !Array.isArray(record.search)
           ? record.search
           : null;
       const passengers = Array.isArray(record.passengers)
         ? record.passengers.filter(
             (value): value is Record<string, unknown> =>
-              Boolean(value) && typeof value === "object" && !Array.isArray(value),
+              Boolean(value) &&
+              typeof value === "object" &&
+              !Array.isArray(value),
           )
         : [];
       const calendarSync =
@@ -342,7 +370,13 @@ function coercePayload(
         !Array.isArray(record.calendarSync)
           ? record.calendarSync
           : null;
-      if (!provider || !itineraryRef || totalCents === null || !currency || !kind) {
+      if (
+        !provider ||
+        !itineraryRef ||
+        totalCents === null ||
+        !currency ||
+        !kind
+      ) {
         return null;
       }
       return {
@@ -354,7 +388,9 @@ function coercePayload(
         currency,
         offerId: typeof record.offerId === "string" ? record.offerId : null,
         offerRequestId:
-          typeof record.offerRequestId === "string" ? record.offerRequestId : null,
+          typeof record.offerRequestId === "string"
+            ? record.offerRequestId
+            : null,
         orderType:
           record.orderType === "hold" || record.orderType === "instant"
             ? record.orderType
@@ -363,8 +399,10 @@ function coercePayload(
         // re-validates each field before any real Duffel call. Cast through
         // unknown to satisfy the closed TravelBookingPayloadFields shapes.
         search: search as TravelBookingPayloadFields["search"],
-        passengers: passengers as unknown as TravelBookingPayloadFields["passengers"],
-        calendarSync: calendarSync as unknown as TravelBookingPayloadFields["calendarSync"],
+        passengers:
+          passengers as unknown as TravelBookingPayloadFields["passengers"],
+        calendarSync:
+          calendarSync as unknown as TravelBookingPayloadFields["calendarSync"],
         summary: typeof record.summary === "string" ? record.summary : null,
       };
     }
@@ -395,6 +433,7 @@ export async function planJob(
   }
 
   const prompt = buildPrompt(jobContext);
+  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
   const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const raw = typeof result === "string" ? result : "";
   const parsed = parseJSONObjectFromText(raw) as Record<string, unknown> | null;
@@ -425,9 +464,7 @@ export async function planJob(
     : "internal";
 
   if (rawAction === "noop" || rawAction === null || rawAction === undefined) {
-    logger.debug(
-      `[BackgroundPlanner:${jobContext.jobKind}] noop — ${reason}`,
-    );
+    logger.debug(`[BackgroundPlanner:${jobContext.jobKind}] noop — ${reason}`);
     return {
       action: null,
       payload: null,
@@ -446,7 +483,9 @@ export async function planJob(
 
   const payload = coercePayload(rawAction, parsed.payload);
   const requiresApproval =
-    parsed.requiresApproval === false ? false : SENSITIVE_ACTIONS.has(rawAction);
+    parsed.requiresApproval === false
+      ? false
+      : SENSITIVE_ACTIONS.has(rawAction);
 
   logger.info(
     `[BackgroundPlanner:${jobContext.jobKind}] action=${rawAction} channel=${channel} requiresApproval=${requiresApproval} — ${reason}`,

@@ -5,7 +5,13 @@
  * quickly. Selecting a message opens a reader pane with reply + open-source
  * actions; the list stays in view on wide screens.
  */
-import { Button, Input, openExternalUrl, Spinner, useApp } from "@elizaos/app-core";
+import {
+  Button,
+  Input,
+  openExternalUrl,
+  Spinner,
+  useApp,
+} from "@elizaos/app-core";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxChannel,
@@ -23,7 +29,7 @@ import {
   Shield,
   Smartphone,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import {
   type InboxChannel,
   useUnifiedInbox,
@@ -49,6 +55,13 @@ const CHANNEL_STYLES: Record<LifeOpsInboxChannel, ChannelStyle> = {
     ring: "ring-rose-500/40",
     text: "text-rose-300",
     icon: <AtSign className="h-3.5 w-3.5" aria-hidden />,
+  },
+  x_dm: {
+    label: "X DMs",
+    bg: "bg-zinc-500/18",
+    ring: "ring-zinc-400/40",
+    text: "text-zinc-200",
+    icon: <MessageSquareReply className="h-3.5 w-3.5" aria-hidden />,
   },
   discord: {
     label: "Discord",
@@ -172,9 +185,7 @@ function ChannelChip({
       {count > 0 ? (
         <span
           className={`ml-0.5 rounded-full px-1.5 text-[10px] tabular-nums ${
-            unread > 0
-              ? `${style.text} bg-white/4`
-              : "text-muted bg-white/4"
+            unread > 0 ? `${style.text} bg-white/4` : "text-muted bg-white/4"
           }`}
         >
           {unread > 0 ? unread : count}
@@ -196,7 +207,7 @@ function MessageRow({
   onReply: () => void;
 }) {
   const style = styleFor(message.channel);
-  const subject = message.subject?.trim() || style.label + " message";
+  const subject = message.subject?.trim() || `${style.label} message`;
 
   return (
     <div
@@ -246,7 +257,9 @@ function MessageRow({
         <div className="flex items-baseline justify-between gap-2">
           <span
             className={`truncate text-sm ${
-              message.unread ? "font-semibold text-txt" : "font-medium text-txt/85"
+              message.unread
+                ? "font-semibold text-txt"
+                : "font-medium text-txt/85"
             }`}
           >
             {message.sender.displayName}
@@ -304,7 +317,7 @@ function ReaderPane({
   }
 
   const style = styleFor(message.channel);
-  const subject = message.subject?.trim() || style.label + " message";
+  const subject = message.subject?.trim() || `${style.label} message`;
   const receivedAt = formatAbsoluteTime(message.receivedAt);
 
   return (
@@ -397,16 +410,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selectedMessage = inbox.messages[selectedIndex] ?? null;
 
   const channelCounts = useMemo(() => {
-    const base: Record<InboxChannel, { total: number; unread: number }> = {
-      all: { total: 0, unread: 0 },
-      gmail: { total: 0, unread: 0 },
-      discord: { total: 0, unread: 0 },
-      telegram: { total: 0, unread: 0 },
-      signal: { total: 0, unread: 0 },
-      imessage: { total: 0, unread: 0 },
-      whatsapp: { total: 0, unread: 0 },
-      sms: { total: 0, unread: 0 },
-    };
+    const base = Object.fromEntries(
+      CHANNEL_FILTERS.map((channel) => [channel, { total: 0, unread: 0 }]),
+    ) as Record<InboxChannel, { total: number; unread: number }>;
     for (const message of inbox.messages) {
       base.all.total++;
       if (message.unread) base.all.unread++;

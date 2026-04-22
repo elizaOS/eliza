@@ -41,6 +41,7 @@ import type {
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
+  DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsIMessageMessagesRequest,
@@ -84,6 +85,8 @@ import type {
   StartLifeOpsSignalPairingResponse,
   StartLifeOpsTelegramAuthRequest,
   StartLifeOpsTelegramAuthResponse,
+  StartLifeOpsXConnectorRequest,
+  StartLifeOpsXConnectorResponse,
   SubmitLifeOpsTelegramAuthRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -104,6 +107,7 @@ type LifeOpsSeedTemplatesResponse = {
 };
 
 type LifeOpsXConnectorRequest = {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   capabilities: LifeOpsXConnectorStatus["grantedCapabilities"];
   grantedScopes?: string[];
@@ -112,6 +116,7 @@ type LifeOpsXConnectorRequest = {
 };
 
 type LifeOpsXPostRequest = {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   text: string;
   confirmPost?: boolean;
@@ -165,9 +170,7 @@ declare module "@elizaos/app-core/api/client-base" {
     openBrowserBridgeCompanionManager(
       browser: BrowserBridgeKind,
     ): Promise<OpenBrowserBridgeCompanionManagerResponse>;
-    downloadBrowserBridgeCompanionPackage(
-      browser: BrowserBridgeKind,
-    ): Promise<{
+    downloadBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
       blob: Blob;
       filename: string;
     }>;
@@ -290,6 +293,13 @@ declare module "@elizaos/app-core/api/client-base" {
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
     getXLifeOpsConnectorStatus(
       mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsXConnectorStatus>;
+    startXLifeOpsConnector(
+      data?: StartLifeOpsXConnectorRequest,
+    ): Promise<StartLifeOpsXConnectorResponse>;
+    disconnectXLifeOpsConnector(
+      data?: DisconnectLifeOpsXConnectorRequest,
     ): Promise<LifeOpsXConnectorStatus>;
     upsertXLifeOpsConnector(
       data: LifeOpsXConnectorRequest,
@@ -299,7 +309,13 @@ declare module "@elizaos/app-core/api/client-base" {
       status: number | null;
       postId?: string;
       error?: string;
-      category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+      category:
+        | "success"
+        | "auth"
+        | "rate_limit"
+        | "network"
+        | "invalid"
+        | "unknown";
     }>;
 
     // --- iMessage connector ---
@@ -985,13 +1001,37 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
 ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
   this: ElizaClient,
   mode,
+  side,
 ) {
   const params = new URLSearchParams();
   if (mode) {
     params.set("mode", mode);
   }
+  if (side) {
+    params.set("side", side);
+  }
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return this.fetch(`/api/lifeops/connectors/x/status${query}`);
+};
+
+ElizaClient.prototype.startXLifeOpsConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/x/start", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.disconnectXLifeOpsConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/x/disconnect", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.upsertXLifeOpsConnector = async function (

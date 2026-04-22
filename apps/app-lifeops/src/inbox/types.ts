@@ -1,14 +1,4 @@
-import type {
-  InboxAutoReplyConfig as SharedInboxAutoReplyConfig,
-  InboxTriageConfig as SharedInboxTriageConfig,
-  InboxTriageRules as SharedInboxTriageRules,
-} from "@elizaos/shared/config";
 import type { UUID } from "@elizaos/core";
-import type {
-  InboxAutoReplyConfig,
-  InboxTriageConfig,
-  InboxTriageRules,
-} from "@elizaos/shared/contracts";
 
 // ---------------------------------------------------------------------------
 // Classification & urgency enums
@@ -42,6 +32,10 @@ export interface InboundMessage {
   roomId?: string;
   /** Sender entity UUID. */
   entityId?: string;
+  /** X DM conversation id when the source is x_dm. */
+  xConversationId?: string;
+  /** X user id to use for direct replies when the source is x_dm. */
+  xParticipantId?: string;
   /** Human-readable sender name. */
   senderName: string;
   /** Human-readable channel/conversation name. */
@@ -133,6 +127,8 @@ export interface DeferredInboxDraft {
   targetRoomId?: UUID;
   targetEntityId?: UUID;
   gmailMessageId?: string;
+  xConversationId?: string;
+  xParticipantId?: string;
   approvalRequestId?: string;
   draftText: string;
   deepLink: string | null;

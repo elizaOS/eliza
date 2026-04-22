@@ -12,6 +12,7 @@ import { Button, Input, useApp } from "@elizaos/app-core";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
+import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 
 export const LIFEOPS_SETUP_GATE_DISMISSED_KEY =
   "eliza:lifeops-setup-gate-dismissed";
@@ -66,6 +67,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
     includeAccounts: false,
     side: "owner",
   });
+  const xConnector = useLifeOpsXConnector();
 
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(
@@ -74,15 +76,20 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
   const [skipped, setSkipped] = useState(false);
 
   const calendarConnected = ownerConnector.status?.connected === true;
+  const xConnected = xConnector.status?.connected === true;
 
   const canContinue =
     name.trim().length > 0 &&
     timezone.trim().length > 0 &&
-    (calendarConnected || skipped);
+    (calendarConnected || xConnected || skipped);
 
   const handleConnectCalendar = useCallback(() => {
     void ownerConnector.connect();
   }, [ownerConnector]);
+
+  const handleConnectX = useCallback(() => {
+    void xConnector.connect("cloud_managed");
+  }, [xConnector]);
 
   const handleSkip = useCallback(() => {
     setSkipped(true);
@@ -183,11 +190,12 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
 
             <button
               type="button"
-              onClick={handleSkip}
+              onClick={handleConnectX}
+              disabled={xConnector.actionPending}
               className={[
                 "flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors",
-                skipped && !calendarConnected
-                  ? "border-border/40 bg-bg/50 text-muted"
+                xConnected
+                  ? "border-ok/40 bg-ok/8 text-txt"
                   : "border-border/16 bg-card/18 hover:bg-card/30 text-txt",
               ].join(" ")}
             >
@@ -195,19 +203,36 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
               <div>
                 <div className="text-sm font-medium">
                   {t("lifeopssetup.messagingTitle", {
-                    defaultValue: "Messaging",
+                    defaultValue: "X DMs",
                   })}
                 </div>
                 <div className="text-xs text-muted">
-                  {t("lifeopssetup.messagingHint", {
-                    defaultValue: "Connect later in Settings",
-                  })}
+                  {xConnected
+                    ? t("lifeopssetup.connected", {
+                        defaultValue: "Connected",
+                      })
+                    : t("lifeopssetup.messagingHint", {
+                        defaultValue: "Read and reply to incoming DMs",
+                      })}
                 </div>
               </div>
             </button>
           </div>
 
-          {!calendarConnected && !skipped ? (
+          {xConnector.pendingAuthUrl ? (
+            <a
+              href={xConnector.pendingAuthUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-accent hover:underline"
+            >
+              {t("lifeopssetup.openXAuth", {
+                defaultValue: "Open X authorization",
+              })}
+            </a>
+          ) : null}
+
+          {!calendarConnected && !xConnected && !skipped ? (
             <button
               type="button"
               onClick={handleSkip}

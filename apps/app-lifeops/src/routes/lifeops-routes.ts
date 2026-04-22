@@ -1,7 +1,7 @@
 import type http from "node:http";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -33,7 +33,6 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
-  SendLifeOpsIMessageRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -487,56 +486,6 @@ async function runRoute(
       errorKind: "unhandled_error",
     });
     throw error;
-  }
-}
-
-async function runStatelessRoute(
-  ctx: LifeOpsRouteContext,
-  fn: () => Promise<void>,
-): Promise<boolean> {
-  const operation = routeOperation(ctx);
-  const span = createIntegrationTelemetrySpan({
-    boundary: "lifeops",
-    operation,
-  });
-  try {
-    await fn();
-    span.success({
-      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
-    });
-    return true;
-  } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
-      logger.warn(
-        {
-          boundary: "lifeops",
-          operation,
-          statusCode: error.status,
-        },
-        `[lifeops] Route failed: ${error.message}`,
-      );
-      span.failure({
-        statusCode: error.status,
-        error,
-        errorKind: "lifeops_service_error",
-      });
-      ctx.error(ctx.res, error.message, error.status);
-      return true;
-    }
-    logger.error(
-      {
-        boundary: "lifeops",
-        operation,
-      },
-      `[lifeops] Route crashed: ${errorMessage(error)}`,
-    );
-    span.failure({
-      statusCode: 500,
-      error,
-      errorKind: "lifeops_route_crash",
-    });
-    ctx.error(ctx.res, errorMessage(error), 500);
-    return true;
   }
 }
 
@@ -1131,7 +1080,41 @@ export async function handleLifeOpsRoutes(
         res,
         await service.getXConnectorStatus(
           parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
         ),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.startXConnector({
+          mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
+          redirectUrl: parseOptionalBodyString(body, "redirectUrl"),
+        }),
+        201,
+      );
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/x/disconnect"
+  ) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.disconnectXConnector({
+          mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
+        }),
       );
     });
   }
@@ -1196,6 +1179,7 @@ export async function handleLifeOpsRoutes(
           text: requireBodyString(body, "text"),
           confirmSend: parseOptionalBodyBoolean(body, "confirmSend"),
           mode: parseConnectorModeInput(body.mode),
+          side: parseConnectorSideInput(body.side),
         }),
         201,
       );

@@ -1,4 +1,15 @@
 import crypto from "node:crypto";
+import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+import type {
+  LifeOpsAuditEvent,
+  LifeOpsAuditEventType,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsOwnership,
+  LifeOpsOwnershipInput,
+  LifeOpsWorkflowDefinition,
+} from "@elizaos/app-lifeops/contracts";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   BrowserBridgeAction,
@@ -10,27 +21,14 @@ import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
   BROWSER_BRIDGE_KINDS,
 } from "@elizaos/plugin-browser-bridge/contracts";
-import type {
-  LifeOpsAuditEvent,
-  LifeOpsAuditEventType,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsOwnership,
-  LifeOpsOwnershipInput,
-  LifeOpsWorkflowDefinition,
-} from "@elizaos/app-lifeops/contracts";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
-import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
-import { computeAdaptiveWindowPolicy } from "./defaults.js";
+import type { computeAdaptiveWindowPolicy } from "./defaults.js";
+import { GoogleManagedClient } from "./google-managed-client.js";
 import {
-  GoogleManagedClient,
-} from "./google-managed-client.js";
-import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
-import {
-  createLifeOpsAuditEvent,
   createBrowserBridgeCompanionStatus,
+  createLifeOpsAuditEvent,
   LifeOpsRepository,
 } from "./repository.js";
+import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
@@ -55,6 +53,7 @@ import {
   normalizeOptionalConnectorMode,
 } from "./service-normalize-connector.js";
 import type { LifeOpsServiceOptions } from "./service-types.js";
+import { XManagedClient } from "./x-managed-client.js";
 
 // ---------------------------------------------------------------------------
 // Mixin helper type
@@ -62,9 +61,12 @@ import type { LifeOpsServiceOptions } from "./service-types.js";
 
 /** Constructor type for the mixin pattern. */
 // biome-ignore lint/suspicious/noExplicitAny: mixin pattern requires open-ended constructor signature
-export type Constructor<T = {}> = new (...args: any[]) => T;
+export type Constructor<T = object> = new (...args: any[]) => T;
 
-export type MixinClass<TBase extends Constructor, TPublic extends object> = new (
+export type MixinClass<
+  TBase extends Constructor,
+  TPublic extends object,
+> = new (
   ...args: ConstructorParameters<TBase>
 ) => InstanceType<TBase> & TPublic;
 
@@ -152,6 +154,7 @@ export class LifeOpsServiceBase {
   public readonly explicitOwnerEntityIdValue: string | null;
   public readonly ownerEntityIdValue: string;
   public readonly googleManagedClient: GoogleManagedClient;
+  public readonly xManagedClient: XManagedClient;
   public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
   public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
@@ -169,6 +172,7 @@ export class LifeOpsServiceBase {
   ) {
     this.repository = new LifeOpsRepository(runtime);
     this.googleManagedClient = new GoogleManagedClient();
+    this.xManagedClient = new XManagedClient();
     this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;

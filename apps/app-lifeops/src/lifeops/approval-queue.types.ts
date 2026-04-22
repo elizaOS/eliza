@@ -25,6 +25,7 @@ export type ApprovalChannel =
   | "slack"
   | "imessage"
   | "sms"
+  | "x_dm"
   | "email"
   | "google_calendar"
   | "browser"
