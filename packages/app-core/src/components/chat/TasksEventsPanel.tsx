@@ -10,7 +10,7 @@
  * Renders the `chat-sidebar` widget slot via the plugin widget system.
  */
 
-import { ChevronLeft, ChevronRight, LayoutGrid } from "lucide-react";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { WidgetHost } from "../../widgets";
 import { AppsSection } from "./AppsSection";
@@ -44,14 +44,14 @@ export function TasksEventsPanel({
         className="flex w-10 shrink-0 flex-col border-l border-border/30 bg-bg"
         data-testid="chat-widgets-bar"
       >
-        <div className="flex h-10 items-center justify-center border-b border-border/30">
+        <div className="flex h-10 items-center justify-center">
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
             aria-label="Expand widgets"
             onClick={() => onToggleCollapsed?.(false)}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <PanelRightOpen className="h-4 w-4" />
           </button>
         </div>
       </aside>
@@ -62,28 +62,22 @@ export function TasksEventsPanel({
     ? "flex flex-1 min-h-0 flex-col overflow-hidden bg-bg"
     : "flex min-h-0 w-[22rem] shrink-0 flex-col overflow-hidden border-l border-border/30 bg-bg";
 
+  const collapseButton =
+    !mobile && onToggleCollapsed ? (
+      <button
+        type="button"
+        className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+        aria-label="Collapse widgets"
+        onClick={() => onToggleCollapsed(true)}
+      >
+        <PanelRightClose className="h-4 w-4" />
+      </button>
+    ) : null;
+
   return (
     <aside className={rootClassName} data-testid="chat-widgets-bar">
-      {!mobile ? (
-        <div className="flex h-10 items-center justify-between border-b border-border/30 px-2">
-          <div className="flex items-center gap-1.5 px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
-            <LayoutGrid className="h-3 w-3" aria-hidden />
-            Widgets
-          </div>
-          {onToggleCollapsed ? (
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-              aria-label="Collapse widgets"
-              onClick={() => onToggleCollapsed(true)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
-        <AppsSection />
+        <AppsSection headerAction={collapseButton} />
         <WidgetHost
           slot="chat-sidebar"
           events={events}
