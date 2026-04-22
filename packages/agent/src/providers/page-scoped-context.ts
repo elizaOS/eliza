@@ -140,20 +140,20 @@ async function renderCharacterLiveState(
   return lines.join("\n");
 }
 
-interface LifeOpsBrowserCompanionLiveStatus {
+interface BrowserBridgeCompanionLiveStatus {
   connectionState: string;
   browser: string;
   profileLabel?: string | null;
   extensionVersion?: string | null;
 }
 
-async function fetchLifeOpsBrowserCompanionLiveStatus(): Promise<
-  LifeOpsBrowserCompanionLiveStatus[] | null
+async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
+  BrowserBridgeCompanionLiveStatus[] | null
 > {
   const port = process.env.API_PORT || process.env.SERVER_PORT || "2138";
   try {
     const response = await fetch(
-      `http://127.0.0.1:${port}/api/lifeops/browser/companions`,
+      `http://127.0.0.1:${port}/api/browser-bridge/companions`,
       { signal: AbortSignal.timeout(1500) },
     );
     if (!response.ok) return null;
@@ -191,17 +191,17 @@ async function renderBrowserLiveState(): Promise<string | null> {
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
     }
 
-    // LifeOps Browser companion status — so the agent can tell the user to
-    // install the extension when it isn't connected and reference the
+    // Agent Browser Bridge companion status — so the agent can tell the user
+    // to install the extension when it isn't connected and reference the
     // connected profile accurately when it is.
-    const companions = await fetchLifeOpsBrowserCompanionLiveStatus();
+    const companions = await fetchBrowserBridgeCompanionLiveStatus();
     if (companions === null) {
       lines.push(
-        "LifeOps Browser companion: status unknown (companion API unreachable).",
+        "Agent Browser Bridge companion: status unknown (companion API unreachable).",
       );
     } else if (companions.length === 0) {
       lines.push(
-        "LifeOps Browser companion: not installed — tell the user to click 'Install LifeOps Browser' in the chat panel to build the extension and load it into Chrome.",
+        "Agent Browser Bridge companion: not installed — tell the user to click 'Install Agent Browser Bridge' in the chat panel to build the extension and load it into Chrome.",
       );
     } else {
       const connected = companions.filter(
@@ -209,11 +209,11 @@ async function renderBrowserLiveState(): Promise<string | null> {
       );
       if (connected.length === 0) {
         lines.push(
-          "LifeOps Browser companion: extension present but not connected — ask the user to open the LifeOps Browser extension in Chrome so it can pair.",
+          "Agent Browser Bridge companion: extension present but not connected — ask the user to open the Agent Browser Bridge extension in Chrome so it can pair.",
         );
       } else {
         lines.push(
-          `LifeOps Browser companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
+          `Agent Browser Bridge companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
         );
         for (const companion of connected.slice(0, 3)) {
           const browser =
