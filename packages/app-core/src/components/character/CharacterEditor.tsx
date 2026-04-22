@@ -1743,23 +1743,17 @@ export function CharacterEditor({
             />
             <div
               ref={standaloneScrollRef}
-              className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col gap-10 overflow-y-auto overflow-x-hidden"
+              className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
             >
               <section
                 ref={(el) => {
                   sectionRefs.current.personality = el;
                 }}
-                aria-labelledby="character-section-heading-personality"
-                className="flex min-w-0 flex-col gap-4 scroll-mt-4"
+                aria-label={t("charactereditor.TabPersonality", {
+                  defaultValue: "Personality",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 pt-2"
               >
-                <h2
-                  id="character-section-heading-personality"
-                  className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
-                >
-                  {t("charactereditor.TabPersonality", {
-                    defaultValue: "Personality",
-                  })}
-                </h2>
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
@@ -1785,15 +1779,11 @@ export function CharacterEditor({
                 ref={(el) => {
                   sectionRefs.current.style = el;
                 }}
-                aria-labelledby="character-section-heading-style"
-                className="flex min-w-0 flex-col gap-4 scroll-mt-4"
+                aria-label={t("charactereditor.TabStyles", {
+                  defaultValue: "Style",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
               >
-                <h2
-                  id="character-section-heading-style"
-                  className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
-                >
-                  {t("charactereditor.TabStyles", { defaultValue: "Style" })}
-                </h2>
                 <CharacterStylePanel
                   d={d}
                   generating={generating}
@@ -1814,44 +1804,30 @@ export function CharacterEditor({
                 ref={(el) => {
                   sectionRefs.current.examples = el;
                 }}
-                aria-labelledby="character-section-heading-examples"
-                className="flex min-w-0 flex-col gap-4 scroll-mt-4"
+                aria-label={t("charactereditor.TabExamples", {
+                  defaultValue: "Examples",
+                })}
+                className="flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
               >
-                <h2
-                  id="character-section-heading-examples"
-                  className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
-                >
-                  {t("charactereditor.TabExamples", {
-                    defaultValue: "Examples",
-                  })}
-                </h2>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8 lg:items-start xl:gap-12">
-                  <CharacterExamplesPanel
-                    d={d}
-                    normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
-                    handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
-                    t={t}
-                  />
-                </div>
+                <CharacterExamplesPanel
+                  d={d}
+                  normalizedMessageExamples={normalizedMessageExamples}
+                  generating={generating}
+                  handleFieldEdit={handleFieldEdit}
+                  handleGenerate={handleGenerate}
+                  t={t}
+                />
               </section>
 
               <section
                 ref={(el) => {
                   sectionRefs.current.knowledge = el;
                 }}
-                aria-labelledby="character-section-heading-knowledge"
-                className="flex min-h-[60vh] min-w-0 flex-col gap-4 scroll-mt-4"
+                aria-label={t("charactereditor.TabKnowledge", {
+                  defaultValue: "Knowledge",
+                })}
+                className="flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 mt-8"
               >
-                <h2
-                  id="character-section-heading-knowledge"
-                  className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
-                >
-                  {t("charactereditor.TabKnowledge", {
-                    defaultValue: "Knowledge",
-                  })}
-                </h2>
                 <KnowledgeView embedded />
               </section>
             </div>
