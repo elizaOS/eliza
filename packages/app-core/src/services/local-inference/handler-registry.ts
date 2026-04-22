@@ -201,7 +201,7 @@ function installPrototypePatch(): void {
     } catch {
       // Never let registry bookkeeping break the registration path.
     }
-    return original.call(this, modelType, handler, provider, priority);
+    original.call(this, modelType, handler, provider, priority);
   } as typeof original & { [PATCH_MARK]?: true };
   patched[PATCH_MARK] = true;
   proto.registerModel = patched;

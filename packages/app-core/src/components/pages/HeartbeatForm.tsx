@@ -457,7 +457,7 @@ function TriggerKindSection({
       <FieldLabel variant="form" id={toggleLabelId}>
         {t("triggers.whatToRun")}
       </FieldLabel>
-      <div aria-labelledby={toggleLabelId} className="mt-1.5 flex gap-2">
+      <div className="mt-1.5 flex gap-2">
         <button
           type="button"
           aria-pressed={form.kind === "text"}
