@@ -1,6 +1,5 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { JSDOM } from "jsdom";
 import {
   browserWorkspaceTextMatches,
   buildBrowserWorkspaceElementSelector,
@@ -29,12 +28,10 @@ import {
   submitWebBrowserWorkspaceForm,
 } from "./browser-workspace-forms.js";
 import {
-  assertBrowserWorkspaceUrl,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceNotFoundError,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_WAIT_INTERVAL_MS,
-  inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceText,
   resolveBrowserWorkspaceCommandElementRefs,
   sleep,
@@ -42,9 +39,7 @@ import {
 } from "./browser-workspace-helpers.js";
 import {
   applyBrowserWorkspaceDomSettings,
-  createEmptyWebBrowserWorkspaceDom,
   ensureBrowserWorkspaceDom,
-  installBrowserWorkspaceWebRuntime,
 } from "./browser-workspace-jsdom.js";
 import {
   fetchBrowserWorkspaceTrackedResponse,
@@ -62,7 +57,6 @@ import {
 } from "./browser-workspace-snapshots.js";
 import {
   browserWorkspaceClipboardText,
-  clearBrowserWorkspaceElementRefs,
   getBrowserWorkspaceRuntimeState,
   getBrowserWorkspaceTimestamp,
   registerBrowserWorkspaceElementRefs,

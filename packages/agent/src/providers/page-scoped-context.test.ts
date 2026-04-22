@@ -6,10 +6,7 @@ import { pageScopedContextProvider } from "./page-scoped-context.js";
 
 const AGENT_ID = "agent-1" as UUID;
 
-function pageRoomMetadata(
-  scope: string,
-  overrides?: Record<string, unknown>,
-) {
+function pageRoomMetadata(scope: string, overrides?: Record<string, unknown>) {
   return {
     webConversation: {
       conversationId: "page-conv-1",
@@ -260,7 +257,7 @@ describe("pageScopedContextProvider", () => {
   });
 
   it("does not bridge if sourceConversationId points to its own room", async () => {
-    const ownRoomId = stringToUuid("self") as UUID;
+    const _ownRoomId = stringToUuid("self") as UUID;
     const ownConversationId = "self";
     // construct sourceRoomId that equals ownRoomId
     // sourceRoomId formula: stringToUuid(`web-conv-${id}`)

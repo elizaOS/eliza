@@ -263,7 +263,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
   };
 
   const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
-    knowledge.service!.getKnowledge(
+    knowledge.service?.getKnowledge(
       {
         ...searchMessage,
         content: {

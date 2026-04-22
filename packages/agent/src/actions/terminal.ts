@@ -158,7 +158,7 @@ function resolveClipboardTitle(
  */
 function getCommand(
   options?: HandlerOptions,
-  message?: Memory,
+  _message?: Memory,
 ): string | undefined {
   const params = (options?.parameters ?? {}) as TerminalActionParameters;
   const argumentParams = parseJsonArguments(params.arguments);

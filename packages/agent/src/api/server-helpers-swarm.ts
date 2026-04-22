@@ -3,7 +3,6 @@
  */
 
 import crypto from "node:crypto";
-import type http from "node:http";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
