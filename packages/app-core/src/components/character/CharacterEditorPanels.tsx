@@ -89,30 +89,9 @@ const GripIconSvg = ({ className }: { className?: string }) => (
   </svg>
 );
 
-/* ── Small duplicate/copy icon ───────────────────────────────────── */
-const CopyIconSvg = ({ className }: { className?: string }) => (
-  <svg
-    width="11"
-    height="11"
-    viewBox="0 0 11 11"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.25"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    className={className}
-  >
-    <rect x="3.25" y="3.25" width="6.5" height="6.5" rx="1" />
-    <path d="M7.5 3.25V2.25a1 1 0 0 0-1-1h-3.5a1 1 0 0 0-1 1v3.5a1 1 0 0 0 1 1h1" />
-  </svg>
-);
-
 /* ── Shared styles for inline plus/trash buttons ─────────────────── */
 const inlineAddBtn =
   "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded-sm px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
-const inlineRemoveBtn =
-  "inline-flex items-center text-muted hover:text-danger hover:bg-danger/10 rounded-sm p-1 -m-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -140,7 +119,6 @@ const STYLE_SECTION_EMPTY_STATES: Record<
 export interface CharacterIdentityPanelProps {
   d: CharacterData;
   bioText: string;
-  generating: string | null;
   voiceSelectValue: string | null;
   activeVoicePreset: (typeof PREMADE_VOICES)[number] | null;
   voiceTesting: boolean;
@@ -152,7 +130,6 @@ export interface CharacterIdentityPanelProps {
   }[];
   edgeVoiceGroups: { label: string; items: { id: string; text: string }[] }[];
   handleFieldEdit: (field: string, value: unknown) => void;
-  handleGenerate: (field: string, mode?: "replace" | "append") => Promise<void>;
   handleSelectPreset: (
     preset: (typeof PREMADE_VOICES)[0] | (typeof EDGE_BACKUP_VOICES)[0],
   ) => void;
@@ -164,10 +141,8 @@ export interface CharacterIdentityPanelProps {
 
 export interface CharacterStylePanelProps {
   d: CharacterData;
-  generating: string | null;
   pendingStyleEntries: Record<string, string>;
   styleEntryDrafts: Record<string, string[]>;
-  handleGenerate: (field: string, mode?: "replace" | "append") => Promise<void>;
   handlePendingStyleEntryChange: (key: string, value: string) => void;
   handleAddStyleEntry: (key: string) => void;
   handleRemoveStyleEntry: (key: string, index: number) => void;
@@ -184,9 +159,7 @@ export interface CharacterStylePanelProps {
 export interface CharacterExamplesPanelProps {
   d: CharacterData;
   normalizedMessageExamples: MessageExampleGroup[];
-  generating: string | null;
   handleFieldEdit: (field: string, value: unknown) => void;
-  handleGenerate: (field: string, mode?: "replace" | "append") => Promise<void>;
   t: (key: string, opts?: { defaultValue?: string }) => string;
 }
 
@@ -195,7 +168,6 @@ export interface CharacterExamplesPanelProps {
 export function CharacterIdentityPanel({
   d,
   bioText,
-  generating,
   voiceSelectValue,
   activeVoicePreset,
   voiceTesting,
@@ -204,7 +176,6 @@ export function CharacterIdentityPanel({
   elevenLabsVoiceGroups,
   edgeVoiceGroups,
   handleFieldEdit,
-  handleGenerate,
   handleSelectPreset,
   handleStopTest,
   setVoiceTesting,
@@ -344,10 +315,8 @@ export function CharacterIdentityPanel({
 
 export function CharacterStylePanel({
   d,
-  generating,
   pendingStyleEntries,
   styleEntryDrafts,
-  handleGenerate,
   handlePendingStyleEntryChange,
   handleAddStyleEntry,
   handleRemoveStyleEntry,
@@ -394,6 +363,7 @@ export function CharacterStylePanel({
                     return (
                       <div
                         key={`${key}:${item}`}
+                        role="group"
                         draggable
                         onDragStart={(e: DragEvent<HTMLDivElement>) => {
                           setDragStyleIndex({ key, index });
@@ -534,12 +504,9 @@ export function CharacterStylePanel({
 export function CharacterExamplesPanel({
   d,
   normalizedMessageExamples,
-  generating,
   handleFieldEdit,
-  handleGenerate,
   t,
 }: CharacterExamplesPanelProps) {
-  const [dragConvoIndex, setDragConvoIndex] = useState<number | null>(null);
   const [dragPostIndex, setDragPostIndex] = useState<number | null>(null);
 
   const reorder = <T,>(list: T[], from: number, to: number): T[] => {
@@ -691,6 +658,7 @@ export function CharacterExamplesPanel({
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
                 key={`post-${pi}`}
+                role="group"
                 draggable
                 onDragStart={(e: DragEvent<HTMLDivElement>) => {
                   setDragPostIndex(pi);
