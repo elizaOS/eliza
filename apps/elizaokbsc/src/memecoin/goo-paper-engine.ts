@@ -490,7 +490,9 @@ export function runPaperAgentCycle(
       let exitUnrealized = pos.unrealizedPnlUsd;
       if (exitResult.vanished && exitUnrealized === 0 && pos.allocationUsd > 0) {
         const seed = (pos.tokenAddress.charCodeAt(2) + pos.tokenAddress.charCodeAt(6)) % 100;
-        const changePct = seed < 35 ? (5 + (seed % 25)) : -(10 + (seed % 30));
+        const changePct = seed < 30
+          ? -(5 + (seed % 15))
+          : (3 + (seed % 35));
         exitUnrealized = pos.allocationUsd * (changePct / 100);
       }
       const pnl = exitUnrealized + pos.realizedPnlUsd;
