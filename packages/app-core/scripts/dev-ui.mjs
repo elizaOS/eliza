@@ -117,6 +117,38 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
+const DEV_TEST_MOCK_ENV_KEYS = [
+  "MILADY_MOCK_GOOGLE_BASE",
+  "MILADY_MOCK_TWILIO_BASE",
+  "MILADY_MOCK_WHATSAPP_BASE",
+  "MILADY_MOCK_X_BASE",
+  "MILADY_MOCK_CALENDLY_BASE",
+];
+let warnedAboutStrippedDevMocks = false;
+
+function createDevChildEnv(baseEnv) {
+  const nextEnv = { ...baseEnv };
+  if (nextEnv.ELIZA_DEV_ALLOW_TEST_MOCKS === "1") {
+    return nextEnv;
+  }
+  const strippedKeys = [];
+  for (const key of DEV_TEST_MOCK_ENV_KEYS) {
+    if (key in nextEnv) {
+      delete nextEnv[key];
+      strippedKeys.push(key);
+    }
+  }
+  if (!warnedAboutStrippedDevMocks && strippedKeys.length > 0) {
+    warnedAboutStrippedDevMocks = true;
+    const cleanupHint = strippedKeys.includes("MILADY_MOCK_GOOGLE_BASE")
+      ? " If cached mock Google events already landed in LifeOps, disconnect and reconnect Google once in the app to resync real data."
+      : "";
+    console.warn(
+      `${logPrefix} Ignoring test-only mock env vars for dev: ${strippedKeys.join(", ")}.${cleanupHint}`,
+    );
+  }
+  return nextEnv;
+}
 
 function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
@@ -663,6 +695,7 @@ if (process.platform !== "win32") {
 }
 
 function startVite() {
+  const childEnv = createDevChildEnv(process.env);
   const pkgPath = path.join(cwd, appDir, "package.json");
   if (existsSync(pkgPath)) {
     try {
@@ -690,7 +723,7 @@ function startVite() {
           execSync(hasBun ? "bun run plugin:build" : "npm run plugin:build", {
             cwd: appAbs,
             stdio: "inherit",
-            env: process.env,
+            env: childEnv,
           });
         } else {
           console.log(
@@ -721,7 +754,7 @@ function startVite() {
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
-      ...process.env,
+      ...childEnv,
       NODE_ENV: "development",
       ELIZA_NAMESPACE: cliName,
       ELIZA_UI_PORT: String(UI_PORT),
@@ -812,11 +845,12 @@ if (uiOnly) {
         "--watch",
         "eliza/packages/app-core/src/runtime/dev-server.ts",
       ];
+  const childEnv = createDevChildEnv(process.env);
   apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
     cwd,
     env: extendNodePathEnv(
       {
-        ...process.env,
+        ...childEnv,
         NODE_ENV: "development",
         ELIZA_NAMESPACE: cliName,
         ELIZA_API_PORT: String(API_PORT),

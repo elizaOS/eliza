@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import type {
+  LifeOpsAwakeProbability,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealInsight,
   LifeOpsScheduleMealLabel,
   LifeOpsSchedulePhase,
+  LifeOpsScheduleRegularity,
 } from "@elizaos/shared/contracts/lifeops";
 import { asRecord } from "@elizaos/shared/type-guards";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
@@ -68,6 +70,28 @@ function roundHalfHour(value: number | null | undefined): number | null {
     return null;
   }
   return Math.round(value * 2) / 2;
+}
+
+function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
+  return {
+    pAwake: 0,
+    pAsleep: 0,
+    pUnknown: 1,
+    contributingSources: [],
+    computedAt,
+  };
+}
+
+function defaultScheduleRegularity(): LifeOpsScheduleRegularity {
+  return {
+    sri: 0,
+    bedtimeStddevMin: 0,
+    wakeStddevMin: 0,
+    midSleepStddevMin: 0,
+    regularityClass: "insufficient_data",
+    sampleCount: 0,
+    windowDays: 28,
+  };
 }
 
 function parseIsoMs(value: string | null | undefined): number | null {
@@ -150,6 +174,8 @@ function toObservationSnapshot(
     localDate: insight.localDate,
     phase: insight.phase,
     relativeTime: insight.relativeTime,
+    awakeProbability: insight.awakeProbability,
+    regularity: insight.regularity,
     sleepStatus: insight.sleepStatus,
     isProbablySleeping: insight.isProbablySleeping,
     sleepConfidence: roundConfidence(insight.sleepConfidence),
@@ -518,6 +544,10 @@ function recordFromSyncInput(args: {
       snapshotSource.phase ??
       args.input.phase ??
       inferPhaseFromClock(new Date(args.observedAt), args.timezone),
+    awakeProbability:
+      snapshotSource.awakeProbability ?? defaultAwakeProbability(args.observedAt),
+    regularity:
+      snapshotSource.regularity ?? defaultScheduleRegularity(),
     sleepStatus: snapshotSource.sleepStatus ?? "unknown",
     isProbablySleeping:
       typeof snapshotSource.isProbablySleeping === "boolean"
@@ -902,6 +932,13 @@ export function mergeScheduleObservations(args: {
     timezone: args.timezone,
     schedule: {
       phase,
+      awakeProbability: latestSnapshotValue(
+        relevant,
+        (snapshot) => snapshot.awakeProbability,
+      ) ?? defaultAwakeProbability(mergedAt),
+      regularity:
+        latestSnapshotValue(relevant, (snapshot) => snapshot.regularity) ??
+        defaultScheduleRegularity(),
       isProbablySleeping: phase === "sleeping",
       sleepConfidence,
       currentSleepStartedAt,
@@ -971,6 +1008,10 @@ export function mergeScheduleObservations(args: {
     inferredAt: mergedAt,
     phase,
     relativeTime,
+    awakeProbability: relativeTime.awakeProbability,
+    regularity:
+      latestSnapshotValue(relevant, (snapshot) => snapshot.regularity) ??
+      defaultScheduleRegularity(),
     sleepStatus,
     isProbablySleeping: phase === "sleeping",
     sleepConfidence,

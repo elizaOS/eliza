@@ -24,11 +24,13 @@ import { resolveEffectiveDayKey } from "./analyzer.js";
 import {
   type CalendarEventSlim,
   type GoalSlim,
+  type InboxDigestSlim,
   type OccurrenceSlim,
   planDowntimeNudges,
   planGm,
   planGn,
   planGoalCheckIns,
+  type ProactiveRelativeTimeSlim,
   planNudges,
 } from "./proactive-planner.js";
 import {
@@ -343,11 +345,9 @@ export async function executeProactiveTask(
 
   const todayStr = resolveEffectiveDayKey(profile, timezone, now);
   let firedLog = readFiredLogFromMetadata(metadata, todayStr);
-  const { occurrences, calendarEvents, goals } = await fetchPlannerContext(
-    runtime,
-    timezone,
-    now,
-  );
+  let inboxDigest: InboxDigestSlim | null = null;
+  const { occurrences, calendarEvents, goals, relativeTime } =
+    await fetchPlannerContext(runtime, timezone, now);
   // NOTE: planGm/planGn apply their own time-of-day gating today; the
   // canonical source of truth for morning/night enforcement windows is
   // `src/lifeops/enforcement-windows.ts` (getCurrentEnforcementWindow).
@@ -357,11 +357,37 @@ export async function executeProactiveTask(
     profile,
     occurrences,
     calendarEvents,
+    relativeTime,
+    null,
     firedLog,
     timezone,
     now,
   );
-  const gnAction = planGn(profile, firedLog, timezone, now);
+  const gnAction = planGn(profile, relativeTime, null, firedLog, timezone, now);
+  if (
+    isDigestActionReady(gmAction, now) ||
+    isDigestActionReady(gnAction, now)
+  ) {
+    inboxDigest = await loadInboxDigest(runtime);
+  }
+  const hydratedGmAction = planGm(
+    profile,
+    occurrences,
+    calendarEvents,
+    relativeTime,
+    inboxDigest,
+    firedLog,
+    timezone,
+    now,
+  );
+  const hydratedGnAction = planGn(
+    profile,
+    relativeTime,
+    inboxDigest,
+    firedLog,
+    timezone,
+    now,
+  );
   const nudgeActions = planNudges(
     profile,
     occurrences,
@@ -390,8 +416,8 @@ export async function executeProactiveTask(
 
   const allActions = [
     seedingAction,
-    gmAction,
-    gnAction,
+    hydratedGmAction,
+    hydratedGnAction,
     ...nudgeActions,
     ...downtimeActions,
     ...goalCheckInActions,
@@ -545,17 +571,46 @@ async function planSeedingOffer(
 
 async function fetchPlannerContext(
   runtime: IAgentRuntime,
-  _timezone: string,
+  timezone: string,
   now: Date,
 ): Promise<{
   occurrences: OccurrenceSlim[];
   calendarEvents: CalendarEventSlim[];
   goals: GoalSlim[];
+  relativeTime: ProactiveRelativeTimeSlim | null;
 }> {
   const occurrences: OccurrenceSlim[] = [];
   const calendarEvents: CalendarEventSlim[] = [];
   const goals: GoalSlim[] = [];
+  let relativeTime: ProactiveRelativeTimeSlim | null = null;
   const lifeOpsService = new LifeOpsService(runtime);
+
+  try {
+    const schedule = await lifeOpsService.getScheduleMergedState({
+      timezone,
+      scope: "effective",
+      refresh: true,
+      now,
+    });
+    relativeTime = schedule?.relativeTime
+      ? {
+          wakeAnchorAt: schedule.relativeTime.wakeAnchorAt,
+          bedtimeTargetAt: schedule.relativeTime.bedtimeTargetAt,
+          minutesSinceWake: schedule.relativeTime.minutesSinceWake,
+          minutesUntilBedtimeTarget:
+            schedule.relativeTime.minutesUntilBedtimeTarget,
+        }
+      : null;
+  } catch (error) {
+    logger.warn(
+      {
+        boundary: "activity_profile",
+        operation: "planner_schedule_state",
+        err: error instanceof Error ? error : undefined,
+      },
+      `[proactive] Failed to read schedule context for proactive planning: ${String(error)}`,
+    );
+  }
 
   try {
     const overview = await lifeOpsService.getOverview(now);
@@ -604,7 +659,7 @@ async function fetchPlannerContext(
     const decisions = await classifyCalendarEventsForProactivePlanning(
       runtime,
       rawCalendarEvents,
-      _timezone,
+      timezone,
       now,
     );
     for (const event of feed.events) {
@@ -627,7 +682,7 @@ async function fetchPlannerContext(
     }
   } catch (error) {
     if (error instanceof LifeOpsServiceError && error.status === 409) {
-      return { occurrences, calendarEvents, goals };
+      return { occurrences, calendarEvents, goals, relativeTime };
     }
     logger.warn(
       {
@@ -669,7 +724,70 @@ async function fetchPlannerContext(
     );
   }
 
-  return { occurrences, calendarEvents, goals };
+  return { occurrences, calendarEvents, goals, relativeTime };
+}
+
+function isDigestActionReady(
+  action: ProactiveAction | null,
+  now: Date,
+): boolean {
+  return Boolean(
+    action &&
+      (action.kind === "gm" || action.kind === "gn") &&
+      action.status === "pending" &&
+      action.scheduledFor <= now.getTime(),
+  );
+}
+
+async function loadInboxDigest(
+  runtime: IAgentRuntime,
+): Promise<InboxDigestSlim | null> {
+  try {
+    const inbox = await new LifeOpsService(runtime).getUnifiedInbox({ limit: 24 });
+    const unreadCount = Object.values(inbox.channelCounts).reduce(
+      (sum, count) => sum + count.unread,
+      0,
+    );
+    const channelCounts = Object.entries(inbox.channelCounts)
+      .map(([channel, count]) => ({
+        channel,
+        unreadCount: count.unread,
+      }))
+      .filter((entry) => entry.unreadCount > 0)
+      .sort((left, right) => right.unreadCount - left.unreadCount);
+    const highlights = [...inbox.messages]
+      .sort((left, right) => {
+        const unreadDelta = Number(right.unread) - Number(left.unread);
+        if (unreadDelta !== 0) {
+          return unreadDelta;
+        }
+        return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+      })
+      .slice(0, 3)
+      .map((message) => ({
+        channel: message.channel,
+        sender: message.sender.displayName,
+        subject: message.subject,
+        snippet: message.snippet,
+        receivedAt: message.receivedAt,
+        unread: message.unread,
+      }));
+    return {
+      unreadCount,
+      channelCounts,
+      highlights,
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        boundary: "activity_profile",
+        operation: "planner_unified_inbox",
+        err: error instanceof Error ? error : undefined,
+      },
+      `[proactive] Failed to read unified inbox for proactive digest: ${String(error)}`,
+    );
+    return null;
+  }
 }
 
 function recordFiredAction(

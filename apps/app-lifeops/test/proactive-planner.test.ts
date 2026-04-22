@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { planGm, planGn } from "../src/activity-profile/proactive-planner.js";
+import {
+  planGm,
+  planGn,
+  type InboxDigestSlim,
+  type ProactiveRelativeTimeSlim,
+} from "../src/activity-profile/proactive-planner.js";
 import { readFiredLogFromMetadata } from "../src/activity-profile/service.js";
 import type {
   ActivityProfile,
@@ -90,11 +95,46 @@ function buildProfile(
   };
 }
 
+function buildRelativeTime(
+  overrides: Partial<ProactiveRelativeTimeSlim> = {},
+): ProactiveRelativeTimeSlim {
+  return {
+    wakeAnchorAt: null,
+    bedtimeTargetAt: null,
+    minutesSinceWake: null,
+    minutesUntilBedtimeTarget: null,
+    ...overrides,
+  };
+}
+
+function buildInboxDigest(
+  overrides: Partial<InboxDigestSlim> = {},
+): InboxDigestSlim {
+  return {
+    unreadCount: 3,
+    channelCounts: [
+      { channel: "gmail", unreadCount: 2 },
+      { channel: "telegram", unreadCount: 1 },
+    ],
+    highlights: [
+      {
+        channel: "gmail",
+        sender: "Finance",
+        subject: "Invoice approval",
+        snippet: "Need your sign-off before noon.",
+        receivedAt: new Date(PROFILE_NOW - 10 * 60_000).toISOString(),
+        unread: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe("planGn", () => {
   it("schedules GN in the evening for an evening-active user", () => {
     const now = localDateInZone(2026, 4, 19, 17, 20, ZONE);
     const profile = buildProfile({ typicalLastActiveHour: 22 });
-    const result = planGn(profile, null, ZONE, now);
+    const result = planGn(profile, null, null, null, ZONE, now);
     expect(result).not.toBeNull();
     expect(result?.scheduledFor).toBeGreaterThan(now.getTime());
   });
@@ -106,7 +146,7 @@ describe("planGn", () => {
     // for 4 AM today, which the dispatcher fired immediately and re-fired
     // every 60s tick.
     const profile = buildProfile({ typicalLastActiveHour: 3 });
-    const result = planGn(profile, null, ZONE, now);
+    const result = planGn(profile, null, null, null, ZONE, now);
     expect(result).not.toBeNull();
     // GN must be scheduled for the future, not the past.
     expect(result?.scheduledFor).toBeGreaterThan(now.getTime());
@@ -125,7 +165,7 @@ describe("planGn", () => {
       nudgedCalendarEventIds: [],
       checkedGoalIds: [],
     };
-    const result = planGn(profile, firedLog, ZONE, now);
+    const result = planGn(profile, null, null, firedLog, ZONE, now);
     expect(result).toBeNull();
   });
 
@@ -140,8 +180,31 @@ describe("planGn", () => {
       nudgedCalendarEventIds: [],
       checkedGoalIds: [],
     };
-    const result = planGn(profile, firedLog, ZONE, now);
+    const result = planGn(profile, null, null, firedLog, ZONE, now);
     expect(result).not.toBeNull();
+  });
+
+  it("targets two hours before the computed bedtime when relative time is available", () => {
+    const now = localDateInZone(2026, 4, 19, 20, 55, ZONE);
+    const bedtime = localDateInZone(2026, 4, 19, 23, 0, ZONE).toISOString();
+    const profile = buildProfile({ typicalLastActiveHour: 22 });
+    const result = planGn(
+      profile,
+      buildRelativeTime({
+        bedtimeTargetAt: bedtime,
+        minutesUntilBedtimeTarget: 125,
+      }),
+      buildInboxDigest(),
+      null,
+      ZONE,
+      now,
+    );
+    expect(result).not.toBeNull();
+    expect(result?.scheduledFor).toBe(
+      new Date(bedtime).getTime() - 2 * 60 * 60 * 1000,
+    );
+    expect(result?.messageText).toContain("Night summary.");
+    expect(result?.messageText).toContain("Finance on gmail");
   });
 });
 
@@ -156,8 +219,36 @@ describe("planGm", () => {
       nudgedCalendarEventIds: [],
       checkedGoalIds: [],
     };
-    const result = planGm(profile, [], [], firedLog, ZONE, now);
+    const result = planGm(profile, [], [], null, null, firedLog, ZONE, now);
     expect(result).toBeNull();
+  });
+
+  it("targets the wake anchor and includes inbox digest context", () => {
+    const now = localDateInZone(2026, 4, 19, 7, 8, ZONE);
+    const wakeAnchor = localDateInZone(2026, 4, 19, 7, 2, ZONE).toISOString();
+    const profile = buildProfile({
+      typicalFirstActiveHour: 8,
+      currentActivityCycleLocalDate: "2026-04-19",
+      effectiveDayKey: "2026-04-19",
+    });
+    const result = planGm(
+      profile,
+      [],
+      [],
+      buildRelativeTime({
+        wakeAnchorAt: wakeAnchor,
+        minutesSinceWake: 6,
+      }),
+      buildInboxDigest(),
+      null,
+      ZONE,
+      now,
+    );
+    expect(result).not.toBeNull();
+    expect(result?.scheduledFor).toBe(new Date(wakeAnchor).getTime());
+    expect(result?.messageText).toContain("Good morning.");
+    expect(result?.messageText).toContain("3 unread");
+    expect(result?.messageText).toContain("Finance on gmail");
   });
 });
 

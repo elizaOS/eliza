@@ -99,12 +99,39 @@ export interface CalendarEventSlim {
   proactiveCheckInReason?: string | null;
 }
 
+export interface ProactiveRelativeTimeSlim {
+  wakeAnchorAt: string | null;
+  bedtimeTargetAt: string | null;
+  minutesSinceWake: number | null;
+  minutesUntilBedtimeTarget: number | null;
+}
+
+export interface InboxDigestHighlightSlim {
+  channel: string;
+  sender: string;
+  subject: string | null;
+  snippet: string;
+  receivedAt: string;
+  unread: boolean;
+}
+
+export interface InboxDigestSlim {
+  unreadCount: number;
+  channelCounts: Array<{
+    channel: string;
+    unreadCount: number;
+  }>;
+  highlights: InboxDigestHighlightSlim[];
+}
+
 // ── GM planning ───────────────────────────────────────
 
 export function planGm(
   profile: ActivityProfile,
   occurrences: OccurrenceSlim[],
   calendarEvents: CalendarEventSlim[],
+  relativeTime: ProactiveRelativeTimeSlim | null,
+  inboxDigest: InboxDigestSlim | null,
   firedToday: FiredActionsLog | null,
   timezone: string,
   now?: Date,
@@ -135,9 +162,13 @@ export function planGm(
     return null;
   }
 
-  // Determine GM target hour
-  const gmHour = resolveGmHour(profile, calendarEvents, timezone, currentTime);
-  const gmTime = localHourToEpoch(gmHour, timezone, currentTime);
+  const gmTime =
+    resolveWakeTriggeredGmTime(relativeTime, timezone, currentTime) ??
+    localHourToEpoch(
+      resolveGmHour(profile, calendarEvents, timezone, currentTime),
+      timezone,
+      currentTime,
+    );
 
   // Past cutoff — too late for GM
   const parts = getZonedDateParts(currentTime, timezone);
@@ -178,6 +209,8 @@ export function planGm(
     }
   }
 
+  appendInboxDigestContext(contextParts, inboxDigest);
+
   const contextSummary =
     contextParts.length > 0 ? `gm context: ${contextParts.join(" | ")}` : "gm";
 
@@ -186,7 +219,7 @@ export function planGm(
     scheduledFor: gmTime,
     targetPlatform: selectTargetPlatform(profile, false),
     contextSummary,
-    messageText: buildGmMessage(contextParts),
+    messageText: buildDigestMessage("gm", contextParts, inboxDigest),
     status: "pending",
   };
 }
@@ -195,6 +228,8 @@ export function planGm(
 
 export function planGn(
   profile: ActivityProfile,
+  relativeTime: ProactiveRelativeTimeSlim | null,
+  inboxDigest: InboxDigestSlim | null,
   firedToday: FiredActionsLog | null,
   timezone: string,
   now?: Date,
@@ -215,16 +250,19 @@ export function planGn(
     return null;
   }
 
-  // Determine GN target hour
-  const gnHour = resolveGnHour(profile);
-  const gnTime = localHourToEpoch(gnHour, timezone, currentTime);
+  const gnTime =
+    resolveNightSummaryTime(relativeTime, timezone, currentTime) ??
+    localHourToEpoch(resolveGnHour(profile), timezone, currentTime);
+  const contextParts: string[] = [];
+  appendInboxDigestContext(contextParts, inboxDigest);
 
   return {
     kind: "gn",
     scheduledFor: gnTime,
     targetPlatform: selectTargetPlatform(profile, true),
-    contextSummary: "gn",
-    messageText: "Good night.",
+    contextSummary:
+      contextParts.length > 0 ? `gn context: ${contextParts.join(" | ")}` : "gn",
+    messageText: buildDigestMessage("gn", contextParts, inboxDigest),
     status: "pending",
   };
 }
@@ -528,20 +566,24 @@ function resolveGnHour(profile: ActivityProfile): number {
   return DEFAULT_GN_HOUR;
 }
 
-function buildGmMessage(contextParts: string[]): string {
-  if (contextParts.length === 0) {
-    return "Good morning.";
-  }
-
+function buildDigestMessage(
+  kind: "gm" | "gn",
+  contextParts: string[],
+  inboxDigest: InboxDigestSlim | null,
+): string {
   const normalizedParts = contextParts
     .map((part) => capitalizeSentence(part))
     .filter((part) => part.length > 0);
-
+  const opening =
+    kind === "gm"
+      ? "Good morning."
+      : inboxDigest && inboxDigest.unreadCount > 0
+        ? "Night summary."
+        : "Night summary. Inbox is quiet.";
   if (normalizedParts.length === 0) {
-    return "Good morning.";
+    return opening;
   }
-
-  return `Good morning. ${normalizedParts.join(". ")}.`;
+  return `${opening} ${normalizedParts.join(". ")}.`;
 }
 
 function isOneOffOccurrence(occurrence: OccurrenceSlim): boolean {
@@ -582,6 +624,59 @@ function capitalizeSentence(value: string): string {
     return "";
   }
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function appendInboxDigestContext(
+  contextParts: string[],
+  inboxDigest: InboxDigestSlim | null,
+): void {
+  if (!inboxDigest) {
+    return;
+  }
+
+  if (inboxDigest.unreadCount > 0) {
+    const channelSummary = inboxDigest.channelCounts
+      .slice(0, 3)
+      .map((entry) => `${entry.channel} ${entry.unreadCount}`)
+      .join(", ");
+    contextParts.push(
+      `inbox: ${inboxDigest.unreadCount} unread${channelSummary ? ` across ${channelSummary}` : ""}`,
+    );
+  } else {
+    contextParts.push("inbox is quiet");
+  }
+
+  const topHighlights = inboxDigest.highlights
+    .slice(0, 2)
+    .map((highlight) => formatInboxHighlight(highlight))
+    .filter((highlight) => highlight.length > 0);
+  if (topHighlights.length > 0) {
+    contextParts.push(`top items: ${topHighlights.join("; ")}`);
+  }
+}
+
+function formatInboxHighlight(highlight: InboxDigestHighlightSlim): string {
+  const subject =
+    highlight.subject && highlight.subject.trim().length > 0
+      ? highlight.subject.trim()
+      : null;
+  const snippet = summarizeSnippet(highlight.snippet);
+  const messageCore =
+    subject && snippet
+      ? `${subject} — ${snippet}`
+      : subject ?? snippet ?? highlight.channel;
+  return `${highlight.sender} on ${highlight.channel}: ${messageCore}`;
+}
+
+function summarizeSnippet(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (trimmed.length <= 72) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 69).trimEnd()}...`;
 }
 
 function isBusyDay(
@@ -663,6 +758,51 @@ function getTodayActionableEvents(
 
 function shouldNudgeCalendarEvent(event: CalendarEventSlim): boolean {
   return event.proactiveCheckIn === true;
+}
+
+function resolveWakeTriggeredGmTime(
+  relativeTime: ProactiveRelativeTimeSlim | null,
+  timezone: string,
+  now: Date,
+): number | null {
+  const wakeAnchorMs = parseIsoMs(relativeTime?.wakeAnchorAt);
+  if (wakeAnchorMs === null) {
+    return null;
+  }
+  if (
+    getLocalDateKey(getZonedDateParts(new Date(wakeAnchorMs), timezone)) !==
+    getLocalDateKey(getZonedDateParts(now, timezone))
+  ) {
+    return null;
+  }
+  return wakeAnchorMs;
+}
+
+function resolveNightSummaryTime(
+  relativeTime: ProactiveRelativeTimeSlim | null,
+  timezone: string,
+  now: Date,
+): number | null {
+  const bedtimeTargetMs = parseIsoMs(relativeTime?.bedtimeTargetAt);
+  if (bedtimeTargetMs === null) {
+    return null;
+  }
+  const summaryAtMs = bedtimeTargetMs - 2 * 60 * 60 * 1000;
+  if (
+    getLocalDateKey(getZonedDateParts(new Date(summaryAtMs), timezone)) !==
+    getLocalDateKey(getZonedDateParts(now, timezone))
+  ) {
+    return null;
+  }
+  return summaryAtMs;
+}
+
+function parseIsoMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function findNearbyCalendarEvent(

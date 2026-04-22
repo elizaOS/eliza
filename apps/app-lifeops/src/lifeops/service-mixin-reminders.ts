@@ -90,6 +90,7 @@ import {
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
+import { shouldDeferReminderUntilComputerActive } from "./service-helpers-reminder.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -3780,6 +3781,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               ),
             ),
         );
+        const activityProfile =
+          await this.readReminderActivityProfileSnapshot();
 
         const dueAttempts: LifeOpsReminderAttempt[] = [];
         for (const reminder of buildActiveReminders(
@@ -3800,6 +3803,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             definitionPreferencesById.get(reminder.definitionId ?? "") ??
             globalReminderPreference;
           const urgency = occurrenceUrgencies.get(reminder.ownerId) ?? "medium";
+          const definition = definitionsById.get(occurrence.definitionId) ?? null;
           if (
             !shouldDeliverReminderForIntensity(
               preference.effective.intensity,
@@ -3823,6 +3827,15 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           ) {
             continue;
           }
+          if (
+            shouldDeferReminderUntilComputerActive({
+              channel: reminder.channel,
+              definition,
+              activityProfile,
+            })
+          ) {
+            continue;
+          }
           const attempt = await this.dispatchReminderAttempt({
             plan,
             ownerType: "occurrence",
@@ -3841,6 +3854,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             quietHours: plan.quietHours,
             acknowledged,
             attemptedAt: now.toISOString(),
+            activityProfile,
             nearbyReminderTitles: collectNearbyReminderTitles({
               currentOwnerId: reminder.ownerId,
               currentAnchorAt: occurrence.dueAt,
@@ -3849,7 +3863,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               limit: 3,
             }),
             timezone: ownerTimezone,
-            definition: definitionsById.get(occurrence.definitionId) ?? null,
+            definition,
           });
           dueAttempts.push(attempt);
           if (attempt.outcome === "delivered") {
@@ -3910,6 +3924,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             quietHours: plan.quietHours,
             acknowledged,
             attemptedAt: now.toISOString(),
+            activityProfile,
             nearbyReminderTitles: collectNearbyReminderTitles({
               currentOwnerId: reminder.ownerId,
               currentAnchorAt: reminder.dueAt,
@@ -3930,8 +3945,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           ...existingAttempts,
           ...dueAttempts,
         ];
-        const activityProfile =
-          await this.readReminderActivityProfileSnapshot();
 
         // Scan recent "delivered" attempts and upgrade to "delivered_read" when
         // the owner was active after delivery. This improves escalation decisions.

@@ -7,6 +7,22 @@ import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 
 const BASE_SCHEDULE = {
   phase: "evening" as const,
+  awakeProbability: {
+    pAwake: 0.8,
+    pAsleep: 0.1,
+    pUnknown: 0.1,
+    contributingSources: [],
+    computedAt: "2026-04-18T20:00:00.000Z",
+  },
+  regularity: {
+    sri: 82,
+    bedtimeStddevMin: 32,
+    wakeStddevMin: 28,
+    midSleepStddevMin: 24,
+    regularityClass: "regular" as const,
+    sampleCount: 12,
+    windowDays: 28,
+  },
   isProbablySleeping: false,
   sleepConfidence: 0.7,
   currentSleepStartedAt: null,
