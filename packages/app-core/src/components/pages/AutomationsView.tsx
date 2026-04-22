@@ -33,6 +33,7 @@ import {
   FileText,
   GitBranch,
   Grid3x3,
+  LayoutDashboard,
   type LucideIcon,
   Mail,
   Pause,
@@ -1686,6 +1687,262 @@ const AUTOMATION_DRAFT_EXAMPLES: Array<{
   },
 ];
 
+function formatRelativeFuture(
+  targetMs: number,
+  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+): string {
+  const delta = targetMs - Date.now();
+  if (delta <= 0) return "now";
+  return `in ${formatDurationMs(delta, { t })}`;
+}
+
+function formatRelativePast(
+  iso: string | number | null | undefined,
+  t?: (key: string, options?: { defaultValue?: string; value?: number }) => string,
+): string {
+  if (!iso) return "—";
+  const ts = typeof iso === "string" ? Date.parse(iso) : iso;
+  if (!Number.isFinite(ts)) return "—";
+  const delta = Date.now() - ts;
+  if (delta < 0) return "now";
+  return `${formatDurationMs(delta, { t })} ago`;
+}
+
+function AutomationsDashboard({
+  items,
+  onSelectItem,
+  onCreateDraft,
+}: {
+  items: AutomationItem[];
+  onSelectItem: (item: AutomationItem) => void;
+  onCreateDraft: () => void;
+}) {
+  const { t } = useAutomationsViewContext();
+  const now = Date.now();
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => !item.system),
+    [items],
+  );
+
+  const triggerItems = useMemo(
+    () => visibleItems.filter((item): item is AutomationItem & { trigger: TriggerSummary } =>
+      item.trigger != null,
+    ),
+    [visibleItems],
+  );
+
+  const activeCount = visibleItems.filter(
+    (item) => item.enabled && !item.isDraft,
+  ).length;
+  const failingCount = triggerItems.filter(
+    (item) => toneForLastStatus(item.trigger.lastStatus) === "danger",
+  ).length;
+  const draftCount = visibleItems.filter((item) => item.isDraft).length;
+  const totalCount = visibleItems.filter((item) => !item.isDraft).length;
+
+  const upcoming = useMemo(
+    () =>
+      triggerItems
+        .filter(
+          (item) =>
+            item.trigger.enabled &&
+            typeof item.trigger.nextRunAtMs === "number" &&
+            item.trigger.nextRunAtMs > now,
+        )
+        .sort(
+          (a, b) =>
+            (a.trigger.nextRunAtMs ?? 0) - (b.trigger.nextRunAtMs ?? 0),
+        )
+        .slice(0, 6),
+    [triggerItems, now],
+  );
+
+  const recent = useMemo(
+    () =>
+      triggerItems
+        .filter((item) => item.trigger.lastRunAtIso)
+        .sort((a, b) => {
+          const aTs = a.trigger.lastRunAtIso
+            ? Date.parse(a.trigger.lastRunAtIso)
+            : 0;
+          const bTs = b.trigger.lastRunAtIso
+            ? Date.parse(b.trigger.lastRunAtIso)
+            : 0;
+          return bTs - aTs;
+        })
+        .slice(0, 6),
+    [triggerItems],
+  );
+
+  const failures = useMemo(
+    () =>
+      triggerItems
+        .filter(
+          (item) => toneForLastStatus(item.trigger.lastStatus) === "danger",
+        )
+        .slice(0, 5),
+    [triggerItems],
+  );
+
+  if (totalCount === 0 && draftCount === 0) {
+    return (
+      <div className="space-y-3 px-2 pt-6 text-center">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-txt">
+            No automations yet
+          </h2>
+          <p className="text-xs-tight text-muted/80">
+            Click + to describe one in chat — Eliza picks the right shape.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCreateDraft}
+          className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-accent/15 px-3 py-1.5 text-xs-tight font-semibold text-accent hover:bg-accent/25"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          New automation
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <DetailStatsRow
+        items={[
+          { label: "Total", value: totalCount },
+          {
+            label: "Active",
+            value: (
+              <span className="text-ok tabular-nums">{activeCount}</span>
+            ),
+          },
+          {
+            label: "Failing",
+            value:
+              failingCount > 0 ? (
+                <span className="text-danger tabular-nums">
+                  {failingCount}
+                </span>
+              ) : (
+                <span className="text-muted tabular-nums">0</span>
+              ),
+          },
+          {
+            label: "Drafts",
+            value: <span className="tabular-nums">{draftCount}</span>,
+          },
+          {
+            label: "Next",
+            value:
+              upcoming.length > 0 && upcoming[0].trigger.nextRunAtMs
+                ? formatRelativeFuture(upcoming[0].trigger.nextRunAtMs, t)
+                : "—",
+          },
+        ]}
+      />
+
+      {failures.length > 0 && (
+        <DetailSection title={`Failing (${failures.length})`}>
+          <div className="divide-y divide-border/20">
+            {failures.map(({ id, title, trigger }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  const found = items.find((it) => it.id === id);
+                  if (found) onSelectItem(found);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+              >
+                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" aria-hidden />
+                <span className="truncate font-medium text-txt">{title}</span>
+                <span className="ml-auto text-muted/70 tabular-nums">
+                  {formatRelativePast(trigger.lastRunAtIso, t)}
+                </span>
+                {trigger.lastError ? (
+                  <span className="basis-full truncate pl-4 text-[11px] text-danger/80">
+                    {trigger.lastError}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+
+      {upcoming.length > 0 && (
+        <DetailSection title="Upcoming">
+          <div className="divide-y divide-border/20">
+            {upcoming.map(({ id, title, trigger }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  const found = items.find((it) => it.id === id);
+                  if (found) onSelectItem(found);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+              >
+                <Clock3 className="h-3.5 w-3.5 shrink-0 text-muted/60" aria-hidden />
+                <span className="truncate text-txt">{title}</span>
+                <span className="ml-auto text-muted tabular-nums">
+                  {trigger.nextRunAtMs
+                    ? formatRelativeFuture(trigger.nextRunAtMs, t)
+                    : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+
+      {recent.length > 0 && (
+        <DetailSection title="Recent runs">
+          <div className="divide-y divide-border/20">
+            {recent.map(({ id, title, trigger }) => {
+              const tone = toneForLastStatus(trigger.lastStatus);
+              const dotClass =
+                tone === "success"
+                  ? "bg-ok"
+                  : tone === "danger"
+                    ? "bg-danger"
+                    : tone === "warning"
+                      ? "bg-warning"
+                      : "bg-muted/50";
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    const found = items.find((it) => it.id === id);
+                    if (found) onSelectItem(found);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs-tight hover:bg-bg-muted/40"
+                >
+                  <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+                  <span className="truncate text-txt">{title}</span>
+                  <span className="ml-auto text-muted/70 tabular-nums">
+                    {formatRelativePast(trigger.lastRunAtIso, t)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </DetailSection>
+      )}
+
+      {totalCount > 0 && upcoming.length === 0 && recent.length === 0 && (
+        <div className="px-3 py-4 text-center text-xs-tight text-muted/70">
+          No scheduled runs yet. Select an automation to run one manually.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AutomationDraftPane({
   automation,
   onPromptSubmit,
@@ -2408,6 +2665,7 @@ function AutomationsLayout() {
     workflowFetchError,
   } = ctx;
   const [searchQuery, setSearchQuery] = useState("");
+  const [showDashboard, setShowDashboard] = useState(true);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
