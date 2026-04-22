@@ -26,7 +26,7 @@ const sidebarRootVariants = cva(
           "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
       },
       collapsed: {
-        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent",
+        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent z-40",
         false: "",
       },
       resizable: {
