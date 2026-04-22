@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/interop",
-  "version": "2.0.0-alpha.270",
+  "version": "2.0.0-alpha.271",
   "description": "Cross-language plugin interoperability for elizaOS",
   "type": "module",
   "main": "dist/index.js",
