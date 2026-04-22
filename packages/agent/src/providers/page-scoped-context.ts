@@ -297,11 +297,8 @@ export const pageScopedContextProvider: Provider = {
       const metadata = extractConversationMetadataFromRoom(room);
       const scope = metadata?.scope as ConversationScope | undefined;
       const isPageScoped = isPageScopedConversationMetadata(metadata);
-      const isAutomationDraft = scope === "automation-draft";
-      if (!isPageScoped && !isAutomationDraft) {
-        return EMPTY_RESULT;
-      }
-      if (!scope) {
+      const acceptedScope = isPageScoped || scope === "automation-draft";
+      if (!acceptedScope || !scope) {
         return EMPTY_RESULT;
       }
       const brief = PAGE_SCOPE_BRIEF[scope];
