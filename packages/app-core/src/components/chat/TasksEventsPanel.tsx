@@ -236,11 +236,12 @@ export function TasksEventsPanel({
               <button
                 type="button"
                 data-testid="chat-widgets-edit-inline"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+                className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] bg-transparent px-1 text-3xs font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-txt"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >
-                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                <Pencil className="h-3 w-3" aria-hidden />
+                <span>Edit</span>
               </button>
               {showCollapseButton ? (
                 <button
