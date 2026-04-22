@@ -3,9 +3,9 @@
 use aes::Aes256;
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use cbc::cipher::block_padding::Pkcs7;
+use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
 use cbc::Decryptor;
-use cipher::block_padding::Pkcs7;
-use cipher::{BlockDecryptMut, KeyIvInit};
 use sha2::{Digest, Sha256};
 
 /// Get the salt used for encrypting/decrypting secrets
@@ -131,7 +131,7 @@ pub fn decrypt_string_value(value: &str, salt: &str) -> String {
         };
 
         let mut buf = ciphertext;
-        match cipher.decrypt_padded_mut::<Pkcs7>(&mut buf) {
+        match cipher.decrypt_padded::<Pkcs7>(&mut buf) {
             Ok(plaintext) => {
                 String::from_utf8(plaintext.to_vec()).unwrap_or_else(|_| value.to_string())
             }
@@ -194,8 +194,8 @@ fn looks_encrypted(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cbc::cipher::BlockModeEncrypt;
     use cbc::Encryptor;
-    use cipher::BlockEncryptMut;
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
@@ -232,7 +232,7 @@ mod tests {
         buf.resize(msg_len + pad_len, 0u8);
 
         let encrypted = cipher
-            .encrypt_padded_mut::<Pkcs7>(&mut buf, msg_len)
+            .encrypt_padded::<Pkcs7>(&mut buf, msg_len)
             .expect("padding buffer sized correctly");
         let legacy = format!("{}:{}", hex::encode(iv), hex::encode(encrypted));
 
@@ -255,7 +255,7 @@ mod tests {
         buf.extend_from_slice(pt);
         buf.resize(msg_len + pad_len, 0u8);
         let encrypted = cipher
-            .encrypt_padded_mut::<Pkcs7>(&mut buf, msg_len)
+            .encrypt_padded::<Pkcs7>(&mut buf, msg_len)
             .expect("padding buffer sized correctly");
         let legacy = format!("{}:{}", hex::encode(iv), hex::encode(encrypted));
 
