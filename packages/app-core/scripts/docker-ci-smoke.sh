@@ -184,7 +184,7 @@ fi
 if [[ ! -f eliza/plugins/plugin-telegram/dist/account-auth-service.js ]]; then
   log "Building Telegram plugin account-auth export"
   pushd eliza/plugins/plugin-telegram >/dev/null
-  bun run build
+  bunx tsup src/index.ts src/account-auth-service.ts --out-dir dist --format esm --sourcemap --clean --no-dts
   popd >/dev/null
 fi
 
