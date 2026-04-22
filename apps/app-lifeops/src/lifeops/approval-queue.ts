@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
-  ApprovalNotFoundError,
+  type ApprovalAction,
+  type ApprovalChannel,
   type ApprovalEnqueueInput,
   type ApprovalListFilter,
+  ApprovalNotFoundError,
+  type ApprovalPayload,
   type ApprovalQueue,
   type ApprovalRequest,
   type ApprovalRequestState,
   type ApprovalResolution,
   ApprovalStateTransitionError,
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalPayload,
 } from "./approval-queue.types.js";
 import {
   executeRawSql,
@@ -84,6 +84,7 @@ const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "slack",
   "imessage",
   "sms",
+  "x_dm",
   "email",
   "google_calendar",
   "browser",

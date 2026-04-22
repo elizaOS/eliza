@@ -1,3 +1,5 @@
+import { hasAdminAccess } from "@elizaos/agent";
+import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
 import type {
   Action,
   ActionExample,
@@ -25,14 +27,12 @@ import type {
   TriageEntry,
   TriageResult,
 } from "../inbox/types.js";
-import { hasAdminAccess } from "@elizaos/agent";
-import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
-import { looksLikeEmailVenting } from "./non-actionable-request.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedRequest } from "./approval.js";
+import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -66,7 +66,10 @@ type InboxSubactionPlan = {
   confirmed?: boolean | null;
 };
 
-function inboxRecentConversation(state: State | undefined, limit = 10): string[] {
+function inboxRecentConversation(
+  state: State | undefined,
+  limit = 10,
+): string[] {
   const texts: string[] = [];
   for (const item of getRecentMessagesData(state)) {
     const content =
@@ -108,8 +111,7 @@ function buildInboxPolicyAcknowledgement(
     /\b(?:relay|relaying|relays|coordination|messy|tangled)\b/u.test(normalized)
   ) {
     return {
-      text:
-        "If the relay gets messy, I'll suggest a group-chat handoff with you and the other people involved so we can stop bouncing messages through you.",
+      text: "If the relay gets messy, I'll suggest a group-chat handoff with you and the other people involved so we can stop bouncing messages through you.",
       success: true,
       values: {
         success: true,
@@ -130,8 +132,7 @@ function buildInboxPolicyAcknowledgement(
     /\bstart(?:ing)? over\b/u.test(normalized)
   ) {
     return {
-      text:
-        "If that thread is still unresolved, I'll bump you again with the existing context attached instead of restarting the explanation from zero.",
+      text: "If that thread is still unresolved, I'll bump you again with the existing context attached instead of restarting the explanation from zero.",
       success: true,
       values: {
         success: true,
@@ -171,7 +172,12 @@ async function resolveSubactionPlan(
     };
   }
 
-  if (params.confirmed || params.entryId || params.target || params.messageText) {
+  if (
+    params.confirmed ||
+    params.entryId ||
+    params.target ||
+    params.messageText
+  ) {
     return {
       subaction: "respond",
       shouldAct: true,
@@ -221,11 +227,13 @@ async function resolveSubactionPlan(
   ].join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw) as
-      | Record<string, unknown>
-      | null;
+    const parsed = parseJSONObjectFromText(raw) as Record<
+      string,
+      unknown
+    > | null;
     if (!parsed) {
       return {
         subaction: null,
@@ -239,7 +247,7 @@ async function resolveSubactionPlan(
       typeof parsed.subaction === "string" &&
       ["triage", "digest", "respond"].includes(parsed.subaction)
         ? (parsed.subaction as InboxSubaction)
-        : params.subaction ?? null;
+        : (params.subaction ?? null);
     const shouldAct =
       typeof parsed.shouldAct === "boolean" ? parsed.shouldAct : null;
     return {
@@ -513,7 +521,9 @@ export const inboxAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Respond to the messages that need an answer in my inbox" },
+        content: {
+          text: "Respond to the messages that need an answer in my inbox",
+        },
       },
       {
         name: "{{agentName}}",
@@ -600,11 +610,13 @@ async function handleTriage(
   const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   // 2. Fetch messages from all channels
+  const service = new LifeOpsService(runtime);
   const allMessages = await fetchAllMessages(runtime, {
     sources: config.channels,
     sinceIso,
     limit: 200,
-    gmailSource: new LifeOpsService(runtime),
+    gmailSource: service,
+    xDmSource: service,
   });
 
   if (allMessages.length === 0) {
@@ -695,8 +707,8 @@ async function handleTriage(
     // Store the triage entry
     const entry = await repo.storeTriage({
       source: msg.source,
-      sourceRoomId: msg.roomId,
-      sourceEntityId: msg.entityId,
+      sourceRoomId: msg.source === "x_dm" ? msg.xConversationId : msg.roomId,
+      sourceEntityId: msg.source === "x_dm" ? msg.xParticipantId : msg.entityId,
       sourceMessageId: msg.id,
       channelName: msg.channelName,
       channelType: msg.channelType,
@@ -719,7 +731,9 @@ async function handleTriage(
     // 6. Escalate urgent items
     if (result.classification === "urgent") {
       try {
-        const { EscalationService } = await import("@elizaos/agent/services/escalation");
+        const { EscalationService } = await import(
+          "@elizaos/agent/services/escalation"
+        );
         const linkText = msg.deepLink ? `\n${msg.deepLink}` : "";
         await EscalationService.startEscalation(
           runtime,
@@ -954,10 +968,7 @@ async function handleRespond(
 
   // -- Check for pending draft confirmation --------------------------------
   const pendingDraft = latestPendingDraft(state);
-  if (
-    pendingDraft &&
-    params.confirmed === true
-  ) {
+  if (pendingDraft && params.confirmed === true) {
     return handleConfirmation(runtime, message, pendingDraft, userText, repo);
   }
 
@@ -1055,21 +1066,31 @@ async function handleRespond(
   const draft: DeferredInboxDraft = {
     triageEntryId: entry.id,
     source: entry.source,
-    targetRoomId: entry.sourceRoomId ? (entry.sourceRoomId as UUID) : undefined,
-    targetEntityId: entry.sourceEntityId
-      ? (entry.sourceEntityId as UUID)
-      : undefined,
+    targetRoomId:
+      entry.source !== "x_dm" && entry.sourceRoomId
+        ? (entry.sourceRoomId as UUID)
+        : undefined,
+    targetEntityId:
+      entry.source !== "x_dm" && entry.sourceEntityId
+        ? (entry.sourceEntityId as UUID)
+        : undefined,
     gmailMessageId:
       entry.source === "gmail"
         ? (entry.sourceMessageId ?? undefined)
         : undefined,
+    xConversationId:
+      entry.source === "x_dm" ? (entry.sourceRoomId ?? undefined) : undefined,
+    xParticipantId:
+      entry.source === "x_dm" ? (entry.sourceEntityId ?? undefined) : undefined,
     draftText,
     deepLink: entry.deepLink,
     channelName: entry.channelName,
     senderName: entry.senderName ?? "Unknown",
   };
 
-  const approvalQueue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  const approvalQueue = createApprovalQueue(runtime, {
+    agentId: runtime.agentId,
+  });
   const approvalRequest = await approvalQueue.enqueue({
     requestedBy: `inbox:${entry.id}`,
     subjectUserId: String(message.entityId ?? runtime.agentId),
@@ -1088,7 +1109,15 @@ async function handleRespond(
           }
         : {
             action: "send_message",
-            recipient: String(draft.targetRoomId ?? draft.targetEntityId ?? ""),
+            recipient:
+              draft.source === "x_dm" && draft.xConversationId
+                ? `conversation:${draft.xConversationId}`
+                : String(
+                    draft.targetRoomId ??
+                      draft.targetEntityId ??
+                      draft.xParticipantId ??
+                      "",
+                  ),
             body: draft.draftText,
             replyToMessageId: entry.sourceMessageId,
           },
@@ -1188,6 +1217,26 @@ async function tryAutoReply(
         messageId: msg.gmailMessageId,
         bodyText: suggestedResponse,
       });
+    } else if (
+      msg.source === "x_dm" &&
+      (msg.xConversationId || msg.xParticipantId)
+    ) {
+      const service = new LifeOpsService(runtime);
+      if (msg.xConversationId) {
+        await service.sendXConversationMessage({
+          conversationId: msg.xConversationId,
+          text: suggestedResponse,
+          confirmSend: true,
+          side: "owner",
+        });
+      } else if (msg.xParticipantId) {
+        await service.sendXDirectMessage({
+          participantId: msg.xParticipantId,
+          text: suggestedResponse,
+          confirmSend: true,
+          side: "owner",
+        });
+      }
     } else if (msg.roomId) {
       await runtime.sendMessageToTarget(
         {
@@ -1250,6 +1299,7 @@ async function draftResponse(
     .join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const text = typeof result === "string" ? result.trim() : "";
     return (
@@ -1323,6 +1373,26 @@ async function handleConfirmation(
           messageId: draft.gmailMessageId,
           bodyText: draft.draftText,
         });
+      } else if (
+        draft.source === "x_dm" &&
+        (draft.xConversationId || draft.xParticipantId)
+      ) {
+        const service = new LifeOpsService(runtime);
+        if (draft.xConversationId) {
+          await service.sendXConversationMessage({
+            conversationId: draft.xConversationId,
+            text: draft.draftText,
+            confirmSend: true,
+            side: "owner",
+          });
+        } else if (draft.xParticipantId) {
+          await service.sendXDirectMessage({
+            participantId: draft.xParticipantId,
+            text: draft.draftText,
+            confirmSend: true,
+            side: "owner",
+          });
+        }
       } else if (draft.targetRoomId) {
         await runtime.sendMessageToTarget(
           {
@@ -1450,6 +1520,7 @@ function approvalChannelForInboxSource(source: string): ApprovalChannel {
     case "discord":
     case "imessage":
     case "sms":
+    case "x_dm":
       return source;
     default:
       return "internal";

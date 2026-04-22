@@ -4,7 +4,6 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-  UUID,
 } from "@elizaos/core";
 import {
   ModelType,
@@ -81,6 +80,7 @@ async function resolveSchedulePlan(args: {
   ].join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const parsed =
       parseKeyValueXml<Record<string, unknown>>(
@@ -118,11 +118,12 @@ export const scheduleXDmReplyAction: Action = {
   description:
     "Schedule a Twitter/X DM reply to send later by creating a real trigger task. " +
     "Use this for requests like 'schedule a reply to @devfriend's Twitter DM for 9am tomorrow saying thanks for the intro'. " +
-    "Do not use immediate REPLY_X_DM when the owner asks for future delivery.",
+    "Use OWNER_SEND_MESSAGE with channel=x_dm for immediate draft-now or send-now behavior.",
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    const params = ((options as { parameters?: ScheduleXDmReplyParams } | undefined)
-      ?.parameters ?? {}) as ScheduleXDmReplyParams;
+    const params = ((
+      options as { parameters?: ScheduleXDmReplyParams } | undefined
+    )?.parameters ?? {}) as ScheduleXDmReplyParams;
     const planned = await resolveSchedulePlan({ runtime, message, state });
     const recipient = normalizeString(params.recipient) ?? planned.recipient;
     const text = normalizeString(params.text) ?? planned.text;
@@ -146,10 +147,12 @@ export const scheduleXDmReplyAction: Action = {
       message,
       displayName: `Send X DM to ${recipient}`,
       instructions: [
+        "REPLY_X_DM",
         "Send the queued X/Twitter DM reply now.",
-        "Use REPLY_X_DM with confirmed=true.",
+        "Use OWNER_SEND_MESSAGE with channel=x_dm and confirmed=true.",
         `recipient: ${recipient}`,
         `text: ${text}`,
+        "channel: x_dm",
         "confirmed: true",
       ].join("\n"),
       scheduledAtIso: sendAtIso,

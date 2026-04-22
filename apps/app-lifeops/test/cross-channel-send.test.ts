@@ -1,30 +1,14 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  readXPosterCredentialsFromEnv,
-  sendXDm,
-} from "../src/lifeops/x-poster.js";
-import {
   crossChannelSendAction,
   dispatchCrossChannelSend,
 } from "../src/actions/cross-channel-send.js";
 
-vi.mock("../src/lifeops/x-poster.js", () => ({
-  readXPosterCredentialsFromEnv: vi.fn(() => null),
-  sendXDm: vi.fn(),
-}));
-
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
-const fakeXCredentials = {
-  apiKey: "key",
-  apiSecretKey: "secret",
-  accessToken: "token",
-  accessTokenSecret: "token-secret",
-};
 
 beforeEach(() => {
-  vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(null);
-  vi.mocked(sendXDm).mockReset();
+  vi.clearAllMocks();
 });
 
 function makeRuntime() {
@@ -43,9 +27,23 @@ function makeMessage() {
   >[1];
 }
 
+type CrossChannelActionHandler = NonNullable<
+  typeof crossChannelSendAction.handler
+>;
+
+function runCrossChannelAction(
+  ...args: Parameters<CrossChannelActionHandler>
+): ReturnType<CrossChannelActionHandler> {
+  const handler = crossChannelSendAction.handler;
+  if (!handler) {
+    throw new Error("crossChannelSendAction handler is missing");
+  }
+  return handler(...args);
+}
+
 describe("crossChannelSendAction", () => {
   test("returns a draft before dispatching", async () => {
-    const result = await crossChannelSendAction.handler!(
+    const result = await runCrossChannelAction(
       makeRuntime(),
       makeMessage(),
       undefined,
@@ -76,7 +74,7 @@ describe("crossChannelSendAction", () => {
   });
 
   test("invalid channel returns error", async () => {
-    const result = await crossChannelSendAction.handler!(
+    const result = await runCrossChannelAction(
       makeRuntime(),
       makeMessage(),
       undefined,
@@ -95,7 +93,7 @@ describe("crossChannelSendAction", () => {
   });
 
   test("missing channel returns MISSING_CHANNEL", async () => {
-    const result = await crossChannelSendAction.handler!(
+    const result = await runCrossChannelAction(
       makeRuntime(),
       makeMessage(),
       undefined,
@@ -275,17 +273,17 @@ describe("dispatchCrossChannelSend", () => {
   });
 
   test("x_dm dispatcher fails when the X API reports delivery failure", async () => {
-    vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(fakeXCredentials);
-    vi.mocked(sendXDm).mockResolvedValue({
-      ok: false,
-      status: 403,
-      error: "Forbidden",
-      category: "auth",
-    });
+    const fakeService = {
+      sendXDirectMessage: async () => ({
+        ok: false,
+        status: 403,
+        error: "Forbidden",
+      }),
+    };
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      service: {} as DispatchService,
+      service: fakeService as DispatchService,
       channel: "x_dm",
       target: "12345",
       body: "ping",
@@ -297,23 +295,24 @@ describe("dispatchCrossChannelSend", () => {
     expect(result.values?.channel).toBe("x_dm");
   });
 
-  test("x_dm dispatcher requires a DM event id for success", async () => {
-    vi.mocked(readXPosterCredentialsFromEnv).mockReturnValue(fakeXCredentials);
-    vi.mocked(sendXDm).mockResolvedValue({
-      ok: true,
-      status: 201,
-      category: "success",
-    });
+  test("x_dm dispatcher succeeds when the LifeOps X service sends the DM", async () => {
+    const fakeService = {
+      sendXDirectMessage: async () => ({
+        ok: true,
+        status: 201,
+      }),
+    };
 
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
-      service: {} as DispatchService,
+      service: fakeService as DispatchService,
       channel: "x_dm",
       target: "12345",
       body: "ping",
     });
 
-    expect(result.success).toBe(false);
-    expect(result.values?.error).toBe("X DM API did not return a DM event id.");
+    expect(result.success).toBe(true);
+    expect(result.values?.success).toBe(true);
+    expect(result.values?.channel).toBe("x_dm");
   });
 });

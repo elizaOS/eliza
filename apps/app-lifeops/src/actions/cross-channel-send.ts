@@ -33,10 +33,16 @@ import {
   createCalendlySingleUseLink,
   readCalendlyCredentialsFromEnv,
 } from "../lifeops/calendly-client.js";
+import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import {
   FeatureNotEnabledError,
   type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
+import {
+  NtfyConfigError,
+  readNtfyConfigFromEnv,
+  sendPush,
+} from "../lifeops/notifications-push.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -44,18 +50,8 @@ import {
   sendTwilioVoiceCall,
   type TwilioDeliveryResult,
 } from "../lifeops/twilio.js";
-import {
-  readNtfyConfigFromEnv,
-  sendPush,
-  NtfyConfigError,
-} from "../lifeops/notifications-push.js";
-import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
-import {
-  readXPosterCredentialsFromEnv,
-  sendXDm,
-} from "../lifeops/x-poster.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { recentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 const ACTION_NAME = "OWNER_SEND_MESSAGE";
 
@@ -72,7 +68,8 @@ export const CROSS_CHANNEL_SEND_CHANNELS = [
   "calendly",
   "x_dm",
 ] as const;
-export type CrossChannelSendChannel = (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
+export type CrossChannelSendChannel =
+  (typeof CROSS_CHANNEL_SEND_CHANNELS)[number];
 
 type CrossChannelSendParameters = {
   channel?: string;
@@ -116,12 +113,6 @@ function coerceString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function coerceBool(value: unknown): boolean {
-  if (value === true) return true;
-  if (typeof value === "string") return value.toLowerCase() === "true";
-  return false;
-}
-
 function coerceOptionalBool(value: unknown): boolean | undefined {
   if (typeof value === "boolean") {
     return value;
@@ -146,7 +137,10 @@ function normalizeChannelAlias(
   if (!value) {
     return undefined;
   }
-  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
   const aliasMap: Record<string, CrossChannelSendChannel> = {
     sms: "sms",
     twilio_sms: "sms",
@@ -287,6 +281,7 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
   ].join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
@@ -492,8 +487,7 @@ function createLifeOpsMethodDispatcher(args: {
         target: ctx.target,
         body: ctx.body,
         subject: ctx.subject,
-        error:
-          `${ctx.channel} send is unavailable because the required LifeOps connector method is not loaded`,
+        error: `${ctx.channel} send is unavailable because the required LifeOps connector method is not loaded`,
       });
     }
 
@@ -533,7 +527,12 @@ const CHANNEL_DISPATCHERS: Record<
       };
     }
     const result = await sendTwilioSms({ credentials, to: target, body });
-    return twilioResultToActionResult({ channel, target, message: body, result });
+    return twilioResultToActionResult({
+      channel,
+      target,
+      message: body,
+      result,
+    });
   },
   twilio_voice: async ({ channel, target, body }) => {
     const credentials = readTwilioCredentialsFromEnv();
@@ -550,7 +549,12 @@ const CHANNEL_DISPATCHERS: Record<
       to: target,
       message: body,
     });
-    return twilioResultToActionResult({ channel, target, message: body, result });
+    return twilioResultToActionResult({
+      channel,
+      target,
+      message: body,
+      result,
+    });
   },
   email: async ({ service, channel, target, body, subject }) => {
     if (!subject) {
@@ -676,7 +680,12 @@ const CHANNEL_DISPATCHERS: Record<
       return {
         text: `Calendly single-use booking link created: ${result.bookingUrl}${expiryText}`,
         success: true,
-        values: { success: true, channel, target, bookingUrl: result.bookingUrl },
+        values: {
+          success: true,
+          channel,
+          target,
+          bookingUrl: result.bookingUrl,
+        },
         data: {
           actionName: ACTION_NAME,
           channel,
@@ -696,36 +705,39 @@ const CHANNEL_DISPATCHERS: Record<
       });
     }
   },
-  x_dm: async ({ channel, target, body }) => {
-    const credentials = readXPosterCredentialsFromEnv();
-    if (!credentials) {
-      return {
-        text: "X DM is not configured. Set X_API_KEY / X_ACCESS_TOKEN.",
-        success: false,
-        values: { success: false, error: "X_NOT_CONFIGURED", channel },
-        data: { actionName: ACTION_NAME, channel },
-      };
-    }
+  x_dm: async ({ service, channel, target, body }) => {
     try {
-      const result = await sendXDm({
-        credentials,
-        participantId: target,
-        text: body,
-      });
+      const conversationPrefix = "conversation:";
+      const participantIds = target
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const result = target.startsWith(conversationPrefix)
+        ? await service.sendXConversationMessage({
+            conversationId: target.slice(conversationPrefix.length),
+            text: body,
+            confirmSend: true,
+            side: "owner",
+          })
+        : participantIds.length > 1
+          ? await service.createXDirectMessageGroup({
+              participantIds,
+              text: body,
+              confirmSend: true,
+              side: "owner",
+            })
+          : await service.sendXDirectMessage({
+              participantId: target,
+              text: body,
+              confirmSend: true,
+              side: "owner",
+            });
       if (!result.ok) {
         return buildDispatchFailure({
           channel,
           target,
           body,
           error: result.error ?? "Failed to send X DM.",
-        });
-      }
-      if (!result.dmEventId) {
-        return buildDispatchFailure({
-          channel,
-          target,
-          body,
-          error: "X DM API did not return a DM event id.",
         });
       }
       return {
@@ -735,9 +747,14 @@ const CHANNEL_DISPATCHERS: Record<
           success: result.ok,
           channel,
           target,
-          id: result.dmEventId ?? null,
         },
-        data: { actionName: ACTION_NAME, channel, target, message: body, result },
+        data: {
+          actionName: ACTION_NAME,
+          channel,
+          target,
+          message: body,
+          result,
+        },
       };
     } catch (error) {
       return buildDispatchFailure({
@@ -774,13 +791,15 @@ export const crossChannelSendAction: Action & {
     "SEND_IMESSAGE",
     "SEND_SMS",
     "OWNER_DM",
+    "REPLY_X_DM",
+    "X_DM_REPLY",
     "OWNER_POST",
   ],
   description:
     "OWNER-scoped message send: the OWNER asks the agent to send a message " +
     "on the OWNER's behalf, using the OWNER's connected accounts (email, " +
     "telegram, discord, signal, sms, twilio_voice, imessage, whatsapp, " +
-    "notifications). Always drafts first; caller must re-invoke with " +
+    "x_dm, notifications). Always drafts first; caller must re-invoke with " +
     "confirmed: true to dispatch. " +
     "Use this for any 'post <msg> to <channel>', 'send <msg> on <platform>', " +
     "or 'dm <person> on <platform>' request from the owner — the channel " +
@@ -820,7 +839,7 @@ export const crossChannelSendAction: Action & {
     {
       name: "target",
       description:
-        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, Ntfy topic name for notifications.",
+        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, numeric X user ID or comma-separated numeric X user IDs for x_dm, Ntfy topic name for notifications.",
       required: true,
       schema: { type: "string" as const },
       examples: ["+15555550101", "owner@example.test", "team-ops"],
@@ -848,7 +867,10 @@ export const crossChannelSendAction: Action & {
 
   examples: [
     [
-      { name: "{{name1}}", content: { text: "Email alice@example.com the meeting notes" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Email alice@example.com the meeting notes" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -858,7 +880,10 @@ export const crossChannelSendAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Text +15551234567 that I'll be 10 minutes late" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Text +15551234567 that I'll be 10 minutes late" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -868,7 +893,10 @@ export const crossChannelSendAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Call +15551234567 and say the build is done" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Call +15551234567 and say the build is done" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -878,7 +906,10 @@ export const crossChannelSendAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Send Alice a Telegram: on my way" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Send Alice a Telegram: on my way" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -888,7 +919,10 @@ export const crossChannelSendAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Send Priya a Signal message: thanks for the review" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Send Priya a Signal message: thanks for the review" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -898,7 +932,10 @@ export const crossChannelSendAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "DM bob on Discord: standup in 5" } },
+      {
+        name: "{{name1}}",
+        content: { text: "DM bob on Discord: standup in 5" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -947,22 +984,16 @@ export const crossChannelSendAction: Action & {
       normalizeChannelAlias(planner?.channel) ??
       pendingDraft?.channel;
     const target =
-      coerceString(params.target) ??
-      planner?.target ??
-      pendingDraft?.target;
+      coerceString(params.target) ?? planner?.target ?? pendingDraft?.target;
     const body =
-      coerceString(params.message) ??
-      planner?.message ??
-      pendingDraft?.message;
+      coerceString(params.message) ?? planner?.message ?? pendingDraft?.message;
     const subject =
       coerceString(params.subject) ??
       planner?.subject ??
       pendingDraft?.subject ??
       undefined;
     const confirmed =
-      coerceOptionalBool(params.confirmed) ??
-      planner?.confirmed ??
-      false;
+      coerceOptionalBool(params.confirmed) ?? planner?.confirmed ?? false;
 
     if (planner?.shouldAct === false && planner.response) {
       return {

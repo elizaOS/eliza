@@ -1461,6 +1461,7 @@ export interface LifeOpsCalendarEventMutationResult {
 
 export const LIFEOPS_INBOX_CHANNELS = [
   "gmail",
+  "x_dm",
   "discord",
   "telegram",
   "signal",
@@ -1571,8 +1572,17 @@ export interface LifeOpsGoogleConnectorStatus {
 
 export interface LifeOpsXConnectorStatus {
   provider: "x";
+  side?: LifeOpsConnectorSide;
   mode: LifeOpsConnectorMode;
+  defaultMode?: LifeOpsConnectorMode;
+  availableModes?: LifeOpsConnectorMode[];
+  executionTarget?: LifeOpsConnectorExecutionTarget;
+  sourceOfTruth?: LifeOpsConnectorSourceOfTruth;
+  configured?: boolean;
   connected: boolean;
+  reason?: "connected" | "disconnected" | "config_missing" | "needs_reauth";
+  preferredByAgent?: boolean;
+  cloudConnectionId?: string | null;
   grantedCapabilities: LifeOpsXCapability[];
   grantedScopes: string[];
   identity: Record<string, unknown> | null;
@@ -1913,6 +1923,7 @@ export interface DisconnectLifeOpsGoogleConnectorRequest {
 }
 
 export interface UpsertLifeOpsXConnectorRequest {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   capabilities: LifeOpsXCapability[];
   grantedScopes?: string[];
@@ -1920,7 +1931,28 @@ export interface UpsertLifeOpsXConnectorRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface StartLifeOpsXConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  redirectUrl?: string;
+}
+
+export interface StartLifeOpsXConnectorResponse {
+  provider: "x";
+  side: LifeOpsConnectorSide;
+  mode: LifeOpsConnectorMode;
+  requestedCapabilities: LifeOpsXCapability[];
+  redirectUri: string;
+  authUrl: string;
+}
+
+export interface DisconnectLifeOpsXConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+}
+
 export interface CreateLifeOpsXPostRequest {
+  side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   text: string;
   confirmPost?: boolean;
@@ -1931,7 +1963,13 @@ export interface LifeOpsXPostResponse {
   status: number | null;
   postId?: string;
   error?: string;
-  category: "success" | "auth" | "rate_limit" | "network" | "unknown";
+  category:
+    | "success"
+    | "auth"
+    | "rate_limit"
+    | "network"
+    | "invalid"
+    | "unknown";
 }
 
 export interface CreateLifeOpsDefinitionRequest {

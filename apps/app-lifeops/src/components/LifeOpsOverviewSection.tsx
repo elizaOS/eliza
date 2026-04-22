@@ -30,10 +30,16 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
-import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
 
@@ -185,6 +191,12 @@ const CHANNEL_STYLES: Record<
     text: "text-amber-300",
     bg: "bg-amber-500/14",
   },
+  x_dm: {
+    label: "X DM",
+    icon: <AtSign className="h-3.5 w-3.5" aria-hidden />,
+    text: "text-zinc-200",
+    bg: "bg-zinc-500/14",
+  },
 };
 
 // Small UI primitives
@@ -284,10 +296,7 @@ function CalendarEventRow({
       onClick={onClick}
       className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-bg-muted/30"
     >
-      <span
-        className="h-2 w-2 shrink-0 rounded-full bg-blue-400"
-        aria-hidden
-      />
+      <span className="h-2 w-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-txt">{event.title}</span>
         {event.location ? (

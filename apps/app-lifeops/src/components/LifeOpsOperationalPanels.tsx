@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Send,
   Sparkles,
+  Unplug,
   Wand2,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -359,24 +360,29 @@ export function LifeOpsSchedulePanel() {
 
 export function LifeOpsXPanel() {
   const { t } = useApp();
-  const x = useLifeOpsXConnector();
+  const ownerX = useLifeOpsXConnector("owner");
+  const agentX = useLifeOpsXConnector("agent");
   const [draft, setDraft] = useState("");
-  const status = x.status;
+  const status = ownerX.status;
+  const agentStatus = agentX.status;
   const connected = status?.connected === true;
-  const hasWrite = status?.grantedCapabilities.includes("x.write") === true;
+  const agentConnected = agentStatus?.connected === true;
+  const hasAgentWrite =
+    agentStatus?.grantedCapabilities.includes("x.write") === true;
   const identity = readXIdentity(
     status?.identity ?? null,
     t("lifeopspanels.notConnected", { defaultValue: "Not connected" }),
   );
-  const mode = status?.mode ?? "local";
+  const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
+  const actionPending = ownerX.actionPending || agentX.actionPending;
 
   const handlePost = useCallback(() => {
     const text = draft.trim();
     if (!text) {
       return;
     }
-    void x.post(text).then(() => setDraft(""));
-  }, [draft, x]);
+    void agentX.post(text).then(() => setDraft(""));
+  }, [agentX, draft]);
 
   return (
     <PanelShell
@@ -398,10 +404,13 @@ export function LifeOpsXPanel() {
             size="sm"
             variant="outline"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void x.refresh()}
-            disabled={x.loading}
+            onClick={() => {
+              void ownerX.refresh();
+              void agentX.refresh();
+            }}
+            disabled={ownerX.loading || agentX.loading}
           >
-            {x.loading ? (
+            {ownerX.loading || agentX.loading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
@@ -419,10 +428,11 @@ export function LifeOpsXPanel() {
           <div className="mt-1 text-xs text-muted">
             {status?.hasCredentials
               ? t("lifeopspanels.credentialsReady", {
-                  defaultValue: "Credentials present.",
+                  defaultValue: "Credentials ready.",
                 })
               : t("lifeopspanels.credentialsMissing", {
-                  defaultValue: "Credentials missing.",
+                  defaultValue:
+                    "Connect through Eliza Cloud or configure local env.",
                 })}
           </div>
         </div>
@@ -446,18 +456,52 @@ export function LifeOpsXPanel() {
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void x.connect(mode)}
-            disabled={x.actionPending}
+            onClick={() => void ownerX.connect(mode)}
+            disabled={actionPending}
           >
-            {x.actionPending ? (
+            {actionPending ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
             ) : (
               <Sparkles className="mr-1.5 h-3.5 w-3.5" />
             )}
             {connected
-              ? t("lifeopspanels.reconnectX", { defaultValue: "Reconnect X" })
-              : t("lifeopspanels.connectX", { defaultValue: "Connect X" })}
+              ? t("lifeopspanels.reconnectOwnerX", {
+                  defaultValue: "Reconnect Owner X",
+                })
+              : t("lifeopspanels.connectOwnerX", {
+                  defaultValue: "Connect Owner X",
+                })}
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            onClick={() => void agentX.connect("cloud_managed")}
+            disabled={actionPending}
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            {agentConnected
+              ? t("lifeopspanels.reconnectAgentX", {
+                  defaultValue: "Reconnect Agent X",
+                })
+              : t("lifeopspanels.connectAgentX", {
+                  defaultValue: "Connect Agent X",
+                })}
+          </Button>
+          {connected ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              onClick={() => void ownerX.disconnect()}
+              disabled={actionPending}
+            >
+              <Unplug className="mr-1.5 h-3.5 w-3.5" />
+              {t("lifeopspanels.disconnectOwnerX", {
+                defaultValue: "Disconnect Owner",
+              })}
+            </Button>
+          ) : null}
         </div>
 
         <Textarea
@@ -469,18 +513,21 @@ export function LifeOpsXPanel() {
           })}
         />
         <div className="flex items-center justify-between gap-3">
-          {x.lastPost ? (
+          {agentX.lastPost ? (
             <div className="text-xs text-muted">
-              {x.lastPost.postId
-                ? `Last post ${x.lastPost.postId}.`
-                : `Last post status ${x.lastPost.status}.`}
+              {agentX.lastPost.postId
+                ? `Last post ${agentX.lastPost.postId}.`
+                : `Last post status ${agentX.lastPost.status}.`}
             </div>
           ) : null}
           <Button
             size="sm"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
             disabled={
-              !draft.trim() || x.actionPending || !connected || !hasWrite
+              !draft.trim() ||
+              agentX.actionPending ||
+              !agentConnected ||
+              !hasAgentWrite
             }
             onClick={handlePost}
           >
@@ -504,7 +551,24 @@ export function LifeOpsXPanel() {
         </div>
       ) : null}
 
-      {x.error ? <div className="text-xs text-danger">{x.error}</div> : null}
+      {ownerX.pendingAuthUrl || agentX.pendingAuthUrl ? (
+        <a
+          href={ownerX.pendingAuthUrl ?? agentX.pendingAuthUrl ?? ""}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs font-medium text-accent hover:underline"
+        >
+          {t("lifeopspanels.openXAuth", {
+            defaultValue: "Open X authorization",
+          })}
+        </a>
+      ) : null}
+
+      {ownerX.error || agentX.error ? (
+        <div className="text-xs text-danger">
+          {ownerX.error ?? agentX.error}
+        </div>
+      ) : null}
     </PanelShell>
   );
 }

@@ -120,6 +120,7 @@ function approvalChannelToCrossChannelSend(
     case "discord":
     case "imessage":
     case "sms":
+    case "x_dm":
       return channel;
     default:
       return null;
