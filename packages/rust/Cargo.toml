@@ -48,9 +48,8 @@ sha1 = "0.11"
 sha2 = "0.10"
 
 # Secret encryption/decryption compatibility (matches TS AES-256-CBC helpers)
-aes = "0.8"
-cbc = "0.1"
-cipher = "0.4"
+aes = "0.9"
+cbc = "0.2"
 hex = "0.4"
 aes-gcm = "0.10"
 base64 = "0.22"

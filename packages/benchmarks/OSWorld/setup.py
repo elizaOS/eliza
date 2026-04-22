@@ -44,7 +44,7 @@ setup(
         "gymnasium~=1.2.3",
         "requests~=2.33.0",
         "pytz~=2026.1.post1",
-        "transformers~=5.0.0rc3",
+        "transformers~=5.5.4",
         "torch~=2.8.0",
         "accelerate",
         "opencv-python-headless~=4.13.0.92",
