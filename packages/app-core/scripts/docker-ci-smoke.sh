@@ -174,6 +174,13 @@ bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
 log "Running repository postinstall"
 SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs
 
+if [[ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.ts ]]; then
+  log "Generating core protobuf sources"
+  pushd eliza/packages/schemas >/dev/null
+  bun run generate
+  popd >/dev/null
+fi
+
 log "Building Capacitor plugins"
 pushd apps/app >/dev/null
 bun scripts/plugin-build.mjs
