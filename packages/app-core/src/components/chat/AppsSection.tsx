@@ -5,7 +5,7 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { LayoutGrid } from "lucide-react";
+import { ArrowUpRight, LayoutGrid } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
@@ -61,6 +61,27 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     : [];
 
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
+
+  const openAppsViewAction = (
+    <button
+      type="button"
+      aria-label={t("chatsidebar.OpenView", { defaultValue: "Open View" })}
+      title={t("chatsidebar.OpenView", { defaultValue: "Open View" })}
+      className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
+      onClick={() => setTab("apps")}
+    >
+      <ArrowUpRight className="h-4 w-4" />
+    </button>
+  );
+
+  const sectionAction = headerAction ? (
+    <div className="flex items-center gap-1">
+      {openAppsViewAction}
+      {headerAction}
+    </div>
+  ) : (
+    openAppsViewAction
+  );
 
   // Fetch the full catalog once for sidebar launch targets.
   useEffect(() => {
@@ -173,7 +194,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     <WidgetSection
       title={t("chatsidebar.Apps", { defaultValue: "Apps" })}
       icon={<LayoutGrid className="h-4 w-4" />}
-      action={headerAction}
+      action={sectionAction}
       testId="chat-widget-apps-section"
     >
       {orderedApps.length > 0 ? (
