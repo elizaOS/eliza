@@ -545,9 +545,8 @@ export function AutomationRoomChatPane({
               <p className="text-sm text-muted">{loadError ?? placeholder}</p>
             </div>
           ) : (
-            <div
+            <ul
               ref={messageListRef}
-              role="list"
               className="w-full space-y-1"
               onKeyDown={handleMessageListKeyDown}
             >
@@ -558,7 +557,7 @@ export function AutomationRoomChatPane({
                     ? t("chat.messageAriaLabelUser", { preview })
                     : t("chat.messageAriaLabelAgent", { preview });
                 return (
-                  <article
+                  <li
                     key={message.id}
                     tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
                     aria-label={ariaLabel}
@@ -574,7 +573,7 @@ export function AutomationRoomChatPane({
                         : t("automations.chat.roleAssistant")}
                     </div>
                     <div className="whitespace-pre-wrap">{message.text}</div>
-                  </article>
+                  </li>
                 );
               })}
 
@@ -605,7 +604,7 @@ export function AutomationRoomChatPane({
                   </span>
                 </div>
               )}
-            </div>
+            </ul>
           )}
         </div>
 
