@@ -1,3 +1,5 @@
+import type { EvmSigningCapabilityKind } from "@elizaos/shared/contracts/wallet";
+
 /**
  * EVM signing capability resolver.
  *
@@ -6,7 +8,7 @@
  * "does plugin-evm have a working signer?" — consumed by auto-enable logic
  * and wallet UI diagnostics so both agree on state.
  *
- * Paths:
+ * Paths (see `EvmSigningCapabilityKind` in shared/contracts/wallet.ts):
  *   - "local"         — EVM_PRIVATE_KEY is set and non-placeholder
  *   - "steward-self"  — self-hosted Steward (STEWARD_API_URL + STEWARD_AGENT_TOKEN,
  *                       ELIZA_CLOUD_PROVISIONED != "1")
@@ -20,12 +22,7 @@
  *
  * The UI surfaces `reason` verbatim, so it should be short and user-facing.
  */
-export type EvmSigningCapabilityKind =
-  | "local"
-  | "steward-self"
-  | "steward-cloud"
-  | "cloud-view-only"
-  | "none";
+export type { EvmSigningCapabilityKind };
 
 export interface EvmSigningCapability {
   kind: EvmSigningCapabilityKind;
