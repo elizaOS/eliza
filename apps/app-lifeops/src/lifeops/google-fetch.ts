@@ -12,9 +12,20 @@ const TIMEOUT_MS = 10_000;
 export function rewriteGoogleUrlForMock(url: string): string {
   const mockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
   if (!mockBase) return url;
+  const mockUrl = new URL(mockBase);
+  if (
+    mockUrl.hostname !== "127.0.0.1" &&
+    mockUrl.hostname !== "localhost" &&
+    mockUrl.hostname !== "::1"
+  ) {
+    throw new GoogleApiError(
+      409,
+      "MILADY_MOCK_GOOGLE_BASE must point to loopback for Gmail/Google mock tests.",
+    );
+  }
   return url.replace(
     /^https:\/\/(?:gmail|www|oauth2|openidconnect|sheets|docs|fitness)\.googleapis\.com|^https:\/\/accounts\.google\.com/,
-    mockBase.replace(/\/+$/, ""),
+    mockUrl.toString().replace(/\/+$/, ""),
   );
 }
 
