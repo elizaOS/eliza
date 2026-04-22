@@ -84,6 +84,22 @@ export function createLifeOpsChatTestRuntime(options: {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS browser_bridge_settings (
+      agent_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
+      allow_browser_control INTEGER NOT NULL DEFAULT 0,
+      require_confirmation_for_account_affecting INTEGER NOT NULL DEFAULT 1,
+      incognito_enabled INTEGER NOT NULL DEFAULT 0,
+      site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
+      granted_origins_json TEXT NOT NULL DEFAULT '[]',
+      blocked_origins_json TEXT NOT NULL DEFAULT '[]',
+      max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
+      pause_until TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS life_connector_grants (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -124,7 +140,51 @@ export function createLifeOpsChatTestRuntime(options: {
       updated_at TEXT NOT NULL,
       UNIQUE(agent_id, browser, profile_id)
     );
+    CREATE TABLE IF NOT EXISTS browser_bridge_companions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      profile_label TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      extension_version TEXT,
+      connection_state TEXT NOT NULL DEFAULT 'disconnected',
+      permissions_json TEXT NOT NULL DEFAULT '{}',
+      pairing_token_hash TEXT,
+      pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
+      last_seen_at TEXT,
+      paired_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id)
+    );
     CREATE TABLE IF NOT EXISTS life_browser_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      domain TEXT NOT NULL DEFAULT 'user_lifeops',
+      subject_type TEXT NOT NULL DEFAULT 'owner',
+      subject_id TEXT NOT NULL,
+      visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+      context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+      workflow_id TEXT,
+      browser TEXT,
+      companion_id TEXT,
+      profile_id TEXT,
+      window_id TEXT,
+      tab_id TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      actions_json TEXT NOT NULL DEFAULT '[]',
+      current_action_index INTEGER NOT NULL DEFAULT 0,
+      awaiting_confirmation_for_action_id TEXT,
+      result_json TEXT NOT NULL DEFAULT '{}',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS life_workflow_browser_sessions (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
       domain TEXT NOT NULL DEFAULT 'user_lifeops',
@@ -171,7 +231,47 @@ export function createLifeOpsChatTestRuntime(options: {
       updated_at TEXT NOT NULL,
       UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
     );
+    CREATE TABLE IF NOT EXISTS browser_bridge_tabs (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      companion_id TEXT,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      active_in_window INTEGER NOT NULL DEFAULT 0,
+      focused_window INTEGER NOT NULL DEFAULT 0,
+      focused_active INTEGER NOT NULL DEFAULT 0,
+      incognito INTEGER NOT NULL DEFAULT 0,
+      favicon_url TEXT,
+      last_seen_at TEXT NOT NULL,
+      last_focused_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
     CREATE TABLE IF NOT EXISTS life_browser_page_contexts (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      selection_text TEXT,
+      main_text TEXT,
+      headings_json TEXT NOT NULL DEFAULT '[]',
+      links_json TEXT NOT NULL DEFAULT '[]',
+      forms_json TEXT NOT NULL DEFAULT '[]',
+      captured_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS browser_bridge_page_contexts (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
       browser TEXT NOT NULL,

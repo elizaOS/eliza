@@ -11,9 +11,9 @@ import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserActionKind,
-  LifeOpsBrowserKind,
-  UpdateLifeOpsBrowserSettingsRequest,
+  BrowserBridgeActionKind,
+  BrowserBridgeKind,
+  UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/app-lifeops/contracts";
 import { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 
@@ -47,7 +47,7 @@ type BrowserParams = {
   command?: BrowserCommand;
   title?: string;
   sessionId?: string;
-  browser?: LifeOpsBrowserKind;
+  browser?: BrowserBridgeKind;
   companionId?: string;
   profileId?: string;
   windowId?: string;
@@ -58,7 +58,7 @@ type BrowserParams = {
   confirmed?: boolean;
   accountAffecting?: boolean;
   requiresConfirmation?: boolean;
-  settings?: UpdateLifeOpsBrowserSettingsRequest;
+  settings?: UpdateBrowserBridgeSettingsRequest;
   result?: Record<string, unknown>;
   status?: CompleteLifeOpsBrowserSessionRequest["status"];
 };
@@ -119,7 +119,7 @@ function inferCommandFromMessage(text: string): BrowserCommand | null {
 
 function commandToActionKind(
   command: BrowserCommand,
-): LifeOpsBrowserActionKind {
+): BrowserBridgeActionKind {
   switch (command) {
     case "start":
       return "open";
@@ -165,7 +165,7 @@ function actionLabel(command: BrowserCommand, params: BrowserParams): string {
     case "extract_forms":
       return "Extract page forms";
     default:
-      return `LifeOps Browser ${command.replace(/_/g, " ")}`;
+      return `Agent Browser Bridge ${command.replace(/_/g, " ")}`;
   }
 }
 
@@ -177,7 +177,7 @@ function sessionSummary(
       (value): value is string => typeof value === "string" && value.length > 0,
     )
     .join("/");
-  return `Created LifeOps Browser session "${session.title}" (${session.status})${target ? ` for ${target}` : ""}.`;
+  return `Created Agent Browser Bridge session "${session.title}" (${session.status})${target ? ` for ${target}` : ""}.`;
 }
 
 async function runCommand(
@@ -199,7 +199,7 @@ async function runCommand(
       const settings = await service.getBrowserSettings();
       return {
         success: true,
-        text: `LifeOps Browser settings: ${settings.enabled ? settings.trackingMode : "off"}; control ${settings.allowBrowserControl ? "enabled" : "disabled"}.`,
+        text: `Agent Browser Bridge settings: ${settings.enabled ? settings.trackingMode : "off"}; control ${settings.allowBrowserControl ? "enabled" : "disabled"}.`,
         data: { settings },
       };
     }
@@ -209,7 +209,7 @@ async function runCommand(
       );
       return {
         success: true,
-        text: `Updated LifeOps Browser settings: ${settings.enabled ? settings.trackingMode : "off"}; control ${settings.allowBrowserControl ? "enabled" : "disabled"}.`,
+        text: `Updated Agent Browser Bridge settings: ${settings.enabled ? settings.trackingMode : "off"}; control ${settings.allowBrowserControl ? "enabled" : "disabled"}.`,
         data: { settings },
       };
     }
@@ -219,8 +219,8 @@ async function runCommand(
         success: true,
         text:
           companions.length === 0
-            ? "No LifeOps Browser companions are paired."
-            : `LifeOps Browser companions:\n${companions
+            ? "No Agent Browser Bridge companions are paired."
+            : `Agent Browser Bridge companions:\n${companions
                 .map(
                   (companion) =>
                     `- ${companion.browser}/${companion.profileLabel || companion.profileId}: ${companion.connectionState}`,
@@ -235,8 +235,8 @@ async function runCommand(
         success: true,
         text:
           tabs.length === 0
-            ? "No remembered LifeOps Browser tabs are available."
-            : `Remembered LifeOps Browser tabs:\n${tabs
+            ? "No remembered Agent Browser Bridge tabs are available."
+            : `Remembered Agent Browser Bridge tabs:\n${tabs
                 .map((tab) => `- ${tab.title}: ${tab.url}`)
                 .join("\n")}`,
         data: { tabs },
@@ -247,8 +247,8 @@ async function runCommand(
       return {
         success: true,
         text: page
-          ? `Current LifeOps Browser page: ${page.title} ${page.url}`
-          : "No current LifeOps Browser page is available.",
+          ? `Current Agent Browser Bridge page: ${page.title} ${page.url}`
+          : "No current Agent Browser Bridge page is available.",
         data: { page },
       };
     }
@@ -258,8 +258,8 @@ async function runCommand(
         success: true,
         text:
           sessions.length === 0
-            ? "No LifeOps Browser sessions exist."
-            : `LifeOps Browser sessions:\n${sessions
+            ? "No Agent Browser Bridge sessions exist."
+            : `Agent Browser Bridge sessions:\n${sessions
                 .slice(0, 8)
                 .map(
                   (session) =>
@@ -374,11 +374,11 @@ async function runCommand(
   }
 }
 
-export const manageLifeOpsBrowserAction: Action = {
+export const manageBrowserBridgeAction: Action = {
   name: "MANAGE_LIFEOPS_BROWSER",
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
-    "Read and control the user's real Chrome and Safari browsers connected through LifeOps Browser. This is not Milady Desktop Browser. Use LIFEOPS_COMPUTER_USE instead for Finder/Desktop automation, screenshots, folder creation, or local file workflows on this machine.",
+    "Read and control the user's real Chrome and Safari browsers connected through Agent Browser Bridge. This is not Milady Desktop Browser. Use LIFEOPS_COMPUTER_USE instead for Finder/Desktop automation, screenshots, folder creation, or local file workflows on this machine.",
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -389,7 +389,7 @@ export const manageLifeOpsBrowserAction: Action = {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         success: false,
-        text: "Permission denied: only the owner or admins may use LifeOps Browser control.",
+        text: "Permission denied: only the owner or admins may use Agent Browser Bridge control.",
         data: { error: "PERMISSION_DENIED" },
       };
     }

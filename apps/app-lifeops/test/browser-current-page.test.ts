@@ -128,11 +128,11 @@ describe("browser current-page context", () => {
   });
 
   it("stores the browser page context rows that read_current_page depends on", async () => {
-    const runtime = createRuntime("lifeops-browser-current-page-test");
+    const runtime = createRuntime("browser-bridge-current-page-test");
     installBrowserSchemaBootstrap(runtime);
     await runtime.adapter.runPluginMigrations?.();
     const nowIso = new Date("2026-04-20T10:00:00.000Z").toISOString();
-    const agentId = "lifeops-browser-current-page-test";
+    const agentId = "browser-bridge-current-page-test";
     const companionId = "companion-1";
     const tabId = "tab-1";
     const windowId = "window-1";

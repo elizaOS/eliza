@@ -1,8 +1,9 @@
+import type { BrowserBridgeAction } from "@elizaos/plugin-browser-bridge/contracts";
+import { BROWSER_BRIDGE_ACTION_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserAction,
   LifeOpsCadence,
   LifeOpsProgressionRule,
   LifeOpsTimeWindowDefinition,
@@ -10,9 +11,6 @@ import type {
   LifeOpsWindowPolicy,
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
-} from "@elizaos/app-lifeops/contracts";
-import {
-  LIFEOPS_BROWSER_ACTION_KINDS,
 } from "@elizaos/app-lifeops/contracts";
 import {
   fail,
@@ -48,12 +46,12 @@ function normalizeOptionalRecord(
 export function normalizeBrowserActionInput(
   value: unknown,
   field: string,
-): Omit<LifeOpsBrowserAction, "id"> {
+): Omit<BrowserBridgeAction, "id"> {
   const input = requireRecord(value, field);
   const kind = normalizeEnumValue(
     input.kind,
     `${field}.kind`,
-    LIFEOPS_BROWSER_ACTION_KINDS,
+    BROWSER_BRIDGE_ACTION_KINDS,
   );
   const label = requireNonEmptyString(input.label, `${field}.label`);
   const browser = normalizeOptionalBrowserKind(

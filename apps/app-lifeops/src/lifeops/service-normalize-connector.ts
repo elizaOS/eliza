@@ -1,7 +1,15 @@
 import type {
-  LifeOpsBrowserKind,
-  LifeOpsBrowserPermissionState,
-  LifeOpsBrowserSettings,
+  BrowserBridgeKind,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  BROWSER_BRIDGE_TRACKING_MODES,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
@@ -11,12 +19,8 @@ import type {
   LifeOpsWorkflowPermissionPolicy,
   LifeOpsWorkflowSchedule,
   LifeOpsWorkflowTriggerType,
-  UpdateLifeOpsBrowserSettingsRequest,
 } from "@elizaos/app-lifeops/contracts";
 import {
-  LIFEOPS_BROWSER_KINDS,
-  LIFEOPS_BROWSER_SITE_ACCESS_MODES,
-  LIFEOPS_BROWSER_TRACKING_MODES,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_EVENT_KINDS,
@@ -324,18 +328,18 @@ export function normalizeWorkflowPermissionPolicy(
 export function normalizeOptionalBrowserKind(
   value: unknown,
   field: string,
-): LifeOpsBrowserKind | null {
+): BrowserBridgeKind | null {
   const browser = normalizeOptionalString(value);
   if (!browser) {
     return null;
   }
-  return normalizeEnumValue(browser, field, LIFEOPS_BROWSER_KINDS);
+  return normalizeEnumValue(browser, field, BROWSER_BRIDGE_KINDS);
 }
 
 export function normalizeBrowserPermissionStateInput(
   value: unknown,
-  current: LifeOpsBrowserPermissionState = DEFAULT_BROWSER_PERMISSION_STATE,
-): LifeOpsBrowserPermissionState {
+  current: BrowserBridgePermissionState = DEFAULT_BROWSER_PERMISSION_STATE,
+): BrowserBridgePermissionState {
   if (value === undefined) {
     return { ...current, grantedOrigins: [...current.grantedOrigins] };
   }
@@ -445,9 +449,9 @@ export function normalizeOriginList(value: unknown, field: string): string[] {
 }
 
 export function normalizeBrowserSettingsUpdate(
-  request: UpdateLifeOpsBrowserSettingsRequest,
-  current: LifeOpsBrowserSettings,
-): LifeOpsBrowserSettings {
+  request: UpdateBrowserBridgeSettingsRequest,
+  current: BrowserBridgeSettings,
+): BrowserBridgeSettings {
   return {
     enabled:
       normalizeOptionalBoolean(request.enabled, "enabled") ?? current.enabled,
@@ -457,7 +461,7 @@ export function normalizeBrowserSettingsUpdate(
         : normalizeEnumValue(
             request.trackingMode,
             "trackingMode",
-            LIFEOPS_BROWSER_TRACKING_MODES,
+            BROWSER_BRIDGE_TRACKING_MODES,
           ),
     allowBrowserControl:
       normalizeOptionalBoolean(
@@ -478,7 +482,7 @@ export function normalizeBrowserSettingsUpdate(
         : normalizeEnumValue(
             request.siteAccessMode,
             "siteAccessMode",
-            LIFEOPS_BROWSER_SITE_ACCESS_MODES,
+            BROWSER_BRIDGE_SITE_ACCESS_MODES,
           ),
     grantedOrigins:
       request.grantedOrigins === undefined

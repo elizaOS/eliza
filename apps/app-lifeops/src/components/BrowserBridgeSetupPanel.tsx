@@ -15,15 +15,15 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import {
-  type CreateLifeOpsBrowserCompanionPairingRequest,
-  LIFEOPS_BROWSER_SITE_ACCESS_MODES,
-  type LifeOpsBrowserCompanionPairingResponse,
-  type LifeOpsBrowserCompanionReleaseManifest,
-  type LifeOpsBrowserKind,
-  type LifeOpsBrowserPackagePathTarget,
-  type LifeOpsBrowserSettings,
-  type LifeOpsBrowserSiteAccessMode,
-  type LifeOpsBrowserTrackingMode,
+  type CreateBrowserBridgeCompanionPairingRequest,
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionReleaseManifest,
+  type BrowserBridgeKind,
+  type BrowserBridgePackagePathTarget,
+  type BrowserBridgeSettings,
+  type BrowserBridgeSiteAccessMode,
+  type BrowserBridgeTrackingMode,
 } from "@elizaos/app-lifeops/contracts";
 import {
   Copy,
@@ -36,15 +36,15 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { resolveLifeOpsBrowserApiBaseUrl } from "../utils/lifeops-url.js";
+import { resolveBrowserBridgeApiBaseUrl } from "../utils/lifeops-url.js";
 
 type SettingsDraft = {
   enabled: boolean;
-  trackingMode: LifeOpsBrowserTrackingMode;
+  trackingMode: BrowserBridgeTrackingMode;
   allowBrowserControl: boolean;
   requireConfirmationForAccountAffecting: boolean;
   incognitoEnabled: boolean;
-  siteAccessMode: LifeOpsBrowserSiteAccessMode;
+  siteAccessMode: BrowserBridgeSiteAccessMode;
   grantedOriginsText: string;
   blockedOriginsText: string;
   maxRememberedTabs: string;
@@ -58,7 +58,7 @@ const DEFAULT_PAIRING_PROFILE = {
 const CHROME_EXTENSIONS_URL = "chrome://extensions/";
 const CONNECTION_REFRESH_INTERVAL_MS = 4_000;
 
-function settingsToDraft(settings: LifeOpsBrowserSettings): SettingsDraft {
+function settingsToDraft(settings: BrowserBridgeSettings): SettingsDraft {
   return {
     enabled: settings.enabled,
     trackingMode: settings.trackingMode,
@@ -120,13 +120,13 @@ function isFutureLocalDateTimeValue(value: string): boolean {
 }
 
 function normalizePairingRequest(
-  browser: LifeOpsBrowserKind,
+  browser: BrowserBridgeKind,
   existing: {
     profileId?: string;
     profileLabel?: string;
     label?: string;
   } | null,
-): CreateLifeOpsBrowserCompanionPairingRequest {
+): CreateBrowserBridgeCompanionPairingRequest {
   return {
     browser,
     profileId: existing?.profileId || DEFAULT_PAIRING_PROFILE.profileId,
@@ -134,15 +134,15 @@ function normalizePairingRequest(
       existing?.profileLabel || DEFAULT_PAIRING_PROFILE.profileLabel,
     label:
       existing?.label ||
-      `LifeOps Browser ${browser} ${existing?.profileLabel || DEFAULT_PAIRING_PROFILE.profileLabel}`,
+      `Agent Browser Bridge ${browser} ${existing?.profileLabel || DEFAULT_PAIRING_PROFILE.profileLabel}`,
   };
 }
 
 function pairingPayload(
-  response: LifeOpsBrowserCompanionPairingResponse,
+  response: BrowserBridgeCompanionPairingResponse,
 ): Record<string, string> {
   return {
-    apiBaseUrl: resolveLifeOpsBrowserApiBaseUrl(),
+    apiBaseUrl: resolveBrowserBridgeApiBaseUrl(),
     companionId: response.companion.id,
     pairingToken: response.pairingToken,
     browser: response.companion.browser,
@@ -214,7 +214,7 @@ function mergePackageStatus(
     safariWebExtensionPath: string | null;
     safariAppPath: string | null;
     safariPackagePath: string | null;
-    releaseManifest?: LifeOpsBrowserCompanionReleaseManifest | null;
+    releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
   },
 ): ExtensionStatus {
   return {
@@ -231,8 +231,8 @@ function mergePackageStatus(
 }
 
 function releaseTargetForBrowser(
-  browser: LifeOpsBrowserKind,
-  releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null | undefined,
+  browser: BrowserBridgeKind,
+  releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
 ) {
   if (!releaseManifest) {
     return null;
@@ -241,8 +241,8 @@ function releaseTargetForBrowser(
 }
 
 function installButtonLabel(
-  browser: LifeOpsBrowserKind,
-  releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null | undefined,
+  browser: BrowserBridgeKind,
+  releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
   hasLocalArtifact: boolean,
 ): string {
   if (hasLocalArtifact) {
@@ -264,7 +264,7 @@ function installButtonLabel(
   return `Install ${browser === "chrome" ? "Chrome" : "Safari"} Extension`;
 }
 
-function trackingModeLabel(mode: LifeOpsBrowserTrackingMode): string {
+function trackingModeLabel(mode: BrowserBridgeTrackingMode): string {
   switch (mode) {
     case "current_tab":
       return "Current tab";
@@ -275,7 +275,7 @@ function trackingModeLabel(mode: LifeOpsBrowserTrackingMode): string {
   }
 }
 
-function siteAccessModeLabel(mode: LifeOpsBrowserSiteAccessMode): string {
+function siteAccessModeLabel(mode: BrowserBridgeSiteAccessMode): string {
   switch (mode) {
     case "current_site_only":
       return "Current site";
@@ -309,8 +309,8 @@ function BrowserSettingRow({
 }
 
 function releaseBadgeLabel(
-  browser: LifeOpsBrowserKind,
-  releaseManifest: LifeOpsBrowserCompanionReleaseManifest | null | undefined,
+  browser: BrowserBridgeKind,
+  releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
 ): string | null {
   const target = releaseTargetForBrowser(browser, releaseManifest);
   if (!target) {
@@ -344,25 +344,25 @@ function BrowserCompanionRow({
   onOpenTarget,
   onOpenManager,
 }: {
-  browser: LifeOpsBrowserKind;
+  browser: BrowserBridgeKind;
   buildPath: string | null | undefined;
   packagePath: string | null | undefined;
   appPath?: string | null | undefined;
-  releaseManifest?: LifeOpsBrowserCompanionReleaseManifest | null;
+  releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
   busy: boolean;
-  pairing: LifeOpsBrowserCompanionPairingResponse | null;
-  onInstall: (browser: LifeOpsBrowserKind) => Promise<void>;
-  onBuild: (browser: LifeOpsBrowserKind) => Promise<unknown>;
-  onCreatePairing: (browser: LifeOpsBrowserKind) => Promise<unknown>;
-  onCopyPairing: (browser: LifeOpsBrowserKind) => Promise<void>;
-  onDownload: (browser: LifeOpsBrowserKind) => Promise<unknown>;
+  pairing: BrowserBridgeCompanionPairingResponse | null;
+  onInstall: (browser: BrowserBridgeKind) => Promise<void>;
+  onBuild: (browser: BrowserBridgeKind) => Promise<unknown>;
+  onCreatePairing: (browser: BrowserBridgeKind) => Promise<unknown>;
+  onCopyPairing: (browser: BrowserBridgeKind) => Promise<void>;
+  onDownload: (browser: BrowserBridgeKind) => Promise<unknown>;
   onOpenTarget: (
-    target: LifeOpsBrowserPackagePathTarget,
+    target: BrowserBridgePackagePathTarget,
     revealOnly?: boolean,
     options?: { silent?: boolean },
   ) => Promise<void | { path: string | null; opened: boolean }>;
   onOpenManager: (
-    browser: LifeOpsBrowserKind,
+    browser: BrowserBridgeKind,
     options?: { silent?: boolean },
   ) => Promise<void | boolean>;
 }) {
@@ -532,7 +532,7 @@ function BrowserCompanionRow({
   );
 }
 
-export function LifeOpsBrowserSetupPanel() {
+export function BrowserBridgeSetupPanel() {
   const { setActionNotice, setTab } = useApp();
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
@@ -540,23 +540,23 @@ export function LifeOpsBrowserSetupPanel() {
   const draftDirtyRef = useRef(false);
   const [companions, setCompanions] = useState<
     Awaited<
-      ReturnType<typeof client.listLifeOpsBrowserCompanions>
+      ReturnType<typeof client.listBrowserBridgeCompanions>
     >["companions"]
   >([]);
   const [packageStatus, setPackageStatus] = useState<ExtensionStatus | null>(
     null,
   );
   const [pairings, setPairings] = useState<
-    Partial<Record<LifeOpsBrowserKind, LifeOpsBrowserCompanionPairingResponse>>
+    Partial<Record<BrowserBridgeKind, BrowserBridgeCompanionPairingResponse>>
   >({});
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [buildingBrowser, setBuildingBrowser] =
-    useState<LifeOpsBrowserKind | null>(null);
+    useState<BrowserBridgeKind | null>(null);
   const [pairingBrowser, setPairingBrowser] =
-    useState<LifeOpsBrowserKind | null>(null);
+    useState<BrowserBridgeKind | null>(null);
   const [installingBrowser, setInstallingBrowser] =
-    useState<LifeOpsBrowserKind | null>(null);
+    useState<BrowserBridgeKind | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -573,9 +573,9 @@ export function LifeOpsBrowserSetupPanel() {
     setError(null);
     const [settingsResult, companionsResult, statusResult] =
       await Promise.allSettled([
-        client.getLifeOpsBrowserSettings(),
-        client.listLifeOpsBrowserCompanions(),
-        client.getLifeOpsBrowserPackageStatus(),
+        client.getBrowserBridgeSettings(),
+        client.listBrowserBridgeCompanions(),
+        client.getBrowserBridgePackageStatus(),
       ]);
     const errors: string[] = [];
 
@@ -636,7 +636,7 @@ export function LifeOpsBrowserSetupPanel() {
   }, [refresh]);
 
   const companionByBrowser = useMemo(() => {
-    const map = new Map<LifeOpsBrowserKind, (typeof companions)[number]>();
+    const map = new Map<BrowserBridgeKind, (typeof companions)[number]>();
     for (const companion of companions) {
       if (!map.has(companion.browser)) {
         map.set(companion.browser, companion);
@@ -646,7 +646,7 @@ export function LifeOpsBrowserSetupPanel() {
   }, [companions]);
 
   const pairingPayloads = useMemo(() => {
-    const payloads: Partial<Record<LifeOpsBrowserKind, string>> = {};
+    const payloads: Partial<Record<BrowserBridgeKind, string>> = {};
     for (const browser of ["chrome", "safari"] as const) {
       const pairing = pairings[browser];
       if (pairing) {
@@ -792,7 +792,7 @@ export function LifeOpsBrowserSetupPanel() {
         1,
         Number.parseInt(draft.maxRememberedTabs, 10) || 10,
       );
-      const response = await client.updateLifeOpsBrowserSettings({
+      const response = await client.updateBrowserBridgeSettings({
         enabled: draft.enabled,
         trackingMode: draft.trackingMode,
         allowBrowserControl: draft.allowBrowserControl,
@@ -807,7 +807,7 @@ export function LifeOpsBrowserSetupPanel() {
       });
       setDraft(settingsToDraft(response.settings));
       setDraftDirty(false);
-      setStatusMessage("Saved LifeOps Browser settings.");
+      setStatusMessage("Saved Agent Browser Bridge settings.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -816,14 +816,14 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   const buildPackage = async (
-    browser: LifeOpsBrowserKind,
+    browser: BrowserBridgeKind,
     options?: { silent?: boolean },
   ): Promise<ExtensionStatus> => {
     setBuildingBrowser(browser);
     setError(null);
     try {
       const response =
-        await client.buildLifeOpsBrowserCompanionPackage(browser);
+        await client.buildBrowserBridgeCompanionPackage(browser);
       const nextStatus = mergePackageStatus(packageStatus, response.status);
       setPackageStatus(nextStatus);
       if (!options?.silent) {
@@ -841,13 +841,13 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   const createPairing = async (
-    browser: LifeOpsBrowserKind,
+    browser: BrowserBridgeKind,
     options?: { silent?: boolean },
-  ): Promise<LifeOpsBrowserCompanionPairingResponse> => {
+  ): Promise<BrowserBridgeCompanionPairingResponse> => {
     setPairingBrowser(browser);
     setError(null);
     try {
-      const response = await client.createLifeOpsBrowserCompanionPairing(
+      const response = await client.createBrowserBridgeCompanionPairing(
         normalizePairingRequest(
           browser,
           companionByBrowser.get(browser) ?? null,
@@ -872,7 +872,7 @@ export function LifeOpsBrowserSetupPanel() {
     }
   };
 
-  const copyPairing = async (browser: LifeOpsBrowserKind) => {
+  const copyPairing = async (browser: BrowserBridgeKind) => {
     try {
       const payload = pairingPayloads[browser];
       if (!payload) {
@@ -889,13 +889,13 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   const downloadPackage = async (
-    browser: LifeOpsBrowserKind,
+    browser: BrowserBridgeKind,
     options?: { silent?: boolean },
   ) => {
     try {
       setError(null);
       const download =
-        await client.downloadLifeOpsBrowserCompanionPackage(browser);
+        await client.downloadBrowserBridgeCompanionPackage(browser);
       const objectUrl = URL.createObjectURL(download.blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
@@ -919,7 +919,7 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   const resolvePackageTargetPath = useCallback(
-    (target: LifeOpsBrowserPackagePathTarget): string | null => {
+    (target: BrowserBridgePackagePathTarget): string | null => {
       switch (target) {
         case "extension_root":
           return packageStatus?.extensionPath ?? null;
@@ -941,7 +941,7 @@ export function LifeOpsBrowserSetupPanel() {
   );
 
   const openPackageTarget = async (
-    target: LifeOpsBrowserPackagePathTarget,
+    target: BrowserBridgePackagePathTarget,
     revealOnly = false,
     options?: { silent?: boolean },
   ): Promise<{ path: string | null; opened: boolean }> => {
@@ -955,22 +955,22 @@ export function LifeOpsBrowserSetupPanel() {
         if (!options?.silent) {
           setStatusMessage(
             revealOnly
-              ? "Revealed the local LifeOps Browser path."
-              : "Opened the local LifeOps Browser path.",
+              ? "Revealed the local Agent Browser Bridge path."
+              : "Opened the local Agent Browser Bridge path.",
           );
         }
         setError(null);
         return { path: knownPath, opened: true };
       }
-      const response = await client.openLifeOpsBrowserCompanionPackagePath({
+      const response = await client.openBrowserBridgeCompanionPackagePath({
         target,
         revealOnly,
       });
       if (!options?.silent) {
         setStatusMessage(
           revealOnly
-            ? "Revealed the local LifeOps Browser path."
-            : "Opened the local LifeOps Browser path.",
+            ? "Revealed the local Agent Browser Bridge path."
+            : "Opened the local Agent Browser Bridge path.",
         );
       }
       setError(null);
@@ -981,7 +981,7 @@ export function LifeOpsBrowserSetupPanel() {
         await copyTextToClipboard(fallbackPath);
         if (!options?.silent) {
           setStatusMessage(
-            "Copied the local LifeOps Browser path to the clipboard.",
+            "Copied the local Agent Browser Bridge path to the clipboard.",
           );
         }
         setError(null);
@@ -993,11 +993,11 @@ export function LifeOpsBrowserSetupPanel() {
   };
 
   const openBrowserManager = async (
-    browser: LifeOpsBrowserKind,
+    browser: BrowserBridgeKind,
     options?: { silent?: boolean },
   ): Promise<boolean> => {
     try {
-      await client.openLifeOpsBrowserCompanionManager(browser);
+      await client.openBrowserBridgeCompanionManager(browser);
       if (!options?.silent) {
         setStatusMessage(
           browser === "chrome"
@@ -1021,7 +1021,7 @@ export function LifeOpsBrowserSetupPanel() {
     }
   };
 
-  const installCompanion = async (browser: LifeOpsBrowserKind) => {
+  const installCompanion = async (browser: BrowserBridgeKind) => {
     setInstallingBrowser(browser);
     setError(null);
     try {
@@ -1069,7 +1069,7 @@ export function LifeOpsBrowserSetupPanel() {
         if (nextStatus?.safariAppPath) {
           await openPackageTarget("safari_app", false, { silent: true });
           setStatusMessage(
-            "Safari install is prepared. We opened the LifeOps Browser app bundle. Run it once, enable the Safari extension, then open the popup once to auto-pair.",
+            "Safari install is prepared. We opened the Agent Browser Bridge app bundle. Run it once, enable the Safari extension, then open the popup once to auto-pair.",
           );
           return;
         }
@@ -1077,7 +1077,7 @@ export function LifeOpsBrowserSetupPanel() {
         if (nextStatus?.safariPackagePath) {
           await openPackageTarget("safari_package", true, { silent: true });
           setStatusMessage(
-            "Safari install is prepared. We revealed the packaged LifeOps Browser Safari build. Install it, enable the Safari extension, then open the popup once to auto-pair.",
+            "Safari install is prepared. We revealed the packaged Agent Browser Bridge Safari build. Install it, enable the Safari extension, then open the popup once to auto-pair.",
           );
           return;
         }
@@ -1398,7 +1398,7 @@ export function LifeOpsBrowserSetupPanel() {
                     Choose whether LifeOps sees only the current tab or multiple
                     active tabs.
                   </div>
-                  <SegmentedControl<LifeOpsBrowserTrackingMode>
+                  <SegmentedControl<BrowserBridgeTrackingMode>
                     value={draft.trackingMode}
                     onValueChange={(mode) => updateDraft("trackingMode", mode)}
                     items={(["off", "current_tab", "active_tabs"] as const).map(
@@ -1417,12 +1417,12 @@ export function LifeOpsBrowserSetupPanel() {
                     Restrict LifeOps to the current site, an allow-list, or all
                     sites.
                   </div>
-                  <SegmentedControl<LifeOpsBrowserSiteAccessMode>
+                  <SegmentedControl<BrowserBridgeSiteAccessMode>
                     value={draft.siteAccessMode}
                     onValueChange={(mode) =>
                       updateDraft("siteAccessMode", mode)
                     }
-                    items={LIFEOPS_BROWSER_SITE_ACCESS_MODES.map((mode) => ({
+                    items={BROWSER_BRIDGE_SITE_ACCESS_MODES.map((mode) => ({
                       value: mode,
                       label: siteAccessModeLabel(mode),
                     }))}
@@ -1435,7 +1435,7 @@ export function LifeOpsBrowserSetupPanel() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label
-                    htmlFor="lifeops-browser-max-tabs"
+                    htmlFor="browser-bridge-max-tabs"
                     className="text-xs text-muted"
                   >
                     Max remembered tabs
@@ -1445,7 +1445,7 @@ export function LifeOpsBrowserSetupPanel() {
                     around.
                   </div>
                   <Input
-                    id="lifeops-browser-max-tabs"
+                    id="browser-bridge-max-tabs"
                     value={draft.maxRememberedTabs}
                     onChange={(event) =>
                       updateDraft(
@@ -1458,7 +1458,7 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
                 <div className="space-y-1">
                   <Label
-                    htmlFor="lifeops-browser-pause-until"
+                    htmlFor="browser-bridge-pause-until"
                     className="text-xs text-muted"
                   >
                     Pause until
@@ -1469,7 +1469,7 @@ export function LifeOpsBrowserSetupPanel() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
                     <Input
-                      id="lifeops-browser-pause-until"
+                      id="browser-bridge-pause-until"
                       type="datetime-local"
                       value={draft.pauseUntilLocal}
                       onChange={(event) =>
@@ -1510,7 +1510,7 @@ export function LifeOpsBrowserSetupPanel() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label
-                    htmlFor="lifeops-browser-granted-origins"
+                    htmlFor="browser-bridge-granted-origins"
                     className="text-xs text-muted"
                   >
                     Granted origins
@@ -1520,7 +1520,7 @@ export function LifeOpsBrowserSetupPanel() {
                     are readable.
                   </div>
                   <Textarea
-                    id="lifeops-browser-granted-origins"
+                    id="browser-bridge-granted-origins"
                     rows={3}
                     placeholder="https://mail.google.com"
                     value={draft.grantedOriginsText}
@@ -1534,7 +1534,7 @@ export function LifeOpsBrowserSetupPanel() {
                 </div>
                 <div className="space-y-1">
                   <Label
-                    htmlFor="lifeops-browser-blocked-origins"
+                    htmlFor="browser-bridge-blocked-origins"
                     className="text-xs text-muted"
                   >
                     Blocked origins
@@ -1544,7 +1544,7 @@ export function LifeOpsBrowserSetupPanel() {
                     access is enabled.
                   </div>
                   <Textarea
-                    id="lifeops-browser-blocked-origins"
+                    id="browser-bridge-blocked-origins"
                     rows={3}
                     placeholder="https://bank.example.com"
                     value={draft.blockedOriginsText}
