@@ -60,17 +60,6 @@ export function AppsSidebar({
 }: AppsSidebarProps) {
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const runsByAppName = useMemo(() => {
-    const map = new Map<string, AppRunSummary>();
-    for (const run of runs) {
-      const existing = map.get(run.appName);
-      if (!existing || run.updatedAt.localeCompare(existing.updatedAt) > 0) {
-        map.set(run.appName, run);
-      }
-    }
-    return map;
-  }, [runs]);
-
   const filteredApps = useMemo(
     () => apps.filter((app) => matchesSearch(app, normalizedQuery)),
     [apps, normalizedQuery],
