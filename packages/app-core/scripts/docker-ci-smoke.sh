@@ -177,7 +177,7 @@ SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/
 if [[ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.ts ]]; then
   log "Generating core protobuf sources"
   pushd eliza/packages/schemas >/dev/null
-  bunx @bufbuild/buf@1.67.0 generate
+  bunx --package @bufbuild/buf@1.68.3 buf generate
   popd >/dev/null
 fi
 
