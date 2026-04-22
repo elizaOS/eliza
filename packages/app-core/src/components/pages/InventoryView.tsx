@@ -648,6 +648,25 @@ export function InventoryView() {
               }
             : null;
 
+  // Surfaces `evmSigningCapability` from the wallet-capability resolver.
+  // Fires when the EVM address is visible but no signer is wired (typical
+  // post-cloud-bind state before Steward creds are provisioned). Distinct
+  // from `headerWarning`, which is about RPC read access.
+  const signingWarning =
+    evmAddr && cfg?.evmSigningCapability === "cloud-view-only"
+      ? {
+          title: t("wallet.signing.viewOnly.title", {
+            defaultValue: "EVM wallet is view-only",
+          }),
+          body:
+            cfg.evmSigningReason ??
+            t("wallet.signing.viewOnly.body", {
+              defaultValue:
+                "Cloud wallet provisioned, but no signing path is wired in this runtime.",
+            }),
+        }
+      : null;
+
   // ── Tracked token handlers ────────────────────────────────────────
   const handleAddToken = useCallback(
     (token: TrackedToken) => {
@@ -1020,6 +1039,15 @@ export function InventoryView() {
                 {headerWarning.title}
               </div>
               <div className="mt-1 text-muted">{headerWarning.body}</div>
+            </PagePanel.Notice>
+          ) : null}
+
+          {signingWarning ? (
+            <PagePanel.Notice tone="accent">
+              <div className="font-semibold text-txt-strong">
+                {signingWarning.title}
+              </div>
+              <div className="mt-1 text-muted">{signingWarning.body}</div>
             </PagePanel.Notice>
           ) : null}
 
