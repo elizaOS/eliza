@@ -9,7 +9,10 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const rootPkg = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
-const { workspaceDirs } = collectWorkspaceMaps(repoRoot, rootPkg.workspaces ?? []);
+const { workspaceDirs } = collectWorkspaceMaps(
+  repoRoot,
+  rootPkg.workspaces ?? [],
+);
 const localPackages = [
   "eliza/apps/app-companion",
   "eliza/apps/app-elizamaker",
@@ -24,6 +27,57 @@ const localPackages = [
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-telegram",
 ];
+
+function resolveSourceExportPath(packageDir, exportPath) {
+  if (typeof exportPath !== "string" || !exportPath.startsWith("./dist/")) {
+    return exportPath;
+  }
+
+  if (pathExists(path.join(packageDir, exportPath))) {
+    return exportPath;
+  }
+
+  const sourcePath = exportPath
+    .replace("./dist/", "./src/")
+    .replace(/\.d\.ts$/, ".ts")
+    .replace(/\.js$/, ".ts");
+  return pathExists(path.join(packageDir, sourcePath))
+    ? sourcePath
+    : exportPath;
+}
+
+function rewriteDistExportsToSource(packageJsonPath, pkg) {
+  const packageDir = path.dirname(packageJsonPath);
+  let changed = false;
+
+  function rewrite(value) {
+    if (typeof value === "string") {
+      const next = resolveSourceExportPath(packageDir, value);
+      changed ||= next !== value;
+      return next;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => rewrite(item));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, rewrite(entry)]),
+      );
+    }
+    return value;
+  }
+
+  const nextPkg = { ...pkg };
+  nextPkg.main = rewrite(pkg.main);
+  nextPkg.module = rewrite(pkg.module);
+  nextPkg.types = rewrite(pkg.types);
+  nextPkg.exports = rewrite(pkg.exports);
+
+  if (!changed) return pkg;
+
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(nextPkg, null, 2)}\n`);
+  return nextPkg;
+}
 
 function pathExists(filePath) {
   try {
@@ -60,12 +114,13 @@ for (const packagePath of localPackages) {
     );
   }
 
-  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  let pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   if (typeof pkg.name !== "string" || !pkg.name.startsWith("@elizaos/")) {
     throw new Error(
       `Invalid local package name in ${path.relative(repoRoot, packageJsonPath)}`,
     );
   }
+  pkg = rewriteDistExportsToSource(packageJsonPath, pkg);
 
   const packageName = pkg.name.slice("@elizaos/".length);
   for (const scopeDir of scopeDirs) {
