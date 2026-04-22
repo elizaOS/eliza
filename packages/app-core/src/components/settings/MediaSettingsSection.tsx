@@ -1,10 +1,15 @@
 import {
   Button,
   SaveFooter,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
   SettingsControls,
   Switch,
   useTimeout,
 } from "@elizaos/ui";
+import { Eye, Image, Mic, Music, Video } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   type AudioGenProvider,
@@ -56,7 +61,65 @@ function segmentedButtonClass(active: boolean): string {
 
 // ── Main component ───────────────────────────────────────────────────
 
-export function MediaSettingsSection() {
+const CATEGORY_ICONS: Record<MediaCategory, typeof Image> = {
+  image: Image,
+  video: Video,
+  audio: Music,
+  vision: Eye,
+  voice: Mic,
+};
+
+/**
+ * Curated per-category cloud model options exposed in simple mode. Writes to
+ * `<category>.cloud.model` — unknown to the agent contract but tolerated by
+ * the config endpoint; the cloud plugin reads the corresponding
+ * `ELIZAOS_CLOUD_<CATEGORY>_MODEL` setting at runtime.
+ */
+const CLOUD_MODEL_OPTIONS: Record<
+  "image" | "video" | "audio" | "vision",
+  Array<{ id: string; label: string }>
+> = {
+  image: [
+    { id: "", label: "Default (Auto)" },
+    { id: "gpt-image-1", label: "GPT-Image 1 (OpenAI)" },
+    { id: "dall-e-3", label: "DALL-E 3 (OpenAI)" },
+    { id: "fal-ai/flux-pro", label: "Flux Pro" },
+    { id: "fal-ai/flux/schnell", label: "Flux Schnell" },
+    { id: "fal-ai/nano-banana-pro", label: "Nano Banana Pro" },
+  ],
+  video: [
+    { id: "", label: "Default (Auto)" },
+    { id: "fal-ai/veo3.1", label: "Veo 3.1 (Google)" },
+    { id: "fal-ai/veo3.1/fast", label: "Veo 3.1 Fast" },
+    { id: "fal-ai/sora-2/text-to-video/pro", label: "Sora 2 Pro" },
+    { id: "fal-ai/kling-video/v3/pro/text-to-video", label: "Kling 3 Pro" },
+  ],
+  audio: [
+    { id: "", label: "Default (Auto)" },
+    { id: "suno-v4", label: "Suno v4" },
+    { id: "eleven-music", label: "ElevenLabs Music" },
+    { id: "eleven-sfx", label: "ElevenLabs SFX" },
+  ],
+  vision: [
+    { id: "", label: "Default (Auto)" },
+    { id: "gpt-4o", label: "GPT-4o (OpenAI)" },
+    { id: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet" },
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { id: "grok-2-vision", label: "Grok 2 Vision" },
+  ],
+};
+
+interface MediaSettingsSectionProps {
+  /**
+   * When true, render the 3D companion performance controls (GPU power mode,
+   * half frame-rate toggle, animate-in-background). Hidden by default.
+   */
+  showAdvanced?: boolean;
+}
+
+export function MediaSettingsSection({
+  showAdvanced = false,
+}: MediaSettingsSectionProps = {}) {
   const { setTimeout } = useTimeout();
 
   const {
@@ -205,7 +268,7 @@ export function MediaSettingsSection() {
     <div className="flex flex-col gap-4">
       <MusicPlayerSettingsPanel />
 
-      {COMPANION_ENABLED && (
+      {COMPANION_ENABLED && showAdvanced && (
         <div
           className="rounded-xl border border-border bg-card/60 px-3 py-3 flex flex-col gap-3"
           data-testid="settings-companion-vrm-power"
@@ -306,26 +369,36 @@ export function MediaSettingsSection() {
           })}
         </p>
 
-        {/* Category tabs — status dots removed in favour of the single
-            "Configured / Needs setup" pill shown below the tabs. */}
-        <SettingsControls.SegmentedGroup>
+        {/* Category tabs — icon + underline style. Status dots removed in
+            favour of the single "Configured / Needs setup" pill shown below. */}
+        <div
+          role="tablist"
+          className="flex flex-wrap items-stretch gap-x-1 border-b border-border/40"
+        >
           {(
             ["image", "video", "audio", "vision", "voice"] as MediaCategory[]
           ).map((cat) => {
             const active = activeTab === cat;
+            const Icon = CATEGORY_ICONS[cat];
             return (
-              <Button
+              <button
                 key={cat}
-                variant={active ? "default" : "ghost"}
-                size="sm"
-                className={segmentedButtonClass(active)}
+                type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setActiveTab(cat)}
+                className={`group flex flex-1 min-w-[8rem] items-center justify-center gap-2 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                  active
+                    ? "border-accent text-accent"
+                    : "border-transparent text-muted hover:text-txt hover:border-border"
+                }`}
               >
-                {t(CATEGORY_LABELS[cat])}
-              </Button>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{t(CATEGORY_LABELS[cat])}</span>
+              </button>
             );
           })}
-        </SettingsControls.SegmentedGroup>
+        </div>
 
         {/* Voice tab — render VoiceConfigView instead of media config */}
         {activeTab === "voice" ? (
@@ -376,12 +449,59 @@ export function MediaSettingsSection() {
 
             {/* Cloud mode status */}
             {currentMode === "cloud" && (
-              <CloudConnectionStatus
-                connected={elizaCloudConnected}
-                disconnectedText={t(
-                  "elizaclouddashboard.ElizaCloudNotConnectedSettings",
-                )}
-              />
+              <>
+                <CloudConnectionStatus
+                  connected={elizaCloudConnected}
+                  disconnectedText={t(
+                    "elizaclouddashboard.ElizaCloudNotConnectedSettings",
+                  )}
+                />
+                {activeTab !== "voice" &&
+                  CLOUD_MODEL_OPTIONS[
+                    activeTab as keyof typeof CLOUD_MODEL_OPTIONS
+                  ] && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-semibold text-muted">
+                        {t("mediasettingssection.Model", {
+                          defaultValue: "Model",
+                        })}
+                      </span>
+                      <Select
+                        value={
+                          ((getNestedValue(
+                            mediaConfig as Record<string, unknown>,
+                            `${activeTab}.cloud.model`,
+                          ) as string) ?? "") || "__default__"
+                        }
+                        onValueChange={(value: string) =>
+                          updateNestedValue(
+                            `${activeTab}.cloud.model`,
+                            value === "__default__" ? undefined : value,
+                          )
+                        }
+                      >
+                        <SettingsControls.SelectTrigger
+                          variant="compact"
+                          className="max-w-sm"
+                        >
+                          <SelectValue />
+                        </SettingsControls.SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {CLOUD_MODEL_OPTIONS[
+                            activeTab as keyof typeof CLOUD_MODEL_OPTIONS
+                          ].map((m) => (
+                            <SelectItem
+                              key={m.id || "__default__"}
+                              value={m.id || "__default__"}
+                            >
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+              </>
             )}
 
             {/* Own-key mode: provider selection */}

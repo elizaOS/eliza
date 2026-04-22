@@ -46,18 +46,47 @@ import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
+type SettingsComplexity = "simple" | "advanced";
+
 interface SettingsSectionDef {
   id: string;
   label: string;
   description?: string;
   keywords?: string[];
   keywordKeys?: string[];
+  /**
+   * Visibility level. "simple" sections show in both Simple and Advanced
+   * modes. "advanced" sections only show when the user toggles Advanced.
+   * Sections default to "simple" if omitted.
+   */
+  level?: SettingsComplexity;
+}
+
+const SETTINGS_COMPLEXITY_STORAGE_KEY = "milady.settings.complexity";
+
+function readStoredComplexity(): SettingsComplexity {
+  if (typeof window === "undefined") return "simple";
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_COMPLEXITY_STORAGE_KEY);
+    return raw === "advanced" ? "advanced" : "simple";
+  } catch {
+    return "simple";
+  }
+}
+
+function writeStoredComplexity(value: SettingsComplexity): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SETTINGS_COMPLEXITY_STORAGE_KEY, value);
+  } catch {
+    /* ignore quota / privacy-mode failures */
+  }
 }
 
 const SETTINGS_CONTENT_CLASS =
-  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-6 pt-4 sm:pb-8 sm:pt-5 lg:pb-10 lg:pt-6";
+  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
-const SETTINGS_SECTION_STACK_CLASS = "space-y-6 pb-14 sm:space-y-8 sm:pb-16";
+const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
 
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
@@ -66,6 +95,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description: "settings.sections.cloud.desc",
     keywords: ["cloud", "billing", "credits", "auth", "subscription"],
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
+    level: "simple",
   },
   {
     id: "ai-model",
@@ -88,6 +118,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.apiKey",
       "settings.keyword.inference",
     ],
+    level: "simple",
   },
   {
     id: "local-models",
@@ -105,6 +136,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "gpu",
       "vram",
     ],
+    level: "advanced",
   },
   {
     id: "coding-agents",
@@ -121,6 +153,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "task coordinator",
       "task agents",
     ],
+    level: "advanced",
   },
   {
     id: "media",
@@ -142,6 +175,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.camera",
       "settings.keyword.microphone",
     ],
+    level: "simple",
   },
   {
     id: "appearance",
@@ -163,6 +197,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.avatar",
       "settings.keyword.appearance",
     ],
+    level: "simple",
   },
   {
     id: "capabilities",
@@ -183,6 +218,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "feature",
     ],
     keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
+    level: "advanced",
   },
   {
     id: "permissions",
@@ -198,6 +234,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
+    level: "simple",
   },
   {
     id: "updates",
@@ -205,6 +242,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description: "settings.sections.updates.desc",
     keywords: ["updates", "release", "version", "download"],
     keywordKeys: ["settings.keyword.updates"],
+    level: "advanced",
   },
   {
     id: "advanced",
@@ -226,6 +264,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.import",
       "settings.keyword.reset",
     ],
+    level: "advanced",
   },
 ];
 
@@ -269,9 +308,11 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
           expanded
           variant="section"
           heading={title ?? ""}
+          headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
           description={description}
-          bodyClassName={bodyClassName}
-          className={className}
+          descriptionClassName="mt-0.5 text-xs leading-snug text-muted"
+          bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
+          className={cn("rounded-2xl", className)}
           {...props}
         >
           {children}
@@ -833,15 +874,27 @@ export function SettingsView({
   const { t, loadPlugins } = useApp();
   const [activeSection, setActiveSection] = useState(initialSection ?? "cloud");
   const [searchQuery, setSearchQuery] = useState("");
+  const [complexity, setComplexity] = useState<SettingsComplexity>(() =>
+    readStoredComplexity(),
+  );
   const shellRef = useRef<HTMLDivElement>(null);
 
-  const visibleSections = useMemo(
-    () =>
-      SETTINGS_SECTIONS.filter((section) =>
-        matchesSettingsSection(section, searchQuery, t),
-      ),
-    [searchQuery, t],
-  );
+  useEffect(() => {
+    writeStoredComplexity(complexity);
+  }, [complexity]);
+
+  // Advanced-only sections remain reachable via search even in Simple mode —
+  // if the user typed a keyword that matches an advanced section, show it.
+  // Otherwise Simple mode only shows sections tagged level !== "advanced".
+  const visibleSections = useMemo(() => {
+    const searchActive = searchQuery.trim().length > 0;
+    return SETTINGS_SECTIONS.filter((section) => {
+      if (!matchesSettingsSection(section, searchQuery, t)) return false;
+      if (complexity === "advanced") return true;
+      if (searchActive) return true;
+      return section.level !== "advanced";
+    });
+  }, [complexity, searchQuery, t]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -950,17 +1003,39 @@ export function SettingsView({
       mobileTitle={t("nav.settings")}
       mobileMeta={activeSectionDef ? t(activeSectionDef.label) : undefined}
       header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => setSearchQuery(event.target.value),
-            onClear: () => setSearchQuery(""),
-            placeholder: searchLabel,
-            "aria-label": searchLabel,
-            autoComplete: "off",
-            spellCheck: false,
-          }}
-        />
+        <div className="space-y-2">
+          <SidebarHeader
+            search={{
+              value: searchQuery,
+              onChange: (event) => setSearchQuery(event.target.value),
+              onClear: () => setSearchQuery(""),
+              placeholder: searchLabel,
+              "aria-label": searchLabel,
+              autoComplete: "off",
+              spellCheck: false,
+            }}
+          />
+          <div className="flex items-center justify-between gap-3 px-4 pb-1">
+            <Label
+              htmlFor="settings-advanced-toggle"
+              className="text-xs font-medium text-muted cursor-pointer select-none"
+            >
+              {t("settings.showAdvanced", {
+                defaultValue: "Show advanced",
+              })}
+            </Label>
+            <Switch
+              id="settings-advanced-toggle"
+              checked={complexity === "advanced"}
+              onCheckedChange={(checked) =>
+                setComplexity(checked ? "advanced" : "simple")
+              }
+              aria-label={t("settings.showAdvanced", {
+                defaultValue: "Show advanced",
+              })}
+            />
+          </div>
+        </div>
       }
     >
       <SidebarScrollRegion>
@@ -991,11 +1066,6 @@ export function SettingsView({
                         >
                           {t(section.label)}
                         </SidebarContent.ItemTitle>
-                        {section.description ? (
-                          <SidebarContent.ItemDescription>
-                            {t(section.description)}
-                          </SidebarContent.ItemDescription>
-                        ) : null}
                       </SidebarContent.ItemBody>
                     </SidebarContent.ItemButton>
                   </SidebarContent.Item>
@@ -1021,15 +1091,50 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("ai-model") && (
-        <SettingsSection
-          id="ai-model"
-          title={t("settings.sections.aimodel.label")}
-          description={t("settings.sections.aimodel.desc")}
-          ref={registerContentItem("ai-model")}
-        >
-          <ProviderSwitcher />
-        </SettingsSection>
+      {(visibleSectionIds.has("ai-model") ||
+        visibleSectionIds.has("media") ||
+        visibleSectionIds.has("appearance")) && (
+        <div className="grid gap-5 xl:grid-cols-2 items-start">
+          <div className="flex flex-col gap-5 min-w-0">
+            {visibleSectionIds.has("ai-model") && (
+              <SettingsSection
+                id="ai-model"
+                title={t("settings.sections.aimodel.label")}
+                description={t("settings.sections.aimodel.desc")}
+                ref={registerContentItem("ai-model")}
+              >
+                <ProviderSwitcher showAdvanced={complexity === "advanced"} />
+              </SettingsSection>
+            )}
+
+            {visibleSectionIds.has("appearance") && (
+              <SettingsSection
+                id="appearance"
+                title={t("settings.sections.appearance.label", {
+                  defaultValue: "Appearance",
+                })}
+                description={t("settings.sections.appearance.desc", {
+                  defaultValue:
+                    "Content packs, VRM avatars, backgrounds, and themes",
+                })}
+                ref={registerContentItem("appearance")}
+              >
+                <AppearanceSettingsSection />
+              </SettingsSection>
+            )}
+          </div>
+
+          {visibleSectionIds.has("media") && (
+            <SettingsSection
+              id="media"
+              title={t("settings.sections.media.label")}
+              description={t("settings.sections.media.desc")}
+              ref={registerContentItem("media")}
+            >
+              <MediaSettingsSection showAdvanced={complexity === "advanced"} />
+            </SettingsSection>
+          )}
+        </div>
       )}
 
       {visibleSectionIds.has("local-models") && (
@@ -1056,32 +1161,6 @@ export function SettingsView({
           ref={registerContentItem("coding-agents")}
         >
           <CodingAgentSettingsSection />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("media") && (
-        <SettingsSection
-          id="media"
-          title={t("settings.sections.media.label")}
-          description={t("settings.sections.media.desc")}
-          ref={registerContentItem("media")}
-        >
-          <MediaSettingsSection />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("appearance") && (
-        <SettingsSection
-          id="appearance"
-          title={t("settings.sections.appearance.label", {
-            defaultValue: "Appearance",
-          })}
-          description={t("settings.sections.appearance.desc", {
-            defaultValue: "Content packs, VRM avatars, backgrounds, and themes",
-          })}
-          ref={registerContentItem("appearance")}
-        >
-          <AppearanceSettingsSection />
         </SettingsSection>
       )}
 
