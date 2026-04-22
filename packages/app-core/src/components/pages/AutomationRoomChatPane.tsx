@@ -547,6 +547,7 @@ export function AutomationRoomChatPane({
           ) : (
             <div
               ref={messageListRef}
+              role="list"
               className="w-full space-y-1"
               onKeyDown={handleMessageListKeyDown}
             >
@@ -557,10 +558,8 @@ export function AutomationRoomChatPane({
                     ? t("chat.messageAriaLabelUser", { preview })
                     : t("chat.messageAriaLabelAgent", { preview });
                 return (
-                  <div
+                  <article
                     key={message.id}
-                    role="article"
-                    // biome-ignore lint/a11y/noNoninteractiveTabindex: roving tabindex for keyboard navigation
                     tabIndex={index === visibleMessages.length - 1 ? 0 : -1}
                     aria-label={ariaLabel}
                     className={`rounded-lg px-3 py-2 text-sm leading-relaxed focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 ${
@@ -575,7 +574,7 @@ export function AutomationRoomChatPane({
                         : t("automations.chat.roleAssistant")}
                     </div>
                     <div className="whitespace-pre-wrap">{message.text}</div>
-                  </div>
+                  </article>
                 );
               })}
 

@@ -1710,7 +1710,7 @@ function formatRelativePast(
   return `${formatDurationMs(delta, { t })} ago`;
 }
 
-function _AutomationsDashboard({
+function AutomationsDashboard({
   items,
   onSelectItem,
   onCreateDraft,
@@ -2897,7 +2897,8 @@ function AutomationsLayout() {
 
         if (createdTriggers.length === 1) {
           const created = createdTriggers[0];
-          const trigger = created.trigger!;
+          const trigger = created.trigger;
+          if (!trigger) return await ctx.refreshAutomations();
           const reboundMetadata = buildCoordinatorTriggerConversationMetadata(
             trigger.id,
             bridgeConversationId,
@@ -2912,7 +2913,8 @@ function AutomationsLayout() {
 
         if (createdTasks.length === 1) {
           const created = createdTasks[0];
-          const task = created.task!;
+          const task = created.task;
+          if (!task) return await ctx.refreshAutomations();
           const reboundMetadata = buildCoordinatorConversationMetadata(
             task.id,
             bridgeConversationId,

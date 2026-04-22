@@ -99,7 +99,7 @@ export function AppsCatalogGrid({
                       </button>
                       {isActive ? (
                         <span
-                          aria-label="Running"
+                          title="Running"
                           className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
                         />
                       ) : null}

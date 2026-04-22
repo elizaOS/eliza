@@ -457,15 +457,10 @@ function TriggerKindSection({
       <FieldLabel variant="form" id={toggleLabelId}>
         {t("triggers.whatToRun")}
       </FieldLabel>
-      <div
-        role="radiogroup"
-        aria-labelledby={toggleLabelId}
-        className="mt-1.5 flex gap-2"
-      >
+      <div aria-labelledby={toggleLabelId} className="mt-1.5 flex gap-2">
         <button
           type="button"
-          role="radio"
-          aria-checked={form.kind === "text"}
+          aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
           className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "text"
@@ -477,8 +472,7 @@ function TriggerKindSection({
         </button>
         <button
           type="button"
-          role="radio"
-          aria-checked={form.kind === "workflow"}
+          aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
           className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "workflow"
