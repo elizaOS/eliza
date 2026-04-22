@@ -89,14 +89,12 @@ export function RunningAppsRow({
               </button>
 
               <span
-                aria-label={`Health: ${run.health.state}`}
                 title={needsAttention ? attentionReasons[0] : run.health.state}
                 className={`pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full ${tone.dot} ${tone.ring}`}
               />
 
               {needsAttention ? (
                 <span
-                  aria-label="Needs attention"
                   title={attentionReasons[0]}
                   className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn backdrop-blur-sm"
                 >
