@@ -26,8 +26,9 @@ function isComputerUseEnabled(): boolean {
 async function loadBaseAction(): Promise<Action | null> {
   try {
     // Dynamic import so a missing peer dependency does not break plugin load.
+    // Note: Uses package specifier; if dist/ is missing, ensure plugin-computeruse is built or update its package.json main field.
     const mod = (await import(
-      /* @vite-ignore */ "../../../../plugins/plugin-computeruse/src/index.ts"
+      /* @vite-ignore */ "@elizaos/plugin-computeruse"
     )) as {
       useComputerAction?: Action;
       default?: { actions?: readonly Action[] };
