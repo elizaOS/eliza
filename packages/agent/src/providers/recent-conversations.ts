@@ -12,6 +12,7 @@ import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
+  isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.js";
 import { hasAdminAccess } from "../security/access.js";
 import {
@@ -52,10 +53,10 @@ export const recentConversationsProvider: Provider = {
 
     try {
       const currentRoom = await runtime.getRoom(message.roomId);
+      const currentMeta = extractConversationMetadataFromRoom(currentRoom);
       if (
-        isAutomationConversationMetadata(
-          extractConversationMetadataFromRoom(currentRoom),
-        )
+        isAutomationConversationMetadata(currentMeta) ||
+        isPageScopedConversationMetadata(currentMeta)
       ) {
         return { text: "", values: {}, data: {} };
       }
