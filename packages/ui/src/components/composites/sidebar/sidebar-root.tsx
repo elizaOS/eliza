@@ -831,19 +831,18 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           />
         ) : null}
         {showsCollapsedState && variant === "default" ? (
-          <Button
-            variant="surface"
-            size="icon"
+          <button
+            type="button"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-3 left-3 z-40 h-8 w-8 rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt",
+              "fixed bottom-3 left-3 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}
             onClick={handleExpand}
           >
-            <PanelLeftOpen className="h-4 w-4" />
-          </Button>
+            <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden />
+          </button>
         ) : null}
         <React.Fragment key={renderedContentIdentity}>
           {variant === "mobile" ? (
