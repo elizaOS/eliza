@@ -77,24 +77,15 @@ const UploadIcon = ({ className }: { className?: string }) => (
 );
 
 const ResetIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"
-  />
+  <Icon className={className} d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />
 );
 
 const ChevronIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M6 9l6 6 6-6"
-  />
+  <Icon className={className} d="M6 9l6 6 6-6" />
 );
 
 const PlusIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M12 5v14M5 12h14"
-  />
+  <Icon className={className} d="M12 5v14M5 12h14" />
 );
 
 import {
@@ -200,7 +191,6 @@ export function CharacterEditor({
     chatAgentVoiceMuted: _chatAgentVoiceMuted,
     characterSaveError,
     handleCharacterFieldInput,
-    handleCharacterArrayInput,
     handleCharacterStyleInput,
     handleSaveCharacter,
     loadCharacter,
@@ -265,8 +255,6 @@ export function CharacterEditor({
   );
 
   /* ── Generation ─────────────────────────────────────────────────── */
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
     tab === "knowledge" ? "knowledge" : "personality",
   );
@@ -334,22 +322,19 @@ export function CharacterEditor({
       container.removeEventListener("scroll", updateActiveFromScroll);
   }, []);
 
-  const scrollToSection = useCallback(
-    (page: CharacterEditorPage) => {
-      const node = sectionRefs.current[page];
-      if (!node) {
-        setActivePage(page);
-        return;
-      }
-      isProgrammaticScrollRef.current = true;
+  const scrollToSection = useCallback((page: CharacterEditorPage) => {
+    const node = sectionRefs.current[page];
+    if (!node) {
       setActivePage(page);
-      node.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 600);
-    },
-    [],
-  );
+      return;
+    }
+    isProgrammaticScrollRef.current = true;
+    setActivePage(page);
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 600);
+  }, []);
 
   const handleKnowledgeDocumentsChange = useCallback(
     (documents: KnowledgeDocument[]) => {
@@ -1116,7 +1101,12 @@ export function CharacterEditor({
 
       commitCharacterSelection(target.entry, true);
     },
-    [commitCharacterSelection, handleSaveAll, pendingNavigation, scrollToSection],
+    [
+      commitCharacterSelection,
+      handleSaveAll,
+      pendingNavigation,
+      scrollToSection,
+    ],
   );
 
   useEffect(() => {
@@ -1125,27 +1115,6 @@ export function CharacterEditor({
       onHeaderActionsChange?.(null);
     };
   }, [onHeaderActionsChange]);
-
-  const renderSaveFeedback = () =>
-    hasStandaloneHeaderFeedback ? (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {characterSaveSuccess && (
-          <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
-            {characterSaveSuccess}
-          </span>
-        )}
-        {combinedSaveError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {combinedSaveError}
-          </span>
-        )}
-        {generateError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {generateError}
-          </span>
-        )}
-      </div>
-    ) : null;
 
   const renderContentActionButtons = (uploadInputId: string) => (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1210,103 +1179,6 @@ export function CharacterEditor({
           : t("charactereditor.Save", { defaultValue: "Save" })}
       </Button>
     </div>
-  );
-
-  /* ── Generate field ─────────────────────────────────────────────── */
-  const getCharContext = useCallback(
-    () => ({
-      name: d.name ?? "",
-      system: d.system ?? "",
-      bio: bioText,
-      style: d.style ?? { all: [], chat: [], post: [] },
-      postExamples: d.postExamples ?? [],
-    }),
-    [d, bioText],
-  );
-
-  const handleGenerate = useCallback(
-    async (field: string, mode: "replace" | "append" = "replace") => {
-      setGenerating(field);
-      setGenerateError(null);
-      try {
-        const { generated } = await client.generateCharacterField(
-          field,
-          getCharContext(),
-          mode,
-        );
-        if (field === "bio") {
-          handleFieldEdit("bio", generated.trim());
-        } else if (field === "system") {
-          handleFieldEdit("system", generated.trim());
-        } else if (field === "style") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (mode === "append") {
-              handleStyleEdit(
-                "all",
-                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "chat",
-                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "post",
-                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
-              );
-            } else {
-              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
-              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
-              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated style JSON:",
-              err,
-            );
-          }
-        } else if (field === "chatExamples") {
-          const formatted = normalizeCharacterMessageExamples(
-            generated,
-            fallbackCharacterName,
-          );
-          if (formatted.length > 0) {
-            handleFieldEdit("messageExamples", formatted);
-          }
-        } else if (field === "postExamples") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (Array.isArray(parsed)) {
-              if (mode === "append") {
-                handleCharacterArrayInput(
-                  "postExamples",
-                  [...(d.postExamples ?? []), ...parsed].join("\n"),
-                );
-              } else {
-                handleCharacterArrayInput("postExamples", parsed.join("\n"));
-              }
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated postExamples JSON:",
-              err,
-            );
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Generation failed";
-        setGenerateError(msg);
-      }
-      setGenerating(null);
-    },
-    [
-      fallbackCharacterName,
-      getCharContext,
-      d,
-      handleFieldEdit,
-      handleStyleEdit,
-      handleCharacterArrayInput,
-    ],
   );
 
   /* ── Style entry handlers ───────────────────────────────────────── */
@@ -1378,7 +1250,7 @@ export function CharacterEditor({
   const voiceSelectValue = selectedVoicePresetId ?? null;
   const combinedSaveError = voiceSaveError ?? characterSaveError;
   const hasStandaloneHeaderFeedback = Boolean(
-    characterSaveSuccess || combinedSaveError || generateError,
+    characterSaveSuccess || combinedSaveError,
   );
 
   /* ── Loading state ──────────────────────────────────────────────── */
@@ -1536,7 +1408,6 @@ export function CharacterEditor({
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
-                  generating={generating}
                   voiceSelectValue={voiceSelectValue}
                   activeVoicePreset={activeVoicePreset}
                   voiceTesting={voiceTesting}
@@ -1545,7 +1416,6 @@ export function CharacterEditor({
                   elevenLabsVoiceGroups={elevenLabsVoiceGroups}
                   edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
-                  handleGenerate={handleGenerate}
                   handleSelectPreset={handleSelectPreset}
                   handleStopTest={handleStopTest}
                   setVoiceTesting={setVoiceTesting}
@@ -1562,10 +1432,8 @@ export function CharacterEditor({
                 >
                   <CharacterStylePanel
                     d={d}
-                    generating={generating}
                     pendingStyleEntries={pendingStyleEntries}
                     styleEntryDrafts={styleEntryDrafts}
-                    handleGenerate={handleGenerate}
                     handlePendingStyleEntryChange={
                       handlePendingStyleEntryChange
                     }
@@ -1585,9 +1453,7 @@ export function CharacterEditor({
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
                     handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
                     t={t}
                   />
                 </div>
@@ -1607,7 +1473,12 @@ export function CharacterEditor({
             className="h-full"
             contentPadding={false}
             contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-5 py-5 sm:px-7 sm:py-7 lg:px-8"
-            footer={<WidgetHost slot="character" className="px-5 pt-4 sm:px-7 lg:px-8" />}
+            footer={
+              <WidgetHost
+                slot="character"
+                className="px-5 pt-4 sm:px-7 lg:px-8"
+              />
+            }
             sidebar={
               <Sidebar
                 testId="character-editor-sidebar"
@@ -1627,17 +1498,16 @@ export function CharacterEditor({
                             {combinedSaveError}
                           </span>
                         )}
-                        {generateError && (
-                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-                            {generateError}
-                          </span>
-                        )}
                       </div>
                     ) : null}
                     <Button
                       type="button"
                       className="h-9 w-full justify-center rounded-sm text-sm font-semibold tracking-[0.02em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
-                      style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
+                      style={
+                        hasPendingChanges
+                          ? accentGradientStyle
+                          : idleSaveBtnStyle
+                      }
                       disabled={
                         characterSaving ||
                         voiceSaving ||
@@ -1694,7 +1564,9 @@ export function CharacterEditor({
                         size="icon"
                         className="ml-auto h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
                         onClick={() => setResetConfirmOpen(true)}
-                        disabled={!activeCharacterRosterEntry || !currentCharacter}
+                        disabled={
+                          !activeCharacterRosterEntry || !currentCharacter
+                        }
                         title={t("charactereditor.Reset", {
                           defaultValue: "Reset",
                         })}
@@ -1889,7 +1761,6 @@ export function CharacterEditor({
                 <CharacterIdentityPanel
                   d={d}
                   bioText={bioText}
-                  generating={generating}
                   voiceSelectValue={voiceSelectValue}
                   activeVoicePreset={activeVoicePreset}
                   voiceTesting={voiceTesting}
@@ -1898,7 +1769,6 @@ export function CharacterEditor({
                   elevenLabsVoiceGroups={elevenLabsVoiceGroups}
                   edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
-                  handleGenerate={handleGenerate}
                   handleSelectPreset={handleSelectPreset}
                   handleStopTest={handleStopTest}
                   setVoiceTesting={setVoiceTesting}
@@ -1918,10 +1788,8 @@ export function CharacterEditor({
               >
                 <CharacterStylePanel
                   d={d}
-                  generating={generating}
                   pendingStyleEntries={pendingStyleEntries}
                   styleEntryDrafts={styleEntryDrafts}
-                  handleGenerate={handleGenerate}
                   handlePendingStyleEntryChange={handlePendingStyleEntryChange}
                   handleAddStyleEntry={handleAddStyleEntry}
                   handleRemoveStyleEntry={handleRemoveStyleEntry}
@@ -1944,9 +1812,7 @@ export function CharacterEditor({
                 <CharacterExamplesPanel
                   d={d}
                   normalizedMessageExamples={normalizedMessageExamples}
-                  generating={generating}
                   handleFieldEdit={handleFieldEdit}
-                  handleGenerate={handleGenerate}
                   t={t}
                 />
               </section>
@@ -1977,7 +1843,7 @@ export function CharacterEditor({
       {/* ── Footer (companion overlay only) ────────────────────────── */}
       {sceneOverlay && (
         <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
-          {(characterSaveSuccess || combinedSaveError || generateError) && (
+          {(characterSaveSuccess || combinedSaveError) && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               {characterSaveSuccess && (
                 <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
@@ -1987,11 +1853,6 @@ export function CharacterEditor({
               {combinedSaveError && (
                 <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
                   {combinedSaveError}
-                </span>
-              )}
-              {generateError && (
-                <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                  {generateError}
                 </span>
               )}
             </div>

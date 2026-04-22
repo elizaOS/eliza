@@ -110,9 +110,9 @@ const CopyIconSvg = ({ className }: { className?: string }) => (
 
 /* ── Shared styles for inline plus/trash buttons ─────────────────── */
 const inlineAddBtn =
-  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded-sm px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
 const inlineRemoveBtn =
-  "inline-flex items-center text-muted hover:text-danger hover:bg-danger/10 rounded p-1 -m-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50";
+  "inline-flex items-center text-muted hover:text-danger hover:bg-danger/10 rounded-sm p-1 -m-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-danger/50";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -392,92 +392,95 @@ export function CharacterStylePanel({
                       dragStyleIndex?.key === key &&
                       dragStyleIndex.index === index;
                     return (
-                    <div
-                      key={`${key}:${item}`}
-                      draggable
-                      onDragStart={(e: DragEvent<HTMLDivElement>) => {
-                        setDragStyleIndex({ key, index });
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragOver={(e: DragEvent<HTMLDivElement>) => {
-                        if (
-                          dragStyleIndex === null ||
-                          dragStyleIndex.key !== key ||
-                          dragStyleIndex.index === index
-                        )
-                          return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                      }}
-                      onDrop={(e: DragEvent<HTMLDivElement>) => {
-                        e.preventDefault();
-                        if (
-                          dragStyleIndex === null ||
-                          dragStyleIndex.key !== key ||
-                          dragStyleIndex.index === index
-                        )
-                          return;
-                        handleReorderStyleEntries(
-                          key,
-                          reorderStyle(items, dragStyleIndex.index, index),
-                        );
-                        setDragStyleIndex(null);
-                      }}
-                      onDragEnd={() => setDragStyleIndex(null)}
-                      className={`group flex items-start gap-2 transition-opacity ${isDragging ? "opacity-40" : ""}`}
-                    >
-                      <span
-                        className="mt-1 shrink-0 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
-                        aria-hidden="true"
-                        title={t("charactereditor.DragToReorder", {
-                          defaultValue: "Drag to reorder",
-                        })}
-                      >
-                        <GripIconSvg />
-                      </span>
-                      <span className="mt-0.5 shrink-0 text-2xs font-bold text-accent">
-                        {index + 1}
-                      </span>
-                      <Textarea
-                        value={styleEntryDrafts[key]?.[index] ?? item}
-                        rows={1}
-                        onChange={(
-                          e: ChangeEvent<
-                            HTMLInputElement | HTMLTextAreaElement
-                          >,
-                        ) =>
-                          handleStyleEntryDraftChange(
-                            key,
-                            index,
-                            e.target.value,
+                      <div
+                        key={`${key}:${item}`}
+                        draggable
+                        onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                          setDragStyleIndex({ key, index });
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                          if (
+                            dragStyleIndex === null ||
+                            dragStyleIndex.key !== key ||
+                            dragStyleIndex.index === index
                           )
-                        }
-                        onBlur={() => handleCommitStyleEntry(key, index)}
-                        aria-label={`${t(`charactereditor.StyleRules.${key}`, {
-                          defaultValue: "Style rule",
-                        })} ${index + 1}`}
-                        className="min-w-0 flex-1 resize-none border-none bg-transparent p-0 font-mono text-xs leading-normal text-txt [field-sizing:content] min-h-[1.5em] focus-visible:outline-none focus-visible:shadow-none"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
-                        onClick={() => handleRemoveStyleEntry(key, index)}
-                        title={t("common.remove")}
-                        aria-label={`${t("common.remove")} ${t(
-                          `charactereditor.StyleRules.${key}`,
-                          {
-                            defaultValue: "style rule",
-                          },
-                        )} ${index + 1}`}
+                            return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e: DragEvent<HTMLDivElement>) => {
+                          e.preventDefault();
+                          if (
+                            dragStyleIndex === null ||
+                            dragStyleIndex.key !== key ||
+                            dragStyleIndex.index === index
+                          )
+                            return;
+                          handleReorderStyleEntries(
+                            key,
+                            reorderStyle(items, dragStyleIndex.index, index),
+                          );
+                          setDragStyleIndex(null);
+                        }}
+                        onDragEnd={() => setDragStyleIndex(null)}
+                        className={`group flex items-start gap-2 transition-opacity ${isDragging ? "opacity-40" : ""}`}
                       >
-                        <TrashIconSvg />
-                      </Button>
-                    </div>
+                        <span
+                          className="mt-1 shrink-0 text-muted opacity-30 transition-opacity group-hover:opacity-80 cursor-grab active:cursor-grabbing select-none"
+                          aria-hidden="true"
+                          title={t("charactereditor.DragToReorder", {
+                            defaultValue: "Drag to reorder",
+                          })}
+                        >
+                          <GripIconSvg />
+                        </span>
+                        <span className="mt-0.5 shrink-0 text-2xs font-bold text-accent">
+                          {index + 1}
+                        </span>
+                        <Textarea
+                          value={styleEntryDrafts[key]?.[index] ?? item}
+                          rows={1}
+                          onChange={(
+                            e: ChangeEvent<
+                              HTMLInputElement | HTMLTextAreaElement
+                            >,
+                          ) =>
+                            handleStyleEntryDraftChange(
+                              key,
+                              index,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={() => handleCommitStyleEntry(key, index)}
+                          aria-label={`${t(
+                            `charactereditor.StyleRules.${key}`,
+                            {
+                              defaultValue: "Style rule",
+                            },
+                          )} ${index + 1}`}
+                          className="min-w-0 flex-1 resize-none border-none bg-transparent p-0 font-mono text-xs leading-normal text-txt [field-sizing:content] min-h-[1.5em] focus-visible:outline-none focus-visible:shadow-none"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="mt-0.5 h-auto w-auto shrink-0 p-0 text-muted opacity-0 transition-[opacity,color] duration-150 hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => handleRemoveStyleEntry(key, index)}
+                          title={t("common.remove")}
+                          aria-label={`${t("common.remove")} ${t(
+                            `charactereditor.StyleRules.${key}`,
+                            {
+                              defaultValue: "style rule",
+                            },
+                          )} ${index + 1}`}
+                        >
+                          <TrashIconSvg />
+                        </Button>
+                      </div>
                     );
                   })
                 ) : (
-                  <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
+                  <div className="py-3 text-xs-tight text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
                       defaultValue:
                         STYLE_SECTION_EMPTY_STATES[key].defaultValue,
@@ -501,7 +504,7 @@ export function CharacterStylePanel({
                       handleAddStyleEntry(key);
                     }
                   }}
-                  className="min-w-0 text-xs h-7 flex-1 rounded-md border border-border bg-white/[0.03] px-2 font-mono text-xs-tight text-txt outline-none focus:border-accent"
+                  className="h-7 min-w-0 flex-1 rounded-none border-0 border-b border-border/40 bg-transparent px-0 font-mono text-xs-tight text-txt outline-none focus:border-accent"
                 />
                 <button
                   type="button"
@@ -589,7 +592,7 @@ export function CharacterExamplesPanel({
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);
                     }}
-                    className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                    className="h-7 flex-1 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                   />
                 </div>
               ))}
@@ -637,7 +640,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
-            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
+            <div className="py-3 text-xs-tight text-muted">
               {t("charactereditor.NoChatExamples", {
                 defaultValue: "No chat examples yet.",
               })}
@@ -727,7 +730,7 @@ export function CharacterExamplesPanel({
                     updated[pi] = e.target.value;
                     handleFieldEdit("postExamples", updated);
                   }}
-                  className="h-7 flex-1 rounded-md border border-border/50 bg-white/[0.03] px-2.5 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
+                  className="h-7 flex-1 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-xs-tight leading-tight text-txt outline-none focus:border-accent"
                 />
                 <Button
                   variant="ghost"
@@ -749,7 +752,7 @@ export function CharacterExamplesPanel({
             );
           })}
           {(d.postExamples ?? []).length === 0 && (
-            <div className="rounded-md border border-dashed border-border/40 px-3 py-4 text-center text-xs-tight text-muted">
+            <div className="py-3 text-xs-tight text-muted">
               {t("charactereditor.NoPostExamples", {
                 defaultValue: "No post examples yet.",
               })}
