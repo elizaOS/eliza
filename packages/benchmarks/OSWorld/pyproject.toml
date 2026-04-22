@@ -37,7 +37,7 @@ dependencies = [
     "transformers~=5.0.0rc3",
     "torch~=2.8.0",
     "accelerate",
-    "opencv-python~=4.8.1.78",
+    "opencv-python~=4.13.0.92",
     "matplotlib~=3.10.8",
     "psutil~=5.9.6",
     "tqdm~=4.66.3",
