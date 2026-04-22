@@ -1674,6 +1674,111 @@ function TaskAutomationDetailPane({
   );
 }
 
+const AUTOMATION_DRAFT_EXAMPLES: Array<{
+  icon: LucideIcon;
+  label: string;
+  prompt: string;
+}> = [
+  {
+    icon: Mail,
+    label: "Daily inbox digest",
+    prompt:
+      "Every weekday at 9am, summarize my Gmail inbox from the last 24 hours and post the summary to my #daily channel in Slack.",
+  },
+  {
+    icon: Clock3,
+    label: "Hourly health check",
+    prompt:
+      "Every hour, review recent activity, check that nothing is stuck or errored, and notify me if anything needs attention.",
+  },
+  {
+    icon: GitBranch,
+    label: "GitHub issue triage",
+    prompt:
+      "When a new issue is opened on my GitHub repo, classify it (bug / feature / question / docs), add the matching label, and post a welcoming comment.",
+  },
+  {
+    icon: SquareTerminal,
+    label: "Goal: ship onboarding",
+    prompt:
+      "Help me ship the onboarding refactor: track subtasks, surface blockers, and check in with me daily until it's done.",
+  },
+];
+
+function AutomationDraftPane({
+  automation,
+  onPromptSubmit,
+}: {
+  automation: AutomationItem;
+  onPromptSubmit: (prompt: string) => void;
+}) {
+  const conversationId = automation.room?.conversationId ?? null;
+
+  const sendPrompt = useCallback(
+    async (prompt: string) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+      if (!conversationId) {
+        onPromptSubmit(trimmed);
+        return;
+      }
+      try {
+        await client.sendConversationMessage(
+          conversationId,
+          `[SYSTEM]${AUTOMATION_DRAFT_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${trimmed}`,
+          "DM",
+        );
+      } catch (error) {
+        console.error("[AutomationDraftPane] send failed", error);
+      }
+    },
+    [conversationId, onPromptSubmit],
+  );
+
+  return (
+    <div className="space-y-4 px-4 pt-6">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-txt">
+          What would you like to automate?
+        </h2>
+        <p className="text-xs-tight text-muted/80">
+          Describe it in chat. Eliza will pick the right shape — a recurring
+          prompt, a goal-oriented task, or a deterministic workflow — and set
+          it up.
+        </p>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {AUTOMATION_DRAFT_EXAMPLES.map((example) => {
+          const Icon = example.icon;
+          return (
+            <button
+              key={example.label}
+              type="button"
+              onClick={() => void sendPrompt(example.prompt)}
+              className="group flex items-start gap-2 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-2 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
+            >
+              <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent/80" aria-hidden />
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="text-xs-tight font-semibold text-txt">
+                  {example.label}
+                </div>
+                <div className="line-clamp-2 text-[11px] leading-snug text-muted/70">
+                  {example.prompt}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="px-1 text-[11px] text-muted/60">
+        Or describe your own automation in the chat panel on the right.
+      </p>
+    </div>
+  );
+}
+
 function IconAction({
   icon,
   label,
@@ -2215,7 +2320,7 @@ function AutomationSidebarItem({
     Icon = Workflow;
     tone = item.isDraft ? "warning" : item.enabled ? "success" : "muted";
   } else if (item.type === "automation_draft") {
-    Icon = Zap;
+    Icon = FileText;
     tone = "warning";
   } else if (item.trigger) {
     Icon = Clock3;
@@ -2397,9 +2502,14 @@ function AutomationsLayout() {
       if (item.trigger) {
         void loadTriggerRuns(item.trigger.id);
       }
+      const roomConversationId = item.room?.conversationId;
+      if (roomConversationId) {
+        void handleSelectConversation(roomConversationId);
+      }
     },
     [
       ctx,
+      handleSelectConversation,
       loadTriggerRuns,
       setEditingId,
       setEditorOpen,
@@ -2653,12 +2763,6 @@ function AutomationsLayout() {
     [createWorkflowDraft],
   );
 
-  // Open templates modal — disabled when n8n is not configured.
-  const handleNewWorkflowCTA = useCallback(() => {
-    showAutomationsList();
-    setTemplatesModalOpen(true);
-  }, [showAutomationsList]);
-
   // Zero-state: open trigger or task forms, switching filter first.
   const handleZeroStateNewTrigger = useCallback(() => {
     showAutomationsList();
@@ -2671,16 +2775,6 @@ function AutomationsLayout() {
     setFilter("coordinator");
     openCreateTask();
   }, [openCreateTask, setFilter, showAutomationsList]);
-
-  const handleOpenCreateTask = useCallback(() => {
-    showAutomationsList();
-    openCreateTask();
-  }, [openCreateTask, showAutomationsList]);
-
-  const handleOpenCreateTrigger = useCallback(() => {
-    showAutomationsList();
-    openCreateTrigger();
-  }, [openCreateTrigger, showAutomationsList]);
 
   const handleRefreshWorkflows = useCallback(async () => {
     setPageNotice(null);
@@ -2785,6 +2879,10 @@ function AutomationsLayout() {
     [ctx, t],
   );
 
+  const draftItems = useMemo(
+    () => visibleItems.filter((item) => item.type === "automation_draft"),
+    [visibleItems],
+  );
   const workflowItems = useMemo(
     () => visibleItems.filter((item) => item.type === "n8n_workflow"),
     [visibleItems],
@@ -2833,8 +2931,6 @@ function AutomationsLayout() {
       <Plus className="h-3.5 w-3.5" aria-hidden />
     </button>
   );
-
-  const newWorkflowDisabled = n8nStatus?.mode === "disabled";
 
   const nodeCatalogActive = activeSubpage === "node-catalog";
   const nodeCatalogLabel = t("automations.nodeCatalog", {
@@ -2931,6 +3027,20 @@ function AutomationsLayout() {
             </div>
           ) : (
             <div className="mt-0.5 space-y-1">
+              {draftItems.length > 0 && (
+                <AutomationCollapsibleSection
+                  sectionKey="drafts"
+                  label="Drafts"
+                  icon={<FileText className="h-3.5 w-3.5" aria-hidden />}
+                  count={draftItems.length}
+                  collapsed={collapsedSections.has("drafts")}
+                  onToggleCollapsed={toggleSectionCollapsed}
+                  emptyLabel="No drafts"
+                >
+                  {draftItems.map(renderItem)}
+                </AutomationCollapsibleSection>
+              )}
+
               <AutomationCollapsibleSection
                 sectionKey="workflows"
                 label="Workflows"
@@ -2938,8 +3048,6 @@ function AutomationsLayout() {
                 count={workflowItems.length}
                 collapsed={collapsedSections.has("workflows")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={!newWorkflowDisabled ? handleNewWorkflowCTA : undefined}
-                addLabel={newWorkflowLabel}
                 emptyLabel="No workflows"
               >
                 {workflowItems.map(renderItem)}
@@ -2952,10 +3060,6 @@ function AutomationsLayout() {
                 count={taskItems.length}
                 collapsed={collapsedSections.has("coordinator")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={handleOpenCreateTask}
-                addLabel={t("automations.newCoordinator", {
-                  defaultValue: "New coordinator",
-                })}
                 emptyLabel="No coordinators"
               >
                 {taskItems.map(renderItem)}
@@ -2968,10 +3072,6 @@ function AutomationsLayout() {
                 count={triggerItems.length}
                 collapsed={collapsedSections.has("scheduled")}
                 onToggleCollapsed={toggleSectionCollapsed}
-                onAdd={handleOpenCreateTrigger}
-                addLabel={t("automations.newSchedule", {
-                  defaultValue: "New schedule",
-                })}
                 emptyLabel="No schedules"
               >
                 {triggerItems.map(renderItem)}
@@ -3066,6 +3166,13 @@ function AutomationsLayout() {
           )
         ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
+        ) : resolvedSelectedItem?.type === "automation_draft" ? (
+          <AutomationDraftPane
+            automation={resolvedSelectedItem}
+            onPromptSubmit={(prompt) =>
+              void createAutomationDraft({ initialPrompt: prompt })
+            }
+          />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane
             automation={resolvedSelectedItem}
