@@ -803,6 +803,10 @@ export async function handleLifeOpsRoutes(
           url.searchParams.get("replyNeededOnly"),
           "replyNeededOnly",
         ),
+        includeSpamTrash: parseBooleanQuery(
+          url.searchParams.get("includeSpamTrash"),
+          "includeSpamTrash",
+        ),
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailSearch(url, request));
