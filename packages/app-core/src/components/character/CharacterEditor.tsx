@@ -1656,12 +1656,12 @@ export function CharacterEditor({
                         );
                       })}
                     </nav>
-                    <div className="mt-2 flex flex-col gap-1 px-1">
+                    <div className="mt-3 flex flex-col gap-1 px-1">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        className="h-7 w-full justify-center rounded-sm text-xs-tight font-semibold"
+                        className="h-7 w-full justify-center rounded-sm text-xs-tight font-medium text-muted hover:bg-bg-muted/60 hover:text-txt"
                         onClick={() => setResetConfirmOpen(true)}
                         disabled={!activeCharacterRosterEntry || !currentCharacter}
                       >
