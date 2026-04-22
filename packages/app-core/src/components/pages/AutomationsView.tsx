@@ -33,6 +33,7 @@ import {
   FileText,
   GitBranch,
   Grid3x3,
+  LayoutDashboard,
   type LucideIcon,
   Mail,
   Pause,
@@ -3570,6 +3571,12 @@ function AutomationsLayout() {
           )
         ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
+        ) : showDashboard && !resolvedSelectedItem ? (
+          <AutomationsDashboard
+            items={ctx.allItems}
+            onSelectItem={selectItem}
+            onCreateDraft={() => void createAutomationDraft()}
+          />
         ) : resolvedSelectedItem?.type === "automation_draft" ? (
           <AutomationDraftPane
             automation={resolvedSelectedItem}
