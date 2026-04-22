@@ -26,6 +26,9 @@ export interface UseCalendarWeekResult {
   windowStart: Date;
   windowEnd: Date;
   refresh: () => Promise<void>;
+  goToToday: () => void;
+  goPrevious: () => void;
+  goNext: () => void;
 }
 
 function windowDaysForMode(mode: CalendarViewMode): number {
@@ -52,17 +55,39 @@ export function useCalendarWeek(
   const [viewMode, setViewMode] = useState<CalendarViewMode>(
     opts.viewMode ?? "week",
   );
+  const [baseDate, setBaseDate] = useState<Date>(
+    () => opts.baseDate ?? new Date(),
+  );
   const [events, setEvents] = useState<LifeOpsCalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const baseDate = opts.baseDate ?? new Date();
   const windowStart = useMemo(() => startOfLocalDay(baseDate), [baseDate]);
   const windowEnd = useMemo(() => {
     const end = new Date(windowStart);
     end.setDate(end.getDate() + windowDaysForMode(viewMode));
     return end;
   }, [windowStart, viewMode]);
+
+  const shiftBase = useCallback(
+    (direction: 1 | -1) => {
+      setBaseDate((current) => {
+        const next = new Date(current);
+        const days = windowDaysForMode(viewMode);
+        if (viewMode === "month") {
+          next.setMonth(next.getMonth() + direction);
+        } else {
+          next.setDate(next.getDate() + direction * days);
+        }
+        return next;
+      });
+    },
+    [viewMode],
+  );
+
+  const goToToday = useCallback(() => setBaseDate(new Date()), []);
+  const goPrevious = useCallback(() => shiftBase(-1), [shiftBase]);
+  const goNext = useCallback(() => shiftBase(1), [shiftBase]);
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -104,5 +129,8 @@ export function useCalendarWeek(
     windowStart,
     windowEnd,
     refresh: fetch,
+    goToToday,
+    goPrevious,
+    goNext,
   };
 }

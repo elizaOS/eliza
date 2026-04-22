@@ -15,8 +15,10 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 // -- Bundled widget component imports ----------------------------------------
 
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
+import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
+import { WALLET_STATUS_WIDGET } from "../components/chat/widgets/wallet-status";
 
 // -- Static component registry -----------------------------------------------
 
@@ -63,6 +65,7 @@ function seedLegacyWidgets(
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
+seedLegacyWidgets([WALLET_STATUS_WIDGET, BROWSER_STATUS_WIDGET]);
 
 /**
  * Public API for plugins outside app-core to seed their own widget components.
@@ -120,6 +123,26 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: 300,
     defaultEnabled: true,
   },
+  // Wallet status — surfaces /wallet state in the right rail.
+  {
+    id: WALLET_STATUS_WIDGET.id,
+    pluginId: WALLET_STATUS_WIDGET.pluginId,
+    slot: "chat-sidebar",
+    label: "Wallet",
+    icon: "Wallet",
+    order: WALLET_STATUS_WIDGET.order,
+    defaultEnabled: WALLET_STATUS_WIDGET.defaultEnabled,
+  },
+  // Browser workspace status — surfaces /browser state in the right rail.
+  {
+    id: BROWSER_STATUS_WIDGET.id,
+    pluginId: BROWSER_STATUS_WIDGET.pluginId,
+    slot: "chat-sidebar",
+    label: "Browser",
+    icon: "Globe",
+    order: BROWSER_STATUS_WIDGET.order,
+    defaultEnabled: BROWSER_STATUS_WIDGET.defaultEnabled,
+  },
 ];
 
 // -- Resolution --------------------------------------------------------------
@@ -134,7 +157,14 @@ export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
  * ship a runtime todo plugin, and leaving the fallback enabled crowds out the
  * LifeOps-first sidebar with a stale generic tasks panel.
  */
-const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set(["agent-orchestrator"]);
+const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
+  "agent-orchestrator",
+  // Wallet + browser-workspace are core app-core surfaces, not separately
+  // loadable plugins, so their widgets must render even when the runtime
+  // plugin snapshot doesn't list them as plugins.
+  "wallet",
+  "browser-workspace",
+]);
 
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;

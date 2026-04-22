@@ -2313,6 +2313,12 @@ export interface ConfirmLifeOpsBrowserSessionRequest {
   confirmed: boolean;
 }
 
+export interface UpdateLifeOpsBrowserSessionProgressRequest {
+  currentActionIndex?: number;
+  result?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
