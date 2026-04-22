@@ -145,6 +145,35 @@ function createWorkflowDraftId(): string {
   return globalThis.crypto.randomUUID();
 }
 
+// Reads `#automations.trigger=<id>` from the URL hash. The LifeOps chat-sidebar
+// Automations widget writes this when a row is clicked, so /automations can
+// focus the matching trigger card on navigation. Duplicated here (instead of
+// cross-importing from @elizaos/app-lifeops) to keep the package dep graph
+// one-way (app-lifeops → app-core).
+const AUTOMATIONS_TRIGGER_HASH_KEY = "automations.trigger";
+
+function readAutomationsTriggerFromHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  if (!raw) return null;
+  for (const chunk of raw.split("&")) {
+    if (!chunk) continue;
+    const eq = chunk.indexOf("=");
+    if (eq < 0) continue;
+    try {
+      const key = decodeURIComponent(chunk.slice(0, eq));
+      if (key !== AUTOMATIONS_TRIGGER_HASH_KEY) continue;
+      const value = decodeURIComponent(chunk.slice(eq + 1));
+      return value || null;
+    } catch {
+      // Skip malformed encodings.
+    }
+  }
+  return null;
+}
+
 function getNavigationPathFromWindow(): string {
   if (typeof window === "undefined") return "/";
   return window.location.protocol === "file:"
@@ -609,6 +638,22 @@ function useAutomationsViewController() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editorOpen]);
+
+  // When the LifeOps chat-sidebar Automations widget row is clicked, it
+  // writes `#automations.trigger=<id>` and `setTab("automations")`s over.
+  // Read the hash on mount and on any hashchange to focus that trigger.
+  useEffect(() => {
+    function applyHash(): void {
+      const hashTriggerId = readAutomationsTriggerFromHash();
+      if (!hashTriggerId) return;
+      const nextId = `trigger:${hashTriggerId}`;
+      setSelectedItemId((prev) => (prev === nextId ? prev : nextId));
+      setSelectedItemKind("trigger");
+    }
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
 
   const resetEditor = () => {
     setForm(emptyForm);
