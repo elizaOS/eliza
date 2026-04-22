@@ -4,7 +4,6 @@ import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	ActionResult,
 	Entity,
-	EvaluationExample,
 	Evaluator,
 	IAgentRuntime,
 	Memory,
@@ -12,6 +11,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
+import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("RELATIONSHIP_EXTRACTION");
@@ -57,7 +57,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? false,
-	examples: (spec.examples ?? []) as unknown as EvaluationExample[],
+	examples: toEvaluationExamples(spec.examples),
 
 	validate: async (
 		_runtime: IAgentRuntime,
