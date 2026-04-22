@@ -1,5 +1,4 @@
 import {
-  Button,
   ChatConversationItem,
   ChatSourceIcon,
   DropdownMenu,
@@ -12,6 +11,7 @@ import {
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  Switch,
   TooltipProvider,
 } from "@elizaos/ui";
 import {
@@ -25,15 +25,8 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
-import type { PluginInfo } from "../../api/client-types-config";
 import {
   PULSE_STATUSES,
   STATUS_DOT,
@@ -117,28 +110,6 @@ function renderRailIdentity(row: ConversationsSidebarRow) {
 function rowListId(row: ConversationsSidebarRow): string {
   if (isTerminalRow(row)) return `${TERMINAL_ID_PREFIX}${row.id}`;
   return row.kind === "inbox" ? `${INBOX_ID_PREFIX}${row.id}` : row.id;
-}
-
-function renderPluginIcon(plugin: PluginInfo): React.ReactNode | null {
-  const icon = resolveIcon(plugin);
-  if (!icon) return null;
-  if (typeof icon === "string") {
-    const src = iconImageSource(icon);
-    return src ? (
-      <img
-        src={src}
-        alt=""
-        aria-hidden
-        className="h-4 w-4 shrink-0 object-contain"
-      />
-    ) : (
-      <span aria-hidden className="text-sm leading-none">
-        {icon}
-      </span>
-    );
-  }
-  const IconComponent = icon;
-  return <IconComponent className="h-4 w-4" />;
 }
 
 export function ConversationsSidebar({
@@ -855,33 +826,20 @@ export function ConversationsSidebar({
                             </span>
                           </SidebarContent.ItemBody>
                         </SidebarContent.ItemButton>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-[var(--radius-sm)] border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
-                            plugin.enabled
-                              ? "border-accent bg-accent text-accent-fg"
-                              : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
-                          } ${
-                            toggleDisabled
-                              ? "cursor-not-allowed opacity-60"
-                              : "cursor-pointer"
-                          }`}
-                          onClick={(event: React.MouseEvent) => {
-                            event.stopPropagation();
-                            void handleConnectorToggle(
-                              plugin.id,
-                              !plugin.enabled,
-                            );
-                          }}
+                        <Switch
+                          checked={plugin.enabled}
                           disabled={toggleDisabled}
-                        >
-                          {isToggleBusy
-                            ? "..."
-                            : plugin.enabled
-                              ? t("common.on")
-                              : t("common.off")}
-                        </Button>
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onKeyDown={(event) => {
+                            event.stopPropagation();
+                          }}
+                          onCheckedChange={(checked) => {
+                            void handleConnectorToggle(plugin.id, checked);
+                          }}
+                          aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+                        />
                       </SidebarContent.Item>
                     );
                   })
@@ -1007,10 +965,7 @@ export function ConversationsSidebar({
   );
 }
 
-type TranslateFn = (
-  key: string,
-  options?: Record<string, unknown>,
-) => string;
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 interface CollapsibleChannelSectionProps {
   sectionKey: string;
@@ -1130,10 +1085,7 @@ function CollapsibleChannelSection({
           </div>
         ) : null
       ) : (
-        <div
-          id={`channel-section-body-${sectionKey}`}
-          className="space-y-0"
-        >
+        <div id={`channel-section-body-${sectionKey}`} className="space-y-0">
           {rows.map((row) => {
             const conversationId = rowListId(row);
             return (
