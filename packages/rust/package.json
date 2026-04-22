@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/rust",
-  "version": "2.0.0-alpha.290",
+  "version": "2.0.0-alpha.291",
   "description": "elizaOS Core - Rust runtime and types",
   "type": "module",
   "main": "pkg/node/elizaos.js",
