@@ -1713,11 +1713,13 @@ function AutomationDraftPane({
   onPromptSubmit: (prompt: string) => void;
 }) {
   const conversationId = automation.room?.conversationId ?? null;
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const sendPrompt = useCallback(
     async (prompt: string) => {
       const trimmed = prompt.trim();
       if (!trimmed) return;
+      setSendError(null);
       if (!conversationId) {
         onPromptSubmit(trimmed);
         return;
@@ -1729,7 +1731,11 @@ function AutomationDraftPane({
           "DM",
         );
       } catch (error) {
-        console.error("[AutomationDraftPane] send failed", error);
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : "Failed to send automation prompt.",
+        );
       }
     },
     [conversationId, onPromptSubmit],
@@ -1775,6 +1781,11 @@ function AutomationDraftPane({
       <p className="px-1 text-[11px] text-muted/60">
         Or describe your own automation in the chat panel on the right.
       </p>
+      {sendError ? (
+        <div className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
+          {sendError}
+        </div>
+      ) : null}
     </div>
   );
 }
