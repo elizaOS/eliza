@@ -218,7 +218,20 @@ export function Header({
         style={{ WebkitUserSelect: "none", userSelect: "none" }}
         data-no-camera-drag="true"
       >
-        <div className="py-1 ps-2 pe-2" data-header-toolbar-padding>
+        {/*
+         * Push the interactive toolbar row below the macOS native drag strip
+         * (see electrobun-mac-window-drag.css and window-effects.mm). Without
+         * this, the top ~22pt of the nav buttons sits under the transparent
+         * NSView that handles window-move, so half the button only responds
+         * on its bottom half. `--eliza-macos-frame-top-inset` is only set
+         * when html.eliza-electrobun-frameless is active, so other shells
+         * (web, detached overlays) are unaffected.
+         */}
+        <div
+          className="py-1 ps-2 pe-2"
+          style={{ paddingTop: "var(--eliza-macos-frame-top-inset, 0.25rem)" }}
+          data-header-toolbar-padding
+        >
           <div
             className={`pointer-events-auto relative mx-auto w-full rounded-[20px] border bg-clip-padding transition-all sm:rounded-[22px] ${headerFrameClassName} ${headerShellClassName}`}
             data-testid="header-glass-shell"
