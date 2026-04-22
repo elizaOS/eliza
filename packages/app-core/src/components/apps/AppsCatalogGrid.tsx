@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import type { MouseEvent } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
@@ -13,7 +12,6 @@ interface AppsCatalogGridProps {
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
-  onRefresh: () => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -25,24 +23,12 @@ export function AppsCatalogGrid({
   searchQuery,
   visibleApps,
   onLaunch,
-  onRefresh,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
   const sections = groupAppsForCatalog(visibleApps, favoriteAppNames);
   return (
     <div data-testid="apps-catalog-grid">
-      <div className="mb-4 flex justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-xl px-3 shadow-sm"
-          onClick={onRefresh}
-        >
-          {t("common.refresh")}
-        </Button>
-      </div>
-
       {error ? (
         <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
           {error}

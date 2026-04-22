@@ -37,6 +37,12 @@
 			"../../../node_modules/.bun/node_modules"
 		],
 		"paths": {
+			"@elizaos/plugin-browser-bridge": [
+				"./src/index.ts"
+			],
+			"@elizaos/plugin-browser-bridge/*": [
+				"./src/*"
+			],
 			"@elizaos/agent": [
 				"../agent/src/index.ts"
 			],

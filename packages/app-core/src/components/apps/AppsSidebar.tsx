@@ -4,7 +4,7 @@ import {
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
-import { Play, Search, Star } from "lucide-react";
+import { Clock, Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
@@ -20,9 +20,9 @@ interface AppsSidebarProps {
   runs: AppRunSummary[];
   activeAppNames: ReadonlySet<string>;
   favoriteAppNames: ReadonlySet<string>;
+  /** Ordered list of recently launched app names, most-recent first. */
+  recentAppNames: readonly string[];
   selectedAppName: string | null;
-  searchQuery: string;
-  onSearchQueryChange: (value: string) => void;
   onLaunchApp: (app: RegistryAppInfo) => void;
   onOpenRun: (run: AppRunSummary) => void;
 }
@@ -35,75 +35,71 @@ const GENRE_ORDER: readonly AppCatalogSectionKey[] = [
   "other",
 ];
 
-function matchesSearch(
-  app: Pick<RegistryAppInfo, "name" | "displayName" | "description">,
-  normalizedQuery: string,
-): boolean {
-  if (!normalizedQuery) return true;
-  return (
-    app.name.toLowerCase().includes(normalizedQuery) ||
-    (app.displayName ?? "").toLowerCase().includes(normalizedQuery) ||
-    (app.description ?? "").toLowerCase().includes(normalizedQuery)
-  );
-}
-
 export function AppsSidebar({
   apps,
   runs,
   activeAppNames,
   favoriteAppNames,
+  recentAppNames,
   selectedAppName,
-  searchQuery,
-  onSearchQueryChange,
   onLaunchApp,
   onOpenRun,
 }: AppsSidebarProps) {
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  const filteredApps = useMemo(
-    () => apps.filter((app) => matchesSearch(app, normalizedQuery)),
-    [apps, normalizedQuery],
-  );
-
   const appsByName = useMemo(() => {
     const map = new Map<string, RegistryAppInfo>();
     for (const app of apps) map.set(app.name, app);
     return map;
   }, [apps]);
 
-  const runningEntries = useMemo(() => {
-    return runs
-      .map((run) => {
-        const app = appsByName.get(run.appName);
-        const displayName = app?.displayName ?? run.displayName ?? run.appName;
-        const description = app?.description ?? "";
-        if (
-          normalizedQuery &&
-          !matchesSearch(
-            { name: run.appName, displayName, description },
-            normalizedQuery,
-          )
-        ) {
-          return null;
-        }
-        return { run, app, displayName };
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-      .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
-  }, [appsByName, normalizedQuery, runs]);
-
-  const favoriteEntries = useMemo(() => {
-    return filteredApps
+  const starredEntries = useMemo(() => {
+    return apps
       .filter((app) => favoriteAppNames.has(app.name))
       .sort((a, b) =>
         (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name),
       );
-  }, [favoriteAppNames, filteredApps]);
+  }, [apps, favoriteAppNames]);
+
+  const activeEntries = useMemo(() => {
+    return runs
+      .map((run) => {
+        const app = appsByName.get(run.appName);
+        const displayName = app?.displayName ?? run.displayName ?? run.appName;
+        return { run, app, displayName };
+      })
+      .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
+  }, [appsByName, runs]);
+
+  /** Apps already surfaced above the Recent/genre sections. */
+  const aboveRecentAppNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const app of starredEntries) set.add(app.name);
+    for (const entry of activeEntries) set.add(entry.run.appName);
+    return set;
+  }, [activeEntries, starredEntries]);
+
+  const recentEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const result: RegistryAppInfo[] = [];
+    for (const name of recentAppNames) {
+      if (seen.has(name) || aboveRecentAppNames.has(name)) continue;
+      const app = appsByName.get(name);
+      if (!app) continue;
+      seen.add(name);
+      result.push(app);
+    }
+    return result;
+  }, [aboveRecentAppNames, appsByName, recentAppNames]);
+
+  const aboveGenreAppNames = useMemo(() => {
+    const set = new Set(aboveRecentAppNames);
+    for (const app of recentEntries) set.add(app.name);
+    return set;
+  }, [aboveRecentAppNames, recentEntries]);
 
   const genreEntries = useMemo(() => {
     const buckets = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
-    for (const app of filteredApps) {
-      if (favoriteAppNames.has(app.name)) continue;
+    for (const app of apps) {
+      if (aboveGenreAppNames.has(app.name)) continue;
       const key = getAppCatalogSectionKey(app);
       const list = buckets.get(key) ?? [];
       list.push(app);
@@ -125,11 +121,12 @@ export function AppsSidebar({
         },
       ];
     });
-  }, [favoriteAppNames, filteredApps]);
+  }, [aboveGenreAppNames, apps]);
 
   const hasAnyResults =
-    runningEntries.length > 0 ||
-    favoriteEntries.length > 0 ||
+    starredEntries.length > 0 ||
+    activeEntries.length > 0 ||
+    recentEntries.length > 0 ||
     genreEntries.length > 0;
 
   return (
@@ -144,40 +141,39 @@ export function AppsSidebar({
       headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
       collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
     >
-      <SidebarScrollRegion className="px-1 pb-3 pt-0">
+      <SidebarScrollRegion className="px-1 pb-3 pt-1">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
-          <div className="sticky top-0 z-10 bg-bg/60 px-1 py-1.5 backdrop-blur-sm">
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60"
-                aria-hidden
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(event) => onSearchQueryChange(event.target.value)}
-                placeholder="Search apps"
-                aria-label="Search apps"
-                autoComplete="off"
-                spellCheck={false}
-                className="w-full rounded-[var(--radius-sm)] border border-border/30 bg-bg/40 pl-7 pr-2 py-1 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent/40 focus:outline-none"
-              />
-            </div>
-          </div>
-
           {!hasAnyResults ? (
             <div className="px-3 py-4 text-2xs text-muted/70">
-              {normalizedQuery ? "No matching apps" : "No apps available"}
+              No apps available
             </div>
           ) : (
-            <div className="mt-1 space-y-3">
-              {runningEntries.length > 0 && (
+            <div className="space-y-3">
+              {starredEntries.length > 0 && (
                 <AppsSidebarSection
-                  label="Running"
-                  icon={<Play className="h-3 w-3" aria-hidden />}
-                  count={runningEntries.length}
+                  label="Starred"
+                  icon={<Star className="h-3 w-3" aria-hidden />}
                 >
-                  {runningEntries.map(({ run, app, displayName }) => (
+                  {starredEntries.map((app) => (
+                    <AppsSidebarAppButton
+                      key={app.name}
+                      name={app.name}
+                      displayName={app.displayName ?? getAppShortName(app)}
+                      active={activeAppNames.has(app.name)}
+                      selected={selectedAppName === app.name}
+                      identitySource={app}
+                      onClick={() => onLaunchApp(app)}
+                    />
+                  ))}
+                </AppsSidebarSection>
+              )}
+
+              {activeEntries.length > 0 && (
+                <AppsSidebarSection
+                  label="Active"
+                  icon={<Play className="h-3 w-3" aria-hidden />}
+                >
+                  {activeEntries.map(({ run, app, displayName }) => (
                     <AppsSidebarAppButton
                       key={run.runId}
                       name={run.appName}
@@ -199,13 +195,12 @@ export function AppsSidebar({
                 </AppsSidebarSection>
               )}
 
-              {favoriteEntries.length > 0 && (
+              {recentEntries.length > 0 && (
                 <AppsSidebarSection
-                  label="Favorites"
-                  icon={<Star className="h-3 w-3" aria-hidden />}
-                  count={favoriteEntries.length}
+                  label="Recent"
+                  icon={<Clock className="h-3 w-3" aria-hidden />}
                 >
-                  {favoriteEntries.map((app) => (
+                  {recentEntries.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
                       name={app.name}
@@ -220,11 +215,7 @@ export function AppsSidebar({
               )}
 
               {genreEntries.map((section) => (
-                <AppsSidebarSection
-                  key={section.key}
-                  label={section.label}
-                  count={section.apps.length}
-                >
+                <AppsSidebarSection key={section.key} label={section.label}>
                   {section.apps.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
@@ -249,25 +240,18 @@ export function AppsSidebar({
 function AppsSidebarSection({
   label,
   icon,
-  count,
   children,
 }: {
   label: string;
   icon?: ReactNode;
-  count: number;
   children: ReactNode;
 }) {
   return (
     <div>
-      <SidebarContent.SectionHeader
-        className="px-2 !mb-1"
-        meta={<span>{count}</span>}
-      >
-        <SidebarContent.SectionLabel className="inline-flex items-center gap-1.5 text-[0.625rem]">
-          {icon}
-          {label}
-        </SidebarContent.SectionLabel>
-      </SidebarContent.SectionHeader>
+      <SidebarContent.SectionLabel className="mb-1 inline-flex items-center gap-1.5 px-2 text-[0.625rem]">
+        {icon}
+        {label}
+      </SidebarContent.SectionLabel>
       <div className="space-y-0.5">{children}</div>
     </div>
   );

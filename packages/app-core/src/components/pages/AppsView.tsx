@@ -25,6 +25,9 @@ import { RunningAppsRow } from "../apps/RunningAppsRow";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
+/** Max items retained in the sidebar's Recent section. */
+const RECENT_APPS_LIMIT = 10;
+
 export function AppsView() {
   const {
     appRuns,
@@ -32,6 +35,7 @@ export function AppsView() {
     activeGameViewerUrl,
     appsSubTab,
     favoriteApps,
+    recentApps,
     setTab,
     setState,
     setActionNotice,
@@ -168,15 +172,6 @@ export function AppsView() {
     }
   }, [refreshRuns, t]);
 
-  const refreshApps = useCallback(async () => {
-    try {
-      await client.refreshRegistry();
-    } catch (err) {
-      console.warn("[AppsView] Failed to refresh registry:", err);
-    }
-    await loadApps();
-  }, [loadApps]);
-
   useEffect(() => {
     void loadApps();
   }, [loadApps]);
@@ -209,16 +204,27 @@ export function AppsView() {
     setState("appsSubTab", "browse");
   }, [appsSubTab, setState]);
 
+  const pushRecentApp = useCallback(
+    (appName: string) => {
+      const next = [appName, ...recentApps.filter((name) => name !== appName)];
+      if (next.length > RECENT_APPS_LIMIT) next.length = RECENT_APPS_LIMIT;
+      setState("recentApps", next);
+    },
+    [recentApps, setState],
+  );
+
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
       const internalToolTab = getInternalToolAppTargetTab(app.name);
       if (internalToolTab) {
+        pushRecentApp(app.name);
         setTab(internalToolTab);
         return;
       }
 
       // Overlay apps (e.g. companion) are local-only — launch without server round-trip
       if (isOverlayApp(app.name)) {
+        pushRecentApp(app.name);
         setState("activeOverlayApp", app.name);
         pushAppsUrl(getAppSlug(app.name));
         return;
@@ -232,6 +238,8 @@ export function AppsView() {
         const launchedRun = result.run ? mergeRun(result.run) : null;
         const primaryRun =
           launchedRun?.find((run) => run.appName === app.name) ?? result.run;
+
+        if (primaryRun) pushRecentApp(app.name);
 
         if (primaryRun?.viewer?.url) {
           setState("activeGameRunId", primaryRun.runId);
@@ -312,7 +320,15 @@ export function AppsView() {
         );
       }
     },
-    [mergeRun, pushAppsUrl, setActionNotice, setState, setTab, t],
+    [
+      mergeRun,
+      pushAppsUrl,
+      pushRecentApp,
+      setActionNotice,
+      setState,
+      setTab,
+      t,
+    ],
   );
 
   // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
@@ -397,6 +413,7 @@ export function AppsView() {
             viewerAttachment: "attached",
           } satisfies AppRunSummary);
         mergeRun(nextRun);
+        pushRecentApp(nextRun.appName);
         setState("activeGameRunId", nextRun.runId);
         setState("tab", "apps");
         setState("appsSubTab", "games");
@@ -425,7 +442,7 @@ export function AppsView() {
         setBusyRunId(null);
       }
     },
-    [mergeRun, pushAppsUrl, setActionNotice, setState, t],
+    [mergeRun, pushAppsUrl, pushRecentApp, setActionNotice, setState, t],
   );
 
   const visibleApps = useMemo(() => {
@@ -487,9 +504,8 @@ export function AppsView() {
       runs={sortedRuns}
       activeAppNames={activeAppNames}
       favoriteAppNames={favoriteAppNames}
+      recentAppNames={recentApps}
       selectedAppName={activeGameRun?.appName ?? null}
-      searchQuery={searchQuery}
-      onSearchQueryChange={setSearchQuery}
       onLaunchApp={(app) => void handleLaunch(app)}
       onOpenRun={(run) => void handleOpenRun(run)}
     />
@@ -532,7 +548,6 @@ export function AppsView() {
           searchQuery={searchQuery}
           visibleApps={visibleApps}
           onLaunch={(app) => void handleLaunch(app)}
-          onRefresh={() => void refreshApps()}
           onToggleFavorite={handleToggleFavorite}
         />
       </div>

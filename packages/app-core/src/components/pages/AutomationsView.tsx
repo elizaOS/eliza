@@ -76,6 +76,8 @@ import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome";
 import {
   buildAutomationDraftConversationMetadata,
   buildAutomationResponseRoutingMetadata,
+  buildCoordinatorConversationMetadata,
+  buildCoordinatorTriggerConversationMetadata,
   buildWorkflowConversationMetadata,
   buildWorkflowDraftConversationMetadata,
   getAutomationBridgeConversationId,
@@ -1347,145 +1349,124 @@ function WorkflowRuntimeNotice({
   onRefresh: () => void;
   onStartLocal: () => void;
 }) {
+  // Auto-start kicks the local sidecar at runtime boot. While it is
+  // starting (or briefly stopped before the first tick), suppress the
+  // alarm UI — the fetch error is expected and resolves itself.
+  const isAutoStarting =
+    status?.mode === "local" &&
+    (status.status === "starting" || status.status === "stopped");
+
   if (!status && !workflowFetchError) {
     return null;
   }
 
   if (status?.mode === "disabled") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-border/30 bg-bg/30"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-txt">
-              Workflow execution needs n8n.
-            </div>
-            <p className="text-sm text-muted">
-              Coordinator automations stay usable without n8n. Workflow
-              automations become deployable once Eliza Cloud or local n8n is
-              available.
-            </p>
-          </div>
-          {status.platform !== "mobile" && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onStartLocal}
-            >
-              Enable Local n8n
-            </Button>
-          )}
-        </div>
-      </PagePanel>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border/25 bg-bg/30 px-3 py-1.5 text-xs-tight">
+        <span className="text-muted">
+          Workflow deploy requires n8n. Coordinator automations still work.
+        </span>
+        {status.platform !== "mobile" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onStartLocal}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-accent hover:text-accent/80 disabled:opacity-50"
+          >
+            Enable
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (isAutoStarting) {
+    return (
+      <div className="mb-2 flex items-center gap-2 px-3 py-1 text-2xs text-muted/70">
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+        <span>Starting local n8n…</span>
+      </div>
     );
   }
 
   if (workflowFetchError) {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-danger/20 bg-danger/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-danger">
-              Workflow backend unavailable
-            </div>
-            <p className="text-sm text-danger/90">{workflowFetchError}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {status?.mode === "local" && status.status !== "ready" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={onStartLocal}
-              >
-                Start Local n8n
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
-          </div>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+          <span className="truncate text-danger/90">{workflowFetchError}</span>
         </div>
-      </PagePanel>
+        <div className="flex items-center gap-3">
+          {status?.mode === "local" && status.status !== "ready" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onStartLocal}
+              className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
+            >
+              Restart
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRefresh}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
     );
   }
 
-  if (status?.mode === "local" && status.status !== "ready") {
+  if (status?.mode === "local" && status.status === "error") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-warning/20 bg-warning/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-warning">
-              Local n8n is {status.status}.
-            </div>
-            <p className="text-sm text-muted">
-              Draft rooms still work. Workflow deploy, activate, and delete
-              operations resume when local n8n is ready.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onStartLocal}
-            >
-              Start Local n8n
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={onRefresh}
-            >
-              Refresh
-            </Button>
-          </div>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-danger/25 bg-danger/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+          <span className="text-danger/90">Local n8n failed to start.</span>
         </div>
-      </PagePanel>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onStartLocal}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-danger hover:text-danger/80 disabled:opacity-50"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRefresh}
+            className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
     );
   }
 
   if (status?.mode === "cloud" && status.cloudHealth === "degraded") {
     return (
-      <PagePanel
-        variant="padded"
-        className="mb-4 border border-warning/20 bg-warning/5"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-warning">
-              Eliza Cloud workflow gateway is degraded.
-            </div>
-            <p className="text-sm text-muted">
-              Chat rooms remain usable while workflow execution and sync may be
-              delayed.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={onRefresh}
-          >
-            Refresh
-          </Button>
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-warning/25 bg-warning/5 px-3 py-1.5 text-xs-tight">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+          <span className="text-warning">
+            Eliza Cloud workflow gateway is degraded.
+          </span>
         </div>
-      </PagePanel>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRefresh}
+          className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted hover:text-txt disabled:opacity-50"
+        >
+          Refresh
+        </button>
+      </div>
     );
   }
 
@@ -1708,9 +1689,11 @@ const AUTOMATION_DRAFT_EXAMPLES: Array<{
 function AutomationDraftPane({
   automation,
   onPromptSubmit,
+  onPromptSent,
 }: {
   automation: AutomationItem;
   onPromptSubmit: (prompt: string) => void;
+  onPromptSent?: () => void;
 }) {
   const conversationId = automation.room?.conversationId ?? null;
   const [sendError, setSendError] = useState<string | null>(null);
@@ -1730,6 +1713,7 @@ function AutomationDraftPane({
           `[SYSTEM]${AUTOMATION_DRAFT_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${trimmed}`,
           "DM",
         );
+        onPromptSent?.();
       } catch (error) {
         setSendError(
           error instanceof Error
@@ -1738,7 +1722,7 @@ function AutomationDraftPane({
         );
       }
     },
-    [conversationId, onPromptSubmit],
+    [conversationId, onPromptSent, onPromptSubmit],
   );
 
   return (
@@ -2566,46 +2550,142 @@ function AutomationsLayout() {
           )
           .map((item) => item.workflowId as string),
       );
+      const previousTriggerIds = new Set(
+        ctx.allItems
+          .filter((item) => item.trigger?.id)
+          .map((item) => item.trigger!.id),
+      );
+      const previousTaskIds = new Set(
+        ctx.allItems
+          .filter((item) => item.task?.id)
+          .map((item) => item.task!.id),
+      );
 
       const data = await ctx.refreshAutomations();
+      const draftScope = draftConversation?.metadata?.scope;
+      if (!draftConversation || !draftScope) {
+        return data;
+      }
+
+      const bridgeConversationId =
+        draftConversation.metadata?.terminalBridgeConversationId;
+
+      // Workflow-draft scope: rebind on new n8n workflow (existing path).
       if (
-        !draftConversation ||
-        draftConversation.metadata?.scope !== "automation-workflow-draft" ||
-        draftConversation.metadata.automationType !== "n8n_workflow"
+        draftScope === "automation-workflow-draft" &&
+        draftConversation.metadata?.automationType === "n8n_workflow"
       ) {
-        return data;
+        const createdWorkflows =
+          data?.automations.filter(
+            (item) =>
+              item.type === "n8n_workflow" &&
+              item.workflowId != null &&
+              !item.isDraft &&
+              !previousWorkflowIds.has(item.workflowId),
+          ) ?? [];
+        if (createdWorkflows.length !== 1) return data;
+        const created = createdWorkflows[0];
+        const reboundMetadata = buildWorkflowConversationMetadata(
+          created.workflowId as string,
+          created.title,
+          bridgeConversationId,
+        );
+        const { conversation } = await client.updateConversation(
+          draftConversation.id,
+          { title: created.title, metadata: reboundMetadata },
+        );
+        setActiveWorkflowConversation(conversation);
+        return await ctx.refreshAutomations();
       }
 
-      const createdWorkflows =
-        data?.automations.filter(
-          (item) =>
-            item.type === "n8n_workflow" &&
-            item.workflowId != null &&
-            !item.isDraft &&
-            !previousWorkflowIds.has(item.workflowId),
-        ) ?? [];
+      // Shape-undecided draft: detect what the agent created and rebind.
+      if (draftScope === "automation-draft") {
+        const createdTriggers =
+          data?.automations.filter(
+            (item) =>
+              item.trigger != null && !previousTriggerIds.has(item.trigger.id),
+          ) ?? [];
+        const createdTasks =
+          data?.automations.filter(
+            (item) =>
+              item.task != null &&
+              !item.system &&
+              !previousTaskIds.has(item.task.id),
+          ) ?? [];
+        const createdWorkflows =
+          data?.automations.filter(
+            (item) =>
+              item.type === "n8n_workflow" &&
+              item.workflowId != null &&
+              !item.isDraft &&
+              !previousWorkflowIds.has(item.workflowId),
+          ) ?? [];
 
-      if (createdWorkflows.length !== 1) {
-        return data;
+        const createdCount =
+          createdTriggers.length + createdTasks.length + createdWorkflows.length;
+        if (createdCount !== 1) {
+          return data;
+        }
+
+        const draftItemId = `automation-draft:${draftConversation.metadata?.draftId ?? ""}`;
+        const draftWasSelected = selectedItemId === draftItemId;
+
+        const followSelection = (nextItemId: string, kind: SelectionKind) => {
+          if (!draftWasSelected) return;
+          setSelectedItemId(nextItemId);
+          setSelectedItemKind(kind);
+        };
+
+        if (createdTriggers.length === 1) {
+          const created = createdTriggers[0];
+          const trigger = created.trigger!;
+          const reboundMetadata = buildCoordinatorTriggerConversationMetadata(
+            trigger.id,
+            bridgeConversationId,
+          );
+          await client.updateConversation(draftConversation.id, {
+            title: created.title,
+            metadata: reboundMetadata,
+          });
+          followSelection(created.id, "trigger");
+          return await ctx.refreshAutomations();
+        }
+
+        if (createdTasks.length === 1) {
+          const created = createdTasks[0];
+          const task = created.task!;
+          const reboundMetadata = buildCoordinatorConversationMetadata(
+            task.id,
+            bridgeConversationId,
+          );
+          await client.updateConversation(draftConversation.id, {
+            title: created.title,
+            metadata: reboundMetadata,
+          });
+          followSelection(created.id, "task");
+          return await ctx.refreshAutomations();
+        }
+
+        if (createdWorkflows.length === 1) {
+          const created = createdWorkflows[0];
+          const reboundMetadata = buildWorkflowConversationMetadata(
+            created.workflowId as string,
+            created.title,
+            bridgeConversationId,
+          );
+          const { conversation } = await client.updateConversation(
+            draftConversation.id,
+            { title: created.title, metadata: reboundMetadata },
+          );
+          setActiveWorkflowConversation(conversation);
+          followSelection(created.id, "workflow");
+          return await ctx.refreshAutomations();
+        }
       }
 
-      const createdWorkflow = createdWorkflows[0];
-      const reboundMetadata = buildWorkflowConversationMetadata(
-        createdWorkflow.workflowId as string,
-        createdWorkflow.title,
-        draftConversation.metadata.terminalBridgeConversationId,
-      );
-      const { conversation } = await client.updateConversation(
-        draftConversation.id,
-        {
-          title: createdWorkflow.title,
-          metadata: reboundMetadata,
-        },
-      );
-      setActiveWorkflowConversation(conversation);
-      return await ctx.refreshAutomations();
+      return data;
     },
-    [ctx],
+    [ctx, selectedItemId, setSelectedItemId, setSelectedItemKind],
   );
 
   const createWorkflowDraft = useCallback(
@@ -2899,6 +2979,32 @@ function AutomationsLayout() {
     [visibleItems],
   );
 
+  // Watch active drafts: while any unbound draft exists, poll the
+  // automations list and try to rebind it to whatever the agent
+  // materialized (trigger / task / workflow). Loop self-terminates as
+  // soon as the draft is rebound (it disappears from `allItems`).
+  const allDraftItems = useMemo(
+    () => ctx.allItems.filter((item) => item.type === "automation_draft"),
+    [ctx.allItems],
+  );
+  useEffect(() => {
+    if (allDraftItems.length === 0) return undefined;
+    const draftConversations = allDraftItems
+      .map((item) => {
+        const conversationId = item.room?.conversationId;
+        if (!conversationId) return null;
+        return conversations.find((c) => c.id === conversationId) ?? null;
+      })
+      .filter((c): c is Conversation => c != null);
+    if (draftConversations.length === 0) return undefined;
+    const interval = window.setInterval(() => {
+      for (const draftConversation of draftConversations) {
+        void refreshAutomationsWithDraftBinding(draftConversation);
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [allDraftItems, conversations, refreshAutomationsWithDraftBinding]);
+
   const renderItem = (item: AutomationItem) => (
     <AutomationSidebarItem
       key={item.id}
@@ -3175,6 +3281,18 @@ function AutomationsLayout() {
             onPromptSubmit={(prompt) =>
               void createAutomationDraft({ initialPrompt: prompt })
             }
+            onPromptSent={() => {
+              const conversationId =
+                resolvedSelectedItem.room?.conversationId ?? null;
+              const draftConversation = conversationId
+                ? (conversations.find((c) => c.id === conversationId) ?? null)
+                : null;
+              if (draftConversation) {
+                void refreshAutomationsWithDraftBinding(draftConversation);
+              } else {
+                void ctx.refreshAutomations();
+              }
+            }}
           />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane

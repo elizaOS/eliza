@@ -10,31 +10,58 @@ import type {
   BrowserBridgePackagePathTarget,
 } from "./contracts.ts";
 
-// Walk up from `eliza/packages/plugin-browser-bridge/src` to find a workspace
-// root that contains the extension tree. Phase 2 parks the extension at the
-// outer repo's `apps/browser-bridge/` (one level above `eliza/`); during the
-// transition the old `eliza/apps/app-lifeops/extensions/lifeops-browser`
-// tree may still be the only thing on disk. Both candidates are probed.
 const pluginSrcDir = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(pluginSrcDir, "../../../");
 const outerRepoRoot = path.resolve(elizaRoot, "../");
 
-const extensionRootCandidates = [
-  path.join(outerRepoRoot, "apps", "browser-bridge"),
-  path.join(elizaRoot, "apps", "browser-bridge"),
-  path.join(elizaRoot, "apps", "app-lifeops", "extensions", "lifeops-browser"),
-  path.join(elizaRoot, "apps", "extensions", "lifeops-browser"),
-];
-// The release-manifest/version probe prefers the outer repo's package.json
-// (that's the workspace actually being shipped); fall back to eliza's.
-const packageJsonCandidates = [
-  path.join(outerRepoRoot, "package.json"),
-  path.join(elizaRoot, "package.json"),
-];
-const buildInfoCandidates = [
-  path.join(outerRepoRoot, "dist", "build-info.json"),
-  path.join(elizaRoot, "dist", "build-info.json"),
-];
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.map((candidate) => path.resolve(candidate)))];
+}
+
+function ancestorPaths(start: string): string[] {
+  const ancestors: string[] = [];
+  let current = path.resolve(start);
+  while (true) {
+    ancestors.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return ancestors;
+    }
+    current = parent;
+  }
+}
+
+const workspaceRootCandidates = uniquePaths([
+  process.cwd(),
+  outerRepoRoot,
+  elizaRoot,
+  ...ancestorPaths(pluginSrcDir),
+  ...ancestorPaths(process.cwd()),
+]);
+
+const extensionRootCandidates = workspaceRootCandidates.flatMap((root) => [
+  path.join(root, "apps", "browser-bridge"),
+  path.join(root, "eliza", "apps", "browser-bridge"),
+  path.join(root, "apps", "app-lifeops", "extensions", "lifeops-browser"),
+  path.join(
+    root,
+    "eliza",
+    "apps",
+    "app-lifeops",
+    "extensions",
+    "lifeops-browser",
+  ),
+  path.join(root, "apps", "extensions", "lifeops-browser"),
+  path.join(root, "eliza", "apps", "extensions", "lifeops-browser"),
+]);
+const packageJsonCandidates = workspaceRootCandidates.flatMap((root) => [
+  path.join(root, "package.json"),
+  path.join(root, "eliza", "package.json"),
+]);
+const buildInfoCandidates = workspaceRootCandidates.flatMap((root) => [
+  path.join(root, "dist", "build-info.json"),
+  path.join(root, "eliza", "dist", "build-info.json"),
+]);
 const NIGHTLY_EPOCH_UTC_MS = Date.UTC(2020, 0, 1);
 const DEFAULT_REPOSITORY = "eliza-ai/eliza";
 

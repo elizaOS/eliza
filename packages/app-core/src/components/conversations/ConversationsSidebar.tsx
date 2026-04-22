@@ -188,6 +188,34 @@ export function ConversationsSidebar({
   // bar and put our own collapse button inline with the first section
   // header (Messages), keeping that row at the top of the rail.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const CHAT_SIDEBAR_WIDTH_KEY = "milady:chat:conversations-sidebar:width";
+  const CHAT_SIDEBAR_DEFAULT_WIDTH = 240;
+  const CHAT_SIDEBAR_MIN_WIDTH = 200;
+  const CHAT_SIDEBAR_MAX_WIDTH = 520;
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return CHAT_SIDEBAR_DEFAULT_WIDTH;
+    try {
+      const raw = window.localStorage.getItem(CHAT_SIDEBAR_WIDTH_KEY);
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed)) {
+        return Math.min(
+          Math.max(parsed, CHAT_SIDEBAR_MIN_WIDTH),
+          CHAT_SIDEBAR_MAX_WIDTH,
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    return CHAT_SIDEBAR_DEFAULT_WIDTH;
+  });
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    setSidebarWidth(next);
+    try {
+      window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const toggleSectionCollapsed = useCallback((key: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -578,6 +606,21 @@ export function ConversationsSidebar({
   const showNewTerminalAction = tab === "chat";
   const manageConnectionsButton = (
     <div className="flex w-full items-center justify-between">
+      {!mobile && !isGameModal ? (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-label={t("conversations.closePanel", {
+            defaultValue: "Collapse sidebar",
+          })}
+          data-testid="chat-sidebar-collapse-inline"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      ) : (
+        <span className="h-6 w-6" />
+      )}
       <button
         type="button"
         data-testid="chat-sidebar-manage-toggle"
@@ -602,19 +645,6 @@ export function ConversationsSidebar({
               })}
         </span>
       </button>
-      {!mobile && !isGameModal ? (
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(true)}
-          aria-label={t("conversations.closePanel", {
-            defaultValue: "Collapse sidebar",
-          })}
-          data-testid="chat-sidebar-collapse-inline"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
-        >
-          <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
-        </button>
-      ) : null}
     </div>
   );
 
@@ -692,6 +722,12 @@ export function ConversationsSidebar({
         onCollapsedChange={
           !mobile && !isGameModal ? setSidebarCollapsed : undefined
         }
+        resizable={!mobile && !isGameModal}
+        width={!mobile && !isGameModal ? sidebarWidth : undefined}
+        minWidth={CHAT_SIDEBAR_MIN_WIDTH}
+        maxWidth={CHAT_SIDEBAR_MAX_WIDTH}
+        onWidthChange={handleSidebarWidthChange}
+        onCollapseRequest={() => setSidebarCollapsed(true)}
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"
         }
