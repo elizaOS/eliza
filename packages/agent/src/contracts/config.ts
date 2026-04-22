@@ -8,6 +8,15 @@ export type MediaMode = "cloud" | "own-key";
 
 export type ImageProvider = "cloud" | "fal" | "openai" | "google" | "xai";
 
+/**
+ * Shared sub-config for cloud-hosted media routes. Lets the user pin a
+ * specific model for image/video/audio/vision generation while still using
+ * the managed cloud credentials and billing.
+ */
+export type CloudMediaConfig = {
+  model?: string;
+};
+
 export type ImageFalConfig = {
   apiKey?: string;
   model?: string;
@@ -37,6 +46,7 @@ export type ImageConfig = {
   mode?: MediaMode;
   provider?: ImageProvider;
   defaultSize?: string;
+  cloud?: CloudMediaConfig;
   fal?: ImageFalConfig;
   openai?: ImageOpenaiConfig;
   google?: ImageGoogleConfig;
@@ -66,6 +76,7 @@ export type VideoConfig = {
   mode?: MediaMode;
   provider?: VideoProvider;
   defaultDuration?: number;
+  cloud?: CloudMediaConfig;
   fal?: VideoFalConfig;
   openai?: VideoOpenaiConfig;
   google?: VideoGoogleConfig;
@@ -88,6 +99,7 @@ export type AudioGenConfig = {
   enabled?: boolean;
   mode?: MediaMode;
   provider?: AudioGenProvider;
+  cloud?: CloudMediaConfig;
   suno?: AudioSunoConfig;
   elevenlabs?: AudioElevenlabsSfxConfig;
 };
@@ -132,6 +144,7 @@ export type VisionConfig = {
   enabled?: boolean;
   mode?: MediaMode;
   provider?: VisionProvider;
+  cloud?: CloudMediaConfig;
   openai?: VisionOpenaiConfig;
   google?: VisionGoogleConfig;
   anthropic?: VisionAnthropicConfig;
