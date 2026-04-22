@@ -317,12 +317,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const availableProviderIds = useMemo(
     () =>
       new Set(
-        allAiProviders.map(
-          (provider) =>
-            getOnboardingProviderOption(
-              normalizeAiProviderPluginId(provider.id),
-            )?.id ?? normalizeAiProviderPluginId(provider.id),
-        ),
+        allAiProviders
+          .map(
+            (provider) =>
+              getOnboardingProviderOption(
+                normalizeAiProviderPluginId(provider.id),
+              )?.id,
+          )
+          .filter((id): id is NonNullable<typeof id> => id != null),
       ),
     [allAiProviders],
   );
@@ -459,15 +461,25 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       label: getSubscriptionProviderLabel(provider, t),
       disabled: false,
     })),
-    ...allAiProviders.map((provider) => ({
-      id:
-        getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
-          ?.id ?? normalizeAiProviderPluginId(provider.id),
-      label:
-        getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
-          ?.name ?? provider.name,
-      disabled: false,
-    })),
+    // Only surface providers the backend's /api/provider/switch endpoint
+    // actually accepts (i.e. entries in ONBOARDING_PROVIDER_CATALOG). Plugins
+    // without a catalog entry — e.g. `local-ai`, which is configured via the
+    // dedicated "Local Models" settings section, not this dropdown — are
+    // filtered out, otherwise selecting them returns "Invalid provider".
+    ...allAiProviders
+      .map((provider) => {
+        const option = getOnboardingProviderOption(
+          normalizeAiProviderPluginId(provider.id),
+        );
+        return option
+          ? {
+              id: option.id,
+              label: option.name,
+              disabled: false,
+            }
+          : null;
+      })
+      .filter((choice): choice is NonNullable<typeof choice> => choice !== null),
   ];
 
   /* ── Cloud-model schema ───────────────────────────────────────── */
