@@ -54,15 +54,22 @@ describe("AppsSection", () => {
     cleanup();
   });
 
-  it("opens the apps view from the section header", async () => {
-    const setTab = vi.fn();
-    useAppMock.mockReturnValue(buildUseAppState({ setTab }));
+  it("renders a supplied section header action", async () => {
+    const onClick = vi.fn();
 
-    render(<AppsSection />);
+    render(
+      <AppsSection
+        headerAction={
+          <button type="button" onClick={onClick}>
+            Collapse
+          </button>
+        }
+      />,
+    );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open View" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Collapse" }));
 
-    expect(setTab).toHaveBeenCalledWith("apps");
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it("navigates internal tool apps through setTab instead of relaunching", async () => {
