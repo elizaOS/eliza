@@ -20,6 +20,7 @@ import {
   ChannelType,
   createMessageMemory,
   type Memory,
+  type MessageMetadata,
   type Plugin,
   stringToUuid,
   type UUID,
@@ -38,6 +39,7 @@ import {
   stampPageScopedRoomMetadata,
 } from "../helpers/trajectory-assertions.js";
 import {
+  buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
   type PageScope,
 } from "../../src/components/pages/page-scoped-conversations.js";
@@ -48,6 +50,13 @@ const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
+
+function buildTestRoutingMetadata(
+  scope: PageScope,
+  options: { sourceConversationId?: string; pageId?: string } = {},
+): Partial<MessageMetadata> {
+  return buildPageScopedRoutingMetadata(scope, options) as Partial<MessageMetadata>;
+}
 
 interface ScopeCase {
   scope: PageScope;
@@ -131,7 +140,9 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
         });
 
         try {
-          const turn = await harness.send(scopeCase.prompt);
+          const turn = await harness.send(scopeCase.prompt, {
+            metadata: buildTestRoutingMetadata(scopeCase.scope),
+          });
           expect(turn.responseText.length).toBeGreaterThan(0);
 
           const trajectory = await loadLatestTrajectoryForScope(
@@ -264,6 +275,11 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       try {
         const turn = await pageHarness.send(
           "Following up on what we were talking about — what changed?",
+          {
+            metadata: buildTestRoutingMetadata("page-character", {
+              sourceConversationId,
+            }),
+          },
         );
         expect(turn.responseText.length).toBeGreaterThan(0);
 
