@@ -81,6 +81,35 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-wallet": "Wallet",
 };
 
+/**
+ * Browser scope intro copy varies by LifeOps Browser companion state: when the
+ * extension is connected the agent can drive real tabs; when it isn't the
+ * intro has to walk the user through installing the extension instead of
+ * pretending real-browser control is available.
+ */
+export function getBrowserPageScopeCopy(state: {
+  lifeOpsConnected: boolean;
+  browserLabel?: string | null;
+  profileLabel?: string | null;
+}): PageScopeIntroCopy {
+  if (state.lifeOpsConnected) {
+    const browser = state.browserLabel?.trim() || "Chrome";
+    const profile = state.profileLabel?.trim();
+    const where = profile ? `${browser} / ${profile}` : browser;
+    return {
+      title: "Browser chat",
+      body: `LifeOps Browser is connected in ${where}. Ask me to open a tab, navigate somewhere, snapshot a page, or close a tab. I can also explain what's currently open.`,
+      systemAddendum: `You are answering inside the Browser view. LifeOps Browser is connected in ${where}. The user can ask you to open tabs, navigate, snapshot, show/hide, or close tabs in the connected browser companion. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+    };
+  }
+  return {
+    title: "Install LifeOps Browser",
+    body: "LifeOps can drive your real Chrome tabs once you install the LifeOps Browser extension. Use the buttons below to build the extension and open Chrome's extension manager, then come back and I'll work against your real browser.",
+    systemAddendum:
+      "You are answering inside the Browser view. The user has NOT installed the LifeOps Browser companion extension yet. Guide them to click the Install LifeOps Browser button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control.",
+  };
+}
+
 export function isPageScopedConversation(
   conversation: Pick<Conversation, "metadata"> | null | undefined,
 ): boolean {

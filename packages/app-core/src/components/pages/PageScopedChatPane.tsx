@@ -2,6 +2,7 @@ import { Button, Spinner, Textarea } from "@elizaos/ui";
 import { Send, Sparkles, Square } from "lucide-react";
 import {
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -30,6 +31,25 @@ interface PageScopedChatPaneProps {
   title?: string;
   /** Optional className for the outer wrapper. */
   className?: string;
+  /**
+   * Dynamic intro card override. When provided, replaces the static
+   * PAGE_SCOPE_COPY[scope] intro text and can attach action buttons (used by
+   * the Browser view to surface LifeOps Browser install buttons when the
+   * extension is not yet connected).
+   */
+  introOverride?: {
+    title?: string;
+    body?: ReactNode;
+    actions?: ReactNode;
+  };
+  /**
+   * First-turn system addendum override — replaces PAGE_SCOPE_COPY[scope].systemAddendum
+   * so the agent's first-turn grounding reflects current page state (e.g. the
+   * Browser view tells the agent whether LifeOps Browser is connected).
+   */
+  systemAddendumOverride?: string;
+  /** Override the composer placeholder text. */
+  placeholderOverride?: string;
 }
 
 function shallowEqual(
@@ -49,8 +69,16 @@ export function PageScopedChatPane({
   pageId,
   title,
   className,
+  introOverride,
+  systemAddendumOverride,
+  placeholderOverride,
 }: PageScopedChatPaneProps) {
   const copy = PAGE_SCOPE_COPY[scope];
+  const introTitle = introOverride?.title ?? copy.title;
+  const introBody = introOverride?.body ?? copy.body;
+  const introActions = introOverride?.actions ?? null;
+  const effectiveSystemAddendum = systemAddendumOverride ?? copy.systemAddendum;
+  const placeholder = placeholderOverride ?? copy.body.split(".")[0];
   const app = useApp();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -169,7 +197,7 @@ export function PageScopedChatPane({
 
     const isFirstTurn = messages.length === 0;
     const textToSend = isFirstTurn
-      ? `[SYSTEM]${copy.systemAddendum}[/SYSTEM]\n\n${raw}`
+      ? `[SYSTEM]${effectiveSystemAddendum}[/SYSTEM]\n\n${raw}`
       : raw;
     const routingMetadata = buildPageScopedRoutingMetadata(scope, {
       pageId,
@@ -237,7 +265,7 @@ export function PageScopedChatPane({
     }
   }, [
     conversation,
-    copy.systemAddendum,
+    effectiveSystemAddendum,
     input,
     messages.length,
     pageId,
@@ -291,9 +319,12 @@ export function PageScopedChatPane({
           >
             <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
               <Sparkles className="h-3.5 w-3.5 text-accent" />
-              {copy.title}
+              {introTitle}
             </div>
-            <p className="text-sm leading-relaxed text-txt">{copy.body}</p>
+            <div className="text-sm leading-relaxed text-txt">{introBody}</div>
+            {introActions ? (
+              <div className="mt-3 flex flex-wrap gap-2">{introActions}</div>
+            ) : null}
           </div>
         ) : null}
 
@@ -329,7 +360,7 @@ export function PageScopedChatPane({
           className="min-h-[38px] max-h-[150px] flex-1 min-w-0 resize-none overflow-y-hidden rounded-lg border border-border/40 bg-bg/40 px-3 py-2 text-sm text-txt placeholder:text-muted/60 focus:border-accent/40 focus:outline-none focus-visible:ring-0"
           rows={1}
           aria-label={copy.title}
-          placeholder={copy.body.split(".")[0]}
+          placeholder={placeholder}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
