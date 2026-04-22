@@ -2792,6 +2792,8 @@ function AutomationsLayout() {
         defaultValue: "Expand automations",
       })}
       header={null}
+      headerClassName="!px-2 !pt-1.5 !pb-1.5"
+      collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label="New coordinator automation"

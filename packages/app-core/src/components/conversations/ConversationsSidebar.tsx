@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   MessagesSquare,
+  PanelLeftClose,
   Plus,
   Settings2,
   Terminal as TerminalIcon,
@@ -183,6 +184,10 @@ export function ConversationsSidebar({
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
+  // Controlled collapse state lets us hide the sidebar's default header
+  // bar and put our own collapse button inline with the first section
+  // header (Messages), keeping that row at the top of the rail.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const toggleSectionCollapsed = useCallback((key: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -668,6 +673,10 @@ export function ConversationsSidebar({
         testId="conversations-sidebar"
         variant={mobile ? "mobile" : isGameModal ? "game-modal" : "default"}
         collapsible={!mobile && !isGameModal}
+        collapsed={!mobile && !isGameModal ? sidebarCollapsed : undefined}
+        onCollapsedChange={
+          !mobile && !isGameModal ? setSidebarCollapsed : undefined
+        }
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"
         }
@@ -682,8 +691,11 @@ export function ConversationsSidebar({
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         header={undefined}
         headerClassName={
+          // Hide the sidebar's built-in expanded-mode header row so our
+          // first section (Messages) shares its row with the collapse
+          // button rendered inside the section itself.
           !mobile && !isGameModal
-            ? "!px-2 !pt-1.5 !pb-1.5"
+            ? "!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
             : undefined
         }
         collapseButtonClassName={
@@ -834,6 +846,21 @@ export function ConversationsSidebar({
                   collapsed={collapsedSections.has(messagesSection.key)}
                   onToggleCollapsed={toggleSectionCollapsed}
                   onAdd={showNewChatAction ? handleNewChat : undefined}
+                  trailing={
+                    !mobile && !isGameModal ? (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarCollapsed(true)}
+                        aria-label={t("conversations.closePanel", {
+                          defaultValue: "Collapse sidebar",
+                        })}
+                        data-testid="chat-sidebar-collapse-inline"
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+                      >
+                        <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    ) : undefined
+                  }
                   addLabel={t("conversations.newChat", {
                     defaultValue: "New chat",
                   })}
@@ -963,6 +990,8 @@ interface CollapsibleChannelSectionProps {
   onToggleCollapsed: (key: string) => void;
   onAdd?: () => void;
   addLabel?: string;
+  /** Extra element rendered after the add button (e.g. collapse sidebar). */
+  trailing?: React.ReactNode;
   emptyLabel: string;
   activeListId: string | null;
   rowListId: (row: ConversationsSidebarRow) => string;
@@ -994,6 +1023,7 @@ function CollapsibleChannelSection({
   onToggleCollapsed,
   onAdd,
   addLabel,
+  trailing,
   emptyLabel,
   activeListId,
   rowListId,
@@ -1059,6 +1089,7 @@ function CollapsibleChannelSection({
             <Plus className="h-3.5 w-3.5" aria-hidden />
           </button>
         ) : null}
+        {trailing}
       </div>
       {collapsed ? null : rows.length === 0 ? (
         <div
