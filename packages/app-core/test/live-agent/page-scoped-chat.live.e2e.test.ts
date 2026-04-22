@@ -20,9 +20,12 @@ import {
   ChannelType,
   createMessageMemory,
   type Memory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
+import { trajectoriesPlugin } from "../../../typescript/src/features/trajectories/index.js";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
@@ -93,6 +96,14 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       preferredProvider: selectedLiveProvider?.name,
       characterName: "PageScopedTestAgent",
       advancedCapabilities: false,
+      plugins: [
+        trajectoriesPlugin as Plugin,
+        {
+          name: "page-scoped-chat-e2e-context",
+          description: "Registers page-scoped context for live page-chat e2e.",
+          providers: [pageScopedContextProvider],
+        },
+      ],
     });
     runtime = result.runtime;
     cleanup = result.cleanup;

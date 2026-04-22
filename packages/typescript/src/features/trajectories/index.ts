@@ -62,10 +62,67 @@ function getFinalStatusForRun(payload: RunEventPayload): TrajectoryFinalStatus {
 	return payload.status === "completed" ? "completed" : "terminated";
 }
 
-function buildTrajectoryMetadata(
+const WEB_CONVERSATION_STRING_KEYS = [
+	"conversationId",
+	"scope",
+	"automationType",
+	"taskId",
+	"triggerId",
+	"workflowId",
+	"workflowName",
+	"draftId",
+	"pageId",
+	"sourceConversationId",
+	"terminalBridgeConversationId",
+] as const;
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: undefined;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
+}
+
+function copyJsonMetadataField(
+	target: Record<string, JsonValue>,
+	source: Record<string, unknown>,
+	key: string,
+): void {
+	const value = source[key];
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		target[key] = value;
+	}
+}
+
+function readStoredWebConversation(
+	roomMetadata: unknown,
+): Record<string, JsonValue> | undefined {
+	const stored = asRecord(asRecord(roomMetadata)?.webConversation);
+	if (!stored) return undefined;
+
+	const webConversation: Record<string, JsonValue> = {};
+	for (const key of WEB_CONVERSATION_STRING_KEYS) {
+		const value = readNonEmptyString(stored[key]);
+		if (value) webConversation[key] = value;
+	}
+
+	return Object.keys(webConversation).length > 0 ? webConversation : undefined;
+}
+
+async function buildTrajectoryMetadata(
+	runtime: IAgentRuntime,
 	message: MessagePayload["message"],
 	meta: Record<string, unknown>,
-): Record<string, JsonValue> {
+): Promise<Record<string, JsonValue>> {
 	const metadata: Record<string, JsonValue> = {
 		roomId: message.roomId,
 		entityId: message.entityId,
@@ -88,6 +145,43 @@ function buildTrajectoryMetadata(
 
 	if (typeof meta.sessionKey === "string" && meta.sessionKey.length > 0) {
 		metadata.conversationId = meta.sessionKey;
+	}
+
+	for (const key of [
+		"taskId",
+		"surface",
+		"surfaceVersion",
+		"pageId",
+		"sourceConversationId",
+		"scenarioId",
+		"batchId",
+	]) {
+		copyJsonMetadataField(metadata, meta, key);
+	}
+
+	try {
+		const room = await runtime.getRoom(message.roomId);
+		const webConversation = readStoredWebConversation(room?.metadata);
+		if (webConversation) {
+			metadata.webConversation = webConversation;
+
+			const scope = readNonEmptyString(webConversation.scope);
+			if (scope?.startsWith("page-")) {
+				if (!metadata.taskId) metadata.taskId = scope;
+				if (!metadata.surface) metadata.surface = "page-scoped";
+				if (!metadata.pageId && webConversation.pageId) {
+					metadata.pageId = webConversation.pageId;
+				}
+				if (
+					!metadata.sourceConversationId &&
+					webConversation.sourceConversationId
+				) {
+					metadata.sourceConversationId = webConversation.sourceConversationId;
+				}
+			}
+		}
+	} catch {
+		// Room metadata is enrichment; the trajectory itself should still be written.
 	}
 
 	return metadata;
@@ -133,9 +227,14 @@ export const trajectoriesPlugin: Plugin = {
 				meta.trajectoryStepId = trajectoryStepId;
 
 				try {
+					const trajectoryMetadata = await buildTrajectoryMetadata(
+						runtime,
+						message,
+						meta,
+					);
 					const trajectoryId = await logger.startTrajectory(runtime.agentId, {
 						source: source ?? (meta.source as string) ?? "chat",
-						metadata: buildTrajectoryMetadata(message, meta),
+						metadata: trajectoryMetadata,
 					});
 
 					const normalizedTrajectoryId =
