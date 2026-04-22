@@ -62,29 +62,34 @@ export function TasksEventsPanel({
     ? "flex flex-1 min-h-0 flex-col overflow-hidden bg-bg"
     : "flex min-h-0 w-[22rem] shrink-0 flex-col overflow-hidden border-l border-border/30 bg-bg";
 
-  const collapseButton =
-    !mobile && onToggleCollapsed ? (
-      <button
-        type="button"
-        className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-card/60 hover:text-txt"
-        aria-label="Collapse widgets"
-        onClick={() => onToggleCollapsed(true)}
-      >
-        <PanelRightClose className="h-4 w-4" />
-      </button>
-    ) : null;
+  const showCollapseFooter = !mobile && Boolean(onToggleCollapsed);
 
   return (
     <aside className={rootClassName} data-testid="chat-widgets-bar">
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
-        <AppsSection headerAction={collapseButton} />
-        <WidgetHost
-          slot="chat-sidebar"
-          events={events}
-          clearEvents={clearEvents}
-          hideWhenEmpty={false}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
+        <div className="flex flex-col gap-3">
+          <AppsSection />
+          <WidgetHost
+            slot="chat-sidebar"
+            events={events}
+            clearEvents={clearEvents}
+            hideWhenEmpty={false}
+          />
+        </div>
       </div>
+      {showCollapseFooter ? (
+        <div className="flex items-center justify-start border-t border-border/30 px-2 py-1.5">
+          <button
+            type="button"
+            data-testid="chat-widgets-collapse-inline"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+            aria-label="Collapse widgets"
+            onClick={() => onToggleCollapsed?.(true)}
+          >
+            <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }

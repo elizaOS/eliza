@@ -2244,7 +2244,8 @@ function AutomationSidebarItem({
 }
 
 function AutomationsLayout() {
-  const { activeConversationId, conversations } = useApp();
+  const { activeConversationId, conversations, handleSelectConversation } =
+    useApp();
   const ctx = useAutomationsViewContext();
   const {
     closeEditor,
@@ -2544,6 +2545,76 @@ function AutomationsLayout() {
     ],
   );
 
+  const createAutomationDraft = useCallback(
+    async (options?: { initialPrompt?: string }) => {
+      setPageNotice(null);
+      showAutomationsList();
+      const draftId = createWorkflowDraftId();
+      const bridgeConversationId = getAutomationBridgeIdForItem(
+        resolvedSelectedItem,
+        activeConversationId,
+        conversations,
+      );
+      const metadata = buildAutomationDraftConversationMetadata(
+        draftId,
+        bridgeConversationId,
+      );
+
+      try {
+        const conversation = await resolveAutomationConversation({
+          title: AUTOMATION_DRAFT_TITLE,
+          metadata,
+        });
+
+        if (options?.initialPrompt?.trim()) {
+          await client.sendConversationMessage(
+            conversation.id,
+            `[SYSTEM]${AUTOMATION_DRAFT_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${options.initialPrompt.trim()}`,
+            "DM",
+            undefined,
+            undefined,
+            buildAutomationResponseRoutingMetadata(metadata),
+          );
+        }
+
+        const data = options?.initialPrompt
+          ? await refreshAutomationsWithDraftBinding(conversation)
+          : await ctx.refreshAutomations();
+        const resolvedItem = findAutomationForConversation(
+          data,
+          conversation.id,
+        );
+
+        setSelectedItemId(resolvedItem?.id ?? `automation-draft:${draftId}`);
+        setSelectedItemKind(null);
+        setEditorOpen(false);
+        setEditingId(null);
+        ctx.setEditingTaskId(null);
+        await handleSelectConversation(conversation.id);
+      } catch (error) {
+        setPageNotice(
+          error instanceof Error
+            ? error.message
+            : "Failed to create the automation draft.",
+        );
+      }
+    },
+    [
+      activeConversationId,
+      conversations,
+      ctx,
+      findAutomationForConversation,
+      handleSelectConversation,
+      refreshAutomationsWithDraftBinding,
+      resolvedSelectedItem,
+      setEditingId,
+      setEditorOpen,
+      setSelectedItemId,
+      setSelectedItemKind,
+      showAutomationsList,
+    ],
+  );
+
   const promoteAutomationToWorkflow = useCallback(
     async (item: AutomationItem) => {
       await createWorkflowDraft({
@@ -2731,28 +2802,20 @@ function AutomationsLayout() {
     />
   );
 
-  const newWorkflowDisabled = n8nStatus?.mode === "disabled";
-  const newWorkflowLabel = t("automations.newWorkflowCTA", {
-    defaultValue: "New workflow",
-  });
-  const newWorkflowButton = (
+  const newAutomationLabel = "New automation";
+  const newAutomationButton = (
     <button
       type="button"
-      onClick={newWorkflowDisabled ? undefined : handleNewWorkflowCTA}
-      disabled={newWorkflowDisabled}
-      aria-label={newWorkflowLabel}
-      title={
-        newWorkflowDisabled
-          ? t("automations.newWorkflowDisabled", {
-              defaultValue: "Enable Automations in Settings to create workflows",
-            })
-          : newWorkflowLabel
-      }
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent/15 text-accent transition-colors hover:bg-accent/25 disabled:cursor-not-allowed disabled:opacity-40"
+      onClick={() => void createAutomationDraft()}
+      aria-label={newAutomationLabel}
+      title={newAutomationLabel}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-accent/15 text-accent transition-colors hover:bg-accent/25"
     >
       <Plus className="h-3.5 w-3.5" aria-hidden />
     </button>
   );
+
+  const newWorkflowDisabled = n8nStatus?.mode === "disabled";
 
   const nodeCatalogActive = activeSubpage === "node-catalog";
   const nodeCatalogLabel = t("automations.nodeCatalog", {
@@ -2793,8 +2856,8 @@ function AutomationsLayout() {
       footerClassName="!px-2 !pt-1.5 !pb-1.5 !justify-start"
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label={newWorkflowLabel}
-          onClick={handleNewWorkflowCTA}
+          aria-label={newAutomationLabel}
+          onClick={() => void createAutomationDraft()}
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
