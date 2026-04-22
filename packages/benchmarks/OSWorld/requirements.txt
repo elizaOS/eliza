@@ -4,8 +4,8 @@ fabric
 gymnasium~=0.29.1
 requests
 pytz~=2024.1
-transformers~=5.0.0rc3
-torch~=2.11.0
+transformers~=5.5.4
+torch~=2.8.0
 accelerate
 opencv-python-headless~=4.13.0.92
 matplotlib~=3.10.8

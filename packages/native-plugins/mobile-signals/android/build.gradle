@@ -4,7 +4,7 @@ ext {
     androidxJunitVersion = project.hasProperty('androidxJunitVersion') ? rootProject.ext.androidxJunitVersion : '1.1.5'
     androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.5.1'
     androidxHealthConnectVersion = project.hasProperty('androidxHealthConnectVersion') ? rootProject.ext.androidxHealthConnectVersion : '1.1.0-alpha10'
-    kotlinxCoroutinesVersion = project.hasProperty('kotlinxCoroutinesVersion') ? rootProject.ext.kotlinxCoroutinesVersion : '1.8.1'
+    kotlinxCoroutinesVersion = project.hasProperty('kotlinxCoroutinesVersion') ? rootProject.ext.kotlinxCoroutinesVersion : '1.10.2'
 }
 
 apply plugin: 'com.android.library'
