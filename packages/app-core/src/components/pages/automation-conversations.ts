@@ -8,6 +8,7 @@ const AUTOMATION_SCOPES = new Set([
   "automation-coordinator",
   "automation-workflow",
   "automation-workflow-draft",
+  "automation-draft",
 ]);
 
 function sortByUpdatedAtDesc(left: Conversation, right: Conversation): number {
@@ -125,13 +126,30 @@ export function buildWorkflowDraftConversationMetadata(
   };
 }
 
+export function buildAutomationDraftConversationMetadata(
+  draftId: string,
+  bridgeConversationId?: string,
+): ConversationMetadata {
+  return {
+    scope: "automation-draft",
+    draftId,
+    ...(bridgeConversationId
+      ? {
+          sourceConversationId: bridgeConversationId,
+          terminalBridgeConversationId: bridgeConversationId,
+        }
+      : {}),
+  };
+}
+
 export function buildAutomationResponseRoutingMetadata(
   metadata: ConversationMetadata,
 ): Record<string, unknown> | undefined {
   if (
     metadata.scope === "automation-coordinator" ||
     metadata.scope === "automation-workflow" ||
-    metadata.scope === "automation-workflow-draft"
+    metadata.scope === "automation-workflow-draft" ||
+    metadata.scope === "automation-draft"
   ) {
     return {
       __responseContext: {

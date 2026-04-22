@@ -17,6 +17,7 @@ const VALID_SCOPES = new Set<ConversationScope>([
   "automation-coordinator",
   "automation-workflow",
   "automation-workflow-draft",
+  "automation-draft",
   "page-character",
   "page-apps",
   "page-wallet",
@@ -135,7 +136,8 @@ export function isAutomationConversationMetadata(
   return (
     metadata?.scope === "automation-coordinator" ||
     metadata?.scope === "automation-workflow" ||
-    metadata?.scope === "automation-workflow-draft"
+    metadata?.scope === "automation-workflow-draft" ||
+    metadata?.scope === "automation-draft"
   );
 }
 

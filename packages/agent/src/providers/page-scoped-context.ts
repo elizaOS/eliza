@@ -33,6 +33,12 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Apps view. They can browse the catalog, launch apps, stop running apps, view running app instances and their health, and favorite apps. Action vocabulary: launchAppAction, stopAppAction. The app catalog and running runs are surfaced via the Apps API; refer to apps by display name and never invent app names.",
   "page-wallet":
     "The user is in the Wallet view. Wallet operations are user-driven; do not initiate trades, transfers, or fund movements on the user's behalf. Provide read-only guidance only.",
+  "automation-draft":
+    "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
+    "- Recurring prompt or schedule (e.g. \"every morning summarize my inbox\") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
+    "- Goal to work toward until done (e.g. \"figure out the onboarding refactor\") → CREATE_TASK with name and description.\n" +
+    "- Deterministic pipeline of integration steps (e.g. \"when a Slack message matches X, post to Discord\") → create an n8n workflow via the n8n actions.\n" +
+    "Ask one short clarifying question only if the shape is genuinely ambiguous; otherwise create immediately. After creation, briefly confirm what you made and how to run it.",
 };
 
 interface SourceTailEntry {
@@ -260,6 +266,7 @@ async function renderLiveStateForScope(
     case "page-browser":
       return renderBrowserLiveState();
     case "page-automations":
+    case "automation-draft":
       return renderAutomationsLiveState(runtime);
     case "page-apps":
     case "page-wallet":
@@ -288,10 +295,15 @@ export const pageScopedContextProvider: Provider = {
     try {
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
-      if (!isPageScopedConversationMetadata(metadata)) {
+      const scope = metadata?.scope as ConversationScope | undefined;
+      const isPageScoped = isPageScopedConversationMetadata(metadata);
+      const isAutomationDraft = scope === "automation-draft";
+      if (!isPageScoped && !isAutomationDraft) {
         return EMPTY_RESULT;
       }
-      const scope = metadata?.scope as ConversationScope;
+      if (!scope) {
+        return EMPTY_RESULT;
+      }
       const brief = PAGE_SCOPE_BRIEF[scope];
       if (!brief) {
         return EMPTY_RESULT;

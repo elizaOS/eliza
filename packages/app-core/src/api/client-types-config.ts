@@ -465,13 +465,17 @@ export interface WorkbenchOverview {
   };
 }
 
-export type AutomationType = "coordinator_text" | "n8n_workflow";
+export type AutomationType =
+  | "coordinator_text"
+  | "n8n_workflow"
+  | "automation_draft";
 export type AutomationSource =
   | "workbench_task"
   | "trigger"
   | "n8n_workflow"
   | "workflow_draft"
-  | "workflow_shadow";
+  | "workflow_shadow"
+  | "automation_draft";
 export type AutomationStatus =
   | "active"
   | "paused"
