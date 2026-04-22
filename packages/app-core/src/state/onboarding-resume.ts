@@ -8,6 +8,7 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts";
 import type { BuildOnboardingConnectionArgs } from "../onboarding-config";
+import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import { asRecord } from "./config-readers";
 import type { OnboardingStep } from "./types";
 
@@ -73,11 +74,15 @@ export function deriveOnboardingResumeFieldsFromConfig(
       ? cloud.apiKey.trim()
       : "";
 
+  const cloudServerTarget =
+    readPersistedMobileRuntimeMode() === "cloud-hybrid"
+      ? "elizacloud-hybrid"
+      : "elizacloud";
   const onboardingServerTarget =
     deploymentTarget.runtime === "remote"
       ? "remote"
       : deploymentTarget.runtime === "cloud"
-        ? "elizacloud"
+        ? cloudServerTarget
         : "local";
 
   const fields: Partial<BuildOnboardingConnectionArgs> = {

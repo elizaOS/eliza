@@ -81,6 +81,11 @@ export const CONNECTION_TRANSITIONS: ReadonlyArray<ConnectionTransitionDocRow> =
       to: "providerGrid",
     },
     {
+      from: "hosting",
+      event: "selectElizaCloudHybridHosting",
+      to: "providerGrid",
+    },
+    {
       from: "providerGrid",
       event: "selectProvider",
       to: "providerDetail",
@@ -260,6 +265,16 @@ export function applyConnectionTransition(
         kind: "patch",
         patch: {
           ...toOnboardingTargetPatch("elizacloud"),
+          onboardingProvider: "",
+          onboardingApiKey: "",
+          onboardingPrimaryModel: "",
+        },
+      };
+    case "selectElizaCloudHybridHosting":
+      return {
+        kind: "patch",
+        patch: {
+          ...toOnboardingTargetPatch("elizacloud-hybrid"),
           onboardingProvider: "",
           onboardingApiKey: "",
           onboardingPrimaryModel: "",

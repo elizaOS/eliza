@@ -1575,6 +1575,8 @@
   "onboarding.getOneHere": "在此获取",
   "onboarding.getStarted": "开始吧",
   "onboarding.hostingElizaCloudDesc": "使用 Eliza Cloud 实现托管和 24/7 可用性。",
+  "onboarding.hostingElizaCloudHybrid": "云端 + 手机算力",
+  "onboarding.hostingElizaCloudHybridDesc": "在 Eliza Cloud 运行，并从此设备贡献符合条件的本地模型任务。",
   "onboarding.hostingLocal": "本地",
   "onboarding.hostingLocalDesc": "在本机上运行后端。",
   "onboarding.hostingQuestion": "{{appName}} 要在哪里运行？",

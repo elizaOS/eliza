@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { OnboardingServerTarget } from "../onboarding/server-target";
 import type { OnboardingStateHook } from "./useOnboardingState";
 
 export function useOnboardingCompat({
@@ -38,7 +39,7 @@ export function useOnboardingCompat({
       setOnboardingOwnerName: bindField("ownerName") as (value: string) => void,
       setOnboardingStyle: bindField("style") as (value: string) => void,
       setOnboardingServerTarget: bindField("serverTarget") as (
-        value: "" | "local" | "remote" | "elizacloud",
+        value: OnboardingServerTarget,
       ) => void,
       setOnboardingCloudApiKey: bindField("cloudApiKey") as (
         value: string,

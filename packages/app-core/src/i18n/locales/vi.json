@@ -1575,6 +1575,8 @@
   "onboarding.getOneHere": "Lấy key tại đây",
   "onboarding.getStarted": "Bắt đầu",
   "onboarding.hostingElizaCloudDesc": "Dùng Eliza Cloud cho hosting được quản lý và chạy 24/7.",
+  "onboarding.hostingElizaCloudHybrid": "Cloud + tính toán trên điện thoại",
+  "onboarding.hostingElizaCloudHybridDesc": "Chạy trên Eliza Cloud và đóng góp tác vụ mô hình cục bộ đủ điều kiện từ thiết bị này.",
   "onboarding.hostingLocal": "Máy cục bộ",
   "onboarding.hostingLocalDesc": "Chạy backend trên máy này.",
   "onboarding.hostingQuestion": "{{appName}} nên chạy ở đâu?",

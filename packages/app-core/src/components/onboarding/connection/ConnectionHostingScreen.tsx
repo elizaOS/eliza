@@ -89,6 +89,22 @@ export function ConnectionHostingScreen({
             </div>
           </div>
         </Button>
+        <Button
+          type="button"
+          className={getOnboardingChoiceCardClassName({})}
+          onClick={() => dispatch({ type: "selectElizaCloudHybridHosting" })}
+        >
+          <div className="min-w-0 flex-1">
+            <div className={onboardingChoiceCardTitleClassName}>
+              {t("onboarding.hostingElizaCloudHybrid")}
+            </div>
+            <div
+              className={`${onboardingChoiceCardDescriptionClassName} line-clamp-2`}
+            >
+              {t("onboarding.hostingElizaCloudHybridDesc")}
+            </div>
+          </div>
+        </Button>
       </div>
       <div className={onboardingFooterClass}>
         <OnboardingSecondaryActionButton

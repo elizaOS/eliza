@@ -1687,6 +1687,8 @@
   "onboarding.getOneHere": "Get one here",
   "onboarding.getStarted": "Get Started",
   "onboarding.hostingElizaCloudDesc": "Use Eliza Cloud for managed hosting and 24/7 availability.",
+  "onboarding.hostingElizaCloudHybrid": "Cloud + phone compute",
+  "onboarding.hostingElizaCloudHybridDesc": "Run in Eliza Cloud and donate eligible local model work from this device.",
   "onboarding.hostingLocal": "Local",
   "onboarding.hostingLocalDesc": "Run the backend on this machine.",
   "onboarding.hostingQuestion": "Where should {{appName}} run?",

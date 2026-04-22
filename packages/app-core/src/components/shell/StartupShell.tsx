@@ -13,6 +13,7 @@ import { useEffect, useRef } from "react";
 import { client } from "../../api";
 import { CONNECT_EVENT } from "../../events";
 import { applyLaunchConnection } from "../../platform";
+import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
@@ -96,6 +97,7 @@ export function StartupShell() {
           apiBase: payload.gatewayUrl,
           token: typeof payload.token === "string" ? payload.token : null,
         });
+        persistMobileRuntimeModeForServerTarget("remote");
         setState("onboardingServerTarget", "remote");
         setState("onboardingRemoteApiBase", connection.apiBase);
         setState("onboardingRemoteToken", connection.token ?? "");

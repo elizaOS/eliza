@@ -21,6 +21,8 @@ export const TRAY_ACTION_EVENT = "eliza:tray-action" as const;
 export const APP_RESUME_EVENT = "eliza:app-resume" as const;
 export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const CONNECT_EVENT = "eliza:connect" as const;
+export const MOBILE_RUNTIME_MODE_CHANGED_EVENT =
+  "eliza:mobile-runtime-mode-changed" as const;
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
@@ -73,7 +75,8 @@ export type ElizaDocumentEventName =
   | typeof TRAY_ACTION_EVENT
   | typeof APP_RESUME_EVENT
   | typeof APP_PAUSE_EVENT
-  | typeof CONNECT_EVENT;
+  | typeof CONNECT_EVENT
+  | typeof MOBILE_RUNTIME_MODE_CHANGED_EVENT;
 
 export type ElizaWindowEventName =
   | typeof VOICE_CONFIG_UPDATED_EVENT
