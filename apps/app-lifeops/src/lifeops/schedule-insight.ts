@@ -18,6 +18,7 @@ import {
   listHistoricalSleepEpisodes,
   persistSleepEpisodes,
 } from "./sleep-episode-store.js";
+import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import {
   resolveLifeOpsDayBoundary,
   resolveLifeOpsSleepCycle,
@@ -622,6 +623,10 @@ export async function inspectLifeOpsSchedule(args: {
   const nowMs = now.getTime();
   const sinceAt = new Date(nowMs - LOOKBACK_MS).toISOString();
   const untilAt = now.toISOString();
+  await probeIMessageOutboundActivity({
+    repository: args.repository,
+    agentId: args.agentId,
+  });
   const [signals, sessions, activityEvents] = await Promise.all([
     args.repository.listActivitySignals(args.agentId, {
       sinceAt,

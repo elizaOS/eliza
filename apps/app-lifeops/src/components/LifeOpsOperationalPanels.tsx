@@ -289,6 +289,25 @@ export function LifeOpsSchedulePanel() {
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("lifeopspanels.awakeProbability", {
+              defaultValue: "Awake probability",
+            })}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {merged
+              ? `${formatPercent(merged.awakeProbability.pAwake)} awake · ${formatPercent(merged.awakeProbability.pAsleep)} asleep`
+              : "—"}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {merged
+              ? `${formatPercent(merged.awakeProbability.pUnknown)} unknown · ${merged.relativeTime.awakeState}`
+              : t("lifeopspanels.scheduleUnavailable", {
+                  defaultValue: "No schedule state available.",
+                })}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">
             {t("lifeopspanels.relativeTime", {
               defaultValue: "Relative time",
             })}
@@ -331,6 +350,25 @@ export function LifeOpsSchedulePanel() {
                 : null}
             </div>
           ) : null}
+        </div>
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("lifeopspanels.regularity", {
+              defaultValue: "Regularity",
+            })}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {merged
+              ? `${merged.regularity.regularityClass.replace(/_/g, " ")} · SRI ${Math.round(merged.regularity.sri)}`
+              : "—"}
+          </div>
+          <div className="mt-1 text-xs text-muted">
+            {merged
+              ? `${Math.round(merged.regularity.bedtimeStddevMin)}m bedtime stddev · ${Math.round(merged.regularity.wakeStddevMin)}m wake stddev`
+              : t("lifeopspanels.scheduleUnavailable", {
+                  defaultValue: "No schedule state available.",
+                })}
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 text-xs">

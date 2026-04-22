@@ -57,6 +57,9 @@ export interface ActivitySignalRecord {
     | "app_lifecycle"
     | "page_visibility"
     | "desktop_power"
+    | "desktop_interaction"
+    | "connector_activity"
+    | "imessage_outbound"
     | "mobile_device"
     | "mobile_health";
   platform: string;

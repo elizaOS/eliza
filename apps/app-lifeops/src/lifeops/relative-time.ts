@@ -47,6 +47,15 @@ function allowsProjectedBedtime(
   );
 }
 
+function allowsFallbackBedtimeFromLastSleep(
+  regularity: LifeOpsScheduleRegularity | null | undefined,
+): boolean {
+  return (
+    regularity?.regularityClass !== "irregular" &&
+    regularity?.regularityClass !== "very_irregular"
+  );
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -210,7 +219,7 @@ export function resolveLifeOpsRelativeTime(args: {
       : null;
   const fallbackBedtimeMs =
     typicalBedtimeMs === null &&
-    allowsProjectedBedtime(args.schedule.regularity) &&
+    allowsFallbackBedtimeFromLastSleep(args.schedule.regularity) &&
     lastSleepStartedMs !== null
       ? localHourInstantMs({
           timezone: args.timezone,

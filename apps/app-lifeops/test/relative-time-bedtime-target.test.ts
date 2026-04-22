@@ -121,4 +121,22 @@ describe("resolveLifeOpsRelativeTime bedtime target stays on sleep-day", () => {
     expect(relativeTime.minutesUntilBedtimeTarget).toBeNull();
     expect(relativeTime.minutesSinceBedtimeTarget).toBe(120);
   });
+
+  it("returns no projected bedtime for irregular schedules", () => {
+    const nowMs = Date.parse("2026-04-19T18:00:00.000Z");
+    const relativeTime = resolveLifeOpsRelativeTime({
+      nowMs,
+      timezone: "UTC",
+      schedule: {
+        ...BASE_SCHEDULE,
+        regularity: {
+          ...BASE_SCHEDULE.regularity,
+          regularityClass: "irregular",
+        },
+      },
+    });
+
+    expect(relativeTime.bedtimeTargetAt).toBeNull();
+    expect(relativeTime.minutesUntilBedtimeTarget).toBeNull();
+  });
 });
