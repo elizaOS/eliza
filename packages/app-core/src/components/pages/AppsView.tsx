@@ -533,7 +533,6 @@ export function AppsView() {
           visibleApps={visibleApps}
           onLaunch={(app) => void handleLaunch(app)}
           onRefresh={() => void refreshApps()}
-          onSearchQueryChange={setSearchQuery}
           onToggleFavorite={handleToggleFavorite}
         />
       </div>
