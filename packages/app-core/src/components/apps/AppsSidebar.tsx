@@ -141,7 +141,7 @@ export function AppsSidebar({
       headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
       collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
     >
-      <SidebarScrollRegion className="px-1 pb-3 pt-1">
+      <SidebarScrollRegion className="px-1 pb-3 pt-1 !overflow-y-scroll [&::-webkit-scrollbar]:!w-2 [&::-webkit-scrollbar-thumb]:!rounded-full [&::-webkit-scrollbar-thumb]:!bg-border/60 hover:[&::-webkit-scrollbar-thumb]:!bg-border/80 [&::-webkit-scrollbar-track]:!bg-transparent">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
           {!hasAnyResults ? (
             <div className="px-3 py-4 text-2xs text-muted/70">

@@ -170,9 +170,19 @@ function paletteFor(event: LifeOpsCalendarEvent) {
 interface EventPosition {
   topPct: number;
   heightPct: number;
+  leftPct: number;
+  widthPct: number;
 }
 
-function positionEventInDay(event: LifeOpsCalendarEvent): EventPosition | null {
+interface PositionedEvent {
+  event: LifeOpsCalendarEvent;
+  position: EventPosition;
+}
+
+function eventWindowMs(event: LifeOpsCalendarEvent): {
+  start: number;
+  end: number;
+} | null {
   const start = new Date(event.startAt);
   const end = new Date(event.endAt);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
@@ -182,16 +192,101 @@ function positionEventInDay(event: LifeOpsCalendarEvent): EventPosition | null {
   dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
   const dayEnd = new Date(start);
   dayEnd.setHours(DAY_END_HOUR, 0, 0, 0);
-  const totalMs = dayEnd.getTime() - dayStart.getTime();
   const clampedStart = Math.max(start.getTime(), dayStart.getTime());
   const clampedEnd = Math.min(end.getTime(), dayEnd.getTime());
   if (clampedEnd <= clampedStart) return null;
-  const topPct = ((clampedStart - dayStart.getTime()) / totalMs) * 100;
-  const heightPct = ((clampedEnd - clampedStart) / totalMs) * 100;
   return {
-    topPct,
-    heightPct: Math.max(heightPct, 2.5),
+    start: clampedStart,
+    end: clampedEnd,
   };
+}
+
+/**
+ * Pack concurrent events into lanes, Google-Calendar style.
+ * Two events collide iff their time ranges overlap. Each event is given
+ * the lowest lane index not used by any event it collides with; the column
+ * width is then divided by the max concurrent lane count within each
+ * cluster of connected events.
+ */
+function layoutDayEvents(
+  events: LifeOpsCalendarEvent[],
+): PositionedEvent[] {
+  const windows = events
+    .map((event) => {
+      const window = eventWindowMs(event);
+      return window ? { event, ...window } : null;
+    })
+    .filter(
+      (entry): entry is { event: LifeOpsCalendarEvent; start: number; end: number } =>
+        entry !== null,
+    )
+    .sort((a, b) => a.start - b.start);
+
+  if (windows.length === 0) return [];
+
+  const dayStart = new Date(windows[0].event.startAt);
+  dayStart.setHours(DAY_START_HOUR, 0, 0, 0);
+  const dayEnd = new Date(windows[0].event.startAt);
+  dayEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+  const totalMs = dayEnd.getTime() - dayStart.getTime();
+
+  // First pass: assign lanes greedily.
+  const lanes: Array<number> = []; // lane index -> end time (ms)
+  const assignments: Array<{
+    event: LifeOpsCalendarEvent;
+    start: number;
+    end: number;
+    lane: number;
+  }> = [];
+  for (const entry of windows) {
+    let lane = lanes.findIndex((laneEnd) => laneEnd <= entry.start);
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push(entry.end);
+    } else {
+      lanes[lane] = entry.end;
+    }
+    assignments.push({
+      event: entry.event,
+      start: entry.start,
+      end: entry.end,
+      lane,
+    });
+  }
+
+  // Second pass: for each assignment, compute the local concurrency (max
+  // lane count of any event that overlaps it, transitively). This is the
+  // column-width divisor for that event.
+  const totalLanes = new Map<LifeOpsCalendarEvent, number>();
+  for (const assignment of assignments) {
+    const concurrent = assignments.filter(
+      (other) => other.start < assignment.end && other.end > assignment.start,
+    );
+    const maxLane = concurrent.reduce(
+      (max, entry) => Math.max(max, entry.lane + 1),
+      1,
+    );
+    totalLanes.set(assignment.event, maxLane);
+  }
+
+  return assignments.map((assignment) => {
+    const cols = totalLanes.get(assignment.event) ?? 1;
+    const topPct = ((assignment.start - dayStart.getTime()) / totalMs) * 100;
+    const heightPct = Math.max(
+      ((assignment.end - assignment.start) / totalMs) * 100,
+      2.5,
+    );
+    const widthPct = 100 / cols;
+    return {
+      event: assignment.event,
+      position: {
+        topPct,
+        heightPct,
+        leftPct: assignment.lane * widthPct,
+        widthPct,
+      },
+    };
+  });
 }
 
 function isSameDayKey(a: Date, b: Date): boolean {
@@ -285,6 +380,7 @@ function DayColumnGrid({
 }) {
   const totalHours = DAY_END_HOUR - DAY_START_HOUR;
   const isToday = isSameDayKey(day, new Date());
+  const positioned = useMemo(() => layoutDayEvents(events), [events]);
 
   const nowTopPx = useMemo(() => {
     if (!nowInColumn) return null;
@@ -334,9 +430,7 @@ function DayColumnGrid({
       ) : null}
 
       {/* events */}
-      {events.map((event) => {
-        const position = positionEventInDay(event);
-        if (!position) return null;
+      {positioned.map(({ event, position }) => {
         const color = paletteFor(event);
         const isSelected = event.id === selectedEventId;
         return (
@@ -345,10 +439,12 @@ function DayColumnGrid({
             type="button"
             onClick={() => onSelectEvent(event)}
             aria-pressed={isSelected}
-            className={`group absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${color.bg} ${color.border} ${color.text} ${isSelected ? "ring-2 ring-white/50" : "hover:translate-y-[-1px]"}`}
+            className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${color.bg} ${color.border} ${color.text} ${isSelected ? "ring-2 ring-white/50 z-10" : "hover:translate-y-[-1px]"}`}
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
+              left: `calc(${position.leftPct}% + 0.125rem)`,
+              width: `calc(${position.widthPct}% - 0.25rem)`,
               minHeight: "1.5rem",
             }}
           >
