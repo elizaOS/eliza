@@ -586,13 +586,10 @@ function useAutomationsViewController() {
     }
 
     const preferred = lastSelectedIdRef.current;
-    const next =
-      preferred && allItems.some((item) => item.id === preferred)
-        ? preferred
-        : (allItems[0]?.id ?? null);
-    if (!next) return;
-    const item = allItems.find((candidate) => candidate.id === next) ?? null;
-    setSelectedItemId(next);
+    if (!preferred) return;
+    const item = allItems.find((candidate) => candidate.id === preferred);
+    if (!item) return;
+    setSelectedItemId(preferred);
     setSelectedItemKind(getSelectionKind(item));
   }, [allItems, editingId, editingTaskId, editorOpen, selectedItemId]);
 

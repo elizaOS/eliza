@@ -35,7 +35,6 @@ interface ConnectorDesktopSidebarProps {
   expandLabel: string;
   hasPluginToggleInFlight: boolean;
   mode: PluginsViewMode;
-  pluginDescriptionFallback: string;
   pluginSearch: string;
   registerConnectorRailItem: (pluginId: string) => RefCallback<HTMLElement>;
   registerConnectorSidebarItem: (pluginId: string) => RefCallback<HTMLElement>;
@@ -66,7 +65,6 @@ export function ConnectorSidebar({
   expandLabel,
   hasPluginToggleInFlight,
   mode,
-  pluginDescriptionFallback,
   pluginSearch,
   registerConnectorRailItem,
   registerConnectorSidebarItem,
@@ -213,22 +211,16 @@ export function ConnectorSidebar({
                     </SidebarContent.ItemBody>
                   </SidebarContent.ItemButton>
                   <div className="flex shrink-0 flex-row items-center gap-1">
-                    <span
+                    <Switch
+                      checked={plugin.enabled}
+                      disabled={toggleDisabled}
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => event.stopPropagation()}
-                      className={`inline-flex items-center ${
-                        toggleDisabled ? "cursor-not-allowed opacity-60" : ""
-                      }`}
-                    >
-                      <Switch
-                        checked={plugin.enabled}
-                        disabled={toggleDisabled}
-                        onCheckedChange={(checked) => {
-                          void onTogglePlugin(plugin.id, checked);
-                        }}
-                        aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
-                      />
-                    </span>
+                      onCheckedChange={(checked) => {
+                        void onTogglePlugin(plugin.id, checked);
+                      }}
+                      aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"

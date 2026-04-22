@@ -9,6 +9,7 @@ const baseSvgProps = {
   viewBox: "0 0 24 24",
   fill: "currentColor",
   "aria-hidden": true,
+  focusable: "false",
 } as const;
 
 function makeIcon(path: string) {
@@ -87,7 +88,10 @@ const BRAND_ICONS: Record<
 export function getBrandIcon(
   source: string,
 ): React.ComponentType<BrandIconProps> | null {
-  const normalized = source.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalized = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   if (!normalized) return null;
   return BRAND_ICONS[normalized] ?? null;
 }
