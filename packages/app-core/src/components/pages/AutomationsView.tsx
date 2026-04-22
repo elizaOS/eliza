@@ -2092,12 +2092,14 @@ function IconAction({
   onClick,
   tone,
   disabled,
+  ariaBusy,
 }: {
   icon: ReactNode;
   label: string;
   onClick?: () => void;
   tone?: "ok" | "warning" | "danger";
   disabled?: boolean;
+  ariaBusy?: boolean;
 }) {
   const toneClass =
     tone === "warning"
@@ -2112,6 +2114,7 @@ function IconAction({
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-busy={ariaBusy}
       title={label}
       disabled={disabled}
       className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${toneClass}`}
@@ -2466,16 +2469,21 @@ function WorkflowAutomationDetailPane({
             <>
               <IconAction
                 label={
-                  automation.workflow.active
-                    ? t("automations.n8n.deactivate", {
-                        defaultValue: "Deactivate",
+                  busy
+                    ? t("automations.n8n.updating", {
+                        defaultValue: "Updating...",
                       })
-                    : t("automations.n8n.activate", {
-                        defaultValue: "Activate",
-                      })
+                    : automation.workflow.active
+                      ? t("automations.n8n.deactivate", {
+                          defaultValue: "Deactivate",
+                        })
+                      : t("automations.n8n.activate", {
+                          defaultValue: "Activate",
+                        })
                 }
                 onClick={() => void onToggleWorkflowActive(automation)}
                 disabled={busy}
+                ariaBusy={busy}
                 icon={
                   automation.workflow.active ? (
                     <Pause className="h-3.5 w-3.5" />
@@ -2486,11 +2494,18 @@ function WorkflowAutomationDetailPane({
                 tone={automation.workflow.active ? "warning" : "ok"}
               />
               <IconAction
-                label={t("automations.n8n.deleteWorkflow", {
-                  defaultValue: "Delete workflow",
-                })}
+                label={
+                  busy
+                    ? t("automations.n8n.updating", {
+                        defaultValue: "Updating...",
+                      })
+                    : t("automations.n8n.deleteWorkflow", {
+                        defaultValue: "Delete workflow",
+                      })
+                }
                 onClick={() => void onDeleteWorkflow(automation)}
                 disabled={busy}
+                ariaBusy={busy}
                 icon={<Trash2 className="h-3.5 w-3.5" />}
                 tone="danger"
               />

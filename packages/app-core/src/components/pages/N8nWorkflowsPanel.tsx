@@ -425,6 +425,7 @@ function WorkflowDetailPane({
                 ? "border-warning/30 text-warning hover:bg-warning/10"
                 : "border-ok/30 text-ok hover:bg-ok/10"
             }`}
+            aria-busy={busy === workflow.id}
             disabled={busy === workflow.id}
             onClick={() => onToggleActive(workflow)}
           >
@@ -471,10 +472,13 @@ function WorkflowDetailPane({
           variant="outline"
           size="sm"
           className="border-danger/40 text-danger hover:bg-danger/10"
+          aria-busy={busy === workflow.id}
           disabled={busy === workflow.id}
           onClick={() => onDelete(workflow)}
         >
-          {t("automations.n8n.deleteWorkflow")}
+          {busy === workflow.id
+            ? t("automations.n8n.updating")
+            : t("automations.n8n.deleteWorkflow")}
         </Button>
       </div>
     </div>
