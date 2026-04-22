@@ -37,11 +37,29 @@
 			"../../../node_modules/.bun/node_modules"
 		],
 		"paths": {
+			"@elizaos/agent": [
+				"../agent/src/index.ts"
+			],
+			"@elizaos/agent/*": [
+				"../agent/src/*"
+			],
+			"@elizaos/app-lifeops": [
+				"../../apps/app-lifeops/src/index.ts"
+			],
+			"@elizaos/app-lifeops/*": [
+				"../../apps/app-lifeops/src/*"
+			],
 			"@elizaos/core": [
 				"../typescript/src/index.node.ts"
 			],
 			"@elizaos/core/*": [
 				"../typescript/src/*"
+			],
+			"@elizaos/shared": [
+				"../shared/src/index.ts"
+			],
+			"@elizaos/shared/*": [
+				"../shared/src/*"
 			]
 		}
 	},

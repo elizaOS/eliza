@@ -10,7 +10,9 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
     "./contracts": "./src/contracts.ts",
-    "./packaging": "./src/packaging.ts"
+    "./packaging": "./src/packaging.ts",
+    "./routes": "./src/routes.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
