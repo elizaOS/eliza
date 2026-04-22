@@ -587,8 +587,8 @@ export function BrowserWorkspaceView(): JSX.Element {
   ]);
 
   // When the workspace loads with no tabs (and the ?browse= path isn't going
-  // to open one), auto-open a blank tab so the user lands on an editable URL
-  // bar instead of a dead empty state. Runs exactly once per mount.
+  // to open one), auto-open the Milady homepage so the user lands on a live
+  // page instead of a dead empty state. Runs exactly once per mount.
   useEffect(() => {
     if (initialBlankTabHandledRef.current) return;
     if (loading || loadError) return;
@@ -599,12 +599,12 @@ export function BrowserWorkspaceView(): JSX.Element {
     }
     initialBlankTabHandledRef.current = true;
     void runBrowserWorkspaceAction(
-      "open:initial-blank",
+      "open:initial-home",
       async () => {
-        await openNewBrowserWorkspaceTab("about:blank");
+        await openNewBrowserWorkspaceTab("https://milady.ai/");
       },
-      t("browserworkspace.OpenBlankTabFailed", {
-        defaultValue: "Failed to open a blank browser tab.",
+      t("browserworkspace.OpenInitialHomeFailed", {
+        defaultValue: "Failed to open the Milady homepage.",
       }),
     );
   }, [

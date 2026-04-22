@@ -26,7 +26,7 @@ const sidebarRootVariants = cva(
           "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
       },
       collapsed: {
-        true: "!w-[4.75rem] !min-w-[4.75rem] xl:!w-[4.75rem] xl:!min-w-[4.75rem]",
+        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent",
         false: "",
       },
     },
@@ -482,12 +482,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
     const [autoRailItems, setAutoRailItems] = React.useState(
       autoRailItemsFromTree,
     );
-    const showsCollapsedFallbackBody =
-      showsCollapsedState &&
-      !hasCustomCollapsedContent &&
-      !hasStructuredCollapsedRail &&
-      autoRailItems.length === 0 &&
-      !needsDomAutoRailFallback;
     const renderedContentIdentity = contentIdentity ?? variant;
 
     React.useEffect(() => {
@@ -660,36 +654,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           layerClassName,
         )}
       >
-        <div
-          className={cn(
-            sidebarHeaderVariants({
-              variant,
-              collapsed: true,
-            }),
-            headerClassName,
-          )}
-        >
-          <div
-            className={cn(
-              sidebarCollapsedContentClassName,
-              collapsedContentClassName,
-            )}
-          >
-            <div className="flex w-full flex-col items-center pb-2 pt-1">
-              <Button
-                variant="surface"
-                size="icon"
-                data-testid={expandButtonTestId}
-                className={cn(sidebarControlButtonClassName, collapseButtonClassName)}
-                aria-label={expandButtonAriaLabel}
-                onClick={handleExpand}
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </Button>
-            </div>
-            {renderCollapsedInner()}
-          </div>
-        </div>
         {renderHiddenAutoRailSource ? (
           <SidebarBody ref={autoRailSourceRef} className="hidden" aria-hidden>
             {children}
@@ -775,9 +739,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             variant,
             collapsed: variant === "default" ? showsCollapsedState : false,
           }),
-          showsCollapsedFallbackBody
-            ? sidebarCollapsedFallbackRootClassName
-            : undefined,
           className,
         )}
         data-testid={testId}
@@ -785,6 +746,21 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         data-variant={variant}
         {...props}
       >
+        {showsCollapsedState && variant === "default" ? (
+          <Button
+            variant="surface"
+            size="icon"
+            data-testid={expandButtonTestId}
+            className={cn(
+              "fixed bottom-3 left-3 z-40 h-8 w-8 rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt",
+              collapseButtonClassName,
+            )}
+            aria-label={expandButtonAriaLabel}
+            onClick={handleExpand}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </Button>
+        ) : null}
         <React.Fragment key={renderedContentIdentity}>
           {variant === "mobile" ? (
             <div className={sidebarMobileHeaderBarClassName}>
