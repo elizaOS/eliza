@@ -547,7 +547,7 @@ export function CharacterExamplesPanel({
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
       {/* Chat Examples */}
       <section className="flex flex-col gap-3">
         <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
@@ -773,6 +773,6 @@ export function CharacterExamplesPanel({
           </button>
         </div>
       </section>
-    </>
+    </div>
   );
 }

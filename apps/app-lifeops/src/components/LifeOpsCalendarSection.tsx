@@ -163,7 +163,12 @@ function hashString(input: string): number {
 }
 
 function paletteFor(event: LifeOpsCalendarEvent) {
-  const seed = event.accountEmail || event.calendarId || event.id;
+  // Prefer calendar-level seeds so gcal-style "one colour per calendar"
+  // holds when those are distinct. Fall back to event.id for variety when
+  // every event shares the same calendar.
+  const seed = [event.calendarId, event.accountEmail, event.id]
+    .filter(Boolean)
+    .join("|");
   return EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length];
 }
 
