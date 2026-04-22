@@ -192,6 +192,25 @@ export interface WalletConfigUpdateRequest {
 
 export type WalletNetworkMode = "mainnet" | "testnet";
 
+/**
+ * Paths through which plugin-evm can produce a signature.
+ *
+ * - "local":             EVM_PRIVATE_KEY env var (non-placeholder)
+ * - "steward-self":      self-hosted Steward vault
+ * - "steward-cloud":     cloud-provisioned Steward sidecar
+ * - "cloud-view-only":   cloud-custodied address known, but no signing path
+ *                        is wired in this runtime — view-only
+ * - "none":              no signer, no address
+ *
+ * Source of truth: packages/agent/src/services/evm-signing-capability.ts.
+ */
+export type EvmSigningCapabilityKind =
+  | "local"
+  | "steward-self"
+  | "steward-cloud"
+  | "cloud-view-only"
+  | "none";
+
 export interface WalletConfigStatus {
   selectedRpcProviders: WalletRpcSelections;
   walletNetwork?: WalletNetworkMode;
@@ -223,6 +242,8 @@ export interface WalletConfigStatus {
   pluginEvmRequired?: boolean;
   executionReady?: boolean;
   executionBlockedReason?: string | null;
+  evmSigningCapability?: EvmSigningCapabilityKind;
+  evmSigningReason?: string;
   solanaSigningAvailable?: boolean;
   /** Present only when ENABLE_CLOUD_WALLET is on. */
   wallets?: WalletEntry[];

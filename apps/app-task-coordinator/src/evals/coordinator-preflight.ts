@@ -171,19 +171,14 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 }
 
 function resolveElizaConfigPath(): string {
-  const explicit =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
+  const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicit) return explicit;
 
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "milady";
   const stateDir =
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(getHomeDir(), ".eliza");
-  const namespace = process.env.ELIZA_NAMESPACE?.trim();
-  const filename =
-    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-  return path.join(stateDir, filename);
+    path.join(getHomeDir(), `.${namespace}`);
+  return path.join(stateDir, `${namespace}.json`);
 }
 
 function commandExists(command: string): boolean {

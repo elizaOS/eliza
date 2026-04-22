@@ -12,16 +12,8 @@ function trimEnvValue(value: string | undefined): string | undefined {
 export function ensureNamespaceDefaults(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const resolvedNamespace =
-    trimEnvValue(env.ELIZA_NAMESPACE) ??
-    trimEnvValue(env.ELIZA_NAMESPACE) ??
-    "eliza";
-
   if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
-    env.ELIZA_NAMESPACE = resolvedNamespace;
-  }
-  if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
-    env.ELIZA_NAMESPACE = resolvedNamespace;
+    env.ELIZA_NAMESPACE = "milady";
   }
 }
 
