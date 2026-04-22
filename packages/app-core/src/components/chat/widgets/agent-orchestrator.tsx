@@ -183,18 +183,18 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
             key={event.id}
             className="flex items-start gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
           >
-            <span className="shrink-0 whitespace-nowrap pt-0.5 text-2xs font-medium tabular-nums text-muted">
+            <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
             </span>
             <span
-              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
               role="img"
               title={eventTypeMeta.label}
             >
-              <EventIcon className="h-3 w-3" />
+              <EventIcon className="h-2.5 w-2.5" />
               <span className="sr-only">{eventTypeMeta.label}</span>
             </span>
-            <span className="min-w-0 flex-1 break-words pt-0.5 text-xs-tight leading-4 text-txt">
+            <span className="min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt">
               {event.summary}
             </span>
           </div>

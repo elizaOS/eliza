@@ -66,8 +66,8 @@ export function TasksEventsPanel({
     <aside className={rootClassName} data-testid="chat-widgets-bar">
       {!mobile ? (
         <div className="flex h-10 items-center justify-between border-b border-border/30 px-2">
-          <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-            <LayoutGrid className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-1.5 px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted">
+            <LayoutGrid className="h-3 w-3" aria-hidden />
             Widgets
           </div>
           {onToggleCollapsed ? (
