@@ -24,8 +24,6 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
-import { PageScopedChatPane } from "./PageScopedChatPane.js";
-import { getBrowserPageScopeCopy } from "./page-scoped-conversations.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -1098,101 +1096,11 @@ export function BrowserWorkspaceView(): JSX.Element {
     </div>
   );
 
-  const browserPageCopy = useMemo(() => {
-    const browserLabel =
-      primaryBrowserBridgeCompanion?.browser === "safari" ? "Safari" : "Chrome";
-    return getBrowserPageScopeCopy({
-      browserBridgeConnected: browserBridgeConnected,
-      browserLabel,
-      profileLabel: primaryBrowserBridgeCompanion?.profileLabel ?? null,
-    });
-  }, [browserBridgeConnected, primaryBrowserBridgeCompanion]);
-
-  const browserChatIntroActions = useMemo(() => {
-    // Web mode without a connected extension is the only state where the user
-    // needs the install entry points — in desktop/cloud modes the real
-    // browser session runs server-side instead of via the companion.
-    if (workspace.mode !== "web") return null;
-    if (browserBridgeConnected) return null;
-    if (!browserBridgeAvailable) return null;
-    return (
-      <>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => void installBrowserBridgeExtension()}
-          disabled={busyAction !== null}
-        >
-          {t("browserworkspace.InstallBrowserBridge", {
-            defaultValue: "Install Agent Browser Bridge",
-          })}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void refreshBrowserBridgeConnection()}
-          disabled={busyAction !== null}
-        >
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          {t("common.refresh", { defaultValue: "Refresh" })}
-        </Button>
-        {browserBridgePackageStatus?.chromeBuildPath ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void revealBrowserBridgeFolder()}
-            disabled={busyAction !== null}
-          >
-            <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
-            {t("browserworkspace.OpenExtensionFolder", {
-              defaultValue: "Open extension folder",
-            })}
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void openBrowserBridgeChromeExtensions()}
-          disabled={busyAction !== null}
-        >
-          {t("browserworkspace.OpenChromeExtensions", {
-            defaultValue: "Open Chrome extensions",
-          })}
-        </Button>
-      </>
-    );
-  }, [
-    busyAction,
-    installBrowserBridgeExtension,
-    browserBridgeAvailable,
-    browserBridgeConnected,
-    browserBridgePackageStatus,
-    openBrowserBridgeChromeExtensions,
-    refreshBrowserBridgeConnection,
-    revealBrowserBridgeFolder,
-    t,
-    workspace.mode,
-  ]);
-
   return (
     <AppWorkspaceChrome
       testId="browser-workspace-view"
       nav={navNode}
       main={mainNode}
-      chat={
-        <PageScopedChatPane
-          scope="page-browser"
-          introOverride={{
-            title: browserPageCopy.title,
-            body: browserPageCopy.body,
-            actions: browserChatIntroActions,
-          }}
-          systemAddendumOverride={browserPageCopy.systemAddendum}
-        />
-      }
     />
   );
 }
