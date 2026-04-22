@@ -24,6 +24,7 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
+import { getBrowserPageScopeCopy } from "./page-scoped-conversations.js";
 import { PageScopedChatPane } from "./PageScopedChatPane.js";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
@@ -164,6 +165,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     useState<LifeOpsBrowserCompanionPackageStatus | null>(null);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
+  const initialBlankTabHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const getStewardPendingRef = useRef(getStewardPending);
   const getStewardStatusRef = useRef(getStewardStatus);
@@ -582,6 +584,36 @@ export function BrowserWorkspaceView(): JSX.Element {
     runBrowserWorkspaceAction,
     t,
     workspace.tabs,
+  ]);
+
+  // When the workspace loads with no tabs (and the ?browse= path isn't going
+  // to open one), auto-open a blank tab so the user lands on an editable URL
+  // bar instead of a dead empty state. Runs exactly once per mount.
+  useEffect(() => {
+    if (initialBlankTabHandledRef.current) return;
+    if (loading || loadError) return;
+    if (initialBrowseUrlRef.current) return;
+    if (workspace.tabs.length > 0) {
+      initialBlankTabHandledRef.current = true;
+      return;
+    }
+    initialBlankTabHandledRef.current = true;
+    void runBrowserWorkspaceAction(
+      "open:initial-blank",
+      async () => {
+        await openNewBrowserWorkspaceTab("about:blank");
+      },
+      t("browserworkspace.OpenBlankTabFailed", {
+        defaultValue: "Failed to open a blank browser tab.",
+      }),
+    );
+  }, [
+    loadError,
+    loading,
+    openNewBrowserWorkspaceTab,
+    runBrowserWorkspaceAction,
+    t,
+    workspace.tabs.length,
   ]);
 
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
