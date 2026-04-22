@@ -776,7 +776,7 @@ export function ConversationsSidebar({
       >
         <SidebarScrollRegion
           variant={isGameModal ? "game-modal" : "default"}
-          className={isGameModal ? undefined : "px-1 pb-2 pt-0"}
+          className={isGameModal ? undefined : "px-1 pb-2 pt-2"}
         >
           <SidebarPanel
             variant={isGameModal ? "game-modal" : "default"}
