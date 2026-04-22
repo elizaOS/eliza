@@ -181,7 +181,7 @@ function ViewRouter({
       case "apps":
         // Apps disabled in production builds; fall through to chat
         return APPS_ENABLED ? (
-          <PageChatTab scope="page-apps" variant="scroll">
+          <PageChatTab scope="page-apps" variant="content">
             <AppsPageView />
           </PageChatTab>
         ) : (

@@ -1,3 +1,4 @@
+import { PageLayout } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
@@ -5,6 +6,7 @@ import { getAppSlugFromPath } from "../../navigation";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
+import { AppsSidebar } from "../apps/AppsSidebar";
 import {
   filterAppsForCatalog,
   findAppBySlug,
@@ -481,41 +483,62 @@ export function AppsView() {
     [activeGameRunId, appRuns, setActionNotice, setState, stoppingRunId, t],
   );
 
+  const appsSidebar = (
+    <AppsSidebar
+      apps={apps}
+      runs={sortedRuns}
+      activeAppNames={activeAppNames}
+      favoriteAppNames={favoriteAppNames}
+      selectedAppName={activeGameRun?.appName ?? null}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      onLaunchApp={(app) => void handleLaunch(app)}
+      onOpenRun={(run) => void handleOpenRun(run)}
+    />
+  );
+
   return (
-    <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <PageLayout
+      className="h-full bg-transparent"
+      data-testid="apps-shell"
+      sidebar={appsSidebar}
+      contentInnerClassName="w-full"
+    >
+      <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
         {hasActiveRun ? (
-          <button
-            type="button"
-            className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
-            onClick={handleOpenCurrentGame}
-          >
-            {hasCurrentGame ? "Live viewer" : "Active run"}
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
+              onClick={handleOpenCurrentGame}
+            >
+              {hasCurrentGame ? "Live viewer" : "Active run"}
+            </button>
+          </div>
         ) : null}
+
+        <RunningAppsRow
+          runs={sortedRuns}
+          catalogApps={apps}
+          busyRunId={busyRunId}
+          onOpenRun={(run) => void handleOpenRun(run)}
+          onStopRun={(run) => void handleStopRun(run)}
+          stoppingRunId={stoppingRunId}
+        />
+
+        <AppsCatalogGrid
+          activeAppNames={activeAppNames}
+          error={error}
+          favoriteAppNames={favoriteAppNames}
+          loading={loading}
+          searchQuery={searchQuery}
+          visibleApps={visibleApps}
+          onLaunch={(app) => void handleLaunch(app)}
+          onRefresh={() => void refreshApps()}
+          onSearchQueryChange={setSearchQuery}
+          onToggleFavorite={handleToggleFavorite}
+        />
       </div>
-
-      <RunningAppsRow
-        runs={sortedRuns}
-        catalogApps={apps}
-        busyRunId={busyRunId}
-        onOpenRun={(run) => void handleOpenRun(run)}
-        onStopRun={(run) => void handleStopRun(run)}
-        stoppingRunId={stoppingRunId}
-      />
-
-      <AppsCatalogGrid
-        activeAppNames={activeAppNames}
-        error={error}
-        favoriteAppNames={favoriteAppNames}
-        loading={loading}
-        searchQuery={searchQuery}
-        visibleApps={visibleApps}
-        onLaunch={(app) => void handleLaunch(app)}
-        onRefresh={() => void refreshApps()}
-        onSearchQueryChange={setSearchQuery}
-        onToggleFavorite={handleToggleFavorite}
-      />
-    </div>
+    </PageLayout>
   );
 }
