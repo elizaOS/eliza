@@ -155,6 +155,59 @@ function matchesLifeOpsDerivedEventFilters(
       return false;
     }
   }
+  if (
+    event.kind === "gmail.message.received" ||
+    event.kind === "gmail.thread.needs_response"
+  ) {
+    const payload = event.payload ?? {};
+    const grantId = typeof payload.grantId === "string" ? payload.grantId : "";
+    if (
+      Array.isArray(record.grantIds) &&
+      record.grantIds.length > 0 &&
+      !record.grantIds.includes(grantId)
+    ) {
+      return false;
+    }
+    if (Array.isArray(record.fromIncludesAny) && record.fromIncludesAny.length > 0) {
+      const sender = `${String(payload.from ?? "")} ${String(payload.fromEmail ?? "")}`.toLowerCase();
+      if (
+        !record.fromIncludesAny.some((needle) =>
+          sender.includes(String(needle).toLowerCase()),
+        )
+      ) {
+        return false;
+      }
+    }
+    if (
+      Array.isArray(record.subjectIncludesAny) &&
+      record.subjectIncludesAny.length > 0
+    ) {
+      const subject = String(payload.subject ?? "").toLowerCase();
+      if (
+        !record.subjectIncludesAny.some((needle) =>
+          subject.includes(String(needle).toLowerCase()),
+        )
+      ) {
+        return false;
+      }
+    }
+    if (Array.isArray(record.labelIds) && record.labelIds.length > 0) {
+      const labels = new Set(
+        Array.isArray(payload.labels)
+          ? payload.labels.map((label) => String(label))
+          : [],
+      );
+      if (!record.labelIds.some((labelId) => labels.has(String(labelId)))) {
+        return false;
+      }
+    }
+    if (
+      typeof record.requiresReplyNeeded === "boolean" &&
+      Boolean(payload.likelyReplyNeeded) !== record.requiresReplyNeeded
+    ) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -793,6 +846,31 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
               step.request ?? {},
               new Date(args.startedAt),
             );
+          } else if (step.kind === "get_gmail_unresponded") {
+            value = await this.getGmailUnresponded(
+              internalUrl,
+              step.request ?? {},
+              new Date(args.startedAt),
+            );
+          } else if (step.kind === "dispatch_n8n_workflow") {
+            const n8n = this.runtime.getService("N8N_DISPATCH") as {
+              execute?: (
+                workflowId: string,
+                payload?: Record<string, unknown>,
+              ) => Promise<unknown>;
+            } | null;
+            if (!n8n || typeof n8n.execute !== "function") {
+              value = {
+                ok: false,
+                error: "N8N_DISPATCH service not registered",
+              };
+            } else {
+              value = await n8n.execute(step.workflowId, {
+                ...(step.payload ?? {}),
+                request: args.request,
+                outputs,
+              });
+            }
           } else if (step.kind === "summarize") {
             const sourceValue =
               (step.sourceKey ? outputs[step.sourceKey] : steps.at(-1)?.value) ??

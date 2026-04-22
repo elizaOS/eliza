@@ -4,6 +4,7 @@ import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
   LifeOpsCadence,
   LifeOpsProgressionRule,
   LifeOpsTimeWindowDefinition,
@@ -117,6 +118,8 @@ export function normalizeWorkflowActionPlan(
         "resolve_website_access_callback",
         "get_calendar_feed",
         "get_gmail_triage",
+        "get_gmail_unresponded",
+        "dispatch_n8n_workflow",
         "summarize",
         "browser",
       ] as const,
@@ -182,6 +185,32 @@ export function normalizeWorkflowActionPlan(
           step.request,
           `actionPlan.steps[${index}].request`,
         ) as unknown as GetLifeOpsGmailTriageRequest | undefined,
+      };
+    }
+    if (kind === "get_gmail_unresponded") {
+      return {
+        kind,
+        id,
+        resultKey,
+        request: normalizeOptionalRecord(
+          step.request,
+          `actionPlan.steps[${index}].request`,
+        ) as unknown as GetLifeOpsGmailUnrespondedRequest | undefined,
+      };
+    }
+    if (kind === "dispatch_n8n_workflow") {
+      return {
+        kind,
+        id,
+        resultKey,
+        workflowId: requireNonEmptyString(
+          step.workflowId,
+          `actionPlan.steps[${index}].workflowId`,
+        ),
+        payload: normalizeOptionalRecord(
+          step.payload,
+          `actionPlan.steps[${index}].payload`,
+        ),
       };
     }
     if (kind === "summarize") {

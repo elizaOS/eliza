@@ -770,6 +770,7 @@ export type GoogleCapabilityStatus = {
   hasCalendarWrite: boolean;
   hasGmailTriage: boolean;
   hasGmailSend: boolean;
+  hasGmailManage: boolean;
 };
 
 export async function getGoogleCapabilityStatus(
@@ -786,6 +787,7 @@ export async function getGoogleCapabilityStatus(
       hasCalendarWrite: false,
       hasGmailTriage: false,
       hasGmailSend: false,
+      hasGmailManage: false,
     };
   }
   const capabilities = new Set(status.grantedCapabilities ?? []);
@@ -798,6 +800,7 @@ export async function getGoogleCapabilityStatus(
     hasCalendarWrite: capabilities.has("google.calendar.write"),
     hasGmailTriage: capabilities.has("google.gmail.triage"),
     hasGmailSend: capabilities.has("google.gmail.send"),
+    hasGmailManage: capabilities.has("google.gmail.manage"),
   };
 }
 

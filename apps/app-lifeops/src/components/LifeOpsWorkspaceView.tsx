@@ -11,6 +11,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsConnectorSide,
+  LifeOpsGmailBulkOperation,
   LifeOpsGmailDraftTone,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailReplyDraft,
@@ -279,6 +280,8 @@ function useLifeOpsSideWorkspace({
     connected &&
     (capabilities.has("google.gmail.triage") ||
       capabilities.has("google.gmail.send"));
+  const emailManageEnabled =
+    connected && capabilities.has("google.gmail.manage");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calendarFeed, setCalendarFeed] = useState<LifeOpsCalendarFeed | null>(
@@ -296,6 +299,7 @@ function useLifeOpsSideWorkspace({
   const [draftTone, setDraftTone] = useState<LifeOpsGmailDraftTone>("neutral");
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [draft, setDraft] = useState<LifeOpsGmailReplyDraft | null>(null);
   const [draftBody, setDraftBody] = useState("");
   const [eventTitle, setEventTitle] = useState("");
@@ -594,6 +598,56 @@ function useLifeOpsSideWorkspace({
     t,
   ]);
 
+  const handleManageMessage = useCallback(
+    async (operation: LifeOpsGmailBulkOperation) => {
+      if (!status || !selectedGmailMessage || !emailManageEnabled) {
+        return;
+      }
+      setManaging(true);
+      setError(null);
+      try {
+        const result = await client.manageLifeOpsGmailMessages({
+          side: status.side,
+          mode: status.mode,
+          messageIds: [selectedGmailMessage.id],
+          operation,
+          confirmDestructive:
+            operation === "trash" || operation === "report_spam",
+        });
+        setActionNotice(
+          t("lifeopsworkspace.gmailManaged", {
+            defaultValue: "{{operation}} applied to {{count}} message",
+            operation: result.operation,
+            count: result.affectedCount,
+          }),
+          "success",
+          2200,
+        );
+        setDraft(null);
+        setDraftBody("");
+        await refresh();
+      } catch (cause) {
+        setError(
+          cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message.trim()
+            : t("lifeopsworkspace.gmailManageFailed", {
+                defaultValue: "Could not update the Gmail message.",
+              }),
+        );
+      } finally {
+        setManaging(false);
+      }
+    },
+    [
+      emailManageEnabled,
+      refresh,
+      selectedGmailMessage,
+      setActionNotice,
+      status,
+      t,
+    ],
+  );
+
   return {
     side,
     identity,
@@ -604,6 +658,7 @@ function useLifeOpsSideWorkspace({
     error,
     calendarEnabled,
     emailEnabled,
+    emailManageEnabled,
     calendarEvents,
     groupedCalendarEvents,
     selectedCalendarEvent,
@@ -618,6 +673,7 @@ function useLifeOpsSideWorkspace({
     setDraftBody,
     drafting,
     sending,
+    managing,
     eventTitle,
     setEventTitle,
     eventDate,
@@ -632,6 +688,7 @@ function useLifeOpsSideWorkspace({
     handleCreateEvent,
     handleGenerateDraft,
     handleSendDraft,
+    handleManageMessage,
   } as const;
 }
 
@@ -1023,6 +1080,55 @@ function EmailColumn({
             <div>{workspace.selectedGmailMessage.from}</div>
             <div>{workspace.selectedGmailMessage.snippet}</div>
           </div>
+
+          {workspace.emailManageEnabled ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={workspace.managing}
+                onClick={() => void workspace.handleManageMessage("archive")}
+              >
+                {t("lifeopsworkspace.archive", {
+                  defaultValue: "Archive",
+                })}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={workspace.managing}
+                onClick={() => void workspace.handleManageMessage("mark_read")}
+              >
+                {t("lifeopsworkspace.markRead", {
+                  defaultValue: "Mark read",
+                })}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={workspace.managing}
+                onClick={() => void workspace.handleManageMessage("report_spam")}
+              >
+                {t("lifeopsworkspace.spam", {
+                  defaultValue: "Spam",
+                })}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={workspace.managing}
+                onClick={() => void workspace.handleManageMessage("trash")}
+              >
+                {t("lifeopsworkspace.trash", {
+                  defaultValue: "Trash",
+                })}
+              </Button>
+            </div>
+          ) : null}
 
           <SegmentedControl<LifeOpsGmailDraftTone>
             aria-label={t("lifeopsworkspace.draftToneAria", {

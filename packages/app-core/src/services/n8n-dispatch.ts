@@ -49,7 +49,10 @@ export interface N8nDispatchResult {
 }
 
 export interface N8nDispatchService {
-  execute(workflowId: string): Promise<N8nDispatchResult>;
+  execute(
+    workflowId: string,
+    payload?: Record<string, unknown>,
+  ): Promise<N8nDispatchResult>;
 }
 
 export interface CreateN8nDispatchServiceOptions {
@@ -142,7 +145,10 @@ export function createN8nDispatchService(
     resolveAgentId = defaultResolveAgentId,
   } = options;
 
-  const execute = async (workflowId: string): Promise<N8nDispatchResult> => {
+  const execute = async (
+    workflowId: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<N8nDispatchResult> => {
     const id = workflowId.trim();
     if (!id) {
       return { ok: false, error: "workflow id required" };
@@ -200,7 +206,7 @@ export function createN8nDispatchService(
       res = await fetchImpl(url, {
         method: "POST",
         headers,
-        body: "{}",
+        body: JSON.stringify(payload),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

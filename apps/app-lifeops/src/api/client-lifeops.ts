@@ -44,8 +44,10 @@ import type {
   DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
+  GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsUnifiedInboxRequest,
+  IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
   LifeOpsCalendarEventMutationResult,
@@ -56,8 +58,12 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsDefinitionRecord,
   LifeOpsDiscordConnectorStatus,
+  LifeOpsGmailEventIngestResult,
+  LifeOpsGmailManageResult,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailTriageFeed,
+  LifeOpsGmailUnrespondedFeed,
+  ManageLifeOpsGmailMessagesRequest,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
@@ -213,6 +219,9 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
+    getLifeOpsGmailUnresponded(
+      options?: GetLifeOpsGmailUnrespondedRequest,
+    ): Promise<LifeOpsGmailUnrespondedFeed>;
     getLifeOpsNextCalendarEventContext(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsNextCalendarEventContext>;
@@ -233,6 +242,12 @@ declare module "@elizaos/app-core/api/client-base" {
     sendLifeOpsGmailReply(
       data: SendLifeOpsGmailReplyRequest,
     ): Promise<{ ok: true }>;
+    manageLifeOpsGmailMessages(
+      data: ManageLifeOpsGmailMessagesRequest,
+    ): Promise<LifeOpsGmailManageResult>;
+    ingestLifeOpsGmailEvent(
+      data: IngestLifeOpsGmailEventRequest,
+    ): Promise<LifeOpsGmailEventIngestResult>;
     listLifeOpsDefinitions(): Promise<{
       definitions: LifeOpsDefinitionRecord[];
     }>;
@@ -696,6 +711,32 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   return this.fetch(`/api/lifeops/gmail/triage${query ? `?${query}` : ""}`);
 };
 
+ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  if (options.maxResults !== undefined) {
+    params.set("maxResults", String(options.maxResults));
+  }
+  if (options.olderThanDays !== undefined) {
+    params.set("olderThanDays", String(options.olderThanDays));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/gmail/unresponded${query ? `?${query}` : ""}`,
+  );
+};
+
 ElizaClient.prototype.getLifeOpsNextCalendarEventContext = async function (
   this: ElizaClient,
   options = {},
@@ -791,6 +832,26 @@ ElizaClient.prototype.sendLifeOpsGmailReply = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/gmail/reply-send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/gmail/manage", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.ingestLifeOpsGmailEvent = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/gmail/events/ingest", {
     method: "POST",
     body: JSON.stringify(data),
   });

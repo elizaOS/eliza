@@ -27,6 +27,31 @@ function isTransientStatus(status: number): boolean {
   return status >= 500;
 }
 
+function isGoogleGmailWrite(method: string, url: string): boolean {
+  if (!["POST", "PATCH", "PUT", "DELETE"].includes(method.toUpperCase())) {
+    return false;
+  }
+  return /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\//.test(url);
+}
+
+function guardRealGmailWrite(method: string, originalUrl: string, targetUrl: string): void {
+  if (!isGoogleGmailWrite(method, originalUrl)) {
+    return;
+  }
+  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+    return;
+  }
+  if (targetUrl !== originalUrl) {
+    return;
+  }
+  if (process.env.MILADY_BLOCK_REAL_GMAIL_WRITES === "1") {
+    throw new GoogleApiError(
+      409,
+      "Real Gmail writes are disabled by MILADY_BLOCK_REAL_GMAIL_WRITES. Point MILADY_MOCK_GOOGLE_BASE at Mockoon or set MILADY_ALLOW_REAL_GMAIL_WRITES=1 for an explicitly confirmed real write.",
+    );
+  }
+}
+
 /**
  * Fetch wrapper for Google APIs with retry, timeout, and structured logging.
  *
@@ -42,6 +67,7 @@ export async function googleApiFetch(
 ): Promise<Response> {
   const method = init?.method ?? "GET";
   const targetUrl = rewriteGoogleUrlForMock(url);
+  guardRealGmailWrite(method, url, targetUrl);
   let lastError: GoogleApiError | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
