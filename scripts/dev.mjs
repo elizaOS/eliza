@@ -60,4 +60,4 @@ for (const rel of PLUGIN_TYPESCRIPT) {
 }
 
 console.log("\n[dev] agent harness (watch)…\n");
-run("bun", ["run", "--cwd", "agent", "dev"]);
+run("bun", ["run", "--cwd", "packages/agent", "dev"]);
