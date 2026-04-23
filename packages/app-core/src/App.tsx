@@ -42,6 +42,11 @@ import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { InventoryView } from "./components/pages/InventoryView";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import {
+  ContactsPageView,
+  MessagesPageView,
+  PhonePageView,
+} from "./components/pages/MiladyOsAppsView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
@@ -143,6 +148,24 @@ function ViewRouter({
     switch (tab) {
       case "chat":
         return <ChatView />;
+      case "phone":
+        return (
+          <TabContentView>
+            <PhonePageView />
+          </TabContentView>
+        );
+      case "messages":
+        return (
+          <TabContentView>
+            <MessagesPageView />
+          </TabContentView>
+        );
+      case "contacts":
+        return (
+          <TabContentView>
+            <ContactsPageView />
+          </TabContentView>
+        );
       case "lifeops":
         // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
         // + right chat), so don't double-wrap.
