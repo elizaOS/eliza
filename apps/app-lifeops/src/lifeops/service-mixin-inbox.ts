@@ -31,8 +31,6 @@ export function normalizeInboxChannel(
   return null;
 }
 
-export const normalizeUnifiedInboxChannel = normalizeInboxChannel;
-
 function emptyChannelCounts(): Record<
   LifeOpsInboxChannel,
   LifeOpsInboxChannelCount
@@ -98,8 +96,6 @@ export function toInboxMessage(
   };
 }
 
-export const toUnifiedInboxMessage = toInboxMessage;
-
 export function buildInbox(
   inbound: InboundMessage[],
   options: {
@@ -140,8 +136,6 @@ export function buildInbox(
   };
 }
 
-export const buildUnifiedInbox = buildInbox;
-
 export function resolveInboxRequest(
   request: GetLifeOpsInboxRequest,
 ): { limit: number; allowed: Set<LifeOpsInboxChannel> } {
@@ -160,8 +154,6 @@ export function resolveInboxRequest(
   return { limit, allowed: new Set<LifeOpsInboxChannel>(requestedChannels) };
 }
 
-export const resolveUnifiedInboxRequest = resolveInboxRequest;
-
 export async function fetchInbox(
   runtime: IAgentRuntime,
   request: GetLifeOpsInboxRequest = {},
@@ -178,8 +170,6 @@ export async function fetchInbox(
   });
   return buildInbox(inbound, { limit, allowed });
 }
-
-export const fetchUnifiedInbox = fetchInbox;
 
 /** @internal */
 export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
@@ -199,15 +189,7 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return buildInbox(inbound, { limit, allowed });
     }
-
-    async getUnifiedInbox(
-      request: GetLifeOpsInboxRequest = {},
-    ): Promise<LifeOpsInbox> {
-      return this.getInbox(request);
-    }
   }
 
   return LifeOpsInboxServiceMixin;
 }
-
-export const withUnifiedInbox = withInbox;
