@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.297",
+  "version": "2.0.0-alpha.298",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
