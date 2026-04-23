@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Monitor,
   PencilLine,
+  Phone,
   Radio,
   Settings,
   Wallet,
@@ -30,6 +31,9 @@ export const COMPANION_ENABLED =
 /** Built-in tab identifiers. */
 export type BuiltinTab =
   | "chat"
+  | "phone"
+  | "messages"
+  | "contacts"
   | "lifeops"
   | "tasks"
   | "automations"
@@ -99,6 +103,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     icon: MessageSquare,
     description:
       "Conversations with your agent, inbound messages from every connector, and connector management",
+  },
+  {
+    label: "Phone",
+    tabs: ["phone", "messages", "contacts"],
+    icon: Phone,
+    description: "MiladyOS dialer, SMS, and contact book",
   },
   {
     label: "Apps",
@@ -200,6 +210,9 @@ export function getTabGroups(
 
 const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",
+  phone: "/phone",
+  messages: "/messages",
+  contacts: "/contacts",
   lifeops: "/apps/lifeops",
   tasks: "/apps/tasks",
   browser: "/browser",
@@ -270,6 +283,10 @@ const PATH_TO_TAB = new Map(
 function normalizePathForLookup(pathname: string, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   let p = pathname || "/";
+  const queryIndex = p.indexOf("?");
+  if (queryIndex >= 0) p = p.slice(0, queryIndex);
+  const hashIndex = p.indexOf("#");
+  if (hashIndex >= 0) p = p.slice(0, hashIndex);
   if (base) {
     if (p === base) p = "/";
     else if (p.startsWith(`${base}/`)) p = p.slice(base.length);
@@ -411,6 +428,12 @@ export function titleForTab(tab: Tab): string {
   switch (tab) {
     case "chat":
       return "Chat";
+    case "phone":
+      return "Phone";
+    case "messages":
+      return "Messages";
+    case "contacts":
+      return "Contacts";
     case "lifeops":
       return "LifeOps";
     case "browser":
