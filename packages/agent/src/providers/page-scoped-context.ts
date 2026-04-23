@@ -254,6 +254,156 @@ async function renderBrowserLiveState(): Promise<string | null> {
   }
 }
 
+function dedupeApps(
+  groups: Array<RegistryAppInfo[] | null>,
+): RegistryAppInfo[] {
+  const apps = new Map<string, RegistryAppInfo>();
+  for (const group of groups) {
+    if (!group) continue;
+    for (const app of group) {
+      if (!app?.name || apps.has(app.name)) continue;
+      apps.set(app.name, app);
+    }
+  }
+  return [...apps.values()].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName),
+  );
+}
+
+async function renderAppsLiveState(): Promise<string | null> {
+  const [catalogApps, serverApps, runs] = await Promise.all([
+    fetchLocalJson<RegistryAppInfo[]>("/api/catalog/apps"),
+    fetchLocalJson<RegistryAppInfo[]>("/api/apps"),
+    fetchLocalJson<AppRunSummary[]>("/api/apps/runs"),
+  ]);
+  if (!catalogApps && !serverApps && !runs) {
+    return "Live apps state: unavailable from the Apps API.";
+  }
+
+  const apps = dedupeApps([catalogApps, serverApps]);
+  const activeRuns = runs ?? [];
+  const lines: string[] = [
+    `Live apps state: ${apps.length} catalog app${apps.length === 1 ? "" : "s"}, ${activeRuns.length} running app${activeRuns.length === 1 ? "" : "s"}.`,
+  ];
+
+  if (activeRuns.length > 0) {
+    lines.push("Running apps:");
+    for (const run of activeRuns.slice(0, 8)) {
+      const health = run.health?.state ? ` health=${run.health.state}` : "";
+      const viewer = run.viewerAttachment
+        ? ` viewer=${run.viewerAttachment}`
+        : "";
+      const summary = run.summary ? ` — ${run.summary.slice(0, 140)}` : "";
+      lines.push(
+        `- ${run.displayName} (${run.appName}) status=${run.status}${health}${viewer}${summary}`,
+      );
+    }
+  } else {
+    lines.push("Running apps: none.");
+  }
+
+  if (apps.length > 0) {
+    lines.push("Catalog sample:");
+    for (const app of apps.slice(0, 12)) {
+      const capabilities =
+        app.capabilities.length > 0
+          ? ` capabilities=${app.capabilities.slice(0, 4).join(", ")}`
+          : "";
+      lines.push(
+        `- ${app.displayName} (${app.name}) category=${app.category}${capabilities}`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function shortAddress(address: string | null | undefined): string {
+  if (!address) return "(not configured)";
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function readyLabel(value: boolean | undefined): string {
+  if (value === true) return "ready";
+  if (value === false) return "not ready";
+  return "unknown";
+}
+
+async function renderWalletLiveState(): Promise<string | null> {
+  const [config, balances, nfts, stewardStatus, pendingApprovals] =
+    await Promise.all([
+      fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
+      fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
+      fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+      fetchLocalJson<StewardStatusResponse>("/api/wallet/steward-status"),
+      fetchLocalJson<StewardPendingResponse>(
+        "/api/wallet/steward-pending-approvals",
+      ),
+    ]);
+
+  if (!config && !balances && !nfts && !stewardStatus && !pendingApprovals) {
+    return "Live wallet state: unavailable from the Wallet API.";
+  }
+
+  const lines: string[] = ["Live wallet state:"];
+  if (config) {
+    lines.push(`- Wallet source: ${config.walletSource ?? "unknown"}`);
+    lines.push(`- EVM address: ${shortAddress(config.evmAddress)}`);
+    lines.push(`- Solana address: ${shortAddress(config.solanaAddress)}`);
+    lines.push(
+      `- RPC providers: EVM=${config.selectedRpcProviders.evm}, BSC=${config.selectedRpcProviders.bsc}, Solana=${config.selectedRpcProviders.solana}`,
+    );
+    lines.push(
+      `- Readiness: BSC RPC ${readyLabel(config.managedBscRpcReady)}, EVM balances ${readyLabel(config.evmBalanceReady)}, Solana balances ${readyLabel(config.solanaBalanceReady)}, execution ${readyLabel(config.executionReady)}`,
+    );
+    if (config.executionBlockedReason) {
+      lines.push(`- Execution blocked: ${config.executionBlockedReason}`);
+    }
+    lines.push(
+      `- Signing: EVM=${config.evmSigningCapability ?? "unknown"}, Solana=${readyLabel(config.solanaSigningAvailable)}`,
+    );
+  }
+
+  if (balances?.evm) {
+    lines.push(
+      `- EVM balances: ${balances.evm.chains.length} chain${balances.evm.chains.length === 1 ? "" : "s"} for ${shortAddress(balances.evm.address)}.`,
+    );
+    for (const chain of balances.evm.chains.slice(0, 5)) {
+      const tokenCount = chain.tokens.length;
+      const error = chain.error ? ` error=${chain.error}` : "";
+      lines.push(
+        `  - ${chain.chain}: ${chain.nativeBalance} ${chain.nativeSymbol}, ${tokenCount} token${tokenCount === 1 ? "" : "s"}${error}`,
+      );
+    }
+  }
+  if (balances?.solana) {
+    lines.push(
+      `- Solana balance: ${balances.solana.solBalance} SOL, ${balances.solana.tokens.length} token${balances.solana.tokens.length === 1 ? "" : "s"} for ${shortAddress(balances.solana.address)}.`,
+    );
+  }
+
+  if (nfts) {
+    const evmNftCount = nfts.evm.reduce(
+      (sum, chain) => sum + chain.nfts.length,
+      0,
+    );
+    const solanaNftCount = nfts.solana?.nfts.length ?? 0;
+    lines.push(`- NFTs: EVM=${evmNftCount}, Solana=${solanaNftCount}.`);
+  }
+
+  if (stewardStatus) {
+    const connected = stewardStatus.connected ? "connected" : "not connected";
+    const health = stewardStatus.vaultHealth ?? "unknown";
+    lines.push(`- Steward: ${connected}, vault=${health}.`);
+  }
+  if (pendingApprovals) {
+    lines.push(`- Pending Steward approvals: ${pendingApprovals.length}.`);
+  }
+
+  return lines.join("\n");
+}
+
 async function renderAutomationsLiveState(
   runtime: IAgentRuntime,
 ): Promise<string | null> {
@@ -290,8 +440,9 @@ async function renderLiveStateForScope(
     case "automation-draft":
       return renderAutomationsLiveState(runtime);
     case "page-apps":
+      return renderAppsLiveState();
     case "page-wallet":
-      return null;
+      return renderWalletLiveState();
     default:
       return null;
   }
