@@ -60,10 +60,12 @@ function readAppIdentity() {
   const src = fs.readFileSync(cfgPath, "utf8");
   const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
   const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
+  const urlScheme =
+    src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
-  return { appId, appName };
+  return { appId, appName, urlScheme };
 }
 
 const APP = readAppIdentity();
@@ -493,6 +495,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "MainActivity.java",
+      "MiladyAssistActivity.java",
       "MiladyBootReceiver.java",
       "MiladyDialActivity.java",
       "MiladyInCallService.java",
@@ -510,6 +513,7 @@ function overlayAndroid() {
         "ai.elizaos.app.action.",
         `${androidPackage}.action.`,
       );
+      code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
       code = code.replaceAll(
         "elizaOS Gateway",
         `${escapeJavaString(APP.appName)} Gateway`,
@@ -580,6 +584,20 @@ function overlayAndroid() {
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="tel" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyAssistActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyAssistActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
     );
@@ -994,6 +1012,7 @@ function patchAndroidGradle() {
     const current = fs.readFileSync(stringsPath, "utf8");
     const appName = escapeXmlText(APP.appName);
     const appId = escapeXmlText(APP.appId);
+    const urlScheme = escapeXmlText(APP.urlScheme);
     const patched = current
       .replace(
         /<string name="app_name">[^<]*<\/string>/,
@@ -1009,7 +1028,7 @@ function patchAndroidGradle() {
       )
       .replace(
         /<string name="custom_url_scheme">[^<]*<\/string>/,
-        `<string name="custom_url_scheme">${appId}</string>`,
+        `<string name="custom_url_scheme">${urlScheme}</string>`,
       );
     if (patched !== current) {
       fs.writeFileSync(stringsPath, patched, "utf8");
