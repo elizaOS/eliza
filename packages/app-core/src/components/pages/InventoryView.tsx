@@ -17,17 +17,24 @@ import {
 } from "@elizaos/ui";
 import {
   Activity,
+  ArrowDownLeft,
   ArrowLeftRight,
   BarChart3,
+  ChevronDown,
   Copy,
+  DollarSign,
+  Download,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
   PieChart,
   RefreshCw,
+  Search,
   Settings,
   Sparkles,
+  Send,
+  ShieldCheck,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -46,6 +53,7 @@ import { TokenLogo } from "../inventory/TokenLogo";
 import { useInventoryData } from "../inventory/useInventoryData";
 
 type DashboardWindow = "24h" | "7d" | "30d";
+type WalletRailTab = "tokens" | "defi" | "nfts" | "activity";
 
 const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   ethereum: true,
@@ -433,7 +441,7 @@ function AddressPill({ label, address }: { label: string; address: string }) {
   return (
     <Button
       variant="outline"
-      className="min-w-0 justify-between gap-2 rounded-lg px-3 py-2 text-left"
+      className="min-w-0 justify-between gap-2 rounded-2xl border-border/35 bg-bg/35 px-3 py-2 text-left"
       onClick={handleCopy}
       title={address}
     >
@@ -464,7 +472,7 @@ function EmptyState({
   body: string;
 }) {
   return (
-    <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-bg/40 px-4 py-6 text-center">
+    <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-2xl bg-bg/30 px-4 py-6 text-center">
       <Icon className="mb-3 h-5 w-5 text-muted" />
       <div className="text-sm font-semibold text-txt">{title}</div>
       <div className="mt-1 max-w-sm text-xs-tight text-muted">{body}</div>
@@ -484,7 +492,7 @@ function PnlChart({
 
   if (values.length < 2) {
     return (
-      <div className="flex h-24 items-center justify-center rounded-lg border border-border/40 bg-bg/30 text-xs text-muted">
+      <div className="flex h-40 items-center justify-center rounded-3xl bg-bg/30 text-xs text-muted">
         No P&L series yet
       </div>
     );
@@ -505,7 +513,7 @@ function PnlChart({
 
   return (
     <svg
-      className="h-24 w-full rounded-lg border border-border/40 bg-bg/30"
+      className="h-40 w-full rounded-3xl bg-bg/30"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
       aria-label="Agent P&L chart"
@@ -535,11 +543,11 @@ function StatCard({
   tone?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/40 p-3">
+    <div className="min-w-0">
       <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
         {label}
       </div>
-      <div className={cn("mt-1 text-lg font-semibold", tone)}>{value}</div>
+      <div className={cn("mt-1 text-xl font-semibold", tone)}>{value}</div>
       {detail ? (
         <div className="mt-1 text-xs-tight text-muted">{detail}</div>
       ) : null}
@@ -547,23 +555,320 @@ function StatCard({
   );
 }
 
+function WalletRailAccount({
+  addresses,
+}: {
+  addresses: { evmAddress: string | null; solanaAddress: string | null };
+}) {
+  const primaryAddress = addresses.evmAddress ?? addresses.solanaAddress;
+
+  return (
+    <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-txt">
+        <span>Account 1</span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted" />
+      </div>
+      {primaryAddress ? (
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.68rem] text-muted">
+          <span className="truncate">{shortAddress(primaryAddress)}</span>
+          <Copy className="h-3 w-3 shrink-0" />
+        </div>
+      ) : (
+        <div className="mt-0.5 text-[0.68rem] text-muted">No address</div>
+      )}
+    </div>
+  );
+}
+
+function WalletRailActionButton({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-bg/55 px-2 py-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/80"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+    >
+      <Icon className="h-4.5 w-4.5 text-accent" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function WalletRailEmpty({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex min-h-[13rem] flex-col items-center justify-center px-5 text-center">
+      <Icon className="mb-3 h-5 w-5 text-muted" />
+      <div className="text-sm font-semibold text-txt">{title}</div>
+      <div className="mt-1 text-xs-tight text-muted">{body}</div>
+    </div>
+  );
+}
+
+function TokenRailRow({
+  row,
+  profile,
+  maxPnl,
+  onHideToken,
+  onTokenAction,
+}: {
+  row: TokenRow;
+  profile: WalletTradingProfileResponse | null;
+  maxPnl: number;
+  onHideToken: (row: TokenRow) => void;
+  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
+}) {
+  return (
+    <div className="group flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55">
+      <TokenLogo
+        symbol={row.symbol}
+        chain={row.chain}
+        contractAddress={row.contractAddress}
+        preferredLogoUrl={row.logoUrl}
+        size={46}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-txt">
+          {row.symbol}
+        </div>
+        <div className="truncate text-xs-tight text-muted">
+          {formatBalance(row.balance)} {row.symbol}
+        </div>
+        <div className="mt-1">
+          <TokenPerformance row={row} profile={profile} maxAbsPnl={maxPnl} />
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="font-mono text-sm font-semibold text-txt">
+          {formatUsd(row.valueUsd)}
+        </div>
+        <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
+            onClick={() => onTokenAction(row, "swap")}
+            aria-label={`Swap ${row.symbol}`}
+            title={`Swap ${row.symbol}`}
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-txt"
+            onClick={() => onTokenAction(row, "bridge")}
+            aria-label={`Bridge ${row.symbol}`}
+            title={`Bridge ${row.symbol}`}
+          >
+            <Layers3 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-bg/65 text-muted transition-colors hover:text-danger"
+            onClick={() => onHideToken(row)}
+            aria-label={`Hide ${row.symbol}`}
+            title={`Hide ${row.symbol}`}
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RailNftList({ nfts }: { nfts: NftItem[] }) {
+  if (nfts.length === 0) {
+    return (
+      <WalletRailEmpty
+        icon={ImageIcon}
+        title="No NFTs"
+        body="No indexed collections."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {nfts.slice(0, 20).map((nft) => (
+        <div
+          key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
+          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+        >
+          {nft.imageUrl ? (
+            <img
+              src={nft.imageUrl}
+              alt={nft.name}
+              className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65">
+              <ImageIcon className="h-4 w-4 text-muted" />
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-txt">
+              {nft.name}
+            </div>
+            <div className="truncate text-xs-tight text-muted">
+              {nft.collectionName}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RailPositionList({
+  positions,
+}: {
+  positions: InventoryPositionAsset[];
+}) {
+  if (positions.length === 0) {
+    return (
+      <WalletRailEmpty
+        icon={Layers3}
+        title="No DeFi assets"
+        body="No indexed LP tokens or position NFTs."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {positions.map((position) => (
+        <div
+          key={position.id}
+          className="flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+        >
+          {position.imageUrl ? (
+            <img
+              src={position.imageUrl}
+              alt={position.label}
+              className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65">
+              <Layers3 className="h-4 w-4 text-muted" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-txt">
+              {position.label}
+            </div>
+            <div className="truncate text-xs-tight text-muted">
+              {position.detail}
+            </div>
+          </div>
+          {position.valueUsd !== null && position.valueUsd > 0 ? (
+            <div className="shrink-0 font-mono text-sm font-semibold text-txt">
+              {formatUsd(position.valueUsd)}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RailActivityList({
+  profile,
+}: {
+  profile: WalletTradingProfileResponse | null;
+}) {
+  const recent = profile?.recentSwaps ?? [];
+
+  if (recent.length === 0) {
+    return (
+      <WalletRailEmpty
+        icon={Activity}
+        title="No activity"
+        body="No settled wallet actions."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {recent.slice(0, 12).map((swap) => (
+        <a
+          key={swap.hash}
+          href={swap.explorerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-w-0 items-center justify-between gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
+        >
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-txt">
+              {swap.side === "buy" ? "Bought" : "Sold"} {swap.tokenSymbol}
+            </div>
+            <div className="truncate text-xs-tight text-muted">
+              {swap.inputAmount} {swap.inputSymbol} {"->"} {swap.outputAmount}{" "}
+              {swap.outputSymbol}
+            </div>
+          </div>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-1 text-[0.62rem] uppercase",
+              swap.status === "success"
+                ? "bg-ok/10 text-ok"
+                : swap.status === "pending"
+                  ? "bg-warn/10 text-warn"
+                  : "bg-danger/10 text-danger",
+            )}
+          >
+            {swap.status}
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function TokenRail({
   rows,
+  nfts,
+  positions,
+  addresses,
   hiddenTokenIds,
   searchQuery,
   profile,
   onSearchChange,
   onHideToken,
   onTokenAction,
+  onWalletAction,
 }: {
   rows: TokenRow[];
+  nfts: NftItem[];
+  positions: InventoryPositionAsset[];
+  addresses: { evmAddress: string | null; solanaAddress: string | null };
   hiddenTokenIds: Set<string>;
   searchQuery: string;
   profile: WalletTradingProfileResponse | null;
   onSearchChange: (value: string) => void;
   onHideToken: (row: TokenRow) => void;
   onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
+  onWalletAction: (action: "buy" | "swap" | "send" | "receive") => void;
 }) {
+  const [activeTab, setActiveTab] = useState<WalletRailTab>("tokens");
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return rows.filter((row) => {
@@ -581,141 +886,152 @@ function TokenRail({
     () => filteredRows.reduce((sum, row) => sum + row.valueUsd, 0),
     [filteredRows],
   );
+  const pnlValue = parseAmount(profile?.summary.realizedPnlBnb);
+  const pnlClassName =
+    pnlValue === null || pnlValue === 0
+      ? "text-muted"
+      : pnlValue > 0
+        ? "text-ok"
+        : "text-danger";
   const maxPnl = useMemo(
     () => maxAbsTokenPnl(filteredRows, profile),
     [filteredRows, profile],
   );
+  const tabs: Array<{ id: WalletRailTab; label: string; count: number }> = [
+    { id: "tokens", label: "Tokens", count: filteredRows.length },
+    { id: "defi", label: "DeFi", count: positions.length },
+    { id: "nfts", label: "NFTs", count: nfts.length },
+    { id: "activity", label: "Activity", count: profile?.recentSwaps.length ?? 0 },
+  ];
 
   return (
     <Sidebar
       testId="wallet-token-sidebar"
+      className="!w-[22rem] !min-w-[22rem] xl:!w-[23rem] xl:!min-w-[23rem]"
+      bodyClassName="px-2 pb-3"
+      headerClassName="px-4 pb-3 pt-3"
       collapsible
-      contentIdentity="wallet-tokens"
+      contentIdentity={`wallet-${activeTab}`}
+      collapseButtonLeading={<WalletRailAccount addresses={addresses} />}
       collapseButtonTestId="wallet-token-sidebar-collapse-toggle"
       expandButtonTestId="wallet-token-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse tokens"
-      expandButtonAriaLabel="Expand tokens"
-      mobileTitle="Tokens"
-      mobileMeta={`${filteredRows.length} visible`}
+      collapseButtonAriaLabel="Collapse wallet"
+      expandButtonAriaLabel="Expand wallet"
+      mobileTitle="Wallet"
+      mobileMeta={`${filteredRows.length} tokens`}
       header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => onSearchChange(event.target.value),
-            onClear: () => onSearchChange(""),
-            placeholder: "Search tokens",
-            "aria-label": "Search tokens",
-            autoComplete: "off",
-            spellCheck: false,
-          }}
-        >
-          <div className="space-y-3 px-1">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  Assets
-                </div>
-                <div className="mt-1 text-2xl font-semibold text-txt">
-                  {formatUsd(totalUsd)}
-                </div>
+        <SidebarHeader>
+          <div className="space-y-5">
+            <div>
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted">
+                Balance
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-bg/45">
-                <Wallet className="h-5 w-5 text-accent" />
+              <div className="mt-2 font-mono text-[2.35rem] font-semibold leading-none text-txt">
+                {formatUsd(totalUsd)}
+              </div>
+              <div className={cn("mt-2 text-sm font-semibold", pnlClassName)}>
+                {pnlValue !== null ? (
+                  <>
+                    {pnlValue > 0 ? "+" : ""}
+                    {formatBnb(profile?.summary.realizedPnlBnb)}
+                  </>
+                ) : (
+                  `${filteredRows.length} visible tokens`
+                )}
               </div>
             </div>
-            <AssetAllocationStrip rows={filteredRows} />
+
+            <div className="grid grid-cols-4 gap-2">
+              <WalletRailActionButton
+                icon={DollarSign}
+                label="Buy"
+                onClick={() => onWalletAction("buy")}
+              />
+              <WalletRailActionButton
+                icon={ArrowLeftRight}
+                label="Swap"
+                onClick={() => onWalletAction("swap")}
+              />
+              <WalletRailActionButton
+                icon={Send}
+                label="Send"
+                onClick={() => onWalletAction("send")}
+              />
+              <WalletRailActionButton
+                icon={Download}
+                label="Receive"
+                onClick={() => onWalletAction("receive")}
+              />
+            </div>
+
+            <div className="flex items-center gap-4 overflow-x-auto text-sm font-semibold">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={cn(
+                    "shrink-0 border-b-2 pb-2 transition-colors",
+                    activeTab === tab.id
+                      ? "border-accent text-txt"
+                      : "border-transparent text-muted hover:text-txt",
+                  )}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                  {tab.count > 0 ? (
+                    <span className="ml-1 font-mono text-xs text-muted">
+                      {tab.count}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "tokens" ? (
+              <label className="flex h-10 items-center gap-2 rounded-full bg-bg/55 px-3 text-sm text-muted">
+                <Search className="h-4 w-4 shrink-0" />
+                <input
+                  value={searchQuery}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                  placeholder="Search tokens"
+                  aria-label="Search tokens"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 bg-transparent text-txt outline-none placeholder:text-muted/70"
+                />
+              </label>
+            ) : null}
           </div>
         </SidebarHeader>
       }
     >
       <SidebarScrollRegion>
-        <SidebarPanel className="space-y-2">
-          {filteredRows.length === 0 ? (
-            <SidebarContent.EmptyState className="px-4 py-8 text-center">
-              <Wallet className="mx-auto mb-3 h-5 w-5 text-muted" />
-              <div className="text-sm font-semibold text-txt">
-                No tokens found
-              </div>
-              <div className="mt-1 text-xs-tight text-muted">
-                No visible tokens in this wallet.
-              </div>
-            </SidebarContent.EmptyState>
+        <SidebarPanel className="space-y-1">
+          {activeTab === "tokens" ? (
+            filteredRows.length === 0 ? (
+              <WalletRailEmpty
+                icon={Wallet}
+                title="No tokens"
+                body="No visible token balances."
+              />
+            ) : (
+              filteredRows.map((row) => (
+                <TokenRailRow
+                  key={tokenId(row)}
+                  row={row}
+                  profile={profile}
+                  maxPnl={maxPnl}
+                  onHideToken={onHideToken}
+                  onTokenAction={onTokenAction}
+                />
+              ))
+            )
+          ) : activeTab === "defi" ? (
+            <RailPositionList positions={positions} />
+          ) : activeTab === "nfts" ? (
+            <RailNftList nfts={nfts} />
           ) : (
-            filteredRows.map((row) => (
-              <div
-                key={tokenId(row)}
-                className="group rounded-xl border border-border/45 bg-card/55 p-3 shadow-sm transition-colors hover:border-accent/35 hover:bg-card/80"
-              >
-                <div className="flex items-center gap-3">
-                  <TokenLogo
-                    symbol={row.symbol}
-                    chain={row.chain}
-                    contractAddress={row.contractAddress}
-                    preferredLogoUrl={row.logoUrl}
-                    size={42}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-base font-semibold text-txt">
-                          {row.symbol}
-                        </div>
-                        <div className="truncate text-xs-tight text-muted">
-                          {formatBalance(row.balance)}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-mono text-sm font-semibold text-txt">
-                          {formatUsd(row.valueUsd)}
-                        </div>
-                        <TokenPerformance
-                          row={row}
-                          profile={profile}
-                          maxAbsPnl={maxPnl}
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0 truncate text-[0.68rem] text-muted">
-                        {row.name}
-                      </div>
-                      <div className="flex shrink-0 gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 rounded-full"
-                          onClick={() => onTokenAction(row, "swap")}
-                          aria-label={`Swap ${row.symbol}`}
-                          title={`Swap ${row.symbol}`}
-                        >
-                          <ArrowLeftRight className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 rounded-full"
-                          onClick={() => onTokenAction(row, "bridge")}
-                          aria-label={`Bridge ${row.symbol}`}
-                          title={`Bridge ${row.symbol}`}
-                        >
-                          <Layers3 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-full text-muted hover:text-danger"
-                          onClick={() => onHideToken(row)}
-                          aria-label={`Hide ${row.symbol}`}
-                          title={`Hide ${row.symbol}`}
-                        >
-                          <EyeOff className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
+            <RailActivityList profile={profile} />
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
@@ -742,7 +1058,7 @@ function RpcStatusCard({
     <button
       type="button"
       data-testid="wallet-rpc-dashboard-link"
-      className="group rounded-lg border border-border/50 bg-bg/40 p-4 text-left transition-colors hover:border-accent/60 hover:bg-accent/5"
+      className="group rounded-2xl bg-bg/35 p-3 text-left transition-colors hover:bg-bg/55"
       onClick={onOpenSettings}
     >
       <div className="flex items-center justify-between gap-3">
@@ -799,7 +1115,7 @@ function ActivityList({
           href={swap.explorerUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5 text-sm transition-colors hover:border-accent/50"
+          className="flex items-center justify-between gap-3 rounded-2xl bg-bg/35 px-3 py-2.5 text-sm transition-colors hover:bg-bg/55"
         >
           <span className="min-w-0">
             <span className="block truncate font-medium text-txt">
@@ -846,7 +1162,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
       {visible.map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="overflow-hidden rounded-lg border border-border/50 bg-bg/40"
+          className="overflow-hidden rounded-2xl bg-bg/35"
         >
           {nft.imageUrl ? (
             <img
@@ -856,7 +1172,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
               loading="lazy"
             />
           ) : (
-            <div className="flex aspect-square items-center justify-center bg-bg-muted">
+            <div className="flex aspect-square items-center justify-center bg-bg/50">
               <ImageIcon className="h-5 w-5 text-muted" />
             </div>
           )}
@@ -894,17 +1210,17 @@ function LpPositionsPanel({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 rounded-lg border border-border/50 bg-bg/40 p-3"
+          className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 p-3"
         >
           {position.imageUrl ? (
             <img
               src={position.imageUrl}
               alt={position.label}
-              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+              className="h-10 w-10 shrink-0 rounded-2xl object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg-muted">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-bg/50">
               {position.kind === "nft" ? (
                 <ImageIcon className="h-4 w-4 text-muted" />
               ) : (
@@ -945,7 +1261,7 @@ function VincentPanel({
   onOpen: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/40 p-4">
+    <div className="rounded-3xl bg-bg/35 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-txt">
@@ -953,8 +1269,7 @@ function VincentPanel({
             Vincent trading
           </div>
           <div className="mt-1 max-w-xl text-xs-tight text-muted">
-            Connect Vincent to trade on Hyperliquid and Polymarket through the
-            Vincent agent.
+            Hyperliquid and Polymarket execution.
           </div>
         </div>
         <div className="flex gap-2">
@@ -1128,6 +1443,22 @@ export function InventoryView() {
     [setActionNotice],
   );
 
+  const handleWalletAction = useCallback(
+    (action: "buy" | "swap" | "send" | "receive") => {
+      const prompt =
+        action === "buy"
+          ? "Prepare a token buy. Ask me for the token, amount, funding asset, slippage, and execution venue before any transaction."
+          : action === "swap"
+            ? "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction."
+            : action === "send"
+              ? "Prepare a transfer. Ask me for token, amount, recipient address, and network requirements before any transaction."
+              : "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.";
+      dispatchWalletChatPrefill(prompt);
+      setActionNotice(`Prepared ${action} in wallet chat.`);
+    },
+    [setActionNotice],
+  );
+
   const handleOpenRpcSettings = useCallback(() => {
     if (typeof window !== "undefined") {
       window.location.hash = "wallet-rpc";
@@ -1152,12 +1483,16 @@ export function InventoryView() {
   const tokenSidebar = (
     <TokenRail
       rows={visibleAssetRows}
+      nfts={inventoryData.allNfts}
+      positions={lpPositions}
+      addresses={addresses}
       hiddenTokenIds={hiddenTokenIds}
       searchQuery={searchQuery}
       profile={tradingProfile}
       onSearchChange={setSearchQuery}
       onHideToken={handleHideToken}
       onTokenAction={handleTokenAction}
+      onWalletAction={handleWalletAction}
     />
   );
 
