@@ -239,11 +239,6 @@ function hasClosedTradePnl(
   return (profile?.summary.evaluatedTrades ?? 0) > 0;
 }
 
-function shortAddress(address: string): string {
-  if (address.length <= 14) return address;
-  return `${address.slice(0, 6)}...${address.slice(-6)}`;
-}
-
 function clampWalletSidebarWidth(value: number): number {
   return Math.min(
     Math.max(value, WALLET_SIDEBAR_MIN_WIDTH),
@@ -867,11 +862,7 @@ function MarketAvatar({
   );
 }
 
-function MarketSourceBadge({
-  source,
-}: {
-  source: WalletMarketOverviewSource;
-}) {
+function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
   const statusLabel = source.available
     ? source.stale
       ? "Cached"
@@ -932,7 +923,9 @@ function MarketDataUnavailable({
 }) {
   return (
     <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3">
-      <div className="text-sm font-semibold text-danger">{title} unavailable</div>
+      <div className="text-sm font-semibold text-danger">
+        {title} unavailable
+      </div>
       <div className="mt-1 text-xs text-danger/80">
         {source.error ?? `${source.providerName} did not return live data.`}
       </div>
@@ -1065,7 +1058,9 @@ function MarketPredictionList({
   source: WalletMarketOverviewSource;
 }) {
   if (!source.available) {
-    return <MarketDataUnavailable title="Popular predictions" source={source} />;
+    return (
+      <MarketDataUnavailable title="Popular predictions" source={source} />
+    );
   }
 
   if (predictions.length === 0) {
@@ -1357,11 +1352,11 @@ function SummaryChip({
 
 function WalletRailAddress({
   address,
-  chains,
+  label,
   emptyLabel,
 }: {
   address: string | null;
-  chains: string[];
+  label: string;
   emptyLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -1377,7 +1372,7 @@ function WalletRailAddress({
   return (
     <button
       type="button"
-      className="flex w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-border/35 bg-bg/35 px-3.5 py-3 text-left transition-colors hover:bg-bg/55"
+      className="flex w-full min-w-0 items-center justify-between gap-3 py-1 text-left transition-colors hover:text-txt"
       onClick={handleCopy}
       disabled={!address}
       title={address ?? emptyLabel}
@@ -1386,15 +1381,8 @@ function WalletRailAddress({
       }
     >
       <span className="flex min-w-0 items-center gap-3">
-        <span className="flex w-11 shrink-0 justify-center -space-x-1.5">
-          {chains.map((chain) => (
-            <ChainLogoBadge
-              key={chain}
-              chain={chain}
-              size={18}
-              className="ring-1 ring-bg"
-            />
-          ))}
+        <span className="shrink-0 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+          {label}
         </span>
         <span
           className={cn(
@@ -1402,7 +1390,7 @@ function WalletRailAddress({
             address ? "text-txt" : "text-muted",
           )}
         >
-          {address ? shortAddress(address) : emptyLabel}
+          {address ?? emptyLabel}
         </span>
       </span>
       {address ? (
@@ -1459,12 +1447,14 @@ function WalletRailRpcButton({
 
 function WalletRailAccount({
   addresses,
+  portfolioValueUsd,
   walletConfig,
   onOpenSettings,
   onRefresh,
   refreshing,
 }: {
   addresses: { evmAddress: string | null; solanaAddress: string | null };
+  portfolioValueUsd: number;
   walletConfig: WalletConfigStatus | null;
   onOpenSettings: () => void;
   onRefresh: () => void;
@@ -1473,15 +1463,20 @@ function WalletRailAccount({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex shrink-0 -space-x-1.5">
-          {SUPPORTED_WALLET_CHAINS.map((chain) => (
-            <ChainLogoBadge
-              key={chain}
-              chain={chain}
-              size={18}
-              className="ring-1 ring-bg"
-            />
-          ))}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="font-mono text-xl font-semibold leading-none text-txt">
+            {formatUsd(portfolioValueUsd)}
+          </div>
+          <div className="flex shrink-0 -space-x-1.5">
+            {SUPPORTED_WALLET_CHAINS.map((chain) => (
+              <ChainLogoBadge
+                key={chain}
+                chain={chain}
+                size={18}
+                className="ring-1 ring-bg"
+              />
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <WalletRailRpcButton
@@ -1506,12 +1501,12 @@ function WalletRailAccount({
       </div>
       <WalletRailAddress
         address={addresses.evmAddress}
-        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
+        label="EVM"
         emptyLabel="No EVM address"
       />
       <WalletRailAddress
         address={addresses.solanaAddress}
-        chains={["solana"]}
+        label="SOL"
         emptyLabel="No Solana address"
       />
     </div>
@@ -1802,10 +1797,6 @@ function TokenRail({
   }, []);
   const headerContent = (
     <div className="space-y-4">
-      <div className="font-mono text-[2.35rem] font-semibold leading-none text-txt">
-        {formatUsd(totalUsd)}
-      </div>
-
       {visibleRows.length > 0 ? (
         <AssetAllocationStrip rows={visibleRows} compact />
       ) : null}
@@ -1894,6 +1885,7 @@ function TokenRail({
       <div className="shrink-0 px-4 pb-3 pt-0">
         <WalletRailAccount
           addresses={addresses}
+          portfolioValueUsd={totalUsd}
           walletConfig={walletConfig}
           onOpenSettings={onOpenRpcSettings}
           onRefresh={onRefresh}
