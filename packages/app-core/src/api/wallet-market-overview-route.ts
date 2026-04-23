@@ -319,7 +319,7 @@ async function fetchPolymarketMarkets(): Promise<PolymarketMarketRecord[]> {
   const url = new URL("https://gamma-api.polymarket.com/markets");
   url.searchParams.set("active", "true");
   url.searchParams.set("closed", "false");
-  url.searchParams.set("order", "volume_24hr");
+  url.searchParams.set("order", "volume24hr");
   url.searchParams.set("ascending", "false");
   url.searchParams.set("limit", String(POLYMARKET_MARKET_LIMIT));
 
@@ -491,29 +491,52 @@ async function fetchCloudWalletMarketOverview(
 async function buildWalletMarketOverview(
   clientAddress: string,
 ): Promise<WalletMarketOverviewResponse> {
-  try {
-    return await fetchCloudWalletMarketOverview(clientAddress);
-  } catch (error) {
+  const [cloudPreviewResult, polymarketResult] = await Promise.allSettled([
+    fetchCloudWalletMarketOverview(clientAddress),
+    fetchPolymarketMarkets(),
+  ]);
+  const polymarketMarkets =
+    polymarketResult.status === "fulfilled" ? polymarketResult.value : [];
+  const polymarketError =
+    polymarketResult.status === "rejected"
+      ? marketOverviewErrorMessage(polymarketResult.reason)
+      : null;
+
+  if (cloudPreviewResult.status === "fulfilled") {
+    if (polymarketError) {
+      logger.warn(
+        `[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`,
+      );
+    }
+
+    return {
+      ...cloudPreviewResult.value,
+      sources: {
+        ...cloudPreviewResult.value.sources,
+        predictions: buildMarketOverviewSource(POLYMARKET_SOURCE, {
+          available: polymarketError === null,
+          stale: false,
+          error: polymarketError,
+        }),
+      },
+      predictions:
+        polymarketError === null ? buildPredictions(polymarketMarkets) : [],
+    };
+  }
+
+  {
+    const error = cloudPreviewResult.reason;
     logger.warn(
       `[WalletMarketOverviewRoute] Cloud preview unavailable (${marketOverviewErrorMessage(error)}); falling back to direct feeds`,
     );
   }
 
-  const [coinGeckoResult, polymarketResult] = await Promise.allSettled([
-    fetchCoinGeckoMarkets(),
-    fetchPolymarketMarkets(),
-  ]);
+  const [coinGeckoResult] = await Promise.allSettled([fetchCoinGeckoMarkets()]);
   const coinGeckoMarkets =
     coinGeckoResult.status === "fulfilled" ? coinGeckoResult.value : [];
-  const polymarketMarkets =
-    polymarketResult.status === "fulfilled" ? polymarketResult.value : [];
   const coinGeckoError =
     coinGeckoResult.status === "rejected"
       ? marketOverviewErrorMessage(coinGeckoResult.reason)
-      : null;
-  const polymarketError =
-    polymarketResult.status === "rejected"
-      ? marketOverviewErrorMessage(polymarketResult.reason)
       : null;
 
   if (coinGeckoError) {
