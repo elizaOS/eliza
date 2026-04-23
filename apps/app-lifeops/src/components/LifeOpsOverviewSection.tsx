@@ -39,7 +39,7 @@ import type {
 } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
-import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
+import { useInbox } from "../hooks/useInbox.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
@@ -628,11 +628,11 @@ export function LifeOpsOverviewSection({
   }, [loadOverview, loadScreenTime, loadSocial]);
 
   const calendar = useCalendarWeek({ viewMode: "week" });
-  const messagesInbox = useUnifiedInbox({
+  const messagesInbox = useInbox({
     maxResults: 8,
     channels: LIFEOPS_MESSAGE_CHANNELS,
   });
-  const mailInbox = useUnifiedInbox({
+  const mailInbox = useInbox({
     maxResults: 8,
     channel: "gmail",
     channels: LIFEOPS_MAIL_CHANNELS,

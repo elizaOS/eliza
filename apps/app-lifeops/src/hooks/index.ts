@@ -40,7 +40,7 @@ export {
 } from "./useTelegramConnector.js";
 export {
   type InboxChannel,
-  type UseUnifiedInboxOptions,
-  type UseUnifiedInboxResult,
-  useUnifiedInbox,
-} from "./useUnifiedInbox.js";
+  type UseInboxOptions,
+  type UseInboxResult,
+  useInbox,
+} from "./useInbox.js";

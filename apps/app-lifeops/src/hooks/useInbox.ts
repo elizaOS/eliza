@@ -8,14 +8,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;
 
-export interface UseUnifiedInboxOptions {
+export interface UseInboxOptions {
   maxResults?: number;
   channel?: InboxChannel;
   channels?: readonly LifeOpsInboxChannel[];
   searchQuery?: string;
 }
 
-export interface UseUnifiedInboxResult {
+export interface UseInboxResult {
   messages: LifeOpsInboxMessage[];
   loading: boolean;
   error: string | null;
@@ -28,9 +28,9 @@ export interface UseUnifiedInboxResult {
 
 const DEFAULT_MAX_RESULTS = 40;
 
-export function useUnifiedInbox(
-  opts: UseUnifiedInboxOptions = {},
-): UseUnifiedInboxResult {
+export function useInbox(
+  opts: UseInboxOptions = {},
+): UseInboxResult {
   const { t } = useApp();
   const [feed, setFeed] = useState<LifeOpsInbox | null>(null);
   const [loading, setLoading] = useState(false);

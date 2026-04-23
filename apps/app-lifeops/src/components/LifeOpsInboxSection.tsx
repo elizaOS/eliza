@@ -25,8 +25,8 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import {
   type InboxChannel,
-  useUnifiedInbox,
-} from "../hooks/useUnifiedInbox.js";
+  useInbox,
+} from "../hooks/useInbox.js";
 import { buildReplyPrefill, postToChat } from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
@@ -405,7 +405,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
         : [...allowedChannels],
     [allowedChannels],
   );
-  const inbox = useUnifiedInbox({
+  const inbox = useInbox({
     maxResults: 40,
     channel: allowedChannels.length === 1 ? allowedChannels[0] : "all",
     channels: allowedChannels,
