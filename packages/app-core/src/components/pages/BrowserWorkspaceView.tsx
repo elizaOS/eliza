@@ -831,10 +831,10 @@ export function BrowserWorkspaceView(): JSX.Element {
       placeholderOverride={
         browserBridgeConnected
           ? t("browserworkspace.ChatPlaceholderConnected", {
-              defaultValue: "Ask me to open, inspect, or navigate a tab",
+              defaultValue: "Message",
             })
           : t("browserworkspace.ChatPlaceholderInstallBridge", {
-              defaultValue: "Ask how to connect Agent Browser Bridge",
+              defaultValue: "Message",
             })
       }
     />
