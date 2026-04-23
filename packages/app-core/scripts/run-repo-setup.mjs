@@ -28,10 +28,12 @@ const APP_CORE_SCRIPTS_DIR = __dirname;
  *      tree. This is intentional, not a bug.
  *
  * Submodule init is NOT in this list. It runs as the `preinstall` hook
- * (and again via `./install` / `bun run bootstrap` for the fresh-clone
- * case). Callers who invoke setup:sync standalone and need submodules
- * should run `git submodule update --init --recursive` themselves (or
- * use `bun run workspace:prepare`).
+ * (and again via `./install` / `install.cmd` for the fresh-clone case,
+ * which chain submodule init + `bun install` explicitly because Bun
+ * resolves workspace globs before preinstall runs). Callers who invoke
+ * setup:sync standalone and need submodules should run
+ * `git submodule update --init --recursive` themselves (or use
+ * `bun run workspace:prepare`).
  */
 export const repoSetupSteps = [
   "patch-workspace-plugins.mjs",
