@@ -1352,11 +1352,11 @@ function SummaryChip({
 
 function WalletRailAddress({
   address,
-  label,
+  chains,
   emptyLabel,
 }: {
   address: string | null;
-  label: string;
+  chains: string[];
   emptyLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
@@ -1381,8 +1381,15 @@ function WalletRailAddress({
       }
     >
       <span className="flex min-w-0 items-center gap-3">
-        <span className="shrink-0 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
-          {label}
+        <span className="flex shrink-0 -space-x-1.5">
+          {chains.map((chain) => (
+            <ChainLogoBadge
+              key={chain}
+              chain={chain}
+              size={18}
+              className="ring-1 ring-bg"
+            />
+          ))}
         </span>
         <span
           className={cn(
@@ -1463,20 +1470,8 @@ function WalletRailAccount({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="font-mono text-xl font-semibold leading-none text-txt">
-            {formatUsd(portfolioValueUsd)}
-          </div>
-          <div className="flex shrink-0 -space-x-1.5">
-            {SUPPORTED_WALLET_CHAINS.map((chain) => (
-              <ChainLogoBadge
-                key={chain}
-                chain={chain}
-                size={18}
-                className="ring-1 ring-bg"
-              />
-            ))}
-          </div>
+        <div className="font-mono text-xl font-semibold leading-none text-txt">
+          {formatUsd(portfolioValueUsd)}
         </div>
         <div className="flex items-center gap-2">
           <WalletRailRpcButton
@@ -1501,12 +1496,12 @@ function WalletRailAccount({
       </div>
       <WalletRailAddress
         address={addresses.evmAddress}
-        label="EVM"
+        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
         emptyLabel="No EVM address"
       />
       <WalletRailAddress
         address={addresses.solanaAddress}
-        label="SOL"
+        chains={["solana"]}
         emptyLabel="No Solana address"
       />
     </div>
