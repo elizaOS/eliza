@@ -8,6 +8,7 @@
  * - Provides API for UI viewing and export
  */
 
+import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
 import type { IAgentRuntime } from "../../types";
@@ -340,13 +341,8 @@ export class TrajectoriesService extends Service {
 	// Initialization
 	// ─────────────────────────────────────────────────────────────────────────
 
-	private async getSqlHelper(): Promise<{
-		raw: (query: string) => { queryChunks: object[] };
-	}> {
-		const drizzle = (await import("drizzle-orm")) as {
-			sql: { raw: (query: string) => { queryChunks: object[] } };
-		};
-		return drizzle.sql;
+	private getSqlHelper(): typeof sql {
+		return sql;
 	}
 
 	private async executeRawSql(
@@ -359,9 +355,9 @@ export class TrajectoriesService extends Service {
 			throw new Error("Database adapter not available");
 		}
 
-		const sqlHelper = await this.getSqlHelper();
+		const sqlHelper = this.getSqlHelper();
 		const db = runtime.adapter.db as {
-			execute(query: { queryChunks: object[] }): Promise<SqlExecuteResult>;
+			execute(query: ReturnType<typeof sql.raw>): Promise<SqlExecuteResult>;
 		};
 		const query = sqlHelper.raw(sqlText);
 		const result = await db.execute(query);

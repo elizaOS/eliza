@@ -1,5 +1,7 @@
+import { exec } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { logger } from "../../../logger.ts";
 import type { PluginMetadata } from "../types.ts";
 
@@ -19,6 +21,7 @@ const CACHE_DURATION = 3_600_000; // 1 hour
 // ---------------------------------------------------------------------------
 
 const LOCAL_PLUGINS_DIR = "plugins";
+const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // Wire types for the generated-registry.json format
@@ -587,17 +590,12 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 		};
 	}
 
-	const pathMod = await import("node:path");
-	const fsMod = await import("node:fs/promises");
-	const { promisify } = await import("node:util");
-	const execAsync = promisify((await import("node:child_process")).exec);
-
-	const cloneDir = pathMod.join(
+	const cloneDir = path.join(
 		process.cwd(),
 		"cloned-plugins",
 		plugin.name.replace(/^@[^/]+\//, ""),
 	);
-	await fsMod.mkdir(cloneDir, { recursive: true });
+	await fs.promises.mkdir(cloneDir, { recursive: true });
 
 	const branch = plugin.git.v2Branch || plugin.git.v1Branch || "next";
 	await execAsync(
@@ -608,7 +606,7 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 	let dependencies: Record<string, string> = {};
 	try {
 		const pkg = JSON.parse(
-			await fsMod.readFile(pathMod.join(cloneDir, "package.json"), "utf-8"),
+			await fs.promises.readFile(path.join(cloneDir, "package.json"), "utf-8"),
 		) as {
 			scripts?: Record<string, string>;
 			devDependencies?: Record<string, string>;

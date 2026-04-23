@@ -18,6 +18,7 @@ import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
 } from "./features/basic-capabilities/index";
+import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import { createLogger } from "./logger";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
@@ -1423,9 +1424,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (this.character.advancedMemory === true) {
-			const { createAdvancedMemoryPlugin } = await import(
-				"./features/advanced-memory/index.ts"
-			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedMemoryPlugin()),
 			);

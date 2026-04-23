@@ -128,7 +128,7 @@
     "drizzle-orm": "^0.45.1"
   },
   "patchedDependencies": {
-    "@pixiv/three-vrm@3.5.1": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.1.patch"
+    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",
