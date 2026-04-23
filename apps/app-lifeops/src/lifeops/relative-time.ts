@@ -53,7 +53,10 @@ function allowsProjectedBedtime(
 function allowsFallbackBedtimeFromLastSleep(
   regularity: LifeOpsScheduleRegularity | null | undefined,
 ): boolean {
-  return allowsProjectedBedtime(regularity);
+  return (
+    allowsProjectedBedtime(regularity) ||
+    regularity?.regularityClass === "insufficient_data"
+  );
 }
 
 function clamp(value: number, min: number, max: number): number {

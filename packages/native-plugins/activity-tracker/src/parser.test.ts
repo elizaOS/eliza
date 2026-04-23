@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { __internal } from "./index.js";
 
-const { parseEventLine } = __internal;
+const { parseCollectorLine, parseEventLine } = __internal;
 
 describe("parseEventLine", () => {
   it("parses a complete activate line with window title", () => {
@@ -28,13 +28,24 @@ describe("parseEventLine", () => {
     });
   });
 
+  it("parses HID idle samples through the collector-line parser", () => {
+    const line = '{"ts":1714000002000,"event":"hid_idle","idleSeconds":42}';
+    expect(parseCollectorLine(line)).toEqual({
+      kind: "idle",
+      value: {
+        ts: 1714000002000,
+        event: "hid_idle",
+        idleSeconds: 42,
+      },
+    });
+  });
+
   it("returns null for malformed JSON", () => {
     expect(parseEventLine("{not json")).toBeNull();
   });
 
   it("returns null when event kind is unknown", () => {
-    const line =
-      '{"ts":1,"event":"hover","bundleId":"x","appName":"x"}';
+    const line = '{"ts":1,"event":"hover","bundleId":"x","appName":"x"}';
     expect(parseEventLine(line)).toBeNull();
   });
 

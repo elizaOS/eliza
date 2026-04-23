@@ -8,8 +8,8 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { createInterface } from "node:readline";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 
@@ -23,11 +23,25 @@ export interface ActivityCollectorEvent {
   windowTitle?: string;
 }
 
+/**
+ * Periodic HID idle sample emitted by the Swift collector at a fixed cadence
+ * (default 30s). Backed by `CGEventSourceSecondsSinceLastEventType` against
+ * the combined session state, so it reports the signed-in owner's idle time
+ * for the active console session.
+ */
+export interface ActivityCollectorIdleSample {
+  ts: number;
+  event: "hid_idle";
+  idleSeconds: number;
+}
+
 export interface ActivityCollectorOptions {
   /** Path to the compiled collector binary. Defaults to the package-bundled binary. */
   binaryPath?: string;
-  /** Called once per parsed event. */
+  /** Called once per parsed focus event. */
   onEvent: (event: ActivityCollectorEvent) => void;
+  /** Called once per parsed HID idle sample. Optional — safe to ignore. */
+  onIdleSample?: (sample: ActivityCollectorIdleSample) => void;
   /** Called once per fatal collector error (process exit with non-zero, failed spawn, parse failure >5). */
   onFatal?: (reason: string) => void;
 }
@@ -46,28 +60,58 @@ function defaultBinaryPath(): string {
   return path.resolve(here, "..", "native", "macos", "activity-collector");
 }
 
-function parseEventLine(line: string): ActivityCollectorEvent | null {
+type ParsedCollectorLine =
+  | { kind: "event"; value: ActivityCollectorEvent }
+  | { kind: "idle"; value: ActivityCollectorIdleSample }
+  | { kind: "ignored" };
+
+function parseCollectorLine(line: string): ParsedCollectorLine {
   const trimmed = line.trim();
-  if (trimmed.length === 0) return null;
+  if (trimmed.length === 0) return { kind: "ignored" };
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return null;
+    return { kind: "ignored" };
   }
-  if (!parsed || typeof parsed !== "object") return null;
+  if (!parsed || typeof parsed !== "object") return { kind: "ignored" };
   const p = parsed as Record<string, unknown>;
   const ts = typeof p.ts === "number" ? p.ts : NaN;
-  const event = p.event === "activate" || p.event === "deactivate" ? p.event : null;
+  if (!Number.isFinite(ts)) return { kind: "ignored" };
+  if (p.event === "hid_idle") {
+    const idleSeconds =
+      typeof p.idleSeconds === "number" && Number.isFinite(p.idleSeconds)
+        ? p.idleSeconds
+        : null;
+    if (idleSeconds === null) return { kind: "ignored" };
+    return {
+      kind: "idle",
+      value: { ts, event: "hid_idle", idleSeconds },
+    };
+  }
+  if (p.event !== "activate" && p.event !== "deactivate") {
+    return { kind: "ignored" };
+  }
   const bundleId = typeof p.bundleId === "string" ? p.bundleId : null;
   const appName = typeof p.appName === "string" ? p.appName : null;
-  const windowTitle = typeof p.windowTitle === "string" ? p.windowTitle : undefined;
-  if (!Number.isFinite(ts) || event === null || bundleId === null || appName === null) {
-    return null;
+  const windowTitle =
+    typeof p.windowTitle === "string" ? p.windowTitle : undefined;
+  if (bundleId === null || appName === null) {
+    return { kind: "ignored" };
   }
-  const out: ActivityCollectorEvent = { ts, event, bundleId, appName };
+  const out: ActivityCollectorEvent = {
+    ts,
+    event: p.event,
+    bundleId,
+    appName,
+  };
   if (windowTitle !== undefined) out.windowTitle = windowTitle;
-  return out;
+  return { kind: "event", value: out };
+}
+
+function parseEventLine(line: string): ActivityCollectorEvent | null {
+  const parsed = parseCollectorLine(line);
+  return parsed.kind === "event" ? parsed.value : null;
 }
 
 export function startActivityCollector(
@@ -94,12 +138,19 @@ export function startActivityCollector(
 
   const rl = createInterface({ input: proc.stdout });
   rl.on("line", (line) => {
-    const parsed = parseEventLine(line);
-    if (!parsed) {
-      logger.debug({ line }, "[activity-tracker] Ignored unparsable collector line");
+    const parsed = parseCollectorLine(line);
+    if (parsed.kind === "event") {
+      options.onEvent(parsed.value);
       return;
     }
-    options.onEvent(parsed);
+    if (parsed.kind === "idle") {
+      options.onIdleSample?.(parsed.value);
+      return;
+    }
+    logger.debug(
+      { line },
+      "[activity-tracker] Ignored unparsable collector line",
+    );
   });
 
   proc.stderr.on("data", (chunk: Buffer) => {
@@ -137,4 +188,4 @@ export function startActivityCollector(
 }
 
 // Exposed for tests.
-export const __internal = { parseEventLine };
+export const __internal = { parseEventLine, parseCollectorLine };

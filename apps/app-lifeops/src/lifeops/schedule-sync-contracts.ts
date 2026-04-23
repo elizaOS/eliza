@@ -2,11 +2,11 @@ import type {
   LifeOpsAwakeProbability,
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,
+  LifeOpsRelativeTime,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealLabel,
   LifeOpsScheduleRegularity,
   LifeOpsScheduleSleepStatus,
-  LifeOpsRelativeTime,
   LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 

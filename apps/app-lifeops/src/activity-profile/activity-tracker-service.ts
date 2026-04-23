@@ -10,13 +10,18 @@
  * demand via {@link getActivityReport}.
  */
 
-import { type IAgentRuntime, Service, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type ActivityCollectorEvent,
   type ActivityCollectorHandle,
+  type ActivityCollectorIdleSample,
   isSupportedPlatform,
   startActivityCollector,
 } from "@elizaos/native-activity-tracker";
+import {
+  createLifeOpsActivitySignal,
+  LifeOpsRepository,
+} from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
 
 export type ActivityTrackerMode =
@@ -82,6 +87,9 @@ export class ActivityTrackerService extends Service {
         onEvent: (event) => {
           this.enqueueEvent(event);
         },
+        onIdleSample: (sample) => {
+          this.enqueueIdleSample(sample);
+        },
         onFatal: (reason) => {
           this.mode = "failed";
           logger.error(
@@ -133,6 +141,67 @@ export class ActivityTrackerService extends Service {
         logger.error(
           { err: err instanceof Error ? err.message : String(err) },
           "[activity-tracker] Failed to persist activity event.",
+        );
+      }
+    }
+  }
+
+  private enqueueIdleSample(sample: ActivityCollectorIdleSample): void {
+    this.writeQueue = this.writeQueue.then(
+      () => this.persistIdleSample(sample),
+      () => this.persistIdleSample(sample),
+    );
+  }
+
+  /**
+   * Persist a HID idle sample as a `desktop_interaction` activity signal.
+   * The scorer reads `idleTimeSeconds` from the latest signal to distinguish
+   * passive-media (high idle) from active-use (low idle) per the
+   * shared-device-safety rule in `awake-probability.ts`.
+   */
+  private async persistIdleSample(
+    sample: ActivityCollectorIdleSample,
+  ): Promise<void> {
+    const runtime = this.runtime;
+    if (!runtime) return;
+    const agentId = String(runtime.agentId);
+    const observedAt = new Date(sample.ts).toISOString();
+    const idleSeconds = Math.max(0, Math.round(sample.idleSeconds));
+    try {
+      const repository = new LifeOpsRepository(runtime);
+      await repository.createActivitySignal(
+        createLifeOpsActivitySignal({
+          agentId,
+          source: "desktop_interaction",
+          platform: "macos_activity_collector",
+          state:
+            idleSeconds <= 60
+              ? "active"
+              : idleSeconds <= 300
+                ? "idle"
+                : "background",
+          observedAt,
+          idleState:
+            idleSeconds <= 60
+              ? "active"
+              : idleSeconds <= 300
+                ? "idle"
+                : "unknown",
+          idleTimeSeconds: idleSeconds,
+          onBattery: null,
+          health: null,
+          metadata: {
+            source: "activity_collector_hid_idle",
+          },
+        }),
+      );
+      this.writeFailures = 0;
+    } catch (err) {
+      this.writeFailures += 1;
+      if (this.writeFailures <= 3) {
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err) },
+          "[activity-tracker] Failed to persist idle sample.",
         );
       }
     }

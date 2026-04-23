@@ -1,8 +1,9 @@
 import {
+  type ActionEventPayload,
   EventType,
   type IAgentRuntime,
-  Service,
   type MessagePayload,
+  Service,
 } from "@elizaos/core";
 import {
   createLifeOpsActivitySignal,
@@ -32,7 +33,9 @@ function readMessageTimestamp(payload: MessagePayload): string {
 
 function readPlatform(payload: MessagePayload): string {
   const messageRecord = isRecord(payload.message) ? payload.message : null;
-  const content = isRecord(messageRecord?.content) ? messageRecord?.content : null;
+  const content = isRecord(messageRecord?.content)
+    ? messageRecord?.content
+    : null;
   const candidates = [
     content?.channelType,
     content?.source,
@@ -67,12 +70,25 @@ export class PresenceSignalBridgeService extends Service {
     await this.captureActivityFromMessage(EventType.MESSAGE_SENT, payload);
   };
 
+  private readonly actionStartedHandler = async (
+    payload: ActionEventPayload,
+  ): Promise<void> => {
+    await this.captureActivityFromAction(payload);
+  };
+
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<PresenceSignalBridgeService> {
     const service = new PresenceSignalBridgeService(runtime);
-    runtime.registerEvent(EventType.MESSAGE_RECEIVED, service.messageReceivedHandler);
+    runtime.registerEvent(
+      EventType.MESSAGE_RECEIVED,
+      service.messageReceivedHandler,
+    );
     runtime.registerEvent(EventType.MESSAGE_SENT, service.messageSentHandler);
+    runtime.registerEvent(
+      EventType.ACTION_STARTED,
+      service.actionStartedHandler,
+    );
     return service;
   }
 
@@ -81,7 +97,58 @@ export class PresenceSignalBridgeService extends Service {
       EventType.MESSAGE_RECEIVED,
       this.messageReceivedHandler,
     );
-    this.runtime.unregisterEvent(EventType.MESSAGE_SENT, this.messageSentHandler);
+    this.runtime.unregisterEvent(
+      EventType.MESSAGE_SENT,
+      this.messageSentHandler,
+    );
+    this.runtime.unregisterEvent(
+      EventType.ACTION_STARTED,
+      this.actionStartedHandler,
+    );
+  }
+
+  private async captureActivityFromAction(
+    payload: ActionEventPayload,
+  ): Promise<void> {
+    if (payload.content.source !== "client_chat") {
+      return;
+    }
+    const actionName = payload.content.actions?.[0] ?? "unknown";
+    const messageId =
+      typeof payload.messageId === "string" ? payload.messageId : "unknown";
+    const observedAt = new Date().toISOString();
+    const fingerprint = `action:${messageId}`;
+    const observedMs = Date.parse(observedAt);
+    const existing = this.recentFingerprints.get(fingerprint);
+    if (
+      existing !== undefined &&
+      Number.isFinite(observedMs) &&
+      observedMs - existing < DEDUPE_WINDOW_MS
+    ) {
+      return;
+    }
+    if (Number.isFinite(observedMs)) {
+      this.recentFingerprints.set(fingerprint, observedMs);
+    }
+    const repository = new LifeOpsRepository(this.runtime);
+    await repository.createActivitySignal(
+      createLifeOpsActivitySignal({
+        agentId: String(this.runtime.agentId),
+        source: "app_lifecycle",
+        platform: "agent_action",
+        state: "active",
+        observedAt,
+        idleState: "active",
+        idleTimeSeconds: 0,
+        onBattery: null,
+        health: null,
+        metadata: {
+          eventType: "ACTION_STARTED",
+          actionName,
+          messageId,
+        },
+      }),
+    );
   }
 
   private async captureActivityFromMessage(

@@ -1062,6 +1062,201 @@ export interface LifeOpsActivitySignal {
   createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Telemetry event families (canonical unified store).
+//
+// See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` for the full
+// spec. Every telemetry payload is a fully-typed discriminated-union variant
+// per the no-`unknown`/no-`any` rule.
+// ---------------------------------------------------------------------------
+
+export type LifeOpsDevicePlatform =
+  | "macos_desktop"
+  | "macos_electrobun"
+  | "ios_capacitor"
+  | "ipados_capacitor"
+  | "browser_web";
+
+export interface LifeOpsDevicePresencePayload {
+  family: "device_presence_event";
+  platform: LifeOpsDevicePlatform;
+  state: LifeOpsActivitySignalState;
+  deviceId: string;
+  isTransition: boolean;
+  sequence: number;
+}
+
+export type LifeOpsDesktopPowerEventKind =
+  | "system_wake"
+  | "system_sleep"
+  | "screen_wake"
+  | "screen_sleep"
+  | "session_lock"
+  | "session_unlock"
+  | "ac_plug"
+  | "ac_unplug";
+
+export interface LifeOpsDesktopPowerPayload {
+  family: "desktop_power_event";
+  platform: "macos_desktop" | "macos_electrobun";
+  kind: LifeOpsDesktopPowerEventKind;
+  batteryPercent: number | null;
+}
+
+export interface LifeOpsDesktopIdleSamplePayload {
+  family: "desktop_idle_sample";
+  platform: "macos_desktop" | "macos_electrobun";
+  idleSeconds: number;
+  source: "iokit_hid" | "cgevent" | "collector_synthesized";
+  isThresholdCrossing: boolean;
+}
+
+export interface LifeOpsBrowserFocusPayload {
+  family: "browser_focus_window";
+  platform: "browser_web" | "macos_electrobun";
+  startAt: string;
+  endAt: string;
+  domain: string;
+  tabId: string;
+  focusedSeconds: number;
+}
+
+export interface LifeOpsMobileHealthPayload {
+  family: "mobile_health_snapshot";
+  platform: "ios_capacitor" | "ipados_capacitor";
+  signal: LifeOpsHealthSignal;
+  sampleId: string | null;
+}
+
+export type LifeOpsMobileDeviceTelemetrySource =
+  | "capacitor_mobile_signals"
+  | "macos_continuity_probe";
+
+export interface LifeOpsMobileDevicePayload {
+  family: "mobile_device_snapshot";
+  platform: "ios_capacitor" | "ipados_capacitor" | "macos_desktop";
+  source: LifeOpsMobileDeviceTelemetrySource;
+  locked: boolean;
+  idleTimeSeconds: number | null;
+  onBattery: boolean | null;
+  batteryPercent: number | null;
+  pairedDeviceId: string | null;
+}
+
+export type LifeOpsTelemetryMessageChannel =
+  | "gmail"
+  | "x_dm"
+  | "discord"
+  | "telegram"
+  | "signal"
+  | "imessage"
+  | "whatsapp"
+  | "sms"
+  | "milady_chat";
+
+export type LifeOpsMessageDirection = "inbound" | "outbound_by_owner";
+
+export interface LifeOpsMessageActivityPayload {
+  family: "message_activity_event";
+  platform: LifeOpsDevicePlatform;
+  channel: LifeOpsTelemetryMessageChannel;
+  direction: LifeOpsMessageDirection;
+  externalMessageId: string;
+  senderHash: string;
+  conversationHash: string;
+}
+
+export type LifeOpsStatusPlatform = "slack" | "discord" | "telegram" | "x";
+
+export type LifeOpsStatusTransition =
+  | "online"
+  | "offline"
+  | "away"
+  | "do_not_disturb"
+  | "custom_set"
+  | "custom_cleared";
+
+export interface LifeOpsStatusActivityPayload {
+  family: "status_activity_event";
+  platform: LifeOpsStatusPlatform;
+  transition: LifeOpsStatusTransition;
+}
+
+export interface LifeOpsChargingPayload {
+  family: "charging_event";
+  platform: LifeOpsDevicePlatform;
+  connected: boolean;
+  batteryPercent: number;
+}
+
+export interface LifeOpsScreenTimePerAppUsage {
+  appBundleId: string;
+  minutesUsed: number;
+}
+
+export interface LifeOpsScreenTimeSummaryPayload {
+  family: "screen_time_summary";
+  platform: "ios_capacitor" | "ipados_capacitor" | "macos_desktop";
+  intervalStartAt: string;
+  intervalEndAt: string;
+  totalMinutesUsed: number;
+  apps: LifeOpsScreenTimePerAppUsage[];
+}
+
+export type LifeOpsManualOverrideTelemetryKind =
+  | "going_to_bed"
+  | "just_woke_up";
+
+export interface LifeOpsManualOverridePayload {
+  family: "manual_override_event";
+  platform: LifeOpsDevicePlatform;
+  kind: LifeOpsManualOverrideTelemetryKind;
+  note: string | null;
+}
+
+export type LifeOpsTelemetryPayload =
+  | LifeOpsDevicePresencePayload
+  | LifeOpsDesktopPowerPayload
+  | LifeOpsDesktopIdleSamplePayload
+  | LifeOpsBrowserFocusPayload
+  | LifeOpsMobileHealthPayload
+  | LifeOpsMobileDevicePayload
+  | LifeOpsMessageActivityPayload
+  | LifeOpsStatusActivityPayload
+  | LifeOpsChargingPayload
+  | LifeOpsScreenTimeSummaryPayload
+  | LifeOpsManualOverridePayload;
+
+export type LifeOpsTelemetryFamily = LifeOpsTelemetryPayload["family"];
+
+export const LIFEOPS_TELEMETRY_FAMILIES: readonly LifeOpsTelemetryFamily[] = [
+  "device_presence_event",
+  "desktop_power_event",
+  "desktop_idle_sample",
+  "browser_focus_window",
+  "mobile_health_snapshot",
+  "mobile_device_snapshot",
+  "message_activity_event",
+  "status_activity_event",
+  "charging_event",
+  "screen_time_summary",
+  "manual_override_event",
+];
+
+export interface LifeOpsTelemetryEnvelope {
+  id: string;
+  agentId: string;
+  family: LifeOpsTelemetryFamily;
+  occurredAt: string;
+  ingestedAt: string;
+  dedupeKey: string;
+  sourceReliability: number;
+}
+
+export type LifeOpsTelemetryEvent = LifeOpsTelemetryEnvelope & {
+  payload: LifeOpsTelemetryPayload;
+};
+
 export interface LifeOpsReminderPreferenceSetting {
   intensity: LifeOpsReminderIntensity;
   source: LifeOpsReminderPreferenceSource;
@@ -1289,6 +1484,7 @@ export interface LifeOpsScheduleInsight {
   localDate: string;
   timezone: string;
   inferredAt: string;
+  phase: LifeOpsCircadianState;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
@@ -1297,6 +1493,7 @@ export interface LifeOpsScheduleInsight {
   regularity: LifeOpsScheduleRegularity;
   baseline: LifeOpsPersonalBaseline | null;
   sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;
