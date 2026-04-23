@@ -122,6 +122,13 @@ function escapeJavaString(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function escapeXmlText(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /**
  * Resolve the real filesystem path to a node_modules package (follows bun
  * symlinks). Returns a path relative to `relativeTo`.
@@ -396,6 +403,14 @@ function replaceOrInsertGradleString(content, key, value) {
   return content;
 }
 
+function appendMissingGradleDependency(content, notation) {
+  if (content.includes(notation)) return content;
+  return content.replace(
+    /dependencies\s*\{/,
+    `dependencies {\n    implementation "${notation}"`,
+  );
+}
+
 function appendMissingAndroidManifestBlock(xml, marker, block) {
   if (xml.includes(marker)) return xml;
   return xml.replace("</manifest>", `${block}\n</manifest>`);
@@ -542,7 +557,7 @@ function overlayAndroid() {
     xml = ensureMiladyOsActivityFilters(xml);
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
-      /\n\s*<service\b(?=[\s\S]*?android:name="[^"]*GatewayConnectionService")[\s\S]*?\/>\s*/g;
+      /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
     const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
     if (withoutGatewayServices !== xml) {
       xml = withoutGatewayServices;
@@ -952,9 +967,53 @@ function patchAndroidGradle() {
       "applicationId",
       APP.appId,
     );
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.code.gson:gson:2.13.2",
+    );
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.firebase:firebase-common-ktx:20.3.3",
+    );
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(`[mobile-build] Applied Android package identity ${APP.appId}.`);
+    }
+  }
+
+  const stringsPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "values",
+    "strings.xml",
+  );
+  if (fs.existsSync(stringsPath)) {
+    const current = fs.readFileSync(stringsPath, "utf8");
+    const appName = escapeXmlText(APP.appName);
+    const appId = escapeXmlText(APP.appId);
+    const patched = current
+      .replace(
+        /<string name="app_name">[^<]*<\/string>/,
+        `<string name="app_name">${appName}</string>`,
+      )
+      .replace(
+        /<string name="title_activity_main">[^<]*<\/string>/,
+        `<string name="title_activity_main">${appName}</string>`,
+      )
+      .replace(
+        /<string name="package_name">[^<]*<\/string>/,
+        `<string name="package_name">${appId}</string>`,
+      )
+      .replace(
+        /<string name="custom_url_scheme">[^<]*<\/string>/,
+        `<string name="custom_url_scheme">${appId}</string>`,
+      );
+    if (patched !== current) {
+      fs.writeFileSync(stringsPath, patched, "utf8");
+      console.log(`[mobile-build] Applied Android app strings for ${APP.appName}.`);
     }
   }
 }
