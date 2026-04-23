@@ -110,7 +110,7 @@ export function PageScopedChatPane({
   const introBody = introOverride?.body ?? copy.body;
   const introActions = introOverride?.actions ?? null;
   const effectiveSystemAddendum = systemAddendumOverride ?? copy.systemAddendum;
-  const placeholder = placeholderOverride ?? copy.body.split(".")[0];
+  const placeholder = placeholderOverride ?? "Message";
   const app = useApp();
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
