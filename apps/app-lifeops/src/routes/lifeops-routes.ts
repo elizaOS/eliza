@@ -40,6 +40,7 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
+  SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -820,6 +821,40 @@ export async function handleLifeOpsRoutes(
       };
       const calendars = await service.listCalendars(url, request);
       json(res, { calendars });
+    });
+  }
+
+  const setCalendarIncludedMatch =
+    method === "PUT"
+      ? pathname.match(/^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/)
+      : null;
+  if (setCalendarIncludedMatch) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const calendarId = decodeMatchedPathComponent(
+      ctx,
+      setCalendarIncludedMatch,
+      1,
+      res,
+      "calendarId",
+    );
+    if (!calendarId) return true;
+    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      if (body.calendarId && body.calendarId !== calendarId) {
+        throw new LifeOpsServiceError(
+          400,
+          "calendarId must match between path and request body",
+        );
+      }
+      const calendar = await service.setCalendarIncluded(url, {
+        calendarId,
+        includeInFeed: body.includeInFeed,
+        mode: body.mode,
+        side: body.side,
+        grantId: body.grantId,
+      });
+      json(res, { calendar });
     });
   }
 

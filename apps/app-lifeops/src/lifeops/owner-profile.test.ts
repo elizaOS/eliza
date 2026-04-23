@@ -1,8 +1,10 @@
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import {
+  ensureLifeOpsCalendarFeedIncludes,
   readLifeOpsMeetingPreferences,
   readLifeOpsOwnerProfile,
+  setLifeOpsCalendarFeedIncluded,
   updateLifeOpsOwnerProfile,
 } from "./owner-profile.js";
 import { LIFEOPS_TASK_NAME, LIFEOPS_TASK_TAGS } from "./scheduler-task.js";
@@ -87,6 +89,91 @@ describe("owner profile scheduler metadata reads", () => {
       "task-1",
       expect.objectContaining({
         description: "Process life-ops reminders and scheduled workflows",
+      }),
+    );
+  });
+
+  test("ensureLifeOpsCalendarFeedIncludes defaults unseen calendars to true without overwriting stored false values", async () => {
+    const schedulerTask = {
+      id: "task-1" as UUID,
+      name: LIFEOPS_TASK_NAME,
+      tags: [...LIFEOPS_TASK_TAGS],
+      metadata: {
+        lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+        calendarFeedPreferences: {
+          calendarFeedIncludes: {
+            primary: false,
+          },
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
+      },
+    } as Task;
+    const updateTask = vi.fn(async () => undefined);
+    const runtime = makeRuntime({
+      updateTask,
+      getTasks: vi.fn(async () => [schedulerTask]),
+    });
+
+    const next = await ensureLifeOpsCalendarFeedIncludes(runtime, [
+      "primary",
+      "family@example.com",
+    ]);
+
+    expect(next.calendarFeedIncludes).toEqual({
+      primary: false,
+      "family@example.com": true,
+    });
+    expect(updateTask).toHaveBeenLastCalledWith(
+      "task-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          calendarFeedPreferences: expect.objectContaining({
+            calendarFeedIncludes: {
+              primary: false,
+              "family@example.com": true,
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("setLifeOpsCalendarFeedIncluded persists an explicit include toggle", async () => {
+    const schedulerTask = {
+      id: "task-1" as UUID,
+      name: LIFEOPS_TASK_NAME,
+      tags: [...LIFEOPS_TASK_TAGS],
+      metadata: {
+        lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+        calendarFeedPreferences: {
+          calendarFeedIncludes: {
+            primary: true,
+          },
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
+      },
+    } as Task;
+    const updateTask = vi.fn(async () => undefined);
+    const runtime = makeRuntime({
+      updateTask,
+      getTasks: vi.fn(async () => [schedulerTask]),
+    });
+
+    const next = await setLifeOpsCalendarFeedIncluded(
+      runtime,
+      "primary",
+      false,
+    );
+
+    expect(next.calendarFeedIncludes).toEqual({ primary: false });
+    expect(updateTask).toHaveBeenLastCalledWith(
+      "task-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          calendarFeedPreferences: expect.objectContaining({
+            calendarFeedIncludes: { primary: false },
+          }),
+        }),
       }),
     );
   });

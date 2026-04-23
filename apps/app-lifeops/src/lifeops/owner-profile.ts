@@ -230,6 +230,144 @@ export async function readLifeOpsOwnerProfile(
   return resolveLifeOpsOwnerProfile(metadata, configuredName);
 }
 
+export interface LifeOpsCalendarFeedPreferences {
+  calendarFeedIncludes: Record<string, boolean>;
+  updatedAt: string | null;
+}
+
+const DEFAULT_CALENDAR_FEED_PREFERENCES: LifeOpsCalendarFeedPreferences = {
+  calendarFeedIncludes: {},
+  updatedAt: null,
+};
+
+function normalizeCalendarFeedIncludes(
+  value: unknown,
+): Record<string, boolean> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const normalized: Record<string, boolean> = {};
+  for (const [rawCalendarId, rawIncluded] of Object.entries(value)) {
+    const calendarId = rawCalendarId.trim();
+    if (!calendarId || typeof rawIncluded !== "boolean") {
+      continue;
+    }
+    normalized[calendarId] = rawIncluded;
+  }
+  return normalized;
+}
+
+function resolveCalendarFeedPreferences(
+  metadata: Record<string, unknown> | null | undefined,
+): LifeOpsCalendarFeedPreferences {
+  const stored = isRecord(metadata?.calendarFeedPreferences)
+    ? metadata.calendarFeedPreferences
+    : null;
+  const updatedAt =
+    stored && typeof stored.updatedAt === "string"
+      ? normalizeProfileValue(stored.updatedAt, 64)
+      : null;
+  return {
+    ...DEFAULT_CALENDAR_FEED_PREFERENCES,
+    calendarFeedIncludes: normalizeCalendarFeedIncludes(
+      stored?.calendarFeedIncludes,
+    ),
+    updatedAt,
+  };
+}
+
+export async function readLifeOpsCalendarFeedPreferences(
+  runtime: IAgentRuntime,
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const metadata = isRecord(task?.metadata) ? task.metadata : null;
+  return resolveCalendarFeedPreferences(metadata);
+}
+
+function normalizeCalendarFeedIncludeIds(
+  calendarIds: readonly string[],
+): string[] {
+  return [
+    ...new Set(
+      calendarIds
+        .map((calendarId) =>
+          typeof calendarId === "string" ? calendarId.trim() : "",
+        )
+        .filter((calendarId) => calendarId.length > 0),
+    ),
+  ];
+}
+
+export async function ensureLifeOpsCalendarFeedIncludes(
+  runtime: IAgentRuntime,
+  calendarIds: readonly string[],
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const normalizedCalendarIds = normalizeCalendarFeedIncludeIds(calendarIds);
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const currentMetadata = isRecord(task?.metadata) ? task.metadata : null;
+  const current = resolveCalendarFeedPreferences(currentMetadata);
+  const missingCalendarIds = normalizedCalendarIds.filter(
+    (calendarId) => !(calendarId in current.calendarFeedIncludes),
+  );
+  if (missingCalendarIds.length === 0) {
+    return current;
+  }
+
+  const taskId = await ensureLifeOpsSchedulerTask(runtime);
+  const metadata =
+    currentMetadata && task?.id === taskId
+      ? currentMetadata
+      : buildFallbackSchedulerMetadata(runtime.agentId);
+  const nextCalendarFeedIncludes = { ...current.calendarFeedIncludes };
+  for (const calendarId of missingCalendarIds) {
+    nextCalendarFeedIncludes[calendarId] = true;
+  }
+  const next: LifeOpsCalendarFeedPreferences = {
+    calendarFeedIncludes: nextCalendarFeedIncludes,
+    updatedAt: new Date().toISOString(),
+  };
+  await runtime.updateTask(taskId, {
+    metadata: {
+      ...(metadata ?? {}),
+      calendarFeedPreferences: next,
+    },
+  });
+  return next;
+}
+
+export async function setLifeOpsCalendarFeedIncluded(
+  runtime: IAgentRuntime,
+  calendarId: string,
+  included: boolean,
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const normalizedCalendarId = calendarId.trim();
+  if (!normalizedCalendarId) {
+    throw new Error("calendarId is required");
+  }
+
+  const taskId = await ensureLifeOpsSchedulerTask(runtime);
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const metadata =
+    isRecord(task?.metadata) && task.id === taskId
+      ? task.metadata
+      : buildFallbackSchedulerMetadata(runtime.agentId);
+  const current = resolveCalendarFeedPreferences(metadata);
+  const next: LifeOpsCalendarFeedPreferences = {
+    calendarFeedIncludes: {
+      ...current.calendarFeedIncludes,
+      [normalizedCalendarId]: included,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  await runtime.updateTask(taskId, {
+    metadata: {
+      ...(metadata ?? {}),
+      calendarFeedPreferences: next,
+    },
+  });
+  return next;
+}
+
 /**
  * Meeting preferences — stored alongside the owner profile in the LifeOps
  * scheduler task's metadata. Consumed by scheduling-with-others actions to
