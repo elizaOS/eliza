@@ -1,26 +1,23 @@
 #!/usr/bin/env node
 /**
- * Post-install patches for remaining third-party/runtime packaging issues.
+ * Post-install patches for third-party/runtime packaging issues.
  *
- * First-party @elizaos and @elizaos source fixes should land in their own
- * packages and releases instead of being maintained here.
+ * First-party @elizaos fixes should land in the @elizaos package source
+ * and ship via a release — not be maintained here. Every patch below
+ * carries a header stating (a) what's wrong, (b) what version fixes it
+ * upstream, (c) when it can be removed.
  *
  * Current responsibilities:
- * 1) Bun/runtime packaging compatibility (broken export maps, stale cache
- *    repairs, nested package skew, platform shims).
- * 2) Dependency compatibility fixes (@noble/*, cssstyle, @ai-sdk/groq,
- *    proper-lockfile, pty-manager).
- * 3) Startup noise / native loader suppression (bigint-buffer, sharp, jsdom).
+ *   1. Bun/runtime packaging compatibility (broken export maps, stale
+ *      cache repairs, nested package skew, platform shims).
+ *   2. Dependency compatibility fixes (@noble/*, cssstyle, @ai-sdk/groq,
+ *      proper-lockfile, pty-manager).
+ *   3. Startup noise / native loader suppression (bigint-buffer, sharp,
+ *      jsdom).
  *
- * Many former patches have been retired because the upstream submodule source
- * (workspace:*) now includes the fixes. The following patches were removed
- * because the workspace source already resolves them:
- *   - patchElizaCoreMemoryStorageStub (requireStorage refactored out)
- *   - patchElizaCoreStreamingTtsHandlerGuard (already guarded in source)
- *   - patchElizaCoreStreamingRetryPlaceholder (removed from source)
- *   - patchPluginSqlCountMemoriesSignature (countMemories supports both forms)
- *   - patchGroqSdkVersion (plugin-groq uses workspace:*)
- *   - patchElizaCoreNodeTypes (workspace builds include types)
+ * History of retired patches lives in
+ * docs/retired-patches.md — do not add new memorial comments in this
+ * file.
  */
 import {
   existsSync,
@@ -517,9 +514,6 @@ if (threeVrmNodeTargets.length === 0) {
   );
 }
 
-// Action parsing patch removed — fix shipped in @elizaos/core@2.0.0-alpha.106
-// (PR #6661: parseKeyValueXml preserves raw XML string for <actions> content).
-
 /**
  * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.
  *
@@ -570,18 +564,3 @@ function patchCssstyleColorCompat() {
   }
 }
 patchCssstyleColorCompat();
-
-// ---------------------------------------------------------------------------
-// RETIRED FORK PATCHES
-//
-// The following patches have been retired because the workspace submodule
-// source (@elizaos/core, @elizaos/plugin-sql) already includes these fixes
-// and they resolve via workspace:* rather than npm tarballs:
-//
-// - patchPluginSqlCountMemoriesSignature (plugin-sql supports both signatures)
-// - patchElizaCoreMemoryStorageStub (requireStorage refactored out of core)
-// - patchElizaCoreStreamingTtsHandlerGuard (TTS guard already in source)
-// - patchElizaCoreStreamingRetryPlaceholder (retry placeholder removed)
-// - patchElizaCoreNodeTypes (workspace builds include types)
-// - patchGroqSdkVersion (plugin-groq uses workspace:*, no nested @ai-sdk/groq)
-// ---------------------------------------------------------------------------
