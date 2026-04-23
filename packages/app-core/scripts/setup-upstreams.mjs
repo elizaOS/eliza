@@ -17,14 +17,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
 
-export const LOCAL_UPSTREAM_SKIP_ENVS = [
-  "ELIZA_SKIP_LOCAL_UPSTREAMS",
-  "ELIZA_SKIP_LOCAL_UPSTREAMS",
-];
-export const LOCAL_UPSTREAM_FORCE_ENVS = [
-  "ELIZA_FORCE_LOCAL_UPSTREAMS",
-  "ELIZA_FORCE_LOCAL_UPSTREAMS",
-];
+export const LOCAL_UPSTREAM_SKIP_ENVS = ["ELIZA_SKIP_LOCAL_UPSTREAMS"];
+export const LOCAL_UPSTREAM_FORCE_ENVS = ["ELIZA_FORCE_LOCAL_UPSTREAMS"];
 export const ELIZA_GIT_URL = "https://github.com/elizaos/eliza.git";
 export const ELIZA_BRANCH = "develop";
 export const ELIZA_REQUIRED_FILES = ["package.json"];
