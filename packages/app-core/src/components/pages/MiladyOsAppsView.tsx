@@ -9,6 +9,8 @@ import {
   RefreshCw,
   Search,
   Send,
+  Settings,
+  ShieldCheck,
   UserPlus,
 } from "lucide-react";
 import {
@@ -236,9 +238,8 @@ function EmptyState({ children }: { children: ReactNode }) {
   );
 }
 
-function roleLine(role: AndroidRoleStatus): string {
-  const holderText = role.holders.length > 0 ? role.holders.join(", ") : "none";
-  return `${role.role}: ${role.held ? "held" : "not held"} (${holderText})`;
+function roleHolderText(role: AndroidRoleStatus): string {
+  return role.holders.length > 0 ? role.holders.join(", ") : "none";
 }
 
 function numberFromTelUri(uri: string | null): string {
@@ -306,6 +307,7 @@ export function PhonePageView() {
   const [emailAddress, setEmailAddress] = useState("");
   const [vcardText, setVcardText] = useState("");
   const [status, setStatus] = useState<string[]>([]);
+  const [roles, setRoles] = useState<AndroidRoleStatus[]>([]);
   const [calls, setCalls] = useState<CallLogEntry[]>([]);
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
@@ -382,8 +384,8 @@ export function PhonePageView() {
         `default dialer: ${phone.defaultDialerPackage ?? "none"}`,
         `milady default dialer: ${phone.isDefaultDialer ? "yes" : "no"}`,
         `can place calls: ${phone.canPlaceCalls ? "yes" : "no"}`,
-        ...system.roles.map(roleLine),
       ]);
+      setRoles(system.roles);
       setCalls(recentCalls.calls);
       setContacts(contactResult.contacts);
       setSelectedCallId(
@@ -523,6 +525,49 @@ export function PhonePageView() {
       });
       setNotice("Transcript saved.");
       await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestAndroidRole = async (role: AndroidRoleStatus) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      if (!role.available) {
+        throw new Error(`${role.androidRole} is not available on this device`);
+      }
+      const plugins = getPlugins();
+      if (typeof plugins.system.plugin.requestRole !== "function") {
+        throw new Error("MiladySystem role request API is unavailable");
+      }
+      const result = await plugins.system.plugin.requestRole({
+        role: role.role,
+      });
+      setNotice(
+        `${role.role} role ${result.held ? "is held by Milady" : "was not granted"}.`,
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSystemSettings = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const plugins = getPlugins();
+      if (typeof plugins.system.plugin.openSettings !== "function") {
+        throw new Error("MiladySystem settings API is unavailable");
+      }
+      await plugins.system.plugin.openSettings();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -811,6 +856,44 @@ export function PhonePageView() {
                 ? status.map((line) => <div key={line}>{line}</div>)
                 : "No status loaded."}
             </div>
+            <div className="grid gap-2 rounded border border-border bg-bg p-3">
+              <div className="text-sm font-medium text-txt">
+                Android default roles
+              </div>
+              {roles.length > 0 ? (
+                roles.map((role) => (
+                  <div
+                    key={role.role}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-card p-2 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium text-txt">
+                        {role.role}: {role.held ? "held" : "not held"}
+                      </div>
+                      <div className="truncate text-xs text-muted">
+                        holders: {roleHolderText(role)}
+                      </div>
+                    </div>
+                    <SecondaryButton
+                      disabled={busy || !role.available || role.held}
+                      icon={<ShieldCheck className="h-4 w-4" />}
+                      onClick={() => requestAndroidRole(role)}
+                    >
+                      Request
+                    </SecondaryButton>
+                  </div>
+                ))
+              ) : (
+                <EmptyState>No Android roles returned.</EmptyState>
+              )}
+              <SecondaryButton
+                disabled={busy}
+                icon={<Settings className="h-4 w-4" />}
+                onClick={openSystemSettings}
+              >
+                Settings
+              </SecondaryButton>
+            </div>
             <div className="rounded border border-border bg-bg p-3">
               <div className="mb-3 text-sm font-medium text-txt">
                 New Contact
@@ -994,11 +1077,11 @@ export function MessagesPageView() {
       if (typeof plugins.messages.plugin.sendSms !== "function") {
         throw new Error("MiladyMessages plugin is unavailable");
       }
-      await plugins.messages.plugin.sendSms({
+      const result = await plugins.messages.plugin.sendSms({
         address: trimmedAddress,
         body: trimmedBody,
       });
-      setNotice("SMS sent.");
+      setNotice(`SMS sent and saved as message ${result.messageId}.`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

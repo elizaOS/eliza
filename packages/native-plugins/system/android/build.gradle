@@ -1,5 +1,6 @@
 ext {
     junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
+    androidxActivityVersion = project.hasProperty('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.8.0'
 }
 
 apply plugin: 'com.android.library'
@@ -24,4 +25,5 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    implementation "androidx.activity:activity:$androidxActivityVersion"
 }

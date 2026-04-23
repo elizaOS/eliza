@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.PendingIntent
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -62,7 +63,11 @@ class MessagesPlugin : Plugin() {
                     if (failed.get()) {
                         call.reject("SMS send failed with result code $resultCode")
                     } else {
-                        call.resolve()
+                        try {
+                            call.resolve(persistSentSms(address, body))
+                        } catch (error: RuntimeException) {
+                            call.reject("SMS sent but Android SMS provider did not persist the sent row", error)
+                        }
                     }
                 }
             }
@@ -155,5 +160,25 @@ class MessagesPlugin : Plugin() {
         val result = JSObject()
         result.put("messages", messages)
         call.resolve(result)
+    }
+
+    private fun persistSentSms(address: String, body: String): JSObject {
+        val sentAt = System.currentTimeMillis()
+        val values = ContentValues()
+        values.put(Telephony.Sms.ADDRESS, address)
+        values.put(Telephony.Sms.BODY, body)
+        values.put(Telephony.Sms.DATE, sentAt)
+        values.put(Telephony.Sms.DATE_SENT, sentAt)
+        values.put(Telephony.Sms.READ, 1)
+        values.put(Telephony.Sms.SEEN, 1)
+        values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+
+        val inserted = context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+            ?: throw IllegalStateException("SMS provider returned no sent row URI")
+
+        val result = JSObject()
+        result.put("messageUri", inserted.toString())
+        result.put("messageId", inserted.lastPathSegment ?: "")
+        return result
     }
 }
