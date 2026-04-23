@@ -141,7 +141,12 @@ describe("pageScopedContextProvider", () => {
             repository: "",
             latestVersion: null,
             supports: { v0: false, v1: true, v2: true },
-            npm: { package: "", v0Version: null, v1Version: null, v2Version: null },
+            npm: {
+              package: "",
+              v0Version: null,
+              v1Version: null,
+              v2Version: null,
+            },
           },
         ]);
       }

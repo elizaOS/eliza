@@ -105,6 +105,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/gmail/triage" },
   { type: "GET", path: "/api/lifeops/gmail/search" },
   { type: "GET", path: "/api/lifeops/gmail/needs-response" },
+  { type: "GET", path: "/api/lifeops/gmail/recommendations" },
   { type: "GET", path: "/api/lifeops/gmail/unresponded" },
   { type: "POST", path: "/api/lifeops/calendar/events" },
   { type: "GET", path: "/api/lifeops/inbox/unified" },
