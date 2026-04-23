@@ -126,6 +126,7 @@ import {
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
 } from "../providers/workspace.js";
 import { SandboxAuditLog } from "../security/audit-log.js";
 import {
@@ -3076,7 +3077,10 @@ export async function startEliza(
   // 4. Ensure workspace exists with required files
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
+  await ensureAgentWorkspace({
+    dir: workspaceDir,
+    ensureInitFiles: shouldBootstrapWorkspaceInitFiles(workspaceDir),
+  });
 
   // 4b. Ensure custom plugins directory exists for drop-in plugins
   await fs.mkdir(path.join(resolveStateDir(), CUSTOM_RUNTIME_PLUGINS_DIRNAME), {
