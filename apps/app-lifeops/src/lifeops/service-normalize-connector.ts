@@ -13,6 +13,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
+  LifeOpsRegularityClass,
   LifeOpsReminderStep,
   LifeOpsTimeWindowDefinition,
   LifeOpsWindowPolicy,
@@ -261,12 +262,12 @@ function normalizeEventTrigger(
       },
     };
   }
-  if (eventKind === "lifeops.wake.detected") {
+  if (eventKind === "lifeops.wake.observed") {
     return {
       kind,
       eventKind,
       filters: {
-        kind: "lifeops.wake.detected",
+        kind: "lifeops.wake.observed",
         filters: normalizeWakeEventFilters(filtersRecord, "schedule.filters"),
       },
     };
@@ -281,22 +282,42 @@ function normalizeEventTrigger(
       },
     };
   }
-  if (eventKind === "lifeops.sleep.started") {
+  if (eventKind === "lifeops.sleep.onset_candidate") {
     return {
       kind,
       eventKind,
       filters: {
-        kind: "lifeops.sleep.started",
+        kind: "lifeops.sleep.onset_candidate",
         filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
       },
     };
   }
-  if (eventKind === "lifeops.sleep.completed") {
+  if (eventKind === "lifeops.sleep.detected") {
     return {
       kind,
       eventKind,
       filters: {
-        kind: "lifeops.sleep.completed",
+        kind: "lifeops.sleep.detected",
+        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.sleep.ended") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.sleep.ended",
+        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.nap.detected") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.nap.detected",
         filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
       },
     };
@@ -308,6 +329,19 @@ function normalizeEventTrigger(
       filters: {
         kind: "lifeops.bedtime.imminent",
         filters: normalizeBedtimeImminentFilters(filtersRecord, "schedule.filters"),
+      },
+    };
+  }
+  if (eventKind === "lifeops.regularity.changed") {
+    return {
+      kind,
+      eventKind,
+      filters: {
+        kind: "lifeops.regularity.changed",
+        filters: normalizeRegularityChangedFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -412,6 +446,30 @@ function normalizeBedtimeImminentFilters(
       `${field}.minConfidence`,
     ),
   };
+}
+
+const REGULARITY_CLASS_VALUES = new Set([
+  "very_regular",
+  "regular",
+  "irregular",
+  "very_irregular",
+  "insufficient_data",
+]);
+
+function normalizeRegularityChangedFilters(
+  input: Record<string, unknown>,
+  field: string,
+): { becomes?: LifeOpsRegularityClass } {
+  if (input.becomes === undefined || input.becomes === null) {
+    return {};
+  }
+  const value = input.becomes;
+  if (typeof value !== "string" || !REGULARITY_CLASS_VALUES.has(value)) {
+    throw new Error(
+      `${field}.becomes must be one of ${[...REGULARITY_CLASS_VALUES].join(", ")}`,
+    );
+  }
+  return { becomes: value as LifeOpsRegularityClass };
 }
 
 function normalizeCalendarEventEndedFilters(

@@ -1,11 +1,13 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsActivitySignal,
+  LifeOpsCircadianState,
   LifeOpsDayBoundary,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealInsight,
   LifeOpsScheduleMealLabel,
   LifeOpsSleepCycle,
+  LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
 import type {
@@ -13,7 +15,11 @@ import type {
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
 import { computeAwakeProbability } from "./awake-probability.js";
-import { computeSleepRegularity, type SleepRegularityEpisodeLike } from "./sleep-regularity.js";
+import {
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type SleepRegularityEpisodeLike,
+} from "./sleep-regularity.js";
 import {
   listHistoricalSleepEpisodes,
   persistSleepEpisodes,
@@ -31,7 +37,6 @@ import { getZonedDateParts } from "./time.js";
 const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
 const SIGNAL_ACTIVITY_PAD_MS = 3 * 60 * 1_000;
 const MERGE_ACTIVITY_GAP_MS = 5 * 60 * 1_000;
-const COMPLETED_SLEEP_GAP_MIN_MS = 3 * 60 * 60 * 1_000;
 const MEAL_GAP_MIN_MS = 15 * 60 * 1_000;
 const MEAL_GAP_MAX_MS = 90 * 60 * 1_000;
 // An activate event with no follow-up event within this window is treated as
@@ -108,23 +113,6 @@ function localHour(ms: number, timezone: string): number {
 
 function normalizeSleepHour(hour: number): number {
   return hour < 12 ? hour + 24 : hour;
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) {
-    return sorted[middle] ?? null;
-  }
-  const left = sorted[middle - 1];
-  const right = sorted[middle];
-  if (left === undefined || right === undefined) {
-    return null;
-  }
-  return Math.round(((left + right) / 2) * 100) / 100;
 }
 
 function intervalDurationMs(startMs: number, endMs: number | null, nowMs: number): number {
@@ -431,6 +419,74 @@ function predictNextMeal(args: {
   };
 }
 
+function deriveCircadianState(args: {
+  nowMs: number;
+  timezone: string;
+  wakeAtMs: number | null;
+  lastActiveAtMs: number | null;
+  sleepCycle: LifeOpsSleepCycle;
+  awakeProbability: LifeOpsScheduleInsight["awakeProbability"];
+  regularity: LifeOpsScheduleInsight["regularity"];
+  baseline: LifeOpsScheduleInsight["baseline"];
+  signalCount: number;
+  windowCount: number;
+}): {
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
+} {
+  if (args.sleepCycle.isProbablySleeping || args.awakeProbability.pAsleep >= 0.65) {
+    return {
+      circadianState: args.sleepCycle.cycleType === "nap" ? "napping" : "sleeping",
+      stateConfidence: roundConfidence(
+        Math.max(args.sleepCycle.sleepConfidence, args.awakeProbability.pAsleep),
+      ),
+      uncertaintyReason: null,
+    };
+  }
+  if (
+    args.wakeAtMs !== null &&
+    args.nowMs - args.wakeAtMs <= 90 * 60 * 1_000
+  ) {
+    return {
+      circadianState: "waking",
+      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.62)),
+      uncertaintyReason: null,
+    };
+  }
+  const nowHour = normalizeSleepHour(localHour(args.nowMs, args.timezone));
+  const bedtimeHour = args.baseline?.medianBedtimeLocalHour ?? null;
+  if (bedtimeHour !== null && nowHour >= bedtimeHour - 2 && nowHour <= bedtimeHour + 4) {
+    return {
+      circadianState: "winding_down",
+      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.5)),
+      uncertaintyReason: null,
+    };
+  }
+  if (
+    args.awakeProbability.pAwake >= 0.65 ||
+    (args.lastActiveAtMs !== null &&
+      args.nowMs - args.lastActiveAtMs <= 2 * 60 * 60 * 1_000)
+  ) {
+    return {
+      circadianState: "awake",
+      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.55)),
+      uncertaintyReason: null,
+    };
+  }
+  const uncertaintyReason: LifeOpsUnclearReason =
+    args.signalCount === 0 && args.windowCount === 0
+      ? "no_signals"
+      : args.regularity.regularityClass === "insufficient_data"
+        ? "insufficient_history"
+        : "contradictory_signals";
+  return {
+    circadianState: "unclear",
+    stateConfidence: roundConfidence(args.awakeProbability.pUnknown),
+    uncertaintyReason,
+  };
+}
+
 function toHistoricalSleepEpisodes(
   episodes: readonly LifeOpsSleepEpisode[],
 ): SleepRegularityEpisodeLike[] {
@@ -500,16 +556,14 @@ function analyzeLifeOpsScheduleInsight(args: {
     timezone: args.timezone,
   });
 
-  const candidateSleepStarts = sleepResolution.sleepEpisodes
-    .filter((episode) => intervalDurationMs(episode.startMs, episode.endMs, args.nowMs) >= COMPLETED_SLEEP_GAP_MIN_MS)
-    .map((episode) => normalizeSleepHour(localHour(episode.startMs, args.timezone)));
-  const candidateWakeHours = sleepResolution.sleepEpisodes
-    .filter((episode): episode is LifeOpsSleepEpisode & { endMs: number } => episode.endMs !== null)
-    .map((episode) => localHour(episode.endMs, args.timezone));
-  const typicalSleepHour = median(candidateSleepStarts);
   const historicalEpisodes =
     args.historicalSleepEpisodes ?? toHistoricalSleepEpisodes(sleepResolution.sleepEpisodes);
   const regularity = computeSleepRegularity({
+    episodes: historicalEpisodes,
+    timezone: args.timezone,
+    nowMs: args.nowMs,
+  });
+  const baseline = computePersonalBaseline({
     episodes: historicalEpisodes,
     timezone: args.timezone,
     nowMs: args.nowMs,
@@ -522,36 +576,19 @@ function analyzeLifeOpsScheduleInsight(args: {
     sleepCycle,
     regularity,
   });
-
-  const phase = (() => {
-    if (awakeProbability.pAsleep >= 0.65) {
-      return "sleeping" as const;
-    }
-    if (wakeAtMs !== null && args.nowMs - wakeAtMs <= 90 * 60 * 1_000) {
-      return "waking" as const;
-    }
-    if (
-      (regularity.regularityClass === "irregular" ||
-        regularity.regularityClass === "very_irregular") &&
-      awakeProbability.pUnknown >= 0.4
-    ) {
-      return "irregular_unknown" as const;
-    }
-    if (lastActiveAtMs !== null && args.nowMs - lastActiveAtMs >= 2 * 60 * 60 * 1_000) {
-      return "offline" as const;
-    }
-    const nowHour = normalizeSleepHour(localHour(args.nowMs, args.timezone));
-    if (typicalSleepHour !== null && nowHour >= typicalSleepHour - 2) {
-      return "winding_down" as const;
-    }
-    if (wakeAtMs !== null && args.nowMs - wakeAtMs < 5 * 60 * 60 * 1_000) {
-      return "morning" as const;
-    }
-    if (localHour(args.nowMs, args.timezone) < 17) {
-      return "afternoon" as const;
-    }
-    return "evening" as const;
-  })();
+  const { circadianState, stateConfidence, uncertaintyReason } =
+    deriveCircadianState({
+      nowMs: args.nowMs,
+      timezone: args.timezone,
+      wakeAtMs,
+      lastActiveAtMs,
+      sleepCycle,
+      awakeProbability,
+      regularity,
+      baseline,
+      signalCount: args.signals.length,
+      windowCount: mergedWindows.length,
+    });
 
   const sleepStatus = sleepCycle.sleepStatus;
   const effectiveDayKey = dayBoundary.effectiveDayKey;
@@ -561,15 +598,16 @@ function analyzeLifeOpsScheduleInsight(args: {
     timezone: args.timezone,
     dayBoundary,
     schedule: {
-      phase,
+      circadianState,
+      stateConfidence,
+      uncertaintyReason,
       awakeProbability,
       regularity,
-      isProbablySleeping: sleepCycle.isProbablySleeping,
+      baseline,
       sleepConfidence: sleepCycle.sleepConfidence,
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
       lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
       lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
-      typicalSleepHour,
       wakeAt,
       firstActiveAt: toIso(firstActiveAtMs),
     },
@@ -581,19 +619,19 @@ function analyzeLifeOpsScheduleInsight(args: {
       localDate: dayBoundary.localDate,
       timezone: args.timezone,
       inferredAt: new Date(args.nowMs).toISOString(),
-      phase,
+      circadianState,
+      stateConfidence,
+      uncertaintyReason,
       relativeTime,
       awakeProbability,
       regularity,
+      baseline,
       sleepStatus,
-      isProbablySleeping: awakeProbability.pAsleep >= 0.65,
       sleepConfidence: Math.max(sleepCycle.sleepConfidence, awakeProbability.pAsleep),
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
       lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
       lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
       lastSleepDurationMinutes: sleepCycle.lastSleepDurationMinutes,
-      typicalWakeHour: median(candidateWakeHours),
-      typicalSleepHour,
       wakeAt,
       firstActiveAt: toIso(firstActiveAtMs),
       lastActiveAt: toIso(lastActiveAtMs),

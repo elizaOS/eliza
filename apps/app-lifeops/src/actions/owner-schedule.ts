@@ -48,8 +48,13 @@ function formatScheduleSummary(inspection: LifeOpsScheduleInspection): string {
       : insight.relativeTime.minutesSinceBedtimeTarget !== null
         ? `${insight.relativeTime.minutesSinceBedtimeTarget} minutes ago`
         : "still calibrating";
+  const isAsleepState =
+    insight.circadianState === "sleeping" ||
+    insight.circadianState === "napping";
   const lines = [
-    `Schedule phase: ${insight.phase}.`,
+    `Circadian state: ${insight.circadianState} (${Math.round(insight.stateConfidence * 100)}% confidence)${
+      insight.uncertaintyReason ? ` — ${insight.uncertaintyReason}` : ""
+    }.`,
     insight.relativeTime.minutesSinceWake !== null
       ? `Relative time: woke ${insight.relativeTime.minutesSinceWake} minutes ago; bedtime target ${
           insight.relativeTime.bedtimeTargetAt ?? "unknown"
@@ -62,8 +67,8 @@ function formatScheduleSummary(inspection: LifeOpsScheduleInspection): string {
           ? `Relative time: bedtime target ${
               insight.relativeTime.bedtimeTargetAt ?? "unknown"
             } was ${insight.relativeTime.minutesSinceBedtimeTarget} minutes ago.`
-        : "Relative time: still calibrating wake and bedtime anchors.",
-    insight.isProbablySleeping
+          : "Relative time: still calibrating wake and bedtime anchors.",
+    isAsleepState
       ? insight.currentSleepStartedAt
         ? `Likely asleep since ${insight.currentSleepStartedAt} (${Math.round(insight.sleepConfidence * 100)}% confidence).`
         : `Likely asleep now (${Math.round(insight.sleepConfidence * 100)}% confidence).`

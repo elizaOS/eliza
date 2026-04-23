@@ -15,7 +15,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 @CapacitorPlugin(name = "MiladySystem")
 class SystemPlugin : Plugin() {
     private val roleMap = mapOf(
-        "home" to "android.app.role.HOME",
+        "home" to RoleManager.ROLE_HOME,
         "dialer" to RoleManager.ROLE_DIALER,
         "sms" to RoleManager.ROLE_SMS,
         "assistant" to RoleManager.ROLE_ASSISTANT
@@ -31,12 +31,13 @@ class SystemPlugin : Plugin() {
             for ((name, androidRole) in roleMap) {
                 val role = JSObject()
                 val available = roleManager.isRoleAvailable(androidRole)
-                val held = available && roleManager.isRoleHeld(androidRole)
+                val holders = if (available) roleManager.getRoleHolders(androidRole) else emptyList()
+                val held = holders.contains(context.packageName)
                 role.put("role", name)
                 role.put("androidRole", androidRole)
                 role.put("available", available)
                 role.put("held", held)
-                role.put("holders", JSArray(if (held) listOf(context.packageName) else emptyList<String>()))
+                role.put("holders", JSArray(holders))
                 roles.put(role)
             }
         }

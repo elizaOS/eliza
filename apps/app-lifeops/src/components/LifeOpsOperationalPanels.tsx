@@ -217,15 +217,17 @@ export function LifeOpsSchedulePanel() {
     merged?.relativeTime.minutesAwake !== null &&
     merged?.relativeTime.minutesAwake !== undefined
       ? t("lifeopspanels.relativePhase", {
-          defaultValue: "{{phase}} · woke {{duration}} ago",
-          phase: merged.relativeTime.phase,
+          defaultValue: "{{state}} · woke {{duration}} ago",
+          state: merged.relativeTime.circadianState,
           duration: formatMinutes(merged.relativeTime.minutesAwake),
         })
       : merged
         ? t("lifeopspanels.relativePhaseCalibrating", {
-            defaultValue: "{{phase}} · {{awakeState}}",
-            phase: merged.relativeTime.phase,
-            awakeState: merged.relativeTime.awakeState,
+            defaultValue: "{{state}} · {{confidence}}% confidence",
+            state: merged.relativeTime.circadianState,
+            confidence: Math.round(
+              merged.relativeTime.stateConfidence * 100,
+            ),
           })
         : "—";
   const bedtimeRelativeLabel =
@@ -281,7 +283,9 @@ export function LifeOpsSchedulePanel() {
           </div>
           <div className="mt-1 text-xs text-muted">
             {merged
-              ? `${merged.phase} · ${formatPercent(merged.sleepConfidence)} confidence`
+              ? `${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
+                  merged.uncertaintyReason ? ` · ${merged.uncertaintyReason}` : ""
+                }`
               : t("lifeopspanels.scheduleUnavailable", {
                   defaultValue: "No schedule state available.",
                 })}
@@ -300,7 +304,7 @@ export function LifeOpsSchedulePanel() {
           </div>
           <div className="mt-1 text-xs text-muted">
             {merged
-              ? `${formatPercent(merged.awakeProbability.pUnknown)} unknown · ${merged.relativeTime.awakeState}`
+              ? `${formatPercent(merged.awakeProbability.pUnknown)} unknown · state ${merged.circadianState} (${formatPercent(merged.stateConfidence)})`
               : t("lifeopspanels.scheduleUnavailable", {
                   defaultValue: "No schedule state available.",
                 })}

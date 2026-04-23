@@ -45,6 +45,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
+  GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
@@ -66,9 +67,10 @@ import type {
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSpamReviewFeed,
+  LifeOpsGmailSpamReviewItem,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
-  ManageLifeOpsGmailMessagesRequest,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
@@ -85,6 +87,7 @@ import type {
   LifeOpsTelegramConnectorStatus,
   LifeOpsUnifiedInbox,
   LifeOpsXConnectorStatus,
+  ManageLifeOpsGmailMessagesRequest,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
@@ -101,6 +104,7 @@ import type {
   SubmitLifeOpsTelegramAuthRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
@@ -233,6 +237,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsGmailRecommendations(
       options?: GetLifeOpsGmailRecommendationsRequest,
     ): Promise<LifeOpsGmailRecommendationsFeed>;
+    getLifeOpsGmailSpamReview(
+      options?: GetLifeOpsGmailSpamReviewRequest,
+    ): Promise<LifeOpsGmailSpamReviewFeed>;
+    updateLifeOpsGmailSpamReviewItem(
+      itemId: string,
+      data: UpdateLifeOpsGmailSpamReviewItemRequest,
+    ): Promise<{ item: LifeOpsGmailSpamReviewItem }>;
     getLifeOpsGmailUnresponded(
       options?: GetLifeOpsGmailUnrespondedRequest,
     ): Promise<LifeOpsGmailUnrespondedFeed>;
@@ -817,6 +828,46 @@ ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
   const query = params.toString();
   return this.fetch(
     `/api/lifeops/gmail/recommendations${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsGmailSpamReview = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  if (options.status) {
+    params.set("status", options.status);
+  }
+  if (options.maxResults !== undefined) {
+    params.set("maxResults", String(options.maxResults));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/gmail/spam-review${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.updateLifeOpsGmailSpamReviewItem = async function (
+  this: ElizaClient,
+  itemId,
+  data,
+) {
+  return this.fetch(
+    `/api/lifeops/gmail/spam-review/${encodeURIComponent(itemId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
   );
 };
 

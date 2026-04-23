@@ -896,6 +896,83 @@ async function runCustomSeeds(
   return { now: currentNow };
 }
 
+function isLoopbackUrl(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return (
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function deleteMockGmailDrafts(): Promise<string | undefined> {
+  const baseUrl = process.env.MILADY_MOCK_GOOGLE_BASE;
+  if (!isLoopbackUrl(baseUrl)) {
+    return "gmailDeleteDrafts cleanup requires MILADY_MOCK_GOOGLE_BASE to point at the loopback Google mock";
+  }
+  const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
+  if (!response.ok) {
+    return `gmailDeleteDrafts list failed with HTTP ${response.status}`;
+  }
+  const body = (await response.json()) as { drafts?: unknown };
+  const drafts = Array.isArray(body.drafts) ? body.drafts : [];
+  for (const draft of drafts) {
+    if (!draft || typeof draft !== "object") {
+      continue;
+    }
+    const id = (draft as { id?: unknown }).id;
+    if (typeof id !== "string" || id.length === 0) {
+      continue;
+    }
+    const deleteResponse = await fetch(
+      `${baseUrl}/gmail/v1/users/me/drafts/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    );
+    if (!deleteResponse.ok) {
+      return `gmailDeleteDrafts delete ${id} failed with HTTP ${deleteResponse.status}`;
+    }
+  }
+  return undefined;
+}
+
+async function runScenarioCleanups(
+  scenario: ScenarioDefinition,
+): Promise<string[]> {
+  const cleanups = (scenario as { cleanup?: unknown }).cleanup;
+  if (!Array.isArray(cleanups)) {
+    return [];
+  }
+  const failures: string[] = [];
+  for (const cleanup of cleanups) {
+    if (!cleanup || typeof cleanup !== "object") {
+      continue;
+    }
+    const step = cleanup as { type?: unknown; name?: unknown };
+    if (step.type !== "gmailDeleteDrafts") {
+      continue;
+    }
+    try {
+      const result = await deleteMockGmailDrafts();
+      if (result) {
+        failures.push(`cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`);
+      }
+    } catch (err) {
+      failures.push(
+        `cleanup ${String(step.name ?? "gmailDeleteDrafts")} threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return failures;
+}
+
 async function executeMessageTurn(
   runtime: AgentRuntime,
   turn: ScenarioTurn,
@@ -1453,6 +1530,14 @@ export async function runScenario(
           label: result.label,
           detail: result.detail,
         });
+      }
+    }
+
+    const cleanupFailures = await runScenarioCleanups(scenario);
+    if (cleanupFailures.length > 0) {
+      report.status = "failed";
+      for (const detail of cleanupFailures) {
+        report.failedAssertions.push({ label: "cleanup", detail });
       }
     }
   } catch (err) {

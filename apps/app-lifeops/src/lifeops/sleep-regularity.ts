@@ -1,4 +1,5 @@
 import type {
+  LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycleType,
 } from "@elizaos/shared/contracts/lifeops";
@@ -31,6 +32,29 @@ function parseIsoMs(value: string | null): number | null {
 
 function durationMinutes(startMs: number, endMs: number): number {
   return Math.max(0, Math.round((endMs - startMs) / 60_000));
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[middle] ?? null;
+  }
+  const lower = sorted[middle - 1];
+  const upper = sorted[middle];
+  if (lower === undefined || upper === undefined) {
+    return null;
+  }
+  return round((lower + upper) / 2);
+}
+
+function normalizedBedtimeHour(ms: number, timezone: string): number {
+  const parts = getZonedDateParts(new Date(ms), timezone);
+  const hour = parts.hour + parts.minute / 60;
+  return hour < 12 ? hour + 24 : hour;
 }
 
 function isRegularityEpisode(
@@ -219,6 +243,74 @@ export function computeSleepRegularity(args: {
       bedtimeStddevMin,
       wakeStddevMin,
     }),
+    sampleCount: relevant.length,
+    windowDays,
+  };
+}
+
+const BASELINE_MIN_SAMPLE_COUNT = 5;
+
+function circularMeanHour(minuteValues: readonly number[]): number | null {
+  if (minuteValues.length === 0) return null;
+  const angleScale = (2 * Math.PI) / (24 * 60);
+  let sumSin = 0;
+  let sumCos = 0;
+  for (const minute of minuteValues) {
+    const angle = minute * angleScale;
+    sumSin += Math.sin(angle);
+    sumCos += Math.cos(angle);
+  }
+  const meanSin = sumSin / minuteValues.length;
+  const meanCos = sumCos / minuteValues.length;
+  if (meanSin === 0 && meanCos === 0) return null;
+  let meanAngle = Math.atan2(meanSin, meanCos);
+  if (meanAngle < 0) meanAngle += 2 * Math.PI;
+  return round(meanAngle / angleScale / 60);
+}
+
+function medianNumber(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return round(sorted[middle]!);
+  return round((sorted[middle - 1]! + sorted[middle]!) / 2);
+}
+
+export function computePersonalBaseline(args: {
+  episodes: readonly SleepRegularityEpisodeLike[];
+  timezone: string;
+  nowMs: number;
+  windowDays?: number;
+}): LifeOpsPersonalBaseline | null {
+  const windowDays = args.windowDays ?? 28;
+  const relevant = args.episodes.filter((episode) =>
+    isRegularityEpisode(episode, args.nowMs),
+  );
+  if (relevant.length < BASELINE_MIN_SAMPLE_COUNT) {
+    return null;
+  }
+  const bedtimeMinutes = relevant.map((episode) =>
+    localMinuteOfDay(Date.parse(episode.startAt), args.timezone),
+  );
+  const wakeMinutes = relevant.map((episode) =>
+    localMinuteOfDay(Date.parse(episode.endAt), args.timezone),
+  );
+  const durations = relevant.map((episode) =>
+    durationMinutes(Date.parse(episode.startAt), Date.parse(episode.endAt)),
+  );
+  const bedtimeMean = circularMeanHour(bedtimeMinutes);
+  const wakeMean = circularMeanHour(wakeMinutes);
+  if (bedtimeMean === null || wakeMean === null) {
+    return null;
+  }
+  const medianBedtimeLocalHour =
+    bedtimeMean < 12 ? round(bedtimeMean + 24) : bedtimeMean;
+  return {
+    medianWakeLocalHour: wakeMean,
+    medianBedtimeLocalHour,
+    medianSleepDurationMin: medianNumber(durations) ?? 0,
+    bedtimeStddevMin: circularStddevMinutes(bedtimeMinutes),
+    wakeStddevMin: circularStddevMinutes(wakeMinutes),
     sampleCount: relevant.length,
     windowDays,
   };

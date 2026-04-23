@@ -1,7 +1,10 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "../lifeops/service.js";
-import { handleLifeOpsRoutes, type LifeOpsRouteContext } from "./lifeops-routes.js";
+import {
+  handleLifeOpsRoutes,
+  type LifeOpsRouteContext,
+} from "./lifeops-routes.js";
 
 const runtime = {
   agentId: "00000000-0000-0000-0000-000000000000",
@@ -97,7 +100,11 @@ describe("LifeOps route validation", () => {
 
     await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
 
-    expect(error).toHaveBeenCalledWith(context.res, "sessionId is required", 400);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "sessionId is required",
+      400,
+    );
     expect(json).not.toHaveBeenCalled();
   });
 
@@ -177,10 +184,7 @@ describe("LifeOps route validation", () => {
   });
 
   it("rejects X DM digest limits above the route maximum before service dispatch", async () => {
-    const getXDmDigest = vi.spyOn(
-      LifeOpsService.prototype,
-      "getXDmDigest",
-    );
+    const getXDmDigest = vi.spyOn(LifeOpsService.prototype, "getXDmDigest");
     const { context, error, json } = createContext(
       "GET",
       "/api/lifeops/x/dms/digest?limit=101",
@@ -235,6 +239,94 @@ describe("LifeOps route validation", () => {
       context.res,
       expect.objectContaining({
         recommendations: [],
+      }),
+    );
+  });
+
+  it("passes Gmail spam review query inputs through to the service", async () => {
+    const getGmailSpamReviewItems = vi
+      .spyOn(LifeOpsService.prototype, "getGmailSpamReviewItems")
+      .mockResolvedValue({
+        items: [],
+        summary: {
+          totalCount: 0,
+          pendingCount: 0,
+          confirmedSpamCount: 0,
+          notSpamCount: 0,
+          dismissedCount: 0,
+        },
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/gmail/spam-review?side=owner&mode=local&grantId=grant-1&status=pending&maxResults=9",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getGmailSpamReviewItems).toHaveBeenCalledWith(expect.any(URL), {
+      mode: "local",
+      side: "owner",
+      grantId: "grant-1",
+      status: "pending",
+      maxResults: 9,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        items: [],
+      }),
+    );
+  });
+
+  it("routes Gmail spam review status updates to the service", async () => {
+    const updateGmailSpamReviewItem = vi
+      .spyOn(LifeOpsService.prototype, "updateGmailSpamReviewItem")
+      .mockResolvedValue({
+        item: {
+          id: "review-1",
+          agentId: "agent-1",
+          provider: "google",
+          side: "owner",
+          grantId: "grant-1",
+          accountEmail: "owner@example.test",
+          messageId: "life-gmail-1",
+          externalMessageId: "gmail-ext-1",
+          threadId: "thread-1",
+          subject: "Spam",
+          from: "Sender",
+          fromEmail: "sender@example.test",
+          receivedAt: "2026-04-22T12:00:00.000Z",
+          snippet: "spam",
+          labels: ["SPAM"],
+          rationale: "review",
+          confidence: 0.92,
+          status: "confirmed_spam",
+          createdAt: "2026-04-22T12:00:00.000Z",
+          updatedAt: "2026-04-22T12:01:00.000Z",
+          reviewedAt: "2026-04-22T12:01:00.000Z",
+        },
+      });
+    const body = { status: "confirmed_spam" as const };
+    const readJsonBody = vi.fn(async () => body);
+    const { context, error, json } = createContext(
+      "PATCH",
+      "/api/lifeops/gmail/spam-review/review-1",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(updateGmailSpamReviewItem).toHaveBeenCalledWith(
+      expect.any(URL),
+      "review-1",
+      { status: "confirmed_spam" },
+    );
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        item: expect.objectContaining({ status: "confirmed_spam" }),
       }),
     );
   });

@@ -487,9 +487,9 @@ export function LifeOpsOverviewSection({
               {formatFullDate(today)}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-              {overview?.schedule?.phase ? (
+              {overview?.schedule?.circadianState ? (
                 <span className="capitalize">
-                  {overview.schedule.phase.replace(/_/g, " ")}
+                  {overview.schedule.circadianState.replace(/_/g, " ")}
                 </span>
               ) : null}
               {todayEvents.length > 0 ? (

@@ -22,8 +22,7 @@ import type {
 export type FinalCheckStatus =
   | "passed"
   | "failed"
-  | "skipped-dependency-missing"
-  | "unknown-kind";
+  | "skipped-dependency-missing";
 
 export interface FinalCheckReport {
   label: string;

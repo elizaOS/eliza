@@ -44,6 +44,15 @@ type MemorySeed = {
   content?: unknown;
 };
 
+type GmailInboxSeed = {
+  type: "gmailInbox";
+  account?: unknown;
+  fixture?: unknown;
+  fixtures?: unknown;
+  requiredMessageIds?: unknown;
+  clearLedger?: unknown;
+};
+
 type MemoryContactSeed = {
   kind?: unknown;
   type?: unknown;
@@ -118,6 +127,23 @@ function readOptionalNumber(value: unknown): number | undefined {
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function isLoopbackUrl(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return (
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
 }
 
 function readScenarioNow(ctx: ScenarioContext): Date {
@@ -358,6 +384,79 @@ async function seedMemory(
   });
 }
 
+const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
+  "default": ["msg-finance", "msg-sarah", "msg-newsletter"],
+  "unread-inbox.eml": ["msg-finance", "msg-sarah"],
+  "sarah-product-brief.eml": ["msg-sarah"],
+  "high-priority-client.eml": ["msg-sarah"],
+  "alice-recent.eml": ["msg-sarah"],
+  "followup-14-days-ago.eml": [
+    "msg-unresponded-inbound",
+    "msg-unresponded-sent",
+  ],
+};
+
+function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {
+  const explicit = readNonEmptyString(seed.fixture);
+  const multiple = readStringArray(seed.fixtures);
+  const names = [...(explicit ? [explicit] : []), ...multiple];
+  return names.length > 0 ? names : ["default"];
+}
+
+async function clearGmailMockLedger(baseUrl: string): Promise<void> {
+  const response = await fetch(`${baseUrl}/__mock/requests`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Gmail mock ledger clear failed with HTTP ${response.status}`);
+  }
+}
+
+async function requireMockGmailMessage(
+  baseUrl: string,
+  messageId: string,
+): Promise<string | undefined> {
+  const response = await fetch(
+    `${baseUrl}/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
+  );
+  if (response.ok) {
+    return undefined;
+  }
+  return `Gmail mock fixture message ${messageId} unavailable (HTTP ${response.status})`;
+}
+
+async function seedGmailInbox(seed: GmailInboxSeed): Promise<string | undefined> {
+  const baseUrl = process.env.MILADY_MOCK_GOOGLE_BASE;
+  if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
+    return "gmailInbox seed requires MILADY_MOCK_GOOGLE_BASE to point at the loopback Google mock";
+  }
+  const mockBaseUrl = baseUrl;
+
+  const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
+  for (const fixture of gmailSeedFixtureNames(seed)) {
+    const fixtureIds = GMAIL_FIXTURE_MESSAGE_IDS[fixture];
+    if (!fixtureIds) {
+      return `unsupported gmailInbox fixture "${fixture}"`;
+    }
+    for (const messageId of fixtureIds) {
+      requiredIds.add(messageId);
+    }
+  }
+
+  for (const messageId of requiredIds) {
+    const failure = await requireMockGmailMessage(mockBaseUrl, messageId);
+    if (failure) {
+      return failure;
+    }
+  }
+
+  if (seed.clearLedger !== false) {
+    await clearGmailMockLedger(mockBaseUrl);
+  }
+
+  return undefined;
+}
+
 export async function applyScenarioSeedStep(
   ctx: ScenarioContext,
   seed: ScenarioSeedStep,
@@ -374,6 +473,9 @@ export async function applyScenarioSeedStep(
   }
   if (seed.type === "memory") {
     return seedMemory(ctx, seed as MemorySeed);
+  }
+  if (seed.type === "gmailInbox") {
+    return seedGmailInbox(seed as GmailInboxSeed);
   }
 
   return undefined;

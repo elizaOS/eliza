@@ -19,6 +19,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
+  GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
@@ -45,6 +46,7 @@ import type {
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
   UpdateLifeOpsDefinitionRequest,
+  UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
@@ -54,7 +56,9 @@ import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
+  LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
   LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "@elizaos/app-lifeops/contracts";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
@@ -305,6 +309,38 @@ function parseConnectorSideFromRequest(
     );
   }
   return bodySide ?? querySide;
+}
+
+function parseGmailSpamReviewStatusInput(
+  value: unknown,
+  field: string,
+): LifeOpsGmailSpamReviewStatus | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be one of: ${LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES.join(", ")}`,
+    );
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (!isOneOf(normalized, LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES)) {
+    throw new LifeOpsServiceError(
+      400,
+      `${field} must be one of: ${LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES.join(", ")}`,
+    );
+  }
+  return normalized;
+}
+
+function parseGmailSpamReviewStatusQuery(
+  value: string | null,
+): LifeOpsGmailSpamReviewStatus | undefined {
+  return parseGmailSpamReviewStatusInput(value, "status");
 }
 
 function parseBooleanQuery(
@@ -863,6 +899,54 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailRecommendations(url, request));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/gmail/spam-review") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: GetLifeOpsGmailSpamReviewRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
+        status: parseGmailSpamReviewStatusQuery(url.searchParams.get("status")),
+        maxResults:
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
+      };
+      json(res, await service.getGmailSpamReviewItems(url, request));
+    });
+  }
+
+  const gmailSpamReviewMatch = pathname.match(
+    /^\/api\/lifeops\/gmail\/spam-review\/([^/]+)$/,
+  );
+  if (method === "PATCH" && gmailSpamReviewMatch) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const itemId = decodeMatchedPathComponent(
+      ctx,
+      gmailSpamReviewMatch,
+      1,
+      res,
+      "itemId",
+    );
+    if (!itemId) return true;
+    const body = await readJsonBody<UpdateLifeOpsGmailSpamReviewItemRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const status = parseGmailSpamReviewStatusInput(body.status, "status");
+      if (!status) {
+        throw new LifeOpsServiceError(400, "status is required");
+      }
+      json(
+        res,
+        await service.updateGmailSpamReviewItem(url, itemId, { status }),
+      );
     });
   }
 
