@@ -1,4 +1,3 @@
-import { createUniqueUuid } from "../../../../entities.ts";
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,
@@ -11,6 +10,8 @@ import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import type { ExperienceService } from "../service.ts";
+import { ExperienceType, OutcomeType } from "../types.ts";
 
 const spec = requireActionSpec("RECORD_EXPERIENCE");
 
@@ -74,32 +75,43 @@ export const recordExperienceAction: Action = {
 		void _options;
 		void _callback;
 
-		logger.info("Recording experience for message:", message.id);
+		logger.info(
+			`[RecordExperienceAction] Recording experience for message ${message.id}`,
+		);
 
-		// Create experience memory with context
-		const experienceMemory: Memory = {
-			id: createUniqueUuid(runtime, `experience-${message.id}`),
-			entityId: message.entityId,
-			agentId: runtime.agentId,
-			roomId: message.roomId,
-			content: {
-				text: message.content.text,
-				source: message.content.source,
-				type: "experience",
-				context: state?.text,
-			},
-			createdAt: Date.now(),
-		};
+		const experienceService = runtime.getService(
+			"EXPERIENCE",
+		) as ExperienceService | null;
+		if (!experienceService) {
+			logger.error(
+				"[RecordExperienceAction] Experience service is unavailable",
+			);
+			return {
+				success: false,
+				text: "Experience service is unavailable.",
+			};
+		}
 
-		// Store in experiences table
-		await runtime.createMemory(experienceMemory, "experiences", true);
-		logger.info("Experience recorded successfully");
+		const learningText =
+			typeof message.content.text === "string" ? message.content.text : "";
+		const recordedExperience = await experienceService.recordExperience({
+			type: ExperienceType.LEARNING,
+			outcome: OutcomeType.NEUTRAL,
+			context: state?.text ?? "",
+			action: learningText,
+			result: "Recorded from explicit remember/record request.",
+			learning: learningText,
+		});
+
+		logger.info(
+			`[RecordExperienceAction] Experience recorded successfully (${recordedExperience.id})`,
+		);
 
 		return {
 			success: true,
 			text: "Experience recorded.",
 			data: {
-				experienceMemoryId: experienceMemory.id,
+				experienceId: recordedExperience.id,
 			},
 		};
 	},

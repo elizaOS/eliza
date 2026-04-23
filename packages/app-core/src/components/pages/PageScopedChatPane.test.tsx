@@ -169,6 +169,29 @@ describe("PageScopedChatPane", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
   });
 
+  it("shows the redesigned Character hub sections in the intro copy", async () => {
+    clientMock.createConversation.mockResolvedValueOnce({
+      conversation: {
+        ...conversation,
+        id: "character-page-chat",
+        roomId: "room-character",
+        metadata: { scope: "page-character" },
+        title: "Character assistant",
+      },
+    });
+
+    render(<PageScopedChatPane scope="page-character" />);
+
+    const intro = await screen.findByTestId(
+      "page-scoped-chat-intro-page-character",
+    );
+    expect(intro.textContent).toContain("Overview");
+    expect(intro.textContent).toContain("Personality");
+    expect(intro.textContent).toContain("Knowledge");
+    expect(intro.textContent).toContain("Experience");
+    expect(intro.textContent).toContain("Relationships");
+  });
+
   it("stacks multiline inline drafts above the footer controls", async () => {
     render(<PageScopedChatPane scope="page-apps" />);
 
@@ -192,9 +215,9 @@ describe("PageScopedChatPane", () => {
     });
 
     await waitFor(() =>
-      expect(composer.firstElementChild?.getAttribute("data-inline-layout")).toBe(
-        "stacked",
-      ),
+      expect(
+        composer.firstElementChild?.getAttribute("data-inline-layout"),
+      ).toBe("stacked"),
     );
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
     expect(

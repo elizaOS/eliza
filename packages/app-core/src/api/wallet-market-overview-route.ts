@@ -4,12 +4,15 @@ import { logger } from "@elizaos/core";
 import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
 } from "@elizaos/shared/contracts/wallet";
+import { resolveCloudApiBaseUrl } from "./cloud-connection";
 import { sendJson, sendJsonError } from "./response";
 
 const MARKET_OVERVIEW_PATH = "/api/wallet/market-overview";
+const CLOUD_MARKET_OVERVIEW_PREVIEW_PATH = "/market/preview/wallet-overview";
 const MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
 const MARKET_OVERVIEW_REFRESH_WINDOW_MS = 60_000;
@@ -19,6 +22,22 @@ const POLYMARKET_MARKET_LIMIT = 10;
 const CACHE_CONTROL_VALUE = "public, max-age=60, stale-while-revalidate=180";
 const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"] as const;
 const MARKET_PRICE_ID_SET = new Set<string>(MARKET_PRICE_IDS);
+const COINGECKO_SOURCE = {
+  providerId: "coingecko",
+  providerName: "CoinGecko",
+  providerUrl: "https://www.coingecko.com/",
+} as const satisfies Pick<
+  WalletMarketOverviewSource,
+  "providerId" | "providerName" | "providerUrl"
+>;
+const POLYMARKET_SOURCE = {
+  providerId: "polymarket",
+  providerName: "Polymarket",
+  providerUrl: "https://polymarket.com/",
+} as const satisfies Pick<
+  WalletMarketOverviewSource,
+  "providerId" | "providerName" | "providerUrl"
+>;
 const STABLE_ASSET_IDS = new Set([
   "tether",
   "usd-coin",
@@ -76,6 +95,50 @@ let walletMarketOverviewInFlight: Promise<WalletMarketOverviewResponse> | null =
   null;
 const walletMarketRefreshBuckets = new Map<string, RateLimitBucket>();
 
+function marketOverviewErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message.trim()
+    : "Upstream market feed failed";
+}
+
+function buildMarketOverviewSource(
+  source: Pick<
+    WalletMarketOverviewSource,
+    "providerId" | "providerName" | "providerUrl"
+  >,
+  {
+    available,
+    stale,
+    error,
+  }: Pick<WalletMarketOverviewSource, "available" | "stale" | "error">,
+): WalletMarketOverviewSource {
+  return {
+    ...source,
+    available,
+    stale,
+    error,
+  };
+}
+
+function markMarketOverviewSourcesStale(
+  sources: WalletMarketOverviewResponse["sources"],
+): WalletMarketOverviewResponse["sources"] {
+  return {
+    prices: {
+      ...sources.prices,
+      stale: true,
+    },
+    movers: {
+      ...sources.movers,
+      stale: true,
+    },
+    predictions: {
+      ...sources.predictions,
+      stale: true,
+    },
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -99,8 +162,13 @@ function stringFromUnknown(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function parseJsonStringArray(value: unknown): string[] {
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
   if (typeof value !== "string" || value.trim().length === 0) return [];
+
   try {
     const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
@@ -160,8 +228,8 @@ function mapPolymarketMarket(input: unknown): PolymarketMarketRecord | null {
   const question = stringFromUnknown(record.question);
   if (!question) return null;
 
-  const outcomeLabels = parseJsonStringArray(record.outcomes);
-  const outcomeProbabilities = parseJsonStringArray(record.outcomePrices)
+  const outcomeLabels = parseStringArray(record.outcomes);
+  const outcomeProbabilities = parseStringArray(record.outcomePrices)
     .map((value) => clampProbability(numberFromUnknown(value)))
     .filter((value): value is number => value !== null);
   const volume24hUsd = numberFromUnknown(record.volume24hr);
@@ -351,16 +419,142 @@ function buildPredictions(
   return predictions.slice(0, 6);
 }
 
-async function buildWalletMarketOverview(): Promise<WalletMarketOverviewResponse> {
-  const [coinGeckoMarkets, polymarketMarkets] = await Promise.all([
+function isWalletMarketOverviewSource(
+  value: unknown,
+): value is WalletMarketOverviewResponse["sources"][keyof WalletMarketOverviewResponse["sources"]] {
+  const record = asRecord(value);
+  return (
+    record !== null &&
+    typeof record.providerId === "string" &&
+    typeof record.providerName === "string" &&
+    typeof record.providerUrl === "string" &&
+    typeof record.available === "boolean" &&
+    typeof record.stale === "boolean" &&
+    (typeof record.error === "string" || record.error === null)
+  );
+}
+
+function isWalletMarketOverviewResponse(
+  value: unknown,
+): value is WalletMarketOverviewResponse {
+  const record = asRecord(value);
+  const sources = asRecord(record?.sources);
+  return (
+    record !== null &&
+    typeof record.generatedAt === "string" &&
+    typeof record.cacheTtlSeconds === "number" &&
+    typeof record.stale === "boolean" &&
+    sources !== null &&
+    isWalletMarketOverviewSource(sources.prices) &&
+    isWalletMarketOverviewSource(sources.movers) &&
+    isWalletMarketOverviewSource(sources.predictions) &&
+    Array.isArray(record.prices) &&
+    Array.isArray(record.movers) &&
+    Array.isArray(record.predictions)
+  );
+}
+
+function resolveWalletMarketOverviewCloudPreviewUrl(): string {
+  return `${resolveCloudApiBaseUrl(process.env.ELIZAOS_CLOUD_BASE_URL)}${CLOUD_MARKET_OVERVIEW_PREVIEW_PATH}`;
+}
+
+async function fetchCloudWalletMarketOverview(
+  clientAddress: string,
+): Promise<WalletMarketOverviewResponse> {
+  const response = await fetchWithTimeoutGuard(
+    resolveWalletMarketOverviewCloudPreviewUrl(),
+    {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "user-agent": "Milady Wallet Market Feed/1.0",
+        ...(clientAddress !== "unknown"
+          ? { "x-forwarded-for": clientAddress }
+          : {}),
+      },
+    },
+    MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
+  );
+
+  if (!response.ok) {
+    throw new Error(`Cloud preview responded ${response.status}`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isWalletMarketOverviewResponse(payload)) {
+    throw new Error("Cloud preview payload was invalid");
+  }
+
+  return payload;
+}
+
+async function buildWalletMarketOverview(
+  clientAddress: string,
+): Promise<WalletMarketOverviewResponse> {
+  try {
+    return await fetchCloudWalletMarketOverview(clientAddress);
+  } catch (error) {
+    logger.warn(
+      `[WalletMarketOverviewRoute] Cloud preview unavailable (${marketOverviewErrorMessage(error)}); falling back to direct feeds`,
+    );
+  }
+
+  const [coinGeckoResult, polymarketResult] = await Promise.allSettled([
     fetchCoinGeckoMarkets(),
     fetchPolymarketMarkets(),
   ]);
+  const coinGeckoMarkets =
+    coinGeckoResult.status === "fulfilled" ? coinGeckoResult.value : [];
+  const polymarketMarkets =
+    polymarketResult.status === "fulfilled" ? polymarketResult.value : [];
+  const coinGeckoError =
+    coinGeckoResult.status === "rejected"
+      ? marketOverviewErrorMessage(coinGeckoResult.reason)
+      : null;
+  const polymarketError =
+    polymarketResult.status === "rejected"
+      ? marketOverviewErrorMessage(polymarketResult.reason)
+      : null;
+
+  if (coinGeckoError) {
+    logger.warn(
+      `[WalletMarketOverviewRoute] CoinGecko feed unavailable (${coinGeckoError})`,
+    );
+  }
+
+  if (polymarketError) {
+    logger.warn(
+      `[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`,
+    );
+  }
+
+  if (coinGeckoError && polymarketError) {
+    throw new Error(
+      `CoinGecko: ${coinGeckoError}; Polymarket: ${polymarketError}`,
+    );
+  }
 
   return {
     generatedAt: new Date().toISOString(),
     cacheTtlSeconds: Math.floor(MARKET_OVERVIEW_CACHE_TTL_MS / 1000),
     stale: false,
+    sources: {
+      prices: buildMarketOverviewSource(COINGECKO_SOURCE, {
+        available: coinGeckoError === null,
+        stale: false,
+        error: coinGeckoError,
+      }),
+      movers: buildMarketOverviewSource(COINGECKO_SOURCE, {
+        available: coinGeckoError === null,
+        stale: false,
+        error: coinGeckoError,
+      }),
+      predictions: buildMarketOverviewSource(POLYMARKET_SOURCE, {
+        available: polymarketError === null,
+        stale: false,
+        error: polymarketError,
+      }),
+    },
     prices: buildPriceSnapshots(coinGeckoMarkets),
     movers: buildMovers(coinGeckoMarkets),
     predictions: buildPredictions(polymarketMarkets),
@@ -383,6 +577,9 @@ function staleCachedWalletMarketOverview(): WalletMarketOverviewResponse | null 
   return {
     ...cachedWalletMarketOverview.response,
     stale: true,
+    sources: markMarketOverviewSourcesStale(
+      cachedWalletMarketOverview.response.sources,
+    ),
   };
 }
 
@@ -442,12 +639,14 @@ function setPublicMarketHeaders(res: http.ServerResponse): void {
   res.setHeader("Cache-Control", CACHE_CONTROL_VALUE);
 }
 
-async function loadWalletMarketOverview(): Promise<WalletMarketOverviewResponse> {
+async function loadWalletMarketOverview(
+  clientAddress: string,
+): Promise<WalletMarketOverviewResponse> {
   const fresh = freshCachedWalletMarketOverview();
   if (fresh) return fresh;
 
   if (!walletMarketOverviewInFlight) {
-    walletMarketOverviewInFlight = buildWalletMarketOverview()
+    walletMarketOverviewInFlight = buildWalletMarketOverview(clientAddress)
       .then((response) => {
         cachedWalletMarketOverview = {
           response,
@@ -497,6 +696,8 @@ export async function handleWalletMarketOverviewRoute(
     return true;
   }
 
+  const clientAddress = resolveClientAddress(req);
+
   const fresh = freshCachedWalletMarketOverview();
   if (fresh) {
     sendJson(res, 200, fresh);
@@ -504,7 +705,7 @@ export async function handleWalletMarketOverviewRoute(
   }
 
   if (!walletMarketOverviewInFlight) {
-    const rateLimit = consumeRefreshSlot(resolveClientAddress(req));
+    const rateLimit = consumeRefreshSlot(clientAddress);
     if (!rateLimit.allowed) {
       const stale = staleCachedWalletMarketOverview();
       if (stale) {
@@ -518,7 +719,7 @@ export async function handleWalletMarketOverviewRoute(
   }
 
   try {
-    const overview = await loadWalletMarketOverview();
+    const overview = await loadWalletMarketOverview(clientAddress);
     sendJson(res, 200, overview);
   } catch (error) {
     logger.error(
@@ -528,4 +729,10 @@ export async function handleWalletMarketOverviewRoute(
   }
 
   return true;
+}
+
+export function __resetWalletMarketOverviewCacheForTests(): void {
+  cachedWalletMarketOverview = null;
+  walletMarketOverviewInFlight = null;
+  walletMarketRefreshBuckets.clear();
 }

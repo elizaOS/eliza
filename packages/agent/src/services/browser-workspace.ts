@@ -141,6 +141,8 @@ import {
   getWebBrowserWorkspaceTabState,
 } from "./browser-workspace-web.js";
 
+const AGENT_BROWSER_WORKSPACE_PARTITION = "persist:eliza-browser-agent";
+
 // ────────────────────────────────────────────────────────────────────
 // Public API functions
 // ────────────────────────────────────────────────────────────────────
@@ -420,7 +422,7 @@ export async function executeBrowserWorkspaceCommand(
     case "open": {
       const tab = await openBrowserWorkspaceTab(
         {
-          partition: command.partition,
+          partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
           show: command.show,
           title: command.title,
           url: command.url,
@@ -745,7 +747,7 @@ export async function executeBrowserWorkspaceCommand(
           subaction: command.subaction,
           tab: await openBrowserWorkspaceTab(
             {
-              partition: command.partition,
+              partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
               show: command.show ?? true,
               title: command.title,
               url: command.url,
@@ -794,7 +796,7 @@ export async function executeBrowserWorkspaceCommand(
         subaction: command.subaction,
         tab: await openBrowserWorkspaceTab(
           {
-            partition: command.partition,
+            partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
             show: true,
             title: command.title,
             url: command.url,

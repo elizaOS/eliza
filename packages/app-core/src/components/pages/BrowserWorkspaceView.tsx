@@ -15,13 +15,7 @@ import {
   SidebarScrollRegion,
   WorkspaceLayout,
 } from "@elizaos/ui";
-import {
-  ExternalLink,
-  FolderOpen,
-  Plus,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -38,6 +32,7 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
@@ -47,7 +42,72 @@ import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBrid
 
 const POLL_INTERVAL_MS = 2_500;
 const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
+const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
+const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
+const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
+  "milady:browser-workspace:collapsed-sections";
 type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
+type BrowserWorkspaceTabSectionKey = "agent" | "app" | "user";
+
+function readStoredBrowserWorkspaceCollapsedSections(): Set<BrowserWorkspaceTabSectionKey> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(
+      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
+    );
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter(
+        (value): value is BrowserWorkspaceTabSectionKey =>
+          value === "agent" || value === "app" || value === "user",
+      ),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistBrowserWorkspaceCollapsedSections(
+  sections: Set<BrowserWorkspaceTabSectionKey>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
+      JSON.stringify([...sections]),
+    );
+  } catch {
+    /* ignore sandboxed storage */
+  }
+}
+
+function resolveBrowserWorkspaceTabSectionKey(
+  tab: BrowserWorkspaceTab,
+): BrowserWorkspaceTabSectionKey {
+  const partition = tab.partition.trim().toLowerCase();
+  if (partition === BROWSER_WORKSPACE_AGENT_PARTITION) {
+    return "agent";
+  }
+  if (partition === BROWSER_WORKSPACE_APP_PARTITION) {
+    return "app";
+  }
+  return "user";
+}
+
+function resolveBrowserWorkspaceTabPartition(
+  sectionKey: BrowserWorkspaceTabSectionKey,
+): string | undefined {
+  switch (sectionKey) {
+    case "agent":
+      return BROWSER_WORKSPACE_AGENT_PARTITION;
+    case "app":
+      return BROWSER_WORKSPACE_APP_PARTITION;
+    case "user":
+      return undefined;
+  }
+}
 
 function isBrowserBridgePlugin(plugin: {
   id?: string;
@@ -209,6 +269,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<BrowserWorkspaceTabSectionKey>
+  >(() => readStoredBrowserWorkspaceCollapsedSections());
   const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
   const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
@@ -248,6 +311,23 @@ export function BrowserWorkspaceView(): JSX.Element {
     : null;
   const selectedTabLiveViewUrl =
     selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
+  const groupedTabs = useMemo(
+    () =>
+      workspace.tabs.reduce<
+        Record<BrowserWorkspaceTabSectionKey, BrowserWorkspaceTab[]>
+      >(
+        (groups, tab) => {
+          groups[resolveBrowserWorkspaceTabSectionKey(tab)].push(tab);
+          return groups;
+        },
+        { user: [], agent: [], app: [] },
+      ),
+    [workspace.tabs],
+  );
+  const collapsedRailTabs = useMemo(
+    () => [...groupedTabs.user, ...groupedTabs.agent, ...groupedTabs.app],
+    [groupedTabs],
+  );
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(
@@ -259,6 +339,21 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
   const browserBridgeConnected =
     primaryBrowserBridgeCompanion?.connectionState === "connected";
+
+  const toggleSidebarSectionCollapsed = useCallback((key: string) => {
+    setCollapsedSections((current) => {
+      if (key !== "agent" && key !== "app" && key !== "user") {
+        return current;
+      }
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
   const browserBridgeSupported = useMemo(
     () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
     [plugins],
@@ -438,7 +533,10 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   const openNewBrowserWorkspaceTab = useCallback(
-    async (rawUrl: string) => {
+    async (
+      rawUrl: string,
+      sectionKey: BrowserWorkspaceTabSectionKey = "user",
+    ) => {
       const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
         throw new Error(
@@ -450,6 +548,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       const request = {
         url,
         title: inferBrowserWorkspaceTitle(url, t),
+        partition: resolveBrowserWorkspaceTabPartition(sectionKey),
         show: true,
       };
       const { tab } = await client.openBrowserWorkspaceTab(request);
@@ -528,9 +627,32 @@ export function BrowserWorkspaceView(): JSX.Element {
     loadWalletState: loadBrowserWalletState,
   });
 
+  const closeBrowserWorkspaceTabById = useCallback(
+    async (tabId: string) => {
+      await client.closeBrowserWorkspaceTab(tabId);
+      const snapshot = await client.getBrowserWorkspace();
+      const nextId =
+        snapshot.tabs.find((tab) => tab.id === selectedTabId)?.id ??
+        snapshot.tabs[0]?.id ??
+        null;
+      if (nextId && nextId !== selectedTabId) {
+        await client.showBrowserWorkspaceTab(nextId);
+      }
+      await loadWorkspace({
+        preferTabId: nextId,
+        silent: true,
+      });
+    },
+    [loadWorkspace, selectedTabId],
+  );
+
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    persistBrowserWorkspaceCollapsedSections(collapsedSections);
+  }, [collapsedSections]);
 
   useEffect(() => {
     void loadBrowserWalletState();
@@ -906,12 +1028,94 @@ export function BrowserWorkspaceView(): JSX.Element {
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
+  const userTabsLabel = t("browserworkspace.UserTabs", {
+    defaultValue: "User Tabs",
+  });
+  const agentTabsLabel = t("browserworkspace.AgentTabs", {
+    defaultValue: "Agent Tabs",
+  });
+  const appTabsLabel = t("browserworkspace.AppTabs", {
+    defaultValue: "App Tabs",
+  });
   const newTabLabel = t("browserworkspace.NewTab", {
     defaultValue: "New tab",
   });
   const closeTabLabel = t("browserworkspace.CloseTab", {
     defaultValue: "Close tab",
   });
+  const goLabel = t("browserworkspace.Go", {
+    defaultValue: "Go",
+  });
+
+  function renderBrowserWorkspaceTabRow(tab: BrowserWorkspaceTab): JSX.Element {
+    const active = tab.id === selectedTabId;
+    const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
+    const label = getBrowserWorkspaceTabLabel(tab, t);
+    const description = getBrowserWorkspaceTabDescription(tab, workspace.mode);
+
+    return (
+      <div key={tab.id} className="group relative">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active}
+          aria-current={active ? "page" : undefined}
+          title={tab.url}
+          onClick={() =>
+            void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
+              await activateBrowserWorkspaceTab(tab.id);
+            })
+          }
+          className={`flex w-full min-w-0 items-start gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 pr-7 text-left transition-colors ${
+            active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"
+          }`}
+        >
+          <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
+            {tabHasSessionFocus ? (
+              <>
+                <span
+                  aria-hidden
+                  className="h-2 w-2 rounded-full bg-accent shadow-[0_0_4px_var(--accent)]"
+                />
+                <span className="sr-only">
+                  {t("browserworkspace.AgentActive", {
+                    defaultValue: "Agent is on this tab",
+                  })}
+                </span>
+              </>
+            ) : (
+              <span className="text-[10px] font-semibold leading-none">
+                {getBrowserWorkspaceTabMonogram(label)}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs-tight font-medium leading-snug">
+              {label}
+            </span>
+            <span className="block truncate text-[11px] leading-snug text-muted/65">
+              {description}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          aria-label={closeTabLabel}
+          title={closeTabLabel}
+          className="absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-muted/50 hover:text-danger"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
+              await closeBrowserWorkspaceTabById(tab.id);
+            });
+          }}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
 
   const browserTabsSidebar = (
     <AppPageSidebar
@@ -929,20 +1133,22 @@ export function BrowserWorkspaceView(): JSX.Element {
       mobileTitle={
         <SidebarContent.SectionLabel>{tabsLabel}</SidebarContent.SectionLabel>
       }
-      mobileMeta={String(workspace.tabs.length)}
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label={newTabLabel}
           onClick={() =>
             void runBrowserWorkspaceAction("open:new", async () => {
-              await openNewBrowserWorkspaceTab(locationInput || "about:blank");
+              await openNewBrowserWorkspaceTab(
+                locationInput || "about:blank",
+                "user",
+              );
             })
           }
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
       }
-      collapsedRailItems={workspace.tabs.map((tab) => {
+      collapsedRailItems={collapsedRailTabs.map((tab) => {
         const label = getBrowserWorkspaceTabLabel(tab, t);
         const active = tab.id === selectedTabId;
         const tabHasSessionFocus =
@@ -966,144 +1172,96 @@ export function BrowserWorkspaceView(): JSX.Element {
       })}
       aria-label={tabsLabel}
     >
-      <SidebarScrollRegion className="px-1 pb-2 pt-2">
+      <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
-          <div className="sticky top-0 z-10 bg-bg/60 px-1 pb-1.5 backdrop-blur-sm">
-            <SidebarContent.Toolbar className="items-center gap-2">
-              <SidebarContent.ToolbarPrimary>
-                <div className="px-2 text-2xs text-muted">
-                  {workspace.tabs.length}
-                </div>
-              </SidebarContent.ToolbarPrimary>
-              <SidebarContent.ToolbarActions>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  aria-label={newTabLabel}
-                  title={newTabLabel}
-                  disabled={busyAction !== null}
-                  onClick={() =>
-                    void runBrowserWorkspaceAction("open:new", async () => {
-                      await openNewBrowserWorkspaceTab(
-                        locationInput || "about:blank",
-                      );
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </SidebarContent.ToolbarActions>
-            </SidebarContent.Toolbar>
-          </div>
-
-          {workspace.tabs.length === 0 ? (
-            <SidebarContent.EmptyState className="mx-1 mt-1 px-4 py-6 text-xs">
-              {t("browserworkspace.NoTabsOpen", {
-                defaultValue: "No tabs open yet.",
+          <div className="space-y-3">
+            <CollapsibleSidebarSection
+              sectionKey="user"
+              label={userTabsLabel}
+              collapsed={collapsedSections.has("user")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              onAdd={() =>
+                void runBrowserWorkspaceAction("open:new", async () => {
+                  await openNewBrowserWorkspaceTab(
+                    locationInput || "about:blank",
+                    "user",
+                  );
+                })
+              }
+              addLabel={newTabLabel}
+              emptyLabel={t("browserworkspace.NoUserTabs", {
+                defaultValue: "No user tabs yet.",
               })}
-            </SidebarContent.EmptyState>
-          ) : (
-            <div
-              className="space-y-1 px-1 pb-2"
-              role="tablist"
-              aria-label={tabsLabel}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
             >
-              {workspace.tabs.map((tab) => {
-                const active = tab.id === selectedTabId;
-                const tabHasSessionFocus =
-                  workspace.mode === "web" ? tab.visible : active;
-                const label = getBrowserWorkspaceTabLabel(tab, t);
-                const description = getBrowserWorkspaceTabDescription(
-                  tab,
-                  workspace.mode,
-                );
+              {groupedTabs.user.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={userTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.user.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
 
-                return (
-                  <div key={tab.id} className="group relative">
-                    <SidebarContent.Item
-                      as="div"
-                      active={active}
-                      className="pr-10"
-                    >
-                      <SidebarContent.ItemButton
-                        role="tab"
-                        aria-selected={active}
-                        aria-current={active ? "page" : undefined}
-                        title={tab.url}
-                        onClick={() =>
-                          void runBrowserWorkspaceAction(
-                            `show:${tab.id}`,
-                            async () => {
-                              await activateBrowserWorkspaceTab(tab.id);
-                            },
-                          )
-                        }
-                      >
-                        <SidebarContent.ItemIcon
-                          active={active}
-                          className="text-xs font-semibold"
-                        >
-                          {tabHasSessionFocus ? (
-                            <>
-                              <span
-                                aria-hidden
-                                className="h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]"
-                              />
-                              <span className="sr-only">
-                                {t("browserworkspace.AgentActive", {
-                                  defaultValue: "Agent is on this tab",
-                                })}
-                              </span>
-                            </>
-                          ) : (
-                            getBrowserWorkspaceTabMonogram(label)
-                          )}
-                        </SidebarContent.ItemIcon>
-                        <SidebarContent.ItemBody>
-                          <SidebarContent.ItemTitle>
-                            {label}
-                          </SidebarContent.ItemTitle>
-                          <SidebarContent.ItemDescription>
-                            {description}
-                          </SidebarContent.ItemDescription>
-                        </SidebarContent.ItemBody>
-                      </SidebarContent.ItemButton>
-                    </SidebarContent.Item>
-                    <SidebarContent.ItemAction
-                      aria-label={closeTabLabel}
-                      title={closeTabLabel}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runBrowserWorkspaceAction(
-                          `close:${tab.id}`,
-                          async () => {
-                            await client.closeBrowserWorkspaceTab(tab.id);
-                            const snapshot = await client.getBrowserWorkspace();
-                            const nextId =
-                              snapshot.tabs.find((t) => t.id === selectedTabId)
-                                ?.id ??
-                              snapshot.tabs[0]?.id ??
-                              null;
-                            if (nextId && nextId !== selectedTabId) {
-                              await client.showBrowserWorkspaceTab(nextId);
-                            }
-                            await loadWorkspace({
-                              preferTabId: nextId,
-                              silent: true,
-                            });
-                          },
-                        );
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </SidebarContent.ItemAction>
-                  </div>
-                );
+            <CollapsibleSidebarSection
+              sectionKey="agent"
+              label={agentTabsLabel}
+              collapsed={collapsedSections.has("agent")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              emptyLabel={t("browserworkspace.NoAgentTabs", {
+                defaultValue: "No agent tabs yet.",
               })}
-            </div>
-          )}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
+            >
+              {groupedTabs.agent.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={agentTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.agent.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
+
+            <CollapsibleSidebarSection
+              sectionKey="app"
+              label={appTabsLabel}
+              collapsed={collapsedSections.has("app")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              emptyLabel={t("browserworkspace.NoAppTabs", {
+                defaultValue: "No app tabs yet.",
+              })}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
+            >
+              {groupedTabs.app.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={appTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.app.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
+          </div>
         </SidebarPanel>
       </SidebarScrollRegion>
     </AppPageSidebar>
@@ -1144,6 +1302,20 @@ export function BrowserWorkspaceView(): JSX.Element {
         })}
         className="h-8 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 shrink-0 px-3"
+        aria-label={goLabel}
+        disabled={busyAction !== null || locationInput.trim().length === 0}
+        onClick={() =>
+          void runBrowserWorkspaceAction("navigate:click", async () => {
+            await navigateSelectedBrowserWorkspaceTab(locationInput);
+          })
+        }
+      >
+        {goLabel}
+      </Button>
       <Button
         variant="ghost"
         size="icon"

@@ -3,6 +3,7 @@ import type {
   WalletConfigStatus,
   WalletMarketMover,
   WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
   WalletTradingProfileResponse,
@@ -346,6 +347,12 @@ function formatMarketEndsAt(value: string | null): string | null {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatMarketGeneratedAt(value: string): string | null {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return formatRelativeTimestamp(timestamp);
 }
 
 function tradingProfileWindow(
@@ -786,7 +793,10 @@ function PortfolioMoversPanel({
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
             Market-wide
           </div>
-          <MarketMoverList movers={marketOverview.movers} />
+          <MarketMoverList
+            movers={marketOverview.movers}
+            source={marketOverview.sources.movers}
+          />
         </div>
       );
     }
@@ -857,6 +867,79 @@ function MarketAvatar({
   );
 }
 
+function MarketSourceBadge({
+  source,
+}: {
+  source: WalletMarketOverviewSource;
+}) {
+  const statusLabel = source.available
+    ? source.stale
+      ? "Cached"
+      : "Live"
+    : "Unavailable";
+
+  return (
+    <a
+      href={source.providerUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="transition-opacity hover:opacity-80"
+    >
+      <span className="inline-flex items-center gap-2 rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="normal-case tracking-normal text-txt">
+          {source.providerName}
+        </span>
+        <span
+          className={cn(
+            source.available
+              ? source.stale
+                ? "text-warn"
+                : "text-ok"
+              : "text-danger",
+          )}
+        >
+          {statusLabel}
+        </span>
+      </span>
+    </a>
+  );
+}
+
+function MarketSectionHeader({
+  icon: Icon,
+  title,
+  source,
+}: {
+  icon: LucideIcon;
+  title: string;
+  source: WalletMarketOverviewSource;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-txt">
+      <Icon className="h-4 w-4 text-accent" />
+      <span>{title}</span>
+      <MarketSourceBadge source={source} />
+    </div>
+  );
+}
+
+function MarketDataUnavailable({
+  title,
+  source,
+}: {
+  title: string;
+  source: WalletMarketOverviewSource;
+}) {
+  return (
+    <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3">
+      <div className="text-sm font-semibold text-danger">{title} unavailable</div>
+      <div className="mt-1 text-xs text-danger/80">
+        {source.error ?? `${source.providerName} did not return live data.`}
+      </div>
+    </div>
+  );
+}
+
 function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   const isPositive = snapshot.change24hPct >= 0;
 
@@ -890,7 +973,41 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   );
 }
 
-function MarketMoverList({ movers }: { movers: WalletMarketMover[] }) {
+function MarketPriceGrid({
+  prices,
+  source,
+}: {
+  prices: WalletMarketPriceSnapshot[];
+  source: WalletMarketOverviewSource;
+}) {
+  if (!source.available) {
+    return <MarketDataUnavailable title="Spot prices" source={source} />;
+  }
+
+  if (prices.length === 0) {
+    return <EmptyState icon={BarChart3} title="No price snapshots yet" />;
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {prices.map((snapshot) => (
+        <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
+      ))}
+    </div>
+  );
+}
+
+function MarketMoverList({
+  movers,
+  source,
+}: {
+  movers: WalletMarketMover[];
+  source: WalletMarketOverviewSource;
+}) {
+  if (!source.available) {
+    return <MarketDataUnavailable title="Top movers" source={source} />;
+  }
+
   if (movers.length === 0) {
     return <EmptyState icon={TrendingUp} title="No market movers yet" />;
   }
@@ -942,9 +1059,15 @@ function MarketMoverList({ movers }: { movers: WalletMarketMover[] }) {
 
 function MarketPredictionList({
   predictions,
+  source,
 }: {
   predictions: WalletMarketPrediction[];
+  source: WalletMarketOverviewSource;
 }) {
+  if (!source.available) {
+    return <MarketDataUnavailable title="Popular predictions" source={source} />;
+  }
+
   if (predictions.length === 0) {
     return <EmptyState icon={Sparkles} title="No predictions yet" />;
   }
@@ -1002,6 +1125,10 @@ function MarketPulseHero({
   loading: boolean;
   error: string | null;
 }) {
+  const updatedAtLabel = overview
+    ? formatMarketGeneratedAt(overview.generatedAt)
+    : null;
+
   return (
     <section className="space-y-6">
       <div className="max-w-2xl">
@@ -1009,34 +1136,65 @@ function MarketPulseHero({
           No balances or trade history yet.
         </h2>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Here's what the market looks like right now.
+          {overview?.stale
+            ? "Here's the latest cached market snapshot."
+            : "Here's what the market looks like right now."}
         </p>
+        {overview ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+            <span
+              className={cn(
+                "rounded-full border px-2.5 py-1",
+                overview.stale
+                  ? "border-warn/30 bg-warn/10 text-warn"
+                  : "border-ok/30 bg-ok/10 text-ok",
+              )}
+            >
+              {overview.stale ? "Cached snapshot" : "Live feeds"}
+            </span>
+            {updatedAtLabel ? <span>Updated {updatedAtLabel}</span> : null}
+          </div>
+        ) : null}
       </div>
 
       {overview ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
           <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              {overview.prices.map((snapshot) => (
-                <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
-              ))}
+            <div>
+              <MarketSectionHeader
+                icon={BarChart3}
+                title="Spot prices"
+                source={overview.sources.prices}
+              />
+              <MarketPriceGrid
+                prices={overview.prices}
+                source={overview.sources.prices}
+              />
             </div>
 
             <div>
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-txt">
-                <TrendingUp className="h-4 w-4 text-accent" />
-                Top movers
-              </div>
-              <MarketMoverList movers={overview.movers} />
+              <MarketSectionHeader
+                icon={TrendingUp}
+                title="Top movers"
+                source={overview.sources.movers}
+              />
+              <MarketMoverList
+                movers={overview.movers}
+                source={overview.sources.movers}
+              />
             </div>
           </div>
 
           <div>
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-txt">
-              <Sparkles className="h-4 w-4 text-accent" />
-              Popular predictions
-            </div>
-            <MarketPredictionList predictions={overview.predictions} />
+            <MarketSectionHeader
+              icon={Sparkles}
+              title="Popular predictions"
+              source={overview.sources.predictions}
+            />
+            <MarketPredictionList
+              predictions={overview.predictions}
+              source={overview.sources.predictions}
+            />
           </div>
         </div>
       ) : loading ? (

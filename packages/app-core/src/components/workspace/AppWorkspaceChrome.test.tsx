@@ -90,13 +90,32 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
       "page-apps",
     );
-    expect(screen.queryByTestId("apps-shell-chat-collapse")).toBeNull();
+    expect(
+      screen.queryByTestId("page-scoped-chat-footer-actions"),
+    ).toBeNull();
+    const collapseButton = screen.getByTestId("apps-shell-chat-collapse");
+    expect(collapseButton.className).toContain("bottom-2");
+    expect(collapseButton.className).toContain("right-2");
+    expect(collapseButton.className).toContain("h-6");
+    expect(collapseButton.className).toContain("w-6");
+    expect(collapseButton.className).toContain("bg-transparent");
+    expect(collapseButton.className).not.toContain("bg-card/85");
+    expect(collapseButton.className).not.toContain("shadow-md");
+    expect(collapseButton.className).not.toContain("border-border/40");
 
-    fireEvent.click(screen.getByTestId("apps-shell-chat-collapse-inline"));
+    fireEvent.click(collapseButton);
 
     const collapsedSidebar = screen.getByTestId("apps-shell-chat-sidebar");
     expect(collapsedSidebar.getAttribute("data-collapsed")).not.toBeNull();
-    expect(screen.getByTestId("apps-shell-chat-expand")).toBeTruthy();
+    const expandButton = screen.getByTestId("apps-shell-chat-expand");
+    expect(expandButton.className).toContain("bottom-2");
+    expect(expandButton.className).toContain("right-2");
+    expect(expandButton.className).toContain("h-6");
+    expect(expandButton.className).toContain("w-6");
+    expect(expandButton.className).toContain("bg-transparent");
+    expect(expandButton.className).not.toContain("bg-card/85");
+    expect(expandButton.className).not.toContain("shadow-md");
+    expect(expandButton.className).not.toContain("border-border/40");
   });
 
   it("does not reserve right-chat width on mobile until the user opens it", () => {

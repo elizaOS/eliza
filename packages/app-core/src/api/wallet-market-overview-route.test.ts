@@ -1,0 +1,250 @@
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import type { WalletMarketOverviewResponse } from "@elizaos/shared/contracts/wallet";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { fetchWithTimeoutGuardMock } = vi.hoisted(() => ({
+  fetchWithTimeoutGuardMock: vi.fn(),
+}));
+
+vi.mock("@elizaos/agent/api/server", () => ({
+  fetchWithTimeoutGuard: fetchWithTimeoutGuardMock,
+}));
+
+import {
+  __resetWalletMarketOverviewCacheForTests,
+  handleWalletMarketOverviewRoute,
+} from "./wallet-market-overview-route";
+
+interface Harness {
+  baseUrl: string;
+  dispose: () => Promise<void>;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+async function startHarness(): Promise<Harness> {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const handled = await handleWalletMarketOverviewRoute(req, res);
+      if (!handled && !res.headersSent) {
+        res.statusCode = 404;
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ error: "not-found" }));
+      }
+    } catch (error) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    dispose: () =>
+      new Promise<void>((resolve) =>
+        server.close(() => {
+          resolve();
+        }),
+      ),
+  };
+}
+
+const coinGeckoPayload = [
+  {
+    id: "bitcoin",
+    symbol: "btc",
+    name: "Bitcoin",
+    current_price: 103_000,
+    price_change_percentage_24h: 2.1,
+    market_cap_rank: 1,
+    image: "https://assets.example.com/btc.png",
+  },
+  {
+    id: "ethereum",
+    symbol: "eth",
+    name: "Ethereum",
+    current_price: 4_900,
+    price_change_percentage_24h: 1.4,
+    market_cap_rank: 2,
+    image: "https://assets.example.com/eth.png",
+  },
+  {
+    id: "solana",
+    symbol: "sol",
+    name: "Solana",
+    current_price: 210,
+    price_change_percentage_24h: 4.3,
+    market_cap_rank: 5,
+    image: "https://assets.example.com/sol.png",
+  },
+  {
+    id: "dogecoin",
+    symbol: "doge",
+    name: "Dogecoin",
+    current_price: 0.33,
+    price_change_percentage_24h: 12.8,
+    market_cap_rank: 8,
+    image: "https://assets.example.com/doge.png",
+  },
+  {
+    id: "pepe",
+    symbol: "pepe",
+    name: "Pepe",
+    current_price: 0.000011,
+    price_change_percentage_24h: -9.4,
+    market_cap_rank: 32,
+    image: "https://assets.example.com/pepe.png",
+  },
+];
+
+const cloudPreviewPayload: WalletMarketOverviewResponse = {
+  generatedAt: "2026-04-23T12:34:56.000Z",
+  cacheTtlSeconds: 120,
+  stale: false,
+  sources: {
+    prices: {
+      providerId: "coingecko",
+      providerName: "CoinGecko",
+      providerUrl: "https://www.coingecko.com/",
+      available: true,
+      stale: false,
+      error: null,
+    },
+    movers: {
+      providerId: "coingecko",
+      providerName: "CoinGecko",
+      providerUrl: "https://www.coingecko.com/",
+      available: true,
+      stale: false,
+      error: null,
+    },
+    predictions: {
+      providerId: "polymarket",
+      providerName: "Polymarket",
+      providerUrl: "https://polymarket.com/",
+      available: true,
+      stale: false,
+      error: null,
+    },
+  },
+  prices: [
+    {
+      id: "bitcoin",
+      symbol: "BTC",
+      name: "Bitcoin",
+      priceUsd: 103_000,
+      change24hPct: 2.1,
+      imageUrl: "https://assets.example.com/btc.png",
+    },
+  ],
+  movers: [
+    {
+      id: "dogecoin",
+      symbol: "DOGE",
+      name: "Dogecoin",
+      priceUsd: 0.33,
+      change24hPct: 12.8,
+      marketCapRank: 8,
+      imageUrl: "https://assets.example.com/doge.png",
+    },
+  ],
+  predictions: [
+    {
+      id: "bitcoin-above-120k-by-2026",
+      slug: "bitcoin-above-120k-by-2026",
+      question: "Will Bitcoin trade above $120k by 2026?",
+      highlightedOutcomeLabel: "Yes",
+      highlightedOutcomeProbability: 0.62,
+      volume24hUsd: 1532450.9,
+      totalVolumeUsd: 10_400_000,
+      endsAt: "2026-12-31T23:59:59.000Z",
+      imageUrl: "https://assets.example.com/btc-market.png",
+    },
+  ],
+};
+
+describe("wallet-market-overview-route", () => {
+  let harness: Harness;
+
+  beforeEach(async () => {
+    fetchWithTimeoutGuardMock.mockReset();
+    __resetWalletMarketOverviewCacheForTests();
+    harness = await startHarness();
+  });
+
+  afterEach(async () => {
+    await harness.dispose();
+    fetchWithTimeoutGuardMock.mockReset();
+    __resetWalletMarketOverviewCacheForTests();
+  });
+
+  it("prefers the cloud preview feed when it is available", async () => {
+    fetchWithTimeoutGuardMock.mockResolvedValueOnce(
+      jsonResponse(cloudPreviewPayload),
+    );
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/wallet/market-overview`,
+    );
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as WalletMarketOverviewResponse;
+    expect(body).toEqual(cloudPreviewPayload);
+    expect(fetchWithTimeoutGuardMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to direct feeds when the cloud preview is unavailable", async () => {
+    fetchWithTimeoutGuardMock
+      .mockRejectedValueOnce(new Error("Cloud preview responded 503"))
+      .mockResolvedValueOnce(jsonResponse(coinGeckoPayload))
+      .mockRejectedValueOnce(new Error("Polymarket responded 502"));
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/wallet/market-overview`,
+    );
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as WalletMarketOverviewResponse;
+    expect(body.prices).toHaveLength(3);
+    expect(body.movers.length).toBeGreaterThan(0);
+    expect(body.predictions).toEqual([]);
+    expect(body.sources.prices.available).toBe(true);
+    expect(body.sources.predictions).toMatchObject({
+      available: false,
+      stale: false,
+      error: "Polymarket responded 502",
+    });
+  });
+
+  it("returns 502 when every market feed fails", async () => {
+    fetchWithTimeoutGuardMock
+      .mockRejectedValueOnce(new Error("Cloud preview responded 503"))
+      .mockRejectedValueOnce(new Error("CoinGecko responded 429"))
+      .mockRejectedValueOnce(new Error("Polymarket responded 503"));
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/wallet/market-overview`,
+    );
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to load market overview",
+    });
+  });
+});

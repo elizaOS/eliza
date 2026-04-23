@@ -24,7 +24,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
 export type AppCatalogSectionKey =
   | "featured"
   | "favorites"
-  | "recent"
   | "games"
   | "developerUtilities"
   | "finance"
@@ -34,7 +33,6 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
   {
     featured: "Featured",
     favorites: "Starred",
-    recent: "Recent",
     games: "Games & Entertainment",
     developerUtilities: "Developer Utilities",
     finance: "Finance",
@@ -52,7 +50,12 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
   APPS_VIEW_HIDDEN_APP_NAMES,
 );
 
-const FEATURED_APP_NAMES = new Set<string>(["@elizaos/app-lifeops"]);
+const FEATURED_APP_NAMES = new Set<string>([
+  "@elizaos/app-lifeops",
+  "@elizaos/app-companion",
+  "@elizaos/app-defense-of-the-agents",
+  "@clawville/app-clawville",
+]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
   "@elizaos/app-companion",
@@ -64,12 +67,12 @@ const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/app-elizamaker",
   "@elizaos/app-shopify",
   "@elizaos/app-steward",
+  "@elizaos/app-vincent",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "featured",
   "favorites",
-  "recent",
   "games",
   "finance",
   "developerUtilities",
@@ -356,31 +359,16 @@ export function groupAppsForCatalog(
   apps: RegistryAppInfo[],
   {
     favoriteAppNames = new Set<string>(),
-    recentAppNames = [],
   }: {
     favoriteAppNames?: ReadonlySet<string>;
-    recentAppNames?: readonly string[];
   } = {},
 ): AppCatalogSection[] {
   const sections: AppCatalogSection[] = [];
   const groupedApps = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
-  const appsByName = new Map(apps.map((app) => [app.name, app] as const));
   const surfacedAppNames = new Set<string>();
 
-  const featuredApps = apps.filter((app) => FEATURED_APP_NAMES.has(app.name));
-  if (featuredApps.length > 0) {
-    sections.push({
-      key: "featured",
-      label: APP_CATALOG_SECTION_LABELS.featured,
-      apps: featuredApps,
-    });
-    for (const app of featuredApps) {
-      surfacedAppNames.add(app.name);
-    }
-  }
-
   const favoriteApps = apps.filter(
-    (app) => favoriteAppNames.has(app.name) && !surfacedAppNames.has(app.name),
+    (app) => favoriteAppNames.has(app.name),
   );
   if (favoriteApps.length > 0) {
     sections.push({
@@ -393,21 +381,18 @@ export function groupAppsForCatalog(
     }
   }
 
-  const recentApps: RegistryAppInfo[] = [];
-  for (const appName of recentAppNames) {
-    const app = appsByName.get(appName);
-    if (!app || surfacedAppNames.has(app.name)) {
-      continue;
-    }
-    recentApps.push(app);
-    surfacedAppNames.add(app.name);
-  }
-  if (recentApps.length > 0) {
+  const featuredApps = apps.filter(
+    (app) => FEATURED_APP_NAMES.has(app.name) && !favoriteAppNames.has(app.name),
+  );
+  if (featuredApps.length > 0) {
     sections.push({
-      key: "recent",
-      label: APP_CATALOG_SECTION_LABELS.recent,
-      apps: recentApps,
+      key: "featured",
+      label: APP_CATALOG_SECTION_LABELS.featured,
+      apps: featuredApps,
     });
+    for (const app of featuredApps) {
+      surfacedAppNames.add(app.name);
+    }
   }
 
   for (const app of apps) {
@@ -423,7 +408,7 @@ export function groupAppsForCatalog(
   return [
     ...sections,
     ...APP_CATALOG_SECTION_ORDER.flatMap((key) => {
-      if (key === "featured" || key === "favorites" || key === "recent") {
+      if (key === "featured" || key === "favorites") {
         return [];
       }
       const sectionApps = groupedApps.get(key) ?? [];
@@ -451,7 +436,6 @@ export function getAppShortName(app: RegistryAppInfo): string {
 export function getAppEmoji(app: RegistryAppInfo): string {
   const sectionKey = getAppCatalogSectionKey(app);
   if (sectionKey === "featured") return "⭐";
-  if (sectionKey === "recent") return "🕘";
   if (sectionKey === "games") return "🎮";
   if (sectionKey === "developerUtilities") return "🛠️";
   if (sectionKey === "finance") return "💰";

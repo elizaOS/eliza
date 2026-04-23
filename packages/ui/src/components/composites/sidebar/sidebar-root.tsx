@@ -807,7 +807,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             type="button"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-3 left-3 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt",
+              "fixed bottom-2 left-2 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}

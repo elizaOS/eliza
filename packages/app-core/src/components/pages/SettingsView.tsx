@@ -10,8 +10,8 @@ import {
   Label,
   PageLayout,
   PagePanel,
-  SidebarHeader,
   SidebarContent,
+  SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
   Spinner,
@@ -44,6 +44,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
+import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
 
 type SettingsComplexity = "simple" | "advanced";
 
@@ -126,6 +127,22 @@ const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
 const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
 
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
+  {
+    id: "identity",
+    label: "settings.sections.identity.label",
+    description: "settings.sections.identity.desc",
+    keywords: [
+      "identity",
+      "name",
+      "voice",
+      "system prompt",
+      "persona",
+      "instructions",
+      "agent",
+    ],
+    keywordKeys: ["settings.keyword.voice"],
+    level: "simple",
+  },
   {
     id: "cloud",
     label: "providerswitcher.elizaCloud",
@@ -804,7 +821,7 @@ export function SettingsView({
 } = {}) {
   const { t, loadPlugins, walletEnabled } = useApp();
   const [activeSection, setActiveSection] = useState(
-    () => initialSection ?? readSettingsHashSection() ?? "cloud",
+    () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [complexity, setComplexity] = useState<SettingsComplexity>(() =>
@@ -1051,6 +1068,22 @@ export function SettingsView({
 
   const sectionsContent = (
     <>
+      {visibleSectionIds.has("identity") && (
+        <SettingsSection
+          id="identity"
+          title={t("settings.sections.identity.label", {
+            defaultValue: "Identity",
+          })}
+          description={t("settings.sections.identity.desc", {
+            defaultValue:
+              "Agent name, speaking voice, and system prompt. Avatar and VRM stay in Appearance.",
+          })}
+          ref={registerContentItem("identity")}
+        >
+          <IdentitySettingsSection />
+        </SettingsSection>
+      )}
+
       {visibleSectionIds.has("cloud") && (
         <SettingsSection
           id="cloud"

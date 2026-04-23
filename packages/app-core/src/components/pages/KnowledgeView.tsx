@@ -127,8 +127,14 @@ function DocumentListItem({
             active ? "bg-accent" : "bg-border"
           }`}
         />
-        <div className="truncate text-sm font-semibold leading-snug text-txt">
-          {doc.filename}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold leading-snug text-txt">
+            {doc.filename}
+          </div>
+          <div className="mt-1 truncate text-xs text-muted">
+            {doc.provenance.label}
+            {doc.canEditText ? " • editable" : ""}
+          </div>
         </div>
       </button>
       <span className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -136,7 +142,7 @@ function DocumentListItem({
           triggerClassName="h-7 rounded-lg border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-lg border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
           cancelClassName="h-7 rounded-lg border border-border/35 px-2 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-          disabled={deleting}
+          disabled={deleting || !doc.canDelete}
           busyLabel="..."
           onConfirm={() => onDelete(doc.id)}
         />
@@ -834,7 +840,12 @@ export function KnowledgeView({
 
   const documentContent = (
     <div className="order-2 flex min-w-0 flex-1 lg:order-1">
-      <DocumentViewer documentId={selectedDocId} />
+      <DocumentViewer
+        documentId={selectedDocId}
+        onUpdated={() => {
+          void loadData();
+        }}
+      />
     </div>
   );
 

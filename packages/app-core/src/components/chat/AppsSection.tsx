@@ -11,16 +11,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppIdentityTile } from "../apps/app-identity";
-import { getAppShortName, isHiddenFromAppsView } from "../apps/helpers";
-import {
-  getInternalToolApps,
-  getInternalToolAppTargetTab,
-} from "../apps/internal-tool-apps";
-import {
-  getAllOverlayApps,
-  isOverlayApp,
-  overlayAppToRegistryInfo,
-} from "../apps/overlay-app-registry";
+import { loadMergedCatalogApps } from "../apps/catalog-loader";
+import { getAppShortName } from "../apps/helpers";
+import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
+import { isOverlayApp } from "../apps/overlay-app-registry";
 import { WidgetSection } from "./widgets/shared";
 
 // ---------------------------------------------------------------------------
@@ -62,28 +56,13 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   // Fetch the full catalog once for sidebar launch targets.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const serverApps = await client.listApps();
-        const internalToolApps = getInternalToolApps();
-        const overlayDescriptors = getAllOverlayApps()
-          .filter((oa) => !serverApps.some((a) => a.name === oa.name))
-          .map(overlayAppToRegistryInfo);
-        const all = [
-          ...internalToolApps,
-          ...overlayDescriptors,
-          ...serverApps,
-        ].filter(
-          (app, index, items) =>
-            items.findIndex((c) => c.name === app.name) === index,
-        );
+    void loadMergedCatalogApps()
+      .then((apps) => {
         if (!cancelled) {
-          setCatalogApps(all.filter((app) => !isHiddenFromAppsView(app.name)));
+          setCatalogApps(apps);
         }
-      } catch {
-        // Silently fail — the main apps view handles errors
-      }
-    })();
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };

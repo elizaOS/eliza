@@ -131,6 +131,21 @@ export interface KnowledgeStats {
   agentId: string;
 }
 
+export type KnowledgeDocumentProvenanceKind =
+  | "upload"
+  | "learned"
+  | "character"
+  | "url"
+  | "youtube"
+  | "bundled"
+  | "unknown";
+
+export interface KnowledgeDocumentProvenance {
+  kind: KnowledgeDocumentProvenanceKind;
+  label: string;
+  detail?: string;
+}
+
 export interface KnowledgeDocument {
   id: string;
   filename: string;
@@ -138,13 +153,18 @@ export interface KnowledgeDocument {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: string;
+  source: KnowledgeDocumentProvenanceKind;
   url?: string;
+  provenance: KnowledgeDocumentProvenance;
+  canEditText: boolean;
+  editabilityReason?: string;
+  canDelete: boolean;
+  deleteabilityReason?: string;
   content?: { text?: string };
 }
 
 export interface KnowledgeDocumentDetail extends KnowledgeDocument {
-  content: { text?: string };
+  content?: { text?: string };
 }
 
 export interface KnowledgeDocumentsResponse {
@@ -173,6 +193,7 @@ export interface KnowledgeSearchResult {
   similarity: number;
   documentId?: string;
   documentTitle?: string;
+  documentProvenance?: KnowledgeDocumentProvenance;
   position?: number;
 }
 
@@ -191,6 +212,12 @@ export interface KnowledgeUploadResult {
   contentType?: string;
   isYouTubeTranscript?: boolean;
   warnings?: string[];
+}
+
+export interface KnowledgeDocumentUpdateResult {
+  ok: boolean;
+  documentId: string;
+  fragmentCount: number;
 }
 
 export interface KnowledgeBulkUploadItemResult {

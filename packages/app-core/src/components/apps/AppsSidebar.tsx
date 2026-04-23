@@ -1,5 +1,5 @@
 import { SidebarContent, SidebarPanel, SidebarScrollRegion } from "@elizaos/ui";
-import { Clock, Play, Star } from "lucide-react";
+import { Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -17,8 +17,6 @@ interface AppsSidebarProps {
   runs: AppRunSummary[];
   activeAppNames: ReadonlySet<string>;
   favoriteAppNames: ReadonlySet<string>;
-  /** Ordered list of recently launched app names, most-recent first. */
-  recentAppNames: readonly string[];
   selectedAppName: string | null;
   /** Controlled collapsed state. */
   collapsed: boolean;
@@ -45,7 +43,6 @@ export function AppsSidebar({
   runs,
   activeAppNames,
   favoriteAppNames,
-  recentAppNames,
   selectedAppName,
   collapsed,
   onCollapsedChange,
@@ -61,6 +58,14 @@ export function AppsSidebar({
     for (const app of apps) map.set(app.name, app);
     return map;
   }, [apps]);
+
+  const featuredEntries = useMemo(() => {
+    return browseApps.filter(
+      (app) =>
+        getAppCatalogSectionKey(app) === "featured" &&
+        !favoriteAppNames.has(app.name),
+    );
+  }, [browseApps, favoriteAppNames]);
 
   const starredEntries = useMemo(() => {
     return browseApps
@@ -80,37 +85,22 @@ export function AppsSidebar({
       .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
   }, [appsByName, runs]);
 
-  /** Apps already surfaced above the Recent/genre sections. */
-  const aboveRecentAppNames = useMemo(() => {
+  const featuredAppNames = useMemo(() => {
+    return new Set(featuredEntries.map((app) => app.name));
+  }, [featuredEntries]);
+
+  const surfacedAppNames = useMemo(() => {
     const set = new Set<string>();
+    for (const appName of featuredAppNames) set.add(appName);
     for (const app of starredEntries) set.add(app.name);
     for (const entry of activeEntries) set.add(entry.run.appName);
     return set;
-  }, [activeEntries, starredEntries]);
-
-  const recentEntries = useMemo(() => {
-    const seen = new Set<string>();
-    const result: RegistryAppInfo[] = [];
-    for (const name of recentAppNames) {
-      if (seen.has(name) || aboveRecentAppNames.has(name)) continue;
-      const app = browseApps.find((candidate) => candidate.name === name);
-      if (!app) continue;
-      seen.add(name);
-      result.push(app);
-    }
-    return result;
-  }, [aboveRecentAppNames, browseApps, recentAppNames]);
-
-  const aboveGenreAppNames = useMemo(() => {
-    const set = new Set(aboveRecentAppNames);
-    for (const app of recentEntries) set.add(app.name);
-    return set;
-  }, [aboveRecentAppNames, recentEntries]);
+  }, [activeEntries, featuredAppNames, starredEntries]);
 
   const genreEntries = useMemo(() => {
     const buckets = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
     for (const app of browseApps) {
-      if (aboveGenreAppNames.has(app.name)) continue;
+      if (surfacedAppNames.has(app.name)) continue;
       const key = getAppCatalogSectionKey(app);
       const list = buckets.get(key) ?? [];
       list.push(app);
@@ -132,12 +122,12 @@ export function AppsSidebar({
         },
       ];
     });
-  }, [aboveGenreAppNames, browseApps]);
+  }, [browseApps, surfacedAppNames]);
 
   const hasAnyResults =
+    featuredEntries.length > 0 ||
     starredEntries.length > 0 ||
     activeEntries.length > 0 ||
-    recentEntries.length > 0 ||
     genreEntries.length > 0;
 
   return (
@@ -184,6 +174,25 @@ export function AppsSidebar({
                 </AppsSidebarSection>
               )}
 
+              {featuredEntries.length > 0 && (
+                <AppsSidebarSection
+                  label="Featured"
+                  icon={<Star className="h-3 w-3" aria-hidden />}
+                >
+                  {featuredEntries.map((app) => (
+                    <AppsSidebarAppButton
+                      key={app.name}
+                      name={app.name}
+                      displayName={app.displayName ?? getAppShortName(app)}
+                      active={activeAppNames.has(app.name)}
+                      selected={selectedAppName === app.name}
+                      identitySource={app}
+                      onClick={() => onLaunchApp(app)}
+                    />
+                  ))}
+                </AppsSidebarSection>
+              )}
+
               {activeEntries.length > 0 && (
                 <AppsSidebarSection
                   label="Active"
@@ -206,25 +215,6 @@ export function AppsSidebar({
                         }
                       }
                       onClick={() => onOpenRun(run)}
-                    />
-                  ))}
-                </AppsSidebarSection>
-              )}
-
-              {recentEntries.length > 0 && (
-                <AppsSidebarSection
-                  label="Recent"
-                  icon={<Clock className="h-3 w-3" aria-hidden />}
-                >
-                  {recentEntries.map((app) => (
-                    <AppsSidebarAppButton
-                      key={app.name}
-                      name={app.name}
-                      displayName={app.displayName ?? getAppShortName(app)}
-                      active={activeAppNames.has(app.name)}
-                      selected={selectedAppName === app.name}
-                      identitySource={app}
-                      onClick={() => onLaunchApp(app)}
                     />
                   ))}
                 </AppsSidebarSection>

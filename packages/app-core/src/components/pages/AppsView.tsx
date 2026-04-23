@@ -25,7 +25,7 @@ import { RunningAppsRow } from "../apps/RunningAppsRow";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
-/** Max items retained in the sidebar's Recent section. */
+/** Max items retained in launch history. */
 const RECENT_APPS_LIMIT = 10;
 
 const APPS_SIDEBAR_WIDTH_KEY = "milady:apps:sidebar:width";
@@ -568,7 +568,6 @@ export function AppsView() {
       runs={sortedRuns}
       activeAppNames={activeAppNames}
       favoriteAppNames={favoriteAppNames}
-      recentAppNames={recentApps}
       selectedAppName={activeGameRun?.appName ?? null}
       collapsed={sidebarCollapsed}
       onCollapsedChange={handleSidebarCollapsedChange}
@@ -616,7 +615,6 @@ export function AppsView() {
           error={error}
           favoriteAppNames={favoriteAppNames}
           loading={loading}
-          recentAppNames={recentApps}
           searchQuery={searchQuery}
           visibleApps={visibleApps}
           onLaunch={(app) => void handleLaunch(app)}

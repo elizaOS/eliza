@@ -14,7 +14,7 @@ const PAGE_SIDEBAR_ROOT_CLASS =
 
 const PAGE_SIDEBAR_FOOTER_CLASS = "!justify-stretch !px-2 !pt-1.5 !pb-2";
 const PAGE_SIDEBAR_COLLAPSE_BUTTON_CLASS =
-  "!bottom-3 !left-3 !h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60";
+  "!border-0 !bg-transparent !shadow-none hover:!bg-transparent hover:!text-txt";
 
 function joinClassNames(
   ...values: Array<string | false | null | undefined>

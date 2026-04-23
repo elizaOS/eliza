@@ -79,6 +79,14 @@ export interface HeartbeatFormProps {
   saveFormAsTemplate: () => void;
   /** Load run history for a trigger. */
   loadTriggerRuns: (triggerId: string) => Promise<void>;
+  /** Optional override for the create-mode kicker label. */
+  kickerLabelCreate?: string;
+  /** Optional override for the edit-mode kicker label. */
+  kickerLabelEdit?: string;
+  /** Optional override for the create submit label. */
+  submitLabelCreate?: string;
+  /** Optional override for the edit submit label. */
+  submitLabelEdit?: string;
 }
 
 export function HeartbeatForm({
@@ -103,6 +111,10 @@ export function HeartbeatForm({
   onToggleTriggerEnabled,
   saveFormAsTemplate,
   loadTriggerRuns,
+  kickerLabelCreate,
+  kickerLabelEdit,
+  submitLabelCreate,
+  submitLabelEdit,
 }: HeartbeatFormProps) {
   const cronInvalid =
     form.triggerType === "cron" &&
@@ -122,8 +134,8 @@ export function HeartbeatForm({
         <div className="max-w-3xl space-y-1">
           <FieldLabel variant="kicker">
             {editingId
-              ? t("heartbeatsview.editHeartbeat")
-              : t("heartbeatsview.createHeartbeat")}
+              ? (kickerLabelEdit ?? t("heartbeatsview.editHeartbeat"))
+              : (kickerLabelCreate ?? t("heartbeatsview.createHeartbeat"))}
           </FieldLabel>
           <h2 className="text-2xl font-semibold text-txt">{modalTitle}</h2>
         </div>
@@ -362,8 +374,8 @@ export function HeartbeatForm({
               {triggersSaving
                 ? t("apikeyconfig.saving")
                 : editingId
-                  ? t("heartbeatsview.saveChanges")
-                  : t("heartbeatsview.createHeartbeat")}
+                  ? (submitLabelEdit ?? t("heartbeatsview.saveChanges"))
+                  : (submitLabelCreate ?? t("heartbeatsview.createHeartbeat"))}
             </Button>
 
             <Button

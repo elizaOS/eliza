@@ -169,6 +169,7 @@ import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
+import { handleExperienceRoutes } from "./experience-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -1560,6 +1561,22 @@ async function handleRequest(
       pickRandomNames,
       saveConfig: saveElizaConfig as never,
       validateCharacter: (body) => CharacterSchema.safeParse(body) as never,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleExperienceRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      url,
+      readJsonBody,
+      json,
+      error,
     })
   ) {
     return;
