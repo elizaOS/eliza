@@ -45,7 +45,8 @@ export function TokenLogo({
         alt={symbol}
         width={size}
         height={size}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full object-cover font-mono font-bold text-white"
+        className="inline-flex shrink-0 items-center justify-center rounded-full object-cover font-mono font-bold text-white"
+        style={{ width: size, height: size }}
         onError={() => setErrored(true)}
       />
     );
