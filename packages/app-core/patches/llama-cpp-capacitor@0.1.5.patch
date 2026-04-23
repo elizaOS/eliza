@@ -1,0 +1,33 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 53e0fca17795451a4e7bd31470042cf8c0a57922..72d15a02c5e56c13e247b1cc37f653a6a861f66f 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -18,7 +18,7 @@ apply plugin: 'com.android.library'
+ 
+ android {
+-    namespace "ai.annadata.plugin.capacitor"
++    namespace = "ai.annadata.plugin.capacitor"
+     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+     defaultConfig {
+         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
+@@ -35,9 +35,9 @@ android {
+     externalNativeBuild {
+         cmake {
+             path "src/main/CMakeLists.txt"
+-            version "3.22.1"
++            version = "3.22.1"
+             // Explicitly set NDK version to avoid Windows dependencies
+-            ndkVersion "29.0.13113456"
++            ndkVersion = "29.0.13113456"
+         }
+     }
+     
+@@ -49,7 +49,7 @@ android {
+     }
+     
+     lintOptions {
+-        abortOnError false
++        abortOnError = false
+     }
+     
+     compileOptions {
