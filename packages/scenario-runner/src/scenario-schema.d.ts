@@ -268,6 +268,61 @@ declare module "@elizaos/scenario-schema" {
         [key: string]: unknown;
       }
     | {
+        type: "gmailActionArguments";
+        actionName?: string | string[];
+        subaction?: string | string[];
+        operation?: string | string[];
+        fields?: Record<string, unknown>;
+        minCount?: number;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailMockRequest";
+        method?: string | string[];
+        path?: string | string[];
+        body?: Record<string, unknown>;
+        expected?: boolean;
+        minCount?: number;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailDraftCreated";
+        expected?: boolean;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailDraftDeleted";
+        expected?: boolean;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailMessageSent";
+        expected?: boolean;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailBatchModify";
+        expected?: boolean;
+        body?: Record<string, unknown>;
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailApproval";
+        state: "pending" | "confirmed" | "canceled" | "cancelled";
+        [key: string]: unknown;
+      }
+    | {
+        type: "gmailNoRealWrite";
+        [key: string]: unknown;
+      }
+    | {
+        type: "n8nDispatchOccurred";
+        workflowId?: string;
+        expected?: boolean;
+        minCount?: number;
+        [key: string]: unknown;
+      }
+    | {
         type: "judgeRubric";
         name: string;
         rubric: string;

@@ -594,14 +594,17 @@ export function formatOverview(overview: LifeOpsOverview): string {
   ];
   if (overview.schedule) {
     const schedule = overview.schedule;
-    const sleepLine = schedule.isProbablySleeping
+    const isAsleepState =
+      schedule.circadianState === "sleeping" ||
+      schedule.circadianState === "napping";
+    const sleepLine = isAsleepState
       ? schedule.currentSleepStartedAt
         ? `Likely asleep since ${schedule.currentSleepStartedAt}`
         : "Likely asleep now"
       : schedule.lastSleepEndedAt
         ? `Last wake ${schedule.lastSleepEndedAt}${schedule.lastSleepDurationMinutes ? ` after ${schedule.lastSleepDurationMinutes} minutes asleep` : ""}`
         : `Sleep status ${schedule.sleepStatus}`;
-    lines.push(`- Schedule phase: ${schedule.phase}`);
+    lines.push(`- Circadian state: ${schedule.circadianState}`);
     if (schedule.relativeTime.minutesSinceWake !== null) {
       const bedtimeClause =
         schedule.relativeTime.minutesUntilBedtimeTarget !== null

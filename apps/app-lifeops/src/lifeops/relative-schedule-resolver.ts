@@ -116,11 +116,15 @@ export function resolveNextRelativeScheduleInstant(args: {
     }
   }
 
+  const baseline = state.baseline;
+  if (baseline === null) {
+    return null;
+  }
   const projectedHour =
     args.schedule.kind === "relative_to_wake"
-      ? state.typicalWakeHour
-      : state.typicalSleepHour;
-  if (projectedHour === null) {
+      ? baseline.medianWakeLocalHour
+      : baseline.medianBedtimeLocalHour;
+  if (!Number.isFinite(projectedHour)) {
     return null;
   }
   const projectedAnchorMs = nextProjectedLocalInstant({

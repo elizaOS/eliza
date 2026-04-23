@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
 import type { LifeOpsGmailMessageSummary } from "@elizaos/app-lifeops/contracts";
+import { describe, expect, it } from "vitest";
 import {
   buildGmailRecommendations,
+  buildGmailSpamReviewItem,
   summarizeGmailRecommendations,
 } from "./service-normalize-gmail.js";
 
@@ -78,5 +79,47 @@ describe("buildGmailRecommendations", () => {
       markReadCount: 1,
       spamReviewCount: 1,
     });
+  });
+
+  it("keeps spam candidates out of archive and mark-read recommendations", () => {
+    const recommendations = buildGmailRecommendations([
+      message({
+        id: "spam-inbox-1",
+        labels: ["INBOX", "UNREAD", "SPAM", "CATEGORY_PROMOTIONS"],
+        metadata: { precedence: "bulk" },
+      }),
+    ]);
+
+    expect(recommendations.map((item) => item.kind)).toEqual(["review_spam"]);
+    expect(recommendations[0]?.messageIds).toEqual(["spam-inbox-1"]);
+  });
+
+  it("builds canonical persisted spam review DTOs with grant identifiers", () => {
+    const item = buildGmailSpamReviewItem({
+      message: message({
+        id: "spam-2",
+        externalId: "gmail-ext-2",
+        threadId: "gmail-thread-2",
+        labels: ["SPAM"],
+      }),
+      grantId: "grant-1",
+      accountEmail: "owner@example.test",
+      now: "2026-04-22T13:00:00.000Z",
+    });
+
+    expect(item).toMatchObject({
+      agentId: "agent-1",
+      provider: "google",
+      side: "owner",
+      grantId: "grant-1",
+      accountEmail: "owner@example.test",
+      messageId: "spam-2",
+      externalMessageId: "gmail-ext-2",
+      threadId: "gmail-thread-2",
+      status: "pending",
+      reviewedAt: null,
+    });
+    expect(item.id).toMatch(/^life-gmail-spam-/);
+    expect(item.confidence).toBeGreaterThan(0.9);
   });
 });

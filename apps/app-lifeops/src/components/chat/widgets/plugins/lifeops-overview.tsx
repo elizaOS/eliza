@@ -1032,7 +1032,10 @@ function ScheduleSection({
     return null;
   }
 
-  const sleepLine = schedule.isProbablySleeping
+  const isAsleepState =
+    schedule.circadianState === "sleeping" ||
+    schedule.circadianState === "napping";
+  const sleepLine = isAsleepState
     ? schedule.currentSleepStartedAt
       ? t("lifeopsoverview.likelyAsleepSince", {
           defaultValue: "Likely asleep since {{time}}",

@@ -1,10 +1,13 @@
 import type {
   LifeOpsAwakeProbability,
+  LifeOpsCircadianState,
   LifeOpsDayBoundary,
+  LifeOpsPersonalBaseline,
   LifeOpsRelativeTime,
   LifeOpsRelativeTimeAnchorSource,
   LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
+  LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   addDaysToLocalDate,
@@ -15,15 +18,16 @@ import {
 
 type RelativeTimeScheduleFields = Pick<
   LifeOpsScheduleInsight,
-  | "phase"
+  | "circadianState"
+  | "stateConfidence"
+  | "uncertaintyReason"
   | "awakeProbability"
   | "regularity"
-  | "isProbablySleeping"
+  | "baseline"
   | "sleepConfidence"
   | "currentSleepStartedAt"
   | "lastSleepStartedAt"
   | "lastSleepEndedAt"
-  | "typicalSleepHour"
   | "wakeAt"
   | "firstActiveAt"
 >;
@@ -50,10 +54,7 @@ function allowsProjectedBedtime(
 function allowsFallbackBedtimeFromLastSleep(
   regularity: LifeOpsScheduleRegularity | null | undefined,
 ): boolean {
-  return (
-    regularity?.regularityClass !== "irregular" &&
-    regularity?.regularityClass !== "very_irregular"
-  );
+  return allowsProjectedBedtime(regularity);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -114,7 +115,7 @@ const BEDTIME_TARGET_MAX_PAST_MS = 18 * 60 * 60 * 1000;
 const BEDTIME_TARGET_MAX_FUTURE_MS = DAY_MS;
 
 /**
- * Builds a UTC instant for a `typicalSleepHour`-style normalized local hour
+ * Builds a UTC instant for a normalized local bedtime hour
  * (in the canonical [12, 36) range) anchored on the sleep-day that `anchorMs`
  * belongs to. When no wake anchor is given, the local date of `nowMs` is used.
  * The result is then rolled ±24h so it represents "tonight's" bedtime relative
@@ -157,6 +158,20 @@ function localHourInstantMs(args: {
     candidate -= DAY_MS;
   }
   return candidate;
+}
+
+function isAsleepState(state: LifeOpsCircadianState): boolean {
+  return state === "sleeping" || state === "napping";
+}
+
+function isAwakeState(state: LifeOpsCircadianState): boolean {
+  return state === "awake" || state === "waking" || state === "winding_down";
+}
+
+function baselineBedtimeHour(
+  baseline: LifeOpsPersonalBaseline | null | undefined,
+): number | null {
+  return baseline?.medianBedtimeLocalHour ?? null;
 }
 
 function sourceConfidence(
@@ -207,13 +222,15 @@ export function resolveLifeOpsRelativeTime(args: {
   // ~90m ago" the correct answer when the user is up past midnight instead
   // of flipping to tomorrow night's target.
   const bedtimeAnchorMs = wakeAnchorMs ?? null;
+  const bedtimeHour = baselineBedtimeHour(args.schedule.baseline);
   const typicalBedtimeMs =
+    args.schedule.circadianState !== "unclear" &&
     allowsProjectedBedtime(args.schedule.regularity) &&
-    args.schedule.typicalSleepHour !== null
+    bedtimeHour !== null
       ? localHourInstantMs({
           timezone: args.timezone,
           nowMs: args.nowMs,
-          normalizedHour: args.schedule.typicalSleepHour,
+          normalizedHour: bedtimeHour,
           anchorMs: bedtimeAnchorMs,
         })
       : null;
@@ -235,14 +252,12 @@ export function resolveLifeOpsRelativeTime(args: {
           anchorMs: bedtimeAnchorMs,
         })
       : null;
-  const isProbablySleeping =
-    awakeProbability.pAsleep >= 0.65 || args.schedule.isProbablySleeping;
   const bedtimeTargetMs =
-    isProbablySleeping && currentSleepStartedMs !== null
+    isAsleepState(args.schedule.circadianState) && currentSleepStartedMs !== null
       ? currentSleepStartedMs
       : (typicalBedtimeMs ?? fallbackBedtimeMs);
   const bedtimeTargetSource: LifeOpsRelativeTimeAnchorSource | null =
-    isProbablySleeping && currentSleepStartedMs !== null
+    isAsleepState(args.schedule.circadianState) && currentSleepStartedMs !== null
       ? "sleep_cycle"
       : typicalBedtimeMs !== null
         ? "typical_sleep"
@@ -255,13 +270,8 @@ export function resolveLifeOpsRelativeTime(args: {
     wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
       ? minutesBetween(wakeAnchorMs, args.nowMs)
       : null;
-  const awakeState = isProbablySleeping
-    ? "probably_sleeping"
-    : awakeProbability.pAwake >= 0.65 ||
-          (wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs)
-      ? "awake"
-      : "unknown";
-  const isAwake = awakeState === "awake";
+  const minutesAwake =
+    isAwakeState(args.schedule.circadianState) ? minutesSinceWake : null;
   const minutesUntilBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs < args.nowMs
       ? null
@@ -276,15 +286,14 @@ export function resolveLifeOpsRelativeTime(args: {
       new Date(args.nowMs),
       args.timezone,
     ),
-    phase: args.schedule.phase,
+    circadianState: args.schedule.circadianState,
+    stateConfidence: roundConfidence(args.schedule.stateConfidence),
+    uncertaintyReason: args.schedule.uncertaintyReason,
     awakeProbability,
-    isProbablySleeping,
-    isAwake,
-    awakeState,
     wakeAnchorAt,
     wakeAnchorSource,
     minutesSinceWake,
-    minutesAwake: isAwake ? minutesSinceWake : null,
+    minutesAwake,
     bedtimeTargetAt:
       bedtimeTargetMs === null ? null : new Date(bedtimeTargetMs).toISOString(),
     bedtimeTargetSource,

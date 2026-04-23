@@ -15,11 +15,13 @@ public class MiladyDialActivity extends Activity {
         Uri data = source != null ? source.getData() : null;
         Intent launch = new Intent(this, MainActivity.class);
         launch.setAction(Intent.ACTION_VIEW);
-        launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        launch.putExtra("milady.route", "/phone");
+        Uri.Builder route = Uri.parse("ai.elizaos.app://phone").buildUpon()
+                .appendQueryParameter("source", "android-dial");
         if (data != null) {
-            launch.putExtra("milady.phone.uri", data.toString());
+            route.appendQueryParameter("uri", data.toString());
         }
+        launch.setData(route.build());
+        launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(launch);
         finish();
     }

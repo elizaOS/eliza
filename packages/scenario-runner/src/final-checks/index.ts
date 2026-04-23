@@ -1,8 +1,7 @@
 /**
  * Registry of finalCheck handlers keyed by the discriminator string from
- * `ScenarioFinalCheck.type`. Unknown kinds are not failures — they're logged
- * as "unknown-kind" in the report so older scenarios keep working when new
- * check types are introduced.
+ * `ScenarioFinalCheck.type`. Unknown kinds fail loudly so scenario proof fields
+ * cannot be misspelled or silently skipped.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -28,12 +27,17 @@ export type FinalCheckHandler = (
 ) => Promise<FinalCheckOutcome> | FinalCheckOutcome;
 
 const HANDLERS = new Map<string, FinalCheckHandler>();
+const STRICT_FINAL_CHECK_KEYS = new Map<string, ReadonlySet<string>>();
 
 export function registerFinalCheckHandler(
   type: string,
   handler: FinalCheckHandler,
 ): void {
   HANDLERS.set(type, handler);
+}
+
+function registerStrictFinalCheckKeys(type: string, keys: readonly string[]): void {
+  STRICT_FINAL_CHECK_KEYS.set(type, new Set(["type", "name", ...keys]));
 }
 
 function toArray<T>(value: T | T[] | undefined): T[] {
@@ -82,6 +86,171 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function actionParameters(
+  action: ScenarioContext["actionsCalled"][number],
+): Record<string, unknown> | null {
+  const params = toRecord(action.parameters);
+  return toRecord(params?.parameters) ?? params;
+}
+
+function valuesEqual(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return expected.some((candidate) => valuesEqual(actual, candidate));
+  }
+  if (Array.isArray(actual)) {
+    return actual.some((candidate) => valuesEqual(candidate, expected));
+  }
+  if (actual && expected && typeof actual === "object" && typeof expected === "object") {
+    const actualRecord = toRecord(actual);
+    const expectedRecord = toRecord(expected);
+    if (!actualRecord || !expectedRecord) {
+      return false;
+    }
+    return Object.entries(expectedRecord).every(([key, value]) =>
+      valuesEqual(actualRecord[key], value),
+    );
+  }
+  return actual === expected;
+}
+
+function readPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const segment of path.split(".").filter(Boolean)) {
+    const record = toRecord(current);
+    if (!record) {
+      return undefined;
+    }
+    current = record[segment];
+  }
+  return current;
+}
+
+function matchesExpectedFields(
+  value: unknown,
+  expected: Record<string, unknown> | undefined,
+): boolean {
+  if (!expected) {
+    return true;
+  }
+  return Object.entries(expected).every(([path, expectedValue]) =>
+    valuesEqual(readPath(value, path), expectedValue),
+  );
+}
+
+function isLoopbackUrl(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    return (
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+type GmailMockRequest = {
+  environment?: string;
+  method?: string;
+  path?: string;
+  query?: string;
+  body?: unknown;
+  createdAt?: string;
+};
+
+async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
+  const base = process.env.MILADY_MOCK_GOOGLE_BASE;
+  if (!isLoopbackUrl(base)) {
+    throw new Error(
+      "MILADY_MOCK_GOOGLE_BASE must be a loopback URL for Gmail ledger checks",
+    );
+  }
+  const response = await fetch(`${base}/__mock/requests`);
+  if (!response.ok) {
+    throw new Error(`Gmail mock request ledger returned HTTP ${response.status}`);
+  }
+  const body = (await response.json()) as { requests?: unknown };
+  return Array.isArray(body.requests)
+    ? body.requests.filter((entry): entry is GmailMockRequest =>
+        Boolean(entry) && typeof entry === "object",
+      )
+    : [];
+}
+
+function gmailRequestMatches(
+  entry: GmailMockRequest,
+  filters: {
+    method?: string | string[];
+    path?: string | string[];
+    body?: Record<string, unknown>;
+  },
+): boolean {
+  if (
+    filters.method !== undefined &&
+    !toArray(filters.method).includes(String(entry.method ?? "").toUpperCase())
+  ) {
+    return false;
+  }
+  if (
+    filters.path !== undefined &&
+    !toArray(filters.path).includes(String(entry.path ?? ""))
+  ) {
+    return false;
+  }
+  return matchesExpectedFields(entry.body, filters.body);
+}
+
+function gmailSendLedgerPaths(): string[] {
+  return [
+    "/gmail/v1/users/me/messages/send",
+    "/gmail/v1/users/me/drafts/send",
+  ];
+}
+
+function hasGmailDraftData(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
+  const data = actionResultData(action);
+  return Boolean(data?.gmailDraft);
+}
+
+function hasConfirmedGmailSendAction(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
+  if (action.actionName !== "GMAIL_ACTION" && action.actionName !== "INBOX") {
+    return false;
+  }
+  const params = actionParameters(action);
+  return (
+    params?.confirmed === true ||
+    readPath(params, "details.confirmSend") === true
+  );
+}
+
+function hasRecursiveObjectMatch(
+  value: unknown,
+  predicate: (record: Record<string, unknown>) => boolean,
+): boolean {
+  const record = toRecord(value);
+  if (!record) {
+    if (Array.isArray(value)) {
+      return value.some((entry) => hasRecursiveObjectMatch(entry, predicate));
+    }
+    return false;
+  }
+  if (predicate(record)) {
+    return true;
+  }
+  return Object.values(record).some((entry) =>
+    hasRecursiveObjectMatch(entry, predicate),
+  );
 }
 
 function actionResultData(
@@ -389,6 +558,33 @@ registerFinalCheckHandler(
     };
   },
 );
+
+registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
+  const { from, to, actionName } = check as {
+    from: string;
+    to: string;
+    actionName?: string | string[];
+  };
+  const matched = (ctx.stateTransitions ?? []).filter((transition) => {
+    if (transition.subject !== "approval") {
+      return false;
+    }
+    if (transition.from !== from || transition.to !== to) {
+      return false;
+    }
+    return matchesActionName(transition.actionName ?? "", actionName);
+  });
+  if (matched.length === 0) {
+    return {
+      status: "failed",
+      detail: `expected approval transition ${from}->${to}; saw ${(ctx.stateTransitions ?? []).length} transition(s)`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} matching approval transition(s)`,
+  };
+});
 
 registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
   if (ctx.connectorDispatches === undefined) {
@@ -778,6 +974,337 @@ registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
   };
 });
 
+registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
+  const { actionName, subaction, operation, fields, minCount } = check as {
+    actionName?: string | string[];
+    subaction?: string | string[];
+    operation?: string | string[];
+    fields?: Record<string, unknown>;
+    minCount?: number;
+  };
+  const actionNames = actionName ?? ["GMAIL_ACTION", "INBOX"];
+  const matched = ctx.actionsCalled.filter((action) => {
+    if (!matchesActionName(action.actionName, actionNames)) {
+      return false;
+    }
+    const params = actionParameters(action);
+    if (!params) {
+      return false;
+    }
+    if (
+      subaction !== undefined &&
+      !toArray(subaction).includes(String(params.subaction ?? ""))
+    ) {
+      return false;
+    }
+    const actualOperation =
+      params.operation ?? readPath(params, "details.operation");
+    if (
+      operation !== undefined &&
+      !toArray(operation).includes(String(actualOperation ?? ""))
+    ) {
+      return false;
+    }
+    return matchesExpectedFields(params, fields);
+  });
+  const want = typeof minCount === "number" ? minCount : 1;
+  if (matched.length < want) {
+    return {
+      status: "failed",
+      detail: `expected ${want} Gmail action(s) with structured arguments; saw ${matched.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${matched.length} Gmail action(s) matched structured arguments`,
+  };
+});
+
+registerFinalCheckHandler("gmailMockRequest", async (check) => {
+  const { method, path, body, expected, minCount } = check as {
+    method?: string | string[];
+    path?: string | string[];
+    body?: Record<string, unknown>;
+    expected?: boolean;
+    minCount?: number;
+  };
+  const requests = await readGmailMockRequests();
+  const matched = requests.filter((entry) =>
+    gmailRequestMatches(entry, { method, path, body }),
+  );
+  const wantPresent = expected ?? true;
+  const wantCount = typeof minCount === "number" ? minCount : 1;
+  if (wantPresent) {
+    if (matched.length < wantCount) {
+      return {
+        status: "failed",
+        detail: `expected ${wantCount} Gmail mock request(s), saw ${matched.length} of ${requests.length}`,
+      };
+    }
+    return {
+      status: "passed",
+      detail: `${matched.length} Gmail mock request(s) matched`,
+    };
+  }
+  if (matched.length > 0) {
+    return {
+      status: "failed",
+      detail: `expected no Gmail mock request match, saw ${matched.length}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: "no matching Gmail mock request observed",
+  };
+});
+
+registerFinalCheckHandler("gmailDraftCreated", async (check, { ctx }) => {
+  const { expected } = check as { expected?: boolean };
+  const requests = await readGmailMockRequests();
+  const ledgerHit = requests.some((entry) =>
+    gmailRequestMatches(entry, {
+      method: "POST",
+      path: "/gmail/v1/users/me/drafts",
+    }),
+  );
+  const actionHit = ctx.actionsCalled.some((action) => hasGmailDraftData(action));
+  const any = ledgerHit || actionHit;
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `gmailDraftCreated=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected gmailDraftCreated=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("gmailDraftDeleted", async (check) => {
+  const { expected } = check as { expected?: boolean };
+  const requests = await readGmailMockRequests();
+  const any = requests.some(
+    (entry) =>
+      String(entry.method ?? "").toUpperCase() === "DELETE" &&
+      /^\/gmail\/v1\/users\/me\/drafts\/[^/]+$/.test(String(entry.path ?? "")),
+  );
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `gmailDraftDeleted=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected gmailDraftDeleted=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("gmailMessageSent", async (check) => {
+  const { expected } = check as { expected?: boolean };
+  const requests = await readGmailMockRequests();
+  const any = requests.some((entry) =>
+    gmailRequestMatches(entry, {
+      method: "POST",
+      path: gmailSendLedgerPaths(),
+    }),
+  );
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `gmailMessageSent=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected gmailMessageSent=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("gmailBatchModify", async (check) => {
+  const { expected, body } = check as {
+    expected?: boolean;
+    body?: Record<string, unknown>;
+  };
+  const requests = await readGmailMockRequests();
+  const any = requests.some((entry) =>
+    gmailRequestMatches(entry, {
+      method: "POST",
+      path: "/gmail/v1/users/me/messages/batchModify",
+      body,
+    }),
+  );
+  const want = expected ?? true;
+  if (any === want) {
+    return { status: "passed", detail: `gmailBatchModify=${want}` };
+  }
+  return {
+    status: "failed",
+    detail: `expected gmailBatchModify=${want}, saw ${any}`,
+  };
+});
+
+registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
+  const { state } = check as {
+    state: "pending" | "confirmed" | "canceled" | "cancelled";
+  };
+  if (state === "pending") {
+    const any =
+      (ctx.approvalRequests ?? []).some(
+        (request) =>
+          matchesActionName(request.actionName, ["GMAIL_ACTION", "send_email"]) &&
+          request.state === "pending",
+      ) ||
+      ctx.actionsCalled.some((action) => {
+        const data = actionResultData(action);
+        return data?.pendingApproval === true || data?.requiresConfirmation === true;
+      });
+    return any
+      ? { status: "passed", detail: "pending Gmail approval observed" }
+      : { status: "failed", detail: "no pending Gmail approval observed" };
+  }
+  if (state === "confirmed") {
+    const requests = await readGmailMockRequests();
+    const sendHit = requests.some((entry) =>
+      gmailRequestMatches(entry, {
+        method: "POST",
+        path: gmailSendLedgerPaths(),
+      }),
+    );
+    const actionHit = ctx.actionsCalled.some((action) =>
+      hasConfirmedGmailSendAction(action),
+    );
+    return sendHit || actionHit
+      ? { status: "passed", detail: "confirmed Gmail send observed" }
+      : { status: "failed", detail: "no confirmed Gmail send observed" };
+  }
+  const canceled = ctx.actionsCalled.some((action) => {
+    const data = actionResultData(action);
+    return data?.noop === true && data?.cancelled === true;
+  });
+  return canceled
+    ? { status: "passed", detail: "canceled Gmail approval observed" }
+    : { status: "failed", detail: "no canceled Gmail approval observed" };
+});
+
+registerFinalCheckHandler("gmailNoRealWrite", () => {
+  if (!isLoopbackUrl(process.env.MILADY_MOCK_GOOGLE_BASE)) {
+    return {
+      status: "failed",
+      detail: "MILADY_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
+    };
+  }
+  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+    return {
+      status: "failed",
+      detail: "MILADY_ALLOW_REAL_GMAIL_WRITES=1 disables no-real-write proof",
+    };
+  }
+  return {
+    status: "passed",
+    detail: "Gmail writes are constrained to the loopback mock base",
+  };
+});
+
+registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
+  const { workflowId, expected, minCount } = check as {
+    workflowId?: string;
+    expected?: boolean;
+    minCount?: number;
+  };
+  const matchedActions = ctx.actionsCalled.filter((action) =>
+    hasRecursiveObjectMatch(action.result?.data ?? action.result?.raw, (record) => {
+      if (record.kind !== "dispatch_n8n_workflow") {
+        return false;
+      }
+      return workflowId === undefined || record.workflowId === workflowId;
+    }),
+  );
+  const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
+    hasRecursiveObjectMatch(write.content, (record) => {
+      if (record.kind !== "dispatch_n8n_workflow") {
+        return false;
+      }
+      return workflowId === undefined || record.workflowId === workflowId;
+    }),
+  );
+  const total = matchedActions.length + matchedWrites.length;
+  const want = expected ?? true;
+  if (!want) {
+    return total === 0
+      ? { status: "passed", detail: "no n8n dispatch observed" }
+      : { status: "failed", detail: `expected no n8n dispatch, saw ${total}` };
+  }
+  const min = typeof minCount === "number" ? minCount : 1;
+  if (total < min) {
+    return {
+      status: "failed",
+      detail: `expected ${min} n8n dispatch record(s), saw ${total}`,
+    };
+  }
+  return {
+    status: "passed",
+    detail: `${total} n8n dispatch record(s) observed`,
+  };
+});
+
+registerStrictFinalCheckKeys("custom", ["predicate"]);
+registerStrictFinalCheckKeys("actionCalled", ["actionName", "status", "minCount"]);
+registerStrictFinalCheckKeys("selectedAction", ["actionName"]);
+registerStrictFinalCheckKeys("selectedActionArguments", [
+  "actionName",
+  "includesAny",
+  "includesAll",
+]);
+registerStrictFinalCheckKeys("clarificationRequested", ["expected"]);
+registerStrictFinalCheckKeys("interventionRequestExists", ["expected"]);
+registerStrictFinalCheckKeys("pushSent", ["channel"]);
+registerStrictFinalCheckKeys("pushEscalationOrder", ["channelOrder"]);
+registerStrictFinalCheckKeys("pushAcknowledgedSync", ["expected"]);
+registerStrictFinalCheckKeys("approvalRequestExists", [
+  "expected",
+  "actionName",
+  "state",
+]);
+registerStrictFinalCheckKeys("approvalStateTransition", [
+  "from",
+  "to",
+  "actionName",
+]);
+registerStrictFinalCheckKeys("noSideEffectOnReject", ["actionName"]);
+registerStrictFinalCheckKeys("draftExists", ["channel", "expected"]);
+registerStrictFinalCheckKeys("messageDelivered", ["channel", "expected"]);
+registerStrictFinalCheckKeys("browserTaskCompleted", ["expected"]);
+registerStrictFinalCheckKeys("browserTaskNeedsHuman", ["expected"]);
+registerStrictFinalCheckKeys("uploadedAssetExists", ["expected"]);
+registerStrictFinalCheckKeys("connectorDispatchOccurred", [
+  "channel",
+  "actionName",
+  "minCount",
+]);
+registerStrictFinalCheckKeys("memoryWriteOccurred", ["table", "minCount"]);
+registerStrictFinalCheckKeys("judgeRubric", ["rubric", "minimumScore"]);
+registerStrictFinalCheckKeys("gmailActionArguments", [
+  "actionName",
+  "subaction",
+  "operation",
+  "fields",
+  "minCount",
+]);
+registerStrictFinalCheckKeys("gmailMockRequest", [
+  "method",
+  "path",
+  "body",
+  "expected",
+  "minCount",
+]);
+registerStrictFinalCheckKeys("gmailDraftCreated", ["expected"]);
+registerStrictFinalCheckKeys("gmailDraftDeleted", ["expected"]);
+registerStrictFinalCheckKeys("gmailMessageSent", ["expected"]);
+registerStrictFinalCheckKeys("gmailBatchModify", ["expected", "body"]);
+registerStrictFinalCheckKeys("gmailApproval", ["state"]);
+registerStrictFinalCheckKeys("gmailNoRealWrite", []);
+registerStrictFinalCheckKeys("n8nDispatchOccurred", [
+  "workflowId",
+  "expected",
+  "minCount",
+]);
+
 // judgeRubric is handled inline by the executor so it can reuse the live LLM
 // without threading the runtime through the generic handler registry.
 registerFinalCheckHandler("judgeRubric", () => ({
@@ -800,9 +1327,23 @@ export async function runFinalCheck(
     return {
       label: name,
       type,
-      status: "unknown-kind" satisfies FinalCheckStatus,
-      detail: `no handler registered for type "${type}" — check skipped (not a failure)`,
+      status: "failed" satisfies FinalCheckStatus,
+      detail: `no handler registered for finalCheck type "${type}"`,
     };
+  }
+  const strictKeys = STRICT_FINAL_CHECK_KEYS.get(type);
+  if (strictKeys) {
+    const unknownKeys = Object.keys(check as Record<string, unknown>).filter(
+      (key) => !strictKeys.has(key),
+    );
+    if (unknownKeys.length > 0) {
+      return {
+        label: name,
+        type,
+        status: "failed",
+        detail: `unknown field(s) for finalCheck type "${type}": ${unknownKeys.join(", ")}`,
+      };
+    }
   }
   const outcome = await handler(check, handlerCtx);
   return {

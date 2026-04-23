@@ -68,6 +68,7 @@ export interface LifeOpsGoogleService {
     requestUrl: URL,
   ): Promise<LifeOpsGoogleConnectorStatus>;
 }
+
 import { fail } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
@@ -219,6 +220,11 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         side,
       );
       await this.repository.deleteGmailMessagesForProvider(
+        this.agentId(),
+        "google",
+        side,
+      );
+      await this.repository.deleteGmailSpamReviewItemsForProvider(
         this.agentId(),
         "google",
         side,
@@ -644,7 +650,10 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
 
         let managedStatus: ManagedGoogleConnectorStatusResponse;
         try {
-          managedStatus = await this.googleManagedClient.getStatus(side, grantId);
+          managedStatus = await this.googleManagedClient.getStatus(
+            side,
+            grantId,
+          );
         } catch (error) {
           if (error instanceof ManagedGoogleClientError) {
             if (error.status === 404) {

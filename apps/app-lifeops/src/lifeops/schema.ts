@@ -502,6 +502,41 @@ export const lifeGmailSyncStates = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.side, t.mailbox)],
 );
 
+export const lifeGmailSpamReviewItems = pgTable(
+  "life_gmail_spam_review_items",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("google"),
+    side: text("side").notNull().default("owner"),
+    grantId: text("grant_id").notNull(),
+    accountEmail: text("account_email"),
+    messageId: text("message_id").notNull(),
+    externalMessageId: text("external_message_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    subject: text("subject").notNull().default(""),
+    fromDisplay: text("from_display").notNull().default(""),
+    fromEmail: text("from_email"),
+    receivedAt: text("received_at").notNull(),
+    snippet: text("snippet").notNull().default(""),
+    labelIdsJson: text("label_ids_json").notNull().default("[]"),
+    rationale: text("rationale").notNull().default(""),
+    confidence: real("confidence").notNull().default(0),
+    status: text("status").notNull().default("pending"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    reviewedAt: text("reviewed_at"),
+  },
+  (t) => [
+    unique().on(t.agentId, t.provider, t.side, t.grantId, t.externalMessageId),
+    index("idx_life_gmail_spam_review_status").on(
+      t.agentId,
+      t.status,
+      t.updatedAt,
+    ),
+  ],
+);
+
 export const lifeWorkflowDefinitions = pgTable(
   "life_workflow_definitions",
   {
@@ -1079,6 +1114,7 @@ export const lifeOpsSchema = {
   lifeCalendarSyncStates,
   lifeGmailMessages,
   lifeGmailSyncStates,
+  lifeGmailSpamReviewItems,
   lifeWorkflowDefinitions,
   lifeWorkflowRuns,
   lifeWorkflowBrowserSessions,

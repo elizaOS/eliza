@@ -1,4 +1,6 @@
 import type { ScenarioContext } from "@elizaos/scenario-schema";
+import { createServer } from "node:http";
+import { scenario } from "@elizaos/scenario-schema";
 import { describe, expect, it } from "vitest";
 import { runFinalCheck } from "../final-checks/index.ts";
 
@@ -13,6 +15,47 @@ function ctxWith(partial: Partial<ScenarioContext>): ScenarioContext {
     artifacts: [],
     ...partial,
   };
+}
+
+async function withMockGoogleLedger<T>(
+  requests: unknown[],
+  run: () => Promise<T>,
+): Promise<T> {
+  const previousMockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
+  const previousAllowRealWrites = process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/__mock/requests") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ requests }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("mock ledger server did not bind to a TCP port");
+  }
+  process.env.MILADY_MOCK_GOOGLE_BASE = `http://127.0.0.1:${address.port}`;
+  delete process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+  try {
+    return await run();
+  } finally {
+    if (previousMockBase === undefined) {
+      delete process.env.MILADY_MOCK_GOOGLE_BASE;
+    } else {
+      process.env.MILADY_MOCK_GOOGLE_BASE = previousMockBase;
+    }
+    if (previousAllowRealWrites === undefined) {
+      delete process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+    } else {
+      process.env.MILADY_ALLOW_REAL_GMAIL_WRITES = previousAllowRealWrites;
+    }
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  }
 }
 
 describe("final-checks", () => {
@@ -286,7 +329,7 @@ describe("final-checks", () => {
     expect(res.status).toBe("passed");
   });
 
-  it("unknown type returns unknown-kind, not failure", async () => {
+  it("unknown type fails loudly", async () => {
     const ctx = ctxWith({});
     const res = await runFinalCheck(
       { type: "brand-new-future-check-kind" } as unknown as Parameters<
@@ -294,7 +337,111 @@ describe("final-checks", () => {
       >[0],
       { runtime, ctx },
     );
-    expect(res.status).toBe("unknown-kind");
+    expect(res.status).toBe("failed");
+    expect(res.detail).toMatch(/no handler registered/);
+  });
+
+  it("known final check types reject unknown fields", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [{ actionName: "GMAIL_ACTION" }],
+    });
+    const res = await runFinalCheck(
+      {
+        type: "selectedAction",
+        actionName: "GMAIL_ACTION",
+        actionNmae: "typo",
+      } as unknown as Parameters<typeof runFinalCheck>[0],
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("failed");
+    expect(res.detail).toMatch(/unknown field/);
+  });
+
+  it("scenario schema rejects unknown fields on strict final checks", () => {
+    expect(() =>
+      scenario({
+        id: "strict-final-check",
+        title: "Strict final check",
+        domain: "scenario-runner",
+        turns: [],
+        finalChecks: [
+          {
+            type: "gmailMockRequest",
+            method: "GET",
+            path: "/gmail/v1/users/me/messages",
+            unexpected: true,
+          },
+        ],
+      }),
+    ).toThrow(/unknown field/);
+  });
+
+  it("gmailActionArguments matches structured GMAIL_ACTION parameters", async () => {
+    const ctx = ctxWith({
+      actionsCalled: [
+        {
+          actionName: "GMAIL_ACTION",
+          parameters: {
+            subaction: "manage",
+            operation: "archive",
+            details: { messageIds: ["msg-newsletter"] },
+          },
+        },
+      ],
+    });
+    const res = await runFinalCheck(
+      {
+        type: "gmailActionArguments",
+        subaction: "manage",
+        operation: "archive",
+        fields: { "details.messageIds": "msg-newsletter" },
+      },
+      { runtime, ctx },
+    );
+    expect(res.status).toBe("passed");
+  });
+
+  it("gmail final checks read the mock request ledger structurally", async () => {
+    await withMockGoogleLedger(
+      [
+        {
+          method: "POST",
+          path: "/gmail/v1/users/me/drafts",
+          body: { message: { raw: "encoded" } },
+        },
+        {
+          method: "POST",
+          path: "/gmail/v1/users/me/messages/batchModify",
+          body: {
+            ids: ["msg-newsletter"],
+            removeLabelIds: ["INBOX"],
+          },
+        },
+      ],
+      async () => {
+        const ctx = ctxWith({});
+        const draft = await runFinalCheck(
+          { type: "gmailDraftCreated" },
+          { runtime, ctx },
+        );
+        expect(draft.status).toBe("passed");
+
+        const batch = await runFinalCheck(
+          {
+            type: "gmailBatchModify",
+            body: { ids: "msg-newsletter", removeLabelIds: "INBOX" },
+          },
+          { runtime, ctx },
+        );
+        expect(batch.status).toBe("passed");
+
+        const noRealWrite = await runFinalCheck(
+          { type: "gmailNoRealWrite" },
+          { runtime, ctx },
+        );
+        expect(noRealWrite.status).toBe("passed");
+      },
+    );
   });
 
   it("custom predicate undefined = pass, string = fail", async () => {

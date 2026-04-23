@@ -2,21 +2,30 @@ import crypto from "node:crypto";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsConnectorGrant,
-  LifeOpsGmailBulkOperation,
   LifeOpsGmailBatchReplyDraftsFeed,
+  LifeOpsGmailBulkOperation,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
   LifeOpsGmailRecommendation,
   LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
+  LifeOpsGmailSpamReviewFeed,
+  LifeOpsGmailSpamReviewItem,
+  LifeOpsGmailSpamReviewStatus,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
 } from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_GMAIL_BULK_OPERATIONS,
   LIFEOPS_GMAIL_DRAFT_TONES,
+  LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
 } from "@elizaos/app-lifeops/contracts";
+import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
+import {
+  GOOGLE_CALENDAR_CACHE_TTL_MS,
+  GOOGLE_GMAIL_CACHE_TTL_MS,
+} from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -24,11 +33,6 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
-  GOOGLE_GMAIL_CACHE_TTL_MS,
-} from "./service-constants.js";
-import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
 
 export function normalizeGmailSearchQuery(value: unknown): string {
   const query = requireNonEmptyString(value, "query");
@@ -44,9 +48,7 @@ export function normalizeGmailBulkOperation(
   return normalizeEnumValue(value, "operation", LIFEOPS_GMAIL_BULK_OPERATIONS);
 }
 
-export function normalizeGmailUnrespondedOlderThanDays(
-  value: unknown,
-): number {
+export function normalizeGmailUnrespondedOlderThanDays(value: unknown): number {
   if (value === undefined || value === null || value === "") {
     return 3;
   }
@@ -214,7 +216,7 @@ export function normalizeOptionalGmailLabelIdArray(
     if (item.length > 128) {
       fail(400, `${field}[${index}] must be 128 characters or fewer`);
     }
-    if (!/^[A-Za-z0-9_:\-]+$/.test(item)) {
+    if (!/^[A-Za-z0-9_:-]+$/.test(item)) {
       fail(400, `${field}[${index}] is not a valid Gmail label id`);
     }
     if (seen.has(item)) {
@@ -449,7 +451,9 @@ export function compareGmailMessagePriority(
   return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
 }
 
-export function normalizeGmailDraftTone(value: unknown): "brief" | "neutral" | "warm" {
+export function normalizeGmailDraftTone(
+  value: unknown,
+): "brief" | "neutral" | "warm" {
   return normalizeEnumValue(
     value ?? "neutral",
     "tone",
@@ -655,7 +659,105 @@ function hasGmailLabel(
   labelId: string,
 ): boolean {
   const normalized = labelId.trim().toUpperCase();
-  return message.labels.some((label) => label.trim().toUpperCase() === normalized);
+  return message.labels.some(
+    (label) => label.trim().toUpperCase() === normalized,
+  );
+}
+
+export function isGmailSpamReviewCandidate(
+  message: LifeOpsGmailMessageSummary,
+): boolean {
+  const metadata = message.metadata;
+  const metadataClassification =
+    typeof metadata.spamClassification === "string"
+      ? metadata.spamClassification.trim().toLowerCase()
+      : "";
+  const metadataThreat =
+    typeof metadata.threatCategory === "string"
+      ? metadata.threatCategory.trim().toLowerCase()
+      : "";
+  const triageReason = message.triageReason.trim().toLowerCase();
+  return (
+    hasGmailLabel(message, "SPAM") ||
+    hasGmailLabel(message, "PHISHING") ||
+    metadata.spam === true ||
+    metadata.phishing === true ||
+    metadataClassification === "spam" ||
+    metadataClassification === "phishing" ||
+    metadataThreat === "phishing" ||
+    /\b(?:spam|phish(?:ing)?)\b/.test(triageReason)
+  );
+}
+
+export function buildGmailSpamReviewItem(args: {
+  message: LifeOpsGmailMessageSummary;
+  grantId: string;
+  accountEmail: string | null;
+  now: string;
+}): LifeOpsGmailSpamReviewItem {
+  const message = args.message;
+  const isPhishing =
+    hasGmailLabel(message, "PHISHING") ||
+    message.metadata.phishing === true ||
+    message.metadata.spamClassification === "phishing" ||
+    message.metadata.threatCategory === "phishing" ||
+    /\bphish(?:ing)?\b/i.test(message.triageReason);
+  const isGmailSpam = hasGmailLabel(message, "SPAM");
+  const rationale = isPhishing
+    ? "Gmail or upstream triage flagged this message as a phishing candidate; review it before reporting spam."
+    : isGmailSpam
+      ? "Gmail labels this message as spam; review it before reporting or deleting."
+      : "LifeOps classified this Gmail message as a spam candidate; review it before reporting spam.";
+  const confidence = isGmailSpam ? 0.92 : isPhishing ? 0.88 : 0.76;
+  return {
+    id: createGmailSpamReviewItemId(
+      message.agentId,
+      message.provider,
+      message.side,
+      args.grantId,
+      message.externalId,
+    ),
+    agentId: message.agentId,
+    provider: message.provider,
+    side: message.side,
+    grantId: args.grantId,
+    accountEmail: args.accountEmail,
+    messageId: message.id,
+    externalMessageId: message.externalId,
+    threadId: message.threadId,
+    subject: message.subject,
+    from: message.from,
+    fromEmail: message.fromEmail,
+    receivedAt: message.receivedAt,
+    snippet: message.snippet,
+    labels: message.labels,
+    rationale,
+    confidence,
+    status: "pending",
+    createdAt: args.now,
+    updatedAt: args.now,
+    reviewedAt: null,
+  };
+}
+
+export function normalizeGmailSpamReviewStatus(
+  value: unknown,
+  field = "status",
+): LifeOpsGmailSpamReviewStatus {
+  return normalizeEnumValue(value, field, LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES);
+}
+
+export function summarizeGmailSpamReviewItems(
+  items: LifeOpsGmailSpamReviewItem[],
+): LifeOpsGmailSpamReviewFeed["summary"] {
+  return {
+    totalCount: items.length,
+    pendingCount: items.filter((item) => item.status === "pending").length,
+    confirmedSpamCount: items.filter((item) => item.status === "confirmed_spam")
+      .length,
+    notSpamCount: items.filter((item) => item.status === "not_spam").length,
+    dismissedCount: items.filter((item) => item.status === "dismissed").length,
+  };
 }
 
 function isAutomatedLowValueGmailMessage(
@@ -732,6 +834,7 @@ export function buildGmailRecommendations(
     .filter(
       (message) =>
         hasGmailLabel(message, "INBOX") &&
+        !isGmailSpamReviewCandidate(message) &&
         isAutomatedLowValueGmailMessage(message),
     )
     .slice(0, 50);
@@ -754,6 +857,7 @@ export function buildGmailRecommendations(
         message.isUnread &&
         !message.isImportant &&
         !message.likelyReplyNeeded &&
+        !isGmailSpamReviewCandidate(message) &&
         isAutomatedLowValueGmailMessage(message),
     )
     .slice(0, 50);
@@ -770,9 +874,7 @@ export function buildGmailRecommendations(
     }),
   );
 
-  const spamMessages = messages
-    .filter((message) => hasGmailLabel(message, "SPAM"))
-    .slice(0, 25);
+  const spamMessages = messages.filter(isGmailSpamReviewCandidate).slice(0, 25);
   recommendations.push(
     buildRecommendation({
       id: "gmail-review-spam",
@@ -850,7 +952,9 @@ export function buildFallbackGmailReplyDraftBody(args: {
   return bodyLines.join("\n");
 }
 
-export function normalizeGeneratedGmailReplyDraftBody(value: string): string | null {
+export function normalizeGeneratedGmailReplyDraftBody(
+  value: string,
+): string | null {
   const withoutThink = value.replace(/<think>[\s\S]*?<\/think>/gi, " ").trim();
   if (!withoutThink) {
     return null;
@@ -926,6 +1030,22 @@ export function createGmailMessageId(
     .update(`${agentId}:${provider}:${side}:gmail:${externalMessageId}`)
     .digest("hex");
   return `life-gmail-${digest.slice(0, 32)}`;
+}
+
+export function createGmailSpamReviewItemId(
+  agentId: string,
+  provider: LifeOpsConnectorGrant["provider"],
+  side: LifeOpsConnectorGrant["side"],
+  grantId: string,
+  externalMessageId: string,
+): string {
+  const digest = crypto
+    .createHash("sha256")
+    .update(
+      `${agentId}:${provider}:${side}:gmail-spam-review:${grantId}:${externalMessageId}`,
+    )
+    .digest("hex");
+  return `life-gmail-spam-${digest.slice(0, 32)}`;
 }
 
 export function materializeGmailMessageSummary(args: {

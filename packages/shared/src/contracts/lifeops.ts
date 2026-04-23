@@ -83,11 +83,14 @@ export const LIFEOPS_EVENT_KINDS = [
   "calendar.event.ended",
   "gmail.message.received",
   "gmail.thread.needs_response",
-  "lifeops.wake.detected",
+  "lifeops.sleep.onset_candidate",
+  "lifeops.sleep.detected",
+  "lifeops.sleep.ended",
+  "lifeops.wake.observed",
   "lifeops.wake.confirmed",
-  "lifeops.sleep.started",
-  "lifeops.sleep.completed",
+  "lifeops.nap.detected",
   "lifeops.bedtime.imminent",
+  "lifeops.regularity.changed",
 ] as const;
 export type LifeOpsEventKind = (typeof LIFEOPS_EVENT_KINDS)[number];
 
@@ -115,7 +118,19 @@ export interface LifeOpsGmailEventFilters {
   requiresReplyNeeded?: boolean;
 }
 
-export interface LifeOpsWakeDetectedFilters {
+export interface LifeOpsSleepOnsetCandidateFilters {
+  minConfidence?: number;
+}
+
+export interface LifeOpsSleepDetectedFilters {
+  minConfidence?: number;
+}
+
+export interface LifeOpsSleepEndedFilters {
+  minConfidence?: number;
+}
+
+export interface LifeOpsWakeObservedFilters {
   offsetMinutes?: number;
   minConfidence?: number;
 }
@@ -125,17 +140,19 @@ export interface LifeOpsWakeConfirmedFilters {
   minConfidence?: number;
 }
 
-export interface LifeOpsSleepStartedFilters {
+export interface LifeOpsNapDetectedFilters {
   minConfidence?: number;
-}
-
-export interface LifeOpsSleepCompletedFilters {
-  minConfidence?: number;
+  maxDurationMinutes?: number;
 }
 
 export interface LifeOpsBedtimeImminentFilters {
   minutesBefore?: number;
   minConfidence?: number;
+}
+
+export interface LifeOpsRegularityChangedFilters {
+  /** Fires when regularity class transitions into this value. */
+  becomes?: LifeOpsRegularityClass;
 }
 
 export type LifeOpsEventFilters =
@@ -152,24 +169,36 @@ export type LifeOpsEventFilters =
       filters?: LifeOpsGmailEventFilters;
     }
   | {
-      kind: "lifeops.wake.detected";
-      filters?: LifeOpsWakeDetectedFilters;
+      kind: "lifeops.sleep.onset_candidate";
+      filters?: LifeOpsSleepOnsetCandidateFilters;
+    }
+  | {
+      kind: "lifeops.sleep.detected";
+      filters?: LifeOpsSleepDetectedFilters;
+    }
+  | {
+      kind: "lifeops.sleep.ended";
+      filters?: LifeOpsSleepEndedFilters;
+    }
+  | {
+      kind: "lifeops.wake.observed";
+      filters?: LifeOpsWakeObservedFilters;
     }
   | {
       kind: "lifeops.wake.confirmed";
       filters?: LifeOpsWakeConfirmedFilters;
     }
   | {
-      kind: "lifeops.sleep.started";
-      filters?: LifeOpsSleepStartedFilters;
-    }
-  | {
-      kind: "lifeops.sleep.completed";
-      filters?: LifeOpsSleepCompletedFilters;
+      kind: "lifeops.nap.detected";
+      filters?: LifeOpsNapDetectedFilters;
     }
   | {
       kind: "lifeops.bedtime.imminent";
       filters?: LifeOpsBedtimeImminentFilters;
+    }
+  | {
+      kind: "lifeops.regularity.changed";
+      filters?: LifeOpsRegularityChangedFilters;
     };
 
 export const LIFEOPS_NEGOTIATION_STATES = [
@@ -1053,15 +1082,25 @@ export interface LifeOpsOverviewSummary {
   activeGoalCount: number;
 }
 
-export type LifeOpsSchedulePhase =
-  | "sleeping"
-  | "waking"
-  | "morning"
-  | "afternoon"
-  | "evening"
-  | "winding_down"
-  | "irregular_unknown"
-  | "offline";
+export const LIFEOPS_CIRCADIAN_STATES = [
+  "awake",
+  "winding_down",
+  "sleeping",
+  "waking",
+  "napping",
+  "unclear",
+] as const;
+
+export type LifeOpsCircadianState = (typeof LIFEOPS_CIRCADIAN_STATES)[number];
+
+export const LIFEOPS_UNCLEAR_REASONS = [
+  "no_signals",
+  "contradictory_signals",
+  "insufficient_history",
+  "permission_blocked",
+] as const;
+
+export type LifeOpsUnclearReason = (typeof LIFEOPS_UNCLEAR_REASONS)[number];
 
 export type LifeOpsScheduleSleepStatus =
   | "sleeping_now"
@@ -1086,6 +1125,30 @@ export interface LifeOpsScheduleRegularity {
   midSleepStddevMin: number;
   regularityClass: LifeOpsRegularityClass;
   sampleCount: number;
+  windowDays: number;
+}
+
+/**
+ * Personal baseline derived from persisted sleep episodes over `windowDays`.
+ * Medians are computed via circular mean (sin/cos projection) so bedtimes
+ * crossing midnight produce correct answers. Returned as `null` on
+ * `LifeOpsScheduleInsight` when `sampleCount < 5` — the scalar typical hours
+ * that previously existed are deleted from the contract.
+ */
+export interface LifeOpsPersonalBaseline {
+  /** Local wake hour in [0, 24). Circular mean over episode end instants. */
+  medianWakeLocalHour: number;
+  /** Local bedtime hour in [12, 36) (normalized so evening hours are next-day). Circular mean. */
+  medianBedtimeLocalHour: number;
+  /** Median sleep episode duration in minutes. */
+  medianSleepDurationMin: number;
+  /** Circular stddev of bedtime in minutes. */
+  bedtimeStddevMin: number;
+  /** Circular stddev of wake time in minutes. */
+  wakeStddevMin: number;
+  /** Number of persisted episodes that fed the computation. */
+  sampleCount: number;
+  /** Size of the look-back window in days (default 28). */
   windowDays: number;
 }
 
@@ -1152,11 +1215,10 @@ export type LifeOpsRelativeTimeAnchorSource =
 export interface LifeOpsRelativeTime {
   computedAt: string;
   localNowAt: string;
-  phase: LifeOpsSchedulePhase;
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
   awakeProbability: LifeOpsAwakeProbability;
-  isProbablySleeping: boolean;
-  isAwake: boolean;
-  awakeState: "awake" | "probably_sleeping" | "unknown";
   wakeAnchorAt: string | null;
   wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null;
   minutesSinceWake: number | null;
@@ -1191,19 +1253,19 @@ export interface LifeOpsScheduleInsight {
   localDate: string;
   timezone: string;
   inferredAt: string;
-  phase: LifeOpsSchedulePhase;
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
   relativeTime: LifeOpsRelativeTime;
   awakeProbability: LifeOpsAwakeProbability;
   regularity: LifeOpsScheduleRegularity;
+  baseline: LifeOpsPersonalBaseline | null;
   sleepStatus: LifeOpsScheduleSleepStatus;
-  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;
   lastSleepEndedAt: string | null;
   lastSleepDurationMinutes: number | null;
-  typicalWakeHour: number | null;
-  typicalSleepHour: number | null;
   wakeAt: string | null;
   firstActiveAt: string | null;
   lastActiveAt: string | null;
@@ -1526,6 +1588,64 @@ export interface GetLifeOpsGmailRecommendationsRequest {
   query?: string;
   replyNeededOnly?: boolean;
   includeSpamTrash?: boolean;
+}
+
+export const LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES = [
+  "pending",
+  "confirmed_spam",
+  "not_spam",
+  "dismissed",
+] as const;
+export type LifeOpsGmailSpamReviewStatus =
+  (typeof LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES)[number];
+
+export interface LifeOpsGmailSpamReviewItem {
+  id: string;
+  agentId: string;
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  accountEmail: string | null;
+  messageId: string;
+  externalMessageId: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  fromEmail: string | null;
+  receivedAt: string;
+  snippet: string;
+  labels: string[];
+  rationale: string;
+  confidence: number;
+  status: LifeOpsGmailSpamReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+}
+
+export interface LifeOpsGmailSpamReviewSummary {
+  totalCount: number;
+  pendingCount: number;
+  confirmedSpamCount: number;
+  notSpamCount: number;
+  dismissedCount: number;
+}
+
+export interface LifeOpsGmailSpamReviewFeed {
+  items: LifeOpsGmailSpamReviewItem[];
+  summary: LifeOpsGmailSpamReviewSummary;
+}
+
+export interface GetLifeOpsGmailSpamReviewRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+  status?: LifeOpsGmailSpamReviewStatus;
+  maxResults?: number;
+}
+
+export interface UpdateLifeOpsGmailSpamReviewItemRequest {
+  status: LifeOpsGmailSpamReviewStatus;
 }
 
 export interface LifeOpsGmailUnrespondedThread {

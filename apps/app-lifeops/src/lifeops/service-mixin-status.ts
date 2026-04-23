@@ -305,16 +305,18 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           domain: "schedule",
           label: "Awake-relative time",
           state: scheduleState
-            ? scheduleState.relativeTime.isAwake ||
-              scheduleState.relativeTime.awakeState === "probably_sleeping"
+            ? scheduleState.relativeTime.circadianState === "awake" ||
+              scheduleState.relativeTime.circadianState === "waking" ||
+              scheduleState.relativeTime.circadianState === "sleeping" ||
+              scheduleState.relativeTime.circadianState === "napping"
               ? "working"
               : "degraded"
             : "not_configured",
           summary: scheduleState
-            ? `${scheduleState.relativeTime.phase}; ${
-                scheduleState.relativeTime.awakeState === "awake"
+            ? `${scheduleState.relativeTime.circadianState}; ${
+                scheduleState.relativeTime.circadianState === "awake"
                   ? `awake ${minutesLabel(scheduleState.relativeTime.minutesAwake)}`
-                  : scheduleState.relativeTime.awakeState
+                  : scheduleState.relativeTime.circadianState
               }; bedtime ${
                 scheduleState.relativeTime.minutesUntilBedtimeTarget !== null
                   ? `in ${minutesLabel(

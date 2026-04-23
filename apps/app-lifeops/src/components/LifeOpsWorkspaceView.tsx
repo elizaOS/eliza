@@ -14,11 +14,12 @@ import type {
   LifeOpsGmailBulkOperation,
   LifeOpsGmailDraftTone,
   LifeOpsGmailMessageSummary,
+  LifeOpsGmailRecommendation,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-  LifeOpsNextCalendarEventContext,
 } from "@elizaos/app-lifeops/contracts";
 import {
   type ReactNode,
@@ -33,8 +34,14 @@ type CalendarWindow = "today" | "week";
 
 const CONNECTOR_REFRESH_INTERVAL_MS = 30_000;
 const GMAIL_MESSAGE_LIMIT = 12;
+const GMAIL_BULK_MESSAGE_LIMIT = 50;
 const TODAY_WINDOW_DAYS = 1;
 const WEEK_WINDOW_DAYS = 7;
+
+type GmailMessageFeed = Pick<
+  LifeOpsGmailTriageFeed,
+  "messages" | "source" | "syncedAt"
+>;
 
 type TranslateFn = (
   key: string,
@@ -252,6 +259,55 @@ function sortMessages(
   });
 }
 
+function parseGmailLabelIds(value: string): string[] {
+  return value
+    .split(",")
+    .map((labelId) => labelId.trim())
+    .filter((labelId) => labelId.length > 0);
+}
+
+function isDestructiveGmailOperation(
+  operation: LifeOpsGmailBulkOperation,
+): boolean {
+  return (
+    operation === "trash" ||
+    operation === "delete" ||
+    operation === "report_spam"
+  );
+}
+
+function gmailOperationLabel(
+  operation: LifeOpsGmailBulkOperation,
+  t: TranslateFn,
+): string {
+  switch (operation) {
+    case "archive":
+      return t("lifeopsworkspace.archive", { defaultValue: "Archive" });
+    case "trash":
+      return t("lifeopsworkspace.trash", { defaultValue: "Trash" });
+    case "report_spam":
+      return t("lifeopsworkspace.reportSpam", {
+        defaultValue: "Report spam",
+      });
+    case "mark_read":
+      return t("lifeopsworkspace.markRead", { defaultValue: "Mark read" });
+    case "mark_unread":
+      return t("lifeopsworkspace.markUnread", {
+        defaultValue: "Mark unread",
+      });
+    case "apply_label":
+      return t("lifeopsworkspace.applyLabel", {
+        defaultValue: "Apply label",
+      });
+    case "remove_label":
+      return t("lifeopsworkspace.removeLabel", {
+        defaultValue: "Remove label",
+      });
+    case "delete":
+      return t("lifeopsworkspace.delete", { defaultValue: "Delete" });
+  }
+}
+
 type SideWorkspaceState = ReturnType<typeof useLifeOpsSideWorkspace>;
 
 function useLifeOpsSideWorkspace({
@@ -287,9 +343,17 @@ function useLifeOpsSideWorkspace({
   const [calendarFeed, setCalendarFeed] = useState<LifeOpsCalendarFeed | null>(
     null,
   );
-  const [gmailFeed, setGmailFeed] = useState<LifeOpsGmailTriageFeed | null>(
-    null,
-  );
+  const [gmailFeed, setGmailFeed] = useState<GmailMessageFeed | null>(null);
+  const [gmailRecommendations, setGmailRecommendations] =
+    useState<LifeOpsGmailRecommendationsFeed | null>(null);
+  const [gmailQuery, setGmailQuery] = useState("in:inbox");
+  const [gmailReplyNeededOnly, setGmailReplyNeededOnly] = useState(false);
+  const [gmailIncludeSpamTrash, setGmailIncludeSpamTrash] = useState(false);
+  const [gmailSelectedMessageIds, setGmailSelectedMessageIds] = useState<
+    string[]
+  >([]);
+  const [gmailLabelIds, setGmailLabelIds] = useState("");
+  const [gmailManageConfirmed, setGmailManageConfirmed] = useState(false);
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(
     null,
   );
@@ -302,6 +366,7 @@ function useLifeOpsSideWorkspace({
   const [managing, setManaging] = useState(false);
   const [draft, setDraft] = useState<LifeOpsGmailReplyDraft | null>(null);
   const [draftBody, setDraftBody] = useState("");
+  const [sendConfirmed, setSendConfirmed] = useState(false);
   const [eventTitle, setEventTitle] = useState("");
   const [eventDate, setEventDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -313,62 +378,61 @@ function useLifeOpsSideWorkspace({
   const windowDays =
     calendarWindow === "week" ? WEEK_WINDOW_DAYS : TODAY_WINDOW_DAYS;
 
-  const load = useCallback(async (options?: { forceSync?: boolean }) => {
-    if (!connected || !status) {
-      setLoading(false);
-      setError(null);
-      setCalendarFeed(null);
-      setGmailFeed(null);
-      setDraft(null);
-      setDraftBody("");
-      return;
-    }
+  const load = useCallback(
+    async (options?: { forceSync?: boolean }) => {
+      if (!connected || !status) {
+        setLoading(false);
+        setError(null);
+        setCalendarFeed(null);
+        setGmailFeed(null);
+        setGmailRecommendations(null);
+        setGmailSelectedMessageIds([]);
+        setDraft(null);
+        setDraftBody("");
+        setSendConfirmed(false);
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
-    try {
-      const [nextCalendarFeed, nextGmailFeed] = await Promise.all([
-        calendarEnabled
-          ? client.getLifeOpsCalendarFeed({
-              side: status.side,
-              mode: status.mode,
-              timeMin: startOfLocalDay().toISOString(),
-              timeMax: addDays(startOfLocalDay(), windowDays).toISOString(),
-              timeZone,
-              forceSync: options?.forceSync,
-            })
-          : Promise.resolve<LifeOpsCalendarFeed | null>(null),
-        emailEnabled
-          ? client.getLifeOpsGmailTriage({
-              side: status.side,
-              mode: status.mode,
-              maxResults: GMAIL_MESSAGE_LIMIT,
-              forceSync: options?.forceSync,
-            })
-          : Promise.resolve<LifeOpsGmailTriageFeed | null>(null),
-      ]);
-      setCalendarFeed(nextCalendarFeed);
-      setGmailFeed(nextGmailFeed);
-    } catch (cause) {
-      setError(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : t("lifeopsworkspace.loadFailed", {
-              defaultValue: "Workspace failed to load.",
-            }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    calendarEnabled,
-    connected,
-    emailEnabled,
-    status,
-    t,
-    timeZone,
-    windowDays,
-  ]);
+      setLoading(true);
+      setError(null);
+      try {
+        const [nextCalendarFeed, nextGmailFeed] = await Promise.all([
+          calendarEnabled
+            ? client.getLifeOpsCalendarFeed({
+                side: status.side,
+                mode: status.mode,
+                timeMin: startOfLocalDay().toISOString(),
+                timeMax: addDays(startOfLocalDay(), windowDays).toISOString(),
+                timeZone,
+                forceSync: options?.forceSync,
+              })
+            : Promise.resolve<LifeOpsCalendarFeed | null>(null),
+          emailEnabled
+            ? client.getLifeOpsGmailTriage({
+                side: status.side,
+                mode: status.mode,
+                maxResults: GMAIL_MESSAGE_LIMIT,
+                forceSync: options?.forceSync,
+              })
+            : Promise.resolve<LifeOpsGmailTriageFeed | null>(null),
+        ]);
+        setCalendarFeed(nextCalendarFeed);
+        setGmailFeed(nextGmailFeed);
+        setGmailRecommendations(null);
+      } catch (cause) {
+        setError(
+          cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message.trim()
+            : t("lifeopsworkspace.loadFailed", {
+                defaultValue: "Workspace failed to load.",
+              }),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [calendarEnabled, connected, emailEnabled, status, t, timeZone, windowDays],
+  );
 
   useEffect(() => {
     void load();
@@ -425,8 +489,10 @@ function useLifeOpsSideWorkspace({
   useEffect(() => {
     if (gmailMessages.length === 0) {
       setSelectedMessageId(null);
+      setGmailSelectedMessageIds([]);
       setDraft(null);
       setDraftBody("");
+      setSendConfirmed(false);
       return;
     }
     if (
@@ -436,11 +502,26 @@ function useLifeOpsSideWorkspace({
       return;
     }
     setSelectedMessageId(gmailMessages[0].id);
+    setSendConfirmed(false);
   }, [gmailMessages, selectedMessageId]);
+
+  useEffect(() => {
+    const visibleIds = new Set(gmailMessages.map((message) => message.id));
+    setGmailSelectedMessageIds((current) =>
+      current.filter((messageId) => visibleIds.has(messageId)),
+    );
+  }, [gmailMessages]);
+
+  const handleSelectGmailMessage = useCallback((messageId: string) => {
+    setSelectedMessageId(messageId);
+    setSendConfirmed(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     await connector.refresh({ silent: true });
     await load({ forceSync: true });
+    setGmailSelectedMessageIds([]);
+    setGmailManageConfirmed(false);
   }, [connector, load]);
 
   const handleCreateEvent = useCallback(async () => {
@@ -523,6 +604,7 @@ function useLifeOpsSideWorkspace({
       });
       setDraft(response.draft);
       setDraftBody(response.draft.bodyText);
+      setSendConfirmed(false);
       setActionNotice(
         t("lifeopsworkspace.draftedReply", {
           defaultValue: "Drafted {{subject}}",
@@ -551,8 +633,133 @@ function useLifeOpsSideWorkspace({
     t,
   ]);
 
+  const handleSearchGmail = useCallback(async () => {
+    if (!status || !emailEnabled) {
+      return;
+    }
+    const query = gmailQuery.trim();
+    if (!query) {
+      setError(
+        t("lifeopsworkspace.gmailSearchValidation", {
+          defaultValue: "Enter a Gmail search query.",
+        }),
+      );
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.getLifeOpsGmailSearch({
+        side: status.side,
+        mode: status.mode,
+        query,
+        maxResults: GMAIL_BULK_MESSAGE_LIMIT,
+        forceSync: true,
+        replyNeededOnly: gmailReplyNeededOnly,
+        includeSpamTrash: gmailIncludeSpamTrash,
+      });
+      setGmailFeed(result);
+      setGmailRecommendations(null);
+      setGmailSelectedMessageIds([]);
+      setGmailManageConfirmed(false);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : t("lifeopsworkspace.gmailSearchFailed", {
+              defaultValue: "Could not search Gmail.",
+            }),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    emailEnabled,
+    gmailIncludeSpamTrash,
+    gmailQuery,
+    gmailReplyNeededOnly,
+    status,
+    t,
+  ]);
+
+  const handleShowNeedsResponse = useCallback(async () => {
+    if (!status || !emailEnabled) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.getLifeOpsGmailNeedsResponse({
+        side: status.side,
+        mode: status.mode,
+        maxResults: GMAIL_BULK_MESSAGE_LIMIT,
+        forceSync: true,
+      });
+      setGmailFeed(result);
+      setGmailRecommendations(null);
+      setGmailSelectedMessageIds([]);
+      setGmailManageConfirmed(false);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : t("lifeopsworkspace.gmailNeedsResponseFailed", {
+              defaultValue: "Could not load Gmail messages that need response.",
+            }),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [emailEnabled, status, t]);
+
+  const handleLoadRecommendations = useCallback(async () => {
+    if (!status || !emailEnabled) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await client.getLifeOpsGmailRecommendations({
+        side: status.side,
+        mode: status.mode,
+        query: gmailQuery.trim() || undefined,
+        maxResults: GMAIL_BULK_MESSAGE_LIMIT,
+        forceSync: true,
+        replyNeededOnly: gmailReplyNeededOnly,
+        includeSpamTrash: gmailIncludeSpamTrash,
+      });
+      setGmailRecommendations(result);
+      setGmailManageConfirmed(false);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : t("lifeopsworkspace.gmailRecommendationsFailed", {
+              defaultValue: "Could not load Gmail recommendations.",
+            }),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    emailEnabled,
+    gmailIncludeSpamTrash,
+    gmailQuery,
+    gmailReplyNeededOnly,
+    status,
+    t,
+  ]);
+
   const handleSendDraft = useCallback(async () => {
     if (!status || !selectedGmailMessage || draftBody.trim().length === 0) {
+      return;
+    }
+    if (!sendConfirmed) {
+      setError(
+        t("lifeopsworkspace.sendConfirmationRequired", {
+          defaultValue: "Confirm this Gmail send before sending.",
+        }),
+      );
       return;
     }
     setSending(true);
@@ -563,7 +770,7 @@ function useLifeOpsSideWorkspace({
         mode: status.mode,
         messageId: selectedGmailMessage.id,
         bodyText: draftBody,
-        confirmSend: draft?.requiresConfirmation ?? true,
+        confirmSend: true,
         subject: draft?.subject,
         to: draft?.to,
         cc: draft?.cc,
@@ -578,6 +785,7 @@ function useLifeOpsSideWorkspace({
       );
       setDraft(null);
       setDraftBody("");
+      setSendConfirmed(false);
       await refresh();
     } catch (cause) {
       setError(
@@ -595,14 +803,75 @@ function useLifeOpsSideWorkspace({
     draftBody,
     refresh,
     selectedGmailMessage,
+    sendConfirmed,
     setActionNotice,
     status,
     t,
   ]);
 
+  const toggleGmailMessageSelection = useCallback((messageId: string) => {
+    setGmailManageConfirmed(false);
+    setGmailSelectedMessageIds((current) =>
+      current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId],
+    );
+  }, []);
+
   const handleManageMessage = useCallback(
-    async (operation: LifeOpsGmailBulkOperation) => {
-      if (!status || !selectedGmailMessage || !emailManageEnabled) {
+    async (
+      operation: LifeOpsGmailBulkOperation,
+      options: {
+        messageIds?: string[];
+        labelIds?: string[];
+        requiresConfirmation?: boolean;
+      } = {},
+    ) => {
+      if (!status || !emailManageEnabled) {
+        return;
+      }
+      const messageIds =
+        options.messageIds ??
+        (gmailSelectedMessageIds.length > 0
+          ? gmailSelectedMessageIds
+          : selectedGmailMessage
+            ? [selectedGmailMessage.id]
+            : []);
+      if (messageIds.length === 0) {
+        setError(
+          t("lifeopsworkspace.gmailSelectMessages", {
+            defaultValue: "Select at least one Gmail message.",
+          }),
+        );
+        return;
+      }
+      const labelIds =
+        options.labelIds ??
+        (operation === "apply_label" || operation === "remove_label"
+          ? parseGmailLabelIds(gmailLabelIds)
+          : []);
+      if (
+        (operation === "apply_label" || operation === "remove_label") &&
+        labelIds.length === 0
+      ) {
+        setError(
+          t("lifeopsworkspace.gmailLabelValidation", {
+            defaultValue: "Enter at least one Gmail label ID.",
+          }),
+        );
+        return;
+      }
+      const requiresConfirmation =
+        options.requiresConfirmation === true ||
+        messageIds.length > 1 ||
+        isDestructiveGmailOperation(operation);
+      if (requiresConfirmation && !gmailManageConfirmed) {
+        setError(
+          t("lifeopsworkspace.gmailManageConfirmationRequired", {
+            defaultValue:
+              "Confirm this bulk or destructive Gmail update before running it.",
+          }),
+        );
         return;
       }
       setManaging(true);
@@ -611,10 +880,10 @@ function useLifeOpsSideWorkspace({
         const result = await client.manageLifeOpsGmailMessages({
           side: status.side,
           mode: status.mode,
-          messageIds: [selectedGmailMessage.id],
+          messageIds,
           operation,
-          confirmDestructive:
-            operation === "trash" || operation === "report_spam",
+          labelIds,
+          confirmDestructive: isDestructiveGmailOperation(operation),
         });
         setActionNotice(
           t("lifeopsworkspace.gmailManaged", {
@@ -625,8 +894,11 @@ function useLifeOpsSideWorkspace({
           "success",
           2200,
         );
+        setGmailSelectedMessageIds([]);
+        setGmailManageConfirmed(false);
         setDraft(null);
         setDraftBody("");
+        setSendConfirmed(false);
         await refresh();
       } catch (cause) {
         setError(
@@ -642,12 +914,29 @@ function useLifeOpsSideWorkspace({
     },
     [
       emailManageEnabled,
+      gmailLabelIds,
+      gmailManageConfirmed,
+      gmailSelectedMessageIds,
       refresh,
       selectedGmailMessage,
       setActionNotice,
       status,
       t,
     ],
+  );
+
+  const handleApplyRecommendation = useCallback(
+    async (recommendation: LifeOpsGmailRecommendation) => {
+      if (!recommendation.operation) {
+        return;
+      }
+      await handleManageMessage(recommendation.operation, {
+        messageIds: recommendation.messageIds,
+        labelIds: recommendation.labelIds,
+        requiresConfirmation: recommendation.requiresConfirmation,
+      });
+    },
+    [handleManageMessage],
   );
 
   return {
@@ -665,14 +954,30 @@ function useLifeOpsSideWorkspace({
     groupedCalendarEvents,
     selectedCalendarEvent,
     setSelectedCalendarId,
+    refresh,
     gmailMessages,
     selectedGmailMessage,
-    setSelectedMessageId,
+    setSelectedMessageId: handleSelectGmailMessage,
+    gmailRecommendations,
+    gmailQuery,
+    setGmailQuery,
+    gmailReplyNeededOnly,
+    setGmailReplyNeededOnly,
+    gmailIncludeSpamTrash,
+    setGmailIncludeSpamTrash,
+    gmailSelectedMessageIds,
+    toggleGmailMessageSelection,
+    gmailLabelIds,
+    setGmailLabelIds,
+    gmailManageConfirmed,
+    setGmailManageConfirmed,
     draftTone,
     setDraftTone,
     draft,
     draftBody,
     setDraftBody,
+    sendConfirmed,
+    setSendConfirmed,
     drafting,
     sending,
     managing,
@@ -689,8 +994,12 @@ function useLifeOpsSideWorkspace({
     creatingEvent,
     handleCreateEvent,
     handleGenerateDraft,
+    handleSearchGmail,
+    handleShowNeedsResponse,
+    handleLoadRecommendations,
     handleSendDraft,
     handleManageMessage,
+    handleApplyRecommendation,
   } as const;
 }
 
@@ -977,6 +1286,230 @@ function CalendarColumn({
   );
 }
 
+function GmailControls({
+  workspace,
+  t,
+}: {
+  workspace: SideWorkspaceState;
+  t: TranslateFn;
+}) {
+  return (
+    <div className="space-y-2 rounded-2xl bg-card/18 px-3 py-3">
+      <div className="flex flex-wrap gap-2">
+        <Input
+          value={workspace.gmailQuery}
+          onChange={(event) => workspace.setGmailQuery(event.target.value)}
+          placeholder={t("lifeopsworkspace.gmailSearchPlaceholder", {
+            defaultValue: "Gmail query, e.g. in:inbox newer_than:7d",
+          })}
+          aria-label={t("lifeopsworkspace.gmailSearchQuery", {
+            defaultValue: "Gmail search query",
+          })}
+          className="h-8 min-w-48 flex-1 text-xs"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={
+            workspace.loading || workspace.gmailQuery.trim().length === 0
+          }
+          onClick={() => void workspace.handleSearchGmail()}
+        >
+          {t("lifeopsworkspace.searchGmail", {
+            defaultValue: "Search Gmail",
+          })}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={workspace.loading}
+          onClick={() => void workspace.refresh()}
+        >
+          {t("lifeopsworkspace.refreshInbox", {
+            defaultValue: "Refresh inbox",
+          })}
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={workspace.gmailReplyNeededOnly}
+            onChange={(event) =>
+              workspace.setGmailReplyNeededOnly(event.target.checked)
+            }
+          />
+          {t("lifeopsworkspace.replyNeededOnly", {
+            defaultValue: "Reply-needed only",
+          })}
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={workspace.gmailIncludeSpamTrash}
+            onChange={(event) =>
+              workspace.setGmailIncludeSpamTrash(event.target.checked)
+            }
+          />
+          {t("lifeopsworkspace.includeSpamTrash", {
+            defaultValue: "Include spam/trash",
+          })}
+        </label>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={workspace.loading}
+          onClick={() => void workspace.handleShowNeedsResponse()}
+        >
+          {t("lifeopsworkspace.needsResponse", {
+            defaultValue: "Needs response",
+          })}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={workspace.loading}
+          onClick={() => void workspace.handleLoadRecommendations()}
+        >
+          {t("lifeopsworkspace.recommendations", {
+            defaultValue: "Recommendations",
+          })}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function GmailRecommendationsPanel({
+  workspace,
+  t,
+}: {
+  workspace: SideWorkspaceState;
+  t: TranslateFn;
+}) {
+  const recommendations = workspace.gmailRecommendations?.recommendations ?? [];
+  const needsConfirmation = recommendations.some(
+    (recommendation) =>
+      recommendation.requiresConfirmation ||
+      recommendation.kind === "review_spam" ||
+      (recommendation.operation
+        ? recommendation.messageIds.length > 1 ||
+          isDestructiveGmailOperation(recommendation.operation)
+        : false),
+  );
+  if (recommendations.length === 0) {
+    return (
+      <div className="rounded-2xl bg-card/18 px-3 py-3 text-xs text-muted">
+        {t("lifeopsworkspace.noGmailRecommendations", {
+          defaultValue: "No Gmail recommendations for this query.",
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-2xl bg-card/18 px-3 py-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        {t("lifeopsworkspace.gmailRecommendations", {
+          defaultValue: "Gmail recommendations",
+        })}
+      </div>
+      {needsConfirmation ? (
+        <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={workspace.gmailManageConfirmed}
+            onChange={(event) =>
+              workspace.setGmailManageConfirmed(event.target.checked)
+            }
+          />
+          {t("lifeopsworkspace.confirmGmailRecommendation", {
+            defaultValue: "Confirm recommendation update",
+          })}
+        </label>
+      ) : null}
+      {recommendations.map((recommendation) => (
+        <div
+          key={recommendation.id}
+          className="space-y-2 rounded-2xl bg-bg/40 px-3 py-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-txt">
+                {recommendation.title}
+              </div>
+              <div className="mt-1 text-xs text-muted">
+                {recommendation.rationale}
+              </div>
+            </div>
+            <Badge variant="outline" className="text-3xs">
+              {recommendation.affectedCount}
+            </Badge>
+          </div>
+          {recommendation.sampleMessages.length > 0 ? (
+            <div className="space-y-1">
+              {recommendation.sampleMessages.slice(0, 3).map((message) => (
+                <div key={message.messageId} className="text-xs text-muted">
+                  <span className="font-medium text-txt/85">
+                    {message.subject}
+                  </span>{" "}
+                  {message.from}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {recommendation.operation ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={
+                  workspace.managing ||
+                  ((recommendation.requiresConfirmation ||
+                    recommendation.messageIds.length > 1 ||
+                    isDestructiveGmailOperation(recommendation.operation)) &&
+                    !workspace.gmailManageConfirmed)
+                }
+                onClick={() =>
+                  void workspace.handleApplyRecommendation(recommendation)
+                }
+              >
+                {gmailOperationLabel(recommendation.operation, t)}
+              </Button>
+            ) : null}
+            {recommendation.kind === "review_spam"
+              ? recommendation.sampleMessages.map((message) => (
+                  <Button
+                    key={message.messageId}
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    disabled={
+                      workspace.managing || !workspace.gmailManageConfirmed
+                    }
+                    onClick={() =>
+                      void workspace.handleManageMessage("report_spam", {
+                        messageIds: [message.messageId],
+                      })
+                    }
+                  >
+                    {t("lifeopsworkspace.reportSampleSpam", {
+                      defaultValue: "Report sample spam",
+                    })}
+                  </Button>
+                ))
+              : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EmailColumn({
   workspace,
   timeZone,
@@ -987,6 +1520,32 @@ function EmailColumn({
   t: TranslateFn;
 }) {
   const messageCount = workspace.gmailMessages.length;
+  const selectedBulkMessageIds =
+    workspace.gmailSelectedMessageIds.length > 0
+      ? workspace.gmailSelectedMessageIds
+      : workspace.selectedGmailMessage
+        ? [workspace.selectedGmailMessage.id]
+        : [];
+  const selectedBulkCount = selectedBulkMessageIds.length;
+  const labelIds = parseGmailLabelIds(workspace.gmailLabelIds);
+  const isManageDisabled = (operation: LifeOpsGmailBulkOperation): boolean => {
+    if (workspace.managing || selectedBulkCount === 0) {
+      return true;
+    }
+    if (
+      (operation === "apply_label" || operation === "remove_label") &&
+      labelIds.length === 0
+    ) {
+      return true;
+    }
+    if (
+      (selectedBulkCount > 1 || isDestructiveGmailOperation(operation)) &&
+      !workspace.gmailManageConfirmed
+    ) {
+      return true;
+    }
+    return false;
+  };
 
   return (
     <div className="space-y-4 rounded-2xl bg-bg/36 px-4 py-4">
@@ -1017,59 +1576,89 @@ function EmailColumn({
               "Grant Gmail access for this Google account in Setup.",
           })}
         </div>
-      ) : workspace.loading && messageCount === 0 ? (
-        <div className="text-xs text-muted">
-          {t("lifeopsworkspace.loadingRecentMail", {
-            defaultValue: "Loading recent mail…",
-          })}
-        </div>
       ) : messageCount === 0 ? (
-        <div className="text-xs text-muted">
-          {t("lifeopsworkspace.inboxClear", {
-            defaultValue: "Inbox clear. Nothing to triage right now.",
-          })}
+        <div className="space-y-3">
+          <GmailControls workspace={workspace} t={t} />
+          <div className="text-xs text-muted">
+            {workspace.loading
+              ? t("lifeopsworkspace.loadingRecentMail", {
+                  defaultValue: "Loading recent mail…",
+                })
+              : t("lifeopsworkspace.inboxClear", {
+                  defaultValue: "Inbox clear. Nothing to triage right now.",
+                })}
+          </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl bg-bg/45">
-          {workspace.gmailMessages.map((message, index) => (
-            <button
-              key={message.id}
-              type="button"
-              onClick={() => workspace.setSelectedMessageId(message.id)}
-              className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
-                index > 0 ? "border-t border-border/12" : ""
-              } ${
-                workspace.selectedGmailMessage?.id === message.id
-                  ? "bg-accent/8"
-                  : "hover:bg-bg-hover/30"
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-txt">
-                  {message.subject}
-                </div>
-                <div className="mt-1 truncate text-xs text-muted">
-                  {message.from}
-                </div>
-                <div className="mt-1 line-clamp-2 text-xs text-muted/90">
-                  {message.snippet}
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                {message.likelyReplyNeeded ? (
-                  <Badge variant="secondary" className="text-3xs">
-                    {t("lifeopsworkspace.reply", {
-                      defaultValue: "Reply",
+        <div className="space-y-3">
+          <GmailControls workspace={workspace} t={t} />
+          <div className="overflow-hidden rounded-2xl bg-bg/45">
+            {workspace.gmailMessages.map((message, index) => (
+              <div
+                key={message.id}
+                className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
+                  index > 0 ? "border-t border-border/12" : ""
+                } ${
+                  workspace.selectedGmailMessage?.id === message.id
+                    ? "bg-accent/8"
+                    : "hover:bg-bg-hover/30"
+                }`}
+              >
+                <label className="mt-1 inline-flex shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    checked={workspace.gmailSelectedMessageIds.includes(
+                      message.id,
+                    )}
+                    onChange={() =>
+                      workspace.toggleGmailMessageSelection(message.id)
+                    }
+                    aria-label={t("lifeopsworkspace.selectGmailMessage", {
+                      defaultValue: "Select Gmail message {{subject}}",
+                      subject: message.subject,
                     })}
-                  </Badge>
-                ) : null}
-                <AccountBadge label={message.accountEmail} />
-                <div className="text-[11px] text-muted">
-                  {formatLocalDateTime(message.receivedAt, timeZone)}
-                </div>
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => workspace.setSelectedMessageId(message.id)}
+                  className="min-w-0 flex flex-1 items-start justify-between gap-3 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-txt">
+                      {message.subject}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-muted">
+                      {message.from}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-xs text-muted/90">
+                      {message.snippet}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    {message.likelyReplyNeeded ? (
+                      <Badge variant="secondary" className="text-3xs">
+                        {t("lifeopsworkspace.reply", {
+                          defaultValue: "Reply",
+                        })}
+                      </Badge>
+                    ) : null}
+                    {message.isUnread ? (
+                      <Badge variant="outline" className="text-3xs">
+                        {t("lifeopsworkspace.unread", {
+                          defaultValue: "Unread",
+                        })}
+                      </Badge>
+                    ) : null}
+                    <AccountBadge label={message.accountEmail} />
+                    <div className="text-[11px] text-muted">
+                      {formatLocalDateTime(message.receivedAt, timeZone)}
+                    </div>
+                  </div>
+                </button>
               </div>
-            </button>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -1084,51 +1673,83 @@ function EmailColumn({
           </div>
 
           {workspace.emailManageEnabled ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
-                disabled={workspace.managing}
-                onClick={() => void workspace.handleManageMessage("archive")}
-              >
-                {t("lifeopsworkspace.archive", {
-                  defaultValue: "Archive",
-                })}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
-                disabled={workspace.managing}
-                onClick={() => void workspace.handleManageMessage("mark_read")}
-              >
-                {t("lifeopsworkspace.markRead", {
-                  defaultValue: "Mark read",
-                })}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
-                disabled={workspace.managing}
-                onClick={() => void workspace.handleManageMessage("report_spam")}
-              >
-                {t("lifeopsworkspace.spam", {
-                  defaultValue: "Spam",
-                })}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
-                disabled={workspace.managing}
-                onClick={() => void workspace.handleManageMessage("trash")}
-              >
-                {t("lifeopsworkspace.trash", {
-                  defaultValue: "Trash",
-                })}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>
+                  {t("lifeopsworkspace.gmailManageTarget", {
+                    defaultValue:
+                      selectedBulkCount > 1
+                        ? "{{count}} selected messages"
+                        : "Selected message",
+                    count: selectedBulkCount,
+                  })}
+                </span>
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={workspace.gmailManageConfirmed}
+                    onChange={(event) =>
+                      workspace.setGmailManageConfirmed(event.target.checked)
+                    }
+                  />
+                  {t("lifeopsworkspace.confirmGmailManage", {
+                    defaultValue: "Confirm bulk/destructive update",
+                  })}
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    "archive",
+                    "mark_read",
+                    "mark_unread",
+                    "report_spam",
+                    "trash",
+                  ] as const
+                ).map((operation) => (
+                  <Button
+                    key={operation}
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    disabled={isManageDisabled(operation)}
+                    onClick={() =>
+                      void workspace.handleManageMessage(operation)
+                    }
+                  >
+                    {gmailOperationLabel(operation, t)}
+                  </Button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  value={workspace.gmailLabelIds}
+                  onChange={(event) =>
+                    workspace.setGmailLabelIds(event.target.value)
+                  }
+                  placeholder={t("lifeopsworkspace.gmailLabelIds", {
+                    defaultValue: "Label ID(s), comma-separated",
+                  })}
+                  aria-label={t("lifeopsworkspace.gmailLabelIds", {
+                    defaultValue: "Label ID(s), comma-separated",
+                  })}
+                  className="h-8 min-w-48 flex-1 text-xs"
+                />
+                {(["apply_label", "remove_label"] as const).map((operation) => (
+                  <Button
+                    key={operation}
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    disabled={isManageDisabled(operation)}
+                    onClick={() =>
+                      void workspace.handleManageMessage(operation)
+                    }
+                  >
+                    {gmailOperationLabel(operation, t)}
+                  </Button>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -1165,7 +1786,10 @@ function EmailColumn({
 
           <Textarea
             value={workspace.draftBody}
-            onChange={(event) => workspace.setDraftBody(event.target.value)}
+            onChange={(event) => {
+              workspace.setDraftBody(event.target.value);
+              workspace.setSendConfirmed(false);
+            }}
             placeholder={t("lifeopsworkspace.reply", {
               defaultValue: "Reply",
             })}
@@ -1192,7 +1816,9 @@ function EmailColumn({
               variant="outline"
               className="h-8 rounded-xl px-3 text-xs font-semibold"
               disabled={
-                workspace.sending || workspace.draftBody.trim().length === 0
+                workspace.sending ||
+                workspace.draftBody.trim().length === 0 ||
+                !workspace.sendConfirmed
               }
               onClick={() => void workspace.handleSendDraft()}
             >
@@ -1206,18 +1832,32 @@ function EmailColumn({
             </Button>
           </div>
 
+          <label className="inline-flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={workspace.sendConfirmed}
+              onChange={(event) =>
+                workspace.setSendConfirmed(event.target.checked)
+              }
+            />
+            {t("lifeopsworkspace.confirmSendGmailReply", {
+              defaultValue: "Confirm sending this Gmail reply now",
+            })}
+          </label>
+
           {workspace.draft ? (
             <div className="text-xs text-muted">
-              {workspace.draft.requiresConfirmation
-                ? t("lifeopsworkspace.confirmationRequired", {
-                    defaultValue: "Confirmation required",
-                  })
-                : t("lifeopsworkspace.readyToSend", {
-                    defaultValue: "Ready to send",
-                  })}
+              {t("lifeopsworkspace.gmailDraftCreatedNoAutoSend", {
+                defaultValue:
+                  "Draft created. It will not send until you confirm and press Send.",
+              })}
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {workspace.gmailRecommendations ? (
+        <GmailRecommendationsPanel workspace={workspace} t={t} />
       ) : null}
     </div>
   );
