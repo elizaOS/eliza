@@ -384,6 +384,11 @@ async function triggerWalletRuntimeReload(
   return restarted;
 }
 
+const LOCAL_WALLET_SOURCE_ENV_KEYS: Record<WalletChain, string> = {
+  evm: "WALLET_SOURCE_EVM",
+  solana: "WALLET_SOURCE_SOLANA",
+};
+
 export async function handleWalletRoutes(
   ctx: WalletRouteContext,
 ): Promise<boolean> {
@@ -512,6 +517,7 @@ export async function handleWalletRoutes(
     if (!config.env) config.env = {};
     const envKey = chain === "evm" ? "EVM_PRIVATE_KEY" : "SOLANA_PRIVATE_KEY";
     (config.env as Record<string, string>)[envKey] = process.env[envKey] ?? "";
+    persistPrimarySelection(config, chain, "local");
 
     let configSaveWarning: string | undefined;
     try {
@@ -526,10 +532,29 @@ export async function handleWalletRoutes(
     if (configSaveWarning) warnings.push(configSaveWarning);
     if (stewardWarning) warnings.push(stewardWarning);
 
+    const walletSourceEnvKey = LOCAL_WALLET_SOURCE_ENV_KEYS[chain];
+    process.env[walletSourceEnvKey] = "local";
+    try {
+      await persistConfigEnv(walletSourceEnvKey, "local");
+    } catch (err) {
+      error(
+        res,
+        `Failed to persist ${walletSourceEnvKey}: ${String(err)}`,
+        500,
+      );
+      return true;
+    }
+
+    const restarted = await triggerWalletRuntimeReload(
+      ctx,
+      "Wallet configuration updated",
+    );
+
     json(res, {
       ok: true,
       chain,
       address: result.address,
+      restarting: restarted,
       ...(warnings.length > 0 ? { warnings } : {}),
     });
     return true;
@@ -708,12 +733,15 @@ export async function handleWalletRoutes(
     if (!config.env) config.env = {};
 
     const generated: Array<{ chain: WalletChain; address: string }> = [];
+    const generatedChains: WalletChain[] = [];
 
     if (targetChain === "both" || targetChain === "evm") {
       const result = deps.generateWalletForChain("evm");
       process.env.EVM_PRIVATE_KEY = result.privateKey;
       (config.env as Record<string, string>).EVM_PRIVATE_KEY =
         result.privateKey;
+      persistPrimarySelection(config, "evm", "local");
+      generatedChains.push("evm");
       generated.push({ chain: "evm", address: result.address });
       logger.info(`[eliza-api] Generated EVM wallet: ${result.address}`);
     }
@@ -723,6 +751,8 @@ export async function handleWalletRoutes(
       setSolanaWalletEnv(result.privateKey);
       (config.env as Record<string, string>).SOLANA_PRIVATE_KEY =
         result.privateKey;
+      persistPrimarySelection(config, "solana", "local");
+      generatedChains.push("solana");
       generated.push({ chain: "solana", address: result.address });
       logger.info(`[eliza-api] Generated Solana wallet: ${result.address}`);
     }
@@ -736,10 +766,31 @@ export async function handleWalletRoutes(
       configSaveWarning = msg;
     }
 
+    for (const chainName of generatedChains) {
+      const walletSourceEnvKey = LOCAL_WALLET_SOURCE_ENV_KEYS[chainName];
+      process.env[walletSourceEnvKey] = "local";
+      try {
+        await persistConfigEnv(walletSourceEnvKey, "local");
+      } catch (err) {
+        error(
+          res,
+          `Failed to persist ${walletSourceEnvKey}: ${String(err)}`,
+          500,
+        );
+        return true;
+      }
+    }
+
+    const restarted = await triggerWalletRuntimeReload(
+      ctx,
+      "Wallet configuration updated",
+    );
+
     json(res, {
       ok: true,
       wallets: generated,
       source: "local",
+      restarting: restarted,
       ...(configSaveWarning ? { warnings: [configSaveWarning] } : {}),
     });
     return true;

@@ -1,4 +1,3 @@
-import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
 import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 import {
   useCallback,
@@ -27,6 +26,7 @@ import type {
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
+import { useCompanionSceneStatus } from "../companion/injected";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

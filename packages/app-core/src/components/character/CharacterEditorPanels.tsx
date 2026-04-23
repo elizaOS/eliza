@@ -1,5 +1,5 @@
 import type { MessageExampleGroup } from "@elizaos/core";
-import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
+import { Button, Input, Textarea } from "@elizaos/ui";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -7,34 +7,7 @@ import {
   useState,
 } from "react";
 import type { CharacterData } from "../../api/client-types-config";
-import { EDGE_BACKUP_VOICES, PREMADE_VOICES } from "../../voice/types";
 
-/* ── Inline SVG icon helpers ─────────────────────────────────────── */
-const svgBase = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: 24,
-  height: 24,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-};
-
-const Volume2 = ({ className }: { className?: string }) => (
-  <svg {...svgBase} className={className} aria-hidden="true">
-    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-  </svg>
-);
-const VolumeX = ({ className }: { className?: string }) => (
-  <svg {...svgBase} className={className} aria-hidden="true">
-    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-    <line x1="23" y1="9" x2="17" y2="15" />
-    <line x1="17" y1="9" x2="23" y2="15" />
-  </svg>
-);
 /* ── Small plus icon used for inline "add" actions ───────────────── */
 const PlusIconSvg = ({ className }: { className?: string }) => (
   <svg
@@ -91,7 +64,10 @@ const GripIconSvg = ({ className }: { className?: string }) => (
 
 /* ── Shared styles for inline plus/trash buttons ─────────────────── */
 const inlineAddBtn =
-  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded-sm px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+  "inline-flex h-7 w-7 items-center justify-center rounded-sm text-accent/80 transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+
+const inlineIconBtn =
+  "inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -117,25 +93,8 @@ const STYLE_SECTION_EMPTY_STATES: Record<
 /* ── Types ────────────────────────────────────────────────────────── */
 
 export interface CharacterIdentityPanelProps {
-  d: CharacterData;
   bioText: string;
-  voiceSelectValue: string | null;
-  activeVoicePreset: (typeof PREMADE_VOICES)[number] | null;
-  voiceTesting: boolean;
-  voiceLoading: boolean;
-  useElevenLabs: boolean;
-  elevenLabsVoiceGroups: {
-    label: string;
-    items: { id: string; text: string }[];
-  }[];
-  edgeVoiceGroups: { label: string; items: { id: string; text: string }[] }[];
   handleFieldEdit: (field: string, value: unknown) => void;
-  handleSelectPreset: (
-    preset: (typeof PREMADE_VOICES)[0] | (typeof EDGE_BACKUP_VOICES)[0],
-  ) => void;
-  handleStopTest: () => void;
-  setVoiceTesting: (v: boolean) => void;
-  setVoiceTestAudio: (v: HTMLAudioElement | null) => void;
   t: (key: string, opts?: { defaultValue?: string }) => string;
 }
 
@@ -166,111 +125,12 @@ export interface CharacterExamplesPanelProps {
 /* ── CharacterIdentityPanel ──────────────────────────────────────── */
 
 export function CharacterIdentityPanel({
-  d,
   bioText,
-  voiceSelectValue,
-  activeVoicePreset,
-  voiceTesting,
-  voiceLoading,
-  useElevenLabs,
-  elevenLabsVoiceGroups,
-  edgeVoiceGroups,
   handleFieldEdit,
-  handleSelectPreset,
-  handleStopTest,
-  setVoiceTesting,
-  setVoiceTestAudio,
   t,
 }: CharacterIdentityPanelProps) {
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-        <div className="flex flex-col gap-2 min-w-0">
-          <span
-            id="character-editor-name-label"
-            className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
-          >
-            {t("charactereditor.Name", { defaultValue: "Name" })}
-          </span>
-          <Input
-            type="text"
-            value={d.name ?? ""}
-            placeholder={t("charactereditor.AgentNamePlaceholder", {
-              defaultValue: "Agent name",
-            })}
-            aria-labelledby="character-editor-name-label"
-            onChange={(
-              e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-            ) => handleFieldEdit("name", e.target.value)}
-            className="h-9 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm text-txt focus-visible:border-accent/60 focus-visible:ring-0"
-          />
-        </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <span
-            id="character-editor-voice-label"
-            className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted"
-          >
-            {t("charactereditor.Voice", { defaultValue: "Voice" })}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <ThemedSelect
-              value={voiceSelectValue}
-              groups={useElevenLabs ? elevenLabsVoiceGroups : edgeVoiceGroups}
-              onChange={(id: string) => {
-                const allVoices = useElevenLabs
-                  ? PREMADE_VOICES
-                  : EDGE_BACKUP_VOICES;
-                const preset = allVoices.find((p) => p.id === id);
-                if (preset) handleSelectPreset(preset);
-              }}
-              placeholder={t("charactereditor.SelectAVoice", {
-                defaultValue: "Select a voice",
-              })}
-              ariaLabelledBy="character-editor-voice-label"
-              menuPlacement="bottom"
-              className="flex-1 min-w-0"
-              triggerClassName="h-9 rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm shadow-none"
-              menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
-            />
-            <Button
-              type="button"
-              variant={voiceTesting ? "destructive" : "ghost"}
-              size="icon"
-              className="h-8 w-8 shrink-0 rounded-full p-0 text-muted hover:text-txt"
-              onClick={() => {
-                if (voiceTesting) {
-                  handleStopTest();
-                } else if (activeVoicePreset?.previewUrl) {
-                  setVoiceTesting(true);
-                  const audio = new Audio(activeVoicePreset.previewUrl);
-                  audio.onended = () => {
-                    setVoiceTesting(false);
-                    setVoiceTestAudio(null);
-                  };
-                  audio.onerror = () => {
-                    setVoiceTesting(false);
-                    setVoiceTestAudio(null);
-                  };
-                  setVoiceTestAudio(audio);
-                  audio.play().catch(() => {
-                    setVoiceTesting(false);
-                    setVoiceTestAudio(null);
-                  });
-                }
-              }}
-              aria-label={voiceTesting ? "Stop voice preview" : "Preview voice"}
-              disabled={!activeVoicePreset || voiceLoading}
-            >
-              {voiceTesting ? (
-                <VolumeX className="h-3.5 w-3.5" />
-              ) : (
-                <Volume2 className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div className="flex flex-col gap-2">
         <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
           {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
@@ -283,26 +143,6 @@ export function CharacterIdentityPanel({
           })}
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
-          }
-          className="w-full resize-y min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-          {t("charactereditor.SystemPrompt", {
-            defaultValue: "Things I Should Always Remember",
-          })}
-        </span>
-        <Textarea
-          value={d.system ?? ""}
-          rows={8}
-          maxLength={100000}
-          placeholder={t("charactereditor.SystemPromptPlaceholder", {
-            defaultValue: "Write in first person...",
-          })}
-          onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-            handleFieldEdit("system", e.target.value)
           }
           className="w-full resize-y min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
@@ -483,11 +323,11 @@ export function CharacterStylePanel({
                   title={t("charactereditor.AddStyleRule", {
                     defaultValue: "Add style rule",
                   })}
+                  aria-label={t("charactereditor.AddStyleRule", {
+                    defaultValue: "Add style rule",
+                  })}
                 >
                   <PlusIconSvg />
-                  {t("charactereditor.AddInline", {
-                    defaultValue: "add",
-                  })}
                 </button>
               </div>
             </div>
@@ -565,7 +405,7 @@ export function CharacterExamplesPanel({
               <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  className={inlineAddBtn}
                   onClick={() => {
                     const agentName =
                       typeof d.name === "string" && d.name.trim()
@@ -582,25 +422,29 @@ export function CharacterExamplesPanel({
                     updated[ci] = convoClone;
                     handleFieldEdit("messageExamples", updated);
                   }}
-                >
-                  +{" "}
-                  {t("charactereditor.AddTurn", {
-                    defaultValue: "turn",
+                  title={t("charactereditor.AddTurn", {
+                    defaultValue: "Add turn",
                   })}
+                  aria-label={t("charactereditor.AddTurn", {
+                    defaultValue: "Add turn",
+                  })}
+                >
+                  <PlusIconSvg />
                 </button>
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
+                  className={inlineIconBtn}
                   onClick={() => {
                     const updated = [...normalizedMessageExamples];
                     updated.splice(ci, 1);
                     handleFieldEdit("messageExamples", updated);
                   }}
+                  title={t("charactereditor.RemoveExample", {
+                    defaultValue: "Remove conversation",
+                  })}
                   aria-label={`${t("common.remove")} conversation ${ci + 1}`}
                 >
-                  {t("charactereditor.RemoveExample", {
-                    defaultValue: "remove",
-                  })}
+                  <TrashIconSvg />
                 </button>
               </div>
             </div>
@@ -635,11 +479,11 @@ export function CharacterExamplesPanel({
           title={t("charactereditor.AddConversation", {
             defaultValue: "Add conversation",
           })}
+          aria-label={t("charactereditor.AddConversation", {
+            defaultValue: "Add conversation",
+          })}
         >
           <PlusIconSvg />
-          {t("charactereditor.ConversationLabel", {
-            defaultValue: "conversation",
-          })}
         </button>
       </section>
 
@@ -734,11 +578,11 @@ export function CharacterExamplesPanel({
             title={t("charactereditor.AddPost", {
               defaultValue: "Add Post",
             })}
+            aria-label={t("charactereditor.AddPost", {
+              defaultValue: "Add Post",
+            })}
           >
             <PlusIconSvg />
-            {t("charactereditor.PostLabel", {
-              defaultValue: "post",
-            })}
           </button>
         </div>
       </section>

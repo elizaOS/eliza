@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/scripts/ensure-wasm-tools.sh"
+
 TARGET="${1:-chrome}"
 FEATURES="--no-default-features --features wasm"
 

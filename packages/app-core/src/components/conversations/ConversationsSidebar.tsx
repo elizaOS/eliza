@@ -6,7 +6,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   getChatSourceMeta,
-  Sidebar,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarPanel,
@@ -15,10 +14,7 @@ import {
   TooltipProvider,
 } from "@elizaos/ui";
 import {
-  ChevronDown,
-  ChevronRight,
   MessagesSquare,
-  PanelLeftClose,
   Plus,
   Settings2,
   Terminal as TerminalIcon,
@@ -38,6 +34,8 @@ import {
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { getBrandIcon } from "./brand-icons";
 import { ConversationRenameDialog } from "./ConversationRenameDialog";
 import {
@@ -263,7 +261,9 @@ export function ConversationsSidebar({
           const { messages } = await client.getConversationMessages(
             conversation.id,
           );
-          const hasUserTurn = messages.some((message) => message.role === "user");
+          const hasUserTurn = messages.some(
+            (message) => message.role === "user",
+          );
           return hasUserTurn ? null : conversation.id;
         } catch {
           return null;
@@ -633,56 +633,32 @@ export function ConversationsSidebar({
 
   const showNewChatAction = tab === "chat";
   const showNewTerminalAction = tab === "chat";
-  const manageConnectionsButton = (
-    <div className="flex w-full items-center justify-between">
-      {!mobile && !isGameModal ? (
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed(true)}
-          aria-label={t("conversations.closePanel", {
-            defaultValue: "Collapse sidebar",
-          })}
-          data-testid="chat-sidebar-collapse-inline"
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
-        >
-          <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
-        </button>
-      ) : (
-        <span className="h-6 w-6" />
-      )}
-      {(() => {
-        const channelsLabel = t("conversations.channels", {
-          defaultValue: "Channels",
-        });
-        const manageLabel = t("conversations.manageConnections", {
-          defaultValue: "Manage",
-        });
-        const toggleLabel = isManageConnectionsActive
-          ? channelsLabel
-          : manageLabel;
-        const ToggleIcon = isManageConnectionsActive
-          ? MessagesSquare
-          : Settings2;
-        return (
-          <button
-            type="button"
-            data-testid="chat-sidebar-manage-toggle"
-            aria-pressed={isManageConnectionsActive}
-            aria-label={toggleLabel}
-            title={toggleLabel}
-            onClick={handleManageConnections}
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent transition-colors ${
-              isManageConnectionsActive
-                ? "text-txt"
-                : "text-muted hover:text-txt"
-            }`}
-          >
-            <ToggleIcon className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        );
-      })()}
-    </div>
-  );
+  const manageConnectionsButton = (() => {
+    const channelsLabel = t("conversations.channels", {
+      defaultValue: "Channels",
+    });
+    const manageLabel = t("conversations.manageConnections", {
+      defaultValue: "Manage",
+    });
+    const toggleLabel = isManageConnectionsActive ? channelsLabel : manageLabel;
+    const ToggleIcon = isManageConnectionsActive ? MessagesSquare : Settings2;
+    return (
+      <button
+        type="button"
+        data-testid="chat-sidebar-manage-toggle"
+        aria-pressed={isManageConnectionsActive}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        onClick={handleManageConnections}
+        className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-2 text-[11px] leading-none font-medium whitespace-nowrap transition-colors ${
+          isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
+        }`}
+      >
+        <ToggleIcon className="h-3.5 w-3.5" aria-hidden />
+        <span>{toggleLabel}</span>
+      </button>
+    );
+  })();
 
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
@@ -750,7 +726,7 @@ export function ConversationsSidebar({
         ) : null}
       </DropdownMenu>
 
-      <Sidebar
+      <AppPageSidebar
         testId="conversations-sidebar"
         variant={mobile ? "mobile" : isGameModal ? "game-modal" : "default"}
         collapsible={!mobile && !isGameModal}
@@ -767,34 +743,12 @@ export function ConversationsSidebar({
         contentIdentity={
           mobile ? "chat-mobile" : isGameModal ? "chat-modal" : "chat"
         }
-        className={
-          !mobile && !isGameModal
-            ? "!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
-            : undefined
-        }
         collapseButtonTestId="chat-sidebar-collapse-toggle"
         expandButtonTestId="chat-sidebar-expand-toggle"
         collapseButtonAriaLabel={t("conversations.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
-        header={undefined}
-        headerClassName={
-          // Hide the sidebar's built-in expanded-mode header row so our
-          // first section (Messages) shares its row with the collapse
-          // button rendered inside the section itself.
-          !mobile && !isGameModal
-            ? "!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-            : undefined
-        }
-        collapseButtonClassName={
-          !mobile && !isGameModal
-            ? "!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
-            : undefined
-        }
-        footer={!mobile && !isGameModal ? manageConnectionsButton : undefined}
-        footerClassName={
-          !mobile && !isGameModal
-            ? "!pl-2 !pr-2 !pt-1.5 !pb-2 !justify-stretch"
-            : undefined
+        bottomAction={
+          !mobile && !isGameModal ? manageConnectionsButton : undefined
         }
         collapsedRailAction={
           showNewTerminalAction ? (
@@ -1025,7 +979,7 @@ export function ConversationsSidebar({
             )}
           </SidebarPanel>
         </SidebarScrollRegion>
-      </Sidebar>
+      </AppPageSidebar>
     </TooltipProvider>
   );
 }
@@ -1091,131 +1045,82 @@ function CollapsibleChannelSection({
   onRequestRename,
   onSelectRow,
 }: CollapsibleChannelSectionProps) {
-  const Chevron = collapsed ? ChevronRight : ChevronDown;
-  // Chevron + add button are always present on mobile/touch; on desktop
-  // they fade in on header hover to keep the rail quiet by default.
-  const hoverHideClass = mobile
-    ? ""
-    : " opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100";
   return (
-    <section
-      data-testid={`channel-section-${sectionKey}`}
-      className="group/section space-y-0"
+    <CollapsibleSidebarSection
+      sectionKey={sectionKey}
+      label={label}
+      icon={icon}
+      indicator={indicator}
+      collapsed={collapsed}
+      onToggleCollapsed={onToggleCollapsed}
+      onAdd={onAdd}
+      addLabel={addLabel}
+      emptyLabel={emptyLabel}
+      emptyClassName="pl-7 pr-3 py-1 text-2xs text-muted"
+      bodyClassName="space-y-0 pl-4"
+      hoverActionsOnDesktop={!mobile}
+      testIdPrefix="channel-section"
     >
-      <div className="flex items-center gap-1 pr-1">
-        <button
-          type="button"
-          onClick={() => onToggleCollapsed(sectionKey)}
-          aria-expanded={!collapsed}
-          aria-controls={`channel-section-body-${sectionKey}`}
-          data-testid={`channel-section-toggle-${sectionKey}`}
-          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
-        >
-          {icon ? (
-            <span className="inline-flex shrink-0 items-center justify-center text-muted">
-              {icon}
-            </span>
-          ) : null}
-          <span className="truncate">{label}</span>
-          {indicator ? (
-            <span className="ml-0.5 inline-flex shrink-0 items-center">
-              {indicator}
-            </span>
-          ) : null}
-          <Chevron
-            aria-hidden
-            className={`ml-0.5 h-3 w-3 shrink-0 text-muted${hoverHideClass}`}
+      {rows.map((row) => {
+        const conversationId = rowListId(row);
+        return (
+          <ChatConversationItem
+            key={conversationId}
+            conversation={{
+              id: conversationId,
+              ...(row.source ? { source: row.source } : {}),
+              title: row.title,
+              updatedAtLabel: row.updatedAtLabel,
+            }}
+            deleting={deletingId === row.id}
+            isActive={conversationId === activeListId}
+            isConfirmingDelete={
+              row.kind === "conversation" &&
+              !isTerminalRow(row) &&
+              confirmDeleteId === row.id
+            }
+            isUnread={
+              row.kind === "conversation" &&
+              !isTerminalRow(row) &&
+              unreadConversations.has(row.id)
+            }
+            labels={{
+              actions: t("conversations.actions", {
+                defaultValue: "More actions",
+              }),
+              delete: t("conversations.delete"),
+              deleteConfirm: t("conversations.deleteConfirm"),
+              deleteNo: t("conversations.deleteNo"),
+              deleteYes: t("conversations.deleteYes"),
+              rename: t("conversations.rename"),
+            }}
+            mobile={mobile}
+            onCancelDelete={onCancelDelete}
+            onConfirmDelete={() => {
+              if (row.kind === "inbox" || isTerminalRow(row)) return;
+              void onConfirmDelete(row.id);
+            }}
+            onOpenActions={(event) => {
+              if (row.kind === "inbox" || isTerminalRow(row)) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
+              onOpenActions(event, { id: row.id, title: row.title });
+            }}
+            onRequestDeleteConfirm={() => {
+              if (row.kind === "inbox" || isTerminalRow(row)) return;
+              onRequestDeleteConfirm(row);
+            }}
+            onRequestRename={() => {
+              if (row.kind === "inbox" || isTerminalRow(row)) return;
+              onRequestRename(row);
+            }}
+            onSelect={() => onSelectRow(row)}
+            variant={variant}
           />
-        </button>
-        {onAdd ? (
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={addLabel ?? "Add"}
-            title={addLabel}
-            data-testid={`channel-section-add-${sectionKey}`}
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt${hoverHideClass}`}
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        ) : null}
-      </div>
-      {collapsed ? null : rows.length === 0 ? (
-        emptyLabel ? (
-          <div
-            id={`channel-section-body-${sectionKey}`}
-            className="pl-8 pr-3 py-1 text-2xs text-muted"
-          >
-            {emptyLabel}
-          </div>
-        ) : null
-      ) : (
-        <div
-          id={`channel-section-body-${sectionKey}`}
-          className="space-y-0 pl-5"
-        >
-          {rows.map((row) => {
-            const conversationId = rowListId(row);
-            return (
-              <ChatConversationItem
-                key={conversationId}
-                conversation={{
-                  id: conversationId,
-                  ...(row.source ? { source: row.source } : {}),
-                  title: row.title,
-                  updatedAtLabel: row.updatedAtLabel,
-                }}
-                deleting={deletingId === row.id}
-                isActive={conversationId === activeListId}
-                isConfirmingDelete={
-                  row.kind === "conversation" &&
-                  !isTerminalRow(row) &&
-                  confirmDeleteId === row.id
-                }
-                isUnread={
-                  row.kind === "conversation" &&
-                  !isTerminalRow(row) &&
-                  unreadConversations.has(row.id)
-                }
-                labels={{
-                  actions: t("conversations.actions", {
-                    defaultValue: "More actions",
-                  }),
-                  delete: t("conversations.delete"),
-                  deleteConfirm: t("conversations.deleteConfirm"),
-                  deleteNo: t("conversations.deleteNo"),
-                  deleteYes: t("conversations.deleteYes"),
-                  rename: t("conversations.rename"),
-                }}
-                mobile={mobile}
-                onCancelDelete={onCancelDelete}
-                onConfirmDelete={() => {
-                  if (row.kind === "inbox" || isTerminalRow(row)) return;
-                  void onConfirmDelete(row.id);
-                }}
-                onOpenActions={(event) => {
-                  if (row.kind === "inbox" || isTerminalRow(row)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    return;
-                  }
-                  onOpenActions(event, { id: row.id, title: row.title });
-                }}
-                onRequestDeleteConfirm={() => {
-                  if (row.kind === "inbox" || isTerminalRow(row)) return;
-                  onRequestDeleteConfirm(row);
-                }}
-                onRequestRename={() => {
-                  if (row.kind === "inbox" || isTerminalRow(row)) return;
-                  onRequestRename(row);
-                }}
-                onSelect={() => onSelectRow(row)}
-                variant={variant}
-              />
-            );
-          })}
-        </div>
-      )}
-    </section>
+        );
+      })}
+    </CollapsibleSidebarSection>
   );
 }

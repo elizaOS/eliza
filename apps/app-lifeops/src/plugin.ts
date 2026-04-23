@@ -26,9 +26,7 @@ import { crossChannelSendAction } from "./actions/cross-channel-send.js";
 import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
-// paymentsAction is WIP and introduces a module-load cycle through the
-// payments service mixin; wire it in lazily once the cycle is broken.
-// import { paymentsAction } from "./actions/payments.js";
+import { paymentsAction } from "./actions/payments.js";
 import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
@@ -248,7 +246,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     healthAction,
     subscriptionsAction,
     emailUnsubscribeAction,
-    // paymentsAction, // re-enable once the payments mixin cycle is resolved
+    paymentsAction,
     chatThreadControlAction,
   ],
   providers: [

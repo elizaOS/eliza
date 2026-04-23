@@ -46,6 +46,7 @@ export interface EventEditorDrawerProps {
   onClose: () => void;
   onSaved?: (event: LifeOpsCalendarEvent) => void;
   onDeleted?: (eventId: string) => void;
+  onChat?: (event: LifeOpsCalendarEvent) => void;
 }
 
 export function EventEditorDrawer({
@@ -54,6 +55,7 @@ export function EventEditorDrawer({
   onClose,
   onSaved,
   onDeleted,
+  onChat,
 }: EventEditorDrawerProps) {
   const { setActionNotice, t } = useApp();
   const [title, setTitle] = useState("");
@@ -315,16 +317,28 @@ export function EventEditorDrawer({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
-            <Button
-              variant="surfaceDestructive"
-              size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={deleting || saving}
-              onClick={() => setConfirmDeleteOpen(true)}
-            >
-              {t("common.delete", { defaultValue: "Delete" })}
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {onChat ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+                  onClick={() => onChat(event)}
+                >
+                  {t("common.chat", { defaultValue: "Chat" })}
+                </Button>
+              ) : null}
+              <Button
+                variant="surfaceDestructive"
+                size="sm"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={deleting || saving}
+                onClick={() => setConfirmDeleteOpen(true)}
+              >
+                {t("common.delete", { defaultValue: "Delete" })}
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"

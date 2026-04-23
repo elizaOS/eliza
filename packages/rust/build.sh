@@ -1,5 +1,8 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/scripts/ensure-wasm-tools.sh"
 
 echo "Building elizaOS Core Rust..."
 
@@ -7,29 +10,20 @@ echo "Building elizaOS Core Rust..."
 echo "Building native library..."
 cargo build --release
 
-# Build WASM for web (optional - may fail due to dependency incompatibilities)
+# Build WASM for web
 echo "Building WASM for web..."
-if wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm 2>&1; then
-  echo "✅ WASM web build succeeded"
-else
-  echo "⚠️  WASM web build failed (this is expected with some dependency configurations)"
-fi
+wasm-pack build --mode no-install --target web --out-dir pkg/web --no-default-features --features wasm
+echo "✅ WASM web build succeeded"
 
-# Build WASM for Node.js (optional - may fail due to dependency incompatibilities)
+# Build WASM for Node.js
 echo "Building WASM for Node.js..."
-if wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm 2>&1; then
-  echo "✅ WASM Node.js build succeeded"
-else
-  echo "⚠️  WASM Node.js build failed (this is expected with some dependency configurations)"
-fi
+wasm-pack build --mode no-install --target nodejs --out-dir pkg/node --no-default-features --features wasm
+echo "✅ WASM Node.js build succeeded"
 
-# Run tests (optional - may fail if WASM tests are included)
+# Run tests
 echo "Running tests..."
-if cargo test 2>&1; then
-  echo "✅ Tests passed"
-else
-  echo "⚠️  Some tests failed (may be expected if WASM features have issues)"
-fi
+cargo test
+echo "✅ Tests passed"
 
 echo "Build complete!"
 echo ""
@@ -37,4 +31,3 @@ echo "Outputs:"
 echo "  - Native: target/release/libelizaos.so (or .dylib on macOS, .dll on Windows)"
 echo "  - WASM Web: pkg/web/"
 echo "  - WASM Node.js: pkg/node/"
-

@@ -16,6 +16,7 @@
  * automatically. The Facts UI surfaces those as "I noticed conflicting info".
  */
 
+import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { logger } from "../../../logger.ts";
 import type {
@@ -279,7 +280,7 @@ async function applyAdd(
 }
 
 interface RuntimeDbExecutor {
-	execute: (query: { queryChunks: object[] }) => Promise<unknown>;
+	execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
 }
 
 async function getRuntimeDb(
@@ -313,9 +314,6 @@ async function recordFactCandidate(
 ): Promise<void> {
 	const db = await getRuntimeDb(runtime);
 	if (!db) return;
-	const drizzle = (await import("drizzle-orm")) as {
-		sql: { raw: (query: string) => { queryChunks: object[] } };
-	};
 	const evidence = {
 		reason: params.reason,
 		evidenceMessageId: params.evidenceMessageId,
@@ -333,7 +331,7 @@ async function recordFactCandidate(
 			${sqlJsonbLiteral(evidence)},
 			'pending'
 		)`;
-	await db.execute(drizzle.sql.raw(sqlText));
+	await db.execute(sql.raw(sqlText));
 }
 
 export const factRefinementEvaluator: Evaluator = {

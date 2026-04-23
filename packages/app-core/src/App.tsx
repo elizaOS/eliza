@@ -8,11 +8,9 @@ import {
   ArrowLeftRight,
   Layers3,
   MessagesSquare,
-  Sparkles,
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
-import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 import {
   Button,
   DrawerSheet,
@@ -22,7 +20,11 @@ import {
   ErrorBoundary,
 } from "@elizaos/ui";
 import {
+  type ComponentType,
+  type LazyExoticComponent,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -31,7 +33,6 @@ import {
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
-import { CharacterEditor } from "./components/character/CharacterEditor";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
@@ -39,30 +40,8 @@ import { ConversationsSidebar } from "./components/conversations/ConversationsSi
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
-import { AppsPageView } from "./components/pages/AppsPageView";
-import { AutomationsView } from "./components/pages/AutomationsView";
-import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 import { ChatView } from "./components/pages/ChatView";
-import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
-import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { InventoryView } from "./components/pages/InventoryView";
-import { LogsPageView } from "./components/pages/LogsPageView";
-import { MemoryViewerView } from "./components/pages/MemoryViewerView";
-import {
-  ContactsPageView,
-  MessagesPageView,
-  PhonePageView,
-} from "./components/pages/MiladyOsAppsView";
-import { PluginsPageView } from "./components/pages/PluginsPageView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
-import { RelationshipsView } from "./components/pages/RelationshipsView";
-import { RuntimeView } from "./components/pages/RuntimeView";
-import { SettingsView } from "./components/pages/SettingsView";
-import { SkillsView } from "./components/pages/SkillsView";
-import { StreamView } from "./components/pages/StreamView";
-import { TasksPageView } from "./components/pages/TasksPageView";
-import { TrajectoriesView } from "./components/pages/TrajectoriesView";
-import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
@@ -94,6 +73,131 @@ import type { FlaminaGuideTopic } from "./state/types";
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 
+type ExtractComponent<TValue> =
+  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
+function lazyNamedView<
+  TModule extends Record<string, unknown>,
+  TKey extends keyof TModule,
+>(
+  load: () => Promise<TModule>,
+  exportName: TKey,
+): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
+  return lazy(async () => {
+    const module = await load();
+    const component = module[exportName];
+    if (typeof component !== "function") {
+      throw new Error(`Missing component export: ${String(exportName)}`);
+    }
+    return {
+      default: component as ExtractComponent<TModule[TKey]>,
+    };
+  });
+}
+
+const CharacterEditor = lazyNamedView(
+  () => import("./components/character/CharacterEditor"),
+  "CharacterEditor",
+);
+const AppsPageView = lazyNamedView(
+  () => import("./components/pages/AppsPageView"),
+  "AppsPageView",
+);
+const AutomationsDesktopShell = lazyNamedView(
+  () => import("./components/pages/AutomationsView"),
+  "AutomationsDesktopShell",
+);
+const BrowserWorkspaceView = lazyNamedView(
+  () => import("./components/pages/BrowserWorkspaceView"),
+  "BrowserWorkspaceView",
+);
+const ConnectorsPageView = lazyNamedView(
+  () => import("./components/pages/ConnectorsPageView"),
+  "ConnectorsPageView",
+);
+const ContactsPageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "ContactsPageView",
+);
+const DatabasePageView = lazyNamedView(
+  () => import("./components/pages/DatabasePageView"),
+  "DatabasePageView",
+);
+const DesktopWorkspaceSection = lazyNamedView(
+  () => import("./components/settings/DesktopWorkspaceSection"),
+  "DesktopWorkspaceSection",
+);
+const FineTuningView = lazyNamedView(
+  () => import("./components/training/injected"),
+  "FineTuningView",
+);
+const InventoryView = lazyNamedView(
+  () => import("./components/pages/InventoryView"),
+  "InventoryView",
+);
+const LogsPageView = lazyNamedView(
+  () => import("./components/pages/LogsPageView"),
+  "LogsPageView",
+);
+const MemoryViewerView = lazyNamedView(
+  () => import("./components/pages/MemoryViewerView"),
+  "MemoryViewerView",
+);
+const MessagesPageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "MessagesPageView",
+);
+const PhonePageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "PhonePageView",
+);
+const PluginsPageView = lazyNamedView(
+  () => import("./components/pages/PluginsPageView"),
+  "PluginsPageView",
+);
+const RelationshipsView = lazyNamedView(
+  () => import("./components/pages/RelationshipsView"),
+  "RelationshipsView",
+);
+const RuntimeView = lazyNamedView(
+  () => import("./components/pages/RuntimeView"),
+  "RuntimeView",
+);
+const SettingsView = lazyNamedView(
+  () => import("./components/pages/SettingsView"),
+  "SettingsView",
+);
+const SkillsView = lazyNamedView(
+  () => import("./components/pages/SkillsView"),
+  "SkillsView",
+);
+const StreamView = lazyNamedView(
+  () => import("./components/pages/StreamView"),
+  "StreamView",
+);
+const TasksPageView = lazyNamedView(
+  () => import("./components/pages/TasksPageView"),
+  "TasksPageView",
+);
+const TrajectoriesView = lazyNamedView(
+  () => import("./components/pages/TrajectoriesView"),
+  "TrajectoriesView",
+);
+
+function LazyViewBoundary({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+          Loading…
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
+
 function prefillWalletChat(text: string): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
@@ -111,11 +215,11 @@ function WalletChatGuideBody() {
     },
     {
       icon: Layers3,
-      label: "Inspect tokens, NFTs, LPs, and agent trades",
+      label: "Inspect tokens, NFTs, LPs, and activity",
     },
     {
-      icon: Sparkles,
-      label: "Connect Vincent for Hyperliquid or Polymarket",
+      icon: MessagesSquare,
+      label: "Ask how the agent can use this wallet",
     },
   ];
 
@@ -154,12 +258,6 @@ function WalletChatGuideActions() {
         "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
       icon: ArrowDownLeft,
     },
-    {
-      label: "Vincent",
-      prompt:
-        "Check whether Vincent is connected for Hyperliquid and Polymarket. If it is not connected, help me connect it before any trading action.",
-      icon: Sparkles,
-    },
   ];
 
   return (
@@ -185,7 +283,7 @@ function buildWalletPageScopedChatPaneProps(): NonNullable<
 > {
   return {
     persistentIntro: true,
-    placeholderOverride: "Ask about swaps, bridges, positions, or Vincent",
+    placeholderOverride: "Ask about how the agent can use a wallet",
     introOverride: {
       title: "Wallet agent",
       body: <WalletChatGuideBody />,
@@ -348,11 +446,7 @@ function ViewRouter({
         );
       case "automations":
       case "triggers":
-        return (
-          <TabContentView chatScope="page-automations">
-            <AutomationsView />
-          </TabContentView>
-        );
+        return <AutomationsDesktopShell />;
       case "voice":
         return (
           <TabContentView>
@@ -431,7 +525,11 @@ function ViewRouter({
     }
   })();
 
-  return <ErrorBoundary>{view}</ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <LazyViewBoundary>{view}</LazyViewBoundary>
+    </ErrorBoundary>
+  );
 }
 
 export function App() {
@@ -722,7 +820,9 @@ export function App() {
         >
           <Header />
           <main className="flex-1 min-h-0 overflow-hidden">
-            <StreamView />
+            <LazyViewBoundary>
+              <StreamView />
+            </LazyViewBoundary>
           </main>
         </div>
       ) : isChatWorkspace ? (
@@ -770,7 +870,9 @@ export function App() {
                       <ChatView />
                     </>
                   ) : (
-                    <ConnectorsPageView />
+                    <LazyViewBoundary>
+                      <ConnectorsPageView />
+                    </LazyViewBoundary>
                   )}
                 </div>
 
@@ -811,7 +913,9 @@ export function App() {
                       <ChatView key="chat-view-desktop" />
                     </>
                   ) : (
-                    <ConnectorsPageView />
+                    <LazyViewBoundary>
+                      <ConnectorsPageView />
+                    </LazyViewBoundary>
                   )}
                 </div>
                 {isChat ? (
@@ -841,15 +945,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <AppWorkspaceChrome
-            testId="automations-workspace"
-            chatScope="page-automations"
-            main={
-              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                <AutomationsView key="automations-view-desktop" />
-              </div>
-            }
-          />
+          <LazyViewBoundary>
+            <AutomationsDesktopShell key="automations-view-desktop" />
+          </LazyViewBoundary>
         </div>
       ) : isSettingsPage ? (
         <div
@@ -862,22 +960,24 @@ export function App() {
             chatScope="page-settings"
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                <SettingsView
-                  key={
-                    tab === "voice"
-                      ? "settings-media"
-                      : tab === "connectors"
-                        ? "settings-connectors"
-                        : "settings-root"
-                  }
-                  initialSection={
-                    tab === "voice"
-                      ? "media"
-                      : tab === "connectors"
-                        ? "connectors"
-                        : (settingsInitialSection ?? undefined)
-                  }
-                />
+                <LazyViewBoundary>
+                  <SettingsView
+                    key={
+                      tab === "voice"
+                        ? "settings-media"
+                        : tab === "connectors"
+                          ? "settings-connectors"
+                          : "settings-root"
+                    }
+                    initialSection={
+                      tab === "voice"
+                        ? "media"
+                        : tab === "connectors"
+                          ? "connectors"
+                          : (settingsInitialSection ?? undefined)
+                    }
+                  />
+                </LazyViewBoundary>
               </div>
             }
           />
@@ -894,7 +994,9 @@ export function App() {
             pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                <InventoryView />
+                <LazyViewBoundary>
+                  <InventoryView />
+                </LazyViewBoundary>
               </div>
             }
           />
@@ -928,7 +1030,9 @@ export function App() {
         >
           <Header />
           <div className="flex flex-1 min-h-0 min-w-0">
-            <DesktopWorkspaceSection />
+            <LazyViewBoundary>
+              <DesktopWorkspaceSection />
+            </LazyViewBoundary>
           </div>
         </div>
       ) : (
@@ -987,7 +1091,9 @@ export function App() {
   if (isPopout) {
     return (
       <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
-        <StreamView />
+        <LazyViewBoundary>
+          <StreamView />
+        </LazyViewBoundary>
       </div>
     );
   }

@@ -3,6 +3,7 @@ export interface RelationshipsGraphQuery {
   platform?: string;
   limit?: number;
   offset?: number;
+  scope?: "all" | "relevant";
 }
 
 export interface RelationshipsIdentityHandle {
@@ -62,6 +63,33 @@ export interface RelationshipsPersonFact {
   lastReinforced?: string;
   /** Message IDs that contributed evidence to this fact. */
   evidenceMessageIds?: string[];
+  provenance?: RelationshipsFactProvenance;
+  extractedInformation?: RelationshipsFactExtractedInformation;
+}
+
+export interface RelationshipsFactProvenance {
+  source?: string;
+  evaluatorName?: string;
+  sourceTrajectoryId?: string;
+  lastReinforced?: string;
+  evidenceMessageIds: string[];
+}
+
+export interface RelationshipsFactExtractedInformation {
+  scope?: string;
+  raw?: Record<string, unknown>;
+}
+
+export interface RelationshipsRelevantMemory {
+  id: string;
+  sourceType: "message";
+  entityId?: string;
+  roomId?: string;
+  roomName: string | null;
+  speaker: string;
+  text: string;
+  createdAt?: string;
+  source?: string | null;
 }
 
 export interface RelationshipsConversationMessage {
@@ -104,8 +132,20 @@ export interface RelationshipsIdentityEdge {
 export interface RelationshipsPersonDetail extends RelationshipsPersonSummary {
   facts: RelationshipsPersonFact[];
   recentConversations: RelationshipsConversationSnippet[];
+  relevantMemories: RelationshipsRelevantMemory[];
   relationships: RelationshipsGraphEdge[];
   identityEdges: RelationshipsIdentityEdge[];
+  userPersonalityPreferences: RelationshipsUserPersonalityPreference[];
+}
+
+export interface RelationshipsUserPersonalityPreference {
+  id: string;
+  entityId: string;
+  text: string;
+  category?: string;
+  originalRequest?: string;
+  source?: string | null;
+  createdAt?: string;
 }
 
 export interface RelationshipsGraphStats {

@@ -589,6 +589,14 @@ export function ChatView({
     </>
   );
 
+  const defaultComposerLaneClassName =
+    "mx-auto w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 xl:px-10";
+  const defaultComposerShellClassName = `${defaultComposerLaneClassName} pt-1.5`;
+  const defaultComposerShellStyle = {
+    paddingBottom:
+      "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
+  } as const;
+
   const composerNode = isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -642,7 +650,8 @@ export function ChatView({
   ) : (
     <ChatComposerShell
       variant="default"
-      className="px-3 sm:px-4 xl:px-5"
+      className={defaultComposerShellClassName}
+      style={defaultComposerShellStyle}
       before={<CodingAgentControlChip />}
     >
       <ChatComposer
@@ -716,7 +725,9 @@ export function ChatView({
       composerHeight={composerHeight}
       imageDragOver={imageDragOver}
       messagesRef={messagesRef}
-      footerStack={auxiliaryNode}
+      footerStack={
+        <div className={defaultComposerLaneClassName}>{auxiliaryNode}</div>
+      }
       composer={composerNode}
       onDragOver={(event) => {
         event.preventDefault();

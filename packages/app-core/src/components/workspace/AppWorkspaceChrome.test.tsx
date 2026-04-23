@@ -29,9 +29,7 @@ vi.mock("../pages/PageScopedChatPane.js", () => ({
     <div data-testid="page-scoped-chat">
       <span>{scope}</span>
       {footerActions ? (
-        <div data-testid="page-scoped-chat-footer-actions">
-          {footerActions}
-        </div>
+        <div data-testid="page-scoped-chat-footer-actions">{footerActions}</div>
       ) : null}
     </div>
   ),
@@ -90,13 +88,30 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
       "page-apps",
     );
-    expect(screen.queryByTestId("apps-shell-chat-collapse")).toBeNull();
+    expect(screen.queryByTestId("page-scoped-chat-footer-actions")).toBeNull();
+    const collapseButton = screen.getByTestId("apps-shell-chat-collapse");
+    expect(collapseButton.className).toContain("bottom-2");
+    expect(collapseButton.className).toContain("right-2");
+    expect(collapseButton.className).toContain("h-6");
+    expect(collapseButton.className).toContain("w-6");
+    expect(collapseButton.className).toContain("bg-transparent");
+    expect(collapseButton.className).not.toContain("bg-card/85");
+    expect(collapseButton.className).not.toContain("shadow-md");
+    expect(collapseButton.className).not.toContain("border-border/40");
 
-    fireEvent.click(screen.getByTestId("apps-shell-chat-collapse-inline"));
+    fireEvent.click(collapseButton);
 
     const collapsedSidebar = screen.getByTestId("apps-shell-chat-sidebar");
     expect(collapsedSidebar.getAttribute("data-collapsed")).not.toBeNull();
-    expect(screen.getByTestId("apps-shell-chat-expand")).toBeTruthy();
+    const expandButton = screen.getByTestId("apps-shell-chat-expand");
+    expect(expandButton.className).toContain("bottom-2");
+    expect(expandButton.className).toContain("right-2");
+    expect(expandButton.className).toContain("h-6");
+    expect(expandButton.className).toContain("w-6");
+    expect(expandButton.className).toContain("bg-transparent");
+    expect(expandButton.className).not.toContain("bg-card/85");
+    expect(expandButton.className).not.toContain("shadow-md");
+    expect(expandButton.className).not.toContain("border-border/40");
   });
 
   it("does not reserve right-chat width on mobile until the user opens it", () => {
@@ -125,6 +140,41 @@ describe("AppWorkspaceChrome", () => {
     expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
     expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
+  });
+
+  it("lets main-pane content open chat through the workspace chrome context", () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function OpenChatFromMain() {
+      const chatChrome = useAppWorkspaceChatChrome();
+
+      return (
+        <button
+          type="button"
+          data-testid="main-open-chat"
+          onClick={() => chatChrome?.openChat()}
+        >
+          Open chat
+        </button>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        testId="main-chat-shell"
+        main={<OpenChatFromMain />}
+        chat={<div data-testid="main-chat">Chat content</div>}
+      />,
+    );
+
+    expect(screen.queryByTestId("main-chat")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("main-open-chat"));
+
+    expect(screen.getByTestId("main-chat")).toBeTruthy();
+    expect(screen.getByTestId("main-chat-shell-chat-backdrop")).toBeTruthy();
   });
 
   it("lets chat content own the collapse control row", () => {

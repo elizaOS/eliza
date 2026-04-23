@@ -33,18 +33,18 @@ export function WidgetSection({
           <button
             type="button"
             onClick={onTitleClick}
-            className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-1.5 py-1 text-left transition-colors hover:text-txt"
+            className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-0.5 py-1 text-left transition-colors hover:text-txt"
           >
             {titleContent}
           </button>
         ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-0.5 py-1">
             {titleContent}
           </div>
         )}
         {action}
       </div>
-      <div className="text-xs">{children}</div>
+      <div className="px-3 text-xs">{children}</div>
     </section>
   );
 }

@@ -1,9 +1,6 @@
 import { client } from "@elizaos/app-core/api";
 import type { TriggerSummary } from "@elizaos/app-core/api/client";
-import {
-  EmptyWidgetState,
-  WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
+import { WidgetSection } from "@elizaos/app-core/components/chat/widgets/shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
@@ -182,6 +179,9 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
   );
 
   if (!showCalendar) return null;
+  // Hide the widget entirely when there is nothing to show — the right rail
+  // stays quiet. The user can still open /lifeops to diagnose why.
+  if (events.length === 0) return null;
 
   const openLifeOps = () => {
     writeHash(
@@ -211,35 +211,27 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
       testId="chat-widget-lifeops-calendar"
       onTitleClick={openLifeOps}
     >
-      {events.length === 0 ? (
-        <div className="px-0.5 py-1 text-2xs text-muted">
-          {t("lifeopschannels.calendar.empty", {
-            defaultValue: "Nothing this week",
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col">
-          {events.slice(0, CALENDAR_ROW_LIMIT).map((event) => {
-            const when = formatShortTime(event.startAt, timeZone);
-            return (
-              <button
-                key={event.id}
-                type="button"
-                onClick={() => openEventRow(event)}
-                data-testid={`lifeops-calendar-row-${event.id}`}
-                className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
-              >
-                <span className="min-w-0 flex-1 truncate text-txt">
-                  {event.title}
-                </span>
-                {when ? (
-                  <span className="shrink-0 text-3xs text-muted">{when}</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="flex flex-col">
+        {events.slice(0, CALENDAR_ROW_LIMIT).map((event) => {
+          const when = formatShortTime(event.startAt, timeZone);
+          return (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() => openEventRow(event)}
+              data-testid={`lifeops-calendar-row-${event.id}`}
+              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
+            >
+              <span className="min-w-0 flex-1 truncate text-txt">
+                {event.title}
+              </span>
+              {when ? (
+                <span className="shrink-0 text-3xs text-muted">{when}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </WidgetSection>
   );
 }
@@ -343,7 +335,6 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
     [],
   );
   const [triggers, setTriggers] = useState<TriggerSummary[]>([]);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,7 +343,6 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
         const response = await client.getTriggers();
         if (cancelled) return;
         setTriggers(response.triggers ?? []);
-        setLoaded(true);
       } catch {
         // Transient errors preserve the last snapshot; next tick retries.
       }
@@ -405,25 +395,10 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
     [setTab],
   );
 
-  if (loaded && upcoming.length === 0) {
-    return (
-      <WidgetSection
-        title={t("lifeopschannels.automations.title", {
-          defaultValue: "Automations",
-        })}
-        icon={<Clock className="h-4 w-4" />}
-        testId="chat-widget-lifeops-automations"
-        onTitleClick={openAutomationsPage}
-      >
-        <EmptyWidgetState
-          icon={<Clock className="h-4 w-4" />}
-          title={t("lifeopschannels.automations.empty", {
-            defaultValue: "No upcoming automations",
-          })}
-        />
-      </WidgetSection>
-    );
-  }
+  // Hide the widget entirely when there are no upcoming automations — the
+  // right rail stays quiet. While the initial load is in flight we still
+  // render nothing (returning `null`) to avoid a flash of empty chrome.
+  if (upcoming.length === 0) return null;
 
   return (
     <WidgetSection

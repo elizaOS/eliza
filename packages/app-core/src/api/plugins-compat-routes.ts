@@ -12,6 +12,11 @@ import {
   readBundledPluginPackageMetadata,
 } from "@elizaos/agent/api/server";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  type AdvancedCapabilityPluginId,
+  isAdvancedCapabilityPluginId,
+  resolveAdvancedCapabilitiesEnabled,
+} from "@elizaos/agent/runtime/advanced-capabilities-config";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared/type-guards";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
@@ -170,6 +175,14 @@ const CAPABILITY_FEATURE_IDS = new Set([
   "computeruse",
   "coding-agent",
 ]);
+
+const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
+  Record<AdvancedCapabilityPluginId, string>
+> = {
+  experience: "EXPERIENCE",
+  form: "FORM",
+  personality: "CHARACTER_MANAGEMENT",
+};
 
 // Key prefixes that contain wallet private keys or other high-value secrets
 // require the hardened sensitive-route auth (loopback + elevated checks).
@@ -920,6 +933,29 @@ function isPluginLoaded(
   return false;
 }
 
+export function resolveAdvancedCapabilityCompatStatus(
+  pluginId: string,
+  config: ReturnType<typeof loadElizaConfig>,
+  runtime: Pick<AgentRuntime, "getService"> | null,
+): { enabled: boolean; isActive: boolean } | null {
+  if (!isAdvancedCapabilityPluginId(pluginId)) {
+    return null;
+  }
+
+  const enabled = resolveAdvancedCapabilitiesEnabled(config);
+  if (!enabled) {
+    return { enabled: false, isActive: false };
+  }
+
+  const serviceType = ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID[pluginId];
+  return {
+    enabled: true,
+    isActive: serviceType
+      ? Boolean(runtime?.getService(serviceType))
+      : Boolean(runtime),
+  };
+}
+
 export function buildPluginListResponse(runtime: AgentRuntime | null): {
   plugins: CompatPluginRecord[];
 } {
@@ -960,18 +996,26 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const parameters = buildPluginParamDefs(
       entry.pluginParameters ?? bundledMeta?.pluginParameters,
     );
-    const active = isPluginLoaded(pluginId, entry.npmName, loadedNames);
+    const advancedCapabilityStatus = resolveAdvancedCapabilityCompatStatus(
+      pluginId,
+      config,
+      runtime,
+    );
+    const active =
+      advancedCapabilityStatus?.isActive ??
+      isPluginLoaded(pluginId, entry.npmName, loadedNames);
     const enabled =
-      active ||
-      Boolean(
-        resolvePersistedPluginEnabled(
-          pluginId,
-          category,
-          entry.npmName,
-          configEntries,
-          configRecord,
-        ),
-      );
+      advancedCapabilityStatus?.enabled ??
+      (active ||
+        Boolean(
+          resolvePersistedPluginEnabled(
+            pluginId,
+            category,
+            entry.npmName,
+            configEntries,
+            configRecord,
+          ),
+        ));
     const validationErrors = parameters
       .filter((parameter) => parameter.required && !parameter.isSet)
       .map((parameter) => ({

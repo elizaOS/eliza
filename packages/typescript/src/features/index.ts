@@ -107,10 +107,13 @@ import {
 	onboardingSettingsProvider,
 	updateSettingsAction as onboardingUpdateSettingsAction,
 } from "./secrets/onboarding/index.ts";
+import { OnboardingService } from "./secrets/onboarding/service.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
 } from "./secrets/providers/index.ts";
+import { PluginActivatorService } from "./secrets/services/plugin-activator.ts";
+import { SecretsService } from "./secrets/services/secrets.ts";
 
 const secretsCapability = {
 	providers: [
@@ -129,27 +132,18 @@ const secretsCapability = {
 		{
 			serviceType: "SECRETS",
 			start: async (runtime: IAgentRuntime) => {
-				const { SecretsService } = await import(
-					"./secrets/services/secrets.ts"
-				);
 				return SecretsService.start(runtime);
 			},
 		} as unknown as ServiceClass,
 		{
 			serviceType: "PLUGIN_ACTIVATOR",
 			start: async (runtime: IAgentRuntime) => {
-				const { PluginActivatorService } = await import(
-					"./secrets/services/plugin-activator.ts"
-				);
 				return PluginActivatorService.start(runtime);
 			},
 		} as unknown as ServiceClass,
 		{
 			serviceType: "ONBOARDING",
 			start: async (runtime: IAgentRuntime) => {
-				const { OnboardingService } = await import(
-					"./secrets/onboarding/service.ts"
-				);
 				return OnboardingService.start(runtime);
 			},
 		} as unknown as ServiceClass,
@@ -159,9 +153,11 @@ const secretsCapability = {
 // ─── Plugin Manager ───────────────────────────────────────────────────────────
 
 import {
+	CoreManagerService,
 	coreStatusAction,
 	getPluginDetailsAction,
 	listEjectedPluginsAction,
+	PluginManagerService,
 	pluginConfigurationStatusProvider,
 	pluginStateProvider,
 	registryPluginsProvider,
@@ -184,18 +180,12 @@ const pluginManagerCapability = {
 		{
 			serviceType: "plugin_manager",
 			start: async (runtime: IAgentRuntime) => {
-				const { PluginManagerService } = await import(
-					"./plugin-manager/services/pluginManagerService.ts"
-				);
 				return PluginManagerService.start(runtime);
 			},
 		} as unknown as ServiceClass,
 		{
 			serviceType: "core_manager",
 			start: async (runtime: IAgentRuntime) => {
-				const { CoreManagerService } = await import(
-					"./plugin-manager/services/coreManagerService.ts"
-				);
 				return CoreManagerService.start(runtime);
 			},
 		} as unknown as ServiceClass,

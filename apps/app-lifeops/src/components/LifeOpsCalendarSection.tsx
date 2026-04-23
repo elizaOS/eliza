@@ -22,6 +22,7 @@ import {
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
@@ -840,6 +841,7 @@ export function LifeOpsCalendarSection(
   const { t } = useApp();
   const calendar = useCalendarWeek();
   const compactLayout = useMediaQuery("(max-width: 767px)");
+  const { chatAboutEvent } = useLifeOpsChatLauncher();
   const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
     null,
   );
@@ -1008,6 +1010,7 @@ export function LifeOpsCalendarSection(
       <EventEditorDrawer
         open={drawerEvent !== null}
         event={drawerEvent}
+        onChat={chatAboutEvent}
         onClose={() => setDrawerEvent(null)}
         onSaved={(updatedEvent) => {
           void calendar.refresh();

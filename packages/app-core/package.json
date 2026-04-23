@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.327",
+  "version": "2.0.0-alpha.334",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -150,6 +150,7 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

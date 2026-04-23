@@ -6,7 +6,6 @@ import {
   DropdownMenuTrigger,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -34,6 +33,7 @@ import {
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
@@ -315,8 +315,10 @@ export function TrajectoriesView({
   }, [onSelectTrajectory, setActionNotice, t]);
 
   const trajectoriesSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="trajectories-sidebar"
+      collapsible
+      contentIdentity="trajectories"
       aria-label={t("trajectoriesview.Entries", {
         defaultValue: "Entries",
       })}
@@ -515,7 +517,7 @@ export function TrajectoriesView({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

@@ -34,6 +34,12 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.js";
+
+import {
+  applyAdvancedCapabilitySettings,
+  resolveAdvancedCapabilitiesEnabled,
+} from "./advanced-capabilities-config.js";
+
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -2477,12 +2483,17 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
-  const settings = {
-    MEMORY_SUMMARY_MODEL_TYPE:
-      process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
-    MEMORY_REFLECTION_MODEL_TYPE:
-      process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
-  };
+  const advancedCapabilitiesEnabled =
+    resolveAdvancedCapabilitiesEnabled(config);
+  const settings = applyAdvancedCapabilitySettings(
+    {
+      MEMORY_SUMMARY_MODEL_TYPE:
+        process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
+      MEMORY_REFLECTION_MODEL_TYPE:
+        process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
+    },
+    advancedCapabilitiesEnabled,
+  );
 
   // Collect secrets from process.env (API keys the plugins need)
   const secretKeys = [
