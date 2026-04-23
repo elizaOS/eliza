@@ -164,7 +164,7 @@ describe("CheckinService", () => {
           updatedAt: "2026-04-22T14:00:00.000Z",
         },
       ],
-      getUnifiedInbox: async () => ({
+      getInbox: async () => ({
         messages: [
           {
             id: "discord:1",
@@ -249,7 +249,7 @@ describe("CheckinService", () => {
       "x_dms",
       "x_timeline",
       "x_mentions",
-      "unified_inbox",
+      "inbox",
       "gmail",
       "github",
       "calendar_changes",

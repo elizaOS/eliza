@@ -44,7 +44,7 @@ export type CheckinBriefingSectionKey =
   | "x_dms"
   | "x_timeline"
   | "x_mentions"
-  | "unified_inbox"
+  | "inbox"
   | "gmail"
   | "github"
   | "calendar_changes"

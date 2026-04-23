@@ -743,7 +743,7 @@ async function loadInboxDigest(
   runtime: IAgentRuntime,
 ): Promise<InboxDigestSlim | null> {
   try {
-    const inbox = await new LifeOpsService(runtime).getUnifiedInbox({ limit: 24 });
+    const inbox = await new LifeOpsService(runtime).getInbox({ limit: 24 });
     const unreadCount = Object.values(inbox.channelCounts).reduce(
       (sum, count) => sum + count.unread,
       0,
@@ -781,10 +781,10 @@ async function loadInboxDigest(
     logger.warn(
       {
         boundary: "activity_profile",
-        operation: "planner_unified_inbox",
+        operation: "planner_inbox",
         err: error instanceof Error ? error : undefined,
       },
-      `[proactive] Failed to read unified inbox for proactive digest: ${String(error)}`,
+      `[proactive] Failed to read inbox for proactive digest: ${String(error)}`,
     );
     return null;
   }

@@ -16,10 +16,10 @@ import {
 import type { InboundMessage } from "../inbox/types.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
-const DEFAULT_UNIFIED_INBOX_LIMIT = 100;
+const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 
-export function normalizeUnifiedInboxChannel(
+export function normalizeInboxChannel(
   source: string | null | undefined,
 ): LifeOpsInboxChannel | null {
   if (typeof source !== "string") return null;
@@ -30,6 +30,8 @@ export function normalizeUnifiedInboxChannel(
   }
   return null;
 }
+
+export const normalizeUnifiedInboxChannel = normalizeInboxChannel;
 
 function emptyChannelCounts(): Record<
   LifeOpsInboxChannel,
@@ -45,7 +47,7 @@ function emptyChannelCounts(): Record<
   return counts;
 }
 
-export function toUnifiedInboxMessage(
+export function toInboxMessage(
   message: InboundMessage,
   channel: LifeOpsInboxChannel,
   index: number,
@@ -67,7 +69,7 @@ export function toUnifiedInboxMessage(
   // Gmail triage exposes `likelyReplyNeeded`/`isImportant` but the shared
   // `InboundMessage` shape does not carry a per-channel read flag yet. Until
   // the chat fetcher tracks read state per memory, mark chat messages as
-  // unread so the unified inbox surfaces them for triage.
+  // unread so the inbox surfaces them for triage.
   const unread =
     channel === "gmail"
       ? Boolean(
@@ -96,25 +98,27 @@ export function toUnifiedInboxMessage(
   };
 }
 
-export function buildUnifiedInbox(
+export const toUnifiedInboxMessage = toInboxMessage;
+
+export function buildInbox(
   inbound: InboundMessage[],
   options: {
     limit: number;
     allowed: Set<LifeOpsInboxChannel>;
   },
 ): LifeOpsInbox {
-  const unified: LifeOpsInboxMessage[] = [];
+  const collected: LifeOpsInboxMessage[] = [];
   const counts = emptyChannelCounts();
 
   let index = 0;
   for (const message of inbound) {
-    const channel = normalizeUnifiedInboxChannel(message.source);
+    const channel = normalizeInboxChannel(message.source);
     index += 1;
     if (!channel || !options.allowed.has(channel)) {
       continue;
     }
-    const normalized = toUnifiedInboxMessage(message, channel, index - 1);
-    unified.push(normalized);
+    const normalized = toInboxMessage(message, channel, index - 1);
+    collected.push(normalized);
     const channelCount = counts[channel];
     channelCount.total += 1;
     if (normalized.unread) {
@@ -122,10 +126,12 @@ export function buildUnifiedInbox(
     }
   }
 
-  unified.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+  collected.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
 
   const trimmed =
-    unified.length > options.limit ? unified.slice(0, options.limit) : unified;
+    collected.length > options.limit
+      ? collected.slice(0, options.limit)
+      : collected;
 
   return {
     messages: trimmed,
@@ -134,7 +140,9 @@ export function buildUnifiedInbox(
   };
 }
 
-export function resolveUnifiedInboxRequest(
+export const buildUnifiedInbox = buildInbox;
+
+export function resolveInboxRequest(
   request: GetLifeOpsInboxRequest,
 ): { limit: number; allowed: Set<LifeOpsInboxChannel> } {
   const limit =
@@ -142,7 +150,7 @@ export function resolveUnifiedInboxRequest(
     Number.isFinite(request.limit) &&
     request.limit > 0
       ? Math.min(Math.floor(request.limit), 500)
-      : DEFAULT_UNIFIED_INBOX_LIMIT;
+      : DEFAULT_INBOX_LIMIT;
   const requestedChannels =
     request.channels && request.channels.length > 0
       ? (request.channels.filter((channel) =>
@@ -152,13 +160,15 @@ export function resolveUnifiedInboxRequest(
   return { limit, allowed: new Set<LifeOpsInboxChannel>(requestedChannels) };
 }
 
-export async function fetchUnifiedInbox(
+export const resolveUnifiedInboxRequest = resolveInboxRequest;
+
+export async function fetchInbox(
   runtime: IAgentRuntime,
   request: GetLifeOpsInboxRequest = {},
   gmailSource?: GmailInboxSource,
   xDmSource?: XDmInboxSource,
 ): Promise<LifeOpsInbox> {
-  const { limit, allowed } = resolveUnifiedInboxRequest(request);
+  const { limit, allowed } = resolveInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(allowed),
     limit,
@@ -166,18 +176,20 @@ export async function fetchUnifiedInbox(
     gmailSource,
     xDmSource,
   });
-  return buildUnifiedInbox(inbound, { limit, allowed });
+  return buildInbox(inbound, { limit, allowed });
 }
 
+export const fetchUnifiedInbox = fetchInbox;
+
 /** @internal */
-export function withUnifiedInbox<TBase extends Constructor<LifeOpsServiceBase>>(
+export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsInboxServiceMixin extends Base {
-    async getUnifiedInbox(
+    async getInbox(
       request: GetLifeOpsInboxRequest = {},
     ): Promise<LifeOpsInbox> {
-      const { limit, allowed } = resolveUnifiedInboxRequest(request);
+      const { limit, allowed } = resolveInboxRequest(request);
       const inbound = await fetchAllMessages(this.runtime, {
         sources: Array.from(allowed),
         limit,
@@ -185,9 +197,17 @@ export function withUnifiedInbox<TBase extends Constructor<LifeOpsServiceBase>>(
         gmailSource: this,
         xDmSource: this,
       });
-      return buildUnifiedInbox(inbound, { limit, allowed });
+      return buildInbox(inbound, { limit, allowed });
+    }
+
+    async getUnifiedInbox(
+      request: GetLifeOpsInboxRequest = {},
+    ): Promise<LifeOpsInbox> {
+      return this.getInbox(request);
     }
   }
 
   return LifeOpsInboxServiceMixin;
 }
+
+export const withUnifiedInbox = withInbox;

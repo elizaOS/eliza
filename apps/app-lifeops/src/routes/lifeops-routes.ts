@@ -1046,7 +1046,7 @@ export async function handleLifeOpsRoutes(
     }
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/inbox/unified") {
+  if (method === "GET" && pathname === "/api/lifeops/inbox") {
     return runRoute(ctx, async (service) => {
       const limit =
         parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
@@ -1071,7 +1071,7 @@ export async function handleLifeOpsRoutes(
         channels = parsedChannels;
       }
       const request: GetLifeOpsInboxRequest = { limit, channels };
-      json(res, await service.getUnifiedInbox(request));
+      json(res, await service.getInbox(request));
     });
   }
 
