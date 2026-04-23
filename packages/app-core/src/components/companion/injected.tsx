@@ -37,9 +37,7 @@ export function CompanionGlobalOverlay() {
 
 const DEFAULT_COMPANION_SCENE_STATUS: CompanionSceneStatus = {
   avatarReady: false,
-  audioReady: false,
-  loading: false,
-  mode: null,
+  teleportKey: "",
 };
 
 export function useCompanionSceneStatus(): CompanionSceneStatus {

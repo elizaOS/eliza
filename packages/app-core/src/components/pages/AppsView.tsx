@@ -511,6 +511,10 @@ export function AppsView() {
     });
   }, [activeAppNames, apps, searchQuery]);
 
+  const browseApps = useMemo(() => {
+    return filterAppsForCatalog(apps);
+  }, [apps]);
+
   const handleToggleFavorite = useCallback(
     (appName: string) => {
       const current = favoriteApps;
@@ -560,6 +564,7 @@ export function AppsView() {
   const appsSidebar = (
     <AppsSidebar
       apps={apps}
+      browseApps={browseApps}
       runs={sortedRuns}
       activeAppNames={activeAppNames}
       favoriteAppNames={favoriteAppNames}
@@ -611,6 +616,7 @@ export function AppsView() {
           error={error}
           favoriteAppNames={favoriteAppNames}
           loading={loading}
+          recentAppNames={recentApps}
           searchQuery={searchQuery}
           visibleApps={visibleApps}
           onLaunch={(app) => void handleLaunch(app)}

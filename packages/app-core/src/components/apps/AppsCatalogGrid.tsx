@@ -1,4 +1,11 @@
-import type { MouseEvent } from "react";
+import { Skeleton } from "@elizaos/ui";
+import {
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppHero } from "./app-identity";
@@ -9,10 +16,99 @@ interface AppsCatalogGridProps {
   error: string | null;
   favoriteAppNames: Set<string>;
   loading: boolean;
+  recentAppNames: readonly string[];
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
   onToggleFavorite: (appName: string) => void;
+}
+
+interface CatalogRenderSection {
+  apps: RegistryAppInfo[];
+  key: string;
+  label: string;
+}
+
+const CARD_GAP_PX = 8;
+const MAX_CARDS_PER_ROW = 4;
+const MIN_CARD_WIDTH_PX = 248;
+
+function clampCardsPerRow(value: number): number {
+  return Math.min(Math.max(value, 1), MAX_CARDS_PER_ROW);
+}
+
+function resolveCardsPerRow(width: number): number {
+  if (width <= 0) return MAX_CARDS_PER_ROW;
+  const fit = Math.floor((width + CARD_GAP_PX) / (MIN_CARD_WIDTH_PX + CARD_GAP_PX));
+  return clampCardsPerRow(fit);
+}
+
+function buildBalancedRows<T>(
+  items: readonly T[],
+  maxCardsPerRow: number,
+): T[][] {
+  if (items.length === 0) return [];
+
+  const perRow = clampCardsPerRow(maxCardsPerRow);
+  if (items.length <= perRow) {
+    return [[...items]];
+  }
+
+  const rowCount = Math.ceil(items.length / perRow);
+  const baseRowSize = Math.floor(items.length / rowCount);
+  const oversizedRowCount = items.length % rowCount;
+  const rows: T[][] = [];
+  let index = 0;
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const size =
+      rowIndex < rowCount - oversizedRowCount ? baseRowSize : baseRowSize + 1;
+    rows.push(items.slice(index, index + size));
+    index += size;
+  }
+
+  return rows;
+}
+
+function CatalogSkeletonSection({
+  label,
+  rowSizes,
+}: {
+  label: string;
+  rowSizes: readonly number[];
+}) {
+  return (
+    <section className="space-y-3" aria-hidden="true">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-3 w-28 rounded-full bg-bg-accent/80" />
+        <div className="h-px flex-1 bg-border/30" />
+      </div>
+
+      <div className="space-y-2">
+        {rowSizes.map((rowSize, rowIndex) => (
+          <div
+            key={`${label}-${rowIndex}`}
+            className="grid gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${rowSize}, minmax(0, 1fr))`,
+            }}
+          >
+            {Array.from({ length: rowSize }, (_, cardIndex) => (
+              <div
+                key={`${label}-${rowIndex}-${cardIndex}`}
+                className="overflow-hidden rounded-2xl border border-border/35 bg-card/72"
+              >
+                <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
+                <div className="space-y-2 px-3 py-3">
+                  <Skeleton className="h-3 w-2/3 rounded-full bg-bg-accent/80" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export function AppsCatalogGrid({
@@ -20,15 +116,87 @@ export function AppsCatalogGrid({
   error,
   favoriteAppNames,
   loading,
+  recentAppNames,
   searchQuery,
   visibleApps,
   onLaunch,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
-  const sections = groupAppsForCatalog(visibleApps, favoriteAppNames);
+  const catalogRef = useRef<HTMLDivElement | null>(null);
+  const [catalogWidth, setCatalogWidth] = useState(0);
+  const cardsPerRow = useMemo(
+    () => resolveCardsPerRow(catalogWidth),
+    [catalogWidth],
+  );
+  const sections = useMemo(() => {
+    const groupedSections = groupAppsForCatalog(visibleApps, {
+      favoriteAppNames,
+      recentAppNames,
+    });
+    const featuredSection = groupedSections.find(
+      (section) => section.key === "featured",
+    );
+    const favoritesSection = groupedSections.find(
+      (section) => section.key === "favorites",
+    );
+    const recentSection = groupedSections.find((section) => section.key === "recent");
+    const remainingSections = groupedSections.filter(
+      (section) =>
+        section.key !== "featured" &&
+        section.key !== "favorites" &&
+        section.key !== "recent",
+    );
+    const renderSections: CatalogRenderSection[] = [];
+
+    if (featuredSection) {
+      renderSections.push(featuredSection);
+    }
+
+    if (favoritesSection || recentSection) {
+      renderSections.push({
+        key: "favorites-recent",
+        label:
+          favoritesSection && recentSection
+            ? "Starred & Recent"
+            : (favoritesSection ?? recentSection)?.label ?? "Recent",
+        apps: [
+          ...(favoritesSection?.apps ?? []),
+          ...(recentSection?.apps ?? []),
+        ],
+      });
+    }
+
+    return [...renderSections, ...remainingSections];
+  }, [favoriteAppNames, recentAppNames, visibleApps]);
+
+  useEffect(() => {
+    const element = catalogRef.current;
+    if (!element) return;
+
+    const updateWidth = (width: number) => {
+      setCatalogWidth(Math.max(0, Math.round(width)));
+    };
+
+    updateWidth(element.getBoundingClientRect().width);
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width;
+      if (typeof nextWidth === "number") {
+        updateWidth(nextWidth);
+      }
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div data-testid="apps-catalog-grid">
+    <div ref={catalogRef} data-testid="apps-catalog-grid">
       {error ? (
         <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
           {error}
@@ -36,8 +204,20 @@ export function AppsCatalogGrid({
       ) : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-border/30 bg-card/72 py-16 text-center text-xs text-muted">
-          {t("appsview.Loading")}
+        <div className="space-y-6" aria-label={t("appsview.Loading")}>
+          <CatalogSkeletonSection label="Featured" rowSizes={[1]} />
+          <CatalogSkeletonSection
+            label="Games & Entertainment"
+            rowSizes={buildBalancedRows(Array.from({ length: 7 }), cardsPerRow).map(
+              (row) => row.length,
+            )}
+          />
+          <CatalogSkeletonSection
+            label="Developer Utilities"
+            rowSizes={buildBalancedRows(Array.from({ length: 6 }), cardsPerRow).map(
+              (row) => row.length,
+            )}
+          />
         </div>
       ) : visibleApps.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
@@ -62,82 +242,92 @@ export function AppsCatalogGrid({
                 <div className="h-px flex-1 bg-border/30" />
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {section.apps.map((app) => {
-                  const isActive = activeAppNames.has(app.name);
-                  const isFavorite = favoriteAppNames.has(app.name);
-                  const displayName = app.displayName ?? getAppShortName(app);
+              <div className="space-y-2">
+                {buildBalancedRows(section.apps, cardsPerRow).map((row, rowIndex) => (
+                  <div
+                    key={`${section.key}-${rowIndex}`}
+                    className="grid gap-2"
+                    style={{
+                      gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {row.map((app) => {
+                      const isActive = activeAppNames.has(app.name);
+                      const isFavorite = favoriteAppNames.has(app.name);
+                      const displayName = app.displayName ?? getAppShortName(app);
 
-                  return (
-                    <div
-                      key={app.name}
-                      className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
-                        isActive
-                          ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
-                          : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
-                        title={displayName}
-                        aria-label={displayName}
-                        className="block w-full text-left focus-visible:outline-none"
-                        onClick={() => onLaunch(app)}
-                      >
-                        <AppHero
-                          app={app}
-                          className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
-                        />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
-                              {displayName}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                      {isActive ? (
-                        <span
-                          title="Running"
-                          className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
-                        />
-                      ) : null}
-                      <button
-                        type="button"
-                        aria-label={
-                          isFavorite
-                            ? "Remove from favorites"
-                            : "Add to favorites"
-                        }
-                        className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
-                          isFavorite
-                            ? "bg-black/30 text-warn backdrop-blur-sm"
-                            : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
-                        }`}
-                        onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                          event.stopPropagation();
-                          onToggleFavorite(app.name);
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={isFavorite ? "currentColor" : "none"}
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
+                      return (
+                        <div
+                          key={app.name}
+                          className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+                            isActive
+                              ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
+                              : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
+                          }`}
                         >
-                          <title>Favorite</title>
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
+                          <button
+                            type="button"
+                            data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
+                            title={displayName}
+                            aria-label={displayName}
+                            className="block w-full text-left focus-visible:outline-none"
+                            onClick={() => onLaunch(app)}
+                          >
+                            <AppHero
+                              app={app}
+                              className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
+                            />
+                            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                                  {displayName}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                          {isActive ? (
+                            <span
+                              title="Running"
+                              className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+                            />
+                          ) : null}
+                          <button
+                            type="button"
+                            aria-label={
+                              isFavorite
+                                ? "Remove from favorites"
+                                : "Add to favorites"
+                            }
+                            className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
+                              isFavorite
+                                ? "bg-black/30 text-warn backdrop-blur-sm"
+                                : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
+                            }`}
+                            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                              event.stopPropagation();
+                              onToggleFavorite(app.name);
+                            }}
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill={isFavorite ? "currentColor" : "none"}
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <title>Favorite</title>
+                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </section>
           ))}
