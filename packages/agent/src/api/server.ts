@@ -33,7 +33,11 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import { TxService } from "@elizaos/app-steward/api/tx-service";
+import {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "@elizaos/app-steward/api/tx-service";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
@@ -3336,7 +3340,25 @@ export async function startApiServer(opts?: {
       }
 
       try {
-        const txService = new TxService(registryConfig.mainnetRpc, evmKey);
+        const registryRpcUrl = normalizeJsonRpcUrl(registryConfig.mainnetRpc);
+        const registryRpcProbe = await probeJsonRpcEndpoint(registryRpcUrl);
+        if (!registryRpcProbe.ok) {
+          addLog(
+            "warn",
+            `ERC-8004 registry service disabled: RPC unavailable (${registryRpcProbe.reason ?? "unknown error"})`,
+            "system",
+            ["system"],
+          );
+          logger.warn(
+            {
+              reason: registryRpcProbe.reason,
+            },
+            "ERC-8004 registry service disabled because mainnetRpc is unavailable",
+          );
+          return;
+        }
+
+        const txService = new TxService(registryRpcUrl, evmKey);
         state.registryService = new RegistryService(
           txService,
           registryConfig.registryAddress,

@@ -69,12 +69,68 @@ describe("useInventoryData", () => {
           avax: true,
           solana: true,
         },
-        trackedBscTokens: [],
-        trackedTokens: [],
       }),
     );
 
     expect(result.current.tokenRowsAllChains).toEqual([]);
     expect(result.current.focusedNativeBalance).toBeNull();
+  });
+
+  it("keeps positive-balance dust tokens in the all-token inventory", () => {
+    const walletConfig = createWalletConfig();
+    const walletNfts: WalletNftsResponse = { evm: [], solana: null };
+
+    const { result } = renderHook(() =>
+      useInventoryData({
+        walletBalances: createWalletBalances({
+          evm: {
+            address: "0x1234567890123456789012345678901234567890",
+            chains: [
+              {
+                chain: "Base",
+                chainId: 8453,
+                nativeBalance: "0",
+                nativeSymbol: "ETH",
+                nativeValueUsd: "0",
+                error: null,
+                tokens: [
+                  {
+                    contractAddress: "0x0000000000000000000000000000000000000001",
+                    symbol: "SPAM",
+                    name: "Spam Token",
+                    balance: "0.00000001",
+                    decimals: 18,
+                    valueUsd: "0",
+                    logoUrl: "",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+        walletAddresses: {
+          evmAddress: "0x1234567890123456789012345678901234567890",
+          solanaAddress: null,
+        },
+        walletConfig,
+        walletNfts,
+        inventorySort: "value",
+        inventorySortDirection: "desc",
+        inventoryChainFilters: {
+          ethereum: true,
+          base: true,
+          bsc: true,
+          avax: true,
+          solana: true,
+        },
+      }),
+    );
+
+    expect(result.current.tokenRowsAllChains).toMatchObject([
+      {
+        symbol: "SPAM",
+        balance: "0.00000001",
+      },
+    ]);
   });
 });

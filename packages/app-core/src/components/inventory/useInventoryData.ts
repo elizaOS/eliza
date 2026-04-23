@@ -17,9 +17,6 @@ import {
   isBscChainName,
   type NftItem,
   type TokenRow,
-  type TrackedBscToken,
-  type TrackedToken,
-  toNormalizedAddress,
 } from "./constants";
 import {
   computeSingleChainFocus,
@@ -35,8 +32,6 @@ export interface InventoryDataInput {
   inventorySort: string;
   inventorySortDirection: "asc" | "desc";
   inventoryChainFilters: InventoryChainFilters;
-  trackedBscTokens: TrackedBscToken[];
-  trackedTokens: TrackedToken[];
 }
 
 export interface InventoryDataOutput {
@@ -63,20 +58,8 @@ export interface InventoryDataOutput {
   primaryNativeBalance: string | null;
 }
 
-function hasContractAddress(
-  row: TokenRow,
-): row is TokenRow & { contractAddress: string } {
-  return typeof row.contractAddress === "string";
-}
-
 function hasVisibleBalance(row: TokenRow): boolean {
-  // Always show manually tracked tokens
-  if (row.isTracked) return true;
-  // Require at least $0.01 USD value to avoid dust rows (e.g. AVAX $0.00)
-  if (row.valueUsd >= 0.01) return true;
-  // Show native gas tokens with a meaningful raw balance even without USD pricing
-  if (row.isNative && row.balanceRaw >= 0.0001) return true;
-  return false;
+  return row.balanceRaw > 0 || row.valueUsd > 0;
 }
 
 function matchesSingleChainFocus(chainName: string, focus: ChainKey): boolean {
@@ -89,19 +72,13 @@ function buildTokenRowsAllChains({
   walletBalances,
   walletAddresses,
   walletConfig,
-  trackedBscTokens,
-  trackedTokens,
 }: {
   walletBalances: WalletBalancesResponse | null;
   walletAddresses: WalletAddresses | null;
   walletConfig: WalletConfigStatus | null;
-  trackedBscTokens: TrackedBscToken[];
-  trackedTokens: TrackedToken[];
 }): TokenRow[] {
   const rows: TokenRow[] = [];
   const knownEvmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const _knownSolAddr =
-    walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
 
   if (walletBalances?.evm) {
     const seenChainKeys = new Set<string>();
@@ -197,68 +174,6 @@ function buildTokenRowsAllChains({
       });
     }
   }
-  if (
-    _knownSolAddr &&
-    !walletBalances?.solana &&
-    walletConfig?.solanaBalanceReady === false
-  ) {
-    rows.push({
-      chain: "Solana",
-      symbol: "SOL",
-      name: "Solana native",
-      contractAddress: null,
-      logoUrl: null,
-      balance: "0",
-      valueUsd: 0,
-      balanceRaw: 0,
-      isNative: true,
-    });
-  }
-
-  const knownBscContracts = new Set(
-    rows
-      .filter(
-        (row): row is TokenRow & { contractAddress: string } =>
-          isBscChainName(row.chain) && hasContractAddress(row),
-      )
-      .map((row) => toNormalizedAddress(row.contractAddress)),
-  );
-  for (const tracked of trackedBscTokens) {
-    const normalized = toNormalizedAddress(tracked.contractAddress);
-    if (knownBscContracts.has(normalized)) continue;
-    rows.push({
-      chain: "BSC",
-      symbol: tracked.symbol,
-      name: tracked.name,
-      contractAddress: tracked.contractAddress,
-      logoUrl: tracked.logoUrl ?? null,
-      balance: "0",
-      valueUsd: 0,
-      balanceRaw: 0,
-      isNative: false,
-      isTracked: true,
-    });
-  }
-  for (const tracked of trackedTokens) {
-    const exists = rows.some(
-      (r) => r.contractAddress?.toLowerCase() === tracked.address.toLowerCase(),
-    );
-    if (!exists) {
-      rows.push({
-        chain: "BSC",
-        symbol: `TKN-${tracked.address.slice(2, 6)}`,
-        name: tracked.symbol || `Token ${tracked.address.slice(0, 10)}...`,
-        contractAddress: tracked.address,
-        logoUrl: null,
-        balance: "0",
-        valueUsd: 0,
-        balanceRaw: 0,
-        isNative: false,
-        isTracked: true,
-      });
-    }
-  }
-
   return rows.filter(hasVisibleBalance);
 }
 
@@ -270,8 +185,6 @@ export function useInventoryData({
   inventorySort,
   inventorySortDirection,
   inventoryChainFilters,
-  trackedBscTokens,
-  trackedTokens,
 }: InventoryDataInput): InventoryDataOutput {
   const singleChainFocus = useMemo(
     () => computeSingleChainFocus(inventoryChainFilters),
@@ -301,16 +214,8 @@ export function useInventoryData({
         walletBalances,
         walletAddresses,
         walletConfig,
-        trackedBscTokens,
-        trackedTokens,
       }),
-    [
-      walletBalances,
-      walletAddresses,
-      walletConfig,
-      trackedBscTokens,
-      trackedTokens,
-    ],
+    [walletBalances, walletAddresses, walletConfig],
   );
 
   const tokenRows = useMemo(

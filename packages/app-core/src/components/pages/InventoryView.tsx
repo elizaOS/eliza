@@ -36,11 +36,8 @@ import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
 import {
   formatBalance,
-  loadTrackedBscTokens,
-  loadTrackedTokens,
   type NftItem,
   type TokenRow,
-  type TrackedToken,
 } from "../inventory/constants";
 import { TokenLogo } from "../inventory/TokenLogo";
 import { useInventoryData } from "../inventory/useInventoryData";
@@ -61,6 +58,14 @@ const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 const VINCENT_APP_NAME = "@elizaos/app-vincent";
 
 const LP_PROTOCOLS = ["Uniswap", "Raydium", "Meteora", "PancakeSwap"] as const;
+type LpProtocol = (typeof LP_PROTOCOLS)[number];
+
+interface LpPositionPreview {
+  protocol: LpProtocol;
+  label: string;
+  detail: string;
+  valueUsd: number | null;
+}
 
 const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -176,7 +181,7 @@ function tradingProfileWindow(
 }
 
 function tokenHasInventory(row: TokenRow): boolean {
-  return row.balanceRaw > 0 || row.valueUsd > 0 || row.isTracked === true;
+  return row.balanceRaw > 0 || row.valueUsd > 0;
 }
 
 function dispatchWalletChatPrefill(text: string): void {
@@ -207,6 +212,7 @@ function TokenPerformance({
   }
 
   const pnl = parseAmount(breakdown.realizedPnlBnb);
+  const bars = [1, 2, 3, 4, 5];
   const tone =
     pnl === null || pnl === 0
       ? "text-muted"
@@ -215,9 +221,27 @@ function TokenPerformance({
         : "text-danger";
 
   return (
-    <span className={cn("text-[0.68rem] font-medium", tone)}>
-      {pnl !== null && pnl > 0 ? "+" : ""}
-      {formatBnb(breakdown.realizedPnlBnb)}
+    <span className="flex flex-col items-end gap-1">
+      <span className={cn("text-[0.68rem] font-medium", tone)}>
+        {pnl !== null && pnl > 0 ? "+" : ""}
+        {formatBnb(breakdown.realizedPnlBnb)}
+      </span>
+      <span className="flex h-4 items-end gap-0.5" aria-hidden="true">
+        {bars.map((bar) => (
+          <span
+            key={bar}
+            className={cn(
+              "block w-1 rounded-sm",
+              pnl !== null && pnl > 0
+                ? "bg-ok/80"
+                : pnl !== null && pnl < 0
+                  ? "bg-danger/80"
+                  : "bg-border",
+            )}
+            style={{ height: `${4 + bar * 2}px` }}
+          />
+        ))}
+      </span>
     </span>
   );
 }
@@ -651,21 +675,122 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
   );
 }
 
-function LpPositionsPanel() {
+function detectLpProtocol(value: string): LpProtocol | null {
+  const text = value.toLowerCase();
+  if (text.includes("uniswap")) return "Uniswap";
+  if (text.includes("raydium") || text.includes("radium")) return "Raydium";
+  if (text.includes("meteora")) return "Meteora";
+  if (text.includes("pancake")) return "PancakeSwap";
+  return null;
+}
+
+function looksLikeLpText(value: string): boolean {
+  const text = value.toLowerCase();
+  return (
+    text.includes("liquidity") ||
+    text.includes(" lp") ||
+    text.includes("-lp") ||
+    text.includes("pool") ||
+    text.includes("position")
+  );
+}
+
+function deriveLpPositions({
+  tokenRows,
+  nfts,
+}: {
+  tokenRows: TokenRow[];
+  nfts: NftItem[];
+}): LpPositionPreview[] {
+  const positions: LpPositionPreview[] = [];
+
+  for (const row of tokenRows) {
+    const protocol = detectLpProtocol(`${row.name} ${row.symbol}`);
+    if (!protocol || !looksLikeLpText(`${row.name} ${row.symbol}`)) continue;
+    positions.push({
+      protocol,
+      label: row.symbol,
+      detail: `${formatBalance(row.balance)} ${row.symbol}`,
+      valueUsd: row.valueUsd,
+    });
+  }
+
+  for (const nft of nfts) {
+    const text = `${nft.collectionName} ${nft.name}`;
+    const protocol = detectLpProtocol(text);
+    if (!protocol || !looksLikeLpText(text)) continue;
+    positions.push({
+      protocol,
+      label: nft.name,
+      detail: nft.collectionName,
+      valueUsd: null,
+    });
+  }
+
+  return positions;
+}
+
+function LpPositionsPanel({
+  positions,
+}: {
+  positions: LpPositionPreview[];
+}) {
+  const positionsByProtocol = useMemo(() => {
+    const map = new Map<LpProtocol, LpPositionPreview[]>();
+    for (const protocol of LP_PROTOCOLS) {
+      map.set(protocol, []);
+    }
+    for (const position of positions) {
+      map.get(position.protocol)?.push(position);
+    }
+    return map;
+  }, [positions]);
+
   return (
     <div className="space-y-3">
       <div className="grid gap-2 sm:grid-cols-2">
-        {LP_PROTOCOLS.map((protocol) => (
-          <div
-            key={protocol}
-            className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5"
-          >
-            <div className="text-sm font-semibold text-txt">{protocol}</div>
-            <div className="mt-1 text-xs-tight text-muted">
-              No LP position detected
+        {LP_PROTOCOLS.map((protocol) => {
+          const protocolPositions = positionsByProtocol.get(protocol) ?? [];
+          return (
+            <div
+              key={protocol}
+              className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-txt">
+                  {protocol}
+                </div>
+                <div className="text-xs-tight text-muted">
+                  {protocolPositions.length}
+                </div>
+              </div>
+              {protocolPositions.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {protocolPositions.slice(0, 3).map((position) => (
+                    <div
+                      key={`${position.protocol}:${position.label}:${position.detail}`}
+                      className="min-w-0 rounded-md border border-border/40 bg-bg/35 px-2 py-1.5"
+                    >
+                      <div className="truncate text-xs font-medium text-txt">
+                        {position.label}
+                      </div>
+                      <div className="mt-0.5 truncate text-[0.68rem] text-muted">
+                        {position.detail}
+                        {position.valueUsd && position.valueUsd > 0
+                          ? ` · ${formatUsd(position.valueUsd)}`
+                          : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-1 text-xs-tight text-muted">
+                  No indexed position
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -750,8 +875,6 @@ export function InventoryView() {
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
     readHiddenTokenIds(),
   );
-  const [trackedTokens] = useState<TrackedToken[]>(() => loadTrackedTokens());
-  const [trackedBscTokens] = useState(() => loadTrackedBscTokens());
   const [dashboardWindow, setDashboardWindow] =
     useState<DashboardWindow>("30d");
   const [tradingProfile, setTradingProfile] =
@@ -799,8 +922,6 @@ export function InventoryView() {
     inventorySort: "value",
     inventorySortDirection: "desc",
     inventoryChainFilters: ALL_INVENTORY_FILTERS,
-    trackedBscTokens,
-    trackedTokens,
   });
 
   const addresses = resolveWalletAddresses({
@@ -818,6 +939,22 @@ export function InventoryView() {
       visibleAssetRows.filter((row) => hiddenTokenIds.has(tokenId(row))).length,
     [hiddenTokenIds, visibleAssetRows],
   );
+  const displayedAssetRows = useMemo(
+    () => visibleAssetRows.filter((row) => !hiddenTokenIds.has(tokenId(row))),
+    [hiddenTokenIds, visibleAssetRows],
+  );
+  const displayedTotalUsd = useMemo(
+    () => displayedAssetRows.reduce((sum, row) => sum + row.valueUsd, 0),
+    [displayedAssetRows],
+  );
+  const lpPositions = useMemo(
+    () =>
+      deriveLpPositions({
+        tokenRows: displayedAssetRows,
+        nfts: inventoryData.allNfts,
+      }),
+    [displayedAssetRows, inventoryData.allNfts],
+  );
 
   const pnlValue = parseAmount(tradingProfile?.summary.realizedPnlBnb);
   const pnlTone =
@@ -833,7 +970,7 @@ export function InventoryView() {
       next.add(tokenId(row));
       setHiddenTokenIds(next);
       writeHiddenTokenIds(next);
-      setActionNotice(`${row.symbol} hidden from the wallet token rail.`);
+      setActionNotice(`${row.symbol} hidden from this wallet view.`);
     },
     [hiddenTokenIds, setActionNotice],
   );
@@ -911,7 +1048,7 @@ export function InventoryView() {
               Agent wallet dashboard
             </h1>
             <div className="mt-1 text-sm text-muted">
-              {visibleAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
+              {displayedAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
               NFTs
               {hiddenCount > 0 ? `, ${hiddenCount} hidden` : ""}
             </div>
@@ -948,8 +1085,8 @@ export function InventoryView() {
         <div className="grid gap-3 md:grid-cols-3">
           <StatCard
             label="Current balance"
-            value={formatUsd(inventoryData.totalUsd)}
-            detail="Loaded token inventory value"
+            value={formatUsd(displayedTotalUsd)}
+            detail="Visible token inventory value"
           />
           <StatCard
             label="Agent P&L"
@@ -1065,7 +1202,7 @@ export function InventoryView() {
                   <Layers3 className="h-4 w-4 text-accent" />
                   LP positions
                 </div>
-                <LpPositionsPanel />
+                <LpPositionsPanel positions={lpPositions} />
               </div>
             </PagePanel>
 
