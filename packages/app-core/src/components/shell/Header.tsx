@@ -479,7 +479,7 @@ export function Header({
                   })}
                 </nav>
                 <div
-                  className="pointer-events-none h-[2.375rem] w-[clamp(10rem,24vw,22.5rem)] min-w-0"
+                  className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
                   data-testid={
                     showMacDesktopTitleBar
                       ? "desktop-window-titlebar-drag-zone"
