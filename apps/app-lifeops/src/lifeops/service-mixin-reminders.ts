@@ -54,6 +54,11 @@ import {
   readNativeAppleReminderMetadata,
   updateNativeAppleReminderLikeItem,
 } from "./apple-reminders.js";
+import { CheckinService } from "./checkin/checkin-service.js";
+import {
+  shouldRunMorningCheckinFromSleepCycle,
+  shouldRunNightCheckinFromSleepCycle,
+} from "./checkin/sleep-cycle-dispatch.js";
 import {
   computeAdaptiveWindowPolicy,
   resolveDefaultTimeZone,
@@ -4239,11 +4244,69 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         limit: workflowLimit,
         lifeOpsEvents,
       });
+      await this.processSleepCycleCheckins({
+        now,
+        currentSchedule,
+      });
       return {
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
         workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
       };
+    }
+
+    private async processSleepCycleCheckins(args: {
+      now: Date;
+      currentSchedule: LifeOpsScheduleMergedStateRecord | null;
+    }): Promise<void> {
+      const currentSchedule = args.currentSchedule;
+      if (!currentSchedule) {
+        return;
+      }
+      const service = new CheckinService(this.runtime, {
+        sources: this,
+      });
+      const timezone = currentSchedule.timezone || resolveDefaultTimeZone();
+      const dispatch = async (kind: "morning" | "night"): Promise<void> => {
+        const alreadySent = await service.hasCheckinForLocalDay({
+          kind,
+          now: args.now,
+          timezone,
+        });
+        if (alreadySent) {
+          return;
+        }
+        const report =
+          kind === "morning"
+            ? await service.runMorningCheckin({ now: args.now, timezone })
+            : await service.runNightCheckin({ now: args.now, timezone });
+        this.emitAssistantEvent(report.summaryText, "lifeops-checkin", {
+          checkinKind: kind,
+          reportId: report.reportId,
+          deliveryBasis: "sleep_cycle",
+          circadianState: currentSchedule.circadianState,
+          wakeAt: currentSchedule.wakeAt,
+          bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
+          minutesUntilBedtimeTarget:
+            currentSchedule.relativeTime.minutesUntilBedtimeTarget,
+        });
+      };
+
+      if (
+        shouldRunMorningCheckinFromSleepCycle({
+          state: currentSchedule,
+          now: args.now,
+        })
+      ) {
+        await dispatch("morning");
+      }
+      if (
+        shouldRunNightCheckinFromSleepCycle({
+          state: currentSchedule,
+        })
+      ) {
+        await dispatch("night");
+      }
     }
 
     async relockWebsiteAccessGroup(
