@@ -500,8 +500,8 @@ async function renderWalletLiveState(): Promise<string | null> {
     );
   }
 
+  const assetLines: string[] = [];
   if (balances?.evm) {
-    const assetLines: string[] = [];
     for (const chain of balances.evm.chains) {
       if (hasPositiveAmount(chain.nativeBalance)) {
         assetLines.push(`${chain.nativeBalance} ${chain.nativeSymbol}`);
@@ -512,26 +512,22 @@ async function renderWalletLiveState(): Promise<string | null> {
         }
       }
     }
-    lines.push(
-      `- EVM token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"} for ${shortAddress(balances.evm.address)}.`,
-    );
-    for (const asset of assetLines.slice(0, 10)) {
-      lines.push(`  - ${asset}`);
-    }
   }
   if (balances?.solana) {
-    const solanaAssets = [
-      ...(hasPositiveAmount(balances.solana.solBalance)
-        ? [`${balances.solana.solBalance} SOL`]
-        : []),
-      ...balances.solana.tokens
-        .filter((token) => hasPositiveAmount(token.balance))
-        .map((token) => `${token.balance} ${token.symbol}`),
-    ];
+    if (hasPositiveAmount(balances.solana.solBalance)) {
+      assetLines.push(`${balances.solana.solBalance} SOL`);
+    }
+    for (const token of balances.solana.tokens) {
+      if (hasPositiveAmount(token.balance)) {
+        assetLines.push(`${token.balance} ${token.symbol}`);
+      }
+    }
+  }
+  if (balances?.evm || balances?.solana) {
     lines.push(
-      `- Solana token inventory: ${solanaAssets.length} asset${solanaAssets.length === 1 ? "" : "s"} for ${shortAddress(balances.solana.address)}.`,
+      `- Token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"}.`,
     );
-    for (const asset of solanaAssets.slice(0, 10)) {
+    for (const asset of assetLines.slice(0, 10)) {
       lines.push(`  - ${asset}`);
     }
   }
