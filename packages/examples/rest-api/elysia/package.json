@@ -16,7 +16,7 @@
     "@sinclair/typebox": "^0.34.0",
     "elysia": "^1.1.0",
     "@elysiajs/cors": "^1.1.0",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

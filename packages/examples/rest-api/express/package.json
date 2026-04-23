@@ -14,7 +14,7 @@
     "@elizaos/plugin-sql": "alpha",
     "@elizaos/plugin-eliza-classic": "alpha",
     "express": "^4.21.0",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

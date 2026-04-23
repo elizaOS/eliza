@@ -18,7 +18,7 @@
     "@elizaos/plugin-ollama": "alpha",
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-openrouter": "alpha",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
