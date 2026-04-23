@@ -31,7 +31,14 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api";
 import {
   type ActivityEvent,
@@ -68,8 +75,6 @@ const WALLET_SIDEBAR_COLLAPSED_KEY = "milady:wallets:sidebar:collapsed";
 const WALLET_SIDEBAR_DEFAULT_WIDTH = 352;
 const WALLET_SIDEBAR_MIN_WIDTH = 240;
 const WALLET_SIDEBAR_MAX_WIDTH = 520;
-const VINCENT_APP_NAME = "@elizaos/app-vincent";
-
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -1249,6 +1254,10 @@ function TokenRail({
   onTokenAction,
   onWalletAction,
   onOpenRpcSettings,
+  onRefresh,
+  refreshing,
+  walletEnabled,
+  onEnableWallet,
 }: {
   rows: TokenRow[];
   nfts: NftItem[];
@@ -1261,6 +1270,10 @@ function TokenRail({
   onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
   onWalletAction: (action: "buy" | "swap" | "send" | "receive") => void;
   onOpenRpcSettings: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+  walletEnabled: boolean | null;
+  onEnableWallet: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<WalletRailTab>("tokens");
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -1337,6 +1350,12 @@ function TokenRail({
         <AssetAllocationStrip rows={visibleRows} compact />
       ) : null}
 
+      {walletEnabled === false ? (
+        <Button className="w-full rounded-2xl" onClick={onEnableWallet}>
+          Enable wallet
+        </Button>
+      ) : null}
+
       <div className="grid grid-cols-4 gap-2">
         <WalletRailActionButton
           icon={DollarSign}
@@ -1360,23 +1379,37 @@ function TokenRail({
         />
       </div>
 
-      <div className="flex items-center gap-4 overflow-x-auto text-sm font-semibold">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 transition-colors",
-              activeTab === tab.id
-                ? "border-accent text-txt"
-                : "border-transparent text-muted hover:text-txt",
-            )}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <div className="grid min-w-0 flex-1 grid-cols-3 rounded-2xl bg-bg/45 p-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={cn(
+                "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)-4px)] px-3 py-2 text-sm font-semibold transition-colors",
+                activeTab === tab.id
+                  ? "bg-bg text-txt shadow-sm"
+                  : "text-muted hover:text-txt",
+              )}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <tab.icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-2xl bg-bg/45 hover:bg-bg/70"
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="Refresh wallet"
+          title="Refresh wallet"
+        >
+          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+        </Button>
       </div>
     </div>
   );
@@ -1438,6 +1471,31 @@ function TokenRail({
         </SidebarPanel>
       </SidebarScrollRegion>
     </Sidebar>
+  );
+}
+
+function DashboardSection({
+  title,
+  icon: Icon,
+  action,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 md:px-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+          <Icon className="h-4 w-4 text-accent" />
+          {title}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -1604,59 +1662,6 @@ function LpPositionsPanel({
   );
 }
 
-function VincentPanel({
-  connected,
-  busy,
-  error,
-  onConnect,
-  onOpen,
-}: {
-  connected: boolean;
-  busy: boolean;
-  error: string | null;
-  onConnect: () => void;
-  onOpen: () => void;
-}) {
-  return (
-    <div className="rounded-3xl bg-bg/35 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-            <Sparkles className="h-4 w-4 text-accent" />
-            Vincent trading
-          </div>
-          <div className="mt-1 max-w-xl text-xs-tight text-muted">
-            Hyperliquid + Polymarket
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {connected ? (
-            <Button variant="outline" size="sm" onClick={onOpen}>
-              Open Vincent
-            </Button>
-          ) : (
-            <Button size="sm" onClick={onConnect} disabled={busy}>
-              {busy ? "Connecting" : "Connect Vincent"}
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 flex items-center gap-2 text-xs-tight text-muted">
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full",
-            connected ? "bg-ok" : "bg-muted",
-          )}
-        />
-        {connected ? "Connected" : "Not connected"}
-      </div>
-      {error ? (
-        <div className="mt-2 text-xs-tight text-danger">{error}</div>
-      ) : null}
-    </div>
-  );
-}
-
 export function InventoryView() {
   const {
     walletEnabled,
@@ -1673,10 +1678,6 @@ export function InventoryView() {
     setState,
     setTab,
     setActionNotice,
-    vincentConnected,
-    vincentLoginBusy,
-    vincentLoginError,
-    handleVincentLogin,
   } = useApp();
   const { events: activityEvents } = useActivityEvents();
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
@@ -1744,10 +1745,6 @@ export function InventoryView() {
   const displayedAssetRows = useMemo(
     () => visibleAssetRows.filter((row) => !hiddenTokenIds.has(tokenId(row))),
     [hiddenTokenIds, visibleAssetRows],
-  );
-  const displayedTotalUsd = useMemo(
-    () => displayedAssetRows.reduce((sum, row) => sum + row.valueUsd, 0),
-    [displayedAssetRows],
   );
   const lpPositions = useMemo(
     () =>
@@ -1821,14 +1818,6 @@ export function InventoryView() {
     void loadNfts();
   }, [loadBalances, loadNfts, loadWalletConfig, setState]);
 
-  const handleOpenVincent = useCallback(() => {
-    setState("activeOverlayApp", VINCENT_APP_NAME);
-  }, [setState]);
-
-  const handleConnectVincent = useCallback(() => {
-    void handleVincentLogin();
-  }, [handleVincentLogin]);
-
   const tokenSidebar = (
     <TokenRail
       rows={visibleAssetRows}
@@ -1842,6 +1831,10 @@ export function InventoryView() {
       onTokenAction={handleTokenAction}
       onWalletAction={handleWalletAction}
       onOpenRpcSettings={handleOpenRpcSettings}
+      onRefresh={handleRefresh}
+      refreshing={walletLoading || walletNftsLoading}
+      walletEnabled={walletEnabled}
+      onEnableWallet={handleEnableWallet}
     />
   );
 
@@ -1855,57 +1848,6 @@ export function InventoryView() {
       mobileSidebarLabel="Wallet"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-5 py-6 sm:px-7 lg:px-9">
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="font-mono text-5xl font-semibold tracking-normal text-txt sm:text-6xl">
-                {formatUsd(displayedTotalUsd)}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-full"
-                onClick={handleRefresh}
-                disabled={walletLoading || walletNftsLoading}
-                aria-label="Refresh wallet"
-                title="Refresh wallet"
-              >
-                <RefreshCw
-                  className={cn(
-                    "h-4 w-4",
-                    (walletLoading || walletNftsLoading) && "animate-spin",
-                  )}
-                />
-              </Button>
-              {walletEnabled === false ? (
-                <Button className="rounded-full" onClick={handleEnableWallet}>
-                  Enable wallet
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          {showTradePnl && pnlValue !== null ? (
-            <div className="flex flex-wrap gap-2">
-              <SummaryChip
-                icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
-                value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
-                tone={pnlValue >= 0 ? "gain" : "loss"}
-                title="Realized P&L"
-              />
-            </div>
-          ) : null}
-
-          {displayedAssetRows.length > 0 ? (
-            <div className="max-w-2xl">
-              <AssetAllocationStrip rows={displayedAssetRows} compact />
-            </div>
-          ) : null}
-        </section>
-
         {walletError ? (
           <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
@@ -1914,13 +1856,11 @@ export function InventoryView() {
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1.22fr)_minmax(20rem,0.8fr)]">
           <div className="space-y-8">
-            <section className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                  <BarChart3 className="h-4 w-4 text-accent" />
-                  P&L
-                </div>
-                <div className="flex rounded-full bg-bg/35 p-1">
+            <DashboardSection
+              title="P&L"
+              icon={BarChart3}
+              action={
+                <div className="flex rounded-full bg-bg/40 p-1">
                   {DASHBOARD_WINDOWS.map((window) => (
                     <button
                       key={window}
@@ -1937,59 +1877,54 @@ export function InventoryView() {
                     </button>
                   ))}
                 </div>
-              </div>
+              }
+            >
+              {(showTradePnl && pnlValue !== null) ||
+              displayedAssetRows.length > 0 ? (
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  {showTradePnl && pnlValue !== null ? (
+                    <SummaryChip
+                      icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
+                      value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
+                      tone={pnlValue >= 0 ? "gain" : "loss"}
+                      title="Realized P&L"
+                    />
+                  ) : null}
+                  {displayedAssetRows.length > 0 ? (
+                    <div className="min-w-0 flex-1">
+                      <AssetAllocationStrip rows={displayedAssetRows} compact />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <PnlChart profile={tradingProfile} />
               {tradingProfileError ? (
-                <div className="text-xs-tight text-danger">
+                <div className="mt-3 text-xs-tight text-danger">
                   {tradingProfileError}
                 </div>
               ) : null}
-            </section>
+            </DashboardSection>
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <Activity className="h-4 w-4 text-accent" />
-                Activity
-              </div>
+            <DashboardSection title="Activity" icon={Activity}>
               <ActivityLog profile={tradingProfile} events={activityEvents} />
-            </section>
+            </DashboardSection>
           </div>
 
           <div className="space-y-8">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <TrendingUp className="h-4 w-4 text-accent" />
-                Movers
-              </div>
+            <DashboardSection title="Movers" icon={TrendingUp}>
               <PortfolioMoversPanel
                 rows={displayedAssetRows}
                 profile={tradingProfile}
               />
-            </section>
+            </DashboardSection>
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <Layers3 className="h-4 w-4 text-accent" />
-                LP positions
-              </div>
+            <DashboardSection title="LP positions" icon={Layers3}>
               <LpPositionsPanel positions={lpPositions} />
-            </section>
+            </DashboardSection>
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <ImageIcon className="h-4 w-4 text-accent" />
-                NFTs
-              </div>
+            <DashboardSection title="NFTs" icon={ImageIcon}>
               <NftPreview nfts={inventoryData.allNfts} />
-            </section>
-
-            <VincentPanel
-              connected={vincentConnected}
-              busy={vincentLoginBusy}
-              error={vincentLoginError}
-              onConnect={handleConnectVincent}
-              onOpen={handleOpenVincent}
-            />
+            </DashboardSection>
           </div>
         </div>
       </div>
