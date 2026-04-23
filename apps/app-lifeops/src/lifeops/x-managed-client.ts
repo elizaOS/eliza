@@ -234,6 +234,7 @@ export class XManagedClient {
       avatarUrl?: string;
       error?: string;
       connectionRole?: LifeOpsConnectorSide;
+      connectionId?: string | null;
     }>(`twitter/status?connectionRole=${encodeURIComponent(side)}`, {
       method: "GET",
     });
@@ -265,7 +266,9 @@ export class XManagedClient {
           ? ["tweet.read", "tweet.write", "users.read", "dm.read", "dm.write"]
           : ["tweet.read", "users.read", "dm.read", "dm.write"]
         : [],
-      connectionId: status.connected ? connectionIdForSide(side) : null,
+      connectionId: status.connected
+        ? (status.connectionId ?? connectionIdForSide(side))
+        : null,
       linkedAt: null,
       lastUsedAt: null,
     };

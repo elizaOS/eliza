@@ -5,7 +5,17 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
+import type { StewardPendingResponse, StewardStatusResponse } from "@elizaos/app-steward/types/steward";
 import { logger, stringToUuid } from "@elizaos/core";
+import type {
+  AppRunSummary,
+  RegistryAppInfo,
+} from "@elizaos/shared/contracts/apps";
+import type {
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletNftsResponse,
+} from "@elizaos/shared/contracts/wallet";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
@@ -24,15 +34,15 @@ const EMPTY_RESULT: ProviderResult = { text: "", values: {}, data: {} };
 
 const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-browser":
-    "The user is in the Browser view. Surface vocabulary: the embedded browser companion can open tabs, navigate to URLs, capture page snapshots, show or hide tabs, and close them. Action vocabulary the agent can rely on includes openBrowserWorkspaceTab, navigateBrowserWorkspaceTab, snapshotBrowserWorkspaceTab, showBrowserWorkspaceTab, hideBrowserWorkspaceTab, closeBrowserWorkspaceTab. When the user asks how to do something here, ground answers in real tabs and the bridge mode reported in live state. Do not invent tabs or URLs.",
+    "The user is in the Browser view. They can open tabs, navigate URLs, refresh pages, capture snapshots, show or hide tabs, close tabs, inspect what is open, and connect Agent Browser Bridge for real Chrome control. Action vocabulary the agent can rely on includes openBrowserWorkspaceTab, navigateBrowserWorkspaceTab, snapshotBrowserWorkspaceTab, showBrowserWorkspaceTab, hideBrowserWorkspaceTab, closeBrowserWorkspaceTab. When the user asks what to do, explain the available browser actions, recommend the next action from live tab and bridge state, and offer to answer questions about tabs, forms, current pages, or setup. Do not invent tabs or URLs.",
   "page-character":
-    "The user is in the Character view. They can edit the agent's name, description, bio, lore, message examples, voice provider and voice id, avatar, and greeting animation, and upload knowledge documents. Most edits are UI-driven through CharacterIdentityPanel, voice config UI, CharacterStylePanel, CharacterExamplesPanel, and KnowledgeView. The agent should guide the user to the relevant panel rather than fabricate a setter action — there is no general 'change my voice' action.",
+    "The user is in the Character view. They can edit the agent's name, description, bio, lore, message examples, style, voice provider and voice id, avatar/VRM selection, greeting animation, and knowledge documents. Most edits are UI-driven through CharacterIdentityPanel, voice config UI, CharacterStylePanel, CharacterExamplesPanel, and KnowledgeView. When the user asks what to do, explain the edit surfaces, recommend the next character improvement from live state, and offer to draft exact copy. Guide the user to the relevant panel rather than fabricate a setter action — there is no general 'change my voice' action.",
   "page-automations":
-    "The user is in the Automations view. They can create coordinator-text triggers and n8n workflows, set cron or interval schedules, configure wake mode (inject_now / schedule_at / interval), set max-runs, and enable or disable triggers. Action vocabulary: createTriggerTaskAction, manageTasksAction. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
+    "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":
-    "The user is in the Apps view. They can browse the catalog, launch apps, stop running apps, view running app instances and their health, and favorite apps. Action vocabulary: launchAppAction, stopAppAction. The app catalog and running runs are surfaced via the Apps API; refer to apps by display name and never invent app names.",
+    "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: launchAppAction, stopAppAction. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
   "page-wallet":
-    "The user is in the Wallet view. Wallet operations are user-driven; do not initiate trades, transfers, or fund movements on the user's behalf. Provide read-only guidance only.",
+    "The user is in the Wallet view. They can inspect addresses, balances, NFTs, chain filters, RPC/provider readiness, pending Steward approvals, policy controls, transaction history, and wallet/RPC settings. When the user asks what to do, recommend read-only readiness and safety checks first. Wallet operations are user-driven; do not initiate trades, transfers, swaps, approvals, signatures, or fund movements on the user's behalf. Provide read-only guidance only.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     "- Recurring prompt or schedule (e.g. \"every morning summarize my inbox\") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
@@ -147,34 +157,45 @@ interface BrowserBridgeCompanionLiveStatus {
   extensionVersion?: string | null;
 }
 
-async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
-  BrowserBridgeCompanionLiveStatus[] | null
-> {
+function getLocalApiUrl(path: string): string {
   const port = process.env.API_PORT || process.env.SERVER_PORT || "2138";
+  return `http://127.0.0.1:${port}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function fetchLocalJson<T>(
+  path: string,
+  timeoutMs = 1500,
+): Promise<T | null> {
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${port}/api/browser-bridge/companions`,
-      { signal: AbortSignal.timeout(1500) },
-    );
+    const response = await fetch(getLocalApiUrl(path), {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (!response.ok) return null;
-    const payload = (await response.json()) as {
-      companions?: Array<{
-        connectionState?: string;
-        browser?: string;
-        profileLabel?: string | null;
-        extensionVersion?: string | null;
-      }>;
-    };
-    if (!Array.isArray(payload.companions)) return [];
-    return payload.companions.map((companion) => ({
-      connectionState: companion.connectionState ?? "unknown",
-      browser: companion.browser ?? "chrome",
-      profileLabel: companion.profileLabel ?? null,
-      extensionVersion: companion.extensionVersion ?? null,
-    }));
+    return (await response.json()) as T;
   } catch {
     return null;
   }
+}
+
+async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
+  BrowserBridgeCompanionLiveStatus[] | null
+> {
+  const payload = await fetchLocalJson<{
+    companions?: Array<{
+      connectionState?: string;
+      browser?: string;
+      profileLabel?: string | null;
+      extensionVersion?: string | null;
+    }>;
+  }>("/api/browser-bridge/companions");
+  if (!payload) return null;
+  if (!Array.isArray(payload.companions)) return [];
+  return payload.companions.map((companion) => ({
+    connectionState: companion.connectionState ?? "unknown",
+    browser: companion.browser ?? "chrome",
+    profileLabel: companion.profileLabel ?? null,
+    extensionVersion: companion.extensionVersion ?? null,
+  }));
 }
 
 async function renderBrowserLiveState(): Promise<string | null> {

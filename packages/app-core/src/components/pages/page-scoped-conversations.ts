@@ -25,7 +25,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 3;
+export const PAGE_SCOPE_VERSION = 4;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -43,33 +43,33 @@ export interface PageScopeIntroCopy {
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
-    body: "Ask me to open a tab, navigate somewhere, snapshot a page, or close a tab. I can also explain what's currently open.",
+    body: "Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about tabs, forms, pages, or browser setup.",
     systemAddendum:
-      "You are answering inside the Browser view. The user can ask you to open tabs, navigate, snapshot, show/hide, or close tabs in the embedded browser companion. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
+      "You are answering inside the Browser view. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot a page, show or hide tabs, close tabs, explain what is open, and help connect Agent Browser Bridge for real Chrome control. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
   },
   "page-character": {
     title: "Character chat",
-    body: "Ask me how to edit your name, bio, voice, examples, avatar, greeting animation, or knowledge. I'll point you to the panel that does it.",
+    body: "Use me to tune identity, bio, lore, style, examples, voice, avatar, greeting animation, and knowledge. Recommended: describe the personality or behavior you want, and I'll point to the right panel or draft exact copy. Ask me what to change next.",
     systemAddendum:
-      "You are answering inside the Character view. The user edits identity, voice, style, and message examples through UI panels (CharacterIdentityPanel, voice config, CharacterStylePanel, CharacterExamplesPanel, KnowledgeView). There is no general 'change my voice' action — guide the user to the relevant panel. Reference live character state when answering.",
+      "You are answering inside the Character view. The user can edit identity fields, bio, lore, style, message examples, voice provider and voice id, avatar/VRM selection, greeting animation, and knowledge documents. The user edits these through UI panels (CharacterIdentityPanel, voice config, CharacterStylePanel, CharacterExamplesPanel, KnowledgeView). Recommend the next character-editing step based on live character state. Offer to answer questions or draft wording for any field. There is no general 'change my voice' action — guide the user to the relevant panel. Reference live character state when answering.",
   },
   "page-automations": {
     title: "Automations chat",
-    body: "Ask me to create a trigger or workflow, set a cron or interval schedule, enable or disable an automation, or explain what's already running.",
+    body: "Use me to create triggers, tasks, and n8n workflows; choose cron or interval schedules; enable, disable, inspect, or explain what is running. Recommended: tell me the event, schedule, and desired result, and I'll choose the right automation shape. Ask me to draft or troubleshoot one.",
     systemAddendum:
-      "You are answering inside the Automations view. The user can create coordinator-text triggers and n8n workflows with cron/interval schedules. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks/triggers in context by display name. Never fabricate trigger names.",
+      "You are answering inside the Automations view. The user can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode, max runs, and enabled state; browse templates; inspect existing tasks, triggers, and workflows; and troubleshoot failed runs. Recommend whether a request should become a trigger, task, or workflow based on the user's goal. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks/triggers/workflows in context by display name. Never fabricate automation names.",
   },
   "page-apps": {
     title: "Apps chat",
-    body: "Ask me about apps in the catalog, launch one, stop a running app, or check on running app instances.",
+    body: "Use me to browse the catalog, compare apps, launch an app, stop a running app, open a live viewer, inspect run health, and manage favorites or recent apps. Recommended: describe the outcome you want, and I'll suggest the right app or launch it. Ask me about any catalog item or running app.",
     systemAddendum:
-      "You are answering inside the Apps view. The user browses the catalog, launches apps, stops running apps, and views running app health. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
+      "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
   },
   "page-wallet": {
     title: "Wallet chat",
-    body: "Ask me to read your wallet state. Wallet operations are user-driven — I won't initiate trades, transfers, or fund movements.",
+    body: "Use me to inspect addresses, balances, NFTs, chains, RPC readiness, pending approvals, policies, and transaction history. Recommended: confirm wallet/RPC readiness and pending approvals before any trading flow. Ask setup or safety questions; signing and fund movement stay user-driven.",
     systemAddendum:
-      "You are answering inside the Wallet view. Provide read-only guidance only. Never initiate trades, transfers, or fund movements on the user's behalf — always direct the user to perform those actions themselves.",
+      "You are answering inside the Wallet view. The user can inspect wallet addresses, balances, NFTs, chain filters, RPC/provider readiness, pending Steward approvals, policy controls, transaction history, and wallet/RPC settings. Recommend readiness checks and safety review before trading or signing. Provide read-only guidance only. Never initiate trades, transfers, swaps, approvals, signatures, or fund movements on the user's behalf — direct the user to perform those actions themselves.",
   },
 };
 
@@ -98,15 +98,15 @@ export function getBrowserPageScopeCopy(state: {
     const where = profile ? `${browser} / ${profile}` : browser;
     return {
       title: "Browser chat",
-      body: `Agent Browser Bridge is connected in ${where}. Ask me to open a tab, navigate somewhere, snapshot a page, or close a tab. I can also explain what's currently open.`,
-      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate, snapshot, show/hide, or close tabs in the connected browser companion. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+      body: `Agent Browser Bridge is connected in ${where}. Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about any current tab or page.`,
+      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot pages, show or hide tabs, close tabs, inspect current browser state, and answer questions about the current page. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
     };
   }
   return {
     title: "Install Agent Browser Bridge",
-    body: "The agent can drive your real Chrome tabs once you install the Agent Browser Bridge extension. Use the buttons below to build the extension and open Chrome's extension manager, then come back and I'll work against your real browser.",
+    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. Until it connects, I can still help with the embedded browser. Recommended: click Install Agent Browser Bridge, load the extension, then ask me to open a site or explain the tab list.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control.",
+      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
   };
 }
 
