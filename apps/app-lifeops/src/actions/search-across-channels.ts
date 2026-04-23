@@ -2,7 +2,7 @@
  * SEARCH_ACROSS_CHANNELS action (WS1).
  *
  * LLM-driven param extraction (no regex, no English-only keyword
- * matching) — feeds runUnifiedSearch() and returns a clipboard-ready
+ * matching) — feeds runCrossChannelSearch() and returns a clipboard-ready
  * payload citing the source platform + room + timestamp for each hit.
  * Use this for cross-channel brief/context requests when the owner wants
  * one person or topic searched across Gmail, chat connectors, calendar,
@@ -22,15 +22,15 @@ import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent";
 import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
-  type UnifiedSearchChannel,
-  UNIFIED_SEARCH_CHANNELS,
-  type UnifiedSearchHit,
-  type UnifiedSearchPersonRef,
-  type UnifiedSearchQuery,
-  type UnifiedSearchResult,
-  type UnifiedSearchTimeWindow,
-  runUnifiedSearch,
-} from "../lifeops/unified-search.js";
+  type CrossChannelSearchChannel,
+  CROSS_CHANNEL_SEARCH_CHANNELS,
+  type CrossChannelSearchHit,
+  type CrossChannelSearchPersonRef,
+  type CrossChannelSearchQuery,
+  type CrossChannelSearchResult,
+  type CrossChannelSearchTimeWindow,
+  runCrossChannelSearch,
+} from "../lifeops/cross-channel-search.js";
 
 const ACTION_NAME = "SEARCH_ACROSS_CHANNELS";
 
@@ -52,7 +52,7 @@ type SearchAcrossChannelsParams = {
   /** Upper bound (ISO timestamp). */
   endIso?: string;
   /** Channel allowlist. */
-  channels?: UnifiedSearchChannel[];
+  channels?: CrossChannelSearchChannel[];
   /** Per-channel hit cap. */
   limit?: number;
   /** Optional world scope. */
@@ -68,15 +68,17 @@ type ExtractedSearchPlan = {
   person: string | null;
   startIso: string | null;
   endIso: string | null;
-  channels: UnifiedSearchChannel[] | null;
+  channels: CrossChannelSearchChannel[] | null;
   shouldAct: boolean;
   clarification: string | null;
 };
 
-function isUnifiedChannel(value: unknown): value is UnifiedSearchChannel {
+function isCrossChannelSearchChannel(
+  value: unknown,
+): value is CrossChannelSearchChannel {
   return (
     typeof value === "string" &&
-    (UNIFIED_SEARCH_CHANNELS as readonly string[]).includes(value)
+    (CROSS_CHANNEL_SEARCH_CHANNELS as readonly string[]).includes(value)
   );
 }
 
@@ -134,7 +136,7 @@ async function extractSearchPlan(
 
   const intent = (params.intent ?? messageText(message)).trim();
   const nowIso = new Date().toISOString();
-  const channelList = UNIFIED_SEARCH_CHANNELS.join(", ");
+  const channelList = CROSS_CHANNEL_SEARCH_CHANNELS.join(", ");
 
   const prompt = [
     "Plan a SEARCH_ACROSS_CHANNELS request.",
@@ -192,7 +194,9 @@ async function extractSearchPlan(
       ? parsed.endIso.trim()
       : null;
   const channels = Array.isArray(parsed.channels)
-    ? (parsed.channels.filter(isUnifiedChannel) as UnifiedSearchChannel[])
+    ? (parsed.channels.filter(
+        isCrossChannelSearchChannel,
+      ) as CrossChannelSearchChannel[])
     : null;
   const shouldAct =
     typeof parsed.shouldAct === "boolean" ? parsed.shouldAct : query !== null;
@@ -216,7 +220,7 @@ async function extractSearchPlan(
 // Format
 // ---------------------------------------------------------------------------
 
-function formatHitForClipboard(hit: UnifiedSearchHit, index: number): string {
+function formatHitForClipboard(hit: CrossChannelSearchHit, index: number): string {
   const subjectPart = hit.subject ? ` ${hit.subject}` : "";
   const ts = hit.timestamp.slice(0, 19);
   const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 240);
@@ -225,7 +229,7 @@ function formatHitForClipboard(hit: UnifiedSearchHit, index: number): string {
   } (${ts}) ${hit.speaker}:${subjectPart} ${body}`;
 }
 
-function formatResult(result: UnifiedSearchResult): string {
+function formatResult(result: CrossChannelSearchResult): string {
   const lines: string[] = [];
   lines.push(
     `Cross-channel search for "${result.query}" — ${result.hits.length} hits across ${result.channelsWithHits.length} channels`,
@@ -266,7 +270,6 @@ export const searchAcrossChannelsAction: Action = {
     "SEARCH_ALL_CHANNELS",
     "SEARCH_EVERYWHERE",
     "FIND_ACROSS_PLATFORMS",
-    "UNIFIED_SEARCH",
   ],
   description:
     "Search across every connected channel — Gmail, Telegram, Discord, " +
@@ -315,7 +318,7 @@ export const searchAcrossChannelsAction: Action = {
       };
     }
 
-    const personRef: UnifiedSearchPersonRef | undefined = (() => {
+    const personRef: CrossChannelSearchPersonRef | undefined = (() => {
       if (params.primaryEntityId) {
         return {
           primaryEntityId: params.primaryEntityId,
@@ -326,7 +329,7 @@ export const searchAcrossChannelsAction: Action = {
       return display ? { displayName: display } : undefined;
     })();
 
-    const timeWindow: UnifiedSearchTimeWindow | undefined = (() => {
+    const timeWindow: CrossChannelSearchTimeWindow | undefined = (() => {
       const startIso = plan.startIso ?? params.startIso;
       const endIso = plan.endIso ?? params.endIso;
       if (!startIso && !endIso) return undefined;
@@ -336,7 +339,7 @@ export const searchAcrossChannelsAction: Action = {
       };
     })();
 
-    const query: UnifiedSearchQuery = {
+    const query: CrossChannelSearchQuery = {
       query: plan.query,
       personRef,
       timeWindow,
@@ -346,7 +349,7 @@ export const searchAcrossChannelsAction: Action = {
     };
 
     try {
-      const result = await runUnifiedSearch(runtime, query);
+      const result = await runCrossChannelSearch(runtime, query);
       const formatted = formatResult(result);
       return {
         text: formatted,

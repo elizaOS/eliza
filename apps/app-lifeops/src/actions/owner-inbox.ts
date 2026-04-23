@@ -383,7 +383,7 @@ export const ownerInboxAction: Action & {
     "Use this for inbox-shaped coordination requests like 'show the urgent blockers first and separate them from low-priority inbound', " +
     "'repair that missed call and hold the note for my approval', 'if direct relaying gets messy, suggest a group chat handoff', 'if I still have not answered about those three events, bump me again with context instead of starting over', 'also tell me what drafts still need my sign-off in the morning brief', or 'tell me what slides, bio, title, or portal assets I still owe before the event'. " +
     "Route here when the user says 'my inbox', 'inbox digest', 'mailbox digest', " +
-    "'unified inbox', 'what needs my attention in my inbox', 'triage my messages', or 'show me the unread blockers first' — use " +
+    "'my inbox', 'what needs my attention in my inbox', 'triage my messages', or 'show me the unread blockers first' — use " +
     "channel=all. When the user explicitly says 'Gmail' or 'email', or asks " +
     "to search/read/draft/send a specific email reply, route here with " +
     "channel=gmail. Requests like 'draft a reply to the latest email from Sarah' " +
@@ -403,7 +403,7 @@ export const ownerInboxAction: Action & {
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
     "Admin/owner only.",
   descriptionCompressed:
-    "Owner's unified inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Admin only. Not the agent's own mailbox.",
+    "Owner's inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Admin only. Not the agent's own mailbox.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -587,7 +587,7 @@ export const ownerInboxAction: Action & {
     // Non-Gmail channel (all / slack / discord / sms / telegram / whatsapp /
     // imessage): the cross-channel inbox pipeline handles triage / digest /
     // respond. search without channel=gmail falls through to cross-channel
-    // unified search.
+    // cross-channel search.
     switch (subaction) {
       case "triage":
       case "digest":

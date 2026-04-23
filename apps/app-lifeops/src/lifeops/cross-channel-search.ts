@@ -1,5 +1,5 @@
 /**
- * Unified cross-channel search (WS1).
+ * Cross-channel search (WS1).
  *
  * Fans a single semantic query across:
  *   - Gmail (via LifeOpsService.getGmailSearch)
@@ -13,7 +13,7 @@
  * Architecture note: this file is the orchestrator. The action
  * (search-across-channels.ts) handles LLM param extraction and result
  * formatting. The provider (cross-channel-context.ts) consumes
- * runUnifiedSearch() to inject context for named persons/topics.
+ * runCrossChannelSearch() to inject context for named persons/topics.
  */
 
 import type {
@@ -40,7 +40,7 @@ import {
 // Public types
 // ---------------------------------------------------------------------------
 
-export const UNIFIED_SEARCH_CHANNELS = [
+export const CROSS_CHANNEL_SEARCH_CHANNELS = [
   "gmail",
   "memory",
   "telegram",
@@ -53,39 +53,39 @@ export const UNIFIED_SEARCH_CHANNELS = [
   "calendar",
 ] as const;
 
-export type UnifiedSearchChannel = (typeof UNIFIED_SEARCH_CHANNELS)[number];
+export type CrossChannelSearchChannel = (typeof CROSS_CHANNEL_SEARCH_CHANNELS)[number];
 
-export type UnifiedSearchTimeWindow = {
+export type CrossChannelSearchTimeWindow = {
   /** ISO timestamp lower bound (inclusive). */
   startIso?: string;
   /** ISO timestamp upper bound (inclusive). */
   endIso?: string;
 };
 
-export type UnifiedSearchPersonRef = {
+export type CrossChannelSearchPersonRef = {
   /** Canonical cluster primary entity id (preferred). */
   primaryEntityId?: UUID;
   /** Free-form display name from LLM extraction (fallback). */
   displayName?: string;
 };
 
-export type UnifiedSearchQuery = {
+export type CrossChannelSearchQuery = {
   /** Free-form semantic query — required, no fallback default. */
   query: string;
   /** Optional named person to focus the search on. */
-  personRef?: UnifiedSearchPersonRef;
+  personRef?: CrossChannelSearchPersonRef;
   /** Optional ISO time window to bound results. */
-  timeWindow?: UnifiedSearchTimeWindow;
+  timeWindow?: CrossChannelSearchTimeWindow;
   /** Optional explicit channel allowlist; default = all known channels. */
-  channels?: UnifiedSearchChannel[];
+  channels?: CrossChannelSearchChannel[];
   /** Optional worldId scope for memory search. */
   worldId?: UUID;
   /** Per-channel hit cap (default 10). */
   limit?: number;
 };
 
-export type UnifiedSearchHit = {
-  channel: UnifiedSearchChannel;
+export type CrossChannelSearchHit = {
+  channel: CrossChannelSearchChannel;
   /** Stable id for dedup + citation. */
   id: string;
   /** Source room id for memory hits, gmail message id for gmail, etc. */
@@ -106,23 +106,23 @@ export type UnifiedSearchHit = {
   };
 };
 
-export type UnifiedSearchUnsupported = {
-  channel: UnifiedSearchChannel;
+export type CrossChannelSearchUnsupported = {
+  channel: CrossChannelSearchChannel;
   reason: string;
 };
 
-export type UnifiedSearchDegraded = {
-  channel: UnifiedSearchChannel;
+export type CrossChannelSearchDegraded = {
+  channel: CrossChannelSearchChannel;
   reason: string;
 };
 
-export type UnifiedSearchResult = {
+export type CrossChannelSearchResult = {
   query: string;
-  hits: UnifiedSearchHit[];
-  unsupported: UnifiedSearchUnsupported[];
-  degraded: UnifiedSearchDegraded[];
+  hits: CrossChannelSearchHit[];
+  unsupported: CrossChannelSearchUnsupported[];
+  degraded: CrossChannelSearchDegraded[];
   /** Channels that produced at least one hit. */
-  channelsWithHits: UnifiedSearchChannel[];
+  channelsWithHits: CrossChannelSearchChannel[];
   /** Resolved canonical person, when available from WS3. */
   resolvedPerson: RelationshipsPersonSummary | null;
 };
@@ -134,7 +134,7 @@ export type UnifiedSearchResult = {
 const DEFAULT_PER_CHANNEL_LIMIT = 10;
 const MEMORY_MATCH_THRESHOLD = 0.55;
 
-const KNOWN_PLATFORM_FOR_CHANNEL: Record<UnifiedSearchChannel, string> = {
+const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   gmail: "gmail",
   memory: "memory",
   telegram: "telegram",
@@ -149,7 +149,7 @@ const KNOWN_PLATFORM_FOR_CHANNEL: Record<UnifiedSearchChannel, string> = {
 
 function withinTimeWindow(
   iso: string | undefined,
-  window: UnifiedSearchTimeWindow | undefined,
+  window: CrossChannelSearchTimeWindow | undefined,
 ): boolean {
   if (!window || (!window.startIso && !window.endIso)) {
     return true;
@@ -183,7 +183,7 @@ function normalizeIsoFromMs(ms: number | undefined): string {
   return new Date(ms).toISOString();
 }
 
-function classifyMemoryChannel(source: string | undefined): UnifiedSearchChannel {
+function classifyMemoryChannel(source: string | undefined): CrossChannelSearchChannel {
   const normalized = (source ?? "").trim().toLowerCase();
   switch (normalized) {
     case "telegram":
@@ -216,8 +216,8 @@ function classifyMemoryChannel(source: string | undefined): UnifiedSearchChannel
 }
 
 function isChannelEnabled(
-  channel: UnifiedSearchChannel,
-  channels: UnifiedSearchChannel[] | undefined,
+  channel: CrossChannelSearchChannel,
+  channels: CrossChannelSearchChannel[] | undefined,
 ): boolean {
   if (!channels || channels.length === 0) {
     return true;
@@ -238,11 +238,11 @@ type GmailSearchService = {
 
 async function searchGmail(
   runtime: IAgentRuntime,
-  query: UnifiedSearchQuery,
+  query: CrossChannelSearchQuery,
 ): Promise<{
-  hits: UnifiedSearchHit[];
-  unsupported: UnifiedSearchUnsupported[];
-  degraded: UnifiedSearchDegraded[];
+  hits: CrossChannelSearchHit[];
+  unsupported: CrossChannelSearchUnsupported[];
+  degraded: CrossChannelSearchDegraded[];
 }> {
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const lifeOps = runtime.getService("lifeops") as unknown as
@@ -267,7 +267,7 @@ async function searchGmail(
     maxResults: limit,
   });
 
-  const hits: UnifiedSearchHit[] = [];
+  const hits: CrossChannelSearchHit[] = [];
   for (const msg of feed.messages) {
     if (!withinTimeWindow(msg.receivedAt, query.timeWindow)) {
       continue;
@@ -310,10 +310,10 @@ async function embedQuery(
 
 async function searchAgentMemory(
   runtime: IAgentRuntime,
-  query: UnifiedSearchQuery,
+  query: CrossChannelSearchQuery,
 ): Promise<{
-  hits: UnifiedSearchHit[];
-  degraded: UnifiedSearchDegraded[];
+  hits: CrossChannelSearchHit[];
+  degraded: CrossChannelSearchDegraded[];
 }> {
   const embedding = await embedQuery(runtime, query.query);
   if (!embedding) {
@@ -342,10 +342,10 @@ async function searchAgentMemory(
 async function memoriesToHits(
   runtime: IAgentRuntime,
   memories: Memory[],
-  query: UnifiedSearchQuery,
-): Promise<UnifiedSearchHit[]> {
+  query: CrossChannelSearchQuery,
+): Promise<CrossChannelSearchHit[]> {
   const roomCache = new Map<string, Room | null>();
-  const results: UnifiedSearchHit[] = [];
+  const results: CrossChannelSearchHit[] = [];
 
   for (const mem of memories) {
     const text = (mem.content?.text ?? "").trim();
@@ -414,11 +414,11 @@ type RelationshipsGraphServiceWithCluster = RelationshipsGraphService & {
 
 async function resolvePerson(
   runtime: IAgentRuntime,
-  ref: UnifiedSearchPersonRef | undefined,
+  ref: CrossChannelSearchPersonRef | undefined,
 ): Promise<{
   service: RelationshipsGraphServiceWithCluster | null;
   person: RelationshipsPersonSummary | null;
-  degraded: UnifiedSearchDegraded[];
+  degraded: CrossChannelSearchDegraded[];
 }> {
   if (!ref) {
     return { service: null, person: null, degraded: [] };
@@ -476,10 +476,10 @@ async function searchClusterMemories(
   runtime: IAgentRuntime,
   service: RelationshipsGraphServiceWithCluster,
   person: RelationshipsPersonSummary,
-  query: UnifiedSearchQuery,
+  query: CrossChannelSearchQuery,
 ): Promise<{
-  hits: UnifiedSearchHit[];
-  degraded: UnifiedSearchDegraded[];
+  hits: CrossChannelSearchHit[];
+  degraded: CrossChannelSearchDegraded[];
 }> {
   const fn = service.getMemoriesForCluster;
   if (typeof fn !== "function") {
@@ -509,7 +509,7 @@ async function searchClusterMemories(
 // ---------------------------------------------------------------------------
 
 const CONNECTORS_WITHOUT_NATIVE_SEARCH: ReadonlyArray<{
-  channel: UnifiedSearchChannel;
+  channel: CrossChannelSearchChannel;
   reason: string;
 }> = [
   {
@@ -542,9 +542,9 @@ const CONNECTORS_WITHOUT_NATIVE_SEARCH: ReadonlyArray<{
 // Result merge
 // ---------------------------------------------------------------------------
 
-function dedupeHits(hits: UnifiedSearchHit[]): UnifiedSearchHit[] {
+function dedupeHits(hits: CrossChannelSearchHit[]): CrossChannelSearchHit[] {
   const seen = new Set<string>();
-  const out: UnifiedSearchHit[] = [];
+  const out: CrossChannelSearchHit[] = [];
   for (const hit of hits) {
     if (seen.has(hit.id)) continue;
     seen.add(hit.id);
@@ -553,7 +553,7 @@ function dedupeHits(hits: UnifiedSearchHit[]): UnifiedSearchHit[] {
   return out;
 }
 
-function rankHits(hits: UnifiedSearchHit[]): UnifiedSearchHit[] {
+function rankHits(hits: CrossChannelSearchHit[]): CrossChannelSearchHit[] {
   return [...hits].sort((a, b) => {
     const ta = Date.parse(a.timestamp);
     const tb = Date.parse(b.timestamp);
@@ -568,18 +568,18 @@ function rankHits(hits: UnifiedSearchHit[]): UnifiedSearchHit[] {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-export async function runUnifiedSearch(
+export async function runCrossChannelSearch(
   runtime: IAgentRuntime,
-  query: UnifiedSearchQuery,
-): Promise<UnifiedSearchResult> {
+  query: CrossChannelSearchQuery,
+): Promise<CrossChannelSearchResult> {
   if (!query.query || query.query.trim().length === 0) {
-    throw new Error("runUnifiedSearch: query.query is required");
+    throw new Error("runCrossChannelSearch: query.query is required");
   }
 
   const channels = query.channels;
-  const unsupported: UnifiedSearchUnsupported[] = [];
-  const degraded: UnifiedSearchDegraded[] = [];
-  const allHits: UnifiedSearchHit[] = [];
+  const unsupported: CrossChannelSearchUnsupported[] = [];
+  const degraded: CrossChannelSearchDegraded[] = [];
+  const allHits: CrossChannelSearchHit[] = [];
 
   // 1. Resolve canonical person via WS3 (best-effort).
   const personResolution = await resolvePerson(runtime, query.personRef);
@@ -666,14 +666,14 @@ export async function runUnifiedSearch(
   const merged = rankHits(dedupeHits(allHits));
   const channelsWithHits = Array.from(
     new Set(merged.map((h) => h.channel)),
-  ) as UnifiedSearchChannel[];
+  ) as CrossChannelSearchChannel[];
 
   const finalLimit =
-    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * UNIFIED_SEARCH_CHANNELS.length;
+    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * CROSS_CHANNEL_SEARCH_CHANNELS.length;
   const limited = merged.slice(0, finalLimit);
 
   logger.debug(
-    `[unified-search] query="${query.query}" hits=${limited.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
+    `[cross-channel-search] query="${query.query}" hits=${limited.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
   );
 
   return {

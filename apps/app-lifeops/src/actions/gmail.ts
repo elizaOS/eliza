@@ -1631,7 +1631,7 @@ export const gmailAction: Action & {
     "'draft a reply to the latest email from finance', 'send the email'). " +
     "Subactions: Gmail-specific triage, recommended actions, true unresponded threads, search by sender/subject/keyword/date/label, " +
     "read message bodies by Gmail ID, draft reply, send reply, and Gmail management. " +
-    "DO NOT use for a cross-channel inbox digest / inbox-only daily digest / unified inbox / triage across " +
+    "DO NOT use for a cross-channel inbox digest / inbox-only daily digest / triage across " +
     "Slack / Discord / SMS / Telegram — route owner inbox work to OWNER_INBOX and the agent's " +
     "own mailbox to AGENT_INBOX. If the user says 'my inbox' without specifying Gmail (e.g. " +
     "'give me my inbox digest', 'triage my inbox'), do not route straight to " +
