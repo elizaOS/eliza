@@ -8,11 +8,13 @@ import android.os.Build
 import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
+import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 
 @CapacitorPlugin(name = "MiladySystem")
@@ -48,6 +50,56 @@ class SystemPlugin : Plugin() {
         call.resolve(result)
     }
 
+    @PluginMethod
+    fun requestRole(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("Android role requests require Android 10 or newer")
+            return
+        }
+
+        val roleName = call.getString("role")?.trim()
+        val androidRole = roleMap[roleName]
+        if (roleName.isNullOrEmpty() || androidRole == null) {
+            call.reject("role must be one of ${roleMap.keys.joinToString(", ")}")
+            return
+        }
+
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+        if (!roleManager.isRoleAvailable(androidRole)) {
+            call.reject("$androidRole is not available on this device")
+            return
+        }
+
+        if (roleManager.isRoleHeld(androidRole)) {
+            call.resolve(roleRequestResult(roleName, true, 0))
+            return
+        }
+
+        startActivityForResult(
+            call,
+            roleManager.createRequestRoleIntent(androidRole),
+            "handleRoleRequestResult"
+        )
+    }
+
+    @ActivityCallback
+    private fun handleRoleRequestResult(call: PluginCall, result: ActivityResult) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("Android role requests require Android 10 or newer")
+            return
+        }
+
+        val roleName = call.getString("role")?.trim()
+        val androidRole = roleMap[roleName]
+        if (roleName.isNullOrEmpty() || androidRole == null) {
+            call.reject("role must be one of ${roleMap.keys.joinToString(", ")}")
+            return
+        }
+
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+        call.resolve(roleRequestResult(roleName, roleManager.isRoleHeld(androidRole), result.resultCode))
+    }
+
     private fun roleHolders(name: String): List<String> {
         return when (name) {
             "home" -> listOfNotNull(resolveHomePackage())
@@ -74,6 +126,14 @@ class SystemPlugin : Plugin() {
         val flattened = Settings.Secure.getString(context.contentResolver, "assistant")
         if (flattened.isNullOrBlank()) return null
         return ComponentName.unflattenFromString(flattened)?.packageName
+    }
+
+    private fun roleRequestResult(roleName: String, held: Boolean, resultCode: Int): JSObject {
+        val result = JSObject()
+        result.put("role", roleName)
+        result.put("held", held)
+        result.put("resultCode", resultCode)
+        return result
     }
 
     @PluginMethod

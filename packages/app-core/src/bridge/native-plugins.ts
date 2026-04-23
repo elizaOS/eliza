@@ -365,8 +365,13 @@ export interface SmsMessageSummary {
   read: boolean;
 }
 
+export interface SendSmsResult {
+  messageId: string;
+  messageUri: string;
+}
+
 export interface MessagesPluginLike extends NativePlugin {
-  sendSms(options: { address: string; body: string }): Promise<void>;
+  sendSms(options: { address: string; body: string }): Promise<SendSmsResult>;
   listMessages(options?: {
     limit?: number;
     threadId?: string;
@@ -381,11 +386,20 @@ export interface AndroidRoleStatus {
   holders: string[];
 }
 
+export interface AndroidRoleRequestResult {
+  role: AndroidRoleStatus["role"];
+  held: boolean;
+  resultCode: number;
+}
+
 export interface SystemPluginLike extends NativePlugin {
   getStatus(): Promise<{
     packageName: string;
     roles: AndroidRoleStatus[];
   }>;
+  requestRole(options: {
+    role: AndroidRoleStatus["role"];
+  }): Promise<AndroidRoleRequestResult>;
   openSettings(): Promise<void>;
 }
 
