@@ -7,7 +7,6 @@ import type {
 	MessageExample,
 	MessageExampleGroup,
 } from "../../../../types/index.ts";
-import { MemoryType } from "../../../../types/memory.ts";
 import { Service } from "../../../../types/service.ts";
 import { PersonalityServiceType } from "../types.ts";
 
@@ -53,7 +52,9 @@ type CharacterModification = z.infer<typeof CharacterModificationSchema>;
 type CharacterPersistenceServiceLike = {
 	persistCharacter: (params?: {
 		character?: Record<string, unknown>;
+		previousCharacter?: Record<string, unknown>;
 		previousName?: string;
+		source?: "manual" | "agent" | "restore";
 	}) => Promise<{ success: boolean; error?: string }>;
 };
 
@@ -430,12 +431,14 @@ export class CharacterFileManager extends Service {
 			}
 
 			const persistenceService = this.runtime.getService(
-				"character_persistence",
+				"eliza_character_persistence",
 			) as unknown as CharacterPersistenceServiceLike | null;
 			if (persistenceService) {
 				const persistenceResult = await persistenceService.persistCharacter({
 					character: currentCharacter as Record<string, unknown>,
+					previousCharacter: this.runtime.character as Record<string, unknown>,
 					previousName,
+					source: "agent",
 				});
 				if (!persistenceResult.success) {
 					return {
@@ -448,36 +451,6 @@ export class CharacterFileManager extends Service {
 
 			// Update runtime character only after persistence succeeds.
 			Object.assign(this.runtime.character, currentCharacter);
-
-			// Audit logging is best-effort; a logging failure must not negate
-			// an already-applied character update.
-			try {
-				const dummyRoomId = this.runtime.agentId; // Use agentId as fallback roomId
-				await this.runtime.createMemory(
-					{
-						entityId: this.runtime.agentId,
-						roomId: dummyRoomId,
-						content: {
-							text: `Character modification applied to file: ${this.characterFilePath || "memory-only"}`,
-							source: "character_modification",
-						},
-						metadata: {
-							type: MemoryType.CUSTOM,
-							service: PersonalityServiceType,
-							action: "character_modified",
-							timestamp: Date.now(),
-							filePath: this.characterFilePath,
-							modificationType: "file_update",
-						},
-					},
-					"character_modifications",
-				);
-			} catch (error) {
-				logger.warn(
-					{ error: error instanceof Error ? error.message : String(error) },
-					"Character modification audit log failed",
-				);
-			}
 
 			return { success: true };
 		} catch (error) {
@@ -510,9 +483,11 @@ export class CharacterFileManager extends Service {
 			return {
 				timestamp:
 					typeof meta?.timestamp === "number" ? meta.timestamp : undefined,
-				modification: meta?.modification,
+				modification: meta?.after ?? meta?.changes ?? meta?.modification,
 				filePath:
-					typeof meta?.filePath === "string" ? meta.filePath : undefined,
+					typeof meta?.filePath === "string"
+						? meta.filePath
+						: (this.characterFilePath ?? undefined),
 			};
 		});
 	}
@@ -589,9 +564,9 @@ export class CharacterFileManager extends Service {
 
 			// Create a backup of the current state before restoration
 			const currentBackupPath = await this.createBackup();
-
-			// Update runtime character
-			Object.assign(this.runtime.character, backupContent);
+			const previousCharacter = {
+				...this.runtime.character,
+			} as Record<string, unknown>;
 
 			// If we have a character file path, update the file
 			if (this.characterFilePath) {
@@ -600,28 +575,29 @@ export class CharacterFileManager extends Service {
 				});
 			}
 
-			// Log the restoration
-			const dummyRoomId = this.runtime.agentId;
-			await this.runtime.createMemory(
-				{
-					entityId: this.runtime.agentId,
-					roomId: dummyRoomId,
-					content: {
-						text: `Character restored from backup: ${path.basename(backupPath)}`,
-						source: "character_restoration",
-					},
-					metadata: {
-						type: MemoryType.CUSTOM,
-						service: PersonalityServiceType,
-						action: "character_reset",
-						timestamp: Date.now(),
-						backupPath,
-						previousBackup: currentBackupPath,
-						restorationType: "backup_restoration",
-					},
-				},
-				"character_modifications",
-			);
+			const persistenceService = this.runtime.getService(
+				"eliza_character_persistence",
+			) as unknown as CharacterPersistenceServiceLike | null;
+			if (persistenceService) {
+				const persistenceResult = await persistenceService.persistCharacter({
+					character: backupContent as Record<string, unknown>,
+					previousCharacter,
+					previousName:
+						typeof this.runtime.character.name === "string"
+							? this.runtime.character.name
+							: undefined,
+					source: "restore",
+				});
+				if (!persistenceResult.success) {
+					return {
+						success: false,
+						error: persistenceResult.error ?? "Failed to restore character",
+					};
+				}
+			}
+
+			// Update runtime character only after persistence succeeds.
+			Object.assign(this.runtime.character, backupContent);
 
 			logger.info(
 				{

@@ -102,10 +102,24 @@ describe("page-scoped-conversations helper", () => {
         const copy = PAGE_SCOPE_COPY[scope];
         expect(copy.title.length).toBeGreaterThan(0);
         expect(copy.body.length).toBeGreaterThan(0);
-        expect(copy.body).toContain("Recommended:");
-        expect(copy.body).toMatch(/Ask me|Use me/);
+        expect(copy.body).toMatch(/Ask me|Use me|Install/);
         expect(copy.systemAddendum.length).toBeGreaterThan(0);
         expect(copy.systemAddendum.toLowerCase()).toContain("recommend");
+      }
+    });
+
+    it("describes the redesigned Character hub sections explicitly", () => {
+      const copy = PAGE_SCOPE_COPY["page-character"];
+
+      for (const section of [
+        "Overview",
+        "Personality",
+        "Knowledge",
+        "Experience",
+        "Relationships",
+      ]) {
+        expect(copy.body).toContain(section);
+        expect(copy.systemAddendum).toContain(section);
       }
     });
   });

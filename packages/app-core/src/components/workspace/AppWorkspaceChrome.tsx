@@ -66,6 +66,38 @@ export function AppWorkspaceChatCollapseButton({
   );
 }
 
+interface AppWorkspaceChatDockToggleButtonProps {
+  collapsed: boolean;
+  testId: string;
+}
+
+function AppWorkspaceChatDockToggleButton({
+  collapsed,
+  testId,
+}: AppWorkspaceChatDockToggleButtonProps): JSX.Element | null {
+  const chatChrome = useAppWorkspaceChatChrome();
+
+  if (!chatChrome) return null;
+
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      className="fixed bottom-2 right-2 z-40 inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+      aria-label={collapsed ? "Open page chat" : "Collapse chat"}
+      onClick={() =>
+        collapsed ? chatChrome.openChat() : chatChrome.collapseChat()
+      }
+    >
+      {collapsed ? (
+        <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
+      )}
+    </button>
+  );
+}
+
 function clampWidth(value: number): number {
   return Math.min(Math.max(value, CHAT_MIN_WIDTH), CHAT_MAX_WIDTH);
 }
@@ -264,8 +296,6 @@ export function AppWorkspaceChrome({
     ],
   );
 
-  const pageScopedChatOwnsCollapse = chat === undefined && chatScope !== undefined;
-
   const chatChromeContextValue = useMemo<AppWorkspaceChatChromeContextValue>(
     () => ({
       collapseChat: () => handleToggle(true),
@@ -278,15 +308,7 @@ export function AppWorkspaceChrome({
   const chatContent =
     chat ??
     (chatScope ? (
-      <PageScopedChatPane
-        {...pageScopedChatPaneProps}
-        scope={chatScope}
-        footerActions={
-          <AppWorkspaceChatCollapseButton
-            testId={`${testId}-chat-collapse-inline`}
-          />
-        }
-      />
+      <PageScopedChatPane {...pageScopedChatPaneProps} scope={chatScope} />
     ) : (
       <ChatView variant="default" />
     ));
@@ -311,19 +333,22 @@ export function AppWorkspaceChrome({
             data-testid={`${testId}-chat-sidebar`}
             data-collapsed
           >
-            <button
-              type="button"
-              data-testid={`${testId}-chat-expand`}
-              className={
-                isMobileViewport
-                  ? "fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
-                  : "fixed bottom-3 right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
-              }
-              aria-label="Open page chat"
-              onClick={() => handleToggle(false)}
-            >
-              <PanelRightOpen className="h-4 w-4" />
-            </button>
+            {isMobileViewport ? (
+              <button
+                type="button"
+                data-testid={`${testId}-chat-expand`}
+                className="fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
+                aria-label="Open page chat"
+                onClick={() => handleToggle(false)}
+              >
+                <PanelRightOpen className="h-4 w-4" />
+              </button>
+            ) : (
+              <AppWorkspaceChatDockToggleButton
+                collapsed
+                testId={`${testId}-chat-expand`}
+              />
+            )}
           </aside>
         ) : (
           <>
@@ -372,14 +397,13 @@ export function AppWorkspaceChrome({
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {chatContent}
               </div>
-              {hideCollapseButton || pageScopedChatOwnsCollapse ? null : (
-                <div className="flex items-center justify-end pl-2 pr-2 pt-1.5 pb-2">
-                  <AppWorkspaceChatCollapseButton
-                    testId={`${testId}-chat-collapse`}
-                  />
-                </div>
-              )}
             </aside>
+            {!isMobileViewport && !hideCollapseButton ? (
+              <AppWorkspaceChatDockToggleButton
+                collapsed={false}
+                testId={`${testId}-chat-collapse`}
+              />
+            ) : null}
           </>
         )}
       </div>

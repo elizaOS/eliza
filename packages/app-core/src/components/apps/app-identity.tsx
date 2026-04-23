@@ -8,7 +8,7 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 export interface AppIdentitySource {
   name: string;
@@ -109,6 +109,40 @@ export function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
   return Sparkles;
 }
 
+function useResolvedAppImageSource(app: AppIdentitySource): {
+  imageSrc: string | null;
+  handleImageError: () => void;
+} {
+  const heroSrc = app.heroImage?.trim() || null;
+  const iconSrc = iconImageSource(app.icon);
+  const [failedHeroSrc, setFailedHeroSrc] = useState<string | null>(null);
+  const [failedIconSrc, setFailedIconSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFailedHeroSrc(null);
+    setFailedIconSrc(null);
+  }, [heroSrc, iconSrc]);
+
+  const imageSrc =
+    heroSrc && heroSrc !== failedHeroSrc
+      ? heroSrc
+      : iconSrc && iconSrc !== failedIconSrc
+        ? iconSrc
+        : null;
+
+  const handleImageError = () => {
+    if (imageSrc === heroSrc && heroSrc) {
+      setFailedHeroSrc(heroSrc);
+      return;
+    }
+    if (imageSrc === iconSrc && iconSrc) {
+      setFailedIconSrc(iconSrc);
+    }
+  };
+
+  return { imageSrc, handleImageError };
+}
+
 export function AppIdentityTile({
   app,
   active = false,
@@ -121,7 +155,7 @@ export function AppIdentityTile({
   size?: "sm" | "md";
 }) {
   const palette = getAppPalette(app.name);
-  const iconSrc = iconImageSource(app.icon);
+  const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const outerSize =
@@ -141,12 +175,15 @@ export function AppIdentityTile({
       aria-hidden
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.32),transparent_30%),radial-gradient(circle_at_82%_20%,rgba(255,255,255,0.18),transparent_26%),radial-gradient(circle_at_50%_100%,rgba(0,0,0,0.16),transparent_35%)]" />
-      {iconSrc ? (
+      {imageSrc ? (
         <>
           <img
-            src={iconSrc}
+            src={imageSrc}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={handleImageError}
           />
           <div className="absolute inset-0 bg-black/10" />
         </>
@@ -164,7 +201,7 @@ export function AppIdentityTile({
         <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-card bg-ok shadow-sm" />
       ) : null}
       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/12 to-transparent" />
-      {iconSrc ? (
+      {imageSrc ? (
         <div
           className={`absolute left-1.5 top-1.5 inline-flex items-center rounded-full border border-white/20 bg-black/10 px-1.5 py-0.5 font-semibold uppercase tracking-[0.18em] text-white ${badgeSize}`}
         >
@@ -221,16 +258,13 @@ export function AppHero({
   className?: string;
 }) {
   const palette = getAppPalette(app.name);
-  const iconSrc = iconImageSource(app.icon);
-  const heroSrc = app.heroImage?.trim() || null;
+  const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const blobs = getHeroBlobs(hashString(app.name));
   const iconRotation = hashString(app.name) % 24;
 
-  const primarySrc = heroSrc ?? iconSrc ?? null;
-  const [imageFailed, setImageFailed] = useState(false);
-  const useImage = Boolean(primarySrc) && !imageFailed;
+  const useImage = Boolean(imageSrc);
 
   return (
     <div
@@ -242,14 +276,14 @@ export function AppHero({
       }
       aria-hidden
     >
-      {useImage && primarySrc ? (
+      {useImage && imageSrc ? (
         <img
-          src={primarySrc}
+          src={imageSrc}
           alt=""
           loading="lazy"
           decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
-          onError={() => setImageFailed(true)}
+          onError={handleImageError}
         />
       ) : (
         <>

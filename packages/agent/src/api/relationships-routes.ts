@@ -17,14 +17,32 @@ export interface RelationshipsRouteContext extends RouteRequestContext {
 
 function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
-  const limit = url.searchParams.get("limit");
-  const offset = url.searchParams.get("offset");
+  const parseInteger = (
+    value: string | null,
+    options?: { min?: number },
+  ): number | undefined => {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    if (typeof options?.min === "number" && parsed < options.min) {
+      return undefined;
+    }
+    return parsed;
+  };
+  const scopeParam = url.searchParams.get("scope");
+  const scope =
+    scopeParam === "relevant" || scopeParam === "all" ? scopeParam : undefined;
 
   return {
     search: url.searchParams.get("search"),
     platform: url.searchParams.get("platform"),
-    limit: limit ? Number.parseInt(limit, 10) : undefined,
-    offset: offset ? Number.parseInt(offset, 10) : undefined,
+    limit: parseInteger(url.searchParams.get("limit"), { min: 1 }),
+    offset: parseInteger(url.searchParams.get("offset"), { min: 0 }),
+    scope,
   };
 }
 
@@ -203,7 +221,7 @@ export async function handleRelationshipsRoutes(
   }
 
   if (pathname === "/api/relationships/activity") {
-    const snapshot = await relationshipsGraph.getGraphSnapshot({ limit: 200 });
+    const snapshot = await relationshipsGraph.getGraphSnapshot();
     type ActivityItem = {
       type: "relationship" | "identity" | "fact";
       personName: string;
@@ -331,7 +349,7 @@ export async function handleRelationshipsRoutes(
       {
         activity: activity.slice(offset, offset + limit),
         total: activity.length,
-        count: Math.min(limit, activity.length - offset),
+        count: Math.max(0, Math.min(limit, activity.length - offset)),
         offset,
         limit,
         hasMore: offset + limit < activity.length,

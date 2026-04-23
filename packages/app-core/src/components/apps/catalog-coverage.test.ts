@@ -6,6 +6,7 @@ import type { RegistryAppInfo } from "../../api";
 import {
   APPS_VIEW_HIDDEN_APP_NAMES,
   filterAppsForCatalog,
+  groupAppsForCatalog,
   isHiddenFromAppsView,
 } from "./helpers";
 import { getInternalToolApps } from "./internal-tool-apps";
@@ -91,7 +92,7 @@ describe("apps catalog coverage", () => {
     ).toEqual([]);
   });
 
-  it("hides non-primary game and finance apps by default", () => {
+  it("hides non-primary game apps and the finance section by default", () => {
     const visibleNames = filterAppsForCatalog([
       makeCatalogCandidate("@elizaos/app-lifeops"),
       makeCatalogCandidate("@elizaos/app-companion", "game"),
@@ -113,7 +114,6 @@ describe("apps catalog coverage", () => {
         "@elizaos/app-companion",
         "@elizaos/app-defense-of-the-agents",
         "@clawville/app-clawville",
-        "@elizaos/app-vincent",
       ]),
     );
     expect(visibleNames).not.toEqual(
@@ -122,10 +122,63 @@ describe("apps catalog coverage", () => {
         "@elizaos/app-2004scape",
         "@elizaos/app-scape",
         "@hyperscape/plugin-hyperscape",
+        "@elizaos/app-vincent",
         "@elizaos/app-shopify",
         "@elizaos/app-steward",
         "@elizaos/app-elizamaker",
       ]),
     );
+  });
+
+  it("surfaces the current flagship apps in the featured section", () => {
+    const sections = groupAppsForCatalog(
+      filterAppsForCatalog([
+        makeCatalogCandidate("@elizaos/app-lifeops"),
+        makeCatalogCandidate("@elizaos/app-companion", "game"),
+        makeCatalogCandidate("@elizaos/app-defense-of-the-agents", "game"),
+        makeCatalogCandidate("@clawville/app-clawville", "game"),
+      ]),
+    );
+
+    expect(sections[0]).toMatchObject({
+      key: "featured",
+      apps: [
+        { name: "@elizaos/app-lifeops" },
+        { name: "@elizaos/app-companion" },
+        { name: "@elizaos/app-defense-of-the-agents" },
+        { name: "@clawville/app-clawville" },
+      ],
+    });
+  });
+
+  it("filters starred flagship apps out of the featured section", () => {
+    const sections = groupAppsForCatalog(
+      filterAppsForCatalog([
+        makeCatalogCandidate("@elizaos/app-lifeops"),
+        makeCatalogCandidate("@elizaos/app-companion", "game"),
+        makeCatalogCandidate("@elizaos/app-defense-of-the-agents", "game"),
+        makeCatalogCandidate("@clawville/app-clawville", "game"),
+      ]),
+      {
+        favoriteAppNames: new Set([
+          "@elizaos/app-lifeops",
+          "@elizaos/app-companion",
+          "@elizaos/app-defense-of-the-agents",
+        ]),
+      },
+    );
+
+    expect(sections[0]).toMatchObject({
+      key: "favorites",
+      apps: [
+        { name: "@elizaos/app-lifeops" },
+        { name: "@elizaos/app-companion" },
+        { name: "@elizaos/app-defense-of-the-agents" },
+      ],
+    });
+    expect(sections[1]).toMatchObject({
+      key: "featured",
+      apps: [{ name: "@clawville/app-clawville" }],
+    });
   });
 });

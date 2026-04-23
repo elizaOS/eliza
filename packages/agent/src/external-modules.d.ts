@@ -196,6 +196,13 @@ declare module "@elizaos/app-knowledge/service-loader" {
       roomId?: UUID;
       unique?: boolean;
     }): Promise<number>;
+    updateKnowledgeDocument?(options: {
+      documentId: UUID;
+      content: string;
+    }): Promise<{
+      documentId: UUID;
+      fragmentCount: number;
+    }>;
     deleteMemory(memoryId: UUID): Promise<void>;
   }
   export interface KnowledgeServiceResult {

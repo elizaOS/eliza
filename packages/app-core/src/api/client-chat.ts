@@ -22,6 +22,7 @@ import type {
   ImageAttachment,
   KnowledgeBulkUploadResult,
   KnowledgeDocumentDetail,
+  KnowledgeDocumentUpdateResult,
   KnowledgeDocumentsResponse,
   KnowledgeFragmentsResponse,
   KnowledgeSearchResponse,
@@ -229,6 +230,10 @@ declare module "./client-base" {
     getKnowledgeDocument(
       documentId: string,
     ): Promise<{ document: KnowledgeDocumentDetail }>;
+    updateKnowledgeDocument(
+      documentId: string,
+      data: { content: string },
+    ): Promise<KnowledgeDocumentUpdateResult>;
     deleteKnowledgeDocument(
       documentId: string,
     ): Promise<{ ok: boolean; deletedFragments: number }>;
@@ -822,6 +827,20 @@ ElizaClient.prototype.getKnowledgeDocument = async function (
 ) {
   return this.fetch(
     `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
+  );
+};
+
+ElizaClient.prototype.updateKnowledgeDocument = async function (
+  this: ElizaClient,
+  documentId,
+  data,
+) {
+  return this.fetch(
+    `/api/knowledge/documents/${encodeURIComponent(documentId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
   );
 };
 

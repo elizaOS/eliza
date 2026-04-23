@@ -24,6 +24,7 @@ export * from "./credit-detection.js";
 export * from "./database.js";
 export * from "./diagnostics-routes.js";
 export * from "./early-logs.js";
+export * from "./experience-routes.js";
 export * from "./http-helpers.js";
 export * from "./knowledge-routes.js";
 export * from "./knowledge-service-loader.js";

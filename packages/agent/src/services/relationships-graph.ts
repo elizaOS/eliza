@@ -14,6 +14,7 @@ export type RelationshipsGraphQuery = {
   platform?: string | null;
   limit?: number;
   offset?: number;
+  scope?: "all" | "relevant";
 };
 
 export type RelationshipsMergeCandidate = {
@@ -113,6 +114,21 @@ export type RelationshipsPersonFact = {
   lastReinforced?: string;
   /** Message IDs that contributed evidence for this fact. */
   evidenceMessageIds?: string[];
+  provenance?: RelationshipsFactProvenance;
+  extractedInformation?: RelationshipsFactExtractedInformation;
+};
+
+export type RelationshipsFactProvenance = {
+  source?: string;
+  evaluatorName?: string;
+  sourceTrajectoryId?: UUID;
+  lastReinforced?: string;
+  evidenceMessageIds: string[];
+};
+
+export type RelationshipsFactExtractedInformation = {
+  scope?: string;
+  raw?: Record<string, unknown>;
 };
 
 export type RelationshipsConversationMessage = {
@@ -138,11 +154,35 @@ export type RelationshipsIdentityEdge = {
   status: string;
 };
 
+export type RelationshipsRelevantMemory = {
+  id: string;
+  sourceType: "message";
+  entityId?: UUID;
+  roomId?: UUID;
+  roomName: string | null;
+  speaker: string;
+  text: string;
+  createdAt?: string;
+  source?: string | null;
+};
+
+export type RelationshipsUserPersonalityPreference = {
+  id: string;
+  entityId: UUID;
+  text: string;
+  category?: string;
+  originalRequest?: string;
+  source?: string | null;
+  createdAt?: string;
+};
+
 export type RelationshipsPersonDetail = RelationshipsPersonSummary & {
   facts: RelationshipsPersonFact[];
   recentConversations: RelationshipsConversationSnippet[];
+  relevantMemories: RelationshipsRelevantMemory[];
   relationships: RelationshipsGraphEdge[];
   identityEdges: RelationshipsIdentityEdge[];
+  userPersonalityPreferences: RelationshipsUserPersonalityPreference[];
 };
 
 export type RelationshipsGraphService = {
@@ -267,6 +307,9 @@ const GENERIC_RELATIONSHIP_TAGS = new Set([
   "relationships",
   "updated",
 ]);
+const USER_PERSONALITY_PREFERENCES_TABLE = "user_personality_preferences";
+const USER_PERSONALITY_PREFERENCES_LIMIT = 10;
+const PERSON_RELEVANT_MEMORIES_LIMIT = 24;
 
 function asString(value: unknown): string | null {
   return asNonEmptyString(value) ?? null;
@@ -278,6 +321,31 @@ function asNumber(value: unknown): number | null {
 
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
+}
+
+function asRecordOrNull(value: unknown): Record<string, unknown> | null {
+  return asRecord(value) ?? null;
+}
+
+function contentRecord(memory: Memory): Record<string, unknown> {
+  return asRecord(memory.content) ?? {};
+}
+
+function memoryText(memory: Memory): string | null {
+  return asString(contentRecord(memory).text);
+}
+
+function memorySource(memory: Memory): string | null {
+  return asString(contentRecord(memory).source);
+}
+
+function parseEvidenceMessageIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0,
+      )
+    : [];
 }
 
 function pushUnique(target: string[], value: string | null | undefined): void {
@@ -425,6 +493,55 @@ function relationshipConfidence(relationship: Relationship): number {
         (relationshipStatus(relationship) === "confirmed" ? 1 : 0.5),
     ),
   );
+}
+
+function factProvenanceFromMetadata(
+  metadata: Record<string, unknown>,
+): RelationshipsFactProvenance | undefined {
+  const evidenceMessageIds = parseEvidenceMessageIds(
+    metadata.evidenceMessageIds,
+  );
+  const provenance: RelationshipsFactProvenance = {
+    source: asString(metadata.source) ?? undefined,
+    evaluatorName: asString(metadata.evaluatorName) ?? undefined,
+    sourceTrajectoryId: asString(metadata.sourceTrajectoryId) ?? undefined,
+    lastReinforced: asString(metadata.lastReinforced) ?? undefined,
+    evidenceMessageIds,
+  };
+
+  if (
+    !provenance.source &&
+    !provenance.evaluatorName &&
+    !provenance.sourceTrajectoryId &&
+    !provenance.lastReinforced &&
+    provenance.evidenceMessageIds.length === 0
+  ) {
+    return undefined;
+  }
+
+  return provenance;
+}
+
+function factExtractedInformationFromMetadata(
+  metadata: Record<string, unknown>,
+): RelationshipsFactExtractedInformation | undefined {
+  const explicit =
+    asRecordOrNull(metadata.extractedInformation) ??
+    asRecordOrNull(metadata.extracted_information);
+  const base = asRecordOrNull(metadata.base);
+  const raw = explicit ?? base;
+  if (!raw) {
+    return undefined;
+  }
+
+  const scope =
+    asString(raw.scope) ??
+    (raw === explicit ? (asString(base?.scope) ?? undefined) : undefined);
+
+  return {
+    scope,
+    raw,
+  };
 }
 
 function entityNames(entity: Entity | null): string[] {
@@ -1591,6 +1708,27 @@ function filterGraphByRelevance(
   };
 }
 
+function graphViewForScope(
+  summaries: RelationshipsPersonSummary[],
+  edges: RelationshipsGraphEdge[],
+  messageCountsByGroupId: Map<UUID, number>,
+  scope: RelationshipsGraphQuery["scope"],
+): {
+  summaries: RelationshipsPersonSummary[];
+  edges: RelationshipsGraphEdge[];
+  visibleGroupIds: Set<UUID>;
+} {
+  if (scope === "relevant") {
+    return filterGraphByRelevance(summaries, edges, messageCountsByGroupId);
+  }
+
+  return {
+    summaries,
+    edges,
+    visibleGroupIds: new Set(summaries.map((summary) => summary.groupId)),
+  };
+}
+
 function matchesQuery(
   summary: RelationshipsPersonSummary,
   query: RelationshipsGraphQuery,
@@ -1672,73 +1810,77 @@ async function buildFacts(
   contexts: Map<UUID, EntityContext>,
   memberEntityIds: UUID[],
 ): Promise<RelationshipsPersonFact[]> {
-  const facts: RelationshipsPersonFact[] = [];
-  for (const entityId of memberEntityIds) {
-    const context = contexts.get(entityId);
-    if (!context) {
-      continue;
-    }
+  const factGroups = await Promise.all(
+    memberEntityIds.map(async (entityId) => {
+      const context = contexts.get(entityId);
+      if (!context) {
+        return [];
+      }
 
-    for (const email of context.emails) {
-      facts.push({
-        id: `${entityId}:contact:email:${email}`,
-        sourceType: "contact",
-        field: "email",
-        value: email,
-        text: `Email: ${email}`,
-        updatedAt: asString(context.contact?.lastModified) ?? undefined,
-      });
-    }
-    for (const phone of context.phones) {
-      facts.push({
-        id: `${entityId}:contact:phone:${phone}`,
-        sourceType: "contact",
-        field: "phone",
-        value: phone,
-        text: `Phone: ${phone}`,
-        updatedAt: asString(context.contact?.lastModified) ?? undefined,
-      });
-    }
-    for (const website of context.websites) {
-      facts.push({
-        id: `${entityId}:contact:website:${website}`,
-        sourceType: "contact",
-        field: "website",
-        value: website,
-        text: `Website: ${website}`,
-        updatedAt: asString(context.contact?.lastModified) ?? undefined,
-      });
-    }
+      const facts: RelationshipsPersonFact[] = [];
+      for (const email of context.emails) {
+        facts.push({
+          id: `${entityId}:contact:email:${email}`,
+          sourceType: "contact",
+          field: "email",
+          value: email,
+          text: `Email: ${email}`,
+          updatedAt: asString(context.contact?.lastModified) ?? undefined,
+        });
+      }
+      for (const phone of context.phones) {
+        facts.push({
+          id: `${entityId}:contact:phone:${phone}`,
+          sourceType: "contact",
+          field: "phone",
+          value: phone,
+          text: `Phone: ${phone}`,
+          updatedAt: asString(context.contact?.lastModified) ?? undefined,
+        });
+      }
+      for (const website of context.websites) {
+        facts.push({
+          id: `${entityId}:contact:website:${website}`,
+          sourceType: "contact",
+          field: "website",
+          value: website,
+          text: `Website: ${website}`,
+          updatedAt: asString(context.contact?.lastModified) ?? undefined,
+        });
+      }
 
-    const memories = await runtime.getMemories({
-      tableName: "facts",
-      entityId,
-      limit: 100,
-    });
-    for (const memory of memories) {
-      const metadata = asRecord(memory.metadata);
-      const lastReinforced = asString(metadata?.lastReinforced) ?? undefined;
-      const evidenceRaw = metadata?.evidenceMessageIds;
-      const evidenceMessageIds = Array.isArray(evidenceRaw)
-        ? evidenceRaw.filter(
-            (entry): entry is string =>
-              typeof entry === "string" && entry.length > 0,
-          )
-        : undefined;
-      facts.push({
-        id: memory.id ?? `${entityId}:fact:${facts.length}`,
-        sourceType: "memory",
-        text: asString(memory.content.text) ?? "",
-        scope:
-          asString(metadata?.base && asRecord(metadata.base)?.scope) ??
-          undefined,
-        confidence: asNumber(metadata?.confidence) ?? undefined,
-        updatedAt: isoFromTimestamp(memory.createdAt),
-        lastReinforced,
-        evidenceMessageIds,
+      const memories = await runtime.getMemories({
+        tableName: "facts",
+        entityId,
+        limit: 100,
       });
-    }
-  }
+      for (const memory of memories) {
+        const metadata = asRecord(memory.metadata) ?? {};
+        const provenance = factProvenanceFromMetadata(metadata);
+        const extractedInformation =
+          factExtractedInformationFromMetadata(metadata);
+        const evidenceMessageIds =
+          provenance && provenance.evidenceMessageIds.length > 0
+            ? provenance.evidenceMessageIds
+            : undefined;
+        facts.push({
+          id: memory.id ?? `${entityId}:fact:${facts.length}`,
+          sourceType: "memory",
+          text: memoryText(memory) ?? "",
+          scope: extractedInformation?.scope,
+          confidence: asNumber(metadata?.confidence) ?? undefined,
+          updatedAt: isoFromTimestamp(memory.createdAt),
+          lastReinforced: provenance?.lastReinforced,
+          evidenceMessageIds,
+          provenance,
+          extractedInformation,
+        });
+      }
+
+      return facts;
+    }),
+  );
+  const facts = factGroups.flat();
 
   return facts.sort((left, right) => {
     const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : 0;
@@ -1830,6 +1972,134 @@ async function buildRecentConversations(
       return rightTime - leftTime;
     })
     .slice(0, 5);
+}
+
+async function buildRelevantMemories(
+  runtime: IAgentRuntime,
+  memberEntityIds: UUID[],
+  contexts: Map<UUID, EntityContext>,
+  fallbackSpeaker: string,
+): Promise<RelationshipsRelevantMemory[]> {
+  if (memberEntityIds.length === 0) {
+    return [];
+  }
+
+  const limitPerEntity = Math.max(
+    6,
+    Math.ceil(PERSON_RELEVANT_MEMORIES_LIMIT / memberEntityIds.length),
+  );
+  const batches = await Promise.all(
+    memberEntityIds.map((entityId) =>
+      runtime.getMemories({
+        tableName: "messages",
+        entityId,
+        limit: limitPerEntity,
+        orderBy: "createdAt",
+        orderDirection: "desc",
+      }),
+    ),
+  );
+  const recentMessages = dedupeMemoriesById(batches.flat()).filter((memory) =>
+    Boolean(memoryText(memory)),
+  );
+  const roomIds = Array.from(
+    new Set(
+      recentMessages
+        .map((memory) => memory.roomId)
+        .filter((roomId): roomId is UUID => typeof roomId === "string"),
+    ),
+  );
+  const rooms = roomIds.length > 0 ? await runtime.getRoomsByIds(roomIds) : [];
+  const roomNameById = new Map(rooms.map((room) => [room.id, room.name]));
+
+  return recentMessages
+    .map((memory) => {
+      const entityId =
+        typeof memory.entityId === "string" ? memory.entityId : undefined;
+      const context = entityId ? contexts.get(entityId) : null;
+      const speaker =
+        entityId &&
+        (entityNames(context?.entity ?? null)[0] ??
+          context?.handles[0]?.handle ??
+          entityId);
+
+      return {
+        id:
+          memory.id ??
+          `${entityId ?? "unknown"}:${memory.roomId ?? "room"}:${memory.createdAt ?? 0}`,
+        sourceType: "message",
+        entityId,
+        roomId: typeof memory.roomId === "string" ? memory.roomId : undefined,
+        roomName:
+          typeof memory.roomId === "string"
+            ? (roomNameById.get(memory.roomId) ?? null)
+            : null,
+        speaker: speaker ?? fallbackSpeaker,
+        text: memoryText(memory) ?? "",
+        createdAt: isoFromTimestamp(memory.createdAt),
+        source: memorySource(memory),
+      } satisfies RelationshipsRelevantMemory;
+    })
+    .sort((left, right) => {
+      const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+      const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, PERSON_RELEVANT_MEMORIES_LIMIT);
+}
+
+async function buildUserPersonalityPreferences(
+  runtime: IAgentRuntime,
+  memberEntityIds: UUID[],
+): Promise<RelationshipsUserPersonalityPreference[]> {
+  if (memberEntityIds.length === 0) {
+    return [];
+  }
+
+  const batches = await Promise.all(
+    memberEntityIds.map((entityId) =>
+      runtime.getMemories({
+        tableName: USER_PERSONALITY_PREFERENCES_TABLE,
+        entityId,
+        roomId: runtime.agentId,
+        limit: USER_PERSONALITY_PREFERENCES_LIMIT,
+        orderBy: "createdAt",
+        orderDirection: "desc",
+      }),
+    ),
+  );
+  const preferences: RelationshipsUserPersonalityPreference[] = [];
+  const seen = new Set<string>();
+
+  for (const memory of batches.flat()) {
+    const entityId =
+      typeof memory.entityId === "string" ? memory.entityId : null;
+    const text = memoryText(memory);
+    if (!entityId || !text) {
+      continue;
+    }
+    const metadata = asRecord(memory.metadata) ?? {};
+    const key = `${text.toLowerCase()}:${asString(metadata.category) ?? ""}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    preferences.push({
+      id: memory.id ?? `${entityId}:preference:${preferences.length}`,
+      entityId,
+      text,
+      category: asString(metadata.category) ?? undefined,
+      originalRequest: asString(metadata.originalRequest) ?? undefined,
+      source: memorySource(memory),
+      createdAt: isoFromTimestamp(memory.createdAt),
+    });
+  }
+
+  return preferences.sort((left, right) => {
+    const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+    const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+    return rightTime - leftTime;
+  });
 }
 
 async function buildGraphModel(
@@ -1976,18 +2246,19 @@ export function createNativeRelationshipsGraphService(
   return {
     async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
       const model = await getCachedModel();
-      const relevantGraph = filterGraphByRelevance(
+      const scopedGraph = graphViewForScope(
         model.summaries,
         model.edges,
         model.messageCountsByGroupId,
+        query.scope,
       );
-      const matchingSummaries = relevantGraph.summaries.filter((summary) =>
+      const matchingSummaries = scopedGraph.summaries.filter((summary) =>
         matchesQuery(summary, query),
       );
       const matchingGroupIds = new Set(
         matchingSummaries.map((summary) => summary.groupId),
       );
-      const filteredEdges = relevantGraph.edges.filter(
+      const filteredEdges = scopedGraph.edges.filter(
         (edge) =>
           matchingGroupIds.has(edge.sourcePersonId) &&
           matchingGroupIds.has(edge.targetPersonId),
@@ -2035,11 +2306,6 @@ export function createNativeRelationshipsGraphService(
       primaryEntityId: UUID,
     ): Promise<RelationshipsPersonDetail | null> {
       const model = await getCachedModel();
-      const relevantGraph = filterGraphByRelevance(
-        model.summaries,
-        model.edges,
-        model.messageCountsByGroupId,
-      );
       const cluster =
         Array.from(model.clusters.values()).find(
           (entry) =>
@@ -2052,7 +2318,7 @@ export function createNativeRelationshipsGraphService(
 
       const summary = applyRelationshipCounts(
         model.summaries.filter((entry) => entry.groupId === cluster.groupId),
-        relevantGraph.edges.filter(
+        model.edges.filter(
           (edge) =>
             edge.sourcePersonId === cluster.groupId ||
             edge.targetPersonId === cluster.groupId,
@@ -2079,19 +2345,33 @@ export function createNativeRelationshipsGraphService(
           status: relationshipStatus(relationship),
         }));
 
+      const [
+        facts,
+        recentConversations,
+        relevantMemories,
+        userPersonalityPreferences,
+      ] = await Promise.all([
+        buildFacts(runtime, model.contexts, cluster.memberEntityIds),
+        buildRecentConversations(
+          runtime,
+          cluster.memberEntityIds,
+          model.contexts,
+        ),
+        buildRelevantMemories(
+          runtime,
+          cluster.memberEntityIds,
+          model.contexts,
+          summary.displayName,
+        ),
+        buildUserPersonalityPreferences(runtime, cluster.memberEntityIds),
+      ]);
+
       return {
         ...summary,
-        facts: await buildFacts(
-          runtime,
-          model.contexts,
-          cluster.memberEntityIds,
-        ),
-        recentConversations: await buildRecentConversations(
-          runtime,
-          cluster.memberEntityIds,
-          model.contexts,
-        ),
-        relationships: relevantGraph.edges
+        facts,
+        recentConversations,
+        relevantMemories,
+        relationships: model.edges
           .filter(
             (edge) =>
               edge.sourcePersonId === cluster.groupId ||
@@ -2099,6 +2379,7 @@ export function createNativeRelationshipsGraphService(
           )
           .sort((left, right) => right.strength - left.strength),
         identityEdges,
+        userPersonalityPreferences,
       };
     },
 

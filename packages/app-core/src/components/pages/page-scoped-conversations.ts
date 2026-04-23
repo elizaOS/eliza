@@ -31,7 +31,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 9;
+export const PAGE_SCOPE_VERSION = 10;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -49,15 +49,15 @@ export interface PageScopeIntroCopy {
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
-    body: "Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about tabs, forms, pages, or browser setup.",
+    body: "Use me to work with the browser workspace. User Tabs are writable; Agent Tabs and App Tabs are read-only context. I can open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open everywhere else.",
     systemAddendum:
-      "You are answering inside the Browser view. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot a page, show or hide tabs, close tabs, explain what is open, and help connect Agent Browser Bridge for real Chrome control. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
+      "You are answering inside the Browser view. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
   },
   "page-character": {
     title: "Character chat",
-    body: "Use me to tune identity, bio, lore, style, examples, voice, avatar, greeting animation, and knowledge. Recommended: describe the personality or behavior you want, and I'll point to the right panel or draft exact copy. Ask me what to change next.",
+    body: "Use me to work with the Character hub. I can help you review Overview, refine Personality, manage Knowledge, inspect Experience, and explore Relationships. Recommended: tell me what you want to change or understand, and I'll point to the right section or draft exact copy. Ask me what to update next.",
     systemAddendum:
-      "You are answering inside the Character view. The user can edit identity fields, bio, lore, style, message examples, voice provider and voice id, avatar/VRM selection, greeting animation, and knowledge documents. The user edits these through UI panels (CharacterIdentityPanel, voice config, CharacterStylePanel, CharacterExamplesPanel, KnowledgeView). Recommend the next character-editing step based on live character state. Offer to answer questions or draft wording for any field. There is no general 'change my voice' action — guide the user to the relevant panel. Reference live character state when answering.",
+      "You are answering inside the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Help the user navigate those sections, recommend the next character step from live state, and draft exact wording when they need copy. Use Overview for high-level status and identity framing, Personality for editable persona/voice fields, Knowledge for uploaded reference material, Experience for surfaced learnings, and Relationships for contact and graph context. Guide the user to the relevant section instead of inventing a generic setter action. Reference live character state when answering.",
   },
   "page-automations": {
     title: "Automations chat",
@@ -126,23 +126,23 @@ export function getBrowserPageScopeCopy(state: {
     const where = profile ? `${browser} / ${profile}` : browser;
     return {
       title: "Browser chat",
-      body: `Agent Browser Bridge is connected in ${where}. Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about any current tab or page.`,
-      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot pages, show or hide tabs, close tabs, inspect current browser state, and answer questions about the current page. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+      body: `Agent Browser Bridge is connected in ${where}. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Use me to open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open in any tab.`,
+      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
     };
   }
   if (state.browserBridgeInstallAvailable === false) {
     return {
       title: "Browser chat",
-      body: "Use me with the embedded browser in this view. Real Chrome control is unavailable in the current runtime, so I can help with embedded tabs, navigation, forms, and page questions only.",
+      body: "Use me with the embedded browser in this view. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Real Chrome control is unavailable in the current runtime, so I can help with embedded User Tabs, navigation, forms, and page questions only.",
       systemAddendum:
-        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so real Chrome control cannot be enabled from this session. Help the user with the embedded browser only: opening embedded tabs, navigating URLs, refreshing pages, and answering questions about the current embedded page or tab list. Do not recommend installing Agent Browser Bridge or promise real-browser tab control.",
+        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so real Chrome control cannot be enabled from this session. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs remain read-only context. Help the user with the embedded browser only: opening User Tabs, navigating URLs, refreshing pages, and answering questions about the current embedded page or tab list. Do not recommend installing Agent Browser Bridge or promise real-browser tab control.",
     };
   }
   return {
     title: "Install Agent Browser Bridge",
-    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. Until it connects, I can still help with the embedded browser. Recommended: click Install Agent Browser Bridge, load the extension, then ask me to open a site or explain the tab list.",
+    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Until it connects, I can still help with the embedded browser.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
+      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
   };
 }
 
@@ -231,7 +231,8 @@ function findPageScopedConversations(
     )
     .sort(
       (left, right) =>
-        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
     );
 }
 
@@ -286,7 +287,9 @@ export async function resetPageScopedConversation(params: {
 
   if (matching.length > 0) {
     await Promise.allSettled(
-      matching.map((conversation) => client.deleteConversation(conversation.id)),
+      matching.map((conversation) =>
+        client.deleteConversation(conversation.id),
+      ),
     );
   }
 

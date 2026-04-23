@@ -545,10 +545,26 @@ export interface WalletMarketPrediction {
   imageUrl: string | null;
 }
 
+export type WalletMarketOverviewProviderId = "coingecko" | "polymarket";
+
+export interface WalletMarketOverviewSource {
+  providerId: WalletMarketOverviewProviderId;
+  providerName: string;
+  providerUrl: string;
+  available: boolean;
+  stale: boolean;
+  error: string | null;
+}
+
 export interface WalletMarketOverviewResponse {
   generatedAt: string;
   cacheTtlSeconds: number;
   stale: boolean;
+  sources: {
+    prices: WalletMarketOverviewSource;
+    movers: WalletMarketOverviewSource;
+    predictions: WalletMarketOverviewSource;
+  };
   prices: WalletMarketPriceSnapshot[];
   movers: WalletMarketMover[];
   predictions: WalletMarketPrediction[];

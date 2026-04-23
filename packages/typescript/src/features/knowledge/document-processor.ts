@@ -2,7 +2,6 @@ import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
 import {
-	type CustomMetadata,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -26,6 +25,10 @@ import {
 	convertPdfToTextFromBuffer,
 	extractTextFromFileBuffer,
 } from "./utils.ts";
+import type {
+	KnowledgeDocumentMemoryMetadata,
+	KnowledgeFragmentMemoryMetadata,
+} from "./types.ts";
 
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);
@@ -87,6 +90,7 @@ export async function processFragmentsSynchronously({
 	entityId,
 	worldId,
 	documentTitle,
+	documentMetadata,
 }: {
 	runtime: IAgentRuntime;
 	documentId: UUID;
@@ -97,6 +101,7 @@ export async function processFragmentsSynchronously({
 	entityId?: UUID;
 	worldId?: UUID;
 	documentTitle?: string;
+	documentMetadata?: Record<string, unknown>;
 }): Promise<number> {
 	if (!fullDocumentText || fullDocumentText.trim() === "") {
 		logger.warn(`No text content available for document ${documentId}`);
@@ -134,6 +139,7 @@ export async function processFragmentsSynchronously({
 		concurrencyLimit: CONCURRENCY_LIMIT,
 		rateLimiter,
 		documentTitle,
+		documentMetadata,
 		batchDelayMs: providerLimits.batchDelayMs,
 	});
 
@@ -211,6 +217,21 @@ export function createDocumentMemory({
 	const fileExt = originalFilename.split(".").pop()?.toLowerCase() || "";
 	const title = originalFilename.replace(`.${fileExt}`, "");
 	const docId = documentId || (uuidv4() as UUID);
+	const metadata: KnowledgeDocumentMemoryMetadata = {
+		type: MemoryType.DOCUMENT,
+		documentId: clientDocumentId,
+		filename: originalFilename,
+		originalFilename,
+		contentType,
+		fileType: contentType,
+		title,
+		fileExt,
+		fileSize,
+		source: "upload",
+		textBacked: false,
+		timestamp: Date.now(),
+		...(customMetadata || {}),
+	};
 
 	return {
 		id: docId,
@@ -219,18 +240,7 @@ export function createDocumentMemory({
 		worldId,
 		entityId: agentId,
 		content: { text },
-		metadata: {
-			type: MemoryType.CUSTOM,
-			documentId: clientDocumentId,
-			originalFilename,
-			contentType,
-			title,
-			fileExt,
-			fileSize,
-			source: "rag-service-main-upload",
-			timestamp: Date.now(),
-			...(customMetadata || {}),
-		} satisfies CustomMetadata,
+		metadata,
 	};
 }
 
@@ -256,6 +266,7 @@ async function processAndSaveFragments({
 	concurrencyLimit,
 	rateLimiter,
 	documentTitle,
+	documentMetadata,
 	batchDelayMs = 500,
 }: {
 	runtime: IAgentRuntime;
@@ -270,6 +281,7 @@ async function processAndSaveFragments({
 	concurrencyLimit: number;
 	rateLimiter: (estimatedTokens?: number) => Promise<void>;
 	documentTitle?: string;
+	documentMetadata?: Record<string, unknown>;
 	batchDelayMs?: number;
 }): Promise<{
 	savedCount: number;
@@ -324,6 +336,19 @@ async function processAndSaveFragments({
 			}
 
 			try {
+				const fragmentSource =
+					typeof documentMetadata?.source === "string"
+						? documentMetadata.source
+						: "upload";
+				const fragmentMetadata: KnowledgeFragmentMemoryMetadata = {
+					...(documentMetadata ?? {}),
+					type: MemoryType.FRAGMENT,
+					documentId,
+					position: originalChunkIndex,
+					timestamp: Date.now(),
+					source: fragmentSource,
+					documentTitle,
+				};
 				const fragmentMemory: Memory = {
 					id: uuidv4() as UUID,
 					agentId,
@@ -332,13 +357,7 @@ async function processAndSaveFragments({
 					entityId: entityId || agentId,
 					embedding,
 					content: { text: contextualizedChunkText },
-					metadata: {
-						type: MemoryType.FRAGMENT,
-						documentId,
-						position: originalChunkIndex,
-						timestamp: Date.now(),
-						source: "rag-service-fragment-sync",
-					},
+					metadata: fragmentMetadata,
 				};
 
 				await runtime.createMemory(fragmentMemory, "knowledge");

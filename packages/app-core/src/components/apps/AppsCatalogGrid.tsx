@@ -16,7 +16,6 @@ interface AppsCatalogGridProps {
   error: string | null;
   favoriteAppNames: Set<string>;
   loading: boolean;
-  recentAppNames: readonly string[];
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
@@ -29,8 +28,17 @@ interface CatalogRenderSection {
   label: string;
 }
 
+interface PackedCatalogSection extends CatalogRenderSection {
+  slots: number;
+}
+
+interface PackedCatalogRow {
+  sections: PackedCatalogSection[];
+  totalSlots: number;
+}
+
 const CARD_GAP_PX = 8;
-const MAX_CARDS_PER_ROW = 4;
+const MAX_CARDS_PER_ROW = 5;
 const MIN_CARD_WIDTH_PX = 248;
 
 function clampCardsPerRow(value: number): number {
@@ -65,6 +73,125 @@ function buildBalancedRows<T>(
       rowIndex < rowCount - oversizedRowCount ? baseRowSize : baseRowSize + 1;
     rows.push(items.slice(index, index + size));
     index += size;
+  }
+
+  return rows;
+}
+
+function resolveSectionPreferredSlots(
+  itemCount: number,
+  maxCardsPerRow: number,
+): number {
+  return clampCardsPerRow(Math.min(Math.max(itemCount, 1), maxCardsPerRow));
+}
+
+function resolveSectionMinSlots(
+  itemCount: number,
+  maxCardsPerRow: number,
+): number {
+  const preferredSlots = resolveSectionPreferredSlots(itemCount, maxCardsPerRow);
+  if (itemCount <= 3 || preferredSlots <= 2) {
+    return preferredSlots;
+  }
+  return Math.max(2, preferredSlots - 1);
+}
+
+function buildCatalogSectionRows(
+  sections: readonly CatalogRenderSection[],
+  maxCardsPerRow: number,
+): PackedCatalogRow[] {
+  if (sections.length === 0) {
+    return [];
+  }
+
+  const rowCapacity = clampCardsPerRow(maxCardsPerRow);
+  const rows: PackedCatalogRow[] = [];
+  let sectionIndex = 0;
+
+  while (sectionIndex < sections.length) {
+    const rowSections: PackedCatalogSection[] = [];
+    let usedSlots = 0;
+
+    while (sectionIndex < sections.length) {
+      const section = sections[sectionIndex];
+      const preferredSlots = resolveSectionPreferredSlots(
+        section.apps.length,
+        rowCapacity,
+      );
+      const minSlots = resolveSectionMinSlots(section.apps.length, rowCapacity);
+      const remainingSlots = rowCapacity - usedSlots;
+
+      if (remainingSlots <= 0) {
+        break;
+      }
+
+      let slots = preferredSlots;
+
+      if (usedSlots === 0) {
+        const nextSection = sections[sectionIndex + 1];
+        if (
+          nextSection &&
+          preferredSlots === rowCapacity &&
+          minSlots < preferredSlots
+        ) {
+          const nextMinSlots = resolveSectionMinSlots(
+            nextSection.apps.length,
+            rowCapacity,
+          );
+          if (minSlots + nextMinSlots <= rowCapacity) {
+            slots = minSlots;
+          }
+        }
+      } else if (preferredSlots > remainingSlots) {
+        const leadSection = rowSections[0];
+        const canPairSmallFavoritesWithFeatured =
+          rowSections.length === 1 &&
+          leadSection?.key === "favorites" &&
+          leadSection.apps.length <= 2 &&
+          section.key === "featured" &&
+          remainingSlots >= 2;
+
+        if (canPairSmallFavoritesWithFeatured) {
+          slots = remainingSlots;
+        } else if (minSlots <= remainingSlots) {
+          slots = minSlots;
+        } else {
+          break;
+        }
+      }
+
+      if (slots > remainingSlots) {
+        if (rowSections.length > 0) {
+          break;
+        }
+        slots = remainingSlots;
+      }
+
+      rowSections.push({
+        ...section,
+        slots,
+      });
+      usedSlots += slots;
+      sectionIndex += 1;
+
+      if (usedSlots >= rowCapacity) {
+        break;
+      }
+    }
+
+    if (rowSections.length === 0) {
+      const section = sections[sectionIndex];
+      rowSections.push({
+        ...section,
+        slots: resolveSectionPreferredSlots(section.apps.length, rowCapacity),
+      });
+      sectionIndex += 1;
+    }
+
+    rows.push({
+      sections: rowSections,
+      totalSlots: rowSections.reduce((total, section) => total + section.slots, 0),
+    });
   }
 
   return rows;
@@ -116,7 +243,6 @@ export function AppsCatalogGrid({
   error,
   favoriteAppNames,
   loading,
-  recentAppNames,
   searchQuery,
   visibleApps,
   onLaunch,
@@ -130,45 +256,14 @@ export function AppsCatalogGrid({
     [catalogWidth],
   );
   const sections = useMemo(() => {
-    const groupedSections = groupAppsForCatalog(visibleApps, {
+    return groupAppsForCatalog(visibleApps, {
       favoriteAppNames,
-      recentAppNames,
     });
-    const featuredSection = groupedSections.find(
-      (section) => section.key === "featured",
-    );
-    const favoritesSection = groupedSections.find(
-      (section) => section.key === "favorites",
-    );
-    const recentSection = groupedSections.find((section) => section.key === "recent");
-    const remainingSections = groupedSections.filter(
-      (section) =>
-        section.key !== "featured" &&
-        section.key !== "favorites" &&
-        section.key !== "recent",
-    );
-    const renderSections: CatalogRenderSection[] = [];
-
-    if (featuredSection) {
-      renderSections.push(featuredSection);
-    }
-
-    if (favoritesSection || recentSection) {
-      renderSections.push({
-        key: "favorites-recent",
-        label:
-          favoritesSection && recentSection
-            ? "Starred & Recent"
-            : (favoritesSection ?? recentSection)?.label ?? "Recent",
-        apps: [
-          ...(favoritesSection?.apps ?? []),
-          ...(recentSection?.apps ?? []),
-        ],
-      });
-    }
-
-    return [...renderSections, ...remainingSections];
-  }, [favoriteAppNames, recentAppNames, visibleApps]);
+  }, [favoriteAppNames, visibleApps]);
+  const sectionRows = useMemo(
+    () => buildCatalogSectionRows(sections, cardsPerRow),
+    [cardsPerRow, sections],
+  );
 
   useEffect(() => {
     const element = catalogRef.current;
@@ -228,108 +323,126 @@ export function AppsCatalogGrid({
           </div>
         </div>
       ) : (
-        <div className="space-y-6">
-          {sections.map((section) => (
-            <section
-              key={section.key}
-              data-testid={`apps-section-${section.key}`}
-              className="space-y-3"
+        <div className="space-y-4">
+          {sectionRows.map((sectionRow, rowIndex) => (
+            <div
+              key={`apps-section-row-${rowIndex}`}
+              data-testid={`apps-section-row-${rowIndex}`}
+              className="grid gap-4"
+              style={{
+                gridTemplateColumns: `repeat(${sectionRow.totalSlots}, minmax(0, 1fr))`,
+              }}
             >
-              <div className="flex items-center gap-3">
-                <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
-                  {section.label}
-                </h2>
-                <div className="h-px flex-1 bg-border/30" />
-              </div>
-
-              <div className="space-y-2">
-                {buildBalancedRows(section.apps, cardsPerRow).map((row, rowIndex) => (
-                  <div
-                    key={`${section.key}-${rowIndex}`}
-                    className="grid gap-2"
-                    style={{
-                      gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {row.map((app) => {
-                      const isActive = activeAppNames.has(app.name);
-                      const isFavorite = favoriteAppNames.has(app.name);
-                      const displayName = app.displayName ?? getAppShortName(app);
-
-                      return (
-                        <div
-                          key={app.name}
-                          className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
-                            isActive
-                              ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
-                              : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
-                            title={displayName}
-                            aria-label={displayName}
-                            className="block w-full text-left focus-visible:outline-none"
-                            onClick={() => onLaunch(app)}
-                          >
-                            <AppHero
-                              app={app}
-                              className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
-                            />
-                            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
-                                  {displayName}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                          {isActive ? (
-                            <span
-                              title="Running"
-                              className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
-                            />
-                          ) : null}
-                          <button
-                            type="button"
-                            aria-label={
-                              isFavorite
-                                ? "Remove from favorites"
-                                : "Add to favorites"
-                            }
-                            className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
-                              isFavorite
-                                ? "bg-black/30 text-warn backdrop-blur-sm"
-                                : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
-                            }`}
-                            onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                              event.stopPropagation();
-                              onToggleFavorite(app.name);
-                            }}
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill={isFavorite ? "currentColor" : "none"}
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <title>Favorite</title>
-                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                            </svg>
-                          </button>
-                        </div>
-                      );
-                    })}
+              {sectionRow.sections.map((section) => (
+                <section
+                  key={section.key}
+                  data-testid={`apps-section-${section.key}`}
+                  className="min-w-0 space-y-3"
+                  style={{
+                    gridColumn: `span ${section.slots} / span ${section.slots}`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
+                      {section.label}
+                    </h2>
+                    <div className="h-px flex-1 bg-border/30" />
                   </div>
-                ))}
-              </div>
-            </section>
+
+                  <div className="space-y-2">
+                    {buildBalancedRows(section.apps, section.slots).map(
+                      (row, sectionRowIndex) => (
+                        <div
+                          key={`${section.key}-${sectionRowIndex}`}
+                          className="grid gap-2"
+                          style={{
+                            gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+                          }}
+                        >
+                          {row.map((app) => {
+                            const isActive = activeAppNames.has(app.name);
+                            const isFavorite = favoriteAppNames.has(app.name);
+                            const displayName = app.displayName ?? getAppShortName(app);
+
+                            return (
+                              <div
+                                key={app.name}
+                                className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+                                  isActive
+                                    ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
+                                    : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
+                                  title={displayName}
+                                  aria-label={displayName}
+                                  className="block w-full text-left focus-visible:outline-none"
+                                  onClick={() => onLaunch(app)}
+                                >
+                                  <AppHero
+                                    app={app}
+                                    className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
+                                  />
+                                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                                        {displayName}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                                {isActive ? (
+                                  <span
+                                    title="Running"
+                                    className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+                                  />
+                                ) : null}
+                                <button
+                                  type="button"
+                                  aria-label={
+                                    isFavorite
+                                      ? "Remove from favorites"
+                                      : "Add to favorites"
+                                  }
+                                  className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
+                                    isFavorite
+                                      ? "bg-black/30 text-warn backdrop-blur-sm"
+                                      : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
+                                  }`}
+                                  onClick={(
+                                    event: MouseEvent<HTMLButtonElement>,
+                                  ) => {
+                                    event.stopPropagation();
+                                    onToggleFavorite(app.name);
+                                  }}
+                                >
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill={isFavorite ? "currentColor" : "none"}
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <title>Favorite</title>
+                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                  </svg>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
           ))}
         </div>
       )}

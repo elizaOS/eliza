@@ -1,8 +1,4 @@
 import type {
-  StewardPendingResponse,
-  StewardStatusResponse,
-} from "@elizaos/app-steward/types/steward";
-import type {
   IAgentRuntime,
   Memory,
   Provider,
@@ -16,8 +12,8 @@ import type {
 } from "@elizaos/shared/contracts/apps";
 import type {
   LifeOpsCapabilitiesStatus,
-  LifeOpsOverview,
   LifeOpsInbox,
+  LifeOpsOverview,
 } from "@elizaos/shared/contracts/lifeops";
 import type {
   WalletBalancesResponse,
@@ -43,9 +39,9 @@ const EMPTY_RESULT: ProviderResult = { text: "", values: {}, data: {} };
 
 const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-browser":
-    "The user is in the Browser view. They can open tabs, navigate URLs, refresh pages, capture snapshots, show or hide tabs, close tabs, inspect what is open, and connect Agent Browser Bridge for real Chrome control. Action vocabulary the agent can rely on includes openBrowserWorkspaceTab, navigateBrowserWorkspaceTab, snapshotBrowserWorkspaceTab, showBrowserWorkspaceTab, hideBrowserWorkspaceTab, closeBrowserWorkspaceTab. When the user asks what to do, explain the available browser actions, recommend the next action from live tab and bridge state, and offer to answer questions about tabs, forms, current pages, or setup. Do not invent tabs or URLs.",
+    "The user is in the Browser view. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. User Tabs are writable: the user can open them, navigate URLs, refresh pages, capture snapshots, show or hide tabs, and close tabs there. Agent Tabs and App Tabs are read-only context: inspect and explain them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Action vocabulary the agent can rely on includes openBrowserWorkspaceTab, navigateBrowserWorkspaceTab, snapshotBrowserWorkspaceTab, showBrowserWorkspaceTab, hideBrowserWorkspaceTab, closeBrowserWorkspaceTab. When the user asks what to do, explain the available browser actions, recommend the next action from live tab and bridge state, and offer to answer questions about tabs, forms, current pages, or setup. Do not invent tabs or URLs.",
   "page-character":
-    "The user is in the Character view. They can edit the agent's name, description, bio, lore, message examples, style, voice provider and voice id, avatar/VRM selection, greeting animation, and knowledge documents. Most edits are UI-driven through CharacterIdentityPanel, voice config UI, CharacterStylePanel, CharacterExamplesPanel, and KnowledgeView. When the user asks what to do, explain the edit surfaces, recommend the next character improvement from live state, and offer to draft exact copy. Guide the user to the relevant panel rather than fabricate a setter action — there is no general 'change my voice' action.",
+    "The user is in the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Name, voice, and system prompt live in Settings > Identity; Personality focuses on bio, style rules, message examples, and evolution history; Knowledge holds uploaded and learned knowledge; Experience surfaces durable learnings the agent recorded; Relationships shows the full relationship graph, facts, memories, and user-scoped personality preferences. When the user asks what to do, explain the relevant hub section, recommend the next improvement from live state, and offer to draft exact copy. Guide the user to the relevant section rather than fabricate a generic setter action.",
   "page-automations":
     "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":

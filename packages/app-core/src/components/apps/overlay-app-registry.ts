@@ -40,7 +40,7 @@ export function overlayAppToRegistryInfo(app: OverlayApp): RegistryAppInfo {
     launchType: "local",
     launchUrl: null,
     icon: app.icon,
-    heroImage: null,
+    heroImage: app.heroImage ?? null,
     capabilities: [],
     stars: 0,
     repository: "",
