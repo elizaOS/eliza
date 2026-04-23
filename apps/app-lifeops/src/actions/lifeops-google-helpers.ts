@@ -5,6 +5,7 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
@@ -372,6 +373,31 @@ export function formatEmailNeedsResponse(
     );
     if (message.snippet) {
       lines.push(`  ${truncateForPreview(message.snippet, 120)}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export function formatGmailRecommendations(
+  feed: LifeOpsGmailRecommendationsFeed,
+): string {
+  if (feed.recommendations.length === 0) {
+    return "No Gmail actions are recommended from the current email set.";
+  }
+  const lines = [
+    `Recommended Gmail actions: ${feed.summary.totalCount}.`,
+  ];
+  for (const recommendation of feed.recommendations.slice(0, 6)) {
+    const operation = recommendation.operation
+      ? ` (${recommendation.operation.replace("_", " ")})`
+      : "";
+    lines.push(
+      `- **${recommendation.title}**${operation}: ${recommendation.affectedCount} message${recommendation.affectedCount === 1 ? "" : "s"}`,
+    );
+    lines.push(`  ${recommendation.rationale}`);
+    for (const sample of recommendation.sampleMessages.slice(0, 2)) {
+      const sender = formatEmailSender(sample.from, sample.fromEmail);
+      lines.push(`  - ${sample.subject} from ${sender}`);
     }
   }
   return lines.join("\n");
