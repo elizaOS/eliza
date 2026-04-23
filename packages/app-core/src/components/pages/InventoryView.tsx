@@ -39,6 +39,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type { InventoryChainFilters } from "../../state/types";
 import { useApp } from "../../state/useApp";
+import { getNativeLogoUrl } from "../inventory/chainConfig";
 import {
   formatBalance,
   type NftItem,
@@ -70,6 +71,11 @@ interface InventoryPositionAsset {
   detail: string;
   valueUsd: number | null;
   imageUrl: string | null;
+}
+
+interface PortfolioMover {
+  row: TokenRow;
+  realizedPnlBnb: number;
 }
 
 const usdFormatter = new Intl.NumberFormat("en-US", {
@@ -155,6 +161,11 @@ function parseAmount(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatSignedBnb(value: number): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${compactFormatter.format(Math.abs(value))} BNB`;
 }
 
 function shortAddress(address: string): string {
@@ -254,6 +265,37 @@ function dispatchWalletChatPrefill(text: string): void {
   );
 }
 
+function tokenBreakdownForRow(
+  row: TokenRow,
+  profile: WalletTradingProfileResponse | null,
+) {
+  const normalizedAddress = normalizeTokenAddress(row.contractAddress);
+  if (!normalizedAddress || !profile) return null;
+  return (
+    profile.tokenBreakdown.find(
+      (item) => item.tokenAddress.toLowerCase() === normalizedAddress,
+    ) ?? null
+  );
+}
+
+function portfolioMovers(
+  rows: TokenRow[],
+  profile: WalletTradingProfileResponse | null,
+): PortfolioMover[] {
+  if (!profile) return [];
+  return rows
+    .map((row) => {
+      const breakdown = tokenBreakdownForRow(row, profile);
+      const realizedPnlBnb = parseAmount(breakdown?.realizedPnlBnb);
+      if (realizedPnlBnb === null || realizedPnlBnb === 0) return null;
+      return {
+        row,
+        realizedPnlBnb,
+      };
+    })
+    .filter((mover): mover is PortfolioMover => mover !== null);
+}
+
 function TokenPerformance({
   row,
   profile,
@@ -263,13 +305,7 @@ function TokenPerformance({
   profile: WalletTradingProfileResponse | null;
   maxAbsPnl: number;
 }) {
-  const normalizedAddress = normalizeTokenAddress(row.contractAddress);
-  const breakdown =
-    normalizedAddress && profile
-      ? profile.tokenBreakdown.find(
-          (item) => item.tokenAddress.toLowerCase() === normalizedAddress,
-        )
-      : null;
+  const breakdown = tokenBreakdownForRow(row, profile);
 
   if (!breakdown) {
     return null;
@@ -317,15 +353,79 @@ function maxAbsTokenPnl(
   if (!profile) return 0;
   let max = 0;
   for (const row of rows) {
-    const normalizedAddress = normalizeTokenAddress(row.contractAddress);
-    if (!normalizedAddress) continue;
-    const breakdown = profile.tokenBreakdown.find(
-      (item) => item.tokenAddress.toLowerCase() === normalizedAddress,
-    );
+    const breakdown = tokenBreakdownForRow(row, profile);
     const pnl = parseAmount(breakdown?.realizedPnlBnb);
     if (pnl !== null) max = Math.max(max, Math.abs(pnl));
   }
   return max;
+}
+
+function ChainLogoBadge({
+  chain,
+  size = 18,
+  className,
+}: {
+  chain: string;
+  size?: number;
+  className?: string;
+}) {
+  const [errored, setErrored] = useState(false);
+  const logoUrl = errored ? null : getNativeLogoUrl(chain);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg shadow-sm ring-2 ring-bg",
+        className,
+      )}
+      style={{ width: size, height: size }}
+      title={chain}
+      role="img"
+      aria-label={chain}
+    >
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <span className="font-mono text-[0.58rem] font-bold uppercase text-muted">
+          {chain.charAt(0)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function TokenIdentityIcon({
+  row,
+  size = 46,
+}: {
+  row: TokenRow;
+  size?: number;
+}) {
+  const badgeSize = Math.max(16, Math.round(size * 0.38));
+  return (
+    <span
+      className="relative inline-flex shrink-0"
+      style={{ width: size, height: size }}
+    >
+      <TokenLogo
+        symbol={row.symbol}
+        chain={row.chain}
+        contractAddress={row.contractAddress}
+        preferredLogoUrl={row.logoUrl}
+        size={size}
+      />
+      <ChainLogoBadge
+        chain={row.chain}
+        size={badgeSize}
+        className="-bottom-0.5 -right-0.5 absolute"
+      />
+    </span>
+  );
 }
 
 function AssetAllocationStrip({ rows }: { rows: TokenRow[] }) {
@@ -395,15 +495,9 @@ function WalletCompositionPanel({ rows }: { rows: TokenRow[] }) {
         {compositionRows.map((row) => (
           <div
             key={tokenId(row)}
-            className="flex min-w-0 items-center gap-3 rounded-lg border border-border/50 bg-bg/40 p-3"
+            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 p-3"
           >
-            <TokenLogo
-              symbol={row.symbol}
-              chain={row.chain}
-              contractAddress={row.contractAddress}
-              preferredLogoUrl={row.logoUrl}
-              size={34}
-            />
+            <TokenIdentityIcon row={row} size={36} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-txt">
                 {row.symbol}
@@ -420,6 +514,149 @@ function WalletCompositionPanel({ rows }: { rows: TokenRow[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function PortfolioMoverRow({
+  mover,
+  maxAbsPnl,
+}: {
+  mover: PortfolioMover;
+  maxAbsPnl: number;
+}) {
+  const isGain = mover.realizedPnlBnb > 0;
+  const width =
+    maxAbsPnl > 0
+      ? Math.max(18, (Math.abs(mover.realizedPnlBnb) / maxAbsPnl) * 100)
+      : 18;
+
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-bg/35 px-3 py-2.5">
+      <TokenIdentityIcon row={mover.row} size={34} />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold text-txt">
+          {mover.row.symbol}
+        </div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-border/45">
+          <div
+            className={cn(
+              "h-full rounded-full",
+              isGain ? "bg-ok/85" : "bg-danger/85",
+            )}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      </div>
+      <div
+        className={cn(
+          "shrink-0 text-right font-mono text-xs font-semibold",
+          isGain ? "text-ok" : "text-danger",
+        )}
+      >
+        {formatSignedBnb(mover.realizedPnlBnb)}
+      </div>
+    </div>
+  );
+}
+
+function PortfolioMoverColumn({
+  title,
+  movers,
+  maxAbsPnl,
+  tone,
+}: {
+  title: string;
+  movers: PortfolioMover[];
+  maxAbsPnl: number;
+  tone: "gain" | "loss";
+}) {
+  return (
+    <div className="min-w-0 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+        {tone === "gain" ? (
+          <TrendingUp className="h-3.5 w-3.5 text-ok" />
+        ) : (
+          <TrendingDown className="h-3.5 w-3.5 text-danger" />
+        )}
+        {title}
+      </div>
+      {movers.length > 0 ? (
+        <div className="space-y-2">
+          {movers.map((mover) => (
+            <PortfolioMoverRow
+              key={`${tokenId(mover.row)}:${mover.realizedPnlBnb}`}
+              mover={mover}
+              maxAbsPnl={maxAbsPnl}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex h-[3.75rem] items-center rounded-2xl bg-bg/25 px-3 text-xs-tight text-muted">
+          None
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PortfolioMoversPanel({
+  rows,
+  profile,
+}: {
+  rows: TokenRow[];
+  profile: WalletTradingProfileResponse | null;
+}) {
+  const movers = useMemo(() => portfolioMovers(rows, profile), [rows, profile]);
+  const gainers = useMemo(
+    () =>
+      movers
+        .filter((mover) => mover.realizedPnlBnb > 0)
+        .sort((left, right) => right.realizedPnlBnb - left.realizedPnlBnb)
+        .slice(0, 3),
+    [movers],
+  );
+  const losers = useMemo(
+    () =>
+      movers
+        .filter((mover) => mover.realizedPnlBnb < 0)
+        .sort((left, right) => left.realizedPnlBnb - right.realizedPnlBnb)
+        .slice(0, 3),
+    [movers],
+  );
+  const maxAbsPnl = useMemo(
+    () =>
+      movers.reduce(
+        (max, mover) => Math.max(max, Math.abs(mover.realizedPnlBnb)),
+        0,
+      ),
+    [movers],
+  );
+
+  if (movers.length === 0) {
+    return (
+      <EmptyState
+        icon={TrendingUp}
+        title="No movers"
+        body="No token P&L yet."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <PortfolioMoverColumn
+        title="Gainers"
+        movers={gainers}
+        maxAbsPnl={maxAbsPnl}
+        tone="gain"
+      />
+      <PortfolioMoverColumn
+        title="Losers"
+        movers={losers}
+        maxAbsPnl={maxAbsPnl}
+        tone="loss"
+      />
     </div>
   );
 }
@@ -631,13 +868,7 @@ function TokenRailRow({
 }) {
   return (
     <div className="group flex min-w-0 items-center gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55">
-      <TokenLogo
-        symbol={row.symbol}
-        chain={row.chain}
-        contractAddress={row.contractAddress}
-        preferredLogoUrl={row.logoUrl}
-        size={46}
-      />
+      <TokenIdentityIcon row={row} size={46} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
           {row.symbol}
@@ -1658,9 +1889,13 @@ export function InventoryView() {
             <section className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-txt">
                 <PieChart className="h-4 w-4 text-accent" />
-                Composition
+                Portfolio
               </div>
               <WalletCompositionPanel rows={displayedAssetRows} />
+              <PortfolioMoversPanel
+                rows={displayedAssetRows}
+                profile={tradingProfile}
+              />
             </section>
 
             <section className="space-y-4">
