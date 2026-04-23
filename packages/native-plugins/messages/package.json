@@ -33,5 +33,13 @@
   },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0"
+  },
+  "elizaos": {
+    "platforms": ["browser", "node"],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Web fallback reports messaging APIs unavailable.",
+      "android": true
+    }
   }
 }
