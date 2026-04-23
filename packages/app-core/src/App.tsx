@@ -47,6 +47,7 @@ import {
   MessagesPageView,
   PhonePageView,
 } from "./components/pages/MiladyOsAppsView";
+import { PageScopedChatPane } from "./components/pages/PageScopedChatPane";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
@@ -83,6 +84,88 @@ import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
+const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+
+function prefillWalletChat(text: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
+      detail: { text, select: true },
+    }),
+  );
+}
+
+function WalletChatGuideBody() {
+  return (
+    <div className="space-y-2">
+      <div>
+        Ask me to prepare wallet actions, inspect live inventory, or review
+        trading context.
+      </div>
+      <div className="grid gap-1.5 text-xs-tight text-muted">
+        <div>Swap, bridge, send, or receive tokens</div>
+        <div>Review P&L, activity, NFTs, and LP assets</div>
+        <div>Connect Vincent for Hyperliquid or Polymarket</div>
+      </div>
+    </div>
+  );
+}
+
+function WalletChatGuideActions() {
+  const actions = [
+    {
+      label: "Swap",
+      prompt:
+        "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction.",
+    },
+    {
+      label: "Bridge",
+      prompt:
+        "Prepare a bridge. Ask me for token, amount, destination address, destination network requirements, and route before any transaction.",
+    },
+    {
+      label: "Receive",
+      prompt:
+        "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
+    },
+    {
+      label: "Vincent",
+      prompt:
+        "Check whether Vincent is connected for Hyperliquid and Polymarket. If it is not connected, help me connect it before any trading action.",
+    },
+  ];
+
+  return (
+    <>
+      {actions.map((action) => (
+        <Button
+          key={action.label}
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => prefillWalletChat(action.prompt)}
+        >
+          {action.label}
+        </Button>
+      ))}
+    </>
+  );
+}
+
+function WalletPageChat() {
+  return (
+    <PageScopedChatPane
+      scope="page-wallet"
+      persistentIntro
+      placeholderOverride="Ask about swaps, bridges, positions, or Vincent"
+      introOverride={{
+        title: "Wallet agent",
+        body: <WalletChatGuideBody />,
+        actions: <WalletChatGuideActions />,
+      }}
+    />
+  );
+}
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
@@ -99,16 +182,19 @@ function useIsPopout(): boolean {
 function TabScrollView({
   children,
   className = "",
+  chat,
   chatScope,
 }: {
   children: ReactNode;
   className?: string;
+  chat?: ReactNode;
   chatScope?: PageScope;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
-      chatScope={chatScope}
+      chat={chat}
+      chatScope={chat ? undefined : chatScope}
       main={
         <div
           data-shell-scroll-region="true"
@@ -217,7 +303,7 @@ function ViewRouter({
         );
       case "inventory":
         return (
-          <TabScrollView chatScope="page-wallet">
+          <TabScrollView chat={<WalletPageChat />}>
             <InventoryView />
           </TabScrollView>
         );
@@ -765,7 +851,7 @@ export function App() {
           <Header />
           <AppWorkspaceChrome
             testId="wallets-workspace"
-            chatScope="page-wallet"
+            chat={<WalletPageChat />}
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <InventoryView />

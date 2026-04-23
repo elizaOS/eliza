@@ -101,6 +101,8 @@ interface PageScopedChatPaneProps {
   systemAddendumOverride?: string;
   /** Override the composer placeholder text. */
   placeholderOverride?: string;
+  /** Keep the intro visible above the thread, even after the chat has history. */
+  persistentIntro?: boolean;
 }
 
 function shallowEqual(
@@ -123,6 +125,7 @@ export function PageScopedChatPane({
   introOverride,
   systemAddendumOverride,
   placeholderOverride,
+  persistentIntro = false,
 }: PageScopedChatPaneProps) {
   const copy = PAGE_SCOPE_COPY[scope];
   const introTitle = introOverride?.title ?? copy.title;
@@ -535,13 +538,28 @@ export function PageScopedChatPane({
     [handleSend, sending],
   );
 
-  const showIntro = messages.length === 0 && !sending;
+  const showIntro = messages.length === 0 && !sending && !persistentIntro;
   const hasDraft = input.trim().length > 0 || pendingImages.length > 0;
   const actionLabel = hasDraft
     ? "Send"
     : voice.isListening
       ? "Stop voice input"
       : "Start voice input";
+  const introCard = (
+    <div
+      data-testid={`page-scoped-chat-intro-${scope}`}
+      className="rounded-2xl bg-card/50 p-3"
+    >
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+        <Sparkles className="h-3.5 w-3.5 text-accent" />
+        {introTitle}
+      </div>
+      <div className="text-sm leading-relaxed text-txt">{introBody}</div>
+      {introActions ? (
+        <div className="mt-3 flex flex-wrap gap-2">{introActions}</div>
+      ) : null}
+    </div>
+  );
 
   return (
     <section
@@ -558,6 +576,7 @@ export function PageScopedChatPane({
       }}
       onDrop={handleImageDrop}
     >
+      {persistentIntro ? <div className="px-3 pt-3">{introCard}</div> : null}
       <div
         ref={scrollRef}
         role="log"
@@ -571,21 +590,7 @@ export function PageScopedChatPane({
           </div>
         ) : null}
 
-        {showIntro ? (
-          <div
-            data-testid={`page-scoped-chat-intro-${scope}`}
-            className="rounded-xl border border-border/40 bg-card/50 p-3"
-          >
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              {introTitle}
-            </div>
-            <div className="text-sm leading-relaxed text-txt">{introBody}</div>
-            {introActions ? (
-              <div className="mt-3 flex flex-wrap gap-2">{introActions}</div>
-            ) : null}
-          </div>
-        ) : null}
+        {showIntro ? introCard : null}
 
         {messages.map((message) => (
           <article
