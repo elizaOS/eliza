@@ -211,27 +211,40 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
       testId="chat-widget-lifeops-calendar"
       onTitleClick={openLifeOps}
     >
-      <div className="flex flex-col">
-        {events.slice(0, CALENDAR_ROW_LIMIT).map((event) => {
-          const when = formatShortTime(event.startAt, timeZone);
-          return (
-            <button
-              key={event.id}
-              type="button"
-              onClick={() => openEventRow(event)}
-              data-testid={`lifeops-calendar-row-${event.id}`}
-              className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
-            >
-              <span className="min-w-0 flex-1 truncate text-txt">
-                {event.title}
-              </span>
-              {when ? (
-                <span className="shrink-0 text-3xs text-muted">{when}</span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+      {events.length === 0 ? (
+        <div className="px-0.5 py-1 text-2xs text-muted">
+          {t("lifeopschannels.calendar.empty", {
+            defaultValue: "Nothing this week",
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col">
+          {events.slice(0, CALENDAR_ROW_LIMIT).map((event) => {
+            const when = formatShortTime(event.startAt, timeZone);
+            return (
+              <button
+                key={event.id}
+                type="button"
+                onClick={() => openEventRow(event)}
+                data-testid={`lifeops-calendar-row-${event.id}`}
+                className="flex items-start gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left text-3xs transition-colors hover:bg-bg-hover/40"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-txt">{event.title}</span>
+                  {event.calendarSummary ? (
+                    <span className="block truncate text-[10px] text-muted">
+                      {event.calendarSummary}
+                    </span>
+                  ) : null}
+                </span>
+                {when ? (
+                  <span className="shrink-0 text-3xs text-muted">{when}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </WidgetSection>
   );
 }
