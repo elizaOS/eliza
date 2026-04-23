@@ -10,6 +10,7 @@ import { getWalletAddresses } from "./wallet.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 
 export const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-evm";
+const EVM_PLUGIN_SERVICE_NAMES = ["evm", "evmService"] as const;
 
 export interface WalletCapabilityStatus {
   walletSource: "local" | "managed" | "none";
@@ -58,34 +59,105 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
     !runtime ||
     typeof (runtime as { getService?: unknown }).getService !== "function"
   ) {
+    const services = (runtime as { services?: unknown } | null)?.services;
+    if (
+      services &&
+      typeof services === "object" &&
+      "get" in services &&
+      typeof services.get === "function"
+    ) {
+      for (const serviceName of EVM_PLUGIN_SERVICE_NAMES) {
+        try {
+          const instances = services.get(serviceName);
+          if (
+            (Array.isArray(instances) && instances.length > 0) ||
+            (!Array.isArray(instances) && Boolean(instances))
+          ) {
+            return true;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
     return false;
   }
 
   try {
-    return Boolean(
-      (runtime as { getService: (name: string) => unknown }).getService("evm"),
-    );
+    const getService = (runtime as { getService: (name: string) => unknown })
+      .getService;
+    for (const serviceName of EVM_PLUGIN_SERVICE_NAMES) {
+      try {
+        if (getService(serviceName)) {
+          return true;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
+}
+
+function getRuntimePlugins(runtime: AgentRuntime | null): unknown[] {
+  const plugins = (runtime as { plugins?: unknown } | null)?.plugins;
+  if (Array.isArray(plugins)) {
+    return plugins;
+  }
+  if (
+    plugins &&
+    typeof plugins === "object" &&
+    "length" in plugins &&
+    typeof plugins.length === "number"
+  ) {
+    return Array.from({ length: plugins.length }, (_, index) => {
+      return (plugins as Record<number, unknown>)[index];
+    });
+  }
+  if (
+    plugins &&
+    typeof plugins === "object" &&
+    Symbol.iterator in plugins &&
+    typeof plugins[Symbol.iterator] === "function"
+  ) {
+    try {
+      return Array.from(plugins as Iterable<unknown>);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function getPluginIdentifiers(plugin: unknown): string[] {
+  if (!plugin || typeof plugin !== "object") {
+    return [];
+  }
+
+  const record = plugin as Record<string, unknown>;
+  return ["name", "id", "packageName", "npmName"]
+    .map((key) => record[key])
+    .filter((value): value is string => typeof value === "string");
 }
 
 export function isPluginLoadedByName(
   runtime: AgentRuntime | null,
   pluginName: string,
 ): boolean {
-  if (!runtime || !Array.isArray(runtime.plugins)) return false;
   const shortId = pluginName.replace("@elizaos/plugin-", "");
   const packageSuffix = `plugin-${shortId}`;
-  return runtime.plugins.some((plugin) => {
-    const name = typeof plugin?.name === "string" ? plugin.name : "";
-    return (
-      name === pluginName ||
-      name === shortId ||
-      name === packageSuffix ||
-      name.endsWith(`/${packageSuffix}`) ||
-      name.includes(shortId)
-    );
+  return getRuntimePlugins(runtime).some((plugin) => {
+    return getPluginIdentifiers(plugin).some((identifier) => {
+      return (
+        identifier === pluginName ||
+        identifier === shortId ||
+        identifier === packageSuffix ||
+        identifier.endsWith(`/${packageSuffix}`) ||
+        identifier.includes(shortId)
+      );
+    });
   });
 }
 
