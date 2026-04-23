@@ -25,6 +25,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./app-hero-art": "./src/app-hero-art.ts",
     "./connectors": "./src/connectors.ts",
     "./env-utils": "./src/env-utils.ts",
     "./runtime-env": "./src/runtime-env.ts",

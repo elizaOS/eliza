@@ -1284,18 +1284,20 @@ export function CharacterEditor({
             pendingStyleEntries={pendingStyleEntries}
             styleEntryDrafts={styleEntryDrafts}
             handleFieldEdit={handleFieldEdit}
+            applyFieldEdit={(field, value) => {
+              handleCharacterFieldInput(
+                field as keyof CharacterData,
+                value as CharacterData[keyof CharacterData],
+              );
+            }}
             handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-            handleAddStyleEntry={handleAddStyleEntry}
-            handleRemoveStyleEntry={handleRemoveStyleEntry}
+            applyStyleEdit={handleCharacterStyleInput}
             handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-            handleCommitStyleEntry={handleCommitStyleEntry}
-            handleReorderStyleEntries={handleReorderStyleEntries}
-            characterSaving={characterSaving || voiceSaving}
+            characterSaving={characterSaving}
             characterSaveSuccess={characterSaveSuccess}
-            characterSaveError={combinedSaveError}
+            characterSaveError={characterSaveError}
             hasPendingChanges={hasPendingChanges}
-            onSave={handleSaveAll}
-            onExport={handleExportCharacter}
+            onSave={handleSaveCharacter}
             onReset={() => setResetConfirmOpen(true)}
             canReset={Boolean(activeCharacterRosterEntry && currentCharacter)}
           />

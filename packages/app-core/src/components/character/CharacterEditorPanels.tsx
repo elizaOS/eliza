@@ -64,7 +64,10 @@ const GripIconSvg = ({ className }: { className?: string }) => (
 
 /* ── Shared styles for inline plus/trash buttons ─────────────────── */
 const inlineAddBtn =
-  "inline-flex items-center gap-1 text-3xs font-semibold text-accent/80 hover:text-accent hover:bg-accent/10 rounded-sm px-1.5 py-1 -mx-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+  "inline-flex h-7 w-7 items-center justify-center rounded-sm text-accent/80 transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+
+const inlineIconBtn =
+  "inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -320,11 +323,11 @@ export function CharacterStylePanel({
                   title={t("charactereditor.AddStyleRule", {
                     defaultValue: "Add style rule",
                   })}
+                  aria-label={t("charactereditor.AddStyleRule", {
+                    defaultValue: "Add style rule",
+                  })}
                 >
                   <PlusIconSvg />
-                  {t("charactereditor.AddInline", {
-                    defaultValue: "add",
-                  })}
                 </button>
               </div>
             </div>
@@ -402,7 +405,7 @@ export function CharacterExamplesPanel({
               <div className="mt-0.5 ml-[4.25rem] flex items-center justify-between">
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-accent/80 hover:text-accent transition-colors"
+                  className={inlineAddBtn}
                   onClick={() => {
                     const agentName =
                       typeof d.name === "string" && d.name.trim()
@@ -419,25 +422,29 @@ export function CharacterExamplesPanel({
                     updated[ci] = convoClone;
                     handleFieldEdit("messageExamples", updated);
                   }}
-                >
-                  +{" "}
-                  {t("charactereditor.AddTurn", {
-                    defaultValue: "turn",
+                  title={t("charactereditor.AddTurn", {
+                    defaultValue: "Add turn",
                   })}
+                  aria-label={t("charactereditor.AddTurn", {
+                    defaultValue: "Add turn",
+                  })}
+                >
+                  <PlusIconSvg />
                 </button>
                 <button
                   type="button"
-                  className="text-3xs font-semibold text-muted hover:text-danger transition-colors"
+                  className={inlineIconBtn}
                   onClick={() => {
                     const updated = [...normalizedMessageExamples];
                     updated.splice(ci, 1);
                     handleFieldEdit("messageExamples", updated);
                   }}
+                  title={t("charactereditor.RemoveExample", {
+                    defaultValue: "Remove conversation",
+                  })}
                   aria-label={`${t("common.remove")} conversation ${ci + 1}`}
                 >
-                  {t("charactereditor.RemoveExample", {
-                    defaultValue: "remove",
-                  })}
+                  <TrashIconSvg />
                 </button>
               </div>
             </div>
@@ -472,11 +479,11 @@ export function CharacterExamplesPanel({
           title={t("charactereditor.AddConversation", {
             defaultValue: "Add conversation",
           })}
+          aria-label={t("charactereditor.AddConversation", {
+            defaultValue: "Add conversation",
+          })}
         >
           <PlusIconSvg />
-          {t("charactereditor.ConversationLabel", {
-            defaultValue: "conversation",
-          })}
         </button>
       </section>
 
@@ -571,11 +578,11 @@ export function CharacterExamplesPanel({
             title={t("charactereditor.AddPost", {
               defaultValue: "Add Post",
             })}
+            aria-label={t("charactereditor.AddPost", {
+              defaultValue: "Add Post",
+            })}
           >
             <PlusIconSvg />
-            {t("charactereditor.PostLabel", {
-              defaultValue: "post",
-            })}
           </button>
         </div>
       </section>

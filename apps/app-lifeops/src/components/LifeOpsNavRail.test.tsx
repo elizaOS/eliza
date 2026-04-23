@@ -41,6 +41,8 @@ describe("LifeOpsNavRail", () => {
 
     render(<LifeOpsNavRail activeSection="overview" onNavigate={onNavigate} />);
 
+    expect(screen.getByRole("button", { name: "Reminders" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Screen Time" }));
 
     expect(onNavigate).toHaveBeenCalledWith("screen-time");

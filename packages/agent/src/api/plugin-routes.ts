@@ -14,6 +14,12 @@ import {
 } from "../config/plugin-widgets.js";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
+  type AdvancedCapabilityPluginId,
+  applyAdvancedCapabilitiesConfig,
+  isAdvancedCapabilityPluginId,
+  resolveAdvancedCapabilitiesEnabled,
+} from "../runtime/advanced-capabilities-config.js";
+import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "../runtime/core-plugins.js";
@@ -37,6 +43,14 @@ function optionalPluginListId(npmName: string): string {
   }
   return npmName.replace("@elizaos/plugin-", "");
 }
+
+const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
+  Record<AdvancedCapabilityPluginId, string>
+> = {
+  experience: "EXPERIENCE",
+  form: "FORM",
+  personality: "CHARACTER_MANAGEMENT",
+};
 
 // ---------------------------------------------------------------------------
 // Types — kept lean to avoid circular deps with server.ts
@@ -369,6 +383,8 @@ export async function handlePluginRoutes(
     const configEntries = (
       freshConfig.plugins as Record<string, unknown> | undefined
     )?.entries as Record<string, { enabled?: boolean }> | undefined;
+    const advancedCapabilitiesEnabled =
+      resolveAdvancedCapabilitiesEnabled(freshConfig);
     const loadedNames = state.runtime
       ? state.runtime.plugins.map((p) => p.name)
       : [];
@@ -386,6 +402,19 @@ export async function handlePluginRoutes(
           installedMetadata.latestVersion ?? plugin.latestVersion ?? null;
         plugin.alphaVersion =
           installedMetadata.alphaVersion ?? plugin.alphaVersion ?? null;
+      }
+
+      if (isAdvancedCapabilityPluginId(plugin.id)) {
+        const serviceType = ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID[plugin.id];
+        plugin.enabled = advancedCapabilitiesEnabled;
+        plugin.isActive = advancedCapabilitiesEnabled
+          ? serviceType
+            ? Boolean(state.runtime?.getService(serviceType))
+            : Boolean(state.runtime)
+          : false;
+        plugin.autoEnabled = advancedCapabilitiesEnabled;
+        plugin.loadError = undefined;
+        continue;
       }
 
       const suffix = `plugin-${plugin.id}`;
@@ -709,36 +738,49 @@ export async function handlePluginRoutes(
 
     // Update config.plugins.entries so the runtime loads/skips this plugin
     if (body.enabled !== undefined) {
-      const packageName = `@elizaos/plugin-${pluginId}`;
-
-      if (!state.config.plugins) {
-        state.config.plugins = {};
-      }
-      if (!state.config.plugins.entries) {
-        (state.config.plugins as Record<string, unknown>).entries = {};
-      }
-
-      const entries = (state.config.plugins as Record<string, unknown>)
-        .entries as Record<string, Record<string, unknown>>;
-      entries[pluginId] = { enabled: body.enabled };
-
-      // Keep plugins.allow aligned with entries[pluginId].enabled so the
-      // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
-      state.config.plugins.allow = state.config.plugins.allow ?? [];
-      const allow = state.config.plugins.allow;
-      if (body.enabled) {
-        if (!allow.includes(pluginId) && !allow.includes(packageName)) {
-          allow.push(pluginId);
+      if (isAdvancedCapabilityPluginId(pluginId)) {
+        applyAdvancedCapabilitiesConfig(state.config, body.enabled);
+        for (const candidate of state.plugins) {
+          if (isAdvancedCapabilityPluginId(candidate.id)) {
+            candidate.enabled = body.enabled;
+          }
         }
+
+        logger.info(
+          `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} advanced capabilities via plugin alias: ${pluginId}`,
+        );
       } else {
-        state.config.plugins.allow = allow.filter(
-          (p: string) => p !== pluginId && p !== packageName,
+        const packageName = `@elizaos/plugin-${pluginId}`;
+
+        if (!state.config.plugins) {
+          state.config.plugins = {};
+        }
+        if (!state.config.plugins.entries) {
+          (state.config.plugins as Record<string, unknown>).entries = {};
+        }
+
+        const entries = (state.config.plugins as Record<string, unknown>)
+          .entries as Record<string, Record<string, unknown>>;
+        entries[pluginId] = { enabled: body.enabled };
+
+        // Keep plugins.allow aligned with entries[pluginId].enabled so the
+        // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
+        state.config.plugins.allow = state.config.plugins.allow ?? [];
+        const allow = state.config.plugins.allow;
+        if (body.enabled) {
+          if (!allow.includes(pluginId) && !allow.includes(packageName)) {
+            allow.push(pluginId);
+          }
+        } else {
+          state.config.plugins.allow = allow.filter(
+            (p: string) => p !== pluginId && p !== packageName,
+          );
+        }
+
+        logger.info(
+          `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
         );
       }
-
-      logger.info(
-        `[eliza-api] ${body.enabled ? "Enabled" : "Disabled"} plugin: ${packageName}`,
-      );
 
       // Persist capability toggle state in config.features so the runtime
       // can gate related behaviour (e.g. disabling image description when

@@ -99,6 +99,18 @@ export interface PageScopedChatPaneProps {
   persistentIntro?: boolean;
   /** Optional footer actions rendered inline with the Clear control. */
   footerActions?: ReactNode;
+  /**
+   * Optional conversation adapter for surfaces that want to reuse the shared
+   * sidebar chat UI but resolve a non-page-scoped conversation under the hood.
+   */
+  conversationAdapter?: {
+    allowClear?: boolean;
+    buildRoutingMetadata?: () => Record<string, unknown> | undefined;
+    identityKey: string;
+    onAfterSend?: () => void;
+    onConversationResolved?: (conversation: Conversation) => void;
+    resolveConversation: () => Promise<Conversation>;
+  };
 }
 
 function shallowEqual(
@@ -123,6 +135,7 @@ export function PageScopedChatPane({
   placeholderOverride,
   persistentIntro = false,
   footerActions,
+  conversationAdapter,
 }: PageScopedChatPaneProps) {
   const copy = PAGE_SCOPE_COPY[scope];
   const introTitle = introOverride?.title ?? copy.title;
@@ -135,6 +148,7 @@ export function PageScopedChatPane({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const conversationAdapterRef = useRef(conversationAdapter);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<PageScopedMessage[]>([]);
@@ -147,6 +161,12 @@ export function PageScopedChatPane({
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const conversationAdapterIdentityKey = conversationAdapter?.identityKey;
+  const hasConversationAdapter = Boolean(conversationAdapter);
+
+  useEffect(() => {
+    conversationAdapterRef.current = conversationAdapter;
+  }, [conversationAdapter]);
 
   // The "main chat" awareness link: only treat the global active conversation
   // as a source when it's a non-page, non-automation conversation (i.e. a
@@ -164,6 +184,7 @@ export function PageScopedChatPane({
 
   // Resolve the page-scoped conversation on mount / scope change.
   useEffect(() => {
+    void conversationAdapterIdentityKey;
     let cancelled = false;
     abortRef.current?.abort();
     setConversation(null);
@@ -179,13 +200,17 @@ export function PageScopedChatPane({
 
     void (async () => {
       try {
-        const next = await resolvePageScopedConversation({
-          scope,
-          title,
-          pageId,
-        });
+        const adapter = conversationAdapterRef.current;
+        const next = adapter
+          ? await adapter.resolveConversation()
+          : await resolvePageScopedConversation({
+              scope,
+              title,
+              pageId,
+            });
         if (cancelled) return;
         setConversation(next);
+        adapter?.onConversationResolved?.(next);
         const { messages: history } = await client.getConversationMessages(
           next.id,
         );
@@ -205,11 +230,12 @@ export function PageScopedChatPane({
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, [scope, pageId, title]);
+  }, [conversationAdapterIdentityKey, pageId, scope, title]);
 
   // When the linked source conversation changes, restamp room metadata so the
   // page-scoped-context provider sees the current main-chat target.
   useEffect(() => {
+    if (hasConversationAdapter) return;
     if (!conversation) return;
     const desiredSource = sourceConversationId;
     const currentSource =
@@ -243,7 +269,13 @@ export function PageScopedChatPane({
     return () => {
       cancelled = true;
     };
-  }, [conversation, sourceConversationId, scope, pageId]);
+  }, [
+    conversation,
+    hasConversationAdapter,
+    sourceConversationId,
+    scope,
+    pageId,
+  ]);
 
   const scrollVersion = `${messages.length}:${sending ? "sending" : "idle"}`;
 
@@ -278,10 +310,12 @@ export function PageScopedChatPane({
       const textToSend = isFirstTurn
         ? `[SYSTEM]${effectiveSystemAddendum}[/SYSTEM]\n\n${raw}`
         : raw;
-      const routingMetadata = buildPageScopedRoutingMetadata(scope, {
-        pageId,
-        sourceConversationId,
-      });
+      const routingMetadata =
+        conversationAdapter?.buildRoutingMetadata?.() ??
+        buildPageScopedRoutingMetadata(scope, {
+          pageId,
+          sourceConversationId,
+        });
 
       const now = Date.now();
       const userId = `page-${scope}-user-${now}`;
@@ -337,6 +371,7 @@ export function PageScopedChatPane({
             ),
           );
         }
+        conversationAdapter?.onAfterSend?.();
       } catch (error) {
         if ((error as { name?: string }).name === "AbortError") return;
         setMessages((prev) =>
@@ -359,6 +394,7 @@ export function PageScopedChatPane({
       messages.length,
       pageId,
       pendingImages,
+      conversationAdapter,
       scope,
       sending,
       sourceConversationId,
@@ -506,6 +542,7 @@ export function PageScopedChatPane({
   );
 
   const handleClearConversation = useCallback(async () => {
+    if (conversationAdapter?.allowClear === false) return;
     if (clearing || (!conversation && !hasClearableContent)) return;
 
     abortRef.current?.abort();
@@ -547,6 +584,7 @@ export function PageScopedChatPane({
   }, [
     clearing,
     conversation,
+    conversationAdapter,
     hasClearableContent,
     pageId,
     scope,
@@ -556,6 +594,7 @@ export function PageScopedChatPane({
   ]);
 
   const showIntro = messages.length === 0 && !sending && !persistentIntro;
+  const showClearButton = conversationAdapter?.allowClear !== false;
   const introCard = (
     <div
       data-testid={`page-scoped-chat-intro-${scope}`}
@@ -685,7 +724,7 @@ export function PageScopedChatPane({
         ) : null}
       </div>
 
-      <div className="border-t border-border/30 px-2 py-1.5">
+      <div className="px-2 py-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -742,21 +781,25 @@ export function PageScopedChatPane({
           />
         </div>
         <div className="mt-1 flex items-center justify-between gap-2 px-1">
-          <button
-            type="button"
-            data-testid={`page-scoped-chat-clear-${scope}`}
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={() => void handleClearConversation()}
-            disabled={clearing || (!conversation && !hasClearableContent)}
-            aria-label={clearing ? "Clearing page chat" : "Clear page chat"}
-          >
-            {clearing ? (
-              <Spinner size={10} className="text-muted" />
-            ) : (
-              <RotateCcw className="h-3 w-3" />
-            )}
-            <span>{clearing ? "Clearing…" : "Clear"}</span>
-          </button>
+          {showClearButton ? (
+            <button
+              type="button"
+              data-testid={`page-scoped-chat-clear-${scope}`}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void handleClearConversation()}
+              disabled={clearing || (!conversation && !hasClearableContent)}
+              aria-label={clearing ? "Clearing page chat" : "Clear page chat"}
+            >
+              {clearing ? (
+                <Spinner size={10} className="text-muted" />
+              ) : (
+                <RotateCcw className="h-3 w-3" />
+              )}
+              <span>{clearing ? "Clearing…" : "Clear"}</span>
+            </button>
+          ) : (
+            <div />
+          )}
           {footerActions ? (
             <div className="flex items-center gap-1">{footerActions}</div>
           ) : null}

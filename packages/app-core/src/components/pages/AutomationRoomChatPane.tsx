@@ -23,6 +23,7 @@ import {
 interface AutomationRoomChatPaneProps {
   assistantLabel: string;
   collapsed: boolean;
+  collapsible?: boolean;
   composerRef: React.RefObject<HTMLTextAreaElement | null>;
   metadata: ConversationMetadata;
   onAutomationMutated: () => void;
@@ -63,6 +64,7 @@ function focusMessageAt(container: HTMLElement, index: number): void {
 export function AutomationRoomChatPane({
   assistantLabel,
   collapsed,
+  collapsible = true,
   composerRef,
   metadata,
   onAutomationMutated,
@@ -490,7 +492,7 @@ export function AutomationRoomChatPane({
     [firstTokenReceived, messages, sending],
   );
 
-  if (collapsed) {
+  if (collapsed && collapsible) {
     return (
       <div className="overflow-hidden rounded-xl border border-border/40 bg-card/60">
         <Button
@@ -516,19 +518,28 @@ export function AutomationRoomChatPane({
       style={{ minHeight: 0 }}
       aria-label={assistantLabel}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-auto w-full justify-start gap-2 border-b border-border/30 px-4 py-2.5 text-left transition-colors hover:bg-bg/50"
-        onClick={onToggleCollapse}
-        aria-label={t("automations.chat.collapse")}
-      >
-        <Zap className="h-3.5 w-3.5 shrink-0 text-accent" />
-        <span className="flex-1 text-xs font-semibold text-txt-strong">
-          {assistantLabel}
-        </span>
-        <ChevronUp className="h-3.5 w-3.5 text-muted" />
-      </Button>
+      {collapsible ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2 border-b border-border/30 px-4 py-2.5 text-left transition-colors hover:bg-bg/50"
+          onClick={onToggleCollapse}
+          aria-label={t("automations.chat.collapse")}
+        >
+          <Zap className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span className="flex-1 text-xs font-semibold text-txt-strong">
+            {assistantLabel}
+          </span>
+          <ChevronUp className="h-3.5 w-3.5 text-muted" />
+        </Button>
+      ) : (
+        <div className="flex items-center gap-2 border-b border-border/30 px-4 py-2.5">
+          <Zap className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span className="flex-1 text-xs font-semibold text-txt-strong">
+            {assistantLabel}
+          </span>
+        </div>
+      )}
 
       {/* Message scroll region */}
       <div className="relative flex flex-1 flex-col overflow-hidden">

@@ -89,7 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: "reminders",
-        label: "Work",
+        label: "Reminders",
         icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
         dotColor: "bg-amber-400",
       },
