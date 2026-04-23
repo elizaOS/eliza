@@ -64,6 +64,7 @@ import {
   ensureLifeOpsCalendarFeedIncludes,
   setLifeOpsCalendarFeedIncluded,
 } from "./owner-profile.js";
+import { ManagedGoogleClientError } from "./google-managed-client.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -191,10 +192,25 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       for (const grant of grants) {
         const entries =
           resolveGoogleExecutionTarget(grant) === "cloud"
-            ? await this.googleManagedClient.listCalendars({
-                side: grant.side,
-                grantId: grant.id,
-              })
+            ? await (async () => {
+                try {
+                  return await this.googleManagedClient.listCalendars({
+                    side: grant.side,
+                    grantId: grant.id,
+                  });
+                } catch (error) {
+                  if (
+                    error instanceof ManagedGoogleClientError &&
+                    error.status === 404
+                  ) {
+                    throw new LifeOpsServiceError(
+                      503,
+                      "Google calendar discovery is unavailable for this connection. The connector backend needs the managed calendar-list route.",
+                    );
+                  }
+                  throw error;
+                }
+              })()
             : await (async () => {
                 const accessToken = await ensureFreshGoogleAccessToken(
                   grant.tokenRef ??
@@ -532,10 +548,41 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
       if (!grantId && !explicitCalendarId) {
-        const calendars = await this.listCalendars(requestUrl, {
-          mode,
-          side,
-        });
+        let calendars: LifeOpsCalendarSummary[] = [];
+        try {
+          calendars = await this.listCalendars(requestUrl, {
+            mode,
+            side,
+          });
+        } catch (error) {
+          if (
+            error instanceof LifeOpsServiceError &&
+            error.status === 503 &&
+            error.message.includes("managed calendar-list route")
+          ) {
+            const allGrants = (
+              await this.repository.listConnectorGrants(this.agentId())
+            ).filter((g) => g.provider === "google");
+            const grants = resolveGoogleGrants({
+              grants: allGrants,
+              requestedSide: side,
+              requestedMode: mode,
+            });
+            if (grants.length > 0) {
+              return this.aggregateCalendarFeeds(
+                requestUrl,
+                grants,
+                "primary",
+                timeMin,
+                timeMax,
+                timeZone,
+                forceSync,
+                now,
+              );
+            }
+          }
+          throw error;
+        }
         const selectedCalendars = calendars.filter(
           (calendar) => includeHiddenCalendars || calendar.includeInFeed,
         );
