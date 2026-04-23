@@ -145,6 +145,27 @@ type LifeOpsScheduleMergedStateRequest = {
   refresh?: boolean;
 };
 
+export type LifeOpsScreenTimeSource = "app" | "website";
+
+export type LifeOpsScreenTimeSummaryRequest = {
+  since: string;
+  until: string;
+  source?: LifeOpsScreenTimeSource;
+  topN?: number;
+};
+
+export type LifeOpsScreenTimeSummaryItem = {
+  source: LifeOpsScreenTimeSource;
+  identifier: string;
+  displayName: string;
+  totalSeconds: number;
+};
+
+export type LifeOpsScreenTimeSummary = {
+  items: LifeOpsScreenTimeSummaryItem[];
+  totalSeconds: number;
+};
+
 declare module "@elizaos/app-core/api/client-base" {
   interface ElizaClient {
     getLifeOpsAppState(): Promise<{ enabled: boolean }>;
@@ -156,6 +177,9 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScheduleMergedState(
       data?: LifeOpsScheduleMergedStateRequest,
     ): Promise<GetLifeOpsScheduleMergedStateResponse>;
+    getLifeOpsScreenTimeSummary(
+      data: LifeOpsScreenTimeSummaryRequest,
+    ): Promise<LifeOpsScreenTimeSummary>;
     getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
     seedLifeOpsRoutines(data: {
       keys: string[];
@@ -470,6 +494,24 @@ ElizaClient.prototype.getLifeOpsScheduleMergedState = async function (
   const query = params.toString();
   return this.fetch<GetLifeOpsScheduleMergedStateResponse>(
     `/api/lifeops/schedule/merged-state${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("since", data.since);
+  params.set("until", data.until);
+  if (data.source) {
+    params.set("source", data.source);
+  }
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  return this.fetch<LifeOpsScreenTimeSummary>(
+    `/api/lifeops/screen-time/summary?${params.toString()}`,
   );
 };
 

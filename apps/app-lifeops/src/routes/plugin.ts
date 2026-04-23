@@ -176,6 +176,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
   { type: "POST", path: "/api/lifeops/schedule/observations" },
   { type: "GET", path: "/api/lifeops/schedule/merged-state" },
+  { type: "GET", path: "/api/lifeops/screen-time/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },

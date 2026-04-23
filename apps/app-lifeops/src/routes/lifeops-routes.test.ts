@@ -331,6 +331,42 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("passes screen-time summary query inputs through to the service", async () => {
+    const getScreenTimeSummary = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeSummary")
+      .mockResolvedValue({
+        items: [
+          {
+            source: "app",
+            identifier: "com.example.Editor",
+            displayName: "Editor",
+            totalSeconds: 3600,
+          },
+        ],
+        totalSeconds: 3600,
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/summary?since=2026-04-22T00%3A00%3A00.000Z&until=2026-04-22T12%3A00%3A00.000Z&source=app&topN=4",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getScreenTimeSummary).toHaveBeenCalledWith({
+      since: "2026-04-22T00:00:00.000Z",
+      until: "2026-04-22T12:00:00.000Z",
+      source: "app",
+      topN: 4,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        totalSeconds: 3600,
+      }),
+    );
+  });
+
   // Browser companion + package routes moved to
   // `@elizaos/plugin-browser-bridge` (Phase 3). Tests for those routes now
   // live alongside the plugin package.
