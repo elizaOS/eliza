@@ -42,9 +42,20 @@ if (needsInstall) {
 	console.log("\n[dev] bun install skipped (deps unchanged)\n");
 }
 
-const coreDist = join(ROOT, "packages", "typescript", "dist");
-if (!existsSync(coreDist)) {
-	console.log("\n[dev] building `@elizaos/core` (no dist/)…\n");
+// The @elizaos/core dist barrel (`dist/index.node.js`) re-exports from
+// `dist/node/index.node.js`, which is only produced by the full build. A stale
+// declarations-only dist leaves the barrel present but the node/ subdir
+// missing, so check for the real runtime entry, not just the dist/ folder.
+const coreNodeEntry = join(
+	ROOT,
+	"packages",
+	"typescript",
+	"dist",
+	"node",
+	"index.node.js",
+);
+if (!existsSync(coreNodeEntry)) {
+	console.log("\n[dev] building `@elizaos/core` (no dist/node/)…\n");
 	run("bun", ["run", "build:core"]);
 }
 
