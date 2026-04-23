@@ -8,7 +8,7 @@ import {
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxChannel,
-  type LifeOpsUnifiedMessage,
+  type LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   AtSign,
@@ -196,7 +196,7 @@ function MessageRow({
   onSelect,
   onReply,
 }: {
-  message: LifeOpsUnifiedMessage;
+  message: LifeOpsInboxMessage;
   selected: boolean;
   onSelect: () => void;
   onReply: () => void;
@@ -293,8 +293,8 @@ function ReaderPane({
   message,
   onReply,
 }: {
-  message: LifeOpsUnifiedMessage | null;
-  onReply: (msg: LifeOpsUnifiedMessage) => void;
+  message: LifeOpsInboxMessage | null;
+  onReply: (msg: LifeOpsInboxMessage) => void;
 }) {
   const { t } = useApp();
 
@@ -446,7 +446,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     [inbox.messages, onSelect],
   );
 
-  const handleReply = useCallback((msg: LifeOpsUnifiedMessage) => {
+  const handleReply = useCallback((msg: LifeOpsInboxMessage) => {
     const label = styleFor(msg.channel).label;
     const text = buildReplyPrefill({
       channel: msg.channel === "gmail" ? "email" : label,
