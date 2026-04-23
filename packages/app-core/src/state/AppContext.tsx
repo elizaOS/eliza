@@ -1344,6 +1344,7 @@ function AppProviderInner({
     handleOnboardingUseLocalBackend,
     handleCloudOnboardingFinish,
     applyDetectedProviders,
+    completeOnboarding,
   } = onboardingCallbacks;
 
   // handleAgentExport and handleAgentImport are now in useExportImportState (exportImportHook)
@@ -2355,6 +2356,7 @@ function AppProviderInner({
       goToOnboardingStep,
       handleOnboardingRemoteConnect,
       handleOnboardingUseLocalBackend,
+      completeOnboarding,
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
@@ -2764,6 +2766,7 @@ function AppProviderInner({
       goToOnboardingStep,
       handleOnboardingRemoteConnect,
       handleOnboardingUseLocalBackend,
+      completeOnboarding,
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
