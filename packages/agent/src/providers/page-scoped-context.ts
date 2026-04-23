@@ -17,7 +17,7 @@ import type {
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsOverview,
-  LifeOpsUnifiedInbox,
+  LifeOpsInbox,
 } from "@elizaos/shared/contracts/lifeops";
 import type {
   WalletBalancesResponse,
@@ -346,7 +346,7 @@ async function renderLifeOpsLiveState(): Promise<string | null> {
   const [overview, capabilities, inbox] = await Promise.all([
     fetchLocalJson<LifeOpsOverview>("/api/lifeops/overview"),
     fetchLocalJson<LifeOpsCapabilitiesStatus>("/api/lifeops/capabilities"),
-    fetchLocalJson<LifeOpsUnifiedInbox>("/api/lifeops/inbox/unified?limit=8"),
+    fetchLocalJson<LifeOpsInbox>("/api/lifeops/inbox/unified?limit=8"),
   ]);
 
   if (!overview && !capabilities && !inbox) {

@@ -1,8 +1,8 @@
 import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsInboxChannel,
-  LifeOpsUnifiedInbox,
-  LifeOpsUnifiedMessage,
+  LifeOpsInbox,
+  LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -16,7 +16,7 @@ export interface UseUnifiedInboxOptions {
 }
 
 export interface UseUnifiedInboxResult {
-  messages: LifeOpsUnifiedMessage[];
+  messages: LifeOpsInboxMessage[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -32,7 +32,7 @@ export function useUnifiedInbox(
   opts: UseUnifiedInboxOptions = {},
 ): UseUnifiedInboxResult {
   const { t } = useApp();
-  const [feed, setFeed] = useState<LifeOpsUnifiedInbox | null>(null);
+  const [feed, setFeed] = useState<LifeOpsInbox | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [channel, setChannel] = useState<InboxChannel>(opts.channel ?? "all");
@@ -48,7 +48,7 @@ export function useUnifiedInbox(
             ? [...opts.channels]
             : undefined
           : [channel as LifeOpsInboxChannel];
-      const result = await client.getLifeOpsUnifiedInbox({
+      const result = await client.getLifeOpsInbox({
         limit: opts.maxResults ?? DEFAULT_MAX_RESULTS,
         channels: selectedChannels,
       });
@@ -70,7 +70,7 @@ export function useUnifiedInbox(
     void fetch();
   }, [fetch]);
 
-  const messages = useMemo<LifeOpsUnifiedMessage[]>(() => {
+  const messages = useMemo<LifeOpsInboxMessage[]>(() => {
     const base = feed?.messages ?? [];
     const q = searchQuery.trim().toLowerCase();
     if (!q) {

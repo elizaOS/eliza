@@ -5,7 +5,7 @@ import type {
   LifeOpsInboxChannel,
   LifeOpsOverview,
   LifeOpsScheduleInsight,
-  LifeOpsUnifiedMessage,
+  LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   AtSign,
@@ -430,7 +430,7 @@ function InboxMessageRow({
   message,
   onClick,
 }: {
-  message: LifeOpsUnifiedMessage;
+  message: LifeOpsInboxMessage;
   onClick: () => void;
 }) {
   const style = CHANNEL_STYLES[message.channel];
