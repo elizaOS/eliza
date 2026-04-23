@@ -41,6 +41,10 @@ describe("AppWorkspaceChrome", () => {
     expect(chatSidebar.parentElement).toBe(root);
     expect(chatSidebar.previousElementSibling).toBe(leftPane);
     expect(chatSidebar.contains(browserControls)).toBe(false);
+
+    const resizeHandle = screen.getByTestId("browser-shell-chat-resize-handle");
+    expect(resizeHandle.tagName).toBe("HR");
+    expect(resizeHandle.className).toContain("inset-y-0");
   });
 
   it("renders page-scoped chat when a chat scope is provided", () => {

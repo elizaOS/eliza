@@ -231,6 +231,7 @@ export function AppWorkspaceChrome({
           data-testid={`${testId}-chat-sidebar`}
         >
           <hr
+            aria-label="Resize chat"
             aria-orientation="vertical"
             aria-valuemin={0}
             aria-valuemax={100}
@@ -238,9 +239,9 @@ export function AppWorkspaceChrome({
             tabIndex={0}
             data-testid={`${testId}-chat-resize-handle`}
             onPointerDown={handleResizePointerDown}
-            className="absolute inset-y-0 left-0 z-20 -ml-0.5 w-1.5 cursor-col-resize touch-none select-none transition-colors hover:bg-accent/30"
+            className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border/40 before:transition-colors before:content-[''] hover:before:bg-accent/60"
           />
-          <div className="scrollbar-hide flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {chatContent}
           </div>
           <div className="flex items-center justify-end border-t border-border/30 pl-2 pr-2 pt-1.5 pb-2">
