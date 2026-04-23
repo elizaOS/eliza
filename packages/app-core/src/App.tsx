@@ -42,6 +42,7 @@ import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { InventoryView } from "./components/pages/InventoryView";
 import { LogsPageView } from "./components/pages/LogsPageView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
 import { RuntimeView } from "./components/pages/RuntimeView";
@@ -89,13 +90,16 @@ function useIsPopout(): boolean {
 function TabScrollView({
   children,
   className = "",
+  chatScope,
 }: {
   children: ReactNode;
   className?: string;
+  chatScope?: PageScope;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
+      chatScope={chatScope}
       main={
         <div
           data-shell-scroll-region="true"
@@ -108,10 +112,17 @@ function TabScrollView({
   );
 }
 
-function TabContentView({ children }: { children: ReactNode }) {
+function TabContentView({
+  children,
+  chatScope,
+}: {
+  children: ReactNode;
+  chatScope?: PageScope;
+}) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
+      chatScope={chatScope}
       main={
         <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
           {children}
@@ -148,7 +159,7 @@ function ViewRouter({
       case "apps":
         // Apps disabled in production builds; fall through to chat
         return APPS_ENABLED ? (
-          <TabContentView>
+          <TabContentView chatScope="page-apps">
             <AppsPageView />
           </TabContentView>
         ) : (
@@ -164,7 +175,7 @@ function ViewRouter({
       case "character-select":
       case "knowledge":
         return (
-          <TabContentView>
+          <TabContentView chatScope="page-character">
             <CharacterEditor
               onHeaderActionsChange={onCharacterHeaderActionsChange}
             />
@@ -172,7 +183,7 @@ function ViewRouter({
         );
       case "inventory":
         return (
-          <TabScrollView>
+          <TabScrollView chatScope="page-wallet">
             <InventoryView />
           </TabScrollView>
         );
@@ -185,7 +196,7 @@ function ViewRouter({
       case "automations":
       case "triggers":
         return (
-          <TabContentView>
+          <TabContentView chatScope="page-automations">
             <AutomationsView />
           </TabContentView>
         );
@@ -679,6 +690,7 @@ export function App() {
           <Header />
           <AppWorkspaceChrome
             testId="automations-workspace"
+            chatScope="page-automations"
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <AutomationsView key="automations-view-desktop" />
@@ -719,6 +731,7 @@ export function App() {
           <Header />
           <AppWorkspaceChrome
             testId="wallets-workspace"
+            chatScope="page-wallet"
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <InventoryView />

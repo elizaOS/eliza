@@ -24,6 +24,8 @@ import {
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
+import { PageScopedChatPane } from "./PageScopedChatPane";
+import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -766,6 +768,76 @@ export function BrowserWorkspaceView(): JSX.Element {
     );
   }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
+  const browserPageScopeCopy = useMemo(
+    () =>
+      getBrowserPageScopeCopy({
+        browserBridgeConnected,
+        browserLabel: primaryBrowserBridgeCompanion?.browser,
+        profileLabel: primaryBrowserBridgeCompanion?.profileLabel,
+      }),
+    [
+      browserBridgeConnected,
+      primaryBrowserBridgeCompanion?.browser,
+      primaryBrowserBridgeCompanion?.profileLabel,
+    ],
+  );
+
+  const browserChatActions = browserBridgeConnected ? null : (
+    <>
+      <Button
+        size="sm"
+        disabled={busyAction !== null}
+        onClick={() => void installBrowserBridgeExtension()}
+      >
+        {t("browserworkspace.InstallBrowserBridge", {
+          defaultValue: "Install Agent Browser Bridge",
+        })}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath}
+        onClick={() => void revealBrowserBridgeFolder()}
+      >
+        <FolderOpen className="h-4 w-4" />
+        {t("browserworkspace.OpenBrowserBridgeFolder", {
+          defaultValue: "Open extension folder",
+        })}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busyAction !== null}
+        onClick={() => void openBrowserBridgeChromeExtensions()}
+      >
+        {t("browserworkspace.OpenChromeExtensions", {
+          defaultValue: "Open Chrome extensions",
+        })}
+      </Button>
+    </>
+  );
+
+  const browserChat = (
+    <PageScopedChatPane
+      scope="page-browser"
+      introOverride={{
+        title: browserPageScopeCopy.title,
+        body: browserPageScopeCopy.body,
+        actions: browserChatActions,
+      }}
+      systemAddendumOverride={browserPageScopeCopy.systemAddendum}
+      placeholderOverride={
+        browserBridgeConnected
+          ? t("browserworkspace.ChatPlaceholderConnected", {
+              defaultValue: "Ask me to open, inspect, or navigate a tab",
+            })
+          : t("browserworkspace.ChatPlaceholderInstallBridge", {
+              defaultValue: "Ask how to connect Agent Browser Bridge",
+            })
+      }
+    />
+  );
+
   const navNode = (
     <>
       {/* Tab strip */}
@@ -1183,6 +1255,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       testId="browser-workspace-view"
       nav={navNode}
       main={mainNode}
+      chat={browserChat}
     />
   );
 }

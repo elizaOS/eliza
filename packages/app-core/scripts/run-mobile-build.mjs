@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|ios|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
  *
  * Phases:
  *   1. Resolve config  — read app.config.ts for appId / appName
@@ -33,6 +33,8 @@ const appDir = path.join(repoRoot, "apps", "app");
 const iosPlatformDir = path.join(appDir, "ios");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const miladyOsVendorDir = path.join(repoRoot, "os", "android", "vendor", "milady");
+const miladyOsApkDir = path.join(miladyOsVendorDir, "apps", "Milady");
 const platformsDir = path.join(
   repoRoot,
   "eliza",
@@ -361,6 +363,19 @@ async function ensurePlatform(platform) {
 
 /** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
 const ANDROID_PERMISSIONS = [
+  "READ_CONTACTS",
+  "WRITE_CONTACTS",
+  "CALL_PHONE",
+  "READ_PHONE_STATE",
+  "ANSWER_PHONE_CALLS",
+  "MANAGE_OWN_CALLS",
+  "READ_CALL_LOG",
+  "WRITE_CALL_LOG",
+  "READ_SMS",
+  "SEND_SMS",
+  "RECEIVE_SMS",
+  "RECEIVE_MMS",
+  "RECEIVE_WAP_PUSH",
   "RECORD_AUDIO",
   "CAMERA",
   "ACCESS_FINE_LOCATION",
@@ -371,6 +386,41 @@ const ANDROID_PERMISSIONS = [
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
 ];
+
+function replaceOrInsertGradleString(content, key, value) {
+  const quoted = `${key} "${value}"`;
+  const assignmentRe = new RegExp(`${key}\\s+["'][^"']+["']`);
+  if (assignmentRe.test(content)) {
+    return content.replace(assignmentRe, quoted);
+  }
+  return content;
+}
+
+function appendMissingAndroidManifestBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</manifest>", `${block}\n</manifest>`);
+}
+
+function appendMissingApplicationBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</application>", `${block}\n    </application>`);
+}
+
+function ensureMiladyOsActivityFilters(xml) {
+  if (xml.includes("android.intent.category.HOME")) {
+    return xml;
+  }
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const homeFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+`;
+  return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
+}
 
 function overlayAndroid() {
   const srcJava = path.join(
@@ -425,7 +475,15 @@ function overlayAndroid() {
       }
     }
     fs.mkdirSync(dstJava, { recursive: true });
-    for (const file of ["GatewayConnectionService.java", "MainActivity.java"]) {
+    for (const file of [
+      "GatewayConnectionService.java",
+      "MainActivity.java",
+      "MiladyBootReceiver.java",
+      "MiladyDialActivity.java",
+      "MiladyInCallService.java",
+      "MiladyMmsReceiver.java",
+      "MiladySmsReceiver.java",
+    ]) {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
@@ -476,6 +534,12 @@ function overlayAndroid() {
       );
       dirty = true;
     }
+    xml = appendMissingAndroidManifestBlock(
+      xml,
+      "android.hardware.telephony",
+      '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
+    );
+    xml = ensureMiladyOsActivityFilters(xml);
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
       /\n\s*<service\b(?=[\s\S]*?android:name="[^"]*GatewayConnectionService")[\s\S]*?\/>\s*/g;
@@ -487,6 +551,82 @@ function overlayAndroid() {
     xml = xml.replace(
       "</application>",
       `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
+    dirty = true;
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyDialActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyDialActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyInCallService`,
+      `
+        <service
+            android:name="${androidPackage}.MiladyInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="true" />
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="true" />
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladySmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladySmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyMmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladyMmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyBootReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladyBootReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>`,
     );
     dirty = true;
     for (const perm of ANDROID_PERMISSIONS) {
@@ -802,6 +942,21 @@ function patchAndroidGradle() {
       console.log("[mobile-build] Patched Android SDK versions.");
     }
   }
+
+  const appGradlePath = path.join(androidDir, "app", "build.gradle");
+  if (fs.existsSync(appGradlePath)) {
+    const current = fs.readFileSync(appGradlePath, "utf8");
+    let patched = replaceOrInsertGradleString(current, "namespace", APP.appId);
+    patched = replaceOrInsertGradleString(
+      patched,
+      "applicationId",
+      APP.appId,
+    );
+    if (patched !== current) {
+      fs.writeFileSync(appGradlePath, patched, "utf8");
+      console.log(`[mobile-build] Applied Android package identity ${APP.appId}.`);
+    }
+  }
 }
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
@@ -906,6 +1061,60 @@ async function buildAndroid() {
   );
 }
 
+function findAndroidSystemApk() {
+  const candidates = [
+    path.join(androidDir, "app", "build", "outputs", "apk", "release", "app-release-unsigned.apk"),
+    path.join(androidDir, "app", "build", "outputs", "apk", "release", "app-release.apk"),
+    path.join(androidDir, "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
+  ];
+  return firstExisting(candidates);
+}
+
+function stageAndroidSystemApk() {
+  const apk = findAndroidSystemApk();
+  if (!apk) {
+    throw new Error("No Android APK found to stage for MiladyOS.");
+  }
+  fs.mkdirSync(miladyOsApkDir, { recursive: true });
+  const target = path.join(miladyOsApkDir, "Milady.apk");
+  fs.copyFileSync(apk, target);
+  console.log(`[mobile-build] Staged MiladyOS APK at ${target}.`);
+}
+
+async function buildAndroidSystem() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb();
+  await ensurePlatform("android");
+  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+
+  patchAndroidGradle();
+  overlayAndroid();
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  await run("./gradlew", [":app:assembleRelease"], {
+    cwd: androidDir,
+    env,
+  });
+  stageAndroidSystemApk();
+}
+
 async function buildIos() {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
@@ -965,14 +1174,21 @@ async function buildIos() {
 
 export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
-  if (target !== "android" && target !== "ios" && target !== "ios-overlay") {
+  if (
+    target !== "android" &&
+    target !== "android-system" &&
+    target !== "ios" &&
+    target !== "ios-overlay"
+  ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|ios|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-system") {
+    await buildAndroidSystem();
   } else if (target === "ios") {
     await buildIos();
   } else {
