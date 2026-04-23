@@ -1170,7 +1170,7 @@ function patchAndroidGradle() {
     );
     patched = appendMissingGradleDependency(
       patched,
-      "com.google.firebase:firebase-common-ktx:20.3.3",
+      "com.google.firebase:firebase-common-ktx:21.0.0",
     );
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
