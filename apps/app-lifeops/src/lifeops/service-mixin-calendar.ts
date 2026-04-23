@@ -25,9 +25,7 @@ import {
   resolveGoogleExecutionTarget,
   resolveGoogleGrants,
 } from "./google-connector-gateway.js";
-import {
-  ensureFreshGoogleAccessToken,
-} from "./google-oauth.js";
+import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsCalendarSyncState,
@@ -35,6 +33,7 @@ import {
 } from "./repository.js";
 import {
   fail,
+  normalizeOptionalBoolean,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
@@ -44,6 +43,7 @@ import {
 } from "./service-normalize-connector.js";
 import {
   createCalendarEventId,
+  findLinkedMailForCalendarEvent,
   isCalendarSyncStateFresh,
 } from "./service-normalize-gmail.js";
 import {
@@ -58,26 +58,34 @@ import {
   resolveNextCalendarEventWindow,
 } from "./service-normalize-calendar.js";
 import {
-  findLinkedMailForCalendarEvent,
-} from "./service-normalize-gmail.js";
-import {
   DEFAULT_CALENDAR_REMINDER_STEPS,
 } from "./service-constants.js";
 import {
-  normalizeOptionalBoolean,
-} from "./service-normalize.js";
-import { LifeOpsServiceError } from "./service-types.js";
+  ensureLifeOpsCalendarFeedIncludes,
+  setLifeOpsCalendarFeedIncluded,
+} from "./owner-profile.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 export interface LifeOpsCalendarService {
   listCalendars(
     requestUrl: URL,
     request?: ListLifeOpsCalendarsRequest,
   ): Promise<LifeOpsCalendarSummary[]>;
+  setCalendarIncluded(
+    requestUrl: URL,
+    request: {
+      calendarId: string;
+      includeInFeed: boolean;
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId?: string;
+    },
+  ): Promise<LifeOpsCalendarSummary>;
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
@@ -182,7 +190,57 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           });
         }
       }
-      return summaries;
+      const preferences = await ensureLifeOpsCalendarFeedIncludes(
+        this.runtime,
+        summaries.map((summary) => summary.calendarId),
+      );
+      return summaries.map((summary) => ({
+        ...summary,
+        includeInFeed:
+          preferences.calendarFeedIncludes[summary.calendarId] !== false,
+      }));
+    }
+
+    public async setCalendarIncluded(
+      requestUrl: URL,
+      request: {
+        calendarId: string;
+        includeInFeed: boolean;
+        side?: LifeOpsConnectorSide;
+        mode?: LifeOpsConnectorMode;
+        grantId?: string;
+      },
+    ): Promise<LifeOpsCalendarSummary> {
+      const calendarId = requireNonEmptyString(request.calendarId, "calendarId");
+      const includeInFeed = normalizeOptionalBoolean(
+        request.includeInFeed,
+        "includeInFeed",
+      );
+      if (includeInFeed === undefined) {
+        throw new LifeOpsServiceError(400, "includeInFeed must be a boolean");
+      }
+
+      const calendars = await this.listCalendars(requestUrl, {
+        mode: request.mode,
+        side: request.side,
+        grantId: request.grantId,
+      });
+      const calendar = calendars.find(
+        (entry) => entry.calendarId === calendarId,
+      );
+      if (!calendar) {
+        throw new LifeOpsServiceError(404, "Calendar not found");
+      }
+
+      await setLifeOpsCalendarFeedIncluded(
+        this.runtime,
+        calendarId,
+        includeInFeed,
+      );
+      return {
+        ...calendar,
+        includeInFeed,
+      };
     }
 
     public async recordCalendarEventAudit(
