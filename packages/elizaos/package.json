@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.0-alpha.302",
+  "version": "2.0.0-alpha.304",
   "description": "elizaOS CLI - Create and upgrade elizaOS project templates",
   "type": "module",
   "bin": {
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "commander": "^12.1.0",
+    "commander": "^14.0.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
