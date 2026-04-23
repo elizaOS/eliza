@@ -14,7 +14,6 @@ import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
 import { resolveStewardCredentialsPath } from "../config/paths.js";
-import { computeValueUsd } from "./wallet-dex-prices.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -24,6 +23,7 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "../contracts/wallet.js";
+import { computeValueUsd } from "./wallet-dex-prices.js";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -822,8 +822,9 @@ function shortenMint(mint: string): string {
 async function fetchSolanaDexMeta(
   addresses: string[],
 ): Promise<Map<string, SolanaDexMeta>> {
-  const uniqueAddresses = [...new Set(addresses.map((address) => address.trim()))]
-    .filter(Boolean);
+  const uniqueAddresses = [
+    ...new Set(addresses.map((address) => address.trim())),
+  ].filter(Boolean);
   const results = new Map<string, SolanaDexMeta>();
   if (uniqueAddresses.length === 0) return results;
 
@@ -1006,7 +1007,9 @@ export async function fetchSolanaBalances(
     const decimals = item.token_info?.decimals ?? 0;
     const rawBalance = item.token_info?.balance ?? 0;
     const balance =
-      decimals > 0 ? (rawBalance / 10 ** decimals).toString() : rawBalance.toString();
+      decimals > 0
+        ? (rawBalance / 10 ** decimals).toString()
+        : rawBalance.toString();
     tokens.push(
       buildSolanaTokenBalance(
         {
@@ -1015,7 +1018,8 @@ export async function fetchSolanaBalances(
           name: item.content?.metadata?.name ?? null,
           balance,
           decimals,
-          valueUsd: item.token_info?.price_info?.total_price?.toFixed(2) ?? null,
+          valueUsd:
+            item.token_info?.price_info?.total_price?.toFixed(2) ?? null,
           logoUrl: item.content?.links?.image ?? null,
         },
         dexMeta,
@@ -1060,7 +1064,8 @@ export async function fetchSolanaNativeBalanceViaRpc(
           ),
         ),
       );
-      if (balanceData.error?.message) throw new Error(balanceData.error.message);
+      if (balanceData.error?.message)
+        throw new Error(balanceData.error.message);
 
       const tokenAccounts = await jsonOrThrow<SolanaParsedTokenAccountResponse>(
         await fetch(
