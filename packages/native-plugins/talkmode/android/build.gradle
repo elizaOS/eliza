@@ -7,7 +7,7 @@ ext {
 
 apply plugin: 'com.android.library'
 android {
-    namespace "ai.eliza.plugins.talkmode"
+    namespace = "ai.eliza.plugins.talkmode"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
     defaultConfig {
         minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
