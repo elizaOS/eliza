@@ -26,6 +26,7 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
   COMPANION_ENABLED,
+  canonicalPathForPath,
   isRouteRootPath,
   resolveInitialTabForPath,
   type Tab,
@@ -247,7 +248,6 @@ function AppProviderInner({
       onboardingLoading,
       startupPhase,
       startupError,
-      startupRetryNonce,
       authRequired,
       actionNotice,
       lifecycleBusy,
@@ -488,9 +488,7 @@ function AppProviderInner({
     pluginAdvancedOpen,
     setPluginAdvancedOpen,
     pluginSaving,
-    setPluginSaving,
     pluginSaveSuccess,
-    setPluginSaveSuccess,
     loadPlugins,
     ensurePluginsLoaded,
     handlePluginToggle,
@@ -506,25 +504,18 @@ function AppProviderInner({
     skillCreateDescription,
     setSkillCreateDescription,
     skillCreating,
-    setSkillCreating,
     skillReviewReport,
     setSkillReviewReport,
     skillReviewId,
     setSkillReviewId,
     skillReviewLoading,
-    setSkillReviewLoading,
     skillToggleAction,
-    setSkillToggleAction,
     skillsMarketplaceQuery,
     setSkillsMarketplaceQuery,
     skillsMarketplaceResults,
-    setSkillsMarketplaceResults,
     skillsMarketplaceError,
-    setSkillsMarketplaceError,
     skillsMarketplaceLoading,
-    setSkillsMarketplaceLoading,
     skillsMarketplaceAction,
-    setSkillsMarketplaceAction,
     skillsMarketplaceManualGithubUrl,
     setSkillsMarketplaceManualGithubUrl,
     loadSkills,
@@ -622,10 +613,6 @@ function AppProviderInner({
       activePackId,
       customWorldUrl,
     },
-    setCharacterData,
-    setCharacterDraft,
-    setCharacterSaveSuccess,
-    setCharacterSaveError,
     setSelectedVrmIndex,
     setCustomVrmUrl,
     setCustomVrmPreviewUrl,
@@ -981,10 +968,6 @@ function AppProviderInner({
     setInventorySort,
     setInventorySortDirection,
     setInventoryChainFilters,
-    setWalletError,
-    setRegistryError,
-    setMintResult,
-    setMintError,
     loadWalletConfig,
     loadBalances,
     loadNfts,
@@ -1052,7 +1035,6 @@ function AppProviderInner({
     pollCloudCredits,
     handleCloudLogin,
     handleCloudDisconnect,
-    handleCloudLoginRef,
   } = cloudHook;
 
   // ── Clipboard ──────────────────────────────────────────────────────
@@ -1072,7 +1054,6 @@ function AppProviderInner({
     setAppsSubTab,
   });
   const {
-    lastNativeTab,
     setTab,
     setUiShellMode,
     switchUiShellMode,
@@ -1086,6 +1067,18 @@ function AppProviderInner({
       return;
     }
     const routeTab = tabFromPath(navPath);
+    const canonicalPath = canonicalPathForPath(navPath);
+    if (canonicalPath && typeof window !== "undefined") {
+      if (window.location.protocol === "file:") {
+        window.location.hash = canonicalPath;
+      } else {
+        window.history.replaceState(
+          null,
+          "",
+          `${canonicalPath}${window.location.search}${window.location.hash}`,
+        );
+      }
+    }
     if (routeTab && routeTab !== tab) {
       setTabRaw(routeTab);
     }
@@ -1277,7 +1270,6 @@ function AppProviderInner({
     retryBackendConnection,
     restartBackend,
     relaunchDesktop,
-    showDesktopNotification,
     notifyAssistantEvent,
     notifyHeartbeatEvent,
     handleResetAppliedFromMain,
@@ -2383,7 +2375,6 @@ function AppProviderInner({
       setState,
       copyToClipboard,
     }),
-    // biome-ignore lint/correctness/useExhaustiveDependencies: several fields are intentionally excluded from deps — see comments in the dep array below. chatInput/chatSending/chatPendingImages are provided fresh via ChatComposerCtx; ptySessions via PtySessionsCtx.
     // prettier-ignore
     [
       t,

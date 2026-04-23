@@ -7,7 +7,7 @@ import {
   PagePanel,
   useApp,
 } from "@elizaos/app-core";
-import { ChatView } from "@elizaos/app-core/components/pages/ChatView";
+import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -22,7 +22,6 @@ import {
   drainLifeOpsGithubCallbacks,
 } from "../platform/lifeops-github.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
-import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
 import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
@@ -36,6 +35,7 @@ import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import {
+  type LifeOpsSelection,
   LifeOpsSelectionProvider,
   useLifeOpsSelection,
 } from "./LifeOpsSelectionContext.js";
@@ -404,6 +404,32 @@ function LifeOpsSettingsSectionView({
 
       <PermissionsPanel />
     </div>
+  );
+}
+
+function resolveLifeOpsChatPlaceholder(
+  selection: LifeOpsSelection,
+): string | undefined {
+  if (selection.reminderId) {
+    return "Ask about this reminder";
+  }
+  if (selection.eventId) {
+    return "Ask about this event";
+  }
+  if (selection.messageId) {
+    return "Ask about this message";
+  }
+  return undefined;
+}
+
+function LifeOpsPageChat() {
+  const { selection } = useLifeOpsSelection();
+  return (
+    <PageScopedChatPane
+      scope="page-lifeops"
+      title="LifeOps"
+      placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
+    />
   );
 }
 
@@ -974,11 +1000,7 @@ function LifeOpsWorkspaceInner() {
           </div>
         </div>
       }
-      chat={
-        <LifeOpsChatAdapter>
-          <ChatView variant="default" />
-        </LifeOpsChatAdapter>
-      }
+      chat={<LifeOpsPageChat />}
     />
   );
 }

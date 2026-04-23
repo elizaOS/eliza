@@ -33,14 +33,28 @@ import {
 const PAGE_CHAT_INPUT_MIN_HEIGHT_PX = 32;
 const PAGE_CHAT_INPUT_MAX_HEIGHT_PX = 128;
 const MAX_PAGE_CHAT_IMAGES = 4;
+const CHAT_PREFILL_EVENT = "milady:chat:prefill";
 const NO_FOCUS_CHROME_STYLE: CSSProperties = {
   boxShadow: "none",
   outline: "none",
 };
 
+interface ChatPrefillDetail {
+  text?: string;
+  select?: boolean;
+}
+
 type PageScopedMessage = ConversationMessage & {
   images?: ImageAttachment[];
 };
+
+function readChatPrefillDetail(event: Event): ChatPrefillDetail | null {
+  const detail = (event as CustomEvent<ChatPrefillDetail>).detail;
+  if (!detail || typeof detail.text !== "string" || detail.text.length === 0) {
+    return null;
+  }
+  return detail;
+}
 
 function resolveSpeechLocale(uiLanguage: string): string {
   switch (uiLanguage) {
@@ -458,6 +472,29 @@ export function PageScopedChatPane({
       setVoicePreview(text);
     },
   });
+
+  useEffect(() => {
+    const handlePrefill = (event: Event) => {
+      const detail = readChatPrefillDetail(event);
+      if (!detail) return;
+      if (voice.isListening) {
+        void voice.stopListening();
+        setVoicePreview("");
+      }
+      setInput(detail.text ?? "");
+      window.requestAnimationFrame(() => {
+        composerRef.current?.focus();
+        if (detail.select) {
+          composerRef.current?.select();
+        }
+      });
+    };
+
+    window.addEventListener(CHAT_PREFILL_EVENT, handlePrefill);
+    return () => {
+      window.removeEventListener(CHAT_PREFILL_EVENT, handlePrefill);
+    };
+  }, [voice.isListening, voice.stopListening]);
 
   const handleInputChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {

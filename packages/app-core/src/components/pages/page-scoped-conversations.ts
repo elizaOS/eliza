@@ -9,6 +9,7 @@ export type PageScope =
   | "page-character"
   | "page-automations"
   | "page-apps"
+  | "page-lifeops"
   | "page-wallet";
 
 export const PAGE_SCOPES: readonly PageScope[] = [
@@ -16,6 +17,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-character",
   "page-automations",
   "page-apps",
+  "page-lifeops",
   "page-wallet",
 ] as const;
 
@@ -25,7 +27,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 4;
+export const PAGE_SCOPE_VERSION = 6;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -65,11 +67,17 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
   },
+  "page-lifeops": {
+    title: "LifeOps chat",
+    body: "Use me to plan and inspect today, goals, reminders, calendar, messages, mail, sleep, screen time, social, connectors, and LifeOps setup. Recommended: start with capability readiness and the current overview, then ask me to create or adjust the next reminder, goal, reply draft, or schedule block. Ask me to explain any LifeOps item or turn it into an action.",
+    systemAddendum:
+      "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
+  },
   "page-wallet": {
     title: "Wallet chat",
-    body: "Use me to inspect addresses, balances, NFTs, chains, RPC readiness, pending approvals, policies, and transaction history. Recommended: confirm wallet/RPC readiness and pending approvals before any trading flow. Ask setup or safety questions; signing and fund movement stay user-driven.",
+    body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, and Vincent trading. Recommended: ask me to prepare a swap, bridge, or Vincent trading plan with the amount and constraints you want.",
     systemAddendum:
-      "You are answering inside the Wallet view. The user can inspect wallet addresses, balances, NFTs, chain filters, RPC/provider readiness, pending Steward approvals, policy controls, transaction history, and wallet/RPC settings. Recommend readiness checks and safety review before trading or signing. Provide read-only guidance only. Never initiate trades, transfers, swaps, approvals, signatures, or fund movements on the user's behalf — direct the user to perform those actions themselves.",
+      "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, or trading actions, confirm the asset, amount, destination, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when it is connected or suggest connecting it when it is not. Never invent balances, positions, fills, or execution support.",
   },
 };
 
@@ -78,6 +86,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-character": "Character",
   "page-automations": "Automations",
   "page-apps": "Apps",
+  "page-lifeops": "LifeOps",
   "page-wallet": "Wallet",
 };
 

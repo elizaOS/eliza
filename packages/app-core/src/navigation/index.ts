@@ -223,7 +223,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   "character-select": "/character/select",
   automations: "/automations",
   triggers: "/automations",
-  inventory: "/inventory",
+  inventory: "/wallet",
   knowledge: "/character/knowledge",
   connectors: "/connectors",
   plugins: "/apps/plugins",
@@ -246,6 +246,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
 const LEGACY_PATHS: Record<string, Tab> = {
   "/game": "apps",
   "/agent": "character",
+  "/inventory": "inventory",
   "/wallets": "inventory",
   "/features": "plugins",
   "/admin": "fine-tuning",
@@ -300,6 +301,17 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
+}
+
+export function canonicalPathForPath(
+  pathname: string,
+  basePath = "",
+): string | null {
+  const normalized = normalizePathForLookup(pathname, basePath);
+  const legacyTab = LEGACY_PATHS[normalized];
+  if (!legacyTab) return null;
+  const canonical = pathForTab(legacyTab, basePath);
+  return canonical === pathname ? null : canonical;
 }
 
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
