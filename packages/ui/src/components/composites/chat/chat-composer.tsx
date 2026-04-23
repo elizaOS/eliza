@@ -142,6 +142,9 @@ export function ChatComposer({
           ? t("chat.listening")
           : inputPlaceholder
       : inputPlaceholder;
+  const inlineTextareaClass = isInlineMultiline
+    ? "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
+    : "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none";
 
   useEffect(() => {
     return () => {
@@ -285,11 +288,9 @@ export function ChatComposer({
           onKeyDown={onKeyDown}
           data-testid="chat-composer-textarea"
           aria-label={textareaAriaLabel}
-          className={
-            isInlineMultiline
-              ? "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
-              : "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
-          }
+          variant={null}
+          density={null}
+          className={inlineTextareaClass}
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
           disabled={isComposerLocked}
@@ -503,11 +504,13 @@ export function ChatComposer({
           onKeyDown={onKeyDown}
           data-testid="chat-composer-textarea"
           aria-label={textareaAriaLabel}
+          variant={isInline ? null : undefined}
+          density={isInline ? null : undefined}
           className={
             isGameModal
               ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-3xl border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
               : isInline
-                ? "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
+                ? inlineTextareaClass
                 : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-2xl border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}

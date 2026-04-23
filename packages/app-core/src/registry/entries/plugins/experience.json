@@ -1,7 +1,7 @@
 {
   "id": "experience",
   "name": "Experience",
-  "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
+  "description": "Built-in advanced capability for recording and recalling transferable agent learnings, surfaced in the Character Experience workspace alongside trajectory inspection tooling.",
   "npmName": "@elizaos/plugin-experience",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Record Threshold",
-      "help": "Threshold value",
+      "help": "Minimum confidence required before the experience evaluator records a new learning.",
       "advanced": false
     }
   },

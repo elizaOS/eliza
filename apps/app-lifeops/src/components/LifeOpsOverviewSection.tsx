@@ -1,14 +1,19 @@
 import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
+  LifeOpsCapabilitiesStatus,
   LifeOpsCalendarEvent,
+  LifeOpsGoogleCapability,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsInboxChannel,
-  LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsInboxMessage,
+  LifeOpsOverview,
+  LifeOpsXConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   AtSign,
+  ArrowRight,
   CalendarDays,
   Flame,
   Loader2,
@@ -25,6 +30,7 @@ import {
   Smartphone,
   Sun,
   Target,
+  TriangleAlert,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -38,14 +44,16 @@ import type {
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
+import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 import { useInbox } from "../hooks/useInbox.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
 } from "./LifeOpsInboxSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
-import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
 
 interface LifeOpsOverviewSectionProps {
   onNavigate: (section: LifeOpsSection) => void;
@@ -259,8 +267,13 @@ function buildHeadline(args: {
   nextEvent: LifeOpsCalendarEvent | null;
   hasOverdue: boolean;
   hasUnread: boolean;
+  hasAnyOverviewAccess: boolean;
 }) {
-  const { schedule, nextEvent, hasOverdue, hasUnread } = args;
+  const { schedule, nextEvent, hasOverdue, hasUnread, hasAnyOverviewAccess } =
+    args;
+  if (!hasAnyOverviewAccess) {
+    return "LifeOps is waiting on access.";
+  }
   if (schedule?.sleepStatus === "sleeping_now") {
     return "Sleep is the main event.";
   }
@@ -354,6 +367,53 @@ function MetricCell({
 
 function EmptyState({ children }: { children: ReactNode }) {
   return <div className="py-6 text-center text-xs text-muted">{children}</div>;
+}
+
+function formatLabelList(labels: string[]): string {
+  if (labels.length === 0) {
+    return "";
+  }
+  if (labels.length === 1) {
+    return labels[0];
+  }
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`;
+  }
+  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
+}
+
+function sortPriorityMessages(
+  messages: LifeOpsInboxMessage[],
+): LifeOpsInboxMessage[] {
+  return [...messages].sort((left, right) => {
+    if (left.unread !== right.unread) {
+      return left.unread ? -1 : 1;
+    }
+    return right.receivedAt.localeCompare(left.receivedAt);
+  });
+}
+
+function hasCapabilityAccess(
+  status: LifeOpsCapabilitiesStatus | null,
+  capabilityId: string,
+): boolean {
+  const capability = status?.capabilities.find((item) => item.id === capabilityId);
+  return capability?.state === "working" || capability?.state === "degraded";
+}
+
+function hasGoogleCapability(
+  status: LifeOpsGoogleConnectorStatus | null,
+  capabilities: readonly LifeOpsGoogleCapability[],
+): boolean {
+  if (status?.connected !== true) {
+    return false;
+  }
+  const granted = new Set(status.grantedCapabilities);
+  return capabilities.some((capability) => granted.has(capability));
+}
+
+function hasXMessageAccess(status: LifeOpsXConnectorStatus | null): boolean {
+  return status?.connected === true && (status.dmRead || status.dmInbound);
 }
 
 function TinyStatus({ color, label }: { color: string; label: string }) {
@@ -543,9 +603,15 @@ export function LifeOpsOverviewSection({
 }: LifeOpsOverviewSectionProps) {
   const { t } = useApp();
   const { select } = useLifeOpsSelection();
-  const { dismissed, dismiss } = useLifeOpsSetupGate();
   const greeting = useGreeting();
   const today = useMemo(() => new Date(), []);
+  const capabilities = useLifeOpsCapabilitiesStatus();
+  const googleConnector = useGoogleLifeOpsConnector({
+    includeAccounts: false,
+    pollWhileDisconnected: false,
+    side: "owner",
+  });
+  const xConnector = useLifeOpsXConnector("owner");
 
   const [overview, setOverview] = useState<LifeOpsOverview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -653,10 +719,17 @@ export function LifeOpsOverviewSection({
   const schedule = overview?.schedule ?? null;
   const reminders = overview?.reminders ?? [];
   const activeReminders = reminders.slice(0, 6);
-  const unreadMessages = [
-    ...messagesInbox.messages,
-    ...mailInbox.messages,
-  ].filter((message) => message.unread);
+  const priorityMessages = useMemo(
+    () => sortPriorityMessages(messagesInbox.messages),
+    [messagesInbox.messages],
+  );
+  const priorityMail = useMemo(
+    () => sortPriorityMessages(mailInbox.messages),
+    [mailInbox.messages],
+  );
+  const unreadMessages = [...priorityMessages, ...priorityMail].filter(
+    (message) => message.unread,
+  );
   const hasUnread = unreadMessages.length > 0;
   const hasOverdue = (summary?.overdueOccurrenceCount ?? 0) > 0;
   const nextEvent = upcomingEvents[0] ?? null;
@@ -665,6 +738,84 @@ export function LifeOpsOverviewSection({
   const topSocial = social?.services[0] ?? null;
   const lastSleep = formatDurationMinutes(schedule?.lastSleepDurationMinutes);
   const bedtime = formatClockTime(schedule?.relativeTime.bedtimeTargetAt);
+  const sleepAccess =
+    Boolean(schedule) ||
+    hasCapabilityAccess(capabilities.status, "sleep.relative_time");
+  const browserActivityAccess = hasCapabilityAccess(
+    capabilities.status,
+    "activity.browser",
+  );
+  const screenTimeAccess =
+    (!screenTimeError && browserActivityAccess) || Boolean(screenTime);
+  const socialAccess =
+    (!socialError && browserActivityAccess) || Boolean(social);
+  const calendarAccess =
+    hasGoogleCapability(googleConnector.status, [
+      "google.calendar.read",
+      "google.calendar.write",
+    ]) || upcomingEvents.length > 0;
+  const mailAccess =
+    hasGoogleCapability(googleConnector.status, [
+      "google.gmail.triage",
+      "google.gmail.send",
+    ]) || priorityMail.length > 0;
+  const messagesAccess =
+    hasXMessageAccess(xConnector.status) || priorityMessages.length > 0;
+  const remindersAccess =
+    hasCapabilityAccess(capabilities.status, "reminders.scheduler") ||
+    activeReminders.length > 0 ||
+    hasOverdue;
+  const hasAnySignalWidget =
+    sleepAccess ||
+    screenTimeAccess ||
+    socialAccess ||
+    calendarAccess ||
+    messagesAccess ||
+    mailAccess;
+  const hasAnyOverviewAccess = hasAnySignalWidget || remindersAccess;
+  const setupSignalsLoading =
+    capabilities.loading || googleConnector.loading || xConnector.loading;
+  const missingWidgets = useMemo(
+    () =>
+      [
+        !sleepAccess ? "Sleep" : null,
+        !screenTimeAccess ? "Screen Time" : null,
+        !socialAccess ? "Social" : null,
+        !messagesAccess ? "Messages" : null,
+        !mailAccess ? "Mail" : null,
+        !calendarAccess ? "Calendar" : null,
+      ].filter((value): value is string => Boolean(value)),
+    [
+      calendarAccess,
+      mailAccess,
+      messagesAccess,
+      screenTimeAccess,
+      sleepAccess,
+      socialAccess,
+    ],
+  );
+  const showSetupWarning = !setupSignalsLoading && missingWidgets.length > 0;
+  const showNoAccessState =
+    !setupSignalsLoading &&
+    !loading &&
+    !screenTimeLoading &&
+    !socialLoading &&
+    !calendar.loading &&
+    !messagesInbox.loading &&
+    !mailInbox.loading &&
+    !hasAnyOverviewAccess;
+  const reminderMetricValue = activeReminders[0]
+    ? formatRelative(activeReminders[0].scheduledFor)
+    : hasOverdue
+      ? `${summary?.overdueOccurrenceCount ?? 0} overdue`
+      : (summary?.activeOccurrenceCount ?? 0) > 0
+        ? `${summary?.activeOccurrenceCount ?? 0} active`
+        : "Clear";
+  const reminderMetricTone = hasOverdue
+    ? "text-rose-300"
+    : (summary?.activeOccurrenceCount ?? 0) > 0
+      ? "text-amber-300"
+      : "text-muted";
 
   const timeline = useMemo<TimelineEntry[]>(() => {
     return [
@@ -688,9 +839,9 @@ export function LifeOpsOverviewSection({
 
   const activeChannels = useMemo(() => {
     return CHANNEL_ORDER.filter((channel) =>
-      messagesInbox.messages.some((message) => message.channel === channel),
+      priorityMessages.some((message) => message.channel === channel),
     );
-  }, [messagesInbox.messages]);
+  }, [priorityMessages]);
 
   const briefingLines = useMemo(() => {
     const lines: string[] = [];
@@ -723,16 +874,22 @@ export function LifeOpsOverviewSection({
     void loadOverview();
     void loadScreenTime();
     void loadSocial();
+    void capabilities.refresh();
+    void googleConnector.refresh({ silent: true });
+    void xConnector.refresh();
     void calendar.refresh();
     void messagesInbox.refresh();
     void mailInbox.refresh();
   }, [
     calendar.refresh,
+    capabilities,
+    googleConnector,
     loadSocial,
     loadOverview,
     loadScreenTime,
     mailInbox.refresh,
     messagesInbox.refresh,
+    xConnector,
   ]);
 
   const openEvent = useCallback(
@@ -754,10 +911,6 @@ export function LifeOpsOverviewSection({
     [onNavigate, select],
   );
 
-  if (!dismissed) {
-    return <LifeOpsSetupGate onDismiss={dismiss} />;
-  }
-
   return (
     <div className="space-y-4" data-testid="lifeops-overview">
       <header className="border-b border-border/20 pb-4">
@@ -772,6 +925,7 @@ export function LifeOpsOverviewSection({
                 nextEvent,
                 hasOverdue,
                 hasUnread,
+                hasAnyOverviewAccess,
               })}
             </h1>
           </div>
@@ -809,15 +963,9 @@ export function LifeOpsOverviewSection({
             }
           />
           <MetricCell
-            label="Work"
-            value={
-              nextEvent
-                ? formatClockTime(nextEvent.startAt)
-                : activeReminders[0]
-                  ? formatRelative(activeReminders[0].scheduledFor)
-                  : "Open"
-            }
-            tone="text-blue-300"
+            label="Reminders"
+            value={reminderMetricValue}
+            tone={reminderMetricTone}
           />
           <MetricCell
             label="Screen"
@@ -833,6 +981,41 @@ export function LifeOpsOverviewSection({
         </div>
       ) : null}
 
+      {showSetupWarning ? (
+        <div
+          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
+          data-testid="lifeops-overview-setup-warning"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 shrink-0 text-amber-300">
+              <TriangleAlert className="h-4 w-4" aria-hidden />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <div className="text-sm font-medium text-txt">
+                {hasAnyOverviewAccess
+                  ? "Overview is partial."
+                  : "Overview needs access."}
+              </div>
+              <p className="text-xs leading-relaxed text-muted">
+                {hasAnyOverviewAccess
+                  ? `Some widgets stay hidden until access is available for ${formatLabelList(
+                      missingWidgets,
+                    )}. Local time is inferred automatically.`
+                  : "Local time is inferred automatically, but LifeOps still needs calendar, mail, messages, or activity access to populate this dashboard."}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            onClick={() => onNavigate("setup")}
+          >
+            Settings
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
       {loading && !overview ? (
         <div className="flex items-center gap-2 py-4 text-xs text-muted">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -840,282 +1023,323 @@ export function LifeOpsOverviewSection({
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 xl:grid-cols-12">
-        <DashboardPanel
-          title="Briefing"
-          icon={<Flame className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-3"
+      {showNoAccessState ? (
+        <div
+          className="rounded-lg border border-border/16 bg-card/12 px-5 py-8 text-center"
+          data-testid="lifeops-overview-empty-access"
         >
-          <div className="space-y-3">
-            {briefingLines.length === 0 ? (
-              <EmptyState>No urgent signal.</EmptyState>
-            ) : (
-              briefingLines.map((line) => (
-                <TinyStatus key={line} color="bg-accent" label={line} />
-              ))
-            )}
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/12 text-amber-300">
+            <TriangleAlert className="h-5 w-5" aria-hidden />
           </div>
-        </DashboardPanel>
+          <h2 className="mt-4 text-base font-semibold text-txt">
+            Add some access to populate Overview
+          </h2>
+          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+            Connect calendar, mail, messages, X, or browser activity in
+            Settings. As soon as one of those sources is available, LifeOps can
+            render the corresponding widgets here.
+          </p>
+          <button
+            type="button"
+            className="mt-4 inline-flex h-9 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            onClick={() => onNavigate("setup")}
+          >
+            Open Settings
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      ) : null}
 
-        <DashboardPanel
-          title="Sleep"
-          icon={
-            schedule?.sleepStatus === "sleeping_now" ? (
-              <Moon className="h-4 w-4" aria-hidden />
-            ) : (
-              <Sun className="h-4 w-4" aria-hidden />
-            )
-          }
-          action={
-            <IconAction
-              label="Sleep"
-              icon={<Moon className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("sleep")}
-            />
-          }
-          className="xl:col-span-3"
-        >
-          <div className="space-y-3">
-            <div>
-              <div className="text-2xl font-semibold leading-none text-txt">
-                {sleepStatusLabel(schedule)}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 border-t border-border/12 pt-3">
-              <TinyStatus
-                color="bg-blue-400"
-                label={lastSleep ? `Last sleep ${lastSleep}` : "No sleep"}
-              />
-              <TinyStatus
-                color="bg-indigo-400"
-                label={bedtime ? `Bed ${bedtime}` : "No target"}
-              />
-            </div>
-          </div>
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Screen Time"
-          icon={<Monitor className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Screen Time"
-              icon={<Monitor className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("screen-time")}
-            />
-          }
-          className="xl:col-span-3"
-        >
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <div>
-              <div className="text-2xl font-semibold leading-none text-txt">
-                {screenTimeLabel || "No data"}
-              </div>
-            </div>
-          </div>
-          <ScreenTimeList
-            screenTime={screenTime}
-            loading={screenTimeLoading}
-            error={screenTimeError}
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Social"
-          icon={<Share2 className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Social"
-              icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("social")}
-            />
-          }
-          className="xl:col-span-3"
-        >
-          <div className="mb-3 text-2xl font-semibold leading-none text-txt">
-            {socialLabel || "No data"}
-          </div>
-          {socialLoading && !social ? (
-            <div className="flex items-center gap-2 py-5 text-xs text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading social...
-            </div>
-          ) : socialError ? (
-            <div className="py-4 text-xs text-rose-300">{socialError}</div>
-          ) : (
+      {!showNoAccessState ? (
+        <div className="grid items-start gap-4 xl:grid-cols-12">
+          <DashboardPanel
+            title="Briefing"
+            icon={<Flame className="h-4 w-4" aria-hidden />}
+            className="xl:col-span-3"
+          >
             <div className="space-y-3">
-              <TinyStatus
-                color="bg-cyan-300"
-                label={
-                  topSocial
-                    ? `${topSocial.label} ${formatDurationSeconds(
-                        topSocial.totalSeconds,
-                      )}`
-                    : "No social time"
-                }
-              />
-              <TinyStatus
-                color="bg-emerald-300"
-                label={`${social?.messages.opened ?? 0} opened / ${
-                  social?.messages.outbound ?? 0
-                } sent`}
-              />
-            </div>
-          )}
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Timeline"
-          icon={<CalendarDays className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Calendar"
-              icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("calendar")}
-            />
-          }
-          className="xl:col-span-4"
-        >
-          {calendar.loading && timeline.length === 0 ? (
-            <div className="flex items-center gap-2 py-5 text-xs text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading calendar...
-            </div>
-          ) : timeline.length === 0 ? (
-            <EmptyState>Nothing scheduled.</EmptyState>
-          ) : (
-            <div className="divide-y divide-border/10">
-              {timeline.map((entry) => (
-                <TimelineRow
-                  key={entry.id}
-                  entry={entry}
-                  onOpenEvent={openEvent}
-                  onOpenReminder={openReminder}
-                />
-              ))}
-            </div>
-          )}
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Messages"
-          icon={<MessageSquare className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Messages"
-              icon={<MessageSquare className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("messages")}
-            />
-          }
-          className="xl:col-span-4"
-        >
-          <div className="mb-3 flex flex-wrap gap-2">
-            {activeChannels.length === 0 ? (
-              <span className="text-xs text-muted">No live messages.</span>
-            ) : (
-              activeChannels.slice(0, 5).map((channel) => {
-                const style = CHANNEL_STYLES[channel];
-                return (
-                  <span
-                    key={channel}
-                    role="img"
-                    aria-label={style.label}
-                    title={style.label}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${style.bg} ${style.text}`}
-                  >
-                    {style.icon}
-                  </span>
-                );
-              })
-            )}
-          </div>
-          {messagesInbox.loading && messagesInbox.messages.length === 0 ? (
-            <div className="flex items-center gap-2 py-5 text-xs text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading messages...
-            </div>
-          ) : messagesInbox.messages.length === 0 ? (
-            <EmptyState>No messages.</EmptyState>
-          ) : (
-            <div className="divide-y divide-border/10">
-              {messagesInbox.messages.slice(0, 5).map((message) => (
-                <InboxMessageRow
-                  key={message.id}
-                  message={message}
-                  onClick={() => {
-                    select({ messageId: message.id });
-                    onNavigate("messages");
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Mail"
-          icon={<Mail className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Mail"
-              icon={<Mail className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("mail")}
-            />
-          }
-          className="xl:col-span-4"
-        >
-          {mailInbox.loading && mailInbox.messages.length === 0 ? (
-            <div className="flex items-center gap-2 py-5 text-xs text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading mail...
-            </div>
-          ) : mailInbox.messages.length === 0 ? (
-            <EmptyState>No mail.</EmptyState>
-          ) : (
-            <div className="divide-y divide-border/10">
-              {mailInbox.messages.slice(0, 5).map((message) => (
-                <InboxMessageRow
-                  key={message.id}
-                  message={message}
-                  onClick={() => {
-                    select({ messageId: message.id });
-                    onNavigate("mail");
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Work"
-          icon={<Target className="h-4 w-4" aria-hidden />}
-          action={
-            <IconAction
-              label="Reminders"
-              icon={<Target className="h-3.5 w-3.5" aria-hidden />}
-              onClick={() => onNavigate("reminders")}
-            />
-          }
-          className="xl:col-span-4"
-        >
-          <div className="divide-y divide-border/10">
-            {activeReminders.length === 0 ? (
-              <EmptyState>No active reminders.</EmptyState>
-            ) : (
-              activeReminders
-                .slice(0, 4)
-                .map((reminder) => (
-                  <ReminderAgendaRow
-                    key={`${reminder.ownerId}:${reminder.stepIndex}`}
-                    reminder={reminder}
-                    onClick={() => openReminder(reminder)}
-                  />
+              {briefingLines.length === 0 ? (
+                <EmptyState>No urgent signal.</EmptyState>
+              ) : (
+                briefingLines.map((line) => (
+                  <TinyStatus key={line} color="bg-accent" label={line} />
                 ))
-            )}
-          </div>
-        </DashboardPanel>
-      </div>
+              )}
+            </div>
+          </DashboardPanel>
+
+          {sleepAccess ? (
+            <DashboardPanel
+              title="Sleep"
+              icon={
+                schedule?.sleepStatus === "sleeping_now" ? (
+                  <Moon className="h-4 w-4" aria-hidden />
+                ) : (
+                  <Sun className="h-4 w-4" aria-hidden />
+                )
+              }
+              action={
+                <IconAction
+                  label="Sleep"
+                  icon={<Moon className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("sleep")}
+                />
+              }
+              className="xl:col-span-3"
+            >
+              <div className="space-y-3">
+                <div>
+                  <div className="text-2xl font-semibold leading-none text-txt">
+                    {sleepStatusLabel(schedule)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 border-t border-border/12 pt-3">
+                  <TinyStatus
+                    color="bg-blue-400"
+                    label={lastSleep ? `Last sleep ${lastSleep}` : "No sleep"}
+                  />
+                  <TinyStatus
+                    color="bg-indigo-400"
+                    label={bedtime ? `Bed ${bedtime}` : "No target"}
+                  />
+                </div>
+              </div>
+            </DashboardPanel>
+          ) : null}
+
+          {screenTimeAccess ? (
+            <DashboardPanel
+              title="Screen Time"
+              icon={<Monitor className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Screen Time"
+                  icon={<Monitor className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("screen-time")}
+                />
+              }
+              className="xl:col-span-3"
+            >
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-2xl font-semibold leading-none text-txt">
+                    {screenTimeLabel || "No data"}
+                  </div>
+                </div>
+              </div>
+              <ScreenTimeList
+                screenTime={screenTime}
+                loading={screenTimeLoading}
+                error={screenTimeError}
+              />
+            </DashboardPanel>
+          ) : null}
+
+          {socialAccess ? (
+            <DashboardPanel
+              title="Social"
+              icon={<Share2 className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Social"
+                  icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("social")}
+                />
+              }
+              className="xl:col-span-3"
+            >
+              <div className="mb-3 text-2xl font-semibold leading-none text-txt">
+                {socialLabel || "No data"}
+              </div>
+              {socialLoading && !social ? (
+                <div className="flex items-center gap-2 py-5 text-xs text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Reading social...
+                </div>
+              ) : socialError ? (
+                <div className="py-4 text-xs text-rose-300">{socialError}</div>
+              ) : (
+                <div className="space-y-3">
+                  <TinyStatus
+                    color="bg-cyan-300"
+                    label={
+                      topSocial
+                        ? `${topSocial.label} ${formatDurationSeconds(
+                            topSocial.totalSeconds,
+                          )}`
+                        : "No social time"
+                    }
+                  />
+                  <TinyStatus
+                    color="bg-emerald-300"
+                    label={`${social?.messages.opened ?? 0} opened / ${
+                      social?.messages.outbound ?? 0
+                    } sent`}
+                  />
+                </div>
+              )}
+            </DashboardPanel>
+          ) : null}
+
+          {calendarAccess ? (
+            <DashboardPanel
+              title="Upcoming"
+              icon={<CalendarDays className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Calendar"
+                  icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("calendar")}
+                />
+              }
+              className="xl:col-span-4"
+            >
+              {calendar.loading && timeline.length === 0 ? (
+                <div className="flex items-center gap-2 py-5 text-xs text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Reading calendar...
+                </div>
+              ) : timeline.length === 0 ? (
+                <EmptyState>Nothing scheduled.</EmptyState>
+              ) : (
+                <div className="divide-y divide-border/10">
+                  {timeline.map((entry) => (
+                    <TimelineRow
+                      key={entry.id}
+                      entry={entry}
+                      onOpenEvent={openEvent}
+                      onOpenReminder={openReminder}
+                    />
+                  ))}
+                </div>
+              )}
+            </DashboardPanel>
+          ) : null}
+
+          {messagesAccess ? (
+            <DashboardPanel
+              title="Priority Messages"
+              icon={<MessageSquare className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Messages"
+                  icon={<MessageSquare className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("messages")}
+                />
+              }
+              className="xl:col-span-4"
+            >
+              <div className="mb-3 flex flex-wrap gap-2">
+                {activeChannels.length === 0 ? (
+                  <span className="text-xs text-muted">No live messages.</span>
+                ) : (
+                  activeChannels.slice(0, 5).map((channel) => {
+                    const style = CHANNEL_STYLES[channel];
+                    return (
+                      <span
+                        key={channel}
+                        role="img"
+                        aria-label={style.label}
+                        title={style.label}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${style.bg} ${style.text}`}
+                      >
+                        {style.icon}
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+              {messagesInbox.loading && priorityMessages.length === 0 ? (
+                <div className="flex items-center gap-2 py-5 text-xs text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Reading messages...
+                </div>
+              ) : priorityMessages.length === 0 ? (
+                <EmptyState>No priority messages.</EmptyState>
+              ) : (
+                <div className="divide-y divide-border/10">
+                  {priorityMessages.slice(0, 5).map((message) => (
+                    <InboxMessageRow
+                      key={message.id}
+                      message={message}
+                      onClick={() => {
+                        select({ messageId: message.id });
+                        onNavigate("messages");
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </DashboardPanel>
+          ) : null}
+
+          {mailAccess ? (
+            <DashboardPanel
+              title="Priority Mail"
+              icon={<Mail className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Mail"
+                  icon={<Mail className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("mail")}
+                />
+              }
+              className="xl:col-span-4"
+            >
+              {mailInbox.loading && priorityMail.length === 0 ? (
+                <div className="flex items-center gap-2 py-5 text-xs text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Reading mail...
+                </div>
+              ) : priorityMail.length === 0 ? (
+                <EmptyState>No priority mail.</EmptyState>
+              ) : (
+                <div className="divide-y divide-border/10">
+                  {priorityMail.slice(0, 5).map((message) => (
+                    <InboxMessageRow
+                      key={message.id}
+                      message={message}
+                      onClick={() => {
+                        select({ messageId: message.id });
+                        onNavigate("mail");
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </DashboardPanel>
+          ) : null}
+
+          {remindersAccess ? (
+            <DashboardPanel
+              title="Reminders"
+              icon={<Target className="h-4 w-4" aria-hidden />}
+              action={
+                <IconAction
+                  label="Reminders"
+                  icon={<Target className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => onNavigate("reminders")}
+                />
+              }
+              className="xl:col-span-4"
+            >
+              <div className="divide-y divide-border/10">
+                {activeReminders.length === 0 ? (
+                  <EmptyState>No active reminders.</EmptyState>
+                ) : (
+                  activeReminders.slice(0, 4).map((reminder) => (
+                    <ReminderAgendaRow
+                      key={`${reminder.ownerId}:${reminder.stepIndex}`}
+                      reminder={reminder}
+                      onClick={() => openReminder(reminder)}
+                    />
+                  ))
+                )}
+              </div>
+            </DashboardPanel>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

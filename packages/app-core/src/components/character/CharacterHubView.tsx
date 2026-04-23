@@ -6,7 +6,14 @@ import {
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import type {
   CharacterData,
@@ -37,6 +44,19 @@ import {
   mapHistoryEntryToTimelineItem,
 } from "./character-hub-helpers";
 
+type CharacterStyleSection = "all" | "chat" | "post";
+
+function mergeCharacterPatch(
+  base: CharacterData,
+  patch: CharacterData,
+): CharacterData {
+  return {
+    ...base,
+    ...patch,
+    style: patch.style ? { ...(base.style ?? {}), ...patch.style } : base.style,
+  };
+}
+
 export function CharacterHubView({
   d,
   bioText,
@@ -44,18 +64,15 @@ export function CharacterHubView({
   pendingStyleEntries,
   styleEntryDrafts,
   handleFieldEdit,
+  applyFieldEdit,
   handlePendingStyleEntryChange,
-  handleAddStyleEntry,
-  handleRemoveStyleEntry,
+  applyStyleEdit,
   handleStyleEntryDraftChange,
-  handleCommitStyleEntry,
-  handleReorderStyleEntries,
   characterSaving,
   characterSaveSuccess,
   characterSaveError,
   hasPendingChanges,
   onSave,
-  onExport,
   onReset,
   canReset,
 }: {
@@ -65,26 +82,23 @@ export function CharacterHubView({
   pendingStyleEntries: Record<string, string>;
   styleEntryDrafts: Record<string, string[]>;
   handleFieldEdit: (field: string, value: unknown) => void;
+  applyFieldEdit: (field: string, value: unknown) => void;
   handlePendingStyleEntryChange: (key: string, value: string) => void;
-  handleAddStyleEntry: (key: string) => void;
-  handleRemoveStyleEntry: (key: string, index: number) => void;
+  applyStyleEdit: (key: CharacterStyleSection, value: string) => void;
   handleStyleEntryDraftChange: (
     key: string,
     index: number,
     value: string,
   ) => void;
-  handleCommitStyleEntry: (key: string, index: number) => void;
-  handleReorderStyleEntries: (key: string, items: string[]) => void;
   characterSaving: boolean;
   characterSaveSuccess: string | null;
   characterSaveError: string | null;
   hasPendingChanges: boolean;
-  onSave: () => Promise<boolean>;
-  onExport: () => void;
+  onSave: () => Promise<unknown>;
   onReset: () => void;
   canReset: boolean;
 }) {
-  const { setTab, tab, t } = useApp();
+  const { setActionNotice, setTab, tab, t } = useApp();
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(
     tab === "knowledge" ? "knowledge" : "overview",
   );
@@ -119,6 +133,8 @@ export function CharacterHubView({
     string | null
   >(null);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const pendingAutoSavePatchRef = useRef<CharacterData>({});
   const personalitySectionRefs = useRef<
     Record<"bio" | "style" | "examples" | "evolution", HTMLElement | null>
   >({
@@ -127,6 +143,63 @@ export function CharacterHubView({
     examples: null,
     evolution: null,
   });
+
+  const clearPendingAutoSave = useCallback(() => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    pendingAutoSavePatchRef.current = {};
+  }, []);
+
+  const flushPendingAutoSave = useCallback(async () => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    const patch = pendingAutoSavePatchRef.current;
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+
+    pendingAutoSavePatchRef.current = {};
+
+    try {
+      await client.updateCharacter(patch);
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to autosave personality updates.",
+        "error",
+        5000,
+      );
+    }
+  }, [setActionNotice]);
+
+  const scheduleAutoSave = useCallback(
+    (patch: CharacterData) => {
+      pendingAutoSavePatchRef.current = mergeCharacterPatch(
+        pendingAutoSavePatchRef.current,
+        patch,
+      );
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = window.setTimeout(() => {
+        autoSaveTimerRef.current = null;
+        void flushPendingAutoSave();
+      }, 700);
+    },
+    [flushPendingAutoSave],
+  );
+
+  useEffect(() => {
+    return () => {
+      void flushPendingAutoSave();
+    };
+  }, [flushPendingAutoSave]);
 
   useEffect(() => {
     if (tab === "knowledge") {
@@ -364,6 +437,105 @@ export function CharacterHubView({
     }
   };
 
+  const handleAutoSavedExamplesEdit = useCallback(
+    (field: string, value: unknown) => {
+      applyFieldEdit(field, value);
+      if (field === "messageExamples" || field === "postExamples") {
+        scheduleAutoSave({ [field]: value } as CharacterData);
+      }
+    },
+    [applyFieldEdit, scheduleAutoSave],
+  );
+
+  const buildStylePatch = useCallback(
+    (key: CharacterStyleSection, items: string[]): CharacterData => ({
+      style: {
+        ...(d.style ?? {}),
+        [key]: items,
+      },
+    }),
+    [d.style],
+  );
+
+  const handleAutoAddStyleEntry = useCallback(
+    (key: string) => {
+      const styleKey = key as CharacterStyleSection;
+      const value = pendingStyleEntries[key]?.trim();
+      if (!value) return;
+      const currentItems = [...(d.style?.[styleKey] ?? [])];
+      const nextItems = currentItems.includes(value)
+        ? currentItems
+        : [...currentItems, value];
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      handlePendingStyleEntryChange(key, "");
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [
+      applyStyleEdit,
+      buildStylePatch,
+      d.style,
+      handlePendingStyleEntryChange,
+      pendingStyleEntries,
+      scheduleAutoSave,
+    ],
+  );
+
+  const handleAutoRemoveStyleEntry = useCallback(
+    (key: string, index: number) => {
+      const styleKey = key as CharacterStyleSection;
+      const nextItems = [...(d.style?.[styleKey] ?? [])];
+      nextItems.splice(index, 1);
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [applyStyleEdit, buildStylePatch, d.style, scheduleAutoSave],
+  );
+
+  const handleAutoCommitStyleEntry = useCallback(
+    (key: string, index: number) => {
+      const styleKey = key as CharacterStyleSection;
+      const nextValue = styleEntryDrafts[key]?.[index]?.trim() ?? "";
+      const nextItems = [...(d.style?.[styleKey] ?? [])];
+      if (!nextValue) {
+        nextItems.splice(index, 1);
+      } else {
+        nextItems[index] = nextValue;
+      }
+      applyStyleEdit(styleKey, nextItems.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, nextItems));
+    },
+    [
+      applyStyleEdit,
+      buildStylePatch,
+      d.style,
+      scheduleAutoSave,
+      styleEntryDrafts,
+    ],
+  );
+
+  const handleAutoReorderStyleEntries = useCallback(
+    (key: string, items: string[]) => {
+      const styleKey = key as CharacterStyleSection;
+      applyStyleEdit(styleKey, items.join("\n"));
+      scheduleAutoSave(buildStylePatch(styleKey, items));
+    },
+    [applyStyleEdit, buildStylePatch, scheduleAutoSave],
+  );
+
+  const handleManualSave = useCallback(async () => {
+    await flushPendingAutoSave();
+    try {
+      await onSave();
+    } catch {
+      // handleSaveCharacter already populates the visible error state
+    }
+  }, [flushPendingAutoSave, onSave]);
+
+  const handleReset = useCallback(() => {
+    clearPendingAutoSave();
+    onReset();
+  }, [clearPendingAutoSave, onReset]);
+
   const sectionNav = (
     <SidebarPanel className="gap-3 bg-transparent p-0 shadow-none">
       <nav className="flex flex-col gap-1" aria-label="Character hub sections">
@@ -490,8 +662,8 @@ export function CharacterHubView({
               <div>
                 <h2 className="text-lg font-semibold text-txt">Personality</h2>
                 <p className="text-sm text-muted">
-                  Bio, style rules, examples, and personality evolution live
-                  here.
+                  Save your bio manually. Style rules and examples autosave as
+                  you edit them.
                 </p>
               </div>
               <Button
@@ -509,6 +681,32 @@ export function CharacterHubView({
               handleFieldEdit={handleFieldEdit}
               t={t}
             />
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/30 pt-4">
+              <div className="flex flex-col gap-1">
+                {characterSaveSuccess ? (
+                  <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
+                    {characterSaveSuccess}
+                  </span>
+                ) : null}
+                {characterSaveError ? (
+                  <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                    {characterSaveError}
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                className="h-9 rounded-sm px-4 text-sm font-semibold tracking-[0.02em]"
+                disabled={characterSaving || !hasPendingChanges}
+                onClick={() => {
+                  void handleManualSave();
+                }}
+              >
+                {characterSaving
+                  ? t("charactereditor.Saving", { defaultValue: "saving..." })
+                  : t("charactereditor.Save", { defaultValue: "Save" })}
+              </Button>
+            </div>
           </section>
 
           <section
@@ -522,11 +720,11 @@ export function CharacterHubView({
               pendingStyleEntries={pendingStyleEntries}
               styleEntryDrafts={styleEntryDrafts}
               handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-              handleAddStyleEntry={handleAddStyleEntry}
-              handleRemoveStyleEntry={handleRemoveStyleEntry}
+              handleAddStyleEntry={handleAutoAddStyleEntry}
+              handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
               handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              handleCommitStyleEntry={handleCommitStyleEntry}
-              handleReorderStyleEntries={handleReorderStyleEntries}
+              handleCommitStyleEntry={handleAutoCommitStyleEntry}
+              handleReorderStyleEntries={handleAutoReorderStyleEntries}
               t={t}
             />
           </section>
@@ -540,7 +738,7 @@ export function CharacterHubView({
             <CharacterExamplesPanel
               d={d}
               normalizedMessageExamples={normalizedMessageExamples}
-              handleFieldEdit={handleFieldEdit}
+              handleFieldEdit={handleAutoSavedExamplesEdit}
               t={t}
             />
           </section>
@@ -649,57 +847,16 @@ export function CharacterHubView({
           collapsible
           contentIdentity="character-hub"
           bottomAction={
-            <div className="flex w-full flex-col gap-2">
-              {characterSaveSuccess || characterSaveError ? (
-                <div className="flex flex-col gap-1">
-                  {characterSaveSuccess ? (
-                    <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
-                      {characterSaveSuccess}
-                    </span>
-                  ) : null}
-                  {characterSaveError ? (
-                    <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-                      {characterSaveError}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-              {activeSection === "personality" ? (
-                <Button
-                  type="button"
-                  className="h-9 w-full justify-center rounded-sm text-sm font-semibold tracking-[0.02em]"
-                  disabled={characterSaving || !hasPendingChanges}
-                  onClick={() => {
-                    void onSave();
-                  }}
-                >
-                  {characterSaving
-                    ? t("charactereditor.Saving", { defaultValue: "saving..." })
-                    : t("charactereditor.Save", { defaultValue: "Save" })}
-                </Button>
-              ) : null}
-              <div className="flex items-center gap-0.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-sm px-2 text-xs"
-                  onClick={onExport}
-                >
-                  Export
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-sm px-2 text-xs"
-                  onClick={onReset}
-                  disabled={!canReset}
-                >
-                  Reset
-                </Button>
-              </div>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-sm px-2 text-xs font-semibold uppercase tracking-[0.14em]"
+              onClick={handleReset}
+              disabled={!canReset}
+            >
+              RESET
+            </Button>
           }
         >
           <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

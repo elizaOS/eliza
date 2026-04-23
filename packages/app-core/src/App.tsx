@@ -100,9 +100,9 @@ const AppsPageView = lazyNamedView(
   () => import("./components/pages/AppsPageView"),
   "AppsPageView",
 );
-const AutomationsView = lazyNamedView(
+const AutomationsDesktopShell = lazyNamedView(
   () => import("./components/pages/AutomationsView"),
-  "AutomationsView",
+  "AutomationsDesktopShell",
 );
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
@@ -443,11 +443,7 @@ function ViewRouter({
         );
       case "automations":
       case "triggers":
-        return (
-          <TabContentView chatScope="page-automations">
-            <AutomationsView />
-          </TabContentView>
-        );
+        return <AutomationsDesktopShell />;
       case "voice":
         return (
           <TabContentView>
@@ -946,17 +942,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <AppWorkspaceChrome
-            testId="automations-workspace"
-            chatScope="page-automations"
-            main={
-              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                <LazyViewBoundary>
-                  <AutomationsView key="automations-view-desktop" />
-                </LazyViewBoundary>
-              </div>
-            }
-          />
+          <LazyViewBoundary>
+            <AutomationsDesktopShell key="automations-view-desktop" />
+          </LazyViewBoundary>
         </div>
       ) : isSettingsPage ? (
         <div

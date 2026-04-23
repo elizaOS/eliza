@@ -46,7 +46,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
-    heroImage: "/api/apps/hero/training",
+    heroImage: "/app-heroes/fine-tuning.png",
     targetTab: "fine-tuning",
     capabilities: ["training", "fine-tuning", "datasets", "models"],
     order: 3,

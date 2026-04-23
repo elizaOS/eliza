@@ -302,4 +302,45 @@ describe("PageScopedChatPane", () => {
       expect(clientMock.createConversation).toHaveBeenCalledTimes(1),
     );
   });
+
+  it("reuses the shared chat chrome with a custom conversation adapter", async () => {
+    const resolveConversation = vi.fn().mockResolvedValue(conversation);
+    const onAfterSend = vi.fn();
+
+    render(
+      <PageScopedChatPane
+        scope="page-apps"
+        conversationAdapter={{
+          allowClear: false,
+          buildRoutingMetadata: () => ({
+            surface: "automation",
+            taskId: "workflow-room",
+          }),
+          identityKey: "workflow-room",
+          onAfterSend,
+          resolveConversation,
+        }}
+      />,
+    );
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+    expect(resolveConversation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("page-scoped-chat-clear-page-apps")).toBeNull();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /apps/i }), {
+      target: { value: "Describe your workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(clientMock.sendConversationMessageStream).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      clientMock.sendConversationMessageStream.mock.calls[0][7],
+    ).toMatchObject({
+      surface: "automation",
+      taskId: "workflow-room",
+    });
+    await waitFor(() => expect(onAfterSend).toHaveBeenCalledTimes(1));
+  });
 });

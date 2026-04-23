@@ -170,7 +170,12 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                 className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
                 onClick={() => void handleLaunch(app)}
               >
-                <AppIdentityTile app={app} active={Boolean(run)} size="sm" />
+                <AppIdentityTile
+                  app={app}
+                  active={Boolean(run)}
+                  size="sm"
+                  imageOnly
+                />
               </button>
             );
           })}

@@ -61,9 +61,9 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-automations": {
     title: "Automations chat",
-    body: "Use me to create triggers, tasks, and n8n workflows; choose cron or interval schedules; enable, disable, inspect, or explain what is running. Recommended: tell me the event, schedule, and desired result, and I'll choose the right automation shape. Ask me to draft or troubleshoot one.",
+    body: "Use me to create tasks and n8n workflows, wire them to a schedule or event, inspect what is running, and troubleshoot failures. Workflows are multi-step pipelines; tasks are simple prompts. Recommended: tell me the trigger, timing, and desired result, and I'll choose the right shape.",
     systemAddendum:
-      "You are answering inside the Automations view. The user can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode, max runs, and enabled state; browse templates; inspect existing tasks, triggers, and workflows; and troubleshoot failed runs. Recommend whether a request should become a trigger, task, or workflow based on the user's goal. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks/triggers/workflows in context by display name. Never fabricate automation names.",
+      "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
   },
   "page-apps": {
     title: "Apps chat",

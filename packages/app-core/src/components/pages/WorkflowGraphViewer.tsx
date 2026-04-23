@@ -313,16 +313,24 @@ function buildEditorUrl(
   workflow: N8nWorkflow,
   status: N8nStatusResponse,
   cloudAgentId: string | null | undefined,
+  uiTheme: "light" | "dark",
 ): string | null {
+  let editorUrl: string | null = null;
   if (status.mode === "local" && status.host) {
-    return `${status.host}/workflow/${encodeURIComponent(workflow.id)}`;
+    editorUrl = `${status.host}/workflow/${encodeURIComponent(workflow.id)}`;
   }
   if (status.mode === "cloud" && cloudAgentId) {
     const cloudBase =
       getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-    return `${cloudBase}/agents/${encodeURIComponent(cloudAgentId)}/n8n/workflow/${encodeURIComponent(workflow.id)}`;
+    editorUrl = `${cloudBase}/agents/${encodeURIComponent(cloudAgentId)}/n8n/workflow/${encodeURIComponent(workflow.id)}`;
   }
-  return null;
+  if (!editorUrl) {
+    return null;
+  }
+
+  const url = new URL(editorUrl);
+  url.searchParams.set("theme", uiTheme);
+  return url.toString();
 }
 
 interface NodeDetailDrawerProps {
@@ -340,7 +348,7 @@ function NodeDetailDrawer({
   onClose,
   labelId,
 }: NodeDetailDrawerProps) {
-  const { t, activeAgentProfile } = useApp();
+  const { t, activeAgentProfile, uiTheme } = useApp();
   const [rawJsonOpen, setRawJsonOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -371,7 +379,12 @@ function NodeDetailDrawer({
 
   const editorUrl =
     !editorDisabled && workflow && status && node
-      ? buildEditorUrl(workflow, status, activeAgentProfile?.cloudAgentId)
+      ? buildEditorUrl(
+          workflow,
+          status,
+          activeAgentProfile?.cloudAgentId,
+          uiTheme,
+        )
       : null;
 
   // Map color families to StatusBadge variants (success | warning | danger | muted)
@@ -568,20 +581,23 @@ interface WorkflowGraphViewerProps {
   workflow: N8nWorkflow | null;
   loading?: boolean;
   isGenerating?: boolean;
+  emptyStateActionLabel?: string;
+  emptyStateHelpText?: string;
   onNodeClick?: (nodeName: string) => void;
+  onEmptyStateAction?: () => void;
   /** n8n status — drives the "Open in editor" button URL and enabled state. */
   status?: N8nStatusResponse | null;
-  /** Ref to the chat composer textarea, used by the empty-state CTA. */
-  composerRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export function WorkflowGraphViewer({
   workflow,
   loading = false,
   isGenerating = false,
+  emptyStateActionLabel = "Describe your workflow",
+  emptyStateHelpText = "Use the sidebar agent to build this workflow.",
   onNodeClick,
+  onEmptyStateAction,
   status,
-  composerRef,
 }: WorkflowGraphViewerProps) {
   const [fullScreen, setFullScreen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<N8nWorkflowNode | null>(
@@ -672,16 +688,14 @@ export function WorkflowGraphViewer({
         {!loading && !hasNodes && !isGenerating && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="text-sm font-medium text-muted">No nodes yet</p>
-            <p className="text-xs text-muted/60">
-              Ask the Automations Assistant to build one.
-            </p>
-            {composerRef && (
+            <p className="text-xs text-muted/60">{emptyStateHelpText}</p>
+            {onEmptyStateAction && (
               <button
                 type="button"
                 className="mt-1 rounded-md border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
-                onClick={() => composerRef.current?.focus()}
+                onClick={onEmptyStateAction}
               >
-                Open chat
+                {emptyStateActionLabel}
               </button>
             )}
           </div>
