@@ -5,7 +5,6 @@ import {
   SelectItem,
   SelectValue,
   SettingsControls,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -16,6 +15,7 @@ import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import type {
   PluginsViewMode,
   SubgroupTag,
@@ -93,7 +93,7 @@ export function ConnectorSidebar({
     pluginSearch.trim().length > 0 || subgroupFilter !== "all";
 
   return (
-    <Sidebar
+    <AppPageSidebar
       ref={registerConnectorSidebarViewport}
       testId="connectors-settings-sidebar"
       collapsible
@@ -244,6 +244,6 @@ export function ConnectorSidebar({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 }

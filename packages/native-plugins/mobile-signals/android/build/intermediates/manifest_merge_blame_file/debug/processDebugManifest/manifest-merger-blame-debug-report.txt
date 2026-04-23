@@ -4,6 +4,8 @@
 4    package="ai.eliza.plugins.mobilesignals" >
 5
 6    <uses-sdk android:minSdkVersion="26" />
+6-->INJECTED
+6-->INJECTED
 7
 8    <uses-permission
 8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/main/AndroidManifest.xml:5:5-7:47

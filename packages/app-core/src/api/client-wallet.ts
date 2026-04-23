@@ -36,6 +36,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
+  WalletMarketOverviewResponse,
   WalletNftsResponse,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
@@ -147,6 +148,7 @@ declare module "./client-base" {
     sendBrowserWalletTransaction(
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
+    getWalletMarketOverview(): Promise<WalletMarketOverviewResponse>;
     getWalletTradingProfile(
       window?: WalletTradingProfileWindow,
       source?: WalletTradingProfileSourceFilter,
@@ -427,6 +429,12 @@ ElizaClient.prototype.signBrowserSolanaMessage = async function (
     method: "POST",
     body: JSON.stringify(request),
   });
+};
+
+ElizaClient.prototype.getWalletMarketOverview = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/wallet/market-overview");
 };
 
 ElizaClient.prototype.getWalletTradingProfile = async function (

@@ -4,7 +4,6 @@ import {
   MetaPill,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -19,6 +18,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 type RuntimeSectionKey =
   | "summary"
@@ -466,7 +466,11 @@ export function RuntimeView({
     : SECTION_TAB_KEYS;
 
   const runtimeSidebar = (
-    <Sidebar testId="runtime-sidebar">
+    <AppPageSidebar
+      testId="runtime-sidebar"
+      collapsible
+      contentIdentity="runtime"
+    >
       <SidebarHeader
         search={{
           value: sidebarSearch,
@@ -599,7 +603,7 @@ export function RuntimeView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

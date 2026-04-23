@@ -1,12 +1,8 @@
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import { ChevronsLeft, Clock, Play, Star } from "lucide-react";
+import { SidebarContent, SidebarPanel, SidebarScrollRegion } from "@elizaos/ui";
+import { Clock, Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
 import {
   APP_CATALOG_SECTION_LABELS,
@@ -143,32 +139,14 @@ export function AppsSidebar({
     recentEntries.length > 0 ||
     genreEntries.length > 0;
 
-  const collapseFooter = (
-    <button
-      type="button"
-      onClick={() => onCollapsedChange(true)}
-      aria-label="Collapse apps sidebar"
-      data-testid="apps-sidebar-collapse-inline"
-      className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-bg-muted/60 hover:text-txt"
-    >
-      <ChevronsLeft className="h-4 w-4" aria-hidden />
-    </button>
-  );
-
   return (
-    <Sidebar
+    <AppPageSidebar
       testId="apps-sidebar"
       collapsible
       contentIdentity="apps"
       collapseButtonAriaLabel="Collapse apps sidebar"
       expandButtonAriaLabel="Expand apps sidebar"
       expandButtonTestId="apps-sidebar-expand-toggle"
-      header={undefined}
-      className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
-      headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-      // Re-position the default (floating) expand button to the true
-      // bottom-left corner so it mirrors the right-side collapse toggle.
-      collapseButtonClassName="!bottom-3 !left-3"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
       resizable
@@ -177,8 +155,6 @@ export function AppsSidebar({
       minWidth={minWidth}
       maxWidth={maxWidth}
       onCollapseRequest={() => onCollapsedChange(true)}
-      footer={collapseFooter}
-      footerClassName="!justify-start !px-1 !pt-1 !pb-2"
     >
       <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
@@ -272,7 +248,7 @@ export function AppsSidebar({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 }
 

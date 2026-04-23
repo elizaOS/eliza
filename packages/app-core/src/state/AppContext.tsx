@@ -4,7 +4,6 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import { useVincentState } from "@elizaos/app-vincent/useVincentState";
 import {
   ConfirmDialog,
   PromptDialog,
@@ -71,6 +70,7 @@ import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTriggersState } from "./useTriggersState";
+import { useVincentState } from "./useVincentState";
 import { useWalletState } from "./useWalletState";
 
 export {

@@ -3,9 +3,15 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { openExternalUrlMock, useInboxMock, useMediaQueryMock } = vi.hoisted(
+const {
+  openExternalUrlMock,
+  openLifeOpsChatMock,
+  useInboxMock,
+  useMediaQueryMock,
+} = vi.hoisted(
   () => ({
     openExternalUrlMock: vi.fn(),
+    openLifeOpsChatMock: vi.fn(),
     useInboxMock: vi.fn(),
     useMediaQueryMock: vi.fn(() => true),
   }),
@@ -30,8 +36,11 @@ vi.mock("../hooks/useInbox.js", () => ({
 }));
 
 vi.mock("./LifeOpsChatAdapter.js", () => ({
+  buildMessageChatPrefill: () => "chat context",
   buildReplyPrefill: () => "",
-  postToChat: vi.fn(),
+  useLifeOpsChatLauncher: () => ({
+    openLifeOpsChat: openLifeOpsChatMock,
+  }),
 }));
 
 vi.mock("./LifeOpsSelectionContext.js", () => ({
@@ -46,6 +55,7 @@ import { LifeOpsInboxSection } from "./LifeOpsInboxSection";
 afterEach(() => {
   cleanup();
   useInboxMock.mockReset();
+  openLifeOpsChatMock.mockReset();
   useMediaQueryMock.mockReset();
   useMediaQueryMock.mockReturnValue(true);
 });
@@ -95,5 +105,47 @@ describe("LifeOpsInboxSection", () => {
     fireEvent.click(screen.getByRole("option"));
 
     expect(onSelect).toHaveBeenCalledWith({ messageId: "msg-1" });
+  });
+
+  it("routes chat actions through the LifeOps chat launcher for the selected message", () => {
+    useInboxMock.mockReturnValue({
+      channel: "all",
+      error: null,
+      loading: false,
+      messages: [
+        {
+          id: "msg-1",
+          channel: "gmail",
+          deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
+          receivedAt: "2026-04-22T12:00:00.000Z",
+          sender: {
+            avatarUrl: null,
+            displayName: "Fluhr, Michael",
+          },
+          snippet: "Hey Seb, Yes, this is in progress.",
+          subject: "Fluhr, Michael",
+          unread: true,
+        },
+      ],
+      refresh: vi.fn(),
+      searchQuery: "",
+      setChannel: vi.fn(),
+      setSearchQuery: vi.fn(),
+    });
+
+    render(
+      <LifeOpsInboxSection
+        title="Mail"
+        selection={{ messageId: "msg-1", eventId: null, reminderId: null }}
+        onSelect={vi.fn()}
+        channels={["gmail"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    expect(openLifeOpsChatMock).toHaveBeenCalledWith("chat context", {
+      messageId: "msg-1",
+    });
   });
 });

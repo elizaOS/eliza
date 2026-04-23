@@ -127,6 +127,41 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
   });
 
+  it("lets main-pane content open chat through the workspace chrome context", () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function OpenChatFromMain() {
+      const chatChrome = useAppWorkspaceChatChrome();
+
+      return (
+        <button
+          type="button"
+          data-testid="main-open-chat"
+          onClick={() => chatChrome?.openChat()}
+        >
+          Open chat
+        </button>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        testId="main-chat-shell"
+        main={<OpenChatFromMain />}
+        chat={<div data-testid="main-chat">Chat content</div>}
+      />,
+    );
+
+    expect(screen.queryByTestId("main-chat")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("main-open-chat"));
+
+    expect(screen.getByTestId("main-chat")).toBeTruthy();
+    expect(screen.getByTestId("main-chat-shell-chat-backdrop")).toBeTruthy();
+  });
+
   it("lets chat content own the collapse control row", () => {
     function InlineCollapseOwner() {
       const chatChrome = useAppWorkspaceChatChrome();

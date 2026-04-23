@@ -18,6 +18,7 @@ import {
 } from "../../voice/types";
 import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -97,7 +98,6 @@ import {
   DialogHeader,
   DialogTitle,
   PageLayout,
-  Sidebar,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
@@ -1479,13 +1479,11 @@ export function CharacterEditor({
               />
             }
             sidebar={
-              <Sidebar
+              <AppPageSidebar
                 testId="character-editor-sidebar"
-                collapsible={false}
+                collapsible
                 contentIdentity="character-editor"
-                className="!mt-0 !h-full !rounded-none !border-0 !border-r !border-r-border/30 !bg-transparent !bg-none !shadow-none !backdrop-blur-none !ring-0"
-                footerClassName="!justify-start !px-1 !pb-2 !pt-1"
-                footer={
+                bottomAction={
                   <div className="flex w-full flex-col gap-2">
                     {hasStandaloneHeaderFeedback ? (
                       <div className="flex flex-col gap-1">
@@ -1713,7 +1711,7 @@ export function CharacterEditor({
                     </nav>
                   </SidebarPanel>
                 </SidebarScrollRegion>
-              </Sidebar>
+              </AppPageSidebar>
             }
             mobileSidebarLabel={
               activePage === "personality"

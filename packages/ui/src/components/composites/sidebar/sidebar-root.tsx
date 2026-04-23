@@ -428,6 +428,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       mobileTitle,
       mobileMeta,
       mobileCloseLabel = "Close sidebar",
+      showExpandedCollapseButton = true,
       collapseButtonTestId,
       expandButtonTestId,
       collapseButtonAriaLabel = "Collapse sidebar",
@@ -662,7 +663,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           layerClassName,
         )}
       >
-        {supportsCollapsedRail ? (
+        {supportsCollapsedRail && showExpandedCollapseButton ? (
           <div
             className={cn(
               "relative z-10 flex shrink-0 items-center gap-2 px-3.5 pb-2 pt-3.5",
@@ -798,7 +799,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             tabIndex={0}
             data-testid="sidebar-resize-handle"
             onPointerDown={handleResizePointerDown}
-            className="absolute inset-y-0 right-0 z-20 w-1.5 -mr-0.5 cursor-col-resize touch-none select-none hover:bg-accent/30 transition-colors"
+            className="absolute inset-y-0 right-0 z-20 m-0 h-full w-3 -mr-1.5 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
           />
         ) : null}
         {showsCollapsedState && variant === "default" ? (

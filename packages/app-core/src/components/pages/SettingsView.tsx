@@ -10,9 +10,7 @@ import {
   Label,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
-  SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
   Spinner,
@@ -41,18 +39,23 @@ import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { TrainingSettingsPanel } from "../settings/TrainingSettings";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
 type SettingsComplexity = "simple" | "advanced";
 
+const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
+const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
+const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
+const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
+const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
+
 interface SettingsSectionDef {
   id: string;
   label: string;
   description?: string;
-  keywords?: string[];
-  keywordKeys?: string[];
   /**
    * Visibility level. "simple" sections show in both Simple and Advanced
    * modes. "advanced" sections only show when the user toggles Advanced.
@@ -82,6 +85,38 @@ function writeStoredComplexity(value: SettingsComplexity): void {
   }
 }
 
+function clampSettingsSidebarWidth(value: number): number {
+  return Math.min(
+    Math.max(value, SETTINGS_SIDEBAR_MIN_WIDTH),
+    SETTINGS_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function readStoredSettingsSidebarWidth(): number {
+  if (typeof window === "undefined") return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) {
+      return clampSettingsSidebarWidth(parsed);
+    }
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function readStoredSettingsSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(SETTINGS_SIDEBAR_COLLAPSED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 const SETTINGS_CONTENT_CLASS =
   "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
@@ -92,8 +127,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     id: "cloud",
     label: "providerswitcher.elizaCloud",
     description: "settings.sections.cloud.desc",
-    keywords: ["cloud", "billing", "credits", "auth", "subscription"],
-    keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
     level: "simple",
   },
   {
@@ -102,273 +135,77 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     id: "ai-model",
     label: "settings.sections.aimodel.label",
     description: "settings.sections.aimodel.desc",
-    keywords: [
-      "model",
-      "provider",
-      "openai",
-      "anthropic",
-      "grok",
-      "gemini",
-      "api key",
-      "inference",
-      "llm",
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "download",
-      "offline",
-      "gpu",
-      "vram",
-      "device",
-      "phone",
-    ],
-    keywordKeys: [
-      "settings.keyword.model",
-      "settings.keyword.provider",
-      "settings.keyword.apiKey",
-      "settings.keyword.inference",
-    ],
     level: "simple",
   },
   {
     id: "local-models",
     label: "settings.sections.localModels.label",
     description: "settings.sections.localModels.desc",
-    keywords: [
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "model",
-      "download",
-      "inference",
-      "offline",
-      "gpu",
-      "vram",
-    ],
     level: "advanced",
   },
   {
     id: "coding-agents",
     label: "settings.sections.codingagents.label",
     description: "settings.codingAgentsDescription",
-    keywords: [
-      "codex",
-      "agent",
-      "reasoning",
-      "parallel",
-      "approval",
-      "routing",
-      "provider routing",
-      "task coordinator",
-      "task agents",
-    ],
     level: "advanced",
   },
   {
     id: "media",
     label: "settings.sections.media.label",
     description: "settings.sections.media.desc",
-    keywords: [
-      "audio",
-      "voice",
-      "video",
-      "camera",
-      "microphone",
-      "speech",
-      "tts",
-      "avatar",
-    ],
-    keywordKeys: [
-      "settings.keyword.voice",
-      "settings.keyword.audio",
-      "settings.keyword.camera",
-      "settings.keyword.microphone",
-    ],
     level: "simple",
   },
   {
     id: "appearance",
     label: "settings.sections.appearance.label",
     description: "settings.sections.appearance.desc",
-    keywords: [
-      "appearance",
-      "theme",
-      "content pack",
-      "vrm",
-      "avatar",
-      "background",
-      "color scheme",
-      "skin",
-      "character",
-    ],
-    keywordKeys: [
-      "settings.keyword.theme",
-      "settings.keyword.avatar",
-      "settings.keyword.appearance",
-    ],
     level: "simple",
   },
   {
     id: "capabilities",
     label: "settings.sections.capabilities.label",
     description: "settings.sections.capabilities.desc",
-    keywords: [
-      "capabilities",
-      "wallet",
-      "browser",
-      "computer use",
-      "desktop automation",
-      "screenshots",
-      "enable",
-      "disable",
-      "feature",
-    ],
-    keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
     level: "advanced",
   },
   {
     id: "wallet-rpc",
     label: "settings.sections.walletrpc.label",
     description: "settings.sections.walletrpc.desc",
-    keywords: [
-      "wallet",
-      "rpc",
-      "evm",
-      "solana",
-      "api key",
-      "alchemy",
-      "quicknode",
-      "helius",
-      "birdeye",
-    ],
-    keywordKeys: ["settings.keyword.wallet", "settings.keyword.apiKey"],
   },
   {
     id: "feature-toggles",
     label: "settings.sections.features.label",
     description: "settings.sections.features.desc",
-    keywords: [
-      "feature",
-      "toggle",
-      "flight",
-      "booking",
-      "travel provider",
-      "push",
-      "notification",
-      "browser",
-      "automation",
-      "opt in",
-      "opt out",
-    ],
-    keywordKeys: ["settings.keyword.features"],
   },
   {
     id: "permissions",
     label: "settings.sections.permissions.label",
     description: "settings.sections.permissions.desc",
-    keywords: [
-      "permissions",
-      "desktop",
-      "filesystem",
-      "security",
-      "microphone permission",
-      "camera permission",
-      "file access",
-    ],
-    keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
     level: "simple",
   },
   {
     id: "learned-skills",
     label: "settings.sections.learnedSkills.label",
     description: "settings.sections.learnedSkills.desc",
-    keywords: [
-      "learned",
-      "skills",
-      "curated",
-      "trajectory",
-      "training",
-      "agent",
-      "promote",
-      "disable",
-    ],
-    keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
   },
   {
     id: "auto-training",
     label: "settings.sections.autoTraining.label",
     description: "settings.sections.autoTraining.desc",
-    keywords: [
-      "auto",
-      "training",
-      "auto-train",
-      "trigger",
-      "threshold",
-      "cooldown",
-      "vertex",
-      "atropos",
-      "tinker",
-      "native",
-      "trajectory",
-      "fine-tune",
-      "fine tune",
-    ],
-    keywordKeys: ["settings.keyword.training"],
   },
   {
     id: "updates",
     label: "settings.sections.updates.label",
     description: "settings.sections.updates.desc",
-    keywords: ["updates", "release", "version", "download"],
-    keywordKeys: ["settings.keyword.updates"],
     level: "advanced",
   },
   {
     id: "advanced",
     label: "nav.advanced",
     description: "settings.sections.advanced.desc",
-    keywords: [
-      "advanced",
-      "export",
-      "import",
-      "reset",
-      "debug",
-      "backup",
-      "restore",
-      "danger zone",
-    ],
-    keywordKeys: [
-      "settings.keyword.advanced",
-      "settings.keyword.export",
-      "settings.keyword.import",
-      "settings.keyword.reset",
-    ],
     level: "advanced",
   },
 ];
-
-function matchesSettingsSection(
-  section: SettingsSectionDef,
-  query: string,
-  t: (key: string) => string,
-): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return (
-    t(section.label).toLowerCase().includes(normalized) ||
-    (section.description
-      ? t(section.description).toLowerCase().includes(normalized)
-      : false) ||
-    (section.keywords ?? []).some((keyword) =>
-      keyword.toLowerCase().includes(normalized),
-    ) ||
-    (section.keywordKeys ?? []).some((key) =>
-      t(key).toLowerCase().includes(normalized),
-    )
-  );
-}
 
 function readSettingsHashSection(): string | null {
   if (typeof window === "undefined") return null;
@@ -766,9 +603,14 @@ export function SettingsView({
   const [activeSection, setActiveSection] = useState(
     () => initialSection ?? readSettingsHashSection() ?? "cloud",
   );
-  const [searchQuery, setSearchQuery] = useState("");
   const [complexity, setComplexity] = useState<SettingsComplexity>(() =>
     readStoredComplexity(),
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    readStoredSettingsSidebarCollapsed,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    readStoredSettingsSidebarWidth,
   );
   const shellRef = useRef<HTMLDivElement>(null);
 
@@ -776,16 +618,32 @@ export function SettingsView({
     writeStoredComplexity(complexity);
   }, [complexity]);
 
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampSettingsSidebarWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+
   const visibleSections = useMemo(() => {
-    const searchActive = searchQuery.trim().length > 0;
     return SETTINGS_SECTIONS.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-      if (!matchesSettingsSection(section, searchQuery, t)) return false;
       if (complexity === "advanced") return true;
-      if (searchActive) return true;
       return section.level !== "advanced";
     });
-  }, [complexity, searchQuery, t, walletEnabled]);
+  }, [complexity, walletEnabled]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -873,9 +731,6 @@ export function SettingsView({
     return () => root.removeEventListener("scroll", handleScroll);
   }, [contentContainerRef, visibleSections]);
 
-  const searchLabel = t("settingsview.SearchSettings", {
-    defaultValue: "Search settings",
-  });
   const activeSectionDef =
     visibleSections.find((section) => section.id === activeSection) ??
     SETTINGS_SECTIONS.find((section) => section.id === activeSection) ??
@@ -883,9 +738,17 @@ export function SettingsView({
     null;
 
   const settingsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="settings-sidebar"
       collapsible
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      resizable
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={SETTINGS_SIDEBAR_MIN_WIDTH}
+      maxWidth={SETTINGS_SIDEBAR_MAX_WIDTH}
+      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
       contentIdentity="settings"
       collapseButtonTestId="settings-sidebar-collapse-toggle"
       expandButtonTestId="settings-sidebar-expand-toggle"
@@ -893,80 +756,66 @@ export function SettingsView({
       expandButtonAriaLabel="Expand settings"
       mobileTitle={t("nav.settings")}
       mobileMeta={activeSectionDef ? t(activeSectionDef.label) : undefined}
-      header={
-        <div className="space-y-2">
-          <SidebarHeader
-            search={{
-              value: searchQuery,
-              onChange: (event) => setSearchQuery(event.target.value),
-              onClear: () => setSearchQuery(""),
-              placeholder: searchLabel,
-              "aria-label": searchLabel,
-              autoComplete: "off",
-              spellCheck: false,
-            }}
-          />
-          <div className="flex items-center justify-between gap-3 px-4 pb-1">
-            <Label
-              htmlFor="settings-advanced-toggle"
-              className="text-xs font-medium text-muted cursor-pointer select-none"
-            >
-              {t("settings.showAdvanced", {
-                defaultValue: "Show advanced",
-              })}
-            </Label>
-            <Switch
-              id="settings-advanced-toggle"
-              checked={complexity === "advanced"}
-              onCheckedChange={(checked) =>
-                setComplexity(checked ? "advanced" : "simple")
-              }
-              aria-label={t("settings.showAdvanced", {
-                defaultValue: "Show advanced",
-              })}
-            />
-          </div>
-        </div>
-      }
     >
-      <SidebarScrollRegion>
+      <div className="shrink-0 px-3 pb-2 pt-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card/45 px-3 py-2.5">
+          <Label
+            htmlFor="settings-advanced-toggle"
+            className="cursor-pointer select-none text-xs font-medium text-muted"
+          >
+            {t("settings.showAdvanced", {
+              defaultValue: "Show advanced",
+            })}
+          </Label>
+          <Switch
+            id="settings-advanced-toggle"
+            checked={complexity === "advanced"}
+            onCheckedChange={(checked) =>
+              setComplexity(checked ? "advanced" : "simple")
+            }
+            aria-label={t("settings.showAdvanced", {
+              defaultValue: "Show advanced",
+            })}
+          />
+        </div>
+      </div>
+      <SidebarScrollRegion className="pt-0">
         <SidebarPanel>
-          {visibleSections.length === 0 ? (
-            <SidebarContent.EmptyState className="px-4 py-6">
-              {t("settingsview.NoMatchingSettings")}
-            </SidebarContent.EmptyState>
-          ) : (
-            <nav className="space-y-1.5" aria-label={t("nav.settings")}>
-              {visibleSections.map((section) => {
-                const isActive = activeSection === section.id;
-                return (
-                  <SidebarContent.Item
-                    key={section.id}
-                    as="div"
-                    active={isActive}
-                    className="gap-2"
-                    ref={registerSidebarItem(section.id)}
+          <nav className="space-y-1.5" aria-label={t("nav.settings")}>
+            {visibleSections.map((section) => {
+              const isActive = activeSection === section.id;
+              return (
+                <SidebarContent.Item
+                  key={section.id}
+                  as="div"
+                  active={isActive}
+                  className="gap-2"
+                  ref={registerSidebarItem(section.id)}
+                >
+                  <SidebarContent.ItemButton
+                    onClick={() => handleSectionChange(section.id)}
+                    aria-current={isActive ? "page" : undefined}
                   >
-                    <SidebarContent.ItemButton
-                      onClick={() => handleSectionChange(section.id)}
-                      aria-current={isActive ? "page" : undefined}
-                    >
-                      <SidebarContent.ItemBody>
-                        <SidebarContent.ItemTitle
-                          className={isActive ? "font-semibold" : "font-medium"}
-                        >
-                          {t(section.label)}
-                        </SidebarContent.ItemTitle>
-                      </SidebarContent.ItemBody>
-                    </SidebarContent.ItemButton>
-                  </SidebarContent.Item>
-                );
-              })}
-            </nav>
-          )}
+                    <SidebarContent.ItemBody>
+                      <SidebarContent.ItemTitle
+                        className={isActive ? "font-semibold" : "font-medium"}
+                      >
+                        {t(section.label)}
+                      </SidebarContent.ItemTitle>
+                      {section.description ? (
+                        <SidebarContent.ItemDescription>
+                          {t(section.description)}
+                        </SidebarContent.ItemDescription>
+                      ) : null}
+                    </SidebarContent.ItemBody>
+                  </SidebarContent.ItemButton>
+                </SidebarContent.Item>
+              );
+            })}
+          </nav>
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   const sectionsContent = (
@@ -1165,22 +1014,6 @@ export function SettingsView({
           ref={registerContentItem("advanced")}
         >
           <AdvancedSection />
-        </SettingsSection>
-      )}
-
-      {visibleSections.length === 0 && (
-        <SettingsSection
-          id="settings-empty"
-          title={t("settingsview.NoMatchingSettings")}
-          description={t("settings.noMatchingSettingsDescription")}
-        >
-          <Button
-            variant="outline"
-            className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
-            onClick={() => setSearchQuery("")}
-          >
-            {t("settingsview.ClearSearch")}
-          </Button>
         </SettingsSection>
       )}
     </>

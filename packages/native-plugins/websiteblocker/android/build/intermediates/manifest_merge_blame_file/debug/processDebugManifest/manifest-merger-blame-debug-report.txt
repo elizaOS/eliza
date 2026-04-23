@@ -3,6 +3,8 @@
 3    package="ai.eliza.plugins.websiteblocker" >
 4
 5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
 6
 7    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/websiteblocker/android/src/main/AndroidManifest.xml:3:5-77

@@ -94,6 +94,7 @@ export function ChatComposer({
   const [isNarrow, setIsNarrow] = useState(
     () => typeof window !== "undefined" && window.innerWidth < 310,
   );
+  const [isInlineMultiline, setIsInlineMultiline] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -153,7 +154,10 @@ export function ChatComposer({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: chatInput changes must rerun inline textarea autosizing.
   useEffect(() => {
-    if (!isInline) return;
+    if (!isInline) {
+      setIsInlineMultiline(false);
+      return;
+    }
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -168,6 +172,7 @@ export function ChatComposer({
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY =
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    setIsInlineMultiline(nextHeight > minHeight);
   }, [chatInput, isInline, textareaRef]);
 
   const startPushToTalk = () => {
@@ -249,14 +254,178 @@ export function ChatComposer({
     );
   };
 
+  if (isInline) {
+    const inlineAttachButton =
+      !isGameModal && !hideAttachButton ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 shrink-0 rounded-full bg-bg/60 p-0 text-muted shadow-none transition-colors hover:bg-bg/60 hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
+            chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
+          }`}
+          onClick={onAttachImage}
+          aria-label={t("aria.attachImage")}
+          title={t("chatview.AttachImage")}
+          disabled={isComposerLocked}
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+      ) : null;
+
+    const inlineTextarea = (
+      <div
+        className={
+          isInlineMultiline ? "relative min-w-0 w-full" : "relative min-w-0 flex-1"
+        }
+      >
+        <Textarea
+          ref={textareaRef}
+          value={chatInput}
+          onChange={(event) => onChatInputChange(event.target.value)}
+          onKeyDown={onKeyDown}
+          data-testid="chat-composer-textarea"
+          aria-label={textareaAriaLabel}
+          className={
+            isInlineMultiline
+              ? "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
+              : "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
+          }
+          placeholder={placeholder ?? defaultTextareaPlaceholder}
+          rows={1}
+          disabled={isComposerLocked}
+        />
+        {voice.isListening && voice.interimTranscript ? (
+          <div
+            className={
+              isInlineMultiline
+                ? "pointer-events-none absolute inset-x-3 bottom-2 truncate text-xs text-muted"
+                : "pointer-events-none absolute inset-x-2 bottom-2 truncate text-xs text-muted"
+            }
+          >
+            {voice.interimTranscript}
+          </div>
+        ) : null}
+      </div>
+    );
+
+    const inlineMicButton = (
+      <Button
+        variant="ghost"
+        size="icon"
+        className={`h-8 w-8 shrink-0 rounded-full p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
+          voice.isListening
+            ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
+            : "bg-bg/60 text-muted hover:bg-bg/60 hover:text-txt"
+        }`}
+        onClick={handleMicClick}
+        onPointerDown={handleMicPointerDown}
+        onPointerUp={handleMicPointerUp}
+        onPointerCancel={handleMicPointerCancel}
+        onPointerLeave={handleMicPointerCancel}
+        disabled={isComposerLocked || !voice.supported}
+        title={voiceButtonTitle}
+        aria-label={voiceButtonTitle}
+        aria-pressed={voice.isListening}
+      >
+        <Mic className="h-4.5 w-4.5" />
+      </Button>
+    );
+
+    const inlineSendButton = (
+      <Button
+        variant="ghost"
+        data-testid="chat-composer-action"
+        size="icon"
+        className="h-8 w-8 shrink-0 rounded-full bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
+        onClick={onSend}
+        disabled={isComposerLocked || !hasDraft}
+        title={actionButtonLabel}
+        aria-label={actionButtonLabel}
+      >
+        <ArrowUp className="h-4.5 w-4.5" />
+      </Button>
+    );
+
+    const inlineStopButton = (
+      <Button
+        variant="surfaceDestructive"
+        data-testid="chat-composer-action"
+        className="h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        onClick={onStop}
+        size="icon"
+        title={actionButtonLabel}
+        aria-label={actionButtonLabel}
+      >
+        <Square className="h-3.5 w-3.5 fill-current" />
+      </Button>
+    );
+
+    const inlineStopSpeakingButton = (
+      <Button
+        variant="surfaceDestructive"
+        data-testid="chat-composer-action"
+        className="h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        onClick={onStopSpeaking}
+        size="icon"
+        title={actionButtonLabel}
+        aria-label={actionButtonLabel}
+      >
+        <Square className="h-3.5 w-3.5 fill-current" />
+      </Button>
+    );
+
+    const inlineTrailingActions = shouldShowStopButton ? (
+      inlineStopButton
+    ) : !isGameModal && voice.isSpeaking && !hasDraft ? (
+      inlineStopSpeakingButton
+    ) : isInlineMultiline ? (
+      <>
+        {inlineMicButton}
+        {inlineSendButton}
+      </>
+    ) : hasDraft ? (
+      inlineSendButton
+    ) : (
+      inlineMicButton
+    );
+
+    return (
+      <div
+        data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
+        className={
+          isInlineMultiline
+            ? "flex min-h-[64px] flex-col gap-1 rounded-[22px] border border-border/35 bg-card/45 px-1.5 py-1.5"
+            : "flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1"
+        }
+      >
+        {isInlineMultiline ? (
+          <>
+            {inlineTextarea}
+            <div className="flex min-w-0 items-center gap-1">
+              {inlineAttachButton}
+              {renderCreateTaskButton()}
+              <div className="min-w-0 flex-1" />
+              {inlineTrailingActions}
+            </div>
+          </>
+        ) : (
+          <>
+            {inlineAttachButton}
+            {renderCreateTaskButton()}
+            {inlineTextarea}
+            {inlineTrailingActions}
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       className={
         isGameModal
           ? "relative flex w-full items-end gap-2 transition-all max-[380px]:gap-1.5"
-          : isInline
-            ? "flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1"
-            : "flex items-center gap-1.5 sm:gap-2"
+          : "flex items-center gap-1.5 sm:gap-2"
       }
     >
       {!isGameModal && !hideAttachButton ? (

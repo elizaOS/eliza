@@ -4,7 +4,6 @@ import {
   PageLayout,
   PagePanel,
   SegmentedControl,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -20,6 +19,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api/client";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import type {
   MemoryBrowseItem,
   MemoryBrowseResponse,
@@ -477,7 +477,11 @@ export function MemoryViewerView({
   };
 
   const sidebar = (
-    <Sidebar testId="memory-viewer-sidebar">
+    <AppPageSidebar
+      testId="memory-viewer-sidebar"
+      collapsible
+      contentIdentity="memory-viewer"
+    >
       <SidebarHeader
         search={{
           value: search,
@@ -635,7 +639,7 @@ export function MemoryViewerView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

@@ -1,4 +1,3 @@
-import { useCompanionSceneStatus } from "@elizaos/app-companion/components/companion/companion-scene-status-context";
 import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
 import {
   useCallback,
@@ -25,6 +24,7 @@ import type {
   VoicePlaybackStartEvent,
 } from "../../hooks/voice-chat-types";
 import type { useApp } from "../../state/useApp";
+import { useCompanionSceneStatus } from "../companion/injected";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
 
