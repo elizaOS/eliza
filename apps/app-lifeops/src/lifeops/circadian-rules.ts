@@ -26,20 +26,17 @@ import { parseIsoMs } from "./time-util.js";
 export const MIN_STABILITY_WINDOW_MS = 5 * 60_000;
 export const WAKE_CONFIRM_WINDOW_MS = 10 * 60_000;
 export const SLEEP_ONSET_WINDOW_MS = 20 * 60_000;
-export const WINDING_DOWN_LOOKAHEAD_MS = 90 * 60_000;
-export const AWAKE_EVIDENCE_MAX_AGE_MS = 20 * 60_000;
-export const SLEEP_EVIDENCE_MAX_AGE_MS = 12 * 60 * 60_000;
-export const NAP_MAX_DURATION_MS = 4 * 60 * 60_000;
+const AWAKE_EVIDENCE_MAX_AGE_MS = 20 * 60_000;
+const NAP_MAX_DURATION_MS = 4 * 60 * 60_000;
 
-export type CircadianRuleVote = LifeOpsCircadianState;
 export type CircadianRuleFiring = LifeOpsCircadianRuleFiring;
 
 export interface CircadianScorerResult {
   firings: CircadianRuleFiring[];
-  totals: Record<CircadianRuleVote, number>;
+  totals: Record<LifeOpsCircadianState, number>;
 }
 
-export interface ScorerInputs {
+interface ScorerInputs {
   nowMs: number;
   timezone: string;
   signals: readonly LifeOpsActivitySignal[];

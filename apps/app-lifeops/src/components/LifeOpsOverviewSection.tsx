@@ -844,7 +844,7 @@ export function LifeOpsOverviewSection({
         <DashboardPanel
           title="Briefing"
           icon={<Flame className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-4"
+          className="xl:col-span-3"
         >
           <div className="space-y-3">
             {briefingLines.length === 0 ? (
@@ -873,7 +873,7 @@ export function LifeOpsOverviewSection({
               onClick={() => onNavigate("sleep")}
             />
           }
-          className="xl:col-span-2"
+          className="xl:col-span-3"
         >
           <div className="space-y-3">
             <div>
