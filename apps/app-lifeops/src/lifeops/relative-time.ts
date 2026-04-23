@@ -5,9 +5,8 @@ import type {
   LifeOpsPersonalBaseline,
   LifeOpsRelativeTime,
   LifeOpsRelativeTimeAnchorSource,
-  LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
-  LifeOpsUnclearReason,
+  LifeOpsScheduleRegularity,
 } from "@elizaos/shared/contracts/lifeops";
 import {
   addDaysToLocalDate,
@@ -203,13 +202,18 @@ export function resolveLifeOpsRelativeTime(args: {
   const dayBoundary =
     args.dayBoundary ??
     localDayBoundary({ nowMs: args.nowMs, timezone: args.timezone });
-  const wakeAnchorAt =
-    args.schedule.wakeAt ??
-    args.schedule.lastSleepEndedAt ??
-    args.schedule.firstActiveAt ??
-    null;
-  const wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null =
-    args.schedule.wakeAt || args.schedule.lastSleepEndedAt
+  const isUnclear = args.schedule.circadianState === "unclear";
+  // Unclear state means callers should wait for event hooks instead of
+  // projecting from baseline medians or stale anchors.
+  const wakeAnchorAt = isUnclear
+    ? null
+    : (args.schedule.wakeAt ??
+      args.schedule.lastSleepEndedAt ??
+      args.schedule.firstActiveAt ??
+      null);
+  const wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null = isUnclear
+    ? null
+    : args.schedule.wakeAt || args.schedule.lastSleepEndedAt
       ? "sleep_cycle"
       : args.schedule.firstActiveAt
         ? "activity"
@@ -224,7 +228,7 @@ export function resolveLifeOpsRelativeTime(args: {
   const bedtimeAnchorMs = wakeAnchorMs ?? null;
   const bedtimeHour = baselineBedtimeHour(args.schedule.baseline);
   const typicalBedtimeMs =
-    args.schedule.circadianState !== "unclear" &&
+    !isUnclear &&
     allowsProjectedBedtime(args.schedule.regularity) &&
     bedtimeHour !== null
       ? localHourInstantMs({
@@ -235,6 +239,7 @@ export function resolveLifeOpsRelativeTime(args: {
         })
       : null;
   const fallbackBedtimeMs =
+    !isUnclear &&
     typicalBedtimeMs === null &&
     allowsFallbackBedtimeFromLastSleep(args.schedule.regularity) &&
     lastSleepStartedMs !== null
@@ -253,11 +258,13 @@ export function resolveLifeOpsRelativeTime(args: {
         })
       : null;
   const bedtimeTargetMs =
-    isAsleepState(args.schedule.circadianState) && currentSleepStartedMs !== null
+    isAsleepState(args.schedule.circadianState) &&
+    currentSleepStartedMs !== null
       ? currentSleepStartedMs
       : (typicalBedtimeMs ?? fallbackBedtimeMs);
   const bedtimeTargetSource: LifeOpsRelativeTimeAnchorSource | null =
-    isAsleepState(args.schedule.circadianState) && currentSleepStartedMs !== null
+    isAsleepState(args.schedule.circadianState) &&
+    currentSleepStartedMs !== null
       ? "sleep_cycle"
       : typicalBedtimeMs !== null
         ? "typical_sleep"
@@ -270,8 +277,9 @@ export function resolveLifeOpsRelativeTime(args: {
     wakeAnchorMs !== null && wakeAnchorMs <= args.nowMs
       ? minutesBetween(wakeAnchorMs, args.nowMs)
       : null;
-  const minutesAwake =
-    isAwakeState(args.schedule.circadianState) ? minutesSinceWake : null;
+  const minutesAwake = isAwakeState(args.schedule.circadianState)
+    ? minutesSinceWake
+    : null;
   const minutesUntilBedtimeTarget =
     bedtimeTargetMs === null || bedtimeTargetMs < args.nowMs
       ? null

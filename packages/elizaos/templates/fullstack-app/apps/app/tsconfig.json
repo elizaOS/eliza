@@ -7,6 +7,7 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@elizaos/app-core": ["src/type-stubs/app-core/index.d.ts"],
       "@elizaos/app-core/App": ["src/type-stubs/app-core/App.d.ts"],

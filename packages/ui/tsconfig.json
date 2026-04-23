@@ -11,6 +11,7 @@
     "declaration": false,
     "noEmit": true,
     "baseUrl": "../../",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
@@ -18,9 +19,7 @@
       "@elizaos/app-task-coordinator": [
         "./apps/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator/*": [
-        "./apps/app-task-coordinator/src/*"
-      ],
+      "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
       "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],
       "@elizaos/app-shopify": ["./apps/app-shopify/src/index.ts"],
