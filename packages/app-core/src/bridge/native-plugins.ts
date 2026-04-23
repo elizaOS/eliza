@@ -126,7 +126,7 @@ export interface MobileSignalsScreenTimeStatus {
   requirements: {
     entitlements: {
       familyControls: string;
-      appAndWebsiteUsage: string;
+      appAndWebsiteUsage?: string;
     };
     frameworks: string[];
     deviceActivityReportExtension: boolean;
@@ -138,7 +138,7 @@ export interface MobileSignalsScreenTimeStatus {
   };
   entitlements: {
     familyControls: boolean;
-    appAndWebsiteUsage: boolean;
+    appAndWebsiteUsage?: boolean;
   };
   provisioning: {
     satisfied: boolean;
@@ -280,17 +280,62 @@ export interface PhonePluginLike extends NativePlugin {
   getStatus(): Promise<{
     hasTelecom: boolean;
     canPlaceCalls: boolean;
+    isDefaultDialer: boolean;
     defaultDialerPackage: string | null;
   }>;
   placeCall(options: { number: string }): Promise<void>;
   openDialer(options?: { number?: string }): Promise<void>;
+  listRecentCalls(options?: {
+    limit?: number;
+    number?: string;
+  }): Promise<{ calls: CallLogEntry[] }>;
+  saveCallTranscript(options: {
+    callId: string;
+    transcript: string;
+    summary?: string;
+  }): Promise<{ updatedAt: number }>;
+}
+
+export type CallLogType =
+  | "incoming"
+  | "outgoing"
+  | "missed"
+  | "voicemail"
+  | "rejected"
+  | "blocked"
+  | "answered_externally"
+  | "unknown";
+
+export interface CallLogEntry {
+  id: string;
+  number: string;
+  cachedName: string | null;
+  date: number;
+  durationSeconds: number;
+  type: CallLogType;
+  rawType: number;
+  isNew: boolean;
+  phoneAccountId: string | null;
+  geocodedLocation: string | null;
+  transcription: string | null;
+  voicemailUri: string | null;
+  agentTranscript: string | null;
+  agentSummary: string | null;
+  agentTranscriptUpdatedAt: number | null;
 }
 
 export interface ContactSummary {
   id: string;
+  lookupKey: string;
   displayName: string;
   phoneNumbers: string[];
+  emailAddresses: string[];
   photoUri?: string;
+  starred: boolean;
+}
+
+export interface ImportedContactSummary extends ContactSummary {
+  sourceName: string;
 }
 
 export interface ContactsPluginLike extends NativePlugin {
@@ -301,7 +346,13 @@ export interface ContactsPluginLike extends NativePlugin {
   createContact(options: {
     displayName: string;
     phoneNumber?: string;
+    phoneNumbers?: string[];
+    emailAddress?: string;
+    emailAddresses?: string[];
   }): Promise<{ id: string }>;
+  importVCard(options: { vcardText: string }): Promise<{
+    imported: ImportedContactSummary[];
+  }>;
 }
 
 export interface SmsMessageSummary {

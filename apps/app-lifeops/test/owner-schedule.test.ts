@@ -1,9 +1,6 @@
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createRealTestRuntime,
-  type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
 import { ownerScheduleAction } from "../src/actions/owner-schedule.js";
 import {
   createLifeOpsReminderPlan,
@@ -181,7 +178,11 @@ describe("owner schedule surfaces", () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-04-19T13:00:00.000Z"));
 
-      const result = await ownerScheduleAction.handler!(
+      const handler = ownerScheduleAction.handler;
+      if (!handler) {
+        throw new Error("ownerScheduleAction.handler is not registered");
+      }
+      const result = await handler(
         fixture.runtime,
         ownerMessage(fixture.runtime, "did i sleep last night?") as never,
         undefined,
@@ -190,7 +191,7 @@ describe("owner schedule surfaces", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.text.toLowerCase()).toContain("schedule phase");
+      expect(result.text.toLowerCase()).toContain("circadian state");
       expect(result.text.toLowerCase()).toMatch(
         /(?:last inferred wake|likely asleep)/,
       );

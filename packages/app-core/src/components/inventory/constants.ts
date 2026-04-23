@@ -1,16 +1,8 @@
-/**
- * Shared constants, types, and utility helpers for the Inventory feature.
- */
-
-/* ── Constants ──────────────────────────────────────────────────────── */
-
 export const BSC_GAS_READY_THRESHOLD = 0.005;
 export const BSC_GAS_THRESHOLD = 0.005;
 export const TRACKED_BSC_TOKENS_KEY = "wt_tracked_bsc_tokens";
 export const MAX_TRACKED_BSC_TOKENS = 30;
 export const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
-
-/* ── Row types ──────────────────────────────────────────────────────── */
 
 export interface TokenRow {
   chain: string;
@@ -44,8 +36,6 @@ export interface TrackedToken {
   symbol: string;
   addedAt: number;
 }
-
-/* ── Chain helpers ───────────────────────────────────────────────────── */
 
 export function chainIcon(chain: string): { code: string; cls: string } {
   const c = chain.toLowerCase();
@@ -87,8 +77,6 @@ export function isAvaxChainName(chain: string): boolean {
   );
 }
 
-/* ── Balance formatter ──────────────────────────────────────────────── */
-
 export function formatBalance(balance: string): string {
   const num = Number.parseFloat(balance);
   if (Number.isNaN(num)) return balance;
@@ -99,13 +87,9 @@ export function formatBalance(balance: string): string {
   return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-/* ── Address helpers ────────────────────────────────────────────────── */
-
 export function toNormalizedAddress(addr: string): string {
   return addr.trim().toLowerCase();
 }
-
-/* ── localStorage helpers for tracked BSC tokens ────────────────────── */
 
 export function loadTrackedBscTokens(): TrackedBscToken[] {
   try {
@@ -133,7 +117,7 @@ export function saveTrackedBscTokens(next: TrackedBscToken[]): void {
   try {
     localStorage.setItem(TRACKED_BSC_TOKENS_KEY, JSON.stringify(next));
   } catch {
-    /* ignore */
+    /* localStorage may be unavailable in private or test contexts. */
   }
 }
 
@@ -149,13 +133,28 @@ export function removeTrackedBscToken(
   return next;
 }
 
-/* ── localStorage helpers for tracked tokens (TradePanel) ───────────── */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isTrackedToken(value: unknown): value is TrackedToken {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.address === "string" &&
+    typeof value.symbol === "string" &&
+    typeof value.addedAt === "number" &&
+    Number.isFinite(value.addedAt) &&
+    HEX_ADDRESS_RE.test(value.address)
+  );
+}
 
 export function loadTrackedTokens(): TrackedToken[] {
   try {
     const raw = localStorage.getItem(TRACKED_BSC_TOKENS_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as TrackedToken[];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isTrackedToken).slice(0, MAX_TRACKED_BSC_TOKENS);
   } catch {
     return [];
   }
@@ -163,8 +162,13 @@ export function loadTrackedTokens(): TrackedToken[] {
 
 export function saveTrackedTokens(tokens: TrackedToken[]): void {
   try {
-    localStorage.setItem(TRACKED_BSC_TOKENS_KEY, JSON.stringify(tokens));
+    localStorage.setItem(
+      TRACKED_BSC_TOKENS_KEY,
+      JSON.stringify(
+        tokens.filter(isTrackedToken).slice(0, MAX_TRACKED_BSC_TOKENS),
+      ),
+    );
   } catch {
-    // ignore in non-browser test runtime
+    /* localStorage may be unavailable in private or test contexts. */
   }
 }

@@ -263,7 +263,7 @@ export const connectorEntrySchema = z.object({
 export const appEntrySchema = z.object({
   ...commonFields,
   kind: z.literal("app"),
-  subtype: z.enum(["game", "tool", "shell", "marketplace", "other"]),
+  subtype: z.enum(["game", "tool", "shell", "marketplace", "trading", "other"]),
   launch: appLaunchSchema,
 });
 

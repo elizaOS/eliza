@@ -2285,7 +2285,7 @@
   "settings.sections.wallet.stewardDesc": "Managed by Steward vault",
   "settings.sections.walletpolicies.desc": "Spending limits, address controls, and transaction safety rules",
   "settings.sections.walletpolicies.label": "Wallet Policies",
-  "settings.sections.walletrpc.desc": "Chain RPC providers and API keys",
+  "settings.sections.walletrpc.desc": "Wallet RPC providers and API keys",
   "settings.sections.walletrpc.label": "Wallet & RPC",
   "settings.showAdvancedKeyManagement": "Advanced key management",
   "settings.stewardNoAddresses": "No vault addresses available yet. Check steward configuration.",

@@ -367,6 +367,84 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("passes screen-time breakdown query inputs through to the service", async () => {
+    const getScreenTimeBreakdown = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeBreakdown")
+      .mockResolvedValue({
+        items: [],
+        totalSeconds: 0,
+        bySource: [],
+        byCategory: [],
+        byDevice: [],
+        byService: [],
+        byBrowser: [],
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/breakdown?since=2026-04-22T00%3A00%3A00.000Z&until=2026-04-22T12%3A00%3A00.000Z&source=website&topN=8",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getScreenTimeBreakdown).toHaveBeenCalledWith({
+      since: "2026-04-22T00:00:00.000Z",
+      until: "2026-04-22T12:00:00.000Z",
+      source: "website",
+      topN: 8,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      }),
+    );
+  });
+
+  it("passes social summary query inputs through to the service", async () => {
+    const getSocialHabitSummary = vi
+      .spyOn(LifeOpsService.prototype, "getSocialHabitSummary")
+      .mockResolvedValue({
+        since: "2026-04-22T00:00:00.000Z",
+        until: "2026-04-22T12:00:00.000Z",
+        totalSeconds: 0,
+        services: [],
+        devices: [],
+        surfaces: [],
+        browsers: [],
+        sessions: [],
+        messages: {
+          channels: [],
+          inbound: 0,
+          outbound: 0,
+          opened: 0,
+          replied: 0,
+        },
+        dataSources: [],
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/social/summary?since=2026-04-22T00%3A00%3A00.000Z&until=2026-04-22T12%3A00%3A00.000Z&topN=6",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getSocialHabitSummary).toHaveBeenCalledWith({
+      since: "2026-04-22T00:00:00.000Z",
+      until: "2026-04-22T12:00:00.000Z",
+      topN: 6,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      }),
+    );
+  });
+
   // Browser companion + package routes moved to
   // `@elizaos/plugin-browser-bridge` (Phase 3). Tests for those routes now
   // live alongside the plugin package.

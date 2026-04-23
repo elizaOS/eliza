@@ -15,7 +15,6 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import {
-  type CreateBrowserBridgeCompanionPairingRequest,
   BROWSER_BRIDGE_SITE_ACCESS_MODES,
   type BrowserBridgeCompanionPairingResponse,
   type BrowserBridgeCompanionReleaseManifest,
@@ -24,6 +23,7 @@ import {
   type BrowserBridgeSettings,
   type BrowserBridgeSiteAccessMode,
   type BrowserBridgeTrackingMode,
+  type CreateBrowserBridgeCompanionPairingRequest,
 } from "@elizaos/app-lifeops/contracts";
 import {
   Copy,
@@ -57,6 +57,19 @@ const DEFAULT_PAIRING_PROFILE = {
 } as const;
 const CHROME_EXTENSIONS_URL = "chrome://extensions/";
 const CONNECTION_REFRESH_INTERVAL_MS = 4_000;
+
+function isIosRuntime(): boolean {
+  if (
+    typeof navigator !== "undefined" &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent)
+  ) {
+    return true;
+  }
+  const capacitor = (
+    globalThis as { Capacitor?: { getPlatform?: () => string } }
+  ).Capacitor;
+  return capacitor?.getPlatform?.() === "ios";
+}
 
 function settingsToDraft(settings: BrowserBridgeSettings): SettingsDraft {
   return {
@@ -360,11 +373,11 @@ function BrowserCompanionRow({
     target: BrowserBridgePackagePathTarget,
     revealOnly?: boolean,
     options?: { silent?: boolean },
-  ) => Promise<void | { path: string | null; opened: boolean }>;
+  ) => Promise<{ path: string | null; opened: boolean }>;
   onOpenManager: (
     browser: BrowserBridgeKind,
     options?: { silent?: boolean },
-  ) => Promise<void | boolean>;
+  ) => Promise<boolean>;
 }) {
   const browserLabel = browser === "chrome" ? "Chrome" : "Safari";
   const distributionLabel = releaseBadgeLabel(browser, releaseManifest);
@@ -539,9 +552,7 @@ export function BrowserBridgeSetupPanel() {
   const draftRef = useRef<SettingsDraft | null>(null);
   const draftDirtyRef = useRef(false);
   const [companions, setCompanions] = useState<
-    Awaited<
-      ReturnType<typeof client.listBrowserBridgeCompanions>
-    >["companions"]
+    Awaited<ReturnType<typeof client.listBrowserBridgeCompanions>>["companions"]
   >([]);
   const [packageStatus, setPackageStatus] = useState<ExtensionStatus | null>(
     null,
@@ -667,6 +678,7 @@ export function BrowserBridgeSetupPanel() {
   const primaryCompanion = connectedCompanions[0] ?? companions[0] ?? null;
 
   const connectionSummary = useMemo(() => {
+    const iosRuntime = isIosRuntime();
     const trackingEnabled = draft ? draft.trackingMode !== "off" : false;
     const paused = draft
       ? isFutureLocalDateTimeValue(draft.pauseUntilLocal)
@@ -750,13 +762,20 @@ export function BrowserBridgeSetupPanel() {
         badge: "Setup",
         badgeVariant: "secondary" as const,
         title: "No browser is connected yet",
-        detail:
-          "Install the extension in the exact browser profile where you are logged into your real accounts, then open the popup once to auto-connect.",
-        steps: [
-          "Install Chrome or Safari extension from the card on the right.",
-          "Open LifeOps in that same browser profile.",
-          "Open the extension popup once so it can auto-connect.",
-        ],
+        detail: iosRuntime
+          ? "Connect a Chrome or Safari companion running on your Mac or cloud browser host. The iPhone app talks to that host; iOS WebKit does not expose real browser-tab automation."
+          : "Install the extension in the exact browser profile where you are logged into your real accounts, then open the popup once to auto-connect.",
+        steps: iosRuntime
+          ? [
+              "Make sure this iPhone is connected to the remote Mac or cloud backend that owns the browser companion.",
+              "Install and pair the Chrome or Safari companion on that host.",
+              "Open the extension popup there once so it can auto-connect.",
+            ]
+          : [
+              "Install Chrome or Safari extension from the card on the right.",
+              "Open LifeOps in that same browser profile.",
+              "Open the extension popup once so it can auto-connect.",
+            ],
       };
     }
 
@@ -822,8 +841,7 @@ export function BrowserBridgeSetupPanel() {
     setBuildingBrowser(browser);
     setError(null);
     try {
-      const response =
-        await client.buildBrowserBridgeCompanionPackage(browser);
+      const response = await client.buildBrowserBridgeCompanionPackage(browser);
       const nextStatus = mergePackageStatus(packageStatus, response.status);
       setPackageStatus(nextStatus);
       if (!options?.silent) {

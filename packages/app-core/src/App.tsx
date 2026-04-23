@@ -47,8 +47,8 @@ import {
   MessagesPageView,
   PhonePageView,
 } from "./components/pages/MiladyOsAppsView";
-import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
+import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
 import { RuntimeView } from "./components/pages/RuntimeView";
 import { SettingsView } from "./components/pages/SettingsView";
@@ -73,7 +73,11 @@ import {
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
-import { APPS_ENABLED, isAppsToolTab } from "./navigation";
+import {
+  APPS_ENABLED,
+  isAndroidPhoneSurfaceEnabled,
+  isAppsToolTab,
+} from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
@@ -144,27 +148,34 @@ function ViewRouter({
 }) {
   const { tab } = useApp();
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
+  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const view = (() => {
     switch (tab) {
       case "chat":
         return <ChatView />;
       case "phone":
-        return (
+        return androidPhoneSurfaceEnabled ? (
           <TabContentView>
             <PhonePageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "messages":
-        return (
+        return androidPhoneSurfaceEnabled ? (
           <TabContentView>
             <MessagesPageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "contacts":
-        return (
+        return androidPhoneSurfaceEnabled ? (
           <TabContentView>
             <ContactsPageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "lifeops":
         // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main

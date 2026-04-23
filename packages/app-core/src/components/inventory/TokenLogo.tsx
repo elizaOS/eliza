@@ -1,27 +1,17 @@
-/**
- * Token logo with CDN image + letter-fallback.
- */
-
 import { useState } from "react";
 import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig";
 import { chainIcon } from "./constants";
 import { normalizeInventoryImageUrl } from "./media-url";
-
-/* ── Logo URL resolver ──────────────────────────────────────────────── */
 
 export function tokenLogoUrl(
   chain: string,
   contractAddress: string | null,
 ): string | null {
   if (!contractAddress) {
-    // Use chain config for native logo resolution
     return getNativeLogoUrl(chain);
   }
-  // Use chain config for contract logo resolution (TrustWallet CDN)
   return getContractLogoUrl(chain, contractAddress);
 }
-
-/* ── Component ──────────────────────────────────────────────────────── */
 
 export function TokenLogo({
   symbol,

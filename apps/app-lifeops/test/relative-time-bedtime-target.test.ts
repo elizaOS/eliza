@@ -6,7 +6,9 @@ import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 // forward to tonight's bedtime.
 
 const BASE_SCHEDULE = {
-  phase: "evening" as const,
+  circadianState: "awake" as const,
+  stateConfidence: 0.8,
+  uncertaintyReason: null,
   awakeProbability: {
     pAwake: 0.8,
     pAsleep: 0.1,
@@ -23,13 +25,20 @@ const BASE_SCHEDULE = {
     sampleCount: 12,
     windowDays: 28,
   },
-  isProbablySleeping: false,
+  baseline: {
+    // 23.5 = 11:30 PM
+    medianWakeLocalHour: 7.5,
+    medianBedtimeLocalHour: 23.5,
+    medianSleepDurationMin: 480,
+    bedtimeStddevMin: 32,
+    wakeStddevMin: 28,
+    sampleCount: 12,
+    windowDays: 28,
+  },
   sleepConfidence: 0.7,
   currentSleepStartedAt: null,
   lastSleepStartedAt: "2026-04-17T23:30:00.000Z",
   lastSleepEndedAt: null,
-  // normalized [12, 36): 23.5 = 11:30 PM
-  typicalSleepHour: 23.5,
   wakeAt: "2026-04-18T07:30:00.000Z",
   firstActiveAt: "2026-04-18T07:35:00.000Z",
 };
@@ -71,7 +80,6 @@ describe("resolveLifeOpsRelativeTime bedtime target stays on sleep-day", () => {
         // Wake just happened this morning.
         wakeAt: "2026-04-18T07:00:00.000Z",
         firstActiveAt: "2026-04-18T07:00:00.000Z",
-        phase: "morning",
       },
     });
 
@@ -109,8 +117,8 @@ describe("resolveLifeOpsRelativeTime bedtime target stays on sleep-day", () => {
       timezone: "UTC",
       schedule: {
         ...BASE_SCHEDULE,
-        phase: "sleeping",
-        isProbablySleeping: true,
+        circadianState: "sleeping",
+        stateConfidence: 0.9,
         currentSleepStartedAt: "2026-04-19T00:30:00.000Z",
         wakeAt: null,
         firstActiveAt: null,

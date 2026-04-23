@@ -24,6 +24,7 @@ import {
   redactWindowTitle,
   resolveRedactorConfigFromEnv,
 } from "./redactor.js";
+import { isSystemInactivityApp } from "./system-inactivity-apps.js";
 
 export interface ActivityAppBreakdown {
   bundleId: string;
@@ -67,6 +68,7 @@ function intervalsFromEvents(
     const ev = events[i];
     if (!ev) continue;
     if (ev.eventKind !== "activate") continue;
+    if (isSystemInactivityApp(ev)) continue;
     const startMs = timestamps[i];
     if (typeof startMs !== "number" || !Number.isFinite(startMs)) continue;
     const nextTs = i + 1 < events.length ? timestamps[i + 1] : untilMs;

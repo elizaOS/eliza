@@ -22,9 +22,12 @@ import {
   drainLifeOpsGithubCallbacks,
 } from "../platform/lifeops-github.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
-import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
+import {
+  LIFEOPS_MAIL_CHANNELS,
+  LIFEOPS_MESSAGE_CHANNELS,
+  LifeOpsInboxSection,
+} from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
-import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
@@ -34,6 +37,8 @@ import {
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
+import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
+import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
   LifeOpsSelectionProvider,
@@ -41,6 +46,8 @@ import {
 } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
+import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
+import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
 
@@ -951,10 +958,30 @@ function LifeOpsWorkspaceInner() {
     switch (section) {
       case "overview":
         return <LifeOpsOverviewSection onNavigate={navigate} />;
+      case "sleep":
+        return <LifeOpsSleepSection />;
+      case "screen-time":
+        return <LifeOpsScreenTimeSection />;
+      case "social":
+        return <LifeOpsSocialSection />;
       case "calendar":
         return <LifeOpsCalendarSection />;
       case "messages":
-        return <LifeOpsInboxSection />;
+        return (
+          <LifeOpsInboxSection
+            channels={LIFEOPS_MESSAGE_CHANNELS}
+            title="Messages"
+            emptyLabel="No messages."
+          />
+        );
+      case "mail":
+        return (
+          <LifeOpsInboxSection
+            channels={LIFEOPS_MAIL_CHANNELS}
+            title="Mail"
+            emptyLabel="No mail."
+          />
+        );
       case "reminders":
         return <LifeOpsRemindersSection />;
       case "setup":

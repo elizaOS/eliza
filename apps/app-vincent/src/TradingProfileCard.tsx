@@ -1,13 +1,11 @@
 /**
  * TradingProfileCard — displays P&L summary stats and per-token breakdown.
  *
- * Renders total P&L, win rate, total swaps, 24h volume, and a table of
- * per-token P&L breakdowns when data is available from the new
- * /api/vincent/trading-profile endpoint.
+ * Renders P&L only when Vincent provides analytics.
  */
 
 import { TrendingUp } from "lucide-react";
-import type { VincentTradingProfile } from "./useVincentDashboard";
+import type { VincentTradingProfile } from "./vincent-contracts";
 
 interface TradingProfileCardProps {
   tradingProfile: VincentTradingProfile | null;
@@ -45,8 +43,7 @@ export function TradingProfileCard({
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-muted/50" />
           <span className="text-sm text-muted">
-            Trading profile will be available once the analytics endpoint is
-            ready.
+            Vincent trading analytics are not available from Vincent yet.
           </span>
         </div>
       </div>

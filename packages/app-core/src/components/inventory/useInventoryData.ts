@@ -100,7 +100,7 @@ function buildTokenRowsAllChains({
 }): TokenRow[] {
   const rows: TokenRow[] = [];
   const knownEvmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const knownSolAddr =
+  const _knownSolAddr =
     walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
 
   if (walletBalances?.evm) {
@@ -197,7 +197,11 @@ function buildTokenRowsAllChains({
       });
     }
   }
-  if (knownSolAddr && !walletBalances?.solana) {
+  if (
+    _knownSolAddr &&
+    !walletBalances?.solana &&
+    walletConfig?.solanaBalanceReady === false
+  ) {
     rows.push({
       chain: "Solana",
       symbol: "SOL",
@@ -274,10 +278,9 @@ export function useInventoryData({
     [inventoryChainFilters],
   );
   const knownEvmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const knownSolAddr =
+  const _knownSolAddr =
     walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
 
-  // ── Legacy BSC aliases ─────────────────────────────────────────────
   const primaryChain = useMemo(() => {
     if (!walletBalances?.evm?.chains) return null;
     return (
@@ -318,7 +321,6 @@ export function useInventoryData({
     [tokenRowsAllChains, inventoryChainFilters],
   );
 
-  // ── Sort ──────────────────────────────────────────────────────────
   const sortedRows = useMemo(() => {
     const sorted = [...tokenRows];
     const asc = inventorySortDirection === "asc";
@@ -347,7 +349,6 @@ export function useInventoryData({
     return sorted;
   }, [tokenRows, inventorySort, inventorySortDirection]);
 
-  // ── Chain errors ──────────────────────────────────────────────────
   const chainErrors = useMemo(
     () =>
       (walletBalances?.evm?.chains ?? []).filter(
@@ -362,7 +363,6 @@ export function useInventoryData({
     );
   }, [chainErrors, inventoryChainFilters]);
 
-  // ── Flatten NFTs ──────────────────────────────────────────────────
   const allNfts = useMemo((): NftItem[] => {
     if (!walletNfts) return [];
     const items: NftItem[] = [];
@@ -417,15 +417,13 @@ export function useInventoryData({
     inventorySortDirection,
   ]);
 
-  // ── Derived values ────────────────────────────────────────────────
   const focusedChain = useMemo(() => {
     if (!singleChainFocus) return null;
     if (singleChainFocus === "solana") {
       return {
         name: CHAIN_CONFIGS.solana.name,
         nativeSymbol: CHAIN_CONFIGS.solana.nativeSymbol,
-        nativeBalance:
-          walletBalances?.solana?.solBalance ?? (knownSolAddr ? "0" : null),
+        nativeBalance: walletBalances?.solana?.solBalance ?? null,
         error: null,
       };
     }
@@ -445,7 +443,7 @@ export function useInventoryData({
       nativeBalance: evmChain?.nativeBalance ?? (knownEvmAddr ? "0" : null),
       error: evmChain?.error ?? null,
     };
-  }, [singleChainFocus, knownEvmAddr, knownSolAddr, walletBalances]);
+  }, [singleChainFocus, knownEvmAddr, walletBalances]);
 
   const primaryChainError =
     primaryChain?.error ??

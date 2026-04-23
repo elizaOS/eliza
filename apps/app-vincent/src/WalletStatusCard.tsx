@@ -1,19 +1,16 @@
 /**
- * VaultStatusCard — displays agent wallet addresses and token balances.
- *
- * Uses the internal agent wallet (getWalletAddresses / getWalletBalances),
- * NOT the steward vault system (which is a separate optional custody layer).
+ * WalletStatusCard — displays agent wallet addresses and token balances.
  */
 
+import { Button, StatusBadge } from "@elizaos/app-core";
 import type {
   WalletAddresses,
   WalletBalancesResponse,
 } from "@elizaos/shared/contracts/wallet";
-import { Button, StatusBadge } from "@elizaos/app-core";
 import { Copy, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-interface VaultStatusCardProps {
+interface WalletStatusCardProps {
   walletAddresses: WalletAddresses | null;
   walletBalances: WalletBalancesResponse | null;
   setActionNotice: (
@@ -72,11 +69,11 @@ function isNonDust(valueUsd: string): boolean {
   return Number.isFinite(n) && n >= 0.01;
 }
 
-export function VaultStatusCard({
+export function WalletStatusCard({
   walletAddresses,
   walletBalances,
   setActionNotice,
-}: VaultStatusCardProps) {
+}: WalletStatusCardProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleCopy = useCallback(

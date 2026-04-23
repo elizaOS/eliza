@@ -14,6 +14,7 @@ import {
   formatInstantAsRfc3339InTimeZone,
   getZonedDateParts,
 } from "./time.js";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 type RelativeTimeScheduleFields = Pick<
   LifeOpsScheduleInsight,
@@ -57,22 +58,6 @@ function allowsFallbackBedtimeFromLastSleep(
     allowsProjectedBedtime(regularity) ||
     regularity?.regularityClass === "insufficient_data"
   );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function roundConfidence(value: number): number {
-  return Math.round(clamp(value, 0, 1) * 100) / 100;
-}
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function minutesBetween(startMs: number, endMs: number): number {

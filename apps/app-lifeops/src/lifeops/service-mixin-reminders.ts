@@ -37,7 +37,9 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_CHANNEL_TYPES,
+  LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
+  LIFEOPS_UNCLEAR_REASONS,
 } from "@elizaos/app-lifeops/contracts";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
@@ -95,7 +97,6 @@ import {
 } from "./schedule-state.js";
 import {
   LIFEOPS_SCHEDULE_DEVICE_KINDS,
-  LIFEOPS_SCHEDULE_OBSERVATION_STATES,
   type SyncLifeOpsScheduleObservationInput,
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
@@ -119,6 +120,10 @@ import {
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
 } from "./sleep-wake-events.js";
+import {
+  DEFAULT_TELEMETRY_RETENTION_DAYS,
+  runTelemetryRetention,
+} from "./telemetry-retention.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -194,8 +199,9 @@ function buildAdaptiveWindowProfile(args: {
   schedule: LifeOpsScheduleMergedStateRecord | null;
   timeZone: string;
 }): AdaptiveWindowProfile | null {
+  const baseline = args.schedule?.baseline ?? null;
   const scheduleWakeHour =
-    normalizeHour(args.schedule?.typicalWakeHour) ??
+    normalizeHour(baseline?.medianWakeLocalHour) ??
     hourFromIso(
       args.schedule?.wakeAt ?? args.schedule?.firstActiveAt,
       args.timeZone,
@@ -207,7 +213,7 @@ function buildAdaptiveWindowProfile(args: {
     args.schedule?.lastActiveAt,
     args.timeZone,
   );
-  const scheduleSleepHour = normalizeHour(args.schedule?.typicalSleepHour);
+  const scheduleSleepHour = normalizeHour(baseline?.medianBedtimeLocalHour);
 
   const adaptiveProfile: AdaptiveWindowProfile = {
     typicalWakeHour: scheduleWakeHour ?? args.profile?.typicalWakeHour ?? null,
@@ -1039,6 +1045,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsReminderService> {
   return class LifeOpsRemindersServiceMixin extends Base {
+    /**
+     * UTC date key of the last successful telemetry rollup+retention run.
+     * Gates the daily maintenance call inside the scheduler tick so it only
+     * fires once per day per runtime process.
+     */
+    private telemetryRollupLastRunDate: string | null = null;
+
     protected emitInAppReminderNudge(args: {
       text: string;
       ownerType: "occurrence" | "calendar_event";
@@ -1563,12 +1576,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             )
           : {};
       return {
-        state: observation.state,
+        circadianState: observation.circadianState,
+        stateConfidence: observation.stateConfidence,
+        uncertaintyReason: observation.uncertaintyReason,
         windowStartAt: observation.windowStartAt,
         windowEndAt: observation.windowEndAt,
-        phase: observation.phase,
         mealLabel: observation.mealLabel,
-        confidence: observation.confidence,
         snapshot,
         metadata:
           Object.keys(extraMetadata).length > 0 ? extraMetadata : undefined,
@@ -1627,6 +1640,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         );
         return cached ? refreshLifeOpsRelativeTime(cached, now) : null;
       }
+      // Propagate scorer firings from the local insight so the inspection UI
+      // (and the circadian-state evidenceRefs audit column) can see exactly
+      // which rules fired this tick. Merged states aggregated from cloud
+      // peers don't have firings — only the local refresh path does.
+      merged.circadianRuleFirings = insight.circadianRuleFirings;
       await this.repository.upsertScheduleMergedState(merged);
       const stored =
         (await this.repository.getScheduleMergedState(
@@ -1658,19 +1676,32 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       const observations = request.observations.map((input, index) => {
         const record = requireRecord(input, `observations[${index}]`);
-        const confidence =
-          typeof record.confidence === "string"
-            ? Number(record.confidence)
-            : record.confidence;
-        if (typeof confidence !== "number" || !Number.isFinite(confidence)) {
-          fail(400, `observations[${index}].confidence must be a number`);
+        const stateConfidence =
+          typeof record.stateConfidence === "string"
+            ? Number(record.stateConfidence)
+            : record.stateConfidence;
+        if (
+          typeof stateConfidence !== "number" ||
+          !Number.isFinite(stateConfidence)
+        ) {
+          fail(400, `observations[${index}].stateConfidence must be a number`);
         }
         return {
-          state: normalizeEnumValue(
-            record.state,
-            `observations[${index}].state`,
-            LIFEOPS_SCHEDULE_OBSERVATION_STATES,
+          circadianState: normalizeEnumValue(
+            record.circadianState,
+            `observations[${index}].circadianState`,
+            LIFEOPS_CIRCADIAN_STATES,
           ),
+          stateConfidence,
+          uncertaintyReason:
+            record.uncertaintyReason === undefined ||
+            record.uncertaintyReason === null
+              ? null
+              : normalizeEnumValue(
+                  record.uncertaintyReason,
+                  `observations[${index}].uncertaintyReason`,
+                  LIFEOPS_UNCLEAR_REASONS,
+                ),
           windowStartAt: normalizeIsoString(
             record.windowStartAt,
             `observations[${index}].windowStartAt`,
@@ -1679,13 +1710,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             record.windowEndAt,
             `observations[${index}].windowEndAt`,
           ),
-          phase:
-            record.phase === undefined || record.phase === null
-              ? null
-              : requireNonEmptyString(
-                  record.phase,
-                  `observations[${index}].phase`,
-                ),
           mealLabel:
             record.mealLabel === undefined || record.mealLabel === null
               ? null
@@ -1693,7 +1717,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                   record.mealLabel,
                   `observations[${index}].mealLabel`,
                 ),
-          confidence,
           snapshot:
             record.snapshot === undefined
               ? undefined
@@ -2216,9 +2239,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               : schedule?.lastActiveAt
                 ? Date.parse(schedule.lastActiveAt)
                 : null,
-          isProbablySleeping: schedule?.isProbablySleeping ?? false,
-          sleepConfidence: schedule?.sleepConfidence ?? 0,
-          schedulePhase: schedule?.phase ?? null,
+          circadianState: schedule?.circadianState ?? "unclear",
+          stateConfidence: schedule?.stateConfidence ?? 0,
           lastSleepEndedAt: schedule?.lastSleepEndedAt ?? null,
           nextMealLabel: schedule?.nextMealLabel ?? null,
           nextMealWindowStartAt: schedule?.nextMealWindowStartAt ?? null,
@@ -3084,11 +3106,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ) {
         outcome = "blocked_urgency";
         deliveryMetadata.reason = "urgency_gate";
-      } else if (args.activityProfile?.isProbablySleeping) {
+      } else if (
+        args.activityProfile?.circadianState === "sleeping" ||
+        args.activityProfile?.circadianState === "napping"
+      ) {
         outcome = "blocked_quiet_hours";
         deliveryMetadata.reason = "probable_sleep";
-        deliveryMetadata.sleepConfidence = args.activityProfile.sleepConfidence;
-        deliveryMetadata.schedulePhase = args.activityProfile.schedulePhase;
+        deliveryMetadata.stateConfidence = args.activityProfile.stateConfidence;
+        deliveryMetadata.circadianState = args.activityProfile.circadianState;
       } else if (
         args.channel !== "in_app" &&
         isWithinQuietHours({
@@ -3493,6 +3518,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       const desiredState: LifeOpsCircadianState =
         kind === "going_to_bed" ? "sleeping" : "awake";
+      const priorState = await this.repository.readCircadianState(
+        this.agentId(),
+      );
       const signal = createLifeOpsActivitySignal({
         agentId: this.agentId(),
         source: "app_lifecycle",
@@ -3510,6 +3538,30 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         },
       });
       await this.repository.createActivitySignal(signal);
+
+      // Audit every user-attested override. The id is deterministic so
+      // re-submits of the same (kind, occurredAt) by the client don't
+      // double-count. Using `createAuditEventIfNew` so a retry is a no-op.
+      await this.repository.createAuditEventIfNew({
+        id: `lifeops.manual_override:${this.agentId()}:${occurredAt}:${kind}`,
+        agentId: this.agentId(),
+        eventType: "manual_override_accepted",
+        ownerType: "circadian_state",
+        ownerId: `lifeops-manual-override:${this.agentId()}`,
+        reason: `user_attested_${kind}`,
+        inputs: {
+          kind,
+          occurredAt,
+          note: note ?? null,
+          priorCircadianState: priorState?.circadianState ?? null,
+        },
+        decision: {
+          desiredCircadianState: desiredState,
+          bypassedStabilityWindow: true,
+        },
+        actor: "owner",
+        createdAt: new Date().toISOString(),
+      });
 
       const refreshed = await this.refreshEffectiveScheduleState({
         now: new Date(occurredAt),
@@ -4178,7 +4230,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                 priorState?.sinceWakeConfirmedAt ??
                 null)
               : (priorState?.sinceWakeConfirmedAt ?? null),
-          evidenceRefs: [],
+          evidenceRefs: currentSchedule.circadianRuleFirings.map(
+            (firing) => firing.name,
+          ),
           createdAt: priorState?.createdAt ?? now.toISOString(),
           updatedAt: now.toISOString(),
         });
@@ -4248,6 +4302,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now,
         currentSchedule,
       });
+      await this.runTelemetryMaintenanceIfDue(now);
       return {
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
@@ -4306,6 +4361,40 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         })
       ) {
         await dispatch("night");
+      }
+    }
+
+    /**
+     * Daily telemetry maintenance: rolls up yesterday's raw events into
+     * `life_telemetry_rollup_daily`, then prunes raw rows past the retention
+     * window. Gated to one run per UTC day per process via
+     * `telemetryRollupLastRunDate` so a 60-second scheduler tick doesn't thrash.
+     */
+    private async runTelemetryMaintenanceIfDue(now: Date): Promise<void> {
+      const dateKey = now.toISOString().slice(0, 10);
+      if (this.telemetryRollupLastRunDate === dateKey) {
+        return;
+      }
+      try {
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
+        await this.repository.upsertTelemetryDailyRollup({
+          agentId: this.agentId(),
+          sinceIso: `${yesterday.toISOString().slice(0, 10)}T00:00:00.000Z`,
+          untilIso: `${dateKey}T00:00:00.000Z`,
+        });
+        await runTelemetryRetention({
+          repository: this.repository,
+          agentId: this.agentId(),
+          retentionDays: DEFAULT_TELEMETRY_RETENTION_DAYS,
+        });
+        this.telemetryRollupLastRunDate = dateKey;
+      } catch (error) {
+        // Maintenance failure should not break the scheduler tick; surface
+        // a warning and retry next tick (the gate isn't updated on failure).
+        this.logLifeOpsWarn(
+          "telemetry_maintenance",
+          error instanceof Error ? error.message : String(error),
+        );
       }
     }
 

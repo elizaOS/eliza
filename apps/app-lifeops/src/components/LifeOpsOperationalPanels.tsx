@@ -23,6 +23,7 @@ import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesSta
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
 import { useLifeOpsStretchReminder } from "../hooks/useLifeOpsStretchReminder.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
+import { SleepInspectionPanel } from "./SleepInspectionPanel.js";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
@@ -450,6 +451,36 @@ export function LifeOpsSchedulePanel() {
             </div>
           </div>
         ) : null}
+        {merged && merged.circadianRuleFirings.length > 0 ? (
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.circadianRules", {
+                defaultValue: "Rules that fired",
+              })}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {merged.circadianRuleFirings.slice(0, 8).map((firing) => {
+                const tone =
+                  firing.contributes === "awake" ||
+                  firing.contributes === "waking"
+                    ? "bg-sky-500/14 text-sky-300"
+                    : firing.contributes === "sleeping" ||
+                        firing.contributes === "napping"
+                      ? "bg-violet-500/14 text-violet-300"
+                      : "bg-amber-500/14 text-amber-300";
+                return (
+                  <span
+                    key={`${firing.name}:${firing.observedAt}`}
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                    title={firing.reason}
+                  >
+                    {`${firing.name} -> ${firing.contributes} (${firing.weight.toFixed(2)})`}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -486,6 +517,7 @@ export function LifeOpsSchedulePanel() {
           </span>
         ) : null}
       </div>
+      <SleepInspectionPanel />
       <div className="flex flex-wrap gap-2 text-xs">
         {merged ? (
           <>

@@ -28,12 +28,13 @@ function referencedLifeTables(files: string[]): Set<string> {
   const names = new Set<string>();
   for (const file of files) {
     const source = fs.readFileSync(file, "utf8");
-    let match: RegExpExecArray | null;
-    while ((match = tablePattern.exec(source))) {
+    let match = tablePattern.exec(source);
+    while (match) {
       const name = match[1];
       if (name.startsWith("life")) {
         names.add(name);
       }
+      match = tablePattern.exec(source);
     }
   }
   names.delete("lifeops");
@@ -43,9 +44,10 @@ function referencedLifeTables(files: string[]): Set<string> {
 function declaredLifeTables(schemaSource: string): Set<string> {
   const tablePattern = /pgTable\s*\(\s*"([a-z_][a-z0-9_]*)"/g;
   const names = new Set<string>();
-  let match: RegExpExecArray | null;
-  while ((match = tablePattern.exec(schemaSource))) {
+  let match = tablePattern.exec(schemaSource);
+  while (match) {
     names.add(match[1]);
+    match = tablePattern.exec(schemaSource);
   }
   return names;
 }
@@ -59,7 +61,9 @@ describe("lifeops plugin schema coverage", () => {
   });
 
   it("does not lazily create lifeops tables in runtime source files", () => {
-    const files = walkTsFiles(SRC_ROOT);
+    const files = walkTsFiles(SRC_ROOT).filter(
+      (file) => !file.endsWith(".test.ts") && !file.endsWith(".spec.ts"),
+    );
     const offenders = files.filter((file) => {
       const source = fs.readFileSync(file, "utf8");
       return /CREATE TABLE IF NOT EXISTS\s+life[_a-z0-9]*/i.test(source);

@@ -111,7 +111,12 @@ import type {
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared/contracts/lifeops";
+import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
+import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-sync-contracts.js";
+
+type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
+
 import type { RoutineSeedTemplate } from "../lifeops/seed-routines.js";
 
 type LifeOpsSeedRoutinesResponse = {
@@ -166,6 +171,79 @@ export type LifeOpsScreenTimeSummary = {
   totalSeconds: number;
 };
 
+export type LifeOpsHabitCategory =
+  | "browser"
+  | "communication"
+  | "social"
+  | "system"
+  | "video"
+  | "work"
+  | "other";
+
+export type LifeOpsHabitDevice =
+  | "browser"
+  | "computer"
+  | "phone"
+  | "tablet"
+  | "unknown";
+
+export type LifeOpsScreenTimeBucket = {
+  key: string;
+  label: string;
+  totalSeconds: number;
+};
+
+export type LifeOpsScreenTimeBreakdownItem = LifeOpsScreenTimeSummaryItem & {
+  sessionCount: number;
+  category: LifeOpsHabitCategory;
+  device: LifeOpsHabitDevice;
+  service: string | null;
+  serviceLabel: string | null;
+  browser: string | null;
+};
+
+export type LifeOpsScreenTimeBreakdown = {
+  items: LifeOpsScreenTimeBreakdownItem[];
+  totalSeconds: number;
+  bySource: LifeOpsScreenTimeBucket[];
+  byCategory: LifeOpsScreenTimeBucket[];
+  byDevice: LifeOpsScreenTimeBucket[];
+  byService: LifeOpsScreenTimeBucket[];
+  byBrowser: LifeOpsScreenTimeBucket[];
+  fetchedAt: string;
+};
+
+export type LifeOpsSocialHabitSummary = {
+  since: string;
+  until: string;
+  totalSeconds: number;
+  services: LifeOpsScreenTimeBucket[];
+  devices: LifeOpsScreenTimeBucket[];
+  surfaces: LifeOpsScreenTimeBucket[];
+  browsers: LifeOpsScreenTimeBucket[];
+  sessions: LifeOpsScreenTimeBreakdownItem[];
+  messages: {
+    channels: Array<{
+      channel: "x_dm";
+      label: string;
+      inbound: number;
+      outbound: number;
+      opened: number;
+      replied: number;
+    }>;
+    inbound: number;
+    outbound: number;
+    opened: number;
+    replied: number;
+  };
+  dataSources: Array<{
+    id: string;
+    label: string;
+    state: "live" | "partial" | "unwired";
+  }>;
+  fetchedAt: string;
+};
+
 declare module "@elizaos/app-core/api/client-base" {
   interface ElizaClient {
     getLifeOpsAppState(): Promise<{ enabled: boolean }>;
@@ -180,6 +258,12 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScreenTimeSummary(
       data: LifeOpsScreenTimeSummaryRequest,
     ): Promise<LifeOpsScreenTimeSummary>;
+    getLifeOpsScreenTimeBreakdown(
+      data: LifeOpsScreenTimeSummaryRequest,
+    ): Promise<LifeOpsScreenTimeBreakdown>;
+    getLifeOpsSocialHabitSummary(
+      data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
+    ): Promise<LifeOpsSocialHabitSummary>;
     getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
     seedLifeOpsRoutines(data: {
       keys: string[];
@@ -251,6 +335,10 @@ declare module "@elizaos/app-core/api/client-base" {
     captureLifeOpsManualOverride(
       data: CaptureLifeOpsManualOverrideRequest,
     ): Promise<LifeOpsManualOverrideResult>;
+    getLifeOpsScheduleInspection(
+      timezone: string,
+    ): Promise<LifeOpsScheduleInspectionResponse>;
+    getLifeOpsFullDiskAccessStatus(): Promise<FullDiskAccessProbeResult>;
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
@@ -515,6 +603,39 @@ ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
   );
 };
 
+ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("since", data.since);
+  params.set("until", data.until);
+  if (data.source) {
+    params.set("source", data.source);
+  }
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  return this.fetch<LifeOpsScreenTimeBreakdown>(
+    `/api/lifeops/screen-time/breakdown?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsSocialHabitSummary = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("since", data.since);
+  params.set("until", data.until);
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  return this.fetch<LifeOpsSocialHabitSummary>(
+    `/api/lifeops/social/summary?${params.toString()}`,
+  );
+};
+
 ElizaClient.prototype.getLifeOpsSeedTemplates = async function (
   this: ElizaClient,
 ) {
@@ -740,6 +861,21 @@ ElizaClient.prototype.captureLifeOpsManualOverride = async function (
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+ElizaClient.prototype.getLifeOpsScheduleInspection = async function (
+  this: ElizaClient,
+  timezone,
+) {
+  const params = new URLSearchParams();
+  params.set("timezone", timezone);
+  return this.fetch(`/api/lifeops/schedule/inspection?${params.toString()}`);
+};
+
+ElizaClient.prototype.getLifeOpsFullDiskAccessStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/permissions/full-disk-access");
 };
 
 ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
