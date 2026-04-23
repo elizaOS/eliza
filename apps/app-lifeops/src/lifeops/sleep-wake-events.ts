@@ -13,7 +13,7 @@ import { parseIsoMs } from "./time-util.js";
  * tick. Every field is derived from the merged state record, and must not
  * contain `unknown` / `any` (per repo rule).
  */
-export interface LifeOpsDerivedEventPayload {
+interface LifeOpsDerivedEventPayload {
   currentStateId: string;
   previousStateId: string | null;
   sleepStatus: LifeOpsScheduleSleepStatus;

@@ -146,13 +146,13 @@ export function LifeOpsNavRail({
         <SidebarScrollRegion className="px-1 pb-3 pt-0">
           <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
             <div className="space-y-3">
-              {NAV_GROUPS.map((group) => (
-                <div key={group.key}>
-                  <SidebarContent.SectionHeader className="px-3 !mb-1">
-                    <SidebarContent.SectionLabel className="text-[0.625rem]">
-                      {group.label}
-                    </SidebarContent.SectionLabel>
-                  </SidebarContent.SectionHeader>
+              {NAV_GROUPS.map((group, groupIndex) => (
+                <div
+                  key={group.key}
+                  className={
+                    groupIndex > 0 ? "border-t border-border/10 pt-3" : ""
+                  }
+                >
                   <div className="space-y-0.5 px-1">
                     {group.items.map((item) => {
                       const isActive = item.id === activeSection;
