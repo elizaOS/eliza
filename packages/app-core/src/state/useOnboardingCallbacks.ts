@@ -36,7 +36,6 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
-import { getResetConnectionWizardToHostingStepPatch } from "../onboarding/connection-flow";
 import {
   canRevertOnboardingTo,
   getFlaminaTopicForOnboardingStep,
@@ -766,9 +765,23 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
   );
 
   // ── applyResetConnectionWizardToHostingStep ───────────────────────
-
+  // Clears any residual onboarding selection state. The old wizard used
+  // this when jumping back to the "hosting" step so a stale remote/
+  // provider screen wouldn't bleed through. RuntimeGate doesn't jump
+  // between steps, but this still runs on revert paths.
   const applyResetConnectionWizardToHostingStep = useCallback(() => {
-    const patch = getResetConnectionWizardToHostingStepPatch();
+    const patch = {
+      onboardingServerTarget: "" as const,
+      onboardingCloudApiKey: "",
+      onboardingApiKey: "",
+      onboardingPrimaryModel: "",
+      onboardingProvider: "",
+      onboardingRemoteApiBase: "",
+      onboardingRemoteToken: "",
+      onboardingRemoteConnected: false,
+      onboardingRemoteError: null,
+      onboardingRemoteConnecting: false,
+    };
     if (patch.onboardingServerTarget !== undefined) {
       persistMobileRuntimeModeForServerTarget(patch.onboardingServerTarget);
       setOnboardingServerTarget(patch.onboardingServerTarget);

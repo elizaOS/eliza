@@ -73,8 +73,9 @@ export function StartupShell() {
   //
   // IMPORTANT: deps must NOT include the unstable `startupCoordinator` object
   // reference. Including it caused the probe to be cancelled on every re-render
-  // (OnboardingWizard triggers many state updates), killing the in-flight fetch.
-  // We use a ref to access the coordinator's dispatch function instead.
+  // (RuntimeGate triggers state updates when the cloud login resolves), killing
+  // the in-flight fetch. We use a ref to access the coordinator's dispatch
+  // function instead.
   const coordinatorDispatchRef = useRef(startupCoordinator.dispatch);
   coordinatorDispatchRef.current = startupCoordinator.dispatch;
   const coordinatorStateRef = useRef(startupCoordinator.state);
@@ -160,8 +161,9 @@ export function StartupShell() {
   }, [phase, setState]);
 
   // ── Auto-continue splash ──────────────────────────────────────
-  // The deployment chooser now lives inside OnboardingWizard (DeploymentStep).
-  // The splash phase becomes a pure loading screen that auto-advances.
+  // The deployment chooser now lives inside RuntimeGate. The splash phase
+  // is a pure loading screen that auto-advances to onboarding-required,
+  // which renders RuntimeGate when the user hasn't been onboarded yet.
   useEffect(() => {
     if (isSplash && splashLoaded) {
       startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
