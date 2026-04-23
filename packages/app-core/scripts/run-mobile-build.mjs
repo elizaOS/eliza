@@ -490,6 +490,15 @@ function patchCapacitorBarcodeScannerGradle() {
   );
 }
 
+function patchLlamaCppCapacitorGradle() {
+  const pkgRel = resolvePackagePath("llama-cpp-capacitor", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "llama-cpp-capacitor",
+  );
+}
+
 function patchGradleFileForAgp9(filePath, label) {
   if (!fs.existsSync(filePath)) return;
   const current = fs.readFileSync(filePath, "utf8");
@@ -498,10 +507,14 @@ function patchGradleFileForAgp9(filePath, label) {
       /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
       "",
     )
-    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n");
+    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n")
+    .replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
   if (patched !== current) {
     fs.writeFileSync(filePath, patched, "utf8");
-    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9 Kotlin.`);
+    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9.`);
   }
 }
 
@@ -1190,6 +1203,7 @@ function patchAndroidGradle() {
   }
 
   patchCapacitorBarcodeScannerGradle();
+  patchLlamaCppCapacitorGradle();
   patchNativePluginGradleForAgp9();
 
   const stringsPath = path.join(
