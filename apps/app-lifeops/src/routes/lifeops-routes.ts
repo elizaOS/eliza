@@ -24,7 +24,7 @@ import type {
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
-  GetLifeOpsUnifiedInboxRequest,
+  GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
@@ -1070,7 +1070,7 @@ export async function handleLifeOpsRoutes(
         }
         channels = parsedChannels;
       }
-      const request: GetLifeOpsUnifiedInboxRequest = { limit, channels };
+      const request: GetLifeOpsInboxRequest = { limit, channels };
       json(res, await service.getUnifiedInbox(request));
     });
   }
