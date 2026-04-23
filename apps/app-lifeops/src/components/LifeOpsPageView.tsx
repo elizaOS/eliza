@@ -5,17 +5,27 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
+  useMediaQuery,
   useApp,
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
 } from "../events/index.js";
 import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
-import { useLifeOpsSection } from "../hooks/useLifeOpsSection.js";
+import {
+  type LifeOpsSection,
+  useLifeOpsSection,
+} from "../hooks/useLifeOpsSection.js";
 import {
   consumeQueuedLifeOpsGithubCallback,
   dispatchLifeOpsGithubCallbackFromWindowMessage,
@@ -89,6 +99,8 @@ type TranslateFn = (
   key: string,
   options?: Record<string, unknown> & { defaultValue?: string },
 ) => string;
+
+const LIFEOPS_COMPACT_LAYOUT_MEDIA_QUERY = "(max-width: 1023px)";
 
 function buildOwnerGithubRedirectUrl(): string {
   const params = new URLSearchParams();
@@ -440,6 +452,52 @@ function LifeOpsPageChat() {
   );
 }
 
+interface LifeOpsWorkspaceMainProps {
+  compactLayout: boolean;
+  section: LifeOpsSection;
+  navigate: (section: LifeOpsSection) => void;
+  children: ReactNode;
+}
+
+export function LifeOpsWorkspaceMain({
+  compactLayout,
+  section,
+  navigate,
+  children,
+}: LifeOpsWorkspaceMainProps) {
+  return (
+    <div className="flex h-full min-h-0 min-w-0">
+      {compactLayout ? null : (
+        <LifeOpsResizableSidebar
+          storageKey="lifeops:nav-rail-width"
+          defaultWidth={296}
+          minWidth={220}
+          maxWidth={420}
+          side="right"
+          testId="lifeops-nav-rail-resizable"
+          className="border-r border-border/12"
+        >
+          <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
+        </LifeOpsResizableSidebar>
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {compactLayout ? (
+          <div className="border-b border-border/12 px-4 py-3 sm:px-6">
+            <LifeOpsNavRail
+              activeSection={section}
+              onNavigate={navigate}
+              layout="compact"
+            />
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Inner view — rendered inside SelectionProvider ────────────────── */
 export function LifeOpsPageView() {
   return (
@@ -473,6 +531,7 @@ function LifeOpsWorkspaceInner() {
   const [busyAgentGithubId, setBusyAgentGithubId] = useState<string | null>(
     null,
   );
+  const compactLayout = useMediaQuery(LIFEOPS_COMPACT_LAYOUT_MEDIA_QUERY);
 
   const { section, navigate, eventId, messageId } = useLifeOpsSection();
   const { select } = useLifeOpsSelection();
@@ -1008,24 +1067,13 @@ function LifeOpsWorkspaceInner() {
     <AppWorkspaceChrome
       testId="lifeops-shell"
       main={
-        <div className="flex h-full min-h-0">
-          <LifeOpsResizableSidebar
-            storageKey="lifeops:nav-rail-width"
-            defaultWidth={296}
-            minWidth={220}
-            maxWidth={420}
-            side="right"
-            testId="lifeops-nav-rail-resizable"
-            className="border-r border-border/12"
-          >
-            <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
-          </LifeOpsResizableSidebar>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
-              {mainContent}
-            </div>
-          </div>
-        </div>
+        <LifeOpsWorkspaceMain
+          compactLayout={compactLayout}
+          section={section}
+          navigate={navigate}
+        >
+          {mainContent}
+        </LifeOpsWorkspaceMain>
       }
       chat={<LifeOpsPageChat />}
     />
