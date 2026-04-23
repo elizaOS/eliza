@@ -3,7 +3,13 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-import { MessagesSquare } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  Layers3,
+  MessagesSquare,
+  Sparkles,
+} from "lucide-react";
 
 import "./components/chat/chat-source-registration";
 import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
@@ -96,17 +102,32 @@ function prefillWalletChat(text: string): void {
 }
 
 function WalletChatGuideBody() {
+  const items = [
+    {
+      icon: ArrowLeftRight,
+      label: "Swap, bridge, send, or receive",
+    },
+    {
+      icon: Layers3,
+      label: "Inspect tokens, NFTs, LPs, and agent trades",
+    },
+    {
+      icon: Sparkles,
+      label: "Connect Vincent for Hyperliquid or Polymarket",
+    },
+  ];
+
   return (
-    <div className="space-y-2">
-      <div>
-        Ask me to prepare wallet actions, inspect live inventory, or review
-        trading context.
-      </div>
-      <div className="grid gap-1.5 text-xs-tight text-muted">
-        <div>Swap, bridge, send, or receive tokens</div>
-        <div>Review P&L, activity, NFTs, and LP assets</div>
-        <div>Connect Vincent for Hyperliquid or Polymarket</div>
-      </div>
+    <div className="grid gap-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="flex items-center gap-2 text-xs-tight text-muted"
+        >
+          <item.icon className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span>{item.label}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -117,21 +138,25 @@ function WalletChatGuideActions() {
       label: "Swap",
       prompt:
         "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction.",
+      icon: ArrowLeftRight,
     },
     {
       label: "Bridge",
       prompt:
         "Prepare a bridge. Ask me for token, amount, destination address, destination network requirements, and route before any transaction.",
+      icon: Layers3,
     },
     {
       label: "Receive",
       prompt:
         "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
+      icon: ArrowDownLeft,
     },
     {
       label: "Vincent",
       prompt:
         "Check whether Vincent is connected for Hyperliquid and Polymarket. If it is not connected, help me connect it before any trading action.",
+      icon: Sparkles,
     },
   ];
 
@@ -145,6 +170,7 @@ function WalletChatGuideActions() {
           className="rounded-full"
           onClick={() => prefillWalletChat(action.prompt)}
         >
+          <action.icon className="mr-1.5 h-3.5 w-3.5" />
           {action.label}
         </Button>
       ))}
