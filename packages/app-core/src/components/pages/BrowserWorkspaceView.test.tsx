@@ -202,4 +202,36 @@ describe("BrowserWorkspaceView", () => {
       "/api/browser-bridge/packages",
     );
   });
+
+  it("locks internal tabs so the URL cannot be edited and the tab cannot be closed", async () => {
+    clientMock!.getBrowserWorkspace.mockResolvedValue({
+      mode: "web",
+      tabs: [
+        {
+          id: "discord-internal",
+          title: "Discord",
+          url: "https://discord.com/channels/@me",
+          partition: "lifeops-discord-agent-1-owner",
+          kind: "internal",
+          visible: true,
+          createdAt: "2026-04-23T00:00:00.000Z",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+          lastFocusedAt: "2026-04-23T00:00:00.000Z",
+        },
+      ],
+    });
+
+    render(<BrowserWorkspaceView />);
+
+    const addressInput = await screen.findByDisplayValue(
+      "https://discord.com/channels/@me",
+    );
+    await waitFor(() => {
+      expect((addressInput as HTMLInputElement).disabled).toBe(true);
+    });
+    expect(screen.queryByRole("button", { name: "Close tab" })).toBeNull();
+    expect(
+      screen.queryByText(/Internal.*discord\.com\/channels\/@me/i),
+    ).not.toBeNull();
+  });
 });

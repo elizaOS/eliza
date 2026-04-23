@@ -403,6 +403,7 @@ export function registerRpcHandlers(
         title?: string;
         show?: boolean;
         partition?: string;
+        kind?: "internal" | "standard";
         width?: number;
         height?: number;
       } | null,
@@ -412,6 +413,7 @@ export function registerRpcHandlers(
         title: params?.title,
         show: params?.show,
         partition: params?.partition,
+        kind: params?.kind,
         width: params?.width,
         height: params?.height,
       }),

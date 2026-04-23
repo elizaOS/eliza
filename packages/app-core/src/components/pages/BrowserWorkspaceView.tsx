@@ -134,6 +134,16 @@ function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   }
 }
 
+function getBrowserWorkspaceTabKind(
+  tab: BrowserWorkspaceTab,
+): "internal" | "standard" {
+  return tab.kind === "internal" ? "internal" : "standard";
+}
+
+function isInternalBrowserWorkspaceTab(tab: BrowserWorkspaceTab): boolean {
+  return getBrowserWorkspaceTabKind(tab) === "internal";
+}
+
 function getBrowserWorkspaceTabLabel(
   tab: BrowserWorkspaceTab,
   t: TranslateFn,
@@ -153,6 +163,10 @@ function getBrowserWorkspaceTabDescription(
   mode: BrowserWorkspaceSnapshot["mode"],
 ): string {
   const details: string[] = [];
+
+  if (isInternalBrowserWorkspaceTab(tab)) {
+    details.push("Internal");
+  }
 
   if (mode !== "web") {
     if (tab.provider?.trim()) {
@@ -248,6 +262,12 @@ export function BrowserWorkspaceView(): JSX.Element {
     : null;
   const selectedTabLiveViewUrl =
     selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
+  const selectedTabIsInternal = selectedTab
+    ? isInternalBrowserWorkspaceTab(selectedTab)
+    : false;
+  const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
+    ? "about:blank"
+    : locationInput || "about:blank";
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(
@@ -472,6 +492,13 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
+      if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
+        throw new Error(
+          t("browserworkspace.InternalTabUrlManaged", {
+            defaultValue: "This internal tab manages its own URL.",
+          }),
+        );
+      }
       const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
         throw new Error(
@@ -504,6 +531,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     [
       loadWorkspace,
       openNewBrowserWorkspaceTab,
+      selectedTab,
       selectedTabId,
       t,
       workspace.mode,
@@ -937,7 +965,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           aria-label={newTabLabel}
           onClick={() =>
             void runBrowserWorkspaceAction("open:new", async () => {
-              await openNewBrowserWorkspaceTab(locationInput || "about:blank");
+              await openNewBrowserWorkspaceTab(newBrowserWorkspaceTabSeedUrl);
             })
           }
         >
@@ -989,7 +1017,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                   onClick={() =>
                     void runBrowserWorkspaceAction("open:new", async () => {
                       await openNewBrowserWorkspaceTab(
-                        locationInput || "about:blank",
+                        newBrowserWorkspaceTabSeedUrl,
                       );
                     })
                   }
@@ -1073,34 +1101,36 @@ export function BrowserWorkspaceView(): JSX.Element {
                         </SidebarContent.ItemBody>
                       </SidebarContent.ItemButton>
                     </SidebarContent.Item>
-                    <SidebarContent.ItemAction
-                      aria-label={closeTabLabel}
-                      title={closeTabLabel}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runBrowserWorkspaceAction(
-                          `close:${tab.id}`,
-                          async () => {
-                            await client.closeBrowserWorkspaceTab(tab.id);
-                            const snapshot = await client.getBrowserWorkspace();
-                            const nextId =
-                              snapshot.tabs.find((t) => t.id === selectedTabId)
-                                ?.id ??
-                              snapshot.tabs[0]?.id ??
-                              null;
-                            if (nextId && nextId !== selectedTabId) {
-                              await client.showBrowserWorkspaceTab(nextId);
-                            }
-                            await loadWorkspace({
-                              preferTabId: nextId,
-                              silent: true,
-                            });
-                          },
-                        );
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </SidebarContent.ItemAction>
+                    {isInternalBrowserWorkspaceTab(tab) ? null : (
+                      <SidebarContent.ItemAction
+                        aria-label={closeTabLabel}
+                        title={closeTabLabel}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void runBrowserWorkspaceAction(
+                            `close:${tab.id}`,
+                            async () => {
+                              await client.closeBrowserWorkspaceTab(tab.id);
+                              const snapshot = await client.getBrowserWorkspace();
+                              const nextId =
+                                snapshot.tabs.find((t) => t.id === selectedTabId)
+                                  ?.id ??
+                                snapshot.tabs[0]?.id ??
+                                null;
+                              if (nextId && nextId !== selectedTabId) {
+                                await client.showBrowserWorkspaceTab(nextId);
+                              }
+                              await loadWorkspace({
+                                preferTabId: nextId,
+                                silent: true,
+                              });
+                            },
+                          );
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </SidebarContent.ItemAction>
+                    )}
                   </div>
                 );
               })}
@@ -1142,8 +1172,11 @@ export function BrowserWorkspaceView(): JSX.Element {
           }
         }}
         placeholder={t("browserworkspace.AddressPlaceholder", {
-          defaultValue: "Enter a URL",
+          defaultValue: selectedTabIsInternal
+            ? "Internal tab URL is managed by the app"
+            : "Enter a URL",
         })}
+        disabled={busyAction !== null || selectedTabIsInternal}
         className="h-8 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <Button
@@ -1404,10 +1437,15 @@ export function BrowserWorkspaceView(): JSX.Element {
               </div>
               <div className="truncate">{selectedTab.url}</div>
               <div className="mt-1">
-                {t("browserworkspace.RealSessionDescription", {
-                  defaultValue:
-                    "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
-                })}
+                {selectedTabIsInternal
+                  ? t("browserworkspace.InternalSessionDescription", {
+                      defaultValue:
+                        "This is an internal app-managed browser session. Use LifeOps actions to steer it; the URL is locked in the Browser view.",
+                    })
+                  : t("browserworkspace.RealSessionDescription", {
+                      defaultValue:
+                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
+                    })}
               </div>
             </div>
           ) : null}

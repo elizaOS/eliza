@@ -1278,6 +1278,37 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (method === "GET" && pathname === "/api/lifeops/connectors/x/success") {
+    const rawSide = url.searchParams.get("side");
+    const rawMode = url.searchParams.get("mode");
+    const connected = url.searchParams.get("twitter_connected") === "true";
+    const error =
+      url.searchParams.get("twitter_error_detail") ??
+      url.searchParams.get("twitter_error");
+    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
+      ctx.error(res, "side must be one of: owner, agent", 400);
+      return true;
+    }
+    if (
+      rawMode !== null &&
+      rawMode !== "local" &&
+      rawMode !== "remote" &&
+      rawMode !== "cloud_managed"
+    ) {
+      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
+      return true;
+    }
+    writeHtml(
+      res,
+      connected && !error ? 200 : 400,
+      connected && !error ? "X Connected" : "X Connection Failed",
+      connected && !error
+        ? "X access is now available in Eliza. You can close this window."
+        : (error ?? "X authorization did not complete successfully."),
+    );
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
@@ -1660,6 +1691,15 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/whatsapp/status"
+  ) {
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getWhatsAppConnectorStatus());
+    });
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/channel-policies") {
     return runRoute(ctx, async (service) => {
       json(res, { policies: await service.listChannelPolicies() });
@@ -1900,10 +1940,7 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/schedule/summary") {
     const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
     return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.readScheduleSummary({ timezone: timezoneParam }),
-      );
+      json(res, await service.readScheduleSummary({ timezone: timezoneParam }));
     });
   }
 

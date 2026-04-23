@@ -2,6 +2,8 @@ import type { JSDOM } from "jsdom";
 
 export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
 
+export type BrowserWorkspaceTabKind = "internal" | "standard";
+
 export type BrowserWorkspaceOperation =
   | "list"
   | "open"
@@ -156,6 +158,7 @@ export interface BrowserWorkspaceTab {
   title: string;
   url: string;
   partition: string;
+  kind?: BrowserWorkspaceTabKind;
   visible: boolean;
   createdAt: string;
   updatedAt: string;
@@ -185,6 +188,7 @@ export interface OpenBrowserWorkspaceTabRequest {
   title?: string;
   show?: boolean;
   partition?: string;
+  kind?: BrowserWorkspaceTabKind;
   width?: number;
   height?: number;
 }
