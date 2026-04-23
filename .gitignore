@@ -410,3 +410,4 @@ packages/app-core/platforms/electrobun/artifacts/
 
 # Compiled native dylibs (rebuild from source)
 packages/app-core/platforms/electrobun/src/*.dylib
+benchmark_results/

@@ -2104,6 +2104,8 @@
   "settings.resetEverything": "I-reset Lahat",
   "settings.rpcConfiguration": "RPC Configuration",
   "settings.sections.advanced.desc": "Export, import, at mga mapanganib na aksyon",
+  "settings.sections.backupReset.desc": "I-backup ang agent, i-restore mula sa backup, o burahin ang lahat at magsimula muli",
+  "settings.sections.backupReset.label": "Backup at I-reset",
   "settings.sections.aimodel.desc": "Mga setting ng provider at model",
   "settings.sections.aimodel.label": "Modelo ng AI",
   "settings.sections.appearance.desc": "Content packs, VRM avatars, backgrounds, at mga tema",
