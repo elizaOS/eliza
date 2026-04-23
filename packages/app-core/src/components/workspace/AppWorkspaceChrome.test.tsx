@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
+
+const { useMediaQueryMock } = vi.hoisted(() => ({
+  useMediaQueryMock: vi.fn(),
+}));
+
+vi.mock("../../hooks", () => ({
+  useMediaQuery: (query: string) => useMediaQueryMock(query),
+}));
 
 vi.mock("../pages/ChatView.js", () => ({
   ChatView: () => <div data-testid="default-chat" />,
@@ -15,6 +23,11 @@ vi.mock("../pages/PageScopedChatPane.js", () => ({
 }));
 
 describe("AppWorkspaceChrome", () => {
+  beforeEach(() => {
+    useMediaQueryMock.mockReset();
+    useMediaQueryMock.mockReturnValue(false);
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -60,5 +73,33 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
       "page-apps",
     );
+  });
+
+  it("does not reserve right-chat width on mobile until the user opens it", () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    render(
+      <AppWorkspaceChrome
+        testId="mobile-shell"
+        main={<div data-testid="mobile-main">Mobile content</div>}
+        chat={<div data-testid="mobile-chat">Chat content</div>}
+      />,
+    );
+
+    const collapsedSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
+    expect(collapsedSidebar.getAttribute("data-collapsed")).not.toBeNull();
+    expect(screen.getByTestId("mobile-main")).toBeTruthy();
+    expect(screen.queryByTestId("mobile-chat")).toBeNull();
+    expect(screen.queryByTestId("mobile-shell-chat-resize-handle")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("mobile-shell-chat-expand"));
+
+    const openSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
+    expect(openSidebar.className).toContain("fixed");
+    expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
+    expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
+    expect(screen.getByTestId("mobile-chat")).toBeTruthy();
   });
 });
