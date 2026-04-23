@@ -59,5 +59,10 @@
         "sensitive": false
       }
     }
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
   }
 }
