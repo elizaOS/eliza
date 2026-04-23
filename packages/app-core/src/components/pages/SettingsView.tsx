@@ -327,8 +327,8 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   },
   {
     id: "advanced",
-    label: "nav.advanced",
-    description: "settings.sections.advanced.desc",
+    label: "settings.sections.backupReset.label",
+    description: "settings.sections.backupReset.desc",
     keywords: [
       "advanced",
       "export",
@@ -338,6 +338,8 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "backup",
       "restore",
       "danger zone",
+      "wipe",
+      "start over",
     ],
     keywordKeys: [
       "settings.keyword.advanced",
@@ -345,7 +347,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.import",
       "settings.keyword.reset",
     ],
-    level: "advanced",
   },
 ];
 
@@ -1160,8 +1161,8 @@ export function SettingsView({
       {visibleSectionIds.has("advanced") && (
         <SettingsSection
           id="advanced"
-          title={t("nav.advanced")}
-          description={t("settings.sections.advanced.desc")}
+          title={t("settings.sections.backupReset.label")}
+          description={t("settings.sections.backupReset.desc")}
           ref={registerContentItem("advanced")}
         >
           <AdvancedSection />

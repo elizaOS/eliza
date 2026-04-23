@@ -2104,6 +2104,8 @@
   "settings.resetEverything": "Redefinir tudo",
   "settings.rpcConfiguration": "Configuração RPC",
   "settings.sections.advanced.desc": "Exportação, importação e ações perigosas",
+  "settings.sections.backupReset.desc": "Faça backup do agente, restaure de um backup ou apague tudo e comece do zero",
+  "settings.sections.backupReset.label": "Backup e Redefinir",
   "settings.sections.aimodel.desc": "Configurações de provedores e modelos",
   "settings.sections.aimodel.label": "Modelo de IA",
   "settings.sections.appearance.desc": "Pacotes de conteúdo, avatares VRM, fundos e temas",

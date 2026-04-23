@@ -2104,6 +2104,8 @@
   "settings.resetEverything": "모든 것을 재설정",
   "settings.rpcConfiguration": "RPC 구성",
   "settings.sections.advanced.desc": "내보내기, 가져오기 및 위험한 작업",
+  "settings.sections.backupReset.desc": "에이전트를 백업하고, 백업에서 복원하거나, 모두 지우고 처음부터 다시 시작합니다",
+  "settings.sections.backupReset.label": "백업 및 초기화",
   "settings.sections.aimodel.desc": "제공자 및 모델 설정",
   "settings.sections.aimodel.label": "AI 모델",
   "settings.sections.appearance.desc": "콘텐츠 팩, VRM 아바타, 배경 및 테마",
