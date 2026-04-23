@@ -22,7 +22,7 @@
     "@polymarket/clob-client": "^5.2.0",
     "dotenv": "^16.6.1",
     "tsx": "^4.21.0",
-    "uuid": "^11.1.0",
+    "uuid": "^14.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -13,7 +13,7 @@
     "@elizaos/plugin-inmemorydb": "alpha",
     "@elizaos/plugin-local-ai": "alpha",
     "@elizaos/plugin-shell": "alpha",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
