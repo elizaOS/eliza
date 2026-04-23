@@ -33,8 +33,8 @@ import {
 	createKnowledgeNoteFilename,
 	deriveKnowledgeTitle,
 	generateContentBasedId,
-	isTextBackedKnowledgeContent,
 	isBinaryContentType,
+	isTextBackedKnowledgeContent,
 	looksLikeBase64,
 	stripKnowledgeFilenameExtension,
 } from "./utils.ts";
@@ -704,7 +704,9 @@ export class KnowledgeService extends Service {
 		documentId: UUID;
 		fragmentCount: number;
 	}> {
-		const existingDocument = await this.runtime.getMemoryById(options.documentId);
+		const existingDocument = await this.runtime.getMemoryById(
+			options.documentId,
+		);
 		if (!existingDocument) {
 			throw new Error(`Knowledge document ${options.documentId} not found`);
 		}
@@ -716,7 +718,7 @@ export class KnowledgeService extends Service {
 			existingMetadata.filename.trim().length > 0
 				? existingMetadata.filename.trim()
 				: typeof existingMetadata.originalFilename === "string" &&
-					  existingMetadata.originalFilename.trim().length > 0
+						existingMetadata.originalFilename.trim().length > 0
 					? existingMetadata.originalFilename.trim()
 					: createKnowledgeNoteFilename(
 							deriveKnowledgeTitle(options.content, "Knowledge note"),

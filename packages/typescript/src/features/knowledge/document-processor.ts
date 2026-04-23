@@ -21,14 +21,14 @@ import {
 	getPromptForMimeType,
 } from "./ctx-embeddings.ts";
 import { generateText } from "./llm.ts";
-import {
-	convertPdfToTextFromBuffer,
-	extractTextFromFileBuffer,
-} from "./utils.ts";
 import type {
 	KnowledgeDocumentMemoryMetadata,
 	KnowledgeFragmentMemoryMetadata,
 } from "./types.ts";
+import {
+	convertPdfToTextFromBuffer,
+	extractTextFromFileBuffer,
+} from "./utils.ts";
 
 function estimateTokens(text: string): number {
 	return Math.ceil(text.length / 4);

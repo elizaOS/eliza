@@ -1,9 +1,9 @@
 import z from "zod";
-import { MemoryType } from "../../types";
 import type {
 	Content,
 	DocumentMetadata,
 	FragmentMetadata,
+	MemoryType,
 	UUID,
 } from "../../types";
 import type { ServiceTypeRegistry } from "../../types/service.ts";

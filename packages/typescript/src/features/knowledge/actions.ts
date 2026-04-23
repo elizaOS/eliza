@@ -17,10 +17,7 @@ import type {
 } from "../../types";
 import { addKnowledgeFromFilePath } from "./docs-loader.ts";
 import { KnowledgeService } from "./service.ts";
-import {
-	createKnowledgeNoteFilename,
-	deriveKnowledgeTitle,
-} from "./utils.ts";
+import { createKnowledgeNoteFilename, deriveKnowledgeTitle } from "./utils.ts";
 
 type ExtendedValidator = (
 	runtime: IAgentRuntime,
