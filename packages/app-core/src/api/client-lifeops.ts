@@ -1,11 +1,16 @@
 import type {
   GetLifeOpsCalendarFeedRequest,
+  GetLifeOpsGmailRecommendationsRequest,
+  GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   LifeOpsCalendarFeed,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailManageResult,
+  LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
+  LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoogleConnectorStatus,
@@ -25,6 +30,15 @@ declare module "./client-base" {
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
+    getLifeOpsGmailSearch(
+      options: GetLifeOpsGmailSearchRequest,
+    ): Promise<LifeOpsGmailSearchFeed>;
+    getLifeOpsGmailNeedsResponse(
+      options?: GetLifeOpsGmailTriageRequest,
+    ): Promise<LifeOpsGmailNeedsResponseFeed>;
+    getLifeOpsGmailRecommendations(
+      options?: GetLifeOpsGmailRecommendationsRequest,
+    ): Promise<LifeOpsGmailRecommendationsFeed>;
     getLifeOpsGmailUnresponded(
       options?: GetLifeOpsGmailUnrespondedRequest,
     ): Promise<LifeOpsGmailUnrespondedFeed>;
@@ -94,9 +108,55 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
   appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
   appendOptionalParam(params, "forceSync", options.forceSync);
   appendOptionalParam(params, "maxResults", options.maxResults);
   return this.fetch(`/api/lifeops/gmail/triage${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailSearch = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "mode", options.mode);
+  appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
+  appendOptionalParam(params, "forceSync", options.forceSync);
+  appendOptionalParam(params, "maxResults", options.maxResults);
+  appendOptionalParam(params, "query", options.query);
+  appendOptionalParam(params, "replyNeededOnly", options.replyNeededOnly);
+  appendOptionalParam(params, "includeSpamTrash", options.includeSpamTrash);
+  return this.fetch(`/api/lifeops/gmail/search${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "mode", options.mode);
+  appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
+  appendOptionalParam(params, "forceSync", options.forceSync);
+  appendOptionalParam(params, "maxResults", options.maxResults);
+  return this.fetch(`/api/lifeops/gmail/needs-response${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "mode", options.mode);
+  appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
+  appendOptionalParam(params, "forceSync", options.forceSync);
+  appendOptionalParam(params, "maxResults", options.maxResults);
+  appendOptionalParam(params, "query", options.query);
+  appendOptionalParam(params, "replyNeededOnly", options.replyNeededOnly);
+  appendOptionalParam(params, "includeSpamTrash", options.includeSpamTrash);
+  return this.fetch(`/api/lifeops/gmail/recommendations${buildQuery(params)}`);
 };
 
 ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
