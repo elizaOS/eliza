@@ -24,9 +24,12 @@ import {
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
+  PieChart,
   RefreshCw,
   Settings,
   Sparkles,
+  TrendingDown,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -57,14 +60,13 @@ const HIDDEN_TOKEN_IDS_KEY = "milady:wallet:hidden-token-ids:v1";
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 const VINCENT_APP_NAME = "@elizaos/app-vincent";
 
-const LP_PROTOCOLS = ["Uniswap", "Raydium", "Meteora", "PancakeSwap"] as const;
-type LpProtocol = (typeof LP_PROTOCOLS)[number];
-
-interface LpPositionPreview {
-  protocol: LpProtocol;
+interface InventoryPositionAsset {
+  id: string;
+  kind: "token" | "nft";
   label: string;
   detail: string;
   valueUsd: number | null;
+  imageUrl: string | null;
 }
 
 const usdFormatter = new Intl.NumberFormat("en-US", {
@@ -184,6 +186,63 @@ function tokenHasInventory(row: TokenRow): boolean {
   return row.balanceRaw > 0 || row.valueUsd > 0;
 }
 
+function assetAllocationRows(rows: TokenRow[]): TokenRow[] {
+  return rows
+    .filter((row) => row.valueUsd > 0)
+    .sort((left, right) => right.valueUsd - left.valueUsd)
+    .slice(0, 5);
+}
+
+function looksLikeLpPosition(value: string): boolean {
+  const text = ` ${value.toLowerCase()} `;
+  return (
+    text.includes(" liquidity ") ||
+    text.includes(" lp ") ||
+    text.includes("-lp") ||
+    text.includes("/lp") ||
+    text.includes(" pool ") ||
+    text.includes(" position ") ||
+    text.includes(" clmm ") ||
+    text.includes(" amm ")
+  );
+}
+
+function deriveInventoryPositionAssets({
+  tokenRows,
+  nfts,
+}: {
+  tokenRows: TokenRow[];
+  nfts: NftItem[];
+}): InventoryPositionAsset[] {
+  const positions: InventoryPositionAsset[] = [];
+
+  for (const row of tokenRows) {
+    if (!looksLikeLpPosition(`${row.name} ${row.symbol}`)) continue;
+    positions.push({
+      id: `token:${tokenId(row)}`,
+      kind: "token",
+      label: row.symbol,
+      detail: `${formatBalance(row.balance)} ${row.symbol}`,
+      valueUsd: row.valueUsd,
+      imageUrl: row.logoUrl,
+    });
+  }
+
+  for (const nft of nfts) {
+    if (!looksLikeLpPosition(`${nft.collectionName} ${nft.name}`)) continue;
+    positions.push({
+      id: `nft:${nft.collectionName}:${nft.name}:${nft.imageUrl}`,
+      kind: "nft",
+      label: nft.name,
+      detail: nft.collectionName,
+      valueUsd: null,
+      imageUrl: nft.imageUrl,
+    });
+  }
+
+  return positions;
+}
+
 function dispatchWalletChatPrefill(text: string): void {
   window.dispatchEvent(
     new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
@@ -195,9 +254,11 @@ function dispatchWalletChatPrefill(text: string): void {
 function TokenPerformance({
   row,
   profile,
+  maxAbsPnl,
 }: {
   row: TokenRow;
   profile: WalletTradingProfileResponse | null;
+  maxAbsPnl: number;
 }) {
   const normalizedAddress = normalizeTokenAddress(row.contractAddress);
   const breakdown =
@@ -208,41 +269,155 @@ function TokenPerformance({
       : null;
 
   if (!breakdown) {
-    return <span className="text-[0.68rem] text-muted">No history</span>;
+    return null;
   }
 
   const pnl = parseAmount(breakdown.realizedPnlBnb);
-  const bars = [1, 2, 3, 4, 5];
-  const tone =
-    pnl === null || pnl === 0
-      ? "text-muted"
-      : pnl > 0
-        ? "text-ok"
-        : "text-danger";
+  if (pnl === null) return null;
+
+  const width =
+    maxAbsPnl > 0 ? Math.max(18, (Math.abs(pnl) / maxAbsPnl) * 56) : 18;
+  const TrendIcon = pnl >= 0 ? TrendingUp : TrendingDown;
+  const tone = pnl === 0 ? "text-muted" : pnl > 0 ? "text-ok" : "text-danger";
+  const barTone =
+    pnl === 0 ? "bg-border" : pnl > 0 ? "bg-ok/80" : "bg-danger/80";
 
   return (
-    <span className="flex flex-col items-end gap-1">
-      <span className={cn("text-[0.68rem] font-medium", tone)}>
-        {pnl !== null && pnl > 0 ? "+" : ""}
+    <span className="flex min-w-[4.5rem] flex-col items-end gap-1">
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 text-[0.68rem] font-medium",
+          tone,
+        )}
+      >
+        <TrendIcon className="h-3 w-3" />
+        {pnl > 0 ? "+" : ""}
         {formatBnb(breakdown.realizedPnlBnb)}
       </span>
-      <span className="flex h-4 items-end gap-0.5" aria-hidden="true">
-        {bars.map((bar) => (
-          <span
-            key={bar}
-            className={cn(
-              "block w-1 rounded-sm",
-              pnl !== null && pnl > 0
-                ? "bg-ok/80"
-                : pnl !== null && pnl < 0
-                  ? "bg-danger/80"
-                  : "bg-border",
-            )}
-            style={{ height: `${4 + bar * 2}px` }}
-          />
-        ))}
+      <span
+        className="flex h-1.5 w-14 justify-end overflow-hidden rounded-full bg-border/45"
+        aria-hidden="true"
+      >
+        <span
+          className={cn("h-full rounded-full", barTone)}
+          style={{ width }}
+        />
       </span>
     </span>
+  );
+}
+
+function maxAbsTokenPnl(
+  rows: TokenRow[],
+  profile: WalletTradingProfileResponse | null,
+): number {
+  if (!profile) return 0;
+  let max = 0;
+  for (const row of rows) {
+    const normalizedAddress = normalizeTokenAddress(row.contractAddress);
+    if (!normalizedAddress) continue;
+    const breakdown = profile.tokenBreakdown.find(
+      (item) => item.tokenAddress.toLowerCase() === normalizedAddress,
+    );
+    const pnl = parseAmount(breakdown?.realizedPnlBnb);
+    if (pnl !== null) max = Math.max(max, Math.abs(pnl));
+  }
+  return max;
+}
+
+function AssetAllocationStrip({ rows }: { rows: TokenRow[] }) {
+  const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
+  const total = allocationRows.reduce((sum, row) => sum + row.valueUsd, 0);
+  if (total <= 0 || allocationRows.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex h-2 overflow-hidden rounded-full bg-border/40">
+        {allocationRows.map((row, index) => (
+          <span
+            key={tokenId(row)}
+            className={cn(
+              "h-full",
+              index === 0
+                ? "bg-accent"
+                : index === 1
+                  ? "bg-ok"
+                  : index === 2
+                    ? "bg-warn"
+                    : index === 3
+                      ? "bg-danger"
+                      : "bg-muted",
+            )}
+            style={{ width: `${(row.valueUsd / total) * 100}%` }}
+            title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
+          />
+        ))}
+      </div>
+      <div className="grid gap-1">
+        {allocationRows.slice(0, 3).map((row) => (
+          <div
+            key={tokenId(row)}
+            className="flex items-center justify-between gap-2 text-[0.68rem]"
+          >
+            <span className="truncate text-muted">{row.symbol}</span>
+            <span className="shrink-0 font-mono text-txt">
+              {formatUsd(row.valueUsd)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WalletCompositionPanel({ rows }: { rows: TokenRow[] }) {
+  const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
+  const compositionRows =
+    allocationRows.length > 0 ? allocationRows : rows.slice(0, 5);
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={Wallet}
+        title="No visible tokens"
+        body="No indexed token balances."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <AssetAllocationStrip rows={rows} />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {compositionRows.map((row) => (
+          <div
+            key={tokenId(row)}
+            className="flex min-w-0 items-center gap-3 rounded-lg border border-border/50 bg-bg/40 p-3"
+          >
+            <TokenLogo
+              symbol={row.symbol}
+              chain={row.chain}
+              contractAddress={row.contractAddress}
+              preferredLogoUrl={row.logoUrl}
+              size={34}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-txt">
+                {row.symbol}
+              </div>
+              <div className="truncate text-xs-tight text-muted">
+                {formatBalance(row.balance)}
+              </div>
+            </div>
+            {row.valueUsd > 0 ? (
+              <div className="shrink-0 font-mono text-sm font-semibold text-txt">
+                {formatUsd(row.valueUsd)}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -402,6 +577,14 @@ function TokenRail({
       );
     });
   }, [hiddenTokenIds, rows, searchQuery]);
+  const totalUsd = useMemo(
+    () => filteredRows.reduce((sum, row) => sum + row.valueUsd, 0),
+    [filteredRows],
+  );
+  const maxPnl = useMemo(
+    () => maxAbsTokenPnl(filteredRows, profile),
+    [filteredRows, profile],
+  );
 
   return (
     <Sidebar
@@ -426,11 +609,21 @@ function TokenRail({
             spellCheck: false,
           }}
         >
-          <div className="px-1">
-            <div className="text-sm font-semibold text-txt">Tokens</div>
-            <div className="text-xs-tight text-muted">
-              {filteredRows.length} visible
+          <div className="space-y-3 px-1">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                  Assets
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-txt">
+                  {formatUsd(totalUsd)}
+                </div>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-bg/45">
+                <Wallet className="h-5 w-5 text-accent" />
+              </div>
             </div>
+            <AssetAllocationStrip rows={filteredRows} />
           </div>
         </SidebarHeader>
       }
@@ -444,74 +637,80 @@ function TokenRail({
                 No tokens found
               </div>
               <div className="mt-1 text-xs-tight text-muted">
-                The agent slot inventory has no visible tokens.
+                No visible tokens in this wallet.
               </div>
             </SidebarContent.EmptyState>
           ) : (
             filteredRows.map((row) => (
               <div
                 key={tokenId(row)}
-                className="rounded-lg border border-border/50 bg-card/40 p-3 transition-colors hover:border-border"
+                className="group rounded-xl border border-border/45 bg-card/55 p-3 shadow-sm transition-colors hover:border-accent/35 hover:bg-card/80"
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3">
                   <TokenLogo
                     symbol={row.symbol}
                     chain={row.chain}
                     contractAddress={row.contractAddress}
                     preferredLogoUrl={row.logoUrl}
-                    size={34}
+                    size={42}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-txt">
+                        <div className="truncate text-base font-semibold text-txt">
                           {row.symbol}
                         </div>
                         <div className="truncate text-xs-tight text-muted">
-                          {row.name}
+                          {formatBalance(row.balance)}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-muted hover:text-danger"
-                        onClick={() => onHideToken(row)}
-                        aria-label={`Hide ${row.symbol}`}
-                        title={`Hide ${row.symbol}`}
-                      >
-                        <EyeOff className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate font-mono text-xs text-txt">
-                          {formatBalance(row.balance)} {row.symbol}
-                        </div>
-                        <div className="mt-0.5 text-xs-tight text-muted">
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-sm font-semibold text-txt">
                           {formatUsd(row.valueUsd)}
                         </div>
+                        <TokenPerformance
+                          row={row}
+                          profile={profile}
+                          maxAbsPnl={maxPnl}
+                        />
                       </div>
-                      <TokenPerformance row={row} profile={profile} />
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 flex-1 rounded-md px-2 text-xs"
-                        onClick={() => onTokenAction(row, "swap")}
-                      >
-                        <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" />
-                        Swap
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 flex-1 rounded-md px-2 text-xs"
-                        onClick={() => onTokenAction(row, "bridge")}
-                      >
-                        <Layers3 className="mr-1.5 h-3.5 w-3.5" />
-                        Bridge
-                      </Button>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0 truncate text-[0.68rem] text-muted">
+                        {row.name}
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 rounded-full"
+                          onClick={() => onTokenAction(row, "swap")}
+                          aria-label={`Swap ${row.symbol}`}
+                          title={`Swap ${row.symbol}`}
+                        >
+                          <ArrowLeftRight className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 rounded-full"
+                          onClick={() => onTokenAction(row, "bridge")}
+                          aria-label={`Bridge ${row.symbol}`}
+                          title={`Bridge ${row.symbol}`}
+                        >
+                          <Layers3 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-full text-muted hover:text-danger"
+                          onClick={() => onHideToken(row)}
+                          aria-label={`Hide ${row.symbol}`}
+                          title={`Hide ${row.symbol}`}
+                        >
+                          <EyeOff className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -587,7 +786,7 @@ function ActivityList({
       <EmptyState
         icon={Activity}
         title="No wallet activity yet"
-        body="Agent trades, swaps, bridges, and executed wallet actions will appear here once they settle."
+        body="No settled wallet actions."
       />
     );
   }
@@ -637,7 +836,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
       <EmptyState
         icon={ImageIcon}
         title="No NFTs detected"
-        body="NFT collections will appear here when they are present in the agent slot inventory."
+        body="No indexed NFT collections."
       />
     );
   }
@@ -675,117 +874,59 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
   );
 }
 
-function detectLpProtocol(value: string): LpProtocol | null {
-  const text = value.toLowerCase();
-  if (text.includes("uniswap")) return "Uniswap";
-  if (text.includes("raydium") || text.includes("radium")) return "Raydium";
-  if (text.includes("meteora")) return "Meteora";
-  if (text.includes("pancake")) return "PancakeSwap";
-  return null;
-}
-
-function looksLikeLpText(value: string): boolean {
-  const text = value.toLowerCase();
-  return (
-    text.includes("liquidity") ||
-    text.includes(" lp") ||
-    text.includes("-lp") ||
-    text.includes("pool") ||
-    text.includes("position")
-  );
-}
-
-function deriveLpPositions({
-  tokenRows,
-  nfts,
+function LpPositionsPanel({
+  positions,
 }: {
-  tokenRows: TokenRow[];
-  nfts: NftItem[];
-}): LpPositionPreview[] {
-  const positions: LpPositionPreview[] = [];
-
-  for (const row of tokenRows) {
-    const protocol = detectLpProtocol(`${row.name} ${row.symbol}`);
-    if (!protocol || !looksLikeLpText(`${row.name} ${row.symbol}`)) continue;
-    positions.push({
-      protocol,
-      label: row.symbol,
-      detail: `${formatBalance(row.balance)} ${row.symbol}`,
-      valueUsd: row.valueUsd,
-    });
+  positions: InventoryPositionAsset[];
+}) {
+  if (positions.length === 0) {
+    return (
+      <EmptyState
+        icon={Layers3}
+        title="No LP assets detected"
+        body="No indexed LP tokens or position NFTs."
+      />
+    );
   }
-
-  for (const nft of nfts) {
-    const text = `${nft.collectionName} ${nft.name}`;
-    const protocol = detectLpProtocol(text);
-    if (!protocol || !looksLikeLpText(text)) continue;
-    positions.push({
-      protocol,
-      label: nft.name,
-      detail: nft.collectionName,
-      valueUsd: null,
-    });
-  }
-
-  return positions;
-}
-
-function LpPositionsPanel({ positions }: { positions: LpPositionPreview[] }) {
-  const positionsByProtocol = useMemo(() => {
-    const map = new Map<LpProtocol, LpPositionPreview[]>();
-    for (const protocol of LP_PROTOCOLS) {
-      map.set(protocol, []);
-    }
-    for (const position of positions) {
-      map.get(position.protocol)?.push(position);
-    }
-    return map;
-  }, [positions]);
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {LP_PROTOCOLS.map((protocol) => {
-          const protocolPositions = positionsByProtocol.get(protocol) ?? [];
-          return (
-            <div
-              key={protocol}
-              className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-txt">{protocol}</div>
-                <div className="text-xs-tight text-muted">
-                  {protocolPositions.length}
-                </div>
-              </div>
-              {protocolPositions.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {protocolPositions.slice(0, 3).map((position) => (
-                    <div
-                      key={`${position.protocol}:${position.label}:${position.detail}`}
-                      className="min-w-0 rounded-md border border-border/40 bg-bg/35 px-2 py-1.5"
-                    >
-                      <div className="truncate text-xs font-medium text-txt">
-                        {position.label}
-                      </div>
-                      <div className="mt-0.5 truncate text-[0.68rem] text-muted">
-                        {position.detail}
-                        {position.valueUsd && position.valueUsd > 0
-                          ? ` · ${formatUsd(position.valueUsd)}`
-                          : ""}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+    <div className="grid gap-2">
+      {positions.map((position) => (
+        <div
+          key={position.id}
+          className="flex min-w-0 items-center gap-3 rounded-lg border border-border/50 bg-bg/40 p-3"
+        >
+          {position.imageUrl ? (
+            <img
+              src={position.imageUrl}
+              alt={position.label}
+              className="h-10 w-10 shrink-0 rounded-lg object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg-muted">
+              {position.kind === "nft" ? (
+                <ImageIcon className="h-4 w-4 text-muted" />
               ) : (
-                <div className="mt-1 text-xs-tight text-muted">
-                  No indexed position
-                </div>
+                <Layers3 className="h-4 w-4 text-muted" />
               )}
             </div>
-          );
-        })}
-      </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-txt">
+              {position.label}
+            </div>
+            <div className="truncate text-xs-tight text-muted">
+              {position.detail}
+            </div>
+          </div>
+          {position.valueUsd !== null && position.valueUsd > 0 ? (
+            <div className="shrink-0 font-mono text-sm font-semibold text-txt">
+              {formatUsd(position.valueUsd)}
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
@@ -943,7 +1084,7 @@ export function InventoryView() {
   );
   const lpPositions = useMemo(
     () =>
-      deriveLpPositions({
+      deriveInventoryPositionAssets({
         tokenRows: displayedAssetRows,
         nfts: inventoryData.allNfts,
       }),
@@ -978,7 +1119,7 @@ export function InventoryView() {
     (row: TokenRow, action: "swap" | "bridge") => {
       const verb = action === "swap" ? "swap" : "bridge";
       dispatchWalletChatPrefill(
-        `Help me ${verb} ${row.symbol}. Check the agent wallet inventory and suggest the safest execution plan before doing anything.`,
+        `Prepare a ${verb} for ${row.symbol}. Use the visible wallet inventory, then ask me for amount, destination, slippage, and execution path before any transaction.`,
       );
       setActionNotice(
         `Prepared a ${verb} request for ${row.symbol} in wallet chat.`,
@@ -1080,20 +1221,30 @@ export function InventoryView() {
           <StatCard
             label="Current balance"
             value={formatUsd(displayedTotalUsd)}
-            detail="Visible token inventory value"
+            detail={`${displayedAssetRows.length} visible tokens`}
           />
           <StatCard
             label="Agent P&L"
             value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-            detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps in view`}
+            detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
             tone={pnlTone}
           />
           <StatCard
             label="Agent activity"
             value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
-            detail="Successful settled actions"
+            detail={`${tradingProfile?.summary.settledCount ?? 0} settled`}
           />
         </div>
+
+        <PagePanel variant="section">
+          <div className="p-4 sm:p-5">
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
+              <PieChart className="h-4 w-4 text-accent" />
+              Wallet composition
+            </div>
+            <WalletCompositionPanel rows={displayedAssetRows} />
+          </div>
+        </PagePanel>
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)]">
           <div className="space-y-4">
