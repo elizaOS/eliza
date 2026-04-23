@@ -493,10 +493,9 @@ function patchCapacitorBarcodeScannerGradle() {
   if (!fs.existsSync(gradlePath)) return;
 
   const current = fs.readFileSync(gradlePath, "utf8");
-  const patched = current.replace(
-    /^\s*apply plugin:\s*['"]kotlin-android['"]\s*\r?\n/m,
-    "",
-  );
+  const patched = current
+    .replace(/^\s*apply plugin:\s*['"]kotlin-android['"]\s*\r?\n/m, "")
+    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n");
   if (patched !== current) {
     fs.writeFileSync(gradlePath, patched, "utf8");
     console.log(
@@ -1132,8 +1131,6 @@ function stripSpmIncompatiblePlugins() {
 }
 
 function patchAndroidGradle() {
-  patchCapacitorBarcodeScannerGradle();
-
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
   const templateGradle = path.join(platformsDir, "android", "build.gradle");
   const targetGradle = path.join(androidDir, "build.gradle");
@@ -1179,6 +1176,8 @@ function patchAndroidGradle() {
       );
     }
   }
+
+  patchCapacitorBarcodeScannerGradle();
 
   const stringsPath = path.join(
     androidDir,
