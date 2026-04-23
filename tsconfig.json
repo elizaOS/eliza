@@ -1,85 +1,69 @@
 {
-	"compilerOptions": {
-		"target": "ES2022",
-		"module": "ES2022",
-		"lib": [
-			"ES2023",
-			"DOM",
-			"DOM.Iterable"
-		],
-		"moduleResolution": "bundler",
-		"ignoreDeprecations": "5.0",
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
-		"allowImportingTsExtensions": true,
-		"noEmit": true,
-		"allowSyntheticDefaultImports": true,
-		"incremental": true,
-		"composite": true,
-		"declaration": true,
-		"declarationMap": true,
-		"strict": true,
-		"jsx": "react-jsx",
-		"paths": {
-			"@elizaos/ui": [
-				"./packages/ui/src/index.ts"
-			],
-			"@elizaos/ui/*": [
-				"./packages/ui/src/*"
-			],
-			"@elizaos/core": [
-				"./packages/typescript/src/index.node.ts"
-			],
-			"@elizaos/core/*": [
-				"./packages/typescript/src/*"
-			],
-			"@elizaos/shared": [
-				"./packages/shared/src/index.ts"
-			],
-			"@elizaos/shared/*": [
-				"./packages/shared/src/*"
-			],
-			"@elizaos/plugin-browser-bridge": [
-				"./packages/plugin-browser-bridge/src/index.ts"
-			],
-			"@elizaos/plugin-browser-bridge/*": [
-				"./packages/plugin-browser-bridge/src/*"
-			]
-		}
-	},
-	"exclude": [
-		"**/node_modules/**",
-		"**/dist/**",
-		"**/cypress/**",
-		"**/*.cy.tsx",
-		"**/*.cy.ts",
-		"**/*.test.ts",
-		"**/*.test.tsx",
-		"**/*.spec.ts",
-		"**/__tests__/**",
-		"**/scripts/**",
-		"**/e2e/**",
-		"examples/code/**",
-		"examples/avatar/**",
-		"examples/vrm/**",
-		"examples/supabase/**",
-		"examples/polymarket/**",
-		"examples/react/**",
-		"examples/next/**",
-		"examples/farcaster-miniapp/**",
-		"packages/python/**",
-		"packages/elizaos/examples/**",
-		"plugins/plugin-lp-manager/**",
-		"plugins/plugin-local-ai/**",
-		"plugins/plugin-vision/**",
-		"plugins/plugin-github/**",
-		"plugins/plugin-evm/**",
-		"plugins/plugin-polymarket/**",
-		"plugins/plugin-sql/**",
-		"plugins/plugin-minecraft/**",
-		"plugins/plugin-linear/**",
-		"**/testing/**",
-		"**/build.ts"
-	]
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "ignoreDeprecations": "5.0",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@elizaos/ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["./packages/ui/src/*"],
+      "@elizaos/core": ["./packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/shared": ["./packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/plugin-browser-bridge": [
+        "./packages/plugin-browser-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-browser-bridge/*": [
+        "./packages/plugin-browser-bridge/src/*"
+      ]
+    }
+  },
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/cypress/**",
+    "**/*.cy.tsx",
+    "**/*.cy.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/__tests__/**",
+    "**/scripts/**",
+    "**/e2e/**",
+    "examples/code/**",
+    "examples/avatar/**",
+    "examples/vrm/**",
+    "examples/supabase/**",
+    "examples/polymarket/**",
+    "examples/react/**",
+    "examples/next/**",
+    "examples/farcaster-miniapp/**",
+    "packages/python/**",
+    "packages/elizaos/examples/**",
+    "plugins/plugin-lp-manager/**",
+    "plugins/plugin-local-ai/**",
+    "plugins/plugin-vision/**",
+    "plugins/plugin-github/**",
+    "plugins/plugin-evm/**",
+    "plugins/plugin-polymarket/**",
+    "plugins/plugin-sql/**",
+    "plugins/plugin-minecraft/**",
+    "plugins/plugin-linear/**",
+    "**/testing/**",
+    "**/build.ts"
+  ]
 }
