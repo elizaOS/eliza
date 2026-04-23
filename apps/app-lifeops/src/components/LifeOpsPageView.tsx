@@ -15,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -47,6 +48,7 @@ import {
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
+import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
 import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
@@ -380,15 +382,15 @@ function LifeOpsSettingsSectionView({
 }: LifeOpsSettingsSectionViewProps) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold tracking-tight text-txt">
           {t("lifeopspage.setupTitle", { defaultValue: "Settings" })}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
             onClick={onRunSetupAgain}
           >
             {t("lifeopspage.runSetupAgain", {
@@ -398,7 +400,7 @@ function LifeOpsSettingsSectionView({
           <Button
             variant="surfaceDestructive"
             size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
             onClick={onDisableLifeOps}
             disabled={disableLifeOpsDisabled}
           >
@@ -465,8 +467,26 @@ export function LifeOpsWorkspaceMain({
   navigate,
   children,
 }: LifeOpsWorkspaceMainProps) {
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!compactLayout || typeof window === "undefined") {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      let node: HTMLElement | null = workspaceRef.current;
+      while (node) {
+        if (node.scrollWidth > node.clientWidth + 1) {
+          node.scrollLeft = 0;
+        }
+        node = node.parentElement;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [compactLayout, section]);
+
   return (
-    <div className="flex h-full min-h-0 min-w-0">
+    <div ref={workspaceRef} className="flex h-full min-h-0 min-w-0">
       {compactLayout ? null : (
         <LifeOpsResizableSidebar
           storageKey="lifeops:nav-rail-width"
@@ -482,7 +502,7 @@ export function LifeOpsWorkspaceMain({
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {compactLayout ? (
-          <div className="border-b border-border/12 px-4 py-3 sm:px-6">
+          <div className="min-w-0 border-b border-border/12 px-4 py-3 sm:px-6">
             <LifeOpsNavRail
               activeSection={section}
               onNavigate={navigate}
@@ -490,7 +510,7 @@ export function LifeOpsWorkspaceMain({
             />
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
           {children}
         </div>
       </div>
@@ -601,12 +621,12 @@ function LifeOpsWorkspaceInner() {
         connectionsResult.status === "rejected" ||
         agentsResult.status === "rejected"
       ) {
-        setGithubError(
-          t("lifeopspage.githubDetailsPartial", {
-            defaultValue:
-              "Some GitHub cloud details are still unavailable. You can still connect accounts.",
-          }),
-        );
+          setGithubError(
+            t("lifeopspage.githubDetailsPartial", {
+              defaultValue:
+                "GitHub cloud details unavailable.",
+            }),
+          );
       }
     } catch (cause) {
       setGithubError(
@@ -1043,6 +1063,8 @@ function LifeOpsWorkspaceInner() {
         );
       case "reminders":
         return <LifeOpsRemindersSection />;
+      case "payments":
+        return <LifeOpsPaymentsSection />;
       case "setup":
         return (
           <LifeOpsSettingsSectionView

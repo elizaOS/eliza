@@ -30,6 +30,7 @@ const {
   return {
     clientMock: {
       createConversation: vi.fn(),
+      deleteConversation: vi.fn(),
       getConversationMessages: vi.fn(),
       listConversations: vi.fn(),
       sendConversationMessageStream: vi.fn(),
@@ -83,6 +84,7 @@ const conversation = {
 describe("PageScopedChatPane", () => {
   beforeEach(() => {
     clientMock.createConversation.mockReset();
+    clientMock.deleteConversation.mockReset();
     clientMock.getConversationMessages.mockReset();
     clientMock.listConversations.mockReset();
     clientMock.sendConversationMessageStream.mockReset();
@@ -105,6 +107,7 @@ describe("PageScopedChatPane", () => {
     useVoiceChatMock.mockReturnValue(voiceState);
     clientMock.listConversations.mockResolvedValue({ conversations: [] });
     clientMock.createConversation.mockResolvedValue({ conversation });
+    clientMock.deleteConversation.mockResolvedValue({ ok: true });
     clientMock.getConversationMessages.mockResolvedValue({ messages: [] });
     clientMock.sendConversationMessageStream.mockResolvedValue({
       agentName: "Eliza",
@@ -202,5 +205,45 @@ describe("PageScopedChatPane", () => {
       surface: "page-scoped",
       taskId: "page-apps",
     });
+  });
+
+  it("clears the current page-scoped chat into a fresh room", async () => {
+    clientMock.listConversations.mockResolvedValue({
+      conversations: [conversation],
+    });
+    clientMock.getConversationMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          text: "Existing page chat",
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    clientMock.createConversation
+      .mockResolvedValueOnce({ conversation })
+      .mockResolvedValueOnce({
+        conversation: {
+          ...conversation,
+          id: "apps-page-chat-reset",
+          roomId: "room-apps-reset",
+        },
+      });
+
+    render(<PageScopedChatPane scope="page-apps" />);
+
+    await screen.findByText("Existing page chat");
+
+    fireEvent.click(screen.getByTestId("page-scoped-chat-clear-page-apps"));
+
+    await waitFor(() =>
+      expect(clientMock.deleteConversation).toHaveBeenCalledWith(
+        "apps-page-chat",
+      ),
+    );
+    await waitFor(() =>
+      expect(clientMock.createConversation).toHaveBeenCalledTimes(1),
+    );
   });
 });

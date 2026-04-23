@@ -112,7 +112,10 @@ import type {
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared/contracts/lifeops";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
-import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
+import type {
+  LifeOpsScheduleInspection,
+  LifeOpsScheduleSummary,
+} from "../lifeops/schedule-insight.js";
 import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-sync-contracts.js";
 
 type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
@@ -251,6 +254,46 @@ declare module "@elizaos/app-core/api/client-base" {
       enabled: boolean;
     }): Promise<{ enabled: boolean }>;
     getLifeOpsOverview(): Promise<LifeOpsOverview>;
+    getLifeOpsPaymentsDashboard(
+      data?: { windowDays?: number | null },
+    ): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
+    listLifeOpsPaymentSources(): Promise<{
+      sources: import("../lifeops/payment-types.js").LifeOpsPaymentSource[];
+    }>;
+    addLifeOpsPaymentSource(
+      data: import("../lifeops/payment-types.js").AddPaymentSourceRequest,
+    ): Promise<{
+      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    }>;
+    deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
+    importLifeOpsPaymentCsv(
+      data: import("../lifeops/payment-types.js").ImportTransactionsCsvRequest,
+    ): Promise<import("../lifeops/payment-types.js").ImportTransactionsCsvResult>;
+    listLifeOpsPaymentTransactions(data?: {
+      sourceId?: string | null;
+      limit?: number | null;
+      merchantContains?: string | null;
+      onlyDebits?: boolean | null;
+    }): Promise<{
+      transactions: import("../lifeops/payment-types.js").LifeOpsPaymentTransaction[];
+    }>;
+    listLifeOpsRecurringCharges(data?: {
+      sourceId?: string | null;
+      sinceDays?: number | null;
+    }): Promise<{
+      charges: import("../lifeops/payment-types.js").LifeOpsRecurringCharge[];
+    }>;
+    scanLifeOpsEmailSubscriptions(): Promise<
+      import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
+    >;
+    unsubscribeLifeOpsEmailSender(data: {
+      senderEmail: string;
+      blockAfter?: boolean;
+      trashExisting?: boolean;
+      confirmed: boolean;
+    }): Promise<
+      import("../lifeops/email-unsubscribe-types.js").EmailUnsubscribeResult
+    >;
     getLifeOpsCapabilitiesStatus(): Promise<LifeOpsCapabilitiesStatus>;
     getLifeOpsScheduleMergedState(
       data?: LifeOpsScheduleMergedStateRequest,
@@ -338,6 +381,9 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScheduleInspection(
       timezone: string,
     ): Promise<LifeOpsScheduleInspectionResponse>;
+    getLifeOpsScheduleSummary(
+      timezone: string,
+    ): Promise<LifeOpsScheduleSummary>;
     getLifeOpsFullDiskAccessStatus(): Promise<FullDiskAccessProbeResult>;
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
@@ -557,6 +603,104 @@ ElizaClient.prototype.updateLifeOpsAppState = async function (
 
 ElizaClient.prototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
+};
+
+ElizaClient.prototype.getLifeOpsPaymentsDashboard = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.windowDays !== null && data.windowDays !== undefined) {
+    params.set("windowDays", String(data.windowDays));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/payments/dashboard${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.listLifeOpsPaymentSources = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/payments/sources");
+};
+
+ElizaClient.prototype.addLifeOpsPaymentSource = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/payments/sources", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.deleteLifeOpsPaymentSource = async function (
+  this: ElizaClient,
+  sourceId: string,
+) {
+  return this.fetch(
+    `/api/lifeops/payments/sources/${encodeURIComponent(sourceId)}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.importLifeOpsPaymentCsv = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/payments/import-csv", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.listLifeOpsPaymentTransactions = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.sourceId) params.set("sourceId", data.sourceId);
+  if (data.limit !== null && data.limit !== undefined) {
+    params.set("limit", String(data.limit));
+  }
+  if (data.merchantContains) params.set("merchantContains", data.merchantContains);
+  if (data.onlyDebits) params.set("onlyDebits", "true");
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/payments/transactions${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.listLifeOpsRecurringCharges = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.sourceId) params.set("sourceId", data.sourceId);
+  if (data.sinceDays !== null && data.sinceDays !== undefined) {
+    params.set("sinceDays", String(data.sinceDays));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/payments/recurring${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.scanLifeOpsEmailSubscriptions = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/email-unsubscribe/scan", { method: "POST" });
+};
+
+ElizaClient.prototype.unsubscribeLifeOpsEmailSender = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/email-unsubscribe/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.getLifeOpsCapabilitiesStatus = async function (
@@ -870,6 +1014,15 @@ ElizaClient.prototype.getLifeOpsScheduleInspection = async function (
   const params = new URLSearchParams();
   params.set("timezone", timezone);
   return this.fetch(`/api/lifeops/schedule/inspection?${params.toString()}`);
+};
+
+ElizaClient.prototype.getLifeOpsScheduleSummary = async function (
+  this: ElizaClient,
+  timezone,
+) {
+  const params = new URLSearchParams();
+  params.set("timezone", timezone);
+  return this.fetch(`/api/lifeops/schedule/summary?${params.toString()}`);
 };
 
 ElizaClient.prototype.getLifeOpsFullDiskAccessStatus = async function (

@@ -174,7 +174,7 @@ async function resolveWorkspacePackageDirs(
   return matches;
 }
 
-async function resolveWorkspacePackageDir(
+export async function resolveWorkspacePackageDir(
   packageName: string,
 ): Promise<string | null> {
   const matches = await resolveWorkspacePackageDirs(packageName);

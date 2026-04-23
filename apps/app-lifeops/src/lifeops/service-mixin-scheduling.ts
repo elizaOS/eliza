@@ -8,6 +8,8 @@ import { LIFEOPS_NEGOTIATION_STATES } from "@elizaos/shared/contracts/lifeops";
 import {
   inspectLifeOpsSchedule,
   type LifeOpsScheduleInspection,
+  type LifeOpsScheduleSummary,
+  readScheduleSummary,
 } from "./schedule-insight.js";
 import { fail } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
@@ -59,6 +61,23 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<LifeOpsScheduleInspection> {
       return await inspectLifeOpsSchedule({
         runtime: this.runtime,
+        repository: this.repository,
+        agentId: this.agentId(),
+        timezone: args.timezone,
+        now: args.now,
+      });
+    }
+
+    /**
+     * Read-only schedule summary for UI surfaces. Pulls the last persisted
+     * merged state + last 7 days of sleep episodes without triggering any
+     * probes. Use this instead of {@link inspectSchedule} from the UI.
+     */
+    async readScheduleSummary(args: {
+      timezone: string;
+      now?: Date;
+    }): Promise<LifeOpsScheduleSummary> {
+      return await readScheduleSummary({
         repository: this.repository,
         agentId: this.agentId(),
         timezone: args.timezone,

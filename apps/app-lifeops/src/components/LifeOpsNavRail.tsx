@@ -9,6 +9,7 @@ import {
 import {
   BriefcaseBusiness,
   CalendarDays,
+  CreditCard,
   LayoutDashboard,
   Mail,
   MessageSquare,
@@ -92,6 +93,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
         dotColor: "bg-amber-400",
       },
+      {
+        id: "payments",
+        label: "Payments",
+        icon: <CreditCard className="h-4 w-4" aria-hidden />,
+        dotColor: "bg-green-400",
+      },
     ],
   },
   {
@@ -135,9 +142,9 @@ export function LifeOpsNavRail({
       <nav
         aria-label="LifeOps sections"
         data-testid="lifeops-nav-compact"
-        className="overflow-x-auto"
+        className="min-w-0 w-full sm:overflow-x-auto"
       >
-        <div className="flex min-w-max items-center gap-2">
+        <div className="grid grid-cols-5 gap-2 sm:flex sm:w-max sm:min-w-max sm:items-center sm:pr-1">
           {NAV_ITEMS.map((item) => {
             const isActive = item.id === activeSection;
             return (
@@ -148,11 +155,12 @@ export function LifeOpsNavRail({
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => onNavigate(item.id)}
                 className={[
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors",
+                  "inline-flex h-10 w-full items-center justify-center rounded-xl border transition-colors sm:w-10 sm:shrink-0",
                   isActive
                     ? "border-accent/30 bg-accent/14 text-txt"
                     : "border-border/20 bg-bg/60 text-muted hover:border-border/40 hover:bg-bg-muted/70 hover:text-txt",
                 ].join(" ")}
+                title={item.label}
               >
                 <span
                   className={[
@@ -162,7 +170,6 @@ export function LifeOpsNavRail({
                 >
                   {item.icon}
                 </span>
-                <span className="whitespace-nowrap">{item.label}</span>
               </button>
             );
           })}

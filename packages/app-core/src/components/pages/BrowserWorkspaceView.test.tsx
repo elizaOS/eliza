@@ -7,11 +7,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { useAppMock, clientMock } = vi.hoisted(() => ({
-  useAppMock: vi.fn(),
-  clientMock: {
+function createClientMock() {
+  return {
     fetch: vi.fn(),
     getBrowserWorkspace: vi.fn(),
     getWalletConfig: vi.fn(),
@@ -20,21 +20,32 @@ const { useAppMock, clientMock } = vi.hoisted(() => ({
     navigateBrowserWorkspaceTab: vi.fn(),
     snapshotBrowserWorkspaceTab: vi.fn(),
     closeBrowserWorkspaceTab: vi.fn(),
-  },
-}));
+  };
+}
+
+var useAppMock = vi.fn();
+var clientMock:
+  | ReturnType<typeof createClientMock>
+  | undefined;
 
 vi.mock("../../state", () => ({
   useApp: () => useAppMock(),
 }));
 
 vi.mock("../../api", () => ({
-  client: clientMock,
+  client: clientMock ?? (clientMock = createClientMock()),
 }));
 
 vi.mock("./useBrowserWorkspaceWalletBridge", () => ({
   useBrowserWorkspaceWalletBridge: () => ({
     postBrowserWalletReady: vi.fn(),
   }),
+}));
+
+vi.mock("../workspace/AppWorkspaceChrome.js", () => ({
+  AppWorkspaceChrome: ({ main }: { main: ReactNode }) => (
+    <div data-testid="browser-workspace-chrome">{main}</div>
+  ),
 }));
 
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
@@ -44,6 +55,13 @@ function buildUseAppState(overrides?: Record<string, unknown>) {
     activeConversationId: null,
     getStewardPending: vi.fn().mockResolvedValue([]),
     getStewardStatus: vi.fn().mockResolvedValue(null),
+    plugins: [
+      {
+        id: "browser-bridge",
+        name: "Agent Browser Bridge",
+        npmName: "@elizaos/plugin-browser-bridge",
+      },
+    ],
     setActionNotice: vi.fn(),
     t: (key: string, options?: { defaultValue?: string }) =>
       options?.defaultValue ?? key,
@@ -68,22 +86,22 @@ function buildPackageStatus() {
 describe("BrowserWorkspaceView", () => {
   beforeEach(() => {
     useAppMock.mockReset();
-    clientMock.fetch.mockReset();
-    clientMock.getBrowserWorkspace.mockReset();
-    clientMock.getWalletConfig.mockReset();
-    clientMock.openBrowserWorkspaceTab.mockReset();
-    clientMock.showBrowserWorkspaceTab.mockReset();
-    clientMock.navigateBrowserWorkspaceTab.mockReset();
-    clientMock.snapshotBrowserWorkspaceTab.mockReset();
-    clientMock.closeBrowserWorkspaceTab.mockReset();
+    clientMock!.fetch.mockReset();
+    clientMock!.getBrowserWorkspace.mockReset();
+    clientMock!.getWalletConfig.mockReset();
+    clientMock!.openBrowserWorkspaceTab.mockReset();
+    clientMock!.showBrowserWorkspaceTab.mockReset();
+    clientMock!.navigateBrowserWorkspaceTab.mockReset();
+    clientMock!.snapshotBrowserWorkspaceTab.mockReset();
+    clientMock!.closeBrowserWorkspaceTab.mockReset();
 
     useAppMock.mockReturnValue(buildUseAppState());
-    clientMock.getBrowserWorkspace.mockResolvedValue({
+    clientMock!.getBrowserWorkspace.mockResolvedValue({
       mode: "web",
       tabs: [],
     });
-    clientMock.getWalletConfig.mockResolvedValue(null);
-    clientMock.fetch.mockImplementation(async (path: string) => {
+    clientMock!.getWalletConfig.mockResolvedValue(null);
+    clientMock!.fetch.mockImplementation(async (path: string) => {
       if (path === "/api/browser-bridge/companions") {
         return { companions: [] };
       }
@@ -116,7 +134,7 @@ describe("BrowserWorkspaceView", () => {
   it("opens the extension folder and Chrome extensions from the install card", async () => {
     const setActionNotice = vi.fn();
     useAppMock.mockReturnValue(buildUseAppState({ setActionNotice }));
-    clientMock.fetch.mockImplementation(
+    clientMock!.fetch.mockImplementation(
       async (path: string, init?: RequestInit) => {
         if (path === "/api/browser-bridge/companions") {
           return { companions: [] };
@@ -147,13 +165,13 @@ describe("BrowserWorkspaceView", () => {
     fireEvent.click(installButtons[0]);
 
     await waitFor(() => {
-      expect(clientMock.fetch).toHaveBeenCalledWith(
+      expect(clientMock!.fetch).toHaveBeenCalledWith(
         "/api/browser-bridge/packages/open-path",
         expect.objectContaining({
           method: "POST",
         }),
       );
-      expect(clientMock.fetch).toHaveBeenCalledWith(
+      expect(clientMock!.fetch).toHaveBeenCalledWith(
         "/api/browser-bridge/packages/chrome/open-manager",
         expect.objectContaining({
           method: "POST",
@@ -165,5 +183,23 @@ describe("BrowserWorkspaceView", () => {
         6000,
       );
     });
+  });
+
+  it("skips browser-bridge requests when the plugin is unavailable", async () => {
+    useAppMock.mockReturnValue(buildUseAppState({ plugins: [] }));
+
+    render(<BrowserWorkspaceView />);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/The agent can drive your real Chrome tabs/i),
+      ).toBeNull();
+    });
+    expect(clientMock!.fetch).not.toHaveBeenCalledWith(
+      "/api/browser-bridge/companions",
+    );
+    expect(clientMock!.fetch).not.toHaveBeenCalledWith(
+      "/api/browser-bridge/packages",
+    );
   });
 });

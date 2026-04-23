@@ -15,6 +15,7 @@ const { appState, clientMock, ptySessionsMock } = vi.hoisted(() => ({
     value: null as unknown,
   },
   clientMock: {
+    getConversationMessages: vi.fn(),
     getInboxChats: vi.fn(),
     spawnShellSession: vi.fn(),
   },
@@ -198,8 +199,10 @@ function renderSidebar() {
 
 describe("ConversationsSidebar — Terminal channel", () => {
   beforeEach(() => {
+    clientMock.getConversationMessages.mockReset();
     clientMock.getInboxChats.mockReset();
     clientMock.spawnShellSession.mockReset();
+    clientMock.getConversationMessages.mockResolvedValue({ messages: [] });
     clientMock.getInboxChats.mockResolvedValue({ chats: [] });
     clientMock.spawnShellSession.mockResolvedValue({
       sessionId: "fresh-session-1",
@@ -343,5 +346,50 @@ describe("ConversationsSidebar — Terminal channel", () => {
       "activeTerminalSessionId",
       "brand-new",
     );
+  });
+
+  it("hides legacy page-room titles and untitled empty stubs from Messages", async () => {
+    appState.value = buildAppState({
+      conversations: [
+        {
+          id: "legacy-settings",
+          title: "Settings",
+          roomId: "room-settings",
+          createdAt: "2026-04-23T00:00:00.000Z",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        {
+          id: "empty-default",
+          title: "default",
+          roomId: "room-default",
+          createdAt: "2026-04-23T00:00:00.000Z",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+        {
+          id: "real-chat",
+          title: "Project chat",
+          roomId: "room-real",
+          createdAt: "2026-04-23T00:00:00.000Z",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+        },
+      ],
+    });
+
+    clientMock.getConversationMessages.mockImplementation(async (id: string) =>
+      id === "empty-default"
+        ? { messages: [{ id: "m1", role: "assistant", text: "hey" }] }
+        : { messages: [{ id: "m2", role: "user", text: "hi" }] },
+    );
+
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("row-real-chat")).toBeDefined();
+    });
+
+    expect(screen.queryByTestId("row-legacy-settings")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId("row-empty-default")).toBeNull();
+    });
   });
 });

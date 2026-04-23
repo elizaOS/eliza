@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import type { Dirent } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -9,7 +10,10 @@ import {
   hasAppInterface,
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
-import { importAppRouteModule } from "../services/app-package-modules.js";
+import {
+  importAppRouteModule,
+  resolveWorkspacePackageDir,
+} from "../services/app-package-modules.js";
 import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
 import type {
   InstallProgressLike,
@@ -32,6 +36,24 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
 };
+
+const DEFAULT_HERO_IMAGE_CANDIDATES = [
+  "assets/hero.png",
+  "assets/hero.webp",
+  "assets/hero.jpg",
+  "assets/hero.jpeg",
+  "assets/hero.avif",
+  "assets/hero.gif",
+  "assets/hero.svg",
+] as const;
+
+interface LocalAppPackageJson {
+  elizaos?: {
+    app?: {
+      heroImage?: unknown;
+    };
+  };
+}
 
 async function streamAppHero(
   res: http.ServerResponse,
@@ -72,11 +94,118 @@ async function streamAppHero(
   response.end?.(data);
 }
 
+async function pathExists(absolutePath: string): Promise<boolean> {
+  try {
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isRelativeHeroPath(heroImage: string): boolean {
+  return !/^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+    heroImage,
+  );
+}
+
+async function readPackageHeroImage(packageDir: string): Promise<string | null> {
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(packageDir, "package.json"), "utf8"),
+    ) as LocalAppPackageJson;
+    const heroImage = packageJson.elizaos?.app?.heroImage;
+    return typeof heroImage === "string" ? heroImage : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveWorkspaceAppDirBySlug(
+  slug: string,
+): Promise<string | null> {
+  const cwd = process.cwd();
+  const roots = Array.from(
+    new Set([
+      path.resolve(cwd),
+      path.resolve(cwd, ".."),
+      path.resolve(cwd, "..", ".."),
+    ]),
+  );
+  const candidateDirs: string[] = [];
+
+  for (const root of roots) {
+    candidateDirs.push(
+      path.join(root, "apps", `app-${slug}`),
+      path.join(root, "packages", `app-${slug}`),
+    );
+
+    let entries: Dirent[] = [];
+    try {
+      entries = await fs.readdir(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) {
+        continue;
+      }
+      candidateDirs.push(
+        path.join(root, entry.name, "apps", `app-${slug}`),
+        path.join(root, entry.name, "packages", `app-${slug}`),
+      );
+    }
+  }
+
+  for (const candidateDir of new Set(
+    candidateDirs.map((dir) => path.resolve(dir)),
+  )) {
+    if (await pathExists(path.join(candidateDir, "package.json"))) {
+      return candidateDir;
+    }
+  }
+
+  return null;
+}
+
+async function resolveHeroPathFromPackageDir(
+  packageDir: string,
+  declaredHeroImage: string | null,
+): Promise<{ absolutePath: string; contentType: string } | null> {
+  const packageHeroImage = await readPackageHeroImage(packageDir);
+  const heroCandidates = Array.from(
+    new Set(
+      [
+        declaredHeroImage,
+        packageHeroImage,
+        ...DEFAULT_HERO_IMAGE_CANDIDATES,
+      ].filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
+      ),
+    ),
+  );
+
+  for (const heroImage of heroCandidates) {
+    if (!isRelativeHeroPath(heroImage)) continue;
+    const extension = path.extname(heroImage).toLowerCase();
+    const contentType = HERO_IMAGE_CONTENT_TYPES[extension];
+    if (!contentType) continue;
+    const absolutePath = path.resolve(packageDir, heroImage);
+    const packageRoot = `${path.resolve(packageDir)}${path.sep}`;
+    if (!absolutePath.startsWith(packageRoot)) continue;
+    if (!(await pathExists(absolutePath))) continue;
+    return { absolutePath, contentType };
+  }
+
+  return null;
+}
+
 /**
  * Resolve the absolute on-disk path for an app's declared hero image.
- * Returns null if the slug doesn't match a known app, the app doesn't
- * declare a heroImage, the declared path escapes the package, or the
- * declared extension isn't an allowed image type.
+ * Returns null if the slug doesn't match a known app or none of the
+ * candidate local package directories contain a valid hero image.
  */
 async function resolveAppHeroPath(
   pluginManager: PluginManagerLike,
@@ -84,24 +213,37 @@ async function resolveAppHeroPath(
 ): Promise<{ absolutePath: string; contentType: string } | null> {
   const registry = await pluginManager.refreshRegistry();
   for (const entry of registry.values()) {
-    if (packageNameToAppRouteSlug(entry.name) !== slug) continue;
-    const heroImage = entry.appMeta?.heroImage;
-    const localPath = entry.localPath;
-    if (!heroImage || !localPath) continue;
-    if (
-      /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
-        heroImage,
-      )
-    ) {
-      continue;
+    const entrySlugs = new Set<string>();
+    const nameSlug = packageNameToAppRouteSlug(entry.name);
+    const npmSlug = packageNameToAppRouteSlug(entry.npm.package);
+    if (nameSlug) entrySlugs.add(nameSlug);
+    if (npmSlug) entrySlugs.add(npmSlug);
+    if (!entrySlugs.has(slug)) continue;
+
+    const packageDirs = new Set<string>();
+    if (entry.localPath) {
+      packageDirs.add(path.resolve(entry.localPath));
     }
-    const extension = path.extname(heroImage).toLowerCase();
-    const contentType = HERO_IMAGE_CONTENT_TYPES[extension];
-    if (!contentType) continue;
-    const absolute = path.resolve(localPath, heroImage);
-    const packageRoot = `${path.resolve(localPath)}${path.sep}`;
-    if (!absolute.startsWith(packageRoot)) continue;
-    return { absolutePath: absolute, contentType };
+    const workspacePackageDir = await resolveWorkspacePackageDir(
+      entry.npm.package,
+    );
+    if (workspacePackageDir) {
+      packageDirs.add(path.resolve(workspacePackageDir));
+    }
+    const workspaceSlugDir = await resolveWorkspaceAppDirBySlug(slug);
+    if (workspaceSlugDir) {
+      packageDirs.add(path.resolve(workspaceSlugDir));
+    }
+
+    for (const packageDir of packageDirs) {
+      const resolved = await resolveHeroPathFromPackageDir(
+        packageDir,
+        entry.appMeta?.heroImage ?? null,
+      );
+      if (resolved) {
+        return resolved;
+      }
+    }
   }
   return null;
 }

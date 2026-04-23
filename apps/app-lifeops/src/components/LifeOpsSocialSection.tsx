@@ -78,12 +78,73 @@ export function LifeOpsSocialSection() {
   const totalSeconds = summary?.totalSeconds ?? 0;
   const youtubeSeconds = socialServiceSeconds(summary, "youtube");
   const xSeconds = socialServiceSeconds(summary, "x");
+  const services = (summary?.services ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const devices = (summary?.devices ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const browsers = (summary?.browsers ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const surfaces = (summary?.surfaces ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
   const sessionBuckets =
-    summary?.sessions.map((item) => ({
-      key: `${item.source}:${item.identifier}`,
-      label: item.serviceLabel ?? item.displayName,
-      totalSeconds: item.totalSeconds,
-    })) ?? [];
+    summary?.sessions
+      .filter((item) => item.totalSeconds > 0)
+      .map((item) => ({
+        key: `${item.source}:${item.identifier}`,
+        label: item.serviceLabel ?? item.displayName,
+        totalSeconds: item.totalSeconds,
+      })) ?? [];
+  const channels = (summary?.messages.channels ?? []).filter(
+    (channel) => channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
+  );
+  const messageOpened = summary?.messages.opened ?? 0;
+  const messageOutbound = summary?.messages.outbound ?? 0;
+  const messageInbound = summary?.messages.inbound ?? 0;
+  const hasUsage =
+    totalSeconds > 0 ||
+    messageOpened > 0 ||
+    messageOutbound > 0 ||
+    messageInbound > 0 ||
+    services.length > 0 ||
+    devices.length > 0 ||
+    browsers.length > 0 ||
+    surfaces.length > 0 ||
+    sessionBuckets.length > 0 ||
+    channels.length > 0;
+  const metricTiles = [
+    {
+      key: "social",
+      icon: <Share2 />,
+      value: formatDurationSeconds(totalSeconds),
+      label: "Social",
+      visible: totalSeconds > 0,
+    },
+    {
+      key: "youtube",
+      icon: <PlaySquare />,
+      value: formatDurationSeconds(youtubeSeconds),
+      label: "YouTube",
+      visible: youtubeSeconds > 0,
+    },
+    {
+      key: "x",
+      icon: <AtSign />,
+      value: formatDurationSeconds(xSeconds),
+      label: "X",
+      visible: xSeconds > 0,
+    },
+    {
+      key: "opened",
+      icon: <MessageSquareText />,
+      value: String(messageOpened),
+      label: "Opened",
+      visible: messageOpened > 0,
+    },
+  ].filter((item) => item.visible);
 
   return (
     <div className="space-y-4" data-testid="lifeops-social-section">
@@ -121,138 +182,139 @@ export function LifeOpsSocialSection() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricTile
-          icon={<Share2 />}
-          value={formatDurationSeconds(totalSeconds)}
-          label="Social"
-        />
-        <MetricTile
-          icon={<PlaySquare />}
-          value={formatDurationSeconds(youtubeSeconds)}
-          label="YouTube"
-        />
-        <MetricTile
-          icon={<AtSign />}
-          value={formatDurationSeconds(xSeconds)}
-          label="X"
-        />
-        <MetricTile
-          icon={<MessageSquareText />}
-          value={String(summary?.messages.opened ?? 0)}
-          label="Opened"
-        />
-      </div>
+      {!loading && !error && summary && !hasUsage ? (
+        <HabitPanel title="Social" icon={<Share2 />}>
+          <div className="py-3 text-sm text-muted">No social activity today.</div>
+        </HabitPanel>
+      ) : (
+        <>
+          {metricTiles.length > 0 ? (
+            <div
+              className={
+                metricTiles.length === 1
+                  ? "grid gap-3"
+                  : "grid grid-cols-2 gap-3 xl:grid-cols-4"
+              }
+            >
+              {metricTiles.map((tile) => (
+                <MetricTile
+                  key={tile.key}
+                  icon={tile.icon}
+                  value={tile.value}
+                  label={tile.label}
+                />
+              ))}
+            </div>
+          ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-12">
-        <HabitPanel
-          title="Platforms"
-          icon={<Share2 />}
-          className="xl:col-span-5"
-        >
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <DonutChart
-              items={summary?.services ?? []}
-              totalSeconds={totalSeconds}
-              label="Social"
-            />
-            <div className="min-w-0 flex-1">
-              <StackedBar
-                items={summary?.services ?? []}
-                totalSeconds={totalSeconds}
-              />
-              <div className="mt-4">
-                <BucketBars
-                  items={summary?.services ?? []}
+          <div className="grid gap-4 xl:grid-cols-12">
+            <HabitPanel
+              title="Platforms"
+              icon={<Share2 />}
+              className="xl:col-span-5"
+            >
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <DonutChart
+                  items={services}
                   totalSeconds={totalSeconds}
-                  emptyLabel="No social time"
+                  label="Social"
+                />
+                <div className="min-w-0 flex-1">
+                  <StackedBar items={services} totalSeconds={totalSeconds} />
+                  <div className="mt-4">
+                    <BucketBars
+                      items={services}
+                      totalSeconds={totalSeconds}
+                      emptyLabel="No social time"
+                    />
+                  </div>
+                </div>
+              </div>
+            </HabitPanel>
+
+            <HabitPanel
+              title="Devices"
+              icon={<Smartphone />}
+              className="xl:col-span-3"
+            >
+              <BucketBars
+                items={devices}
+                totalSeconds={totalSeconds}
+                emptyLabel="No device data"
+              />
+            </HabitPanel>
+
+            <HabitPanel
+              title="Messages"
+              icon={<MessageSquareText />}
+              className="xl:col-span-4"
+            >
+              <div className="grid grid-cols-3 gap-2">
+                <MetricTile
+                  icon={<Eye />}
+                  value={String(messageOpened)}
+                  label="Opened"
+                />
+                <MetricTile
+                  icon={<Send />}
+                  value={String(messageOutbound)}
+                  label="Sent"
+                />
+                <MetricTile
+                  icon={<MessageSquareText />}
+                  value={String(messageInbound)}
+                  label="Received"
                 />
               </div>
-            </div>
-          </div>
-        </HabitPanel>
-
-        <HabitPanel
-          title="Devices"
-          icon={<Smartphone />}
-          className="xl:col-span-3"
-        >
-          <BucketBars
-            items={summary?.devices ?? []}
-            totalSeconds={totalSeconds}
-            emptyLabel="No device data"
-          />
-        </HabitPanel>
-
-        <HabitPanel
-          title="Messages"
-          icon={<MessageSquareText />}
-          className="xl:col-span-4"
-        >
-          <div className="grid grid-cols-3 gap-2">
-            <MetricTile
-              icon={<Eye />}
-              value={String(summary?.messages.opened ?? 0)}
-              label="Opened"
-            />
-            <MetricTile
-              icon={<Send />}
-              value={String(summary?.messages.outbound ?? 0)}
-              label="Sent"
-            />
-            <MetricTile
-              icon={<MessageSquareText />}
-              value={String(summary?.messages.inbound ?? 0)}
-              label="Received"
-            />
-          </div>
-          <div className="mt-3">
-            {(summary?.messages.channels ?? []).map((channel) => (
-              <div
-                key={channel.channel}
-                className="flex items-center justify-between gap-3 border-t border-border/10 py-2 text-xs"
-              >
-                <span className="font-medium text-txt/90">{channel.label}</span>
-                <span className="inline-flex items-center gap-2 tabular-nums text-muted">
-                  <span className="inline-flex items-center gap-1">
-                    <Eye className="h-3 w-3" aria-hidden />
-                    {channel.opened}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Send className="h-3 w-3" aria-hidden />
-                    {channel.outbound}
-                  </span>
-                </span>
+              <div className="mt-3">
+                {channels.map((channel) => (
+                  <div
+                    key={channel.channel}
+                    className="flex items-center justify-between gap-3 border-t border-border/10 py-2 text-xs"
+                  >
+                    <span className="font-medium text-txt/90">{channel.label}</span>
+                    <span className="inline-flex items-center gap-2 tabular-nums text-muted">
+                      <span className="inline-flex items-center gap-1">
+                        <Eye className="h-3 w-3" aria-hidden />
+                        {channel.opened}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Send className="h-3 w-3" aria-hidden />
+                        {channel.outbound}
+                      </span>
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </HabitPanel>
           </div>
-        </HabitPanel>
-      </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <HabitPanel title="Browser" icon={<Globe2 />}>
-          <BucketBars
-            items={summary?.browsers ?? []}
-            totalSeconds={totalSeconds}
-            emptyLabel="No browser data"
-          />
-        </HabitPanel>
-        <HabitPanel title="Surfaces" icon={<Monitor />}>
-          <BucketBars
-            items={summary?.surfaces ?? []}
-            totalSeconds={totalSeconds}
-            emptyLabel="No surface data"
-          />
-        </HabitPanel>
-        <HabitPanel title="Sessions" icon={<Share2 />}>
-          <BucketBars
-            items={sessionBuckets}
-            totalSeconds={totalSeconds}
-            emptyLabel="No sessions"
-            limit={8}
-          />
-        </HabitPanel>
-      </div>
+          <div className="grid gap-4 xl:grid-cols-3">
+            <HabitPanel title="Browser" icon={<Globe2 />}>
+              <BucketBars
+                items={browsers}
+                totalSeconds={totalSeconds}
+                emptyLabel="No browser data"
+              />
+            </HabitPanel>
+            <HabitPanel title="Surfaces" icon={<Monitor />}>
+              <BucketBars
+                items={surfaces}
+                totalSeconds={totalSeconds}
+                emptyLabel="No surface data"
+              />
+            </HabitPanel>
+            <HabitPanel title="Sessions" icon={<Share2 />}>
+              <BucketBars
+                items={sessionBuckets}
+                totalSeconds={totalSeconds}
+                emptyLabel="No sessions"
+                limit={8}
+              />
+            </HabitPanel>
+          </div>
+        </>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {(summary?.dataSources ?? []).map((source) => (
