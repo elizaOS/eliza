@@ -155,7 +155,6 @@ export function ConnectionProviderDetailScreen({
     onboardingSubscriptionTab,
     onboardingCloudApiKey,
     onboardingApiKey,
-    onboardingPrimaryModel,
     onboardingElizaCloudTab,
     onboardingOpenRouterModel,
     elizaCloudConnected,

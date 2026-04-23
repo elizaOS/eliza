@@ -33,7 +33,6 @@ export function CloudLoginStep() {
     elizaCloudLoginError,
     handleCloudLogin,
     handleOnboardingNext,
-    handleOnboardingBack,
     t,
   } = useApp();
 

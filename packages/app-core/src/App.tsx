@@ -47,8 +47,8 @@ import {
   MessagesPageView,
   PhonePageView,
 } from "./components/pages/MiladyOsAppsView";
-import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
+import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
 import { RuntimeView } from "./components/pages/RuntimeView";
 import { SettingsView } from "./components/pages/SettingsView";

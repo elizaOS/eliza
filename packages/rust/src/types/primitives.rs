@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use thiserror::Error;
 
 use super::generated::eliza::v1::Uuid;
@@ -69,14 +68,6 @@ impl Uuid {
 impl fmt::Display for Uuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.value)
-    }
-}
-
-impl Eq for Uuid {}
-
-impl Hash for Uuid {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
     }
 }
 

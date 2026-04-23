@@ -31,7 +31,13 @@ interface CronSchedule {
   dayOfWeek: Set<number>;
 }
 
-const CRON_RANGES: readonly CronRange[] = [
+const CRON_RANGES: readonly [
+  CronRange,
+  CronRange,
+  CronRange,
+  CronRange,
+  CronRange,
+] = [
   { min: 0, max: 59 },
   { min: 0, max: 23 },
   { min: 1, max: 31 },
@@ -141,11 +147,11 @@ export function parseCronExpression(expression: string): CronSchedule | null {
     return null;
   }
 
-  const minute = parseCronPart(minuteExpr, CRON_RANGES[0]!);
-  const hour = parseCronPart(hourExpr, CRON_RANGES[1]!);
-  const dayOfMonth = parseCronPart(dayOfMonthExpr, CRON_RANGES[2]!);
-  const month = parseCronPart(monthExpr, CRON_RANGES[3]!);
-  const dayOfWeek = parseCronPart(dayOfWeekExpr, CRON_RANGES[4]!);
+  const minute = parseCronPart(minuteExpr, CRON_RANGES[0]);
+  const hour = parseCronPart(hourExpr, CRON_RANGES[1]);
+  const dayOfMonth = parseCronPart(dayOfMonthExpr, CRON_RANGES[2]);
+  const month = parseCronPart(monthExpr, CRON_RANGES[3]);
+  const dayOfWeek = parseCronPart(dayOfWeekExpr, CRON_RANGES[4]);
 
   if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
     return null;

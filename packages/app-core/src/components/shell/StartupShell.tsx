@@ -12,8 +12,8 @@
 import { useEffect, useRef } from "react";
 import { client } from "../../api";
 import { CONNECT_EVENT } from "../../events";
-import { applyLaunchConnection } from "../../platform";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";

@@ -17,16 +17,22 @@
  * ```
  */
 import { cbc, gcm } from "@noble/ciphers/aes.js";
-import { md5, sha1 } from "@noble/hashes/legacy";
-import { ripemd160 } from "@noble/hashes/ripemd160";
-import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2";
+import { md5, ripemd160, sha1 } from "@noble/hashes/legacy.js";
+import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2.js";
+import type { CHash } from "@noble/hashes/utils.js";
 import * as BufferUtils from "./buffer";
 
-type SyncHashFactory = typeof sha256;
 type BufferEncodingName = "utf8" | "utf-8" | "base64" | "hex";
 type OwnedUint8Array = Uint8Array<ArrayBuffer>;
+type HashDigestEncoding = BufferEncodingName;
 
-const HASH_ALGORITHMS: Record<string, SyncHashFactory> = {
+interface HashBuilder {
+	update(data: string | Uint8Array): HashBuilder;
+	digest(): Uint8Array;
+	digest(encoding: HashDigestEncoding): string;
+}
+
+const HASH_ALGORITHMS: Record<string, CHash> = {
 	md5,
 	ripemd160,
 	sha1,
@@ -136,7 +142,7 @@ function getWebCryptoSubtle(): SubtleCrypto {
 /**
  * Resolve a synchronous hash implementation.
  */
-function getSyncHashFactory(algorithm: string): SyncHashFactory {
+function getSyncHashFactory(algorithm: string): CHash {
 	const normalized = algorithm.toLowerCase();
 	const hashFactory = HASH_ALGORITHMS[normalized];
 	if (!hashFactory) {
@@ -294,19 +300,28 @@ function validateKeyAndGcmIv(key: Uint8Array, iv: Uint8Array): void {
  * @returns Hash object with update() and digest() methods
  */
 export function createHash(algorithm: string): {
-	update(data: string | Uint8Array): ReturnType<typeof createHash>;
+	update(data: string | Uint8Array): HashBuilder;
 	digest(): Uint8Array;
+	digest(encoding: HashDigestEncoding): string;
 } {
 	const hash = getSyncHashFactory(algorithm).create();
-	return {
+	function digest(): Uint8Array;
+	function digest(encoding: HashDigestEncoding): string;
+	function digest(encoding?: HashDigestEncoding): Uint8Array | string {
+		const hashDigest = Uint8Array.from(hash.digest());
+		if (!encoding) {
+			return hashDigest;
+		}
+		return toEncodedString(hashDigest, normalizeEncoding(encoding));
+	}
+	const builder: HashBuilder = {
 		update(data: string | Uint8Array) {
 			hash.update(toUint8Array(data));
-			return this;
+			return builder;
 		},
-		digest() {
-			return Uint8Array.from(hash.digest());
-		},
+		digest,
 	};
+	return builder;
 }
 
 /**

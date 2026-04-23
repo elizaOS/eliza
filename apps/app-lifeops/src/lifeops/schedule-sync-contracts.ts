@@ -38,6 +38,7 @@ export type LifeOpsScheduleStateScope =
 export interface LifeOpsScheduleObservationSnapshot {
   effectiveDayKey: string;
   localDate: string;
+  phase: LifeOpsCircadianState;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
@@ -46,6 +47,7 @@ export interface LifeOpsScheduleObservationSnapshot {
   regularity: LifeOpsScheduleRegularity;
   baseline: LifeOpsPersonalBaseline | null;
   sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;

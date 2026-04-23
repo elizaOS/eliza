@@ -103,8 +103,12 @@ export function shelterUrls(input: string): {
  * boundary (not an abbreviation or decimal).
  */
 export function isRealSentenceEnd(value: string, matchIndex: number): boolean {
-  if (matchIndex > 0 && /\d/.test(value[matchIndex - 1]!)) {
-    if (matchIndex + 1 < value.length && /\d/.test(value[matchIndex + 1]!)) {
+  const previousChar = matchIndex > 0 ? value[matchIndex - 1] : undefined;
+  const nextChar =
+    matchIndex + 1 < value.length ? value[matchIndex + 1] : undefined;
+
+  if (previousChar !== undefined && /\d/.test(previousChar)) {
+    if (nextChar !== undefined && /\d/.test(nextChar)) {
       return false;
     }
   }

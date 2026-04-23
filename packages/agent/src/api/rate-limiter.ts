@@ -65,7 +65,10 @@ export function checkRateLimit(
   entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
 
   if (entry.timestamps.length >= config.maxRequests) {
-    const oldestInWindow = entry.timestamps[0]!;
+    const oldestInWindow = entry.timestamps[0];
+    if (oldestInWindow === undefined) {
+      return { allowed: true, retryAfterMs: 0 };
+    }
     const retryAfterMs = oldestInWindow + config.windowMs - now;
     return { allowed: false, retryAfterMs: Math.max(retryAfterMs, 0) };
   }

@@ -97,17 +97,11 @@ const sidebarControlButtonClassName =
 const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between bg-card/88 px-3.5 py-2.5 backdrop-blur-md";
 
-const sidebarCollapsedContentClassName =
-  "flex min-h-0 w-full flex-1 flex-col items-center transform-gpu transition-[opacity,transform] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] motion-reduce:transform-none motion-reduce:transition-none";
-
 const sidebarContentLayerClassName =
   "flex min-h-0 flex-1 flex-col origin-left transform-gpu transition-[opacity,transform,filter] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform,filter] motion-reduce:transform-none motion-reduce:transition-none";
 
 const sidebarContentOverlayLayerClassName =
   "pointer-events-none absolute inset-0 z-10 select-none";
-
-const sidebarCollapsedFallbackRootClassName =
-  "!w-[7rem] !min-w-[7rem] xl:!w-[7rem] xl:!min-w-[7rem]";
 
 const sidebarCollapsedFallbackBodyClassName =
   "custom-scrollbar flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3 pt-2 [&_[data-sidebar-panel]]:min-h-0 [&_[data-sidebar-panel]]:gap-2 [&_[data-sidebar-panel]]:rounded-sm [&_[data-sidebar-panel]]:p-1.5 [&_[data-sidebar-filter-bar]]:hidden [&_[data-sidebar-section-label]]:hidden [&_[data-sidebar-section-header]]:hidden [&_[data-sidebar-toolbar-actions]]:hidden [&_[data-segmented-control]]:grid [&_[data-segmented-control]]:w-full [&_[data-segmented-control]]:max-w-none [&_[data-segmented-control]]:grid-cols-1 [&_[data-segmented-control]]:border-transparent [&_[data-segmented-control]]:bg-transparent [&_[data-segmented-control]]:p-0 [&_[data-segmented-control-button]]:w-full [&_[data-segmented-control-button]]:justify-center [&_[data-segmented-control-button]]:px-2.5 [&_[data-segmented-control-button]]:py-2.5 [&_[data-segmented-control-button]]:text-xs-tight [&_[data-sidebar-item]]:rounded-sm [&_[data-sidebar-item]]:px-2.5 [&_[data-sidebar-item]]:py-2.5 [&_[data-sidebar-item]]:gap-2 [&_[data-sidebar-item]]:items-center [&_[data-sidebar-item]]:justify-center [&_[data-sidebar-item]>div.absolute]:hidden [&_[data-sidebar-item-button]]:w-full [&_[data-sidebar-item-button]]:flex-col [&_[data-sidebar-item-button]]:items-center [&_[data-sidebar-item-button]]:justify-center [&_[data-sidebar-item-button]]:gap-2 [&_[data-sidebar-item-body]]:flex [&_[data-sidebar-item-body]]:w-full [&_[data-sidebar-item-body]]:flex-col [&_[data-sidebar-item-body]]:items-center [&_[data-sidebar-item-body]]:text-center [&_[data-sidebar-item-body]>*+*]:hidden [&_[data-sidebar-item-title]]:line-clamp-2 [&_[data-sidebar-item-title]]:text-center [&_[data-sidebar-item-title]]:text-xs-tight [&_[data-sidebar-item-title]]:leading-tight [&_[data-sidebar-item-description]]:hidden [&_[data-sidebar-item-icon]]:mx-auto [&_[data-sidebar-item-icon]]:mt-0 [&_[data-sidebar-item-action]]:hidden [&_.grid]:grid-cols-1 [&_.grid]:gap-2 [&_button]:min-h-11";
@@ -626,36 +620,6 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         phase: transitionPhase,
       });
 
-    const renderCollapsedInner = () =>
-      hasCustomCollapsedContent ? (
-        collapsedContent
-      ) : hasStructuredCollapsedRail || autoRailItems.length > 0 ? (
-        <SidebarCollapsedRail
-          action={collapsedRailAction}
-          className={collapsedContentClassName}
-        >
-          {collapsedRailItems ??
-            autoRailItems.map((item) => (
-              <SidebarRailItem
-                key={item.key}
-                aria-label={item.label}
-                title={item.label}
-                active={item.active}
-                indicatorTone={item.indicatorTone}
-                onClick={item.onClick}
-              >
-                {item.content}
-              </SidebarRailItem>
-            ))}
-        </SidebarCollapsedRail>
-      ) : (
-        <SidebarBody
-          className={cn(sidebarCollapsedFallbackBodyClassName, bodyClassName)}
-        >
-          {children}
-        </SidebarBody>
-      );
-
     const renderCollapsedView = ({
       layerClassName,
       overlay = false,
@@ -715,7 +679,10 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
               variant="surface"
               size="icon"
               data-testid={collapseButtonTestId}
-              className={cn(sidebarControlButtonClassName, collapseButtonClassName)}
+              className={cn(
+                sidebarControlButtonClassName,
+                collapseButtonClassName,
+              )}
               aria-label={collapseButtonAriaLabel}
               onClick={handleCollapse}
             >
@@ -750,10 +717,11 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       </div>
     );
 
-    const resizeActive = resizable && variant === "default" && !showsCollapsedState;
+    const resizeActive =
+      resizable && variant === "default" && !showsCollapsedState;
     const collapseThreshold = Math.max(minWidth - 40, 80);
     const handleResizePointerDown = React.useCallback(
-      (event: React.PointerEvent<HTMLDivElement>) => {
+      (event: React.PointerEvent<HTMLElement>) => {
         if (!resizeActive || typeof width !== "number") return;
         event.preventDefault();
         const startX = event.clientX;
@@ -822,9 +790,12 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         {...props}
       >
         {resizeActive ? (
-          <div
-            role="separator"
+          <hr
             aria-orientation="vertical"
+            aria-valuemin={minWidth}
+            aria-valuemax={maxWidth}
+            aria-valuenow={typeof width === "number" ? width : minWidth}
+            tabIndex={0}
             data-testid="sidebar-resize-handle"
             onPointerDown={handleResizePointerDown}
             className="absolute inset-y-0 right-0 z-20 w-1.5 -mr-0.5 cursor-col-resize touch-none select-none hover:bg-accent/30 transition-colors"

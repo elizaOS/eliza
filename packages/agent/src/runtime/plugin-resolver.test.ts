@@ -70,10 +70,15 @@ describe("importPluginModuleFromPath", () => {
     );
     const stagedDirs = await fs.readdir(stagingBaseDir);
     expect(stagedDirs.length).toBeGreaterThan(0);
+    const stagedDir = stagedDirs[0];
+    expect(stagedDir).toBeDefined();
+    if (!stagedDir) {
+      throw new Error("Expected a staged plugin directory");
+    }
 
     const stagedCronerPath = path.join(
       stagingBaseDir,
-      stagedDirs[0]!,
+      stagedDir,
       "root",
       "node_modules",
       "croner",

@@ -10,9 +10,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { logger } from "@elizaos/core";
-import { resolveStewardCredentialsPath } from "../config/paths.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,

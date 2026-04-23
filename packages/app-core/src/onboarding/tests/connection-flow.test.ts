@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyConnectionTransition,
+  type ConnectionFlowSnapshot,
   deriveConnectionScreen,
   mergeConnectionSnapshot,
   resolveConnectionUiSpec,
-  type ConnectionFlowSnapshot,
 } from "../connection-flow";
 
 const baseSnapshot: ConnectionFlowSnapshot = {

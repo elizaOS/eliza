@@ -1,14 +1,14 @@
 import type {
+  StewardPendingResponse,
+  StewardStatusResponse,
+} from "@elizaos/app-steward/types/steward";
+import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import type {
-  StewardPendingResponse,
-  StewardStatusResponse,
-} from "@elizaos/app-steward/types/steward";
 import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,

@@ -7,8 +7,8 @@ import {
   resolveLinkedAccountsInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts";
-import type { BuildOnboardingConnectionArgs } from "../onboarding-config";
 import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
+import type { BuildOnboardingConnectionArgs } from "../onboarding-config";
 import { asRecord } from "./config-readers";
 import type { OnboardingStep } from "./types";
 

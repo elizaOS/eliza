@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/example-convex",
   "version": "2.0.0-alpha",
-  "description": "elizaOS agent running on Convex \u2014 messages processed via messageService.handleMessage with real-time persistence",
+  "description": "elizaOS agent running on Convex — messages processed via messageService.handleMessage with real-time persistence",
   "type": "module",
   "private": true,
   "scripts": {
@@ -25,7 +25,7 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

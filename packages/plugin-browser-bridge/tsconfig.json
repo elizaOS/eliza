@@ -49,12 +49,6 @@
 			"@elizaos/agent/*": [
 				"../agent/src/*"
 			],
-			"@elizaos/app-lifeops": [
-				"../../apps/app-lifeops/src/index.ts"
-			],
-			"@elizaos/app-lifeops/*": [
-				"../../apps/app-lifeops/src/*"
-			],
 			"@elizaos/core": [
 				"../typescript/src/index.node.ts"
 			],

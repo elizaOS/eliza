@@ -1340,7 +1340,12 @@ export async function loadTrajectoryById(
     );
     const normalizedMetadata = normalizeTrajectoryMetadata(
       parseMetadata(
-        readRecordValue(row, ["metadata_json", "metadataJson", "metadata", "meta"]),
+        readRecordValue(row, [
+          "metadata_json",
+          "metadataJson",
+          "metadata",
+          "meta",
+        ]),
       ),
       {
         scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),
@@ -1428,7 +1433,12 @@ export async function loadTrajectoryByStepId(
       toOptionalNumber(readRecordValue(row, ["end_time", "endTime"])) ?? null;
     const normalizedMetadata = normalizeTrajectoryMetadata(
       parseMetadata(
-        readRecordValue(row, ["metadata_json", "metadataJson", "metadata", "meta"]),
+        readRecordValue(row, [
+          "metadata_json",
+          "metadataJson",
+          "metadata",
+          "meta",
+        ]),
       ),
       {
         scenarioId: readRecordValue(row, ["scenario_id", "scenarioId"]),

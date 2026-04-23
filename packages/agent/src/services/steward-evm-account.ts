@@ -357,9 +357,7 @@ export function createStewardEvmAccount(
  * signing capability only depends on having the API URL and agent token.
  */
 export function isStewardSigningReady(): boolean {
-  return (
-    !!process.env.STEWARD_AGENT_TOKEN && !!process.env.STEWARD_API_URL
-  );
+  return !!process.env.STEWARD_AGENT_TOKEN && !!process.env.STEWARD_API_URL;
 }
 
 /**
@@ -368,9 +366,7 @@ export function isStewardSigningReady(): boolean {
  * does NOT gate signing capability.
  */
 export function isStewardCloudProvisioned(): boolean {
-  return (
-    process.env.ELIZA_CLOUD_PROVISIONED === "1" && isStewardSigningReady()
-  );
+  return process.env.ELIZA_CLOUD_PROVISIONED === "1" && isStewardSigningReady();
 }
 
 /**

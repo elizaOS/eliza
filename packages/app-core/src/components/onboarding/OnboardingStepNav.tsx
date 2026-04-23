@@ -1,13 +1,17 @@
 import { useApp } from "@elizaos/app-core/state";
 import { useBranding } from "../../config/branding";
 import { getOnboardingNavMetas } from "../../onboarding/flow";
-import type { OnboardingStep, OnboardingStepMeta } from "../../state/types";
+import type {
+  AppContextValue,
+  OnboardingStep,
+  OnboardingStepMeta,
+} from "../../state/types";
 
 function PureOnboardingStepNav(props: {
   currentStep: OnboardingStep;
   onboardingNavMetas: OnboardingStepMeta[];
   handleOnboardingJumpToStep: (step: OnboardingStep) => void;
-  t: (key: any, params?: any) => string;
+  t: AppContextValue["t"];
 }) {
   const { currentStep, onboardingNavMetas, handleOnboardingJumpToStep, t } =
     props;

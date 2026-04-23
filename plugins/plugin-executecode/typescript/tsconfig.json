@@ -19,8 +19,19 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": false
+    "exactOptionalPropertyTypes": false,
+    "types": [
+      "node",
+      "bun-types"
+    ]
   },
-  "include": ["./**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "__tests__"]
+  "include": [
+    "./**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "__tests__"
+  ]
 }

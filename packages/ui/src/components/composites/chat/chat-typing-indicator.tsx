@@ -10,7 +10,6 @@ export interface TypingIndicatorProps {
 }
 
 export function TypingIndicator({
-  agentAvatarSrc,
   agentName,
   className,
   dotClassName,
