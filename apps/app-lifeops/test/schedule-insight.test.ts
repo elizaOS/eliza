@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { LifeOpsActivitySignal } from "@elizaos/shared/contracts/lifeops";
+import { describe, expect, it } from "vitest";
 import {
   __internal,
   inferLifeOpsScheduleInsight,
@@ -48,7 +48,8 @@ describe("lifeops schedule insight inference", () => {
     });
 
     expect(insight.sleepStatus).toBe("slept");
-    expect(insight.isProbablySleeping).toBe(false);
+    expect(insight.circadianState).not.toBe("sleeping");
+    expect(insight.circadianState).not.toBe("napping");
     expect(insight.lastSleepDurationMinutes).toBeGreaterThanOrEqual(450);
     expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
     expect(insight.relativeTime.minutesSinceWake).toBe(330);
@@ -113,10 +114,9 @@ describe("lifeops schedule insight inference", () => {
     });
 
     expect(insight.sleepStatus).toBe("sleeping_now");
-    expect(insight.isProbablySleeping).toBe(true);
+    expect(insight.circadianState).toBe("sleeping");
     expect(insight.currentSleepStartedAt).toBe("2026-04-19T02:15:00.000Z");
     expect(insight.sleepConfidence).toBeGreaterThanOrEqual(0.9);
-    expect(insight.phase).toBe("sleeping");
     expect(insight.relativeTime.bedtimeTargetAt).toBe(
       "2026-04-19T02:15:00.000Z",
     );
@@ -215,11 +215,12 @@ describe("lifeops schedule insight activity-event windows", () => {
     );
 
     expect(windows).toHaveLength(1);
-    const window = windows[0]!;
+    const [window] = windows;
+    if (!window) {
+      throw new Error("Expected one activity window");
+    }
     expect(window.endMs).toBe(startMs + ACTIVITY_EVENT_MAX_WINDOW_MS);
-    expect(window.endMs).toBeLessThan(
-      Date.parse("2026-04-18T23:30:00.000Z"),
-    );
+    expect(window.endMs).toBeLessThan(Date.parse("2026-04-18T23:30:00.000Z"));
   });
 
   it("honours a real follow-up event when it is earlier than the cap", () => {
@@ -252,6 +253,49 @@ describe("lifeops schedule insight activity-event windows", () => {
     );
 
     expect(windows[0]?.endMs).toBe(followUpMs);
+  });
+
+  it("does not count OS login surfaces as active windows", () => {
+    const { windowsFromActivityEvents } = __internal;
+    const startMs = Date.parse("2026-04-19T10:00:00.000Z");
+    const lockMs = Date.parse("2026-04-19T10:10:00.000Z");
+    const resumeMs = Date.parse("2026-04-19T10:40:00.000Z");
+    const windows = windowsFromActivityEvents(
+      [
+        {
+          id: "event-1",
+          agentId: "agent-1",
+          observedAt: new Date(startMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+        {
+          id: "event-2",
+          agentId: "agent-1",
+          observedAt: new Date(lockMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.apple.loginwindow",
+          appName: "loginwindow",
+          windowTitle: "Login Window",
+        },
+        {
+          id: "event-3",
+          agentId: "agent-1",
+          observedAt: new Date(resumeMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+      ],
+      resumeMs + 5 * 60 * 1000,
+    );
+
+    expect(windows).toHaveLength(2);
+    expect(windows[0]?.endMs).toBe(lockMs);
+    expect(windows[1]?.startMs).toBe(resumeMs);
   });
 });
 

@@ -22,14 +22,22 @@ function buildMergedState(): LifeOpsScheduleMergedState {
     localDate: "2026-04-20",
     timezone: "UTC",
     inferredAt: NOW,
-    phase: "morning",
+    circadianState: "awake",
+    stateConfidence: 0.82,
+    uncertaintyReason: null,
     relativeTime: {
       computedAt: NOW,
       localNowAt: "2026-04-20T10:00:00+00:00",
-      phase: "morning",
-      isProbablySleeping: false,
-      isAwake: true,
-      awakeState: "awake",
+      circadianState: "awake",
+      stateConfidence: 0.82,
+      uncertaintyReason: null,
+      awakeProbability: {
+        pAwake: 0.82,
+        pAsleep: 0.05,
+        pUnknown: 0.13,
+        contributingSources: [],
+        computedAt: NOW,
+      },
       wakeAnchorAt: "2026-04-20T07:00:00.000Z",
       wakeAnchorSource: "sleep_cycle",
       minutesSinceWake: 180,
@@ -44,15 +52,37 @@ function buildMergedState(): LifeOpsScheduleMergedState {
       minutesUntilDayBoundaryEnd: 840,
       confidence: 0.82,
     },
+    awakeProbability: {
+      pAwake: 0.82,
+      pAsleep: 0.05,
+      pUnknown: 0.13,
+      contributingSources: [],
+      computedAt: NOW,
+    },
+    regularity: {
+      sri: 78,
+      bedtimeStddevMin: 30,
+      wakeStddevMin: 28,
+      midSleepStddevMin: 22,
+      regularityClass: "regular",
+      sampleCount: 8,
+      windowDays: 28,
+    },
+    baseline: {
+      medianWakeLocalHour: 7,
+      medianBedtimeLocalHour: 23,
+      medianSleepDurationMin: 480,
+      bedtimeStddevMin: 30,
+      wakeStddevMin: 28,
+      sampleCount: 8,
+      windowDays: 28,
+    },
     sleepStatus: "slept",
-    isProbablySleeping: false,
     sleepConfidence: 0.82,
     currentSleepStartedAt: null,
     lastSleepStartedAt: "2026-04-19T23:00:00.000Z",
     lastSleepEndedAt: "2026-04-20T07:00:00.000Z",
     lastSleepDurationMinutes: 480,
-    typicalWakeHour: 7,
-    typicalSleepHour: 23,
     wakeAt: "2026-04-20T07:00:00.000Z",
     firstActiveAt: "2026-04-20T07:10:00.000Z",
     lastActiveAt: "2026-04-20T09:50:00.000Z",
@@ -145,7 +175,7 @@ describe("LifeOps capability status", () => {
     const status = await service.getCapabilityStatus(new Date(NOW));
 
     expect(status.appEnabled).toBe(true);
-    expect(status.relativeTime?.isAwake).toBe(true);
+    expect(status.relativeTime?.circadianState).toBe("awake");
     expect(status.summary.totalCount).toBeGreaterThanOrEqual(6);
     expect(status.capabilities.map((item) => item.id)).toEqual(
       expect.arrayContaining([

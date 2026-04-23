@@ -1,5 +1,7 @@
 import { Button } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/api";
 import {
+  AlertTriangle,
   Bell,
   Camera,
   FolderLock,
@@ -9,7 +11,8 @@ import {
   Monitor,
   ShieldCheck,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 
 declare global {
   interface Window {
@@ -182,16 +185,49 @@ function PermissionRow({ entry }: { entry: PermissionEntry }) {
 
 export function PermissionsPanel() {
   const platform = useMemo(() => detectPlatform(), []);
+  const [fdaStatus, setFdaStatus] = useState<FullDiskAccessProbeResult | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (platform !== "macos") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await client.getLifeOpsFullDiskAccessStatus();
+        if (!cancelled) setFdaStatus(result);
+      } catch {
+        // The probe is purely informational; a failed fetch shouldn't
+        // break the rest of the permissions panel.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [platform]);
+
   const permissions = useMemo(() => {
     switch (platform) {
-      case "macos":
-        return macosPermissions();
+      case "macos": {
+        const base = macosPermissions();
+        if (!fdaStatus) return base;
+        return base.map((entry) => {
+          if (entry.id !== "full-disk-access") return entry;
+          const status: PermissionStatus =
+            fdaStatus.status === "granted"
+              ? "granted"
+              : fdaStatus.status === "revoked"
+                ? "denied"
+                : "unknown";
+          return { ...entry, status };
+        });
+      }
       case "ios":
         return iosPermissions();
       default:
         return [];
     }
-  }, [platform]);
+  }, [platform, fdaStatus]);
 
   if (permissions.length === 0) {
     return null;
@@ -202,6 +238,18 @@ export function PermissionsPanel() {
       <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
         Permissions
       </div>
+      {fdaStatus?.status === "revoked" ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Full Disk Access revoked</div>
+            <div className="mt-0.5 text-amber-200/80">
+              {fdaStatus.reason ??
+                "Grant access in System Settings → Privacy & Security → Full Disk Access."}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="space-y-1">
         {permissions.map((entry) => (
           <PermissionRow key={entry.id} entry={entry} />

@@ -171,6 +171,39 @@ describe("activity-tracker reporting (pglite)", () => {
     expect(report.totalMs).toBe(5 * 60_000);
   });
 
+  it("treats OS login and lock surfaces as inactivity boundaries", async () => {
+    const now = Date.now();
+    await seed(h.runtime, [
+      {
+        tsIso: iso(now - 40 * 60_000),
+        kind: "activate",
+        bundleId: "com.apple.Safari",
+        appName: "Safari",
+      },
+      {
+        tsIso: iso(now - 30 * 60_000),
+        kind: "activate",
+        bundleId: "com.apple.loginwindow",
+        appName: "loginwindow",
+      },
+      {
+        tsIso: iso(now - 10 * 60_000),
+        kind: "activate",
+        bundleId: "com.apple.Safari",
+        appName: "Safari",
+      },
+    ]);
+
+    const report = await getActivityReport(h.runtime, AGENT_ID, {
+      windowMs: 60 * 60_000,
+      nowMs: now,
+    });
+
+    expect(report.apps.map((app) => app.appName)).toEqual(["Safari"]);
+    expect(report.apps[0]?.totalMs).toBe(20 * 60_000);
+    expect(report.totalMs).toBe(20 * 60_000);
+  });
+
   it("getTimeOnApp matches by bundle id and by app name", async () => {
     const now = Date.now();
     await seed(h.runtime, [

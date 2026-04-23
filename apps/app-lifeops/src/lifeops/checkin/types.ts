@@ -40,6 +40,33 @@ export interface HabitSummary {
   readonly isPaused: boolean;
 }
 
+export type CheckinBriefingSectionKey =
+  | "x_dms"
+  | "x_timeline"
+  | "x_mentions"
+  | "unified_inbox"
+  | "gmail"
+  | "github"
+  | "calendar_changes"
+  | "contacts"
+  | "promises";
+
+export interface CheckinBriefingItem {
+  readonly title: string;
+  readonly detail: string;
+  readonly occurredAt: string | null;
+  readonly href: string | null;
+  readonly reason: string | null;
+}
+
+export interface CheckinBriefingSection {
+  readonly key: CheckinBriefingSectionKey;
+  readonly title: string;
+  readonly summary: string;
+  readonly items: readonly CheckinBriefingItem[];
+  readonly error: string | null;
+}
+
 export interface CheckinCollectorErrors {
   readonly overdueTodos: string | null;
   readonly todaysMeetings: string | null;
@@ -56,12 +83,15 @@ export interface CheckinReport {
   readonly yesterdaysWins: readonly RecentWin[];
   readonly habitSummaries: readonly HabitSummary[];
   readonly habitEscalationLevel: EscalationLevel;
+  readonly briefingSections: readonly CheckinBriefingSection[];
+  readonly summaryText: string;
   readonly collectorErrors: CheckinCollectorErrors;
 }
 
 export interface RunCheckinRequest {
   readonly roomId?: string;
   readonly now?: Date;
+  readonly timezone?: string;
 }
 
 export interface RecordAcknowledgementRequest {

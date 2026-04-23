@@ -1,17 +1,11 @@
 /**
- * One-shot migrator from legacy per-source tables into the unified
- * `life_telemetry_events` store. Runs idempotently: the dedupe_key on the
- * destination table ensures re-runs are safe.
+ * Shared mapper from a persisted `LifeOpsActivitySignal` into a
+ * `LifeOpsTelemetryPayload`. Used by the live writer in
+ * `LifeOpsRepository.createActivitySignal` so every signal is mirrored into
+ * the unified `life_telemetry_events` store with a dedupe-stable payload.
  *
- * See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` section 8 for
- * the canonical mapping of source table to telemetry family.
- *
- * Scope (intentionally conservative):
- *  - `life_activity_signals` to `device_presence_event` / `desktop_idle_sample`
- *    / `desktop_power_event` / `message_activity_event` / `mobile_device_snapshot`
- *    / `mobile_health_snapshot` / `manual_override_event`
- *  - `life_activity_events` to `browser_focus_window` via paired activate/
- *    deactivate rows is future work; this migrator only handles signals.
+ * See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` §8 for the
+ * canonical mapping table.
  */
 
 import crypto from "node:crypto";
@@ -20,11 +14,15 @@ import type {
   LifeOpsTelemetryEvent,
   LifeOpsTelemetryPayload,
 } from "@elizaos/shared/contracts/lifeops";
-import type { LifeOpsRepository } from "./repository.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 
-function deriveDedupeKey(family: string, payload: unknown): string {
-  const serialized = JSON.stringify({ family, payload });
+export function deriveTelemetryDedupeKey(
+  family: string,
+  agentId: string,
+  occurredAt: string,
+  payload: LifeOpsTelemetryPayload,
+): string {
+  const serialized = JSON.stringify({ family, agentId, occurredAt, payload });
   return crypto
     .createHash("sha256")
     .update(serialized)
@@ -32,10 +30,9 @@ function deriveDedupeKey(family: string, payload: unknown): string {
     .slice(0, 48);
 }
 
-function mapSignalToPayload(
+export function mapSignalToTelemetryPayload(
   signal: LifeOpsActivitySignal,
 ): LifeOpsTelemetryPayload | null {
-  // Manual override to manual_override_event.
   if (signal.platform === "manual_override") {
     const kind =
       signal.metadata.manualOverrideKind === "going_to_bed"
@@ -147,60 +144,29 @@ function mapSignalToPayload(
   }
 }
 
-export async function migrateActivitySignalsToTelemetry(args: {
-  repository: LifeOpsRepository;
-  agentId: string;
-  sinceIso?: string;
-  batchSize?: number;
-}): Promise<{ migratedCount: number; skippedCount: number }> {
-  const batchSize = args.batchSize ?? 500;
-  const signals = await args.repository.listActivitySignals(args.agentId, {
-    sinceAt: args.sinceIso ?? null,
-    limit: batchSize,
-  });
-  let migratedCount = 0;
-  let skippedCount = 0;
-  const nowIso = new Date().toISOString();
-  for (const signal of signals) {
-    const payload = mapSignalToPayload(signal);
-    if (payload === null) {
-      skippedCount += 1;
-      continue;
-    }
-    const reliability = resolveActivitySignalReliability(
-      signal.source,
-      signal.platform,
-    );
-    const event: LifeOpsTelemetryEvent = {
-      id: crypto.randomUUID(),
-      agentId: signal.agentId,
-      family: payload.family,
-      occurredAt: signal.observedAt,
-      ingestedAt: nowIso,
-      dedupeKey: deriveDedupeKey(payload.family, payload),
-      sourceReliability: reliability,
+export function buildTelemetryEventFromSignal(
+  signal: LifeOpsActivitySignal,
+  nowIso: string,
+): LifeOpsTelemetryEvent | null {
+  const payload = mapSignalToTelemetryPayload(signal);
+  if (payload === null) return null;
+  const reliability = resolveActivitySignalReliability(
+    signal.source,
+    signal.platform,
+  );
+  return {
+    id: crypto.randomUUID(),
+    agentId: signal.agentId,
+    family: payload.family,
+    occurredAt: signal.observedAt,
+    ingestedAt: nowIso,
+    dedupeKey: deriveTelemetryDedupeKey(
+      payload.family,
+      signal.agentId,
+      signal.observedAt,
       payload,
-    };
-    const inserted = await args.repository.insertTelemetryEvent(event);
-    if (inserted) {
-      migratedCount += 1;
-    } else {
-      skippedCount += 1;
-    }
-  }
-  return { migratedCount, skippedCount };
-}
-
-const DEFAULT_RETENTION_DAYS = 60;
-
-export async function runTelemetryRetention(args: {
-  repository: LifeOpsRepository;
-  agentId: string;
-  retentionDays?: number;
-}): Promise<{ deletedCount: number }> {
-  const retentionDays = args.retentionDays ?? DEFAULT_RETENTION_DAYS;
-  return args.repository.pruneTelemetryEvents({
-    agentId: args.agentId,
-    retentionDays,
-  });
+    ),
+    sourceReliability: reliability,
+    payload,
+  };
 }

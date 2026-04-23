@@ -7,8 +7,6 @@
  * a single source of truth rather than scattering inline constants.
  */
 
-/* ── Types ─────────────────────────────────────────────────────────── */
-
 export type ChainKey =
   | "bsc"
   | "avax"
@@ -36,56 +34,38 @@ export interface ChainConfig {
   /** Whether this is an EVM-compatible chain. */
   isEvm: boolean;
 
-  /* ── Explorer ──────────────────────────────── */
-
   /** Base URL of the chain's block explorer. */
   explorerBaseUrl: string;
-  /** Path template for token pages — `{address}` is replaced. */
+  /** Path template for token pages; `{address}` is replaced. */
   explorerTokenPath: string;
-  /** Path template for transaction pages — `{hash}` is replaced. */
+  /** Path template for transaction pages; `{hash}` is replaced. */
   explorerTxPath: string;
-
-  /* ── Logos ──────────────────────────────────── */
 
   /** URL for the native gas-token logo. */
   nativeLogoUrl: string;
   /** TrustWallet assets CDN slug (e.g. `smartchain`, `avalanchec`). */
   trustWalletSlug: string | null;
 
-  /* ── Gas ────────────────────────────────────── */
-
   /** Minimum native balance to consider the wallet "trade-ready". */
   gasReadyThreshold: number;
   /** Reserve kept aside from max-balance swaps. */
   swapGasReserve: number;
 
-  /* ── Stablecoins ───────────────────────────── */
-
   /** Well-known stablecoin contract addresses on this chain. */
   stablecoins: Stablecoin[];
-
-  /* ── Address ───────────────────────────────── */
 
   /** Regex to validate an address on this chain. */
   addressRegex: RegExp;
 
-  /* ── DexScreener ───────────────────────────── */
-
   /** Chain ID used by the DexScreener API. */
   dexScreenerChainId: string;
-
-  /* ── Variants ──────────────────────────────── */
 
   /** Alternative chain name strings that resolve to this config. */
   nameVariants: string[];
 
-  /* ── Branding ──────────────────────────────── */
-
   /** Brand color for the chain. CSS variable reference (e.g. `"var(--color-chain-eth)"`). */
   color: string;
 }
-
-/* ── Registry ──────────────────────────────────────────────────────── */
 
 const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -283,9 +263,7 @@ export const CHAIN_CONFIGS: Record<ChainKey, ChainConfig> = {
   },
 };
 
-/* ── Lookup helpers ────────────────────────────────────────────────── */
-
-/** Pre-built lookup table: lowercase variant → ChainConfig. */
+/** Pre-built lookup table from lowercase variant to ChainConfig. */
 const _variantMap = new Map<string, ChainConfig>();
 for (const config of Object.values(CHAIN_CONFIGS)) {
   for (const variant of config.nameVariants) {

@@ -1,1256 +1,1215 @@
-import { ApprovalQueue } from "@elizaos/app-steward/ApprovalQueue";
-import { TransactionHistory } from "@elizaos/app-steward/TransactionHistory";
-import type { StewardStatusResponse } from "@elizaos/app-steward/types/steward";
+import type {
+  WalletAddresses,
+  WalletConfigStatus,
+  WalletTradingProfileResponse,
+  WalletTradingProfileWindow,
+} from "@elizaos/shared/contracts/wallet";
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+  cn,
   PageLayout,
   PagePanel,
-  SegmentedControl,
   Sidebar,
   SidebarContent,
-  SidebarFilterBar,
   SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
-  TooltipHint,
 } from "@elizaos/ui";
 import {
-  AlertTriangle,
-  ChevronDown,
+  Activity,
+  ArrowLeftRight,
+  BarChart3,
   Copy,
+  EyeOff,
+  Image as ImageIcon,
+  Layers3,
+  type LucideIcon,
+  RefreshCw,
   Settings,
-  Shield,
+  Sparkles,
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api";
+import type { InventoryChainFilters } from "../../state/types";
 import { useApp } from "../../state/useApp";
 import { WidgetHost } from "../../widgets";
 import {
-  BSC_GAS_READY_THRESHOLD,
-  loadTrackedBscTokens,
-  loadTrackedTokens,
-  removeTrackedBscToken,
-  saveTrackedTokens,
-  type TrackedToken,
-} from "../inventory";
-import { TradePanel } from "../inventory/BscTradePanel";
-import { ChainIcon } from "../inventory/ChainIcon";
-import {
-  CHAIN_CONFIGS,
-  type ChainKey,
-  chainKeyToWalletRpcChain,
-  PRIMARY_CHAIN_KEYS,
-  resolveChainKey,
-} from "../inventory/chainConfig";
-import {
-  type PrimaryInventoryChainKey,
-  toggleInventoryChainFilter,
-} from "../inventory/inventory-chain-filters";
-import { NftGrid } from "../inventory/NftGrid";
-import { TokensTable } from "../inventory/TokensTable";
+  formatBalance,
+  type NftItem,
+  type TokenRow,
+} from "../inventory/constants";
+import { TokenLogo } from "../inventory/TokenLogo";
 import { useInventoryData } from "../inventory/useInventoryData";
-import { PolicyControlsView } from "../settings/PolicyControlsView";
-import { ConfigPageView } from "./ConfigPageView";
 
-/* ── Component ─────────────────────────────────────────────────────── */
+type DashboardWindow = "24h" | "7d" | "30d";
 
-/* ── Wallet Settings Popup Components ────────────────────────────────── */
+const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
+  ethereum: true,
+  base: true,
+  bsc: true,
+  avax: true,
+  solana: true,
+};
 
-function SettingsCopyableAddress({
-  label,
-  address,
-}: {
+const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
+const HIDDEN_TOKEN_IDS_KEY = "milady:wallet:hidden-token-ids:v1";
+const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const VINCENT_APP_NAME = "@elizaos/app-vincent";
+
+const LP_PROTOCOLS = ["Uniswap", "Raydium", "Meteora", "PancakeSwap"] as const;
+type LpProtocol = (typeof LP_PROTOCOLS)[number];
+
+interface LpPositionPreview {
+  protocol: LpProtocol;
   label: string;
-  address: string;
-}) {
-  const [copied, setCopied] = useState(false);
+  detail: string;
+  valueUsd: number | null;
+}
 
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+const compactFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 4,
+});
+
+function resolveWalletAddresses({
+  walletAddresses,
+  walletConfig,
+}: {
+  walletAddresses: WalletAddresses | null;
+  walletConfig: WalletConfigStatus | null;
+}): {
+  evmAddress: string | null;
+  solanaAddress: string | null;
+} {
+  return {
+    evmAddress: walletAddresses?.evmAddress ?? walletConfig?.evmAddress ?? null,
+    solanaAddress:
+      walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress ?? null,
+  };
+}
+
+function readHiddenTokenIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_TOKEN_IDS_KEY);
+    if (!raw) return new Set();
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter((item): item is string => typeof item === "string"),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenTokenIds(next: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      HIDDEN_TOKEN_IDS_KEY,
+      JSON.stringify([...next]),
+    );
+  } catch {
+    return;
+  }
+}
+
+function tokenId(row: TokenRow): string {
+  const address =
+    row.contractAddress && row.contractAddress.length > 0
+      ? row.contractAddress.toLowerCase()
+      : `native:${row.symbol.toLowerCase()}`;
+  return `${row.chain.toLowerCase()}:${address}`;
+}
+
+function normalizeTokenAddress(address: string | null): string | null {
+  return address ? address.toLowerCase() : null;
+}
+
+function formatUsd(value: number): string {
+  if (!Number.isFinite(value)) return usdFormatter.format(0);
+  return usdFormatter.format(value);
+}
+
+function formatBnb(value: string | null | undefined): string {
+  if (!value) return "0 BNB";
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed)) return `${value} BNB`;
+  return `${compactFormatter.format(parsed)} BNB`;
+}
+
+function parseAmount(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function shortAddress(address: string): string {
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 6)}...${address.slice(-6)}`;
+}
+
+function providerLabel(provider: string | null | undefined): string {
+  switch (provider) {
+    case "eliza-cloud":
+      return "Eliza Cloud";
+    case "alchemy":
+      return "Alchemy";
+    case "quicknode":
+      return "QuickNode";
+    case "helius-birdeye":
+      return "Helius + Birdeye";
+    case "custom":
+      return "Custom";
+    default:
+      return "Not configured";
+  }
+}
+
+function tradingProfileWindow(
+  window: DashboardWindow,
+): WalletTradingProfileWindow {
+  return window === "24h" ? "24h" : window;
+}
+
+function tokenHasInventory(row: TokenRow): boolean {
+  return row.balanceRaw > 0 || row.valueUsd > 0;
+}
+
+function dispatchWalletChatPrefill(text: string): void {
+  window.dispatchEvent(
+    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
+      detail: { text, select: true },
+    }),
+  );
+}
+
+function TokenPerformance({
+  row,
+  profile,
+}: {
+  row: TokenRow;
+  profile: WalletTradingProfileResponse | null;
+}) {
+  const normalizedAddress = normalizeTokenAddress(row.contractAddress);
+  const breakdown =
+    normalizedAddress && profile
+      ? profile.tokenBreakdown.find(
+          (item) => item.tokenAddress.toLowerCase() === normalizedAddress,
+        )
+      : null;
+
+  if (!breakdown) {
+    return <span className="text-[0.68rem] text-muted">No history</span>;
+  }
+
+  const pnl = parseAmount(breakdown.realizedPnlBnb);
+  const bars = [1, 2, 3, 4, 5];
+  const tone =
+    pnl === null || pnl === 0
+      ? "text-muted"
+      : pnl > 0
+        ? "text-ok"
+        : "text-danger";
+
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span className={cn("text-[0.68rem] font-medium", tone)}>
+        {pnl !== null && pnl > 0 ? "+" : ""}
+        {formatBnb(breakdown.realizedPnlBnb)}
+      </span>
+      <span className="flex h-4 items-end gap-0.5" aria-hidden="true">
+        {bars.map((bar) => (
+          <span
+            key={bar}
+            className={cn(
+              "block w-1 rounded-sm",
+              pnl !== null && pnl > 0
+                ? "bg-ok/80"
+                : pnl !== null && pnl < 0
+                  ? "bg-danger/80"
+                  : "bg-border",
+            )}
+            style={{ height: `${4 + bar * 2}px` }}
+          />
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function AddressPill({ label, address }: { label: string; address: string }) {
+  const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
     void navigator.clipboard.writeText(address).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      window.setTimeout(() => setCopied(false), 1200);
     });
   }, [address]);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-bg/50 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="text-xs-tight font-medium text-muted">{label}</div>
-        <div className="mt-0.5 truncate font-mono text-xs text-txt">
-          {address}
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0 text-muted hover:text-txt"
-        onClick={handleCopy}
-        aria-label={`Copy ${label} address`}
-      >
-        {copied ? (
-          <span className="text-ok text-xs">✓</span>
-        ) : (
-          <Copy className="h-3.5 w-3.5" />
-        )}
-      </Button>
+    <Button
+      variant="outline"
+      className="min-w-0 justify-between gap-2 rounded-lg px-3 py-2 text-left"
+      onClick={handleCopy}
+      title={address}
+    >
+      <span className="min-w-0">
+        <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-muted">
+          {label}
+        </span>
+        <span className="block truncate font-mono text-xs text-txt">
+          {shortAddress(address)}
+        </span>
+      </span>
+      {copied ? (
+        <span className="text-xs text-ok">Copied</span>
+      ) : (
+        <Copy className="h-3.5 w-3.5 shrink-0 text-muted" />
+      )}
+    </Button>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-bg/40 px-4 py-6 text-center">
+      <Icon className="mb-3 h-5 w-5 text-muted" />
+      <div className="text-sm font-semibold text-txt">{title}</div>
+      <div className="mt-1 max-w-sm text-xs-tight text-muted">{body}</div>
     </div>
   );
 }
 
-function StewardWalletInfoPopup({
-  stewardStatus,
-  onOpenPolicies,
+function PnlChart({
+  profile,
 }: {
-  stewardStatus: StewardStatusResponse;
-  onOpenPolicies: () => void;
+  profile: WalletTradingProfileResponse | null;
 }) {
-  const { t } = useApp();
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const points = profile?.pnlSeries ?? [];
+  const values = points
+    .map((point) => parseAmount(point.realizedPnlBnb))
+    .filter((value): value is number => value !== null);
 
-  const evmAddress =
-    stewardStatus.walletAddresses?.evm ?? stewardStatus.evmAddress ?? null;
-  const solanaAddress = stewardStatus.walletAddresses?.solana ?? null;
+  if (values.length < 2) {
+    return (
+      <div className="flex h-24 items-center justify-center rounded-lg border border-border/40 bg-bg/30 text-xs text-muted">
+        No P&L series yet
+      </div>
+    );
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const svgPoints = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * 100;
+      const y = 88 - ((value - min) / span) * 72;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const latest = values[values.length - 1];
+  const stroke = latest >= 0 ? "rgb(var(--ok-rgb))" : "rgb(var(--danger-rgb))";
 
   return (
-    <div className="space-y-4">
-      {/* Steward status banner */}
-      <div className="flex items-center gap-3 rounded-lg border border-accent/20 bg-accent/5 p-3">
-        <Shield className="h-5 w-5 shrink-0 text-accent" />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-txt">
-            {t("settings.stewardWalletManaged", {
-              defaultValue: "Wallet managed by Steward",
-            })}
-          </div>
-          <div className="mt-0.5 text-xs-tight text-muted">
-            {stewardStatus.vaultHealth === "ok"
-              ? t("settings.stewardVaultHealthy", {
-                  defaultValue: "Vault connected and healthy",
-                })
-              : stewardStatus.vaultHealth === "degraded"
-                ? t("settings.stewardVaultDegraded", {
-                    defaultValue: "Vault connected - degraded",
-                  })
-                : t("settings.stewardVaultError", {
-                    defaultValue: "Vault connected - error state",
-                  })}
-          </div>
-        </div>
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${
-            stewardStatus.vaultHealth === "ok"
-              ? "bg-ok"
-              : stewardStatus.vaultHealth === "degraded"
-                ? "bg-warn"
-                : "bg-danger"
-          }`}
-        />
-      </div>
+    <svg
+      className="h-24 w-full rounded-lg border border-border/40 bg-bg/30"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-label="Agent P&L chart"
+    >
+      <polyline
+        fill="none"
+        stroke={stroke}
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={svgPoints}
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
 
-      {/* Wallet addresses */}
-      <div className="space-y-2">
-        {evmAddress && (
-          <SettingsCopyableAddress label="EVM Address" address={evmAddress} />
-        )}
-        {solanaAddress && (
-          <SettingsCopyableAddress
-            label="Solana Address"
-            address={solanaAddress}
-          />
-        )}
-        {!evmAddress && !solanaAddress && (
-          <div className="rounded-lg border border-border/50 bg-bg/50 px-3 py-2.5 text-xs text-muted">
-            {t("settings.stewardNoAddresses", {
-              defaultValue: "No vault addresses yet",
-            })}
-          </div>
-        )}
+function StatCard({
+  label,
+  value,
+  detail,
+  tone = "text-txt",
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-bg/40 p-3">
+      <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
+        {label}
       </div>
-
-      {/* Link to Wallet Policies */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full justify-center gap-2 text-xs"
-        onClick={onOpenPolicies}
-      >
-        <Shield className="h-3.5 w-3.5" />
-        {t("settings.viewWalletPolicies", {
-          defaultValue: "View Wallet Policies",
-        })}
-      </Button>
-
-      {/* RPC configuration */}
-      <div className="pt-4">
-        <div className="text-xs font-semibold text-txt mb-2">
-          {t("settings.rpcConfiguration", {
-            defaultValue: "RPC Configuration",
-          })}
-        </div>
-        <ConfigPageView embedded />
-      </div>
-
-      {/* Advanced: show local key import */}
-      <div className="pt-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-between text-xs text-muted hover:text-txt"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-        >
-          {t("settings.showAdvancedKeyManagement", {
-            defaultValue: "Advanced key management",
-          })}
-          <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
-          />
-        </Button>
-        {showAdvanced && (
-          <div className="mt-3 rounded-lg border border-warn/20 bg-warn/5 p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs-tight text-warn">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {t("settings.advancedKeyWarning", {
-                defaultValue: "Not needed with Steward. Use with caution.",
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      <div className={cn("mt-1 text-lg font-semibold", tone)}>{value}</div>
+      {detail ? (
+        <div className="mt-1 text-xs-tight text-muted">{detail}</div>
+      ) : null}
     </div>
   );
 }
 
-type InventorySortKey = "chain" | "symbol" | "value";
-type WalletSubTab = "balances" | "transactions" | "approvals";
-
-function countVisibleAssetsForFocus(
-  focus: ChainKey,
-  rows:
-    | Array<{
-        chain: string;
-        balanceRaw: number;
-        valueUsd: number;
-        isTracked?: boolean;
-      }>
-    | undefined,
-): number {
-  return (rows ?? []).filter((row) => {
-    const hasBalance = row.isTracked || row.balanceRaw > 0 || row.valueUsd > 0;
-    if (!hasBalance) return false;
-    return resolveChainKey(row.chain) === focus;
-  }).length;
-}
-
-function isInventorySortKey(value: string): value is InventorySortKey {
-  return value === "value" || value === "chain" || value === "symbol";
-}
-
-export function InventoryView() {
-  const {
-    walletConfig,
-    walletAddresses,
-    walletBalances,
-    walletNfts,
-    walletLoading,
-    walletNftsLoading,
-    cloudRefreshing,
-    inventoryView,
-    inventorySort,
-    inventorySortDirection,
-    inventoryChainFilters,
-    walletError,
-    loadBalances,
-    loadNfts,
-    elizaCloudConnected,
-    setState,
-    setActionNotice,
-    executeBscTrade,
-    getBscTradePreflight,
-    getBscTradeQuote,
-    getBscTradeTxStatus,
-    getStewardStatus,
-    getStewardHistory,
-    getStewardPending,
-    approveStewardTx,
-    rejectStewardTx,
-    copyToClipboard,
-    t,
-  } = useApp();
-
-  // ── Tracked tokens state ──────────────────────────────────────────
-  const [trackedTokens, setTrackedTokens] = useState<TrackedToken[]>(() =>
-    loadTrackedTokens(),
-  );
-  const [trackedBscTokens, setTrackedBscTokens] =
-    useState(loadTrackedBscTokens);
-
-  // ── Wallet sub-tab (balances / transactions / approvals) ────────
-  const [walletSubTab, setWalletSubTab] = useState<WalletSubTab>("balances");
-  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
-  const [walletSearch, setWalletSearch] = useState("");
-
-  // ── Wallet settings popup state ──────────────────────────────────
-  const [walletRpcOpen, setWalletRpcOpen] = useState(false);
-  const [walletPoliciesOpen, setWalletPoliciesOpen] = useState(false);
-  const autoLoadedInventoryViewRef = useRef<"tokens" | "nfts" | null>(null);
-
-  const handlePendingCountChange = useCallback((count: number) => {
-    setPendingApprovalCount(count);
-  }, []);
-
-  // ── Steward status ────────────────────────────────────────────────
-  const [stewardStatus, setStewardStatus] =
-    useState<StewardStatusResponse | null>(null);
-  const cloudRefreshPendingStewardSyncRef = useRef(false);
-
-  const loadStewardStatus = useCallback(async () => {
-    if (typeof getStewardStatus !== "function") {
-      return null;
-    }
-    return await getStewardStatus();
-  }, [getStewardStatus]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadStewardStatus()
-      .then((s) => {
-        if (!cancelled && s) setStewardStatus(s);
-      })
-      .catch(() => {
-        /* steward not available — ignore */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loadStewardStatus]);
-
-  useEffect(() => {
-    if (cloudRefreshing) {
-      cloudRefreshPendingStewardSyncRef.current = true;
-      return;
-    }
-
-    if (!cloudRefreshPendingStewardSyncRef.current) {
-      return;
-    }
-
-    cloudRefreshPendingStewardSyncRef.current = false;
-    let cancelled = false;
-    loadStewardStatus()
-      .then((status) => {
-        if (!cancelled && status) {
-          setStewardStatus(status);
-        }
-      })
-      .catch(() => {
-        /* steward not available — ignore */
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cloudRefreshing, loadStewardStatus]);
-
-  useEffect(() => {
-    if (autoLoadedInventoryViewRef.current === inventoryView) {
-      return;
-    }
-    autoLoadedInventoryViewRef.current = inventoryView;
-
-    if (inventoryView === "tokens") {
-      if (!walletBalances && !walletLoading) {
-        void loadBalances();
-      }
-      return;
-    }
-
-    if (!walletNfts && !walletNftsLoading) {
-      void loadNfts();
-    }
-  }, [
-    inventoryView,
-    loadBalances,
-    loadNfts,
-    walletBalances,
-    walletLoading,
-    walletNfts,
-    walletNftsLoading,
-  ]);
-
-  // ── RPC + wallet readiness ───────────────────────────────────────
-  const cfg = walletConfig;
-  const hasManagedBscRpc = Boolean(cfg?.managedBscRpcReady);
-  const cloudManagedAccess = Boolean(
-    cfg?.cloudManagedAccess || elizaCloudConnected,
-  );
-
-  const goToRpcSettings = useCallback(() => {
-    setWalletRpcOpen(true);
-  }, []);
-
-  // ── Derived data (hook) ───────────────────────────────────────────
-  const {
-    singleChainFocus,
-    tokenRowsAllChains,
-    allNfts,
-    focusedChainError,
-    focusedChainName,
-    visibleRows,
-    visibleChainErrors,
-    focusedNativeBalance,
-  } = useInventoryData({
-    walletBalances,
-    walletAddresses,
-    walletConfig,
-    walletNfts,
-    inventorySort,
-    inventorySortDirection,
-    inventoryChainFilters,
-    trackedBscTokens,
-    trackedTokens,
-  });
-
-  const walletSearchQuery = walletSearch.trim().toLowerCase();
-  const filteredVisibleRows = useMemo(() => {
-    if (!walletSearchQuery) return visibleRows;
-    return visibleRows.filter((row) => {
-      const haystacks = [
-        row.symbol,
-        row.name,
-        row.chain,
-        row.contractAddress ?? "",
-      ];
-      return haystacks.some((value) =>
-        value.toLowerCase().includes(walletSearchQuery),
+function TokenRail({
+  rows,
+  hiddenTokenIds,
+  searchQuery,
+  profile,
+  onSearchChange,
+  onHideToken,
+  onTokenAction,
+}: {
+  rows: TokenRow[];
+  hiddenTokenIds: Set<string>;
+  searchQuery: string;
+  profile: WalletTradingProfileResponse | null;
+  onSearchChange: (value: string) => void;
+  onHideToken: (row: TokenRow) => void;
+  onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
+}) {
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (hiddenTokenIds.has(tokenId(row))) return false;
+      if (!tokenHasInventory(row)) return false;
+      if (!query) return true;
+      return (
+        row.symbol.toLowerCase().includes(query) ||
+        row.name.toLowerCase().includes(query) ||
+        row.contractAddress?.toLowerCase().includes(query)
       );
     });
-  }, [visibleRows, walletSearchQuery]);
+  }, [hiddenTokenIds, rows, searchQuery]);
 
-  const filteredNfts = useMemo(() => {
-    if (!walletSearchQuery) return allNfts;
-    return allNfts.filter((nft) => {
-      const haystacks = [nft.name, nft.collectionName, nft.chain];
-      return haystacks.some((value) =>
-        value.toLowerCase().includes(walletSearchQuery),
-      );
-    });
-  }, [allNfts, walletSearchQuery]);
-
-  const evmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const solAddr = walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
-  const loadedEvmChainKeys = new Set(
-    (walletBalances?.evm?.chains ?? [])
-      .filter((chain) => !chain.error)
-      .map((chain) => resolveChainKey(chain.chain))
-      .filter((chainKey): chainKey is ChainKey => chainKey !== null),
-  );
-  const evmChainErrors = new Map(
-    (walletBalances?.evm?.chains ?? [])
-      .map((chain) => [resolveChainKey(chain.chain), chain.error] as const)
-      .filter((entry): entry is [ChainKey, string | null] => entry[0] !== null),
-  );
-  const ethereumReady = Boolean(
-    evmAddr &&
-      !evmChainErrors.get("ethereum") &&
-      (loadedEvmChainKeys.has("ethereum") ||
-        cfg?.ethereumBalanceReady ||
-        cfg?.alchemyKeySet ||
-        cloudManagedAccess),
-  );
-  const baseReady = Boolean(
-    evmAddr &&
-      !evmChainErrors.get("base") &&
-      (loadedEvmChainKeys.has("base") ||
-        cfg?.baseBalanceReady ||
-        cfg?.alchemyKeySet ||
-        cloudManagedAccess),
-  );
-  const bscReady = Boolean(
-    evmAddr &&
-      !evmChainErrors.get("bsc") &&
-      (loadedEvmChainKeys.has("bsc") ||
-        cfg?.bscBalanceReady ||
-        cfg?.ankrKeySet ||
-        hasManagedBscRpc),
-  );
-  const avaxReady = Boolean(
-    evmAddr &&
-      !evmChainErrors.get("avax") &&
-      (loadedEvmChainKeys.has("avax") ||
-        cfg?.avalancheBalanceReady ||
-        cfg?.alchemyKeySet ||
-        cloudManagedAccess),
-  );
-  const solanaReady = Boolean(
-    solAddr &&
-      (Boolean(walletBalances?.solana) ||
-        cfg?.solanaBalanceReady ||
-        cfg?.heliusKeySet ||
-        cloudManagedAccess),
-  );
-  const bnbBalance = Number.parseFloat(focusedNativeBalance ?? "0") || 0;
-  const tradeReady =
-    singleChainFocus === "bsc" ? bnbBalance >= BSC_GAS_READY_THRESHOLD : true;
-  // When steward is connected, use steward addresses for copy buttons
-  const stewardEvmAddr = stewardStatus?.connected
-    ? (stewardStatus.walletAddresses?.evm ?? stewardStatus.evmAddress ?? null)
-    : null;
-  const stewardSolAddr = stewardStatus?.connected
-    ? (stewardStatus.walletAddresses?.solana ?? null)
-    : null;
-  const displayEvmAddr = stewardEvmAddr ?? evmAddr;
-  const displaySolAddr = stewardSolAddr ?? solAddr;
-  const addresses = [
-    displayEvmAddr ? { label: "EVM", address: displayEvmAddr } : null,
-    displaySolAddr ? { label: "Solana", address: displaySolAddr } : null,
-  ].filter((item): item is { label: string; address: string } => Boolean(item));
-  const chainItemMeta = useMemo(() => {
-    const items: Array<{
-      key: PrimaryInventoryChainKey;
-      label: string;
-      hasAddress: boolean;
-      description: string;
-    }> = [];
-
-    for (const key of PRIMARY_CHAIN_KEYS) {
-      const pk = key as PrimaryInventoryChainKey;
-      const config = CHAIN_CONFIGS[key];
-      const assetCount = countVisibleAssetsForFocus(key, tokenRowsAllChains);
-      const chainReady =
-        key === "ethereum"
-          ? ethereumReady
-          : key === "base"
-            ? baseReady
-            : key === "bsc"
-              ? bscReady
-              : key === "avax"
-                ? avaxReady
-                : key === "solana"
-                  ? solanaReady
-                  : false;
-      const hasAddress = key === "solana" ? Boolean(solAddr) : Boolean(evmAddr);
-
-      items.push({
-        key: pk,
-        label: config.name,
-        hasAddress,
-        description: !hasAddress
-          ? "No wallet address yet"
-          : chainReady
-            ? assetCount > 0
-              ? `${assetCount} visible assets`
-              : "Connected and ready"
-            : "Needs RPC setup",
-      });
-    }
-
-    return items;
-  }, [
-    avaxReady,
-    baseReady,
-    bscReady,
-    ethereumReady,
-    evmAddr,
-    solAddr,
-    solanaReady,
-    tokenRowsAllChains,
-  ]);
-  const walletSearchLabel = t("wallet.searchWallets", {
-    defaultValue: "Search wallets",
-  });
-  const handleInventoryViewChange = useCallback(
-    (nextView: "tokens" | "nfts") => {
-      setState("inventoryView", nextView);
-      if (nextView === "tokens") {
-        if (!walletBalances) void loadBalances();
-        return;
-      }
-      if (!walletNfts) {
-        void loadNfts();
-      }
-    },
-    [loadBalances, loadNfts, setState, walletBalances, walletNfts],
-  );
-  const handleInventoryChainToggle = useCallback(
-    (chainKey: PrimaryInventoryChainKey) => {
-      setState(
-        "inventoryChainFilters",
-        toggleInventoryChainFilter(inventoryChainFilters, chainKey),
-      );
-    },
-    [inventoryChainFilters, setState],
-  );
-
-  const focusedChainLabel =
-    focusedChainName ??
-    (singleChainFocus
-      ? (CHAIN_CONFIGS[singleChainFocus as keyof typeof CHAIN_CONFIGS]?.name ??
-        singleChainFocus)
-      : null);
-  const inlineError =
-    singleChainFocus && focusedChainError
-      ? {
-          message: `${focusedChainLabel ?? "Chain"}: ${focusedChainError}`,
-          retryTitle: `Retry fetching ${focusedChainLabel ?? "chain"} balances`,
-        }
-      : null;
-
-  const legacyRpcChain = singleChainFocus
-    ? chainKeyToWalletRpcChain(singleChainFocus)
-    : null;
-  const headerWarning =
-    singleChainFocus &&
-    legacyRpcChain !== null &&
-    cfg?.legacyCustomChains?.includes(legacyRpcChain)
-      ? {
-          title: `${
-            focusedChainLabel ??
-            (singleChainFocus === "bsc"
-              ? "BSC"
-              : singleChainFocus === "solana"
-                ? "Solana"
-                : "EVM")
-          } is using legacy raw RPC config.`,
-          body: "Re-save a supported provider in Settings to migrate fully.",
-          actionLabel: t("wallet.setup.configureRpc"),
-        }
-      : singleChainFocus === "bsc" && evmAddr && !bscReady
-        ? {
-            title: t("wallet.setup.rpcNotConfigured"),
-            body: t("portfolioheader.ConnectViaElizaCl"),
-            actionLabel: t("wallet.setup.configureRpc"),
-          }
-        : singleChainFocus === "solana" && solAddr && !solanaReady
-          ? {
-              title: "Solana RPC is not configured.",
-              body: "Connect via Eliza Cloud or configure HELIUS_API_KEY / SOLANA_RPC_URL in Settings to load Solana balances.",
-              actionLabel: t("wallet.setup.configureRpc"),
-            }
-          : singleChainFocus &&
-              singleChainFocus !== "bsc" &&
-              singleChainFocus !== "solana" &&
-              evmAddr &&
-              !(singleChainFocus === "ethereum"
-                ? ethereumReady
-                : singleChainFocus === "base"
-                  ? baseReady
-                  : singleChainFocus === "avax"
-                    ? avaxReady
-                    : false)
-            ? {
-                title: `${focusedChainLabel ?? "Chain"} access is not configured.`,
-                body: `Connect via Eliza Cloud or configure ${focusedChainLabel ?? "this chain"} RPC access in Settings to load balances.`,
-                actionLabel: t("wallet.setup.configureRpc"),
-              }
-            : null;
-
-  // Surfaces `evmSigningCapability` from the wallet-capability resolver.
-  // Fires when the EVM address is visible but no signer is wired (typical
-  // post-cloud-bind state before Steward creds are provisioned). Distinct
-  // from `headerWarning`, which is about RPC read access.
-  const signingWarning =
-    evmAddr && cfg?.evmSigningCapability === "cloud-view-only"
-      ? {
-          title: t("wallet.signing.viewOnly.title", {
-            defaultValue: "EVM wallet is view-only",
-          }),
-          body:
-            cfg.evmSigningReason ??
-            t("wallet.signing.viewOnly.body", {
-              defaultValue:
-                "Cloud wallet provisioned, but no signing path is wired in this runtime.",
-            }),
-        }
-      : null;
-
-  // ── Tracked token handlers ────────────────────────────────────────
-  const handleAddToken = useCallback(
-    (token: TrackedToken) => {
-      const updated = [...trackedTokens, token];
-      setTrackedTokens(updated);
-      saveTrackedTokens(updated);
-    },
-    [trackedTokens],
-  );
-
-  const handleUntrackToken = useCallback(
-    (address: string) => {
-      const updated = trackedTokens.filter(
-        (tk) => tk.address.toLowerCase() !== address.toLowerCase(),
-      );
-      setTrackedTokens(updated);
-      saveTrackedTokens(updated);
-      setTrackedBscTokens((prev) => removeTrackedBscToken(address, prev));
-      setActionNotice(t("wallet.tokenRemovedManual"), "info", 2200);
-    },
-    [trackedTokens, setActionNotice, t],
-  );
-
-  const handleCopyAddress = useCallback(
-    async (address: string) => {
-      await copyToClipboard(address);
-      setActionNotice(t("wallet.addressCopied"), "success", 2000);
-    },
-    [copyToClipboard, setActionNotice, t],
-  );
-
-  const walletSidebar = (
+  return (
     <Sidebar
-      testId="wallets-sidebar"
-      contentIdentity={`wallets:${inventoryView}`}
-      className="!mt-0 !h-full !rounded-none !border-0 !border-r !border-r-border/30 !bg-transparent !shadow-none !ring-0 !backdrop-blur-none"
-      collapseButtonTestId="wallet-sidebar-collapse-toggle"
-      expandButtonTestId="wallet-sidebar-expand-toggle"
-      collapseButtonAriaLabel={t("aria.collapseWalletsPanel", {
-        defaultValue: "Collapse wallet panel",
-      })}
-      expandButtonAriaLabel={t("aria.expandWalletsPanel", {
-        defaultValue: "Expand wallet panel",
-      })}
-      collapseButtonLeading={
-        <div className="flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-          <Wallet className="h-3.5 w-3.5" aria-hidden />
-          <span>
-            {t("settings.sections.wallet.label", {
-              defaultValue: "Wallet",
-            })}
-          </span>
-        </div>
-      }
+      testId="wallet-token-sidebar"
+      collapsible
+      contentIdentity="wallet-tokens"
+      collapseButtonTestId="wallet-token-sidebar-collapse-toggle"
+      expandButtonTestId="wallet-token-sidebar-expand-toggle"
+      collapseButtonAriaLabel="Collapse tokens"
+      expandButtonAriaLabel="Expand tokens"
+      mobileTitle="Tokens"
+      mobileMeta={`${filteredRows.length} visible`}
       header={
         <SidebarHeader
           search={{
-            value: walletSearch,
-            onChange: (event) => setWalletSearch(event.target.value),
-            onClear: () => setWalletSearch(""),
-            placeholder: walletSearchLabel,
-            "aria-label": walletSearchLabel,
+            value: searchQuery,
+            onChange: (event) => onSearchChange(event.target.value),
+            onClear: () => onSearchChange(""),
+            placeholder: "Search tokens",
+            "aria-label": "Search tokens",
+            autoComplete: "off",
+            spellCheck: false,
           }}
-        />
-      }
-      footer={
-        <div className="flex w-full flex-col gap-2">
-          {addresses.map((item) => (
-            <Button
-              key={`${item.label}-${item.address}`}
-              variant="outline"
-              size="sm"
-              data-testid={`wallet-copy-${item.label.toLowerCase()}-address`}
-              className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
-              onClick={() => void handleCopyAddress(item.address)}
-            >
-              <Copy className="h-4 w-4" />
-              {item.label === "EVM"
-                ? t("wallet.copyEvmAddress")
-                : t("wallet.copySolanaAddress")}
-            </Button>
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="wallet-rpc-popup"
-            className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
-            onClick={() => setWalletRpcOpen(true)}
-          >
-            <Settings className="h-4 w-4" />
-            {stewardStatus?.connected
-              ? t("settings.sections.wallet.label", {
-                  defaultValue: "Wallet",
-                })
-              : t("settings.sections.walletrpc.label", {
-                  defaultValue: "Wallet & RPC",
-                })}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="wallet-policies-popup"
-            className="h-10 w-full justify-start rounded-md border-border/32 bg-transparent px-3 text-xs font-semibold shadow-none hover:bg-card/45"
-            onClick={() => setWalletPoliciesOpen(true)}
-          >
-            <Shield className="h-4 w-4" />
-            {t("settings.sections.walletpolicies.label", {
-              defaultValue: "Wallet Policies",
-            })}
-          </Button>
-        </div>
+        >
+          <div className="px-1">
+            <div className="text-sm font-semibold text-txt">Tokens</div>
+            <div className="text-xs-tight text-muted">
+              {filteredRows.length} visible
+            </div>
+          </div>
+        </SidebarHeader>
       }
     >
       <SidebarScrollRegion>
-        <SidebarPanel>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2">
-              <SegmentedControl
-                className="grid w-full grid-cols-2"
-                buttonClassName="h-10 justify-center"
-                value={inventoryView}
-                onValueChange={handleInventoryViewChange}
-                items={[
-                  {
-                    value: "tokens",
-                    label: t("wallet.tokens"),
-                    testId: "wallet-view-tokens",
-                  },
-                  {
-                    value: "nfts",
-                    label: t("wallet.nfts"),
-                    testId: "wallet-view-nfts",
-                  },
-                ]}
-              />
-            </div>
-
-            <SidebarFilterBar
-              data-testid="wallet-sidebar-sort-block"
-              selectValue={
-                inventoryView === "nfts" && inventorySort === "value"
-                  ? "symbol"
-                  : inventorySort
-              }
-              selectOptions={[
-                ...(inventoryView === "tokens"
-                  ? [{ value: "value", label: t("wallet.value") }]
-                  : []),
-                { value: "chain", label: t("wallet.chain") },
-                { value: "symbol", label: t("wallet.name") },
-              ]}
-              onSelectValueChange={(nextSort) => {
-                if (!isInventorySortKey(nextSort)) return;
-                setState("inventorySort", nextSort);
-                setState(
-                  "inventorySortDirection",
-                  nextSort === "value" ? "desc" : "asc",
-                );
-              }}
-              selectAriaLabel={t("wallet.sort")}
-              selectTestId="wallet-sort-select"
-              sortDirection={inventorySortDirection}
-              onSortDirectionToggle={() =>
-                setState(
-                  "inventorySortDirection",
-                  inventorySortDirection === "asc" ? "desc" : "asc",
-                )
-              }
-              sortDirectionButtonTestId="wallet-sort-direction-toggle"
-              sortAscendingLabel={t("wallet.sortAscending")}
-              sortDescendingLabel={t("wallet.sortDescending")}
-              refreshButtonTestId="wallet-refresh-balances"
-              refreshLabel={t("common.refresh")}
-              onRefresh={() =>
-                void (inventoryView === "tokens" ? loadBalances() : loadNfts())
-              }
-            />
-
-            <div>
-              <SidebarContent.SectionLabel>
-                {t("wallet.chain", { defaultValue: "Chain" })}
-              </SidebarContent.SectionLabel>
-              <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {chainItemMeta.map((item) => {
-                  const isOn = inventoryChainFilters[item.key];
-                  const label = item.label;
-                  const disabled = !item.hasAddress;
-                  return (
-                    <TooltipHint
-                      key={item.key}
-                      side="bottom"
-                      sideOffset={6}
-                      contentClassName="px-2.5 py-1.5 text-xs font-medium"
-                      content={
-                        disabled
-                          ? `${label} — no wallet configured`
-                          : isOn
-                            ? `${label} — visible`
-                            : `${label} — hidden`
-                      }
-                    >
-                      <button
-                        type="button"
-                        data-testid={`inventory-chain-toggle-${item.key}`}
-                        onClick={
-                          disabled
-                            ? () => setWalletRpcOpen(true)
-                            : () => handleInventoryChainToggle(item.key)
-                        }
-                        aria-pressed={disabled ? undefined : isOn}
-                        aria-label={
-                          disabled
-                            ? label
-                            : isOn
-                              ? `${label} — shown (click to hide)`
-                              : `${label} — hidden (click to show)`
-                        }
-                        aria-disabled={disabled}
-                        className={`flex aspect-square items-center justify-center rounded-md border transition-colors ${
-                          disabled
-                            ? "cursor-pointer border-border/20 bg-bg/10 text-muted opacity-40 hover:opacity-60 hover:border-accent/30"
-                            : isOn
-                              ? "border-accent/30 bg-accent/14 text-txt-strong"
-                              : "border-border/40 bg-bg/20 text-muted opacity-45 hover:border-border/60 hover:text-txt hover:opacity-70"
-                        }`}
-                      >
-                        <ChainIcon chain={item.key} size="lg" />
-                      </button>
-                    </TooltipHint>
-                  );
-                })}
+        <SidebarPanel className="space-y-2">
+          {filteredRows.length === 0 ? (
+            <SidebarContent.EmptyState className="px-4 py-8 text-center">
+              <Wallet className="mx-auto mb-3 h-5 w-5 text-muted" />
+              <div className="text-sm font-semibold text-txt">
+                No tokens found
               </div>
-            </div>
-          </div>
+              <div className="mt-1 text-xs-tight text-muted">
+                The agent slot inventory has no visible tokens.
+              </div>
+            </SidebarContent.EmptyState>
+          ) : (
+            filteredRows.map((row) => (
+              <div
+                key={tokenId(row)}
+                className="rounded-lg border border-border/50 bg-card/40 p-3 transition-colors hover:border-border"
+              >
+                <div className="flex items-start gap-3">
+                  <TokenLogo
+                    symbol={row.symbol}
+                    chain={row.chain}
+                    contractAddress={row.contractAddress}
+                    preferredLogoUrl={row.logoUrl}
+                    size={34}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-txt">
+                          {row.symbol}
+                        </div>
+                        <div className="truncate text-xs-tight text-muted">
+                          {row.name}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted hover:text-danger"
+                        onClick={() => onHideToken(row)}
+                        aria-label={`Hide ${row.symbol}`}
+                        title={`Hide ${row.symbol}`}
+                      >
+                        <EyeOff className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-mono text-xs text-txt">
+                          {formatBalance(row.balance)} {row.symbol}
+                        </div>
+                        <div className="mt-0.5 text-xs-tight text-muted">
+                          {formatUsd(row.valueUsd)}
+                        </div>
+                      </div>
+                      <TokenPerformance row={row} profile={profile} />
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 flex-1 rounded-md px-2 text-xs"
+                        onClick={() => onTokenAction(row, "swap")}
+                      >
+                        <ArrowLeftRight className="mr-1.5 h-3.5 w-3.5" />
+                        Swap
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 flex-1 rounded-md px-2 text-xs"
+                        onClick={() => onTokenAction(row, "bridge")}
+                      >
+                        <Layers3 className="mr-1.5 h-3.5 w-3.5" />
+                        Bridge
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </SidebarPanel>
       </SidebarScrollRegion>
     </Sidebar>
   );
+}
 
-  const stewardConnected = stewardStatus?.connected === true;
-  const stewardEvmAddrPresent = Boolean(
-    stewardConnected &&
-      (stewardStatus?.walletAddresses?.evm || stewardStatus?.evmAddress),
+function RpcStatusCard({
+  walletConfig,
+  onOpenSettings,
+}: {
+  walletConfig: WalletConfigStatus | null;
+  onOpenSettings: () => void;
+}) {
+  const rpcGood = Boolean(
+    walletConfig?.evmBalanceReady && walletConfig?.solanaBalanceReady,
   );
-  const stewardSolAddrPresent = Boolean(
-    stewardConnected && stewardStatus?.walletAddresses?.solana,
+  const evmProvider = providerLabel(walletConfig?.selectedRpcProviders?.evm);
+  const solanaProvider = providerLabel(
+    walletConfig?.selectedRpcProviders?.solana,
   );
-  const hasAnyAddress = Boolean(
-    evmAddr || solAddr || stewardEvmAddrPresent || stewardSolAddrPresent,
-  );
-  const walletSubTabItems = [
-    { value: "balances" as const, label: "Balances" },
-    { value: "transactions" as const, label: "Transactions" },
-    {
-      value: "approvals" as const,
-      label: "Approvals",
-      badge:
-        pendingApprovalCount > 0 ? (
-          <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-3xs font-bold text-white">
-            {pendingApprovalCount > 99 ? "99+" : pendingApprovalCount}
-          </span>
-        ) : undefined,
-    },
-  ];
-  const walletContentHeader = (
-    <div className="mb-4 flex flex-col gap-3 border-b border-border/24 pb-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-accent/24 bg-accent/10 text-accent">
-          <Wallet className="h-5 w-5" aria-hidden />
+
+  return (
+    <button
+      type="button"
+      data-testid="wallet-rpc-dashboard-link"
+      className="group rounded-lg border border-border/50 bg-bg/40 p-4 text-left transition-colors hover:border-accent/60 hover:bg-accent/5"
+      onClick={onOpenSettings}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
+            RPC
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-txt">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                rpcGood ? "bg-ok" : "bg-warn",
+              )}
+            />
+            {rpcGood ? "Good" : "Needs attention"}
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold text-txt-strong">
-            {t("settings.sections.wallet.label", {
-              defaultValue: "Wallet",
-            })}
-          </h1>
-          <p className="mt-0.5 max-w-2xl text-xs-tight text-muted">
-            {hasAnyAddress
-              ? t("wallet.workspace.connectedDescription", {
-                  defaultValue:
-                    "Review balances, approvals, transaction history, and wallet controls.",
-                })
-              : t("wallet.workspace.setupDescription", {
-                  defaultValue:
-                    "Connect a wallet before balances, approvals, and trading controls appear.",
-                })}
-          </p>
+        <Settings className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
+      </div>
+      <div className="mt-3 grid gap-2 text-xs-tight text-muted sm:grid-cols-2">
+        <div>
+          <span className="font-medium text-txt">EVM</span> {evmProvider}
+        </div>
+        <div>
+          <span className="font-medium text-txt">Solana</span> {solanaProvider}
         </div>
       </div>
-      <SegmentedControl
-        className="w-full sm:w-auto"
-        buttonClassName="h-9 px-3 text-xs"
-        value={walletSubTab}
-        onValueChange={(value: WalletSubTab) => setWalletSubTab(value)}
-        items={walletSubTabItems}
-      />
-    </div>
+    </button>
   );
+}
 
-  // ════════════════════════════════════════════════════════════════════
-  // Render
-  // ════════════════════════════════════════════════════════════════════
+function ActivityList({
+  profile,
+}: {
+  profile: WalletTradingProfileResponse | null;
+}) {
+  const recent = profile?.recentSwaps ?? [];
 
-  if (walletLoading && !walletBalances) {
+  if (recent.length === 0) {
     return (
-      <PageLayout
-        className="[&>div>div:first-child]:!pt-0"
-        sidebar={walletSidebar}
-        contentInnerClassName="mx-auto w-full max-w-[76rem]"
-        footer={<WidgetHost slot="wallet" className="py-3" />}
-      >
-        {walletContentHeader}
-        <PagePanel.Loading
-          variant="workspace"
-          className="min-h-[14rem] rounded-lg"
-          heading={t("wallet.loadingBalances")}
-        />
-      </PageLayout>
+      <EmptyState
+        icon={Activity}
+        title="No wallet activity yet"
+        body="Agent trades, swaps, bridges, and executed wallet actions will appear here once they settle."
+      />
     );
   }
 
   return (
-    <>
-      <PageLayout
-        className="[&>div>div:first-child]:!pt-0"
-        sidebar={walletSidebar}
-        contentInnerClassName="mx-auto w-full max-w-[76rem]"
-        footer={<WidgetHost slot="wallet" className="py-3" />}
-      >
-        {walletContentHeader}
-        <div className="grid gap-3">
-          {walletError ? (
-            <PagePanel.Notice tone="danger">{walletError}</PagePanel.Notice>
-          ) : null}
-
-          {inlineError?.message ? (
-            <PagePanel.Notice
-              tone="danger"
-              actions={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-full border-danger/35 px-3 text-xs-tight text-danger shadow-none hover:bg-danger/10"
-                  onClick={() => void loadBalances()}
-                  title={inlineError.retryTitle ?? t("common.retry")}
-                >
-                  {t("common.retry")}
-                </Button>
-              }
-            >
-              {inlineError.message}
-            </PagePanel.Notice>
-          ) : null}
-
-          {headerWarning ? (
-            <PagePanel.Notice
-              tone="accent"
-              actions={
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs-tight font-medium text-accent"
-                  onClick={goToRpcSettings}
-                >
-                  {headerWarning.actionLabel}
-                </Button>
-              }
-            >
-              <div className="font-semibold text-txt-strong">
-                {headerWarning.title}
-              </div>
-              <div className="mt-1 text-muted">{headerWarning.body}</div>
-            </PagePanel.Notice>
-          ) : null}
-
-          {signingWarning ? (
-            <PagePanel.Notice tone="accent">
-              <div className="font-semibold text-txt-strong">
-                {signingWarning.title}
-              </div>
-              <div className="mt-1 text-muted">{signingWarning.body}</div>
-            </PagePanel.Notice>
-          ) : null}
-
-          {!hasAnyAddress && (
-            <PagePanel variant="workspace" className="min-h-0 rounded-lg">
-              <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_15rem]">
-                <div className="flex min-w-0 gap-4 px-5 py-5 sm:px-6 sm:py-6">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 text-accent">
-                    <Wallet className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-txt-strong">
-                      {t("wallet.setup.title", {
-                        defaultValue: "Connect your wallet",
-                      })}
-                    </h2>
-                    <p className="mt-1 max-w-2xl text-xs-tight leading-relaxed text-muted">
-                      {t("wallet.setup.description", {
-                        defaultValue:
-                          "Connect via Eliza Cloud or configure wallet keys directly to start trading.",
-                      })}
-                    </p>
-                    <div className="mt-4 grid gap-2 text-xs-tight text-muted sm:grid-cols-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                        <span>
-                          {t("wallet.setup.stepCloud", {
-                            defaultValue: "Import managed wallets",
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                        <span>
-                          {t("wallet.setup.stepRpc", {
-                            defaultValue: "Configure chain RPC",
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                        <span>
-                          {t("wallet.setup.stepPolicies", {
-                            defaultValue: "Review wallet policies",
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col justify-center gap-2 border-t border-border/24 px-5 py-4 md:border-l md:border-t-0">
-                  {elizaCloudConnected ? (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-9 justify-start rounded-md px-3 text-xs"
-                      onClick={goToRpcSettings}
-                    >
-                      {t("wallet.setup.importFromCloud", {
-                        defaultValue: "Import from Eliza Cloud",
-                      })}
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 justify-start rounded-md border-border/36 bg-transparent px-3 text-xs shadow-none hover:bg-card/45"
-                    onClick={goToRpcSettings}
-                  >
-                    <Settings className="mr-1.5 h-3.5 w-3.5" />
-                    {t("wallet.setup.configureRpc", {
-                      defaultValue: "Configure RPC",
-                    })}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 justify-start rounded-md border-border/36 bg-transparent px-3 text-xs shadow-none hover:bg-card/45"
-                    onClick={() => setWalletPoliciesOpen(true)}
-                  >
-                    <Shield className="mr-1.5 h-3.5 w-3.5" />
-                    {t("settings.sections.walletpolicies.label", {
-                      defaultValue: "Wallet Policies",
-                    })}
-                  </Button>
-                </div>
-              </div>
-            </PagePanel>
-          )}
-
-          {singleChainFocus === "bsc" ? (
-            <TradePanel
-              tradeReady={evmAddr ? tradeReady : false}
-              bnbBalance={bnbBalance}
-              onAddToken={handleAddToken}
-              getBscTradePreflight={getBscTradePreflight}
-              getBscTradeQuote={getBscTradeQuote}
-              executeBscTrade={executeBscTrade}
-              getBscTradeTxStatus={getBscTradeTxStatus}
-              stewardConnected={stewardConnected}
-            />
-          ) : null}
-        </div>
-
-        {hasAnyAddress || walletSubTab !== "balances" ? (
-          <div className="mt-4">
-            {walletSubTab === "balances" ? (
-              <PagePanel variant="workspace" className="min-h-0 rounded-lg">
-                {inventoryView === "tokens" ? (
-                  <TokensTable
-                    t={t}
-                    walletLoading={walletLoading}
-                    walletBalances={walletBalances}
-                    visibleRows={filteredVisibleRows}
-                    visibleChainErrors={visibleChainErrors}
-                    showChainColumn={singleChainFocus === null}
-                    handleUntrackToken={handleUntrackToken}
-                  />
-                ) : (
-                  <NftGrid
-                    t={t}
-                    walletNftsLoading={walletNftsLoading}
-                    walletNfts={walletNfts}
-                    allNfts={filteredNfts}
-                  />
-                )}
-              </PagePanel>
-            ) : (
-              <PagePanel variant="workspace" className="min-h-0 rounded-lg">
-                {!stewardConnected ? (
-                  <PagePanel.Empty
-                    variant="workspace"
-                    title={
-                      walletSubTab === "approvals"
-                        ? "No pending approvals"
-                        : "No transactions yet"
-                    }
-                  />
-                ) : walletSubTab === "approvals" ? (
-                  <ApprovalQueue
-                    embedded
-                    getStewardPending={getStewardPending}
-                    approveStewardTx={approveStewardTx}
-                    rejectStewardTx={rejectStewardTx}
-                    copyToClipboard={copyToClipboard}
-                    setActionNotice={setActionNotice}
-                    onPendingCountChange={handlePendingCountChange}
-                  />
-                ) : (
-                  <TransactionHistory
-                    embedded
-                    getStewardHistory={getStewardHistory}
-                    copyToClipboard={copyToClipboard}
-                    setActionNotice={setActionNotice}
-                  />
-                )}
-              </PagePanel>
+    <div className="space-y-2">
+      {recent.slice(0, 6).map((swap) => (
+        <a
+          key={swap.hash}
+          href={swap.explorerUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5 text-sm transition-colors hover:border-accent/50"
+        >
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-txt">
+              {swap.side === "buy" ? "Bought" : "Sold"} {swap.tokenSymbol}
+            </span>
+            <span className="block truncate text-xs-tight text-muted">
+              {swap.inputAmount} {swap.inputSymbol} {"->"} {swap.outputAmount}{" "}
+              {swap.outputSymbol}
+            </span>
+          </span>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-2 py-1 text-[0.65rem] uppercase",
+              swap.status === "success"
+                ? "bg-ok/10 text-ok"
+                : swap.status === "pending"
+                  ? "bg-warn/10 text-warn"
+                  : "bg-danger/10 text-danger",
             )}
-          </div>
-        ) : null}
-      </PageLayout>
+          >
+            {swap.status}
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+}
 
-      {/* ── Wallet & RPC popup ── */}
-      <Dialog open={walletRpcOpen} onOpenChange={setWalletRpcOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {stewardConnected
-                ? t("settings.sections.wallet.label", {
-                    defaultValue: "Wallet",
-                  })
-                : t("settings.sections.walletrpc.label", {
-                    defaultValue: "Wallet & RPC",
-                  })}
-            </DialogTitle>
-          </DialogHeader>
-          {stewardConnected && stewardStatus ? (
-            <StewardWalletInfoPopup
-              stewardStatus={stewardStatus}
-              onOpenPolicies={() => {
-                setWalletRpcOpen(false);
-                setWalletPoliciesOpen(true);
-              }}
+function NftPreview({ nfts }: { nfts: NftItem[] }) {
+  const visible = nfts.slice(0, 6);
+
+  if (visible.length === 0) {
+    return (
+      <EmptyState
+        icon={ImageIcon}
+        title="No NFTs detected"
+        body="NFT collections will appear here when they are present in the agent slot inventory."
+      />
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      {visible.map((nft) => (
+        <div
+          key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
+          className="overflow-hidden rounded-lg border border-border/50 bg-bg/40"
+        >
+          {nft.imageUrl ? (
+            <img
+              src={nft.imageUrl}
+              alt={nft.name}
+              className="aspect-square w-full object-cover"
+              loading="lazy"
             />
           ) : (
-            <ConfigPageView embedded />
+            <div className="flex aspect-square items-center justify-center bg-bg-muted">
+              <ImageIcon className="h-5 w-5 text-muted" />
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
+          <div className="min-w-0 p-2">
+            <div className="truncate text-xs font-medium text-txt">
+              {nft.name}
+            </div>
+            <div className="truncate text-[0.68rem] text-muted">
+              {nft.collectionName}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* ── Wallet Policies popup ── */}
-      <Dialog open={walletPoliciesOpen} onOpenChange={setWalletPoliciesOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {t("settings.sections.walletpolicies.label", {
-                defaultValue: "Wallet Policies",
-              })}
-            </DialogTitle>
-          </DialogHeader>
-          <PolicyControlsView />
-        </DialogContent>
-      </Dialog>
-    </>
+function detectLpProtocol(value: string): LpProtocol | null {
+  const text = value.toLowerCase();
+  if (text.includes("uniswap")) return "Uniswap";
+  if (text.includes("raydium") || text.includes("radium")) return "Raydium";
+  if (text.includes("meteora")) return "Meteora";
+  if (text.includes("pancake")) return "PancakeSwap";
+  return null;
+}
+
+function looksLikeLpText(value: string): boolean {
+  const text = value.toLowerCase();
+  return (
+    text.includes("liquidity") ||
+    text.includes(" lp") ||
+    text.includes("-lp") ||
+    text.includes("pool") ||
+    text.includes("position")
+  );
+}
+
+function deriveLpPositions({
+  tokenRows,
+  nfts,
+}: {
+  tokenRows: TokenRow[];
+  nfts: NftItem[];
+}): LpPositionPreview[] {
+  const positions: LpPositionPreview[] = [];
+
+  for (const row of tokenRows) {
+    const protocol = detectLpProtocol(`${row.name} ${row.symbol}`);
+    if (!protocol || !looksLikeLpText(`${row.name} ${row.symbol}`)) continue;
+    positions.push({
+      protocol,
+      label: row.symbol,
+      detail: `${formatBalance(row.balance)} ${row.symbol}`,
+      valueUsd: row.valueUsd,
+    });
+  }
+
+  for (const nft of nfts) {
+    const text = `${nft.collectionName} ${nft.name}`;
+    const protocol = detectLpProtocol(text);
+    if (!protocol || !looksLikeLpText(text)) continue;
+    positions.push({
+      protocol,
+      label: nft.name,
+      detail: nft.collectionName,
+      valueUsd: null,
+    });
+  }
+
+  return positions;
+}
+
+function LpPositionsPanel({ positions }: { positions: LpPositionPreview[] }) {
+  const positionsByProtocol = useMemo(() => {
+    const map = new Map<LpProtocol, LpPositionPreview[]>();
+    for (const protocol of LP_PROTOCOLS) {
+      map.set(protocol, []);
+    }
+    for (const position of positions) {
+      map.get(position.protocol)?.push(position);
+    }
+    return map;
+  }, [positions]);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {LP_PROTOCOLS.map((protocol) => {
+          const protocolPositions = positionsByProtocol.get(protocol) ?? [];
+          return (
+            <div
+              key={protocol}
+              className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-txt">{protocol}</div>
+                <div className="text-xs-tight text-muted">
+                  {protocolPositions.length}
+                </div>
+              </div>
+              {protocolPositions.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {protocolPositions.slice(0, 3).map((position) => (
+                    <div
+                      key={`${position.protocol}:${position.label}:${position.detail}`}
+                      className="min-w-0 rounded-md border border-border/40 bg-bg/35 px-2 py-1.5"
+                    >
+                      <div className="truncate text-xs font-medium text-txt">
+                        {position.label}
+                      </div>
+                      <div className="mt-0.5 truncate text-[0.68rem] text-muted">
+                        {position.detail}
+                        {position.valueUsd && position.valueUsd > 0
+                          ? ` · ${formatUsd(position.valueUsd)}`
+                          : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-1 text-xs-tight text-muted">
+                  No indexed position
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function VincentPanel({
+  connected,
+  busy,
+  error,
+  onConnect,
+  onOpen,
+}: {
+  connected: boolean;
+  busy: boolean;
+  error: string | null;
+  onConnect: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-bg/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+            <Sparkles className="h-4 w-4 text-accent" />
+            Vincent trading
+          </div>
+          <div className="mt-1 max-w-xl text-xs-tight text-muted">
+            Connect Vincent to trade on Hyperliquid and Polymarket through the
+            Vincent agent.
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {connected ? (
+            <Button variant="outline" size="sm" onClick={onOpen}>
+              Open Vincent
+            </Button>
+          ) : (
+            <Button size="sm" onClick={onConnect} disabled={busy}>
+              {busy ? "Connecting" : "Connect Vincent"}
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-xs-tight text-muted">
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            connected ? "bg-ok" : "bg-muted",
+          )}
+        />
+        {connected ? "Connected to Vincent" : "Not connected"}
+      </div>
+      {error ? (
+        <div className="mt-2 text-xs-tight text-danger">{error}</div>
+      ) : null}
+    </div>
+  );
+}
+
+export function InventoryView() {
+  const {
+    walletEnabled,
+    walletAddresses,
+    walletConfig,
+    walletBalances,
+    walletNfts,
+    walletLoading,
+    walletNftsLoading,
+    walletError,
+    loadBalances,
+    loadNfts,
+    setState,
+    setTab,
+    setActionNotice,
+    vincentConnected,
+    vincentLoginBusy,
+    vincentLoginError,
+    handleVincentLogin,
+  } = useApp();
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
+    readHiddenTokenIds(),
+  );
+  const [dashboardWindow, setDashboardWindow] =
+    useState<DashboardWindow>("30d");
+  const [tradingProfile, setTradingProfile] =
+    useState<WalletTradingProfileResponse | null>(null);
+  const [tradingProfileError, setTradingProfileError] = useState<string | null>(
+    null,
+  );
+  const initialLoadRef = useRef(false);
+
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (walletEnabled === false) return;
+    void loadBalances();
+    void loadNfts();
+  }, [loadBalances, loadNfts, walletEnabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTradingProfileError(null);
+    void client
+      .getWalletTradingProfile(tradingProfileWindow(dashboardWindow))
+      .then((profile) => {
+        if (!cancelled) setTradingProfile(profile);
+      })
+      .catch((cause) => {
+        if (cancelled) return;
+        setTradingProfile(null);
+        const message =
+          cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message.trim()
+            : "Failed to load trading profile.";
+        setTradingProfileError(message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardWindow]);
+
+  const inventoryData = useInventoryData({
+    walletBalances,
+    walletAddresses,
+    walletConfig,
+    walletNfts,
+    inventorySort: "value",
+    inventorySortDirection: "desc",
+    inventoryChainFilters: ALL_INVENTORY_FILTERS,
+  });
+
+  const addresses = resolveWalletAddresses({
+    walletAddresses,
+    walletConfig,
+  });
+
+  const visibleAssetRows = useMemo(
+    () => inventoryData.tokenRowsAllChains.filter(tokenHasInventory),
+    [inventoryData.tokenRowsAllChains],
+  );
+
+  const hiddenCount = useMemo(
+    () =>
+      visibleAssetRows.filter((row) => hiddenTokenIds.has(tokenId(row))).length,
+    [hiddenTokenIds, visibleAssetRows],
+  );
+  const displayedAssetRows = useMemo(
+    () => visibleAssetRows.filter((row) => !hiddenTokenIds.has(tokenId(row))),
+    [hiddenTokenIds, visibleAssetRows],
+  );
+  const displayedTotalUsd = useMemo(
+    () => displayedAssetRows.reduce((sum, row) => sum + row.valueUsd, 0),
+    [displayedAssetRows],
+  );
+  const lpPositions = useMemo(
+    () =>
+      deriveLpPositions({
+        tokenRows: displayedAssetRows,
+        nfts: inventoryData.allNfts,
+      }),
+    [displayedAssetRows, inventoryData.allNfts],
+  );
+
+  const pnlValue = parseAmount(tradingProfile?.summary.realizedPnlBnb);
+  const pnlTone =
+    pnlValue === null || pnlValue === 0
+      ? "text-txt"
+      : pnlValue > 0
+        ? "text-ok"
+        : "text-danger";
+
+  const handleHideToken = useCallback(
+    (row: TokenRow) => {
+      const next = new Set(hiddenTokenIds);
+      next.add(tokenId(row));
+      setHiddenTokenIds(next);
+      writeHiddenTokenIds(next);
+      setActionNotice(`${row.symbol} hidden from this wallet view.`);
+    },
+    [hiddenTokenIds, setActionNotice],
+  );
+
+  const handleRefresh = useCallback(() => {
+    void loadBalances();
+    void loadNfts();
+  }, [loadBalances, loadNfts]);
+
+  const handleTokenAction = useCallback(
+    (row: TokenRow, action: "swap" | "bridge") => {
+      const verb = action === "swap" ? "swap" : "bridge";
+      dispatchWalletChatPrefill(
+        `Help me ${verb} ${row.symbol}. Check the agent wallet inventory and suggest the safest execution plan before doing anything.`,
+      );
+      setActionNotice(
+        `Prepared a ${verb} request for ${row.symbol} in wallet chat.`,
+      );
+    },
+    [setActionNotice],
+  );
+
+  const handleOpenRpcSettings = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.location.hash = "wallet-rpc";
+    }
+    setTab("settings");
+  }, [setTab]);
+
+  const handleEnableWallet = useCallback(() => {
+    setState("walletEnabled", true);
+    void loadBalances();
+    void loadNfts();
+  }, [loadBalances, loadNfts, setState]);
+
+  const handleOpenVincent = useCallback(() => {
+    setState("activeOverlayApp", VINCENT_APP_NAME);
+  }, [setState]);
+
+  const handleConnectVincent = useCallback(() => {
+    void handleVincentLogin();
+  }, [handleVincentLogin]);
+
+  const tokenSidebar = (
+    <TokenRail
+      rows={visibleAssetRows}
+      hiddenTokenIds={hiddenTokenIds}
+      searchQuery={searchQuery}
+      profile={tradingProfile}
+      onSearchChange={setSearchQuery}
+      onHideToken={handleHideToken}
+      onTokenAction={handleTokenAction}
+    />
+  );
+
+  return (
+    <PageLayout
+      className="h-full"
+      data-testid="wallet-shell"
+      sidebar={tokenSidebar}
+      footer={<WidgetHost slot="wallet" />}
+      footerClassName="pt-2"
+      contentClassName="bg-bg/10"
+      contentInnerClassName="w-full min-h-0"
+      mobileSidebarLabel="Tokens"
+    >
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              <Wallet className="h-4 w-4" />
+              Wallet
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-txt">
+              Agent wallet dashboard
+            </h1>
+            <div className="mt-1 text-sm text-muted">
+              {displayedAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
+              NFTs
+              {hiddenCount > 0 ? `, ${hiddenCount} hidden` : ""}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              className="rounded-lg"
+              onClick={handleRefresh}
+              disabled={walletLoading || walletNftsLoading}
+            >
+              <RefreshCw
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  (walletLoading || walletNftsLoading) && "animate-spin",
+                )}
+              />
+              Refresh
+            </Button>
+            {walletEnabled === false ? (
+              <Button className="rounded-lg" onClick={handleEnableWallet}>
+                Enable wallet
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {walletError ? (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            {walletError}
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <StatCard
+            label="Current balance"
+            value={formatUsd(displayedTotalUsd)}
+            detail="Visible token inventory value"
+          />
+          <StatCard
+            label="Agent P&L"
+            value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
+            detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps in view`}
+            tone={pnlTone}
+          />
+          <StatCard
+            label="Agent activity"
+            value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
+            detail="Successful settled actions"
+          />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)]">
+          <div className="space-y-4">
+            <PagePanel variant="section">
+              <div className="p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                      <BarChart3 className="h-4 w-4 text-accent" />
+                      Agent P&L
+                    </div>
+                    <div className="mt-1 text-xs-tight text-muted">
+                      Realized trade performance from the wallet ledger.
+                    </div>
+                  </div>
+                  <div className="flex rounded-lg border border-border/60 bg-bg/40 p-1">
+                    {DASHBOARD_WINDOWS.map((window) => (
+                      <button
+                        key={window}
+                        type="button"
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                          dashboardWindow === window
+                            ? "bg-accent text-[color:var(--accent-foreground)]"
+                            : "text-muted hover:text-txt",
+                        )}
+                        onClick={() => setDashboardWindow(window)}
+                      >
+                        {window}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <PnlChart profile={tradingProfile} />
+                </div>
+                {tradingProfileError ? (
+                  <div className="mt-3 text-xs-tight text-danger">
+                    {tradingProfileError}
+                  </div>
+                ) : null}
+              </div>
+            </PagePanel>
+
+            <PagePanel variant="section">
+              <div className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
+                  <Activity className="h-4 w-4 text-accent" />
+                  Agent activity
+                </div>
+                <ActivityList profile={tradingProfile} />
+              </div>
+            </PagePanel>
+
+            <PagePanel variant="section">
+              <div className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
+                  <ImageIcon className="h-4 w-4 text-accent" />
+                  NFTs
+                </div>
+                <NftPreview nfts={inventoryData.allNfts} />
+              </div>
+            </PagePanel>
+          </div>
+
+          <div className="space-y-4">
+            <RpcStatusCard
+              walletConfig={walletConfig}
+              onOpenSettings={handleOpenRpcSettings}
+            />
+
+            <PagePanel variant="section">
+              <div className="space-y-3 p-4 sm:p-5">
+                <div className="text-sm font-semibold text-txt">Addresses</div>
+                {addresses.evmAddress || addresses.solanaAddress ? (
+                  <div className="grid gap-2">
+                    {addresses.evmAddress ? (
+                      <AddressPill label="EVM" address={addresses.evmAddress} />
+                    ) : null}
+                    {addresses.solanaAddress ? (
+                      <AddressPill
+                        label="Solana"
+                        address={addresses.solanaAddress}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Wallet}
+                    title="No wallet addresses"
+                    body="Configure the agent wallet to show EVM and Solana addresses here."
+                  />
+                )}
+              </div>
+            </PagePanel>
+
+            <PagePanel variant="section">
+              <div className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
+                  <Layers3 className="h-4 w-4 text-accent" />
+                  LP positions
+                </div>
+                <LpPositionsPanel positions={lpPositions} />
+              </div>
+            </PagePanel>
+
+            <VincentPanel
+              connected={vincentConnected}
+              busy={vincentLoginBusy}
+              error={vincentLoginError}
+              onConnect={handleConnectVincent}
+              onOpen={handleOpenVincent}
+            />
+          </div>
+        </div>
+      </div>
+    </PageLayout>
   );
 }

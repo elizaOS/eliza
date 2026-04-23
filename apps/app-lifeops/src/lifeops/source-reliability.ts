@@ -76,53 +76,31 @@ export function resolveSourceReliability(key: LifeOpsReliabilityKey): number {
   }
 }
 
+/**
+ * Default reliability key for each activity-signal source. The special-case
+ * for `app_lifecycle` + `manual_override` platform is handled inline because
+ * it's the only cross-axis override.
+ */
+const SOURCE_RELIABILITY_KEYS: Record<
+  LifeOpsActivitySignalSource,
+  LifeOpsReliabilityKey
+> = {
+  app_lifecycle: { kind: "device_presence", transition: true },
+  page_visibility: { kind: "device_presence", transition: true },
+  desktop_power: { kind: "desktop_power", transition: "system" },
+  desktop_interaction: { kind: "desktop_idle", source: "iokit_hid" },
+  connector_activity: { kind: "message_outbound", channel: "gmail" },
+  imessage_outbound: { kind: "message_outbound", channel: "imessage" },
+  mobile_device: { kind: "mobile_device", source: "capacitor" },
+  mobile_health: { kind: "mobile_health", permissionGranted: true },
+};
+
 export function resolveActivitySignalReliability(
   source: LifeOpsActivitySignalSource,
   platform: string,
 ): number {
-  switch (source) {
-    case "app_lifecycle":
-      if (platform === "manual_override") {
-        return resolveSourceReliability({ kind: "manual_override" });
-      }
-      return resolveSourceReliability({
-        kind: "device_presence",
-        transition: true,
-      });
-    case "page_visibility":
-      return resolveSourceReliability({
-        kind: "device_presence",
-        transition: true,
-      });
-    case "desktop_power":
-      return resolveSourceReliability({
-        kind: "desktop_power",
-        transition: "system",
-      });
-    case "desktop_interaction":
-      return resolveSourceReliability({
-        kind: "desktop_idle",
-        source: "iokit_hid",
-      });
-    case "connector_activity":
-      return resolveSourceReliability({
-        kind: "message_outbound",
-        channel: "gmail",
-      });
-    case "imessage_outbound":
-      return resolveSourceReliability({
-        kind: "message_outbound",
-        channel: "imessage",
-      });
-    case "mobile_device":
-      return resolveSourceReliability({
-        kind: "mobile_device",
-        source: "capacitor",
-      });
-    case "mobile_health":
-      return resolveSourceReliability({
-        kind: "mobile_health",
-        permissionGranted: true,
-      });
+  if (source === "app_lifecycle" && platform === "manual_override") {
+    return resolveSourceReliability({ kind: "manual_override" });
   }
+  return resolveSourceReliability(SOURCE_RELIABILITY_KEYS[source]);
 }

@@ -1,10 +1,3 @@
-/**
- * LifeOpsInboxSection — unified inbox with colour-coded channel avatars.
- *
- * Each channel has its own accent colour so the user can scan the list
- * quickly. Selecting a message opens a reader pane with reply + open-source
- * actions; the list stays in view on wide screens.
- */
 import {
   Button,
   Input,
@@ -115,7 +108,9 @@ const ALL_CHANNEL_STYLE: ChannelStyle = {
   icon: <MessageSquare className="h-3.5 w-3.5" aria-hidden />,
 };
 
-const CHANNEL_FILTERS: InboxChannel[] = ["all", ...LIFEOPS_INBOX_CHANNELS];
+export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
+  LIFEOPS_INBOX_CHANNELS.filter((channel) => channel !== "gmail");
+export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
 
 function styleFor(channel: LifeOpsInboxChannel): ChannelStyle {
   return CHANNEL_STYLES[channel];
@@ -392,6 +387,9 @@ function ReaderPane({
 export interface LifeOpsInboxSectionProps {
   selection?: LifeOpsSelection;
   onSelect?: (args: Partial<LifeOpsSelection>) => void;
+  channels?: readonly LifeOpsInboxChannel[];
+  title?: string;
+  emptyLabel?: string;
 }
 
 export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
@@ -399,7 +397,19 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selection = props.selection ?? ctx.selection;
   const onSelect = props.onSelect ?? ctx.select;
   const { t } = useApp();
-  const inbox = useUnifiedInbox({ maxResults: 40 });
+  const allowedChannels = props.channels ?? LIFEOPS_INBOX_CHANNELS;
+  const channelFilters = useMemo<InboxChannel[]>(
+    () =>
+      allowedChannels.length > 1
+        ? ["all", ...allowedChannels]
+        : [...allowedChannels],
+    [allowedChannels],
+  );
+  const inbox = useUnifiedInbox({
+    maxResults: 40,
+    channel: allowedChannels.length === 1 ? allowedChannels[0] : "all",
+    channels: allowedChannels,
+  });
 
   const selectedMessageId = selection.messageId ?? null;
 
@@ -411,11 +421,14 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   const channelCounts = useMemo(() => {
     const base = Object.fromEntries(
-      CHANNEL_FILTERS.map((channel) => [channel, { total: 0, unread: 0 }]),
+      channelFilters.map((channel) => [channel, { total: 0, unread: 0 }]),
     ) as Record<InboxChannel, { total: number; unread: number }>;
     for (const message of inbox.messages) {
-      base.all.total++;
-      if (message.unread) base.all.unread++;
+      const all = base.all;
+      if (all) {
+        all.total++;
+        if (message.unread) all.unread++;
+      }
       const bucket = base[message.channel as InboxChannel];
       if (bucket) {
         bucket.total++;
@@ -423,7 +436,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       }
     }
     return base;
-  }, [inbox.messages]);
+  }, [channelFilters, inbox.messages]);
 
   const selectByIndex = useCallback(
     (index: number) => {
@@ -490,7 +503,10 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       data-testid="lifeops-inbox-section"
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-border/12 px-3 py-2.5">
-        {CHANNEL_FILTERS.map((ch) => {
+        <div className="mr-auto px-1 text-sm font-semibold text-txt">
+          {props.title ?? "Messages"}
+        </div>
+        {channelFilters.map((ch) => {
           const counts = channelCounts[ch];
           return (
             <ChannelChip
@@ -546,7 +562,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                         defaultValue: "No matches.",
                       })
                     : t("lifeopsInbox.empty", {
-                        defaultValue: "Inbox clear.",
+                        defaultValue: props.emptyLabel ?? "Inbox clear.",
                       })}
                 </div>
               ) : (

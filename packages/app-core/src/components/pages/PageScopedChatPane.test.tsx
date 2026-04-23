@@ -143,6 +143,29 @@ describe("PageScopedChatPane", () => {
     ).toBeNull();
   });
 
+  it("accepts sidebar prefill events in the page-scoped composer", async () => {
+    render(<PageScopedChatPane scope="page-apps" />);
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("milady:chat:prefill", {
+          detail: {
+            text: "Draft a reply to this message",
+            select: true,
+          },
+        }),
+      );
+    });
+
+    expect(
+      (screen.getByRole("textbox", { name: /apps/i }) as HTMLTextAreaElement)
+        .value,
+    ).toBe("Draft a reply to this message");
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+  });
+
   it("sends text and voice turns with page routing metadata", async () => {
     render(<PageScopedChatPane scope="page-apps" />);
 

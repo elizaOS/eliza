@@ -13,14 +13,7 @@ import {
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
 } from "./chainConfig";
-import {
-  isBscChainName,
-  type NftItem,
-  type TokenRow,
-  type TrackedBscToken,
-  type TrackedToken,
-  toNormalizedAddress,
-} from "./constants";
+import { isBscChainName, type NftItem, type TokenRow } from "./constants";
 import {
   computeSingleChainFocus,
   matchesInventoryChainFilter,
@@ -35,8 +28,6 @@ export interface InventoryDataInput {
   inventorySort: string;
   inventorySortDirection: "asc" | "desc";
   inventoryChainFilters: InventoryChainFilters;
-  trackedBscTokens: TrackedBscToken[];
-  trackedTokens: TrackedToken[];
 }
 
 export interface InventoryDataOutput {
@@ -63,20 +54,8 @@ export interface InventoryDataOutput {
   primaryNativeBalance: string | null;
 }
 
-function hasContractAddress(
-  row: TokenRow,
-): row is TokenRow & { contractAddress: string } {
-  return typeof row.contractAddress === "string";
-}
-
 function hasVisibleBalance(row: TokenRow): boolean {
-  // Always show manually tracked tokens
-  if (row.isTracked) return true;
-  // Require at least $0.01 USD value to avoid dust rows (e.g. AVAX $0.00)
-  if (row.valueUsd >= 0.01) return true;
-  // Show native gas tokens with a meaningful raw balance even without USD pricing
-  if (row.isNative && row.balanceRaw >= 0.0001) return true;
-  return false;
+  return row.balanceRaw > 0 || row.valueUsd > 0;
 }
 
 function matchesSingleChainFocus(chainName: string, focus: ChainKey): boolean {
@@ -89,19 +68,13 @@ function buildTokenRowsAllChains({
   walletBalances,
   walletAddresses,
   walletConfig,
-  trackedBscTokens,
-  trackedTokens,
 }: {
   walletBalances: WalletBalancesResponse | null;
   walletAddresses: WalletAddresses | null;
   walletConfig: WalletConfigStatus | null;
-  trackedBscTokens: TrackedBscToken[];
-  trackedTokens: TrackedToken[];
 }): TokenRow[] {
   const rows: TokenRow[] = [];
   const knownEvmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const knownSolAddr =
-    walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
 
   if (walletBalances?.evm) {
     const seenChainKeys = new Set<string>();
@@ -131,7 +104,6 @@ function buildTokenRowsAllChains({
           valueUsd: Number.parseFloat(tk.valueUsd) || 0,
           balanceRaw: Number.parseFloat(tk.balance) || 0,
           isNative: false,
-          isTracked: false,
         });
       }
     }
@@ -197,64 +169,6 @@ function buildTokenRowsAllChains({
       });
     }
   }
-  if (knownSolAddr && !walletBalances?.solana) {
-    rows.push({
-      chain: "Solana",
-      symbol: "SOL",
-      name: "Solana native",
-      contractAddress: null,
-      logoUrl: null,
-      balance: "0",
-      valueUsd: 0,
-      balanceRaw: 0,
-      isNative: true,
-    });
-  }
-
-  const knownBscContracts = new Set(
-    rows
-      .filter(
-        (row): row is TokenRow & { contractAddress: string } =>
-          isBscChainName(row.chain) && hasContractAddress(row),
-      )
-      .map((row) => toNormalizedAddress(row.contractAddress)),
-  );
-  for (const tracked of trackedBscTokens) {
-    const normalized = toNormalizedAddress(tracked.contractAddress);
-    if (knownBscContracts.has(normalized)) continue;
-    rows.push({
-      chain: "BSC",
-      symbol: tracked.symbol,
-      name: tracked.name,
-      contractAddress: tracked.contractAddress,
-      logoUrl: tracked.logoUrl ?? null,
-      balance: "0",
-      valueUsd: 0,
-      balanceRaw: 0,
-      isNative: false,
-      isTracked: true,
-    });
-  }
-  for (const tracked of trackedTokens) {
-    const exists = rows.some(
-      (r) => r.contractAddress?.toLowerCase() === tracked.address.toLowerCase(),
-    );
-    if (!exists) {
-      rows.push({
-        chain: "BSC",
-        symbol: `TKN-${tracked.address.slice(2, 6)}`,
-        name: tracked.symbol || `Token ${tracked.address.slice(0, 10)}...`,
-        contractAddress: tracked.address,
-        logoUrl: null,
-        balance: "0",
-        valueUsd: 0,
-        balanceRaw: 0,
-        isNative: false,
-        isTracked: true,
-      });
-    }
-  }
-
   return rows.filter(hasVisibleBalance);
 }
 
@@ -266,18 +180,15 @@ export function useInventoryData({
   inventorySort,
   inventorySortDirection,
   inventoryChainFilters,
-  trackedBscTokens,
-  trackedTokens,
 }: InventoryDataInput): InventoryDataOutput {
   const singleChainFocus = useMemo(
     () => computeSingleChainFocus(inventoryChainFilters),
     [inventoryChainFilters],
   );
   const knownEvmAddr = walletAddresses?.evmAddress ?? walletConfig?.evmAddress;
-  const knownSolAddr =
+  const _knownSolAddr =
     walletAddresses?.solanaAddress ?? walletConfig?.solanaAddress;
 
-  // ── Legacy BSC aliases ─────────────────────────────────────────────
   const primaryChain = useMemo(() => {
     if (!walletBalances?.evm?.chains) return null;
     return (
@@ -298,16 +209,8 @@ export function useInventoryData({
         walletBalances,
         walletAddresses,
         walletConfig,
-        trackedBscTokens,
-        trackedTokens,
       }),
-    [
-      walletBalances,
-      walletAddresses,
-      walletConfig,
-      trackedBscTokens,
-      trackedTokens,
-    ],
+    [walletBalances, walletAddresses, walletConfig],
   );
 
   const tokenRows = useMemo(
@@ -318,7 +221,6 @@ export function useInventoryData({
     [tokenRowsAllChains, inventoryChainFilters],
   );
 
-  // ── Sort ──────────────────────────────────────────────────────────
   const sortedRows = useMemo(() => {
     const sorted = [...tokenRows];
     const asc = inventorySortDirection === "asc";
@@ -347,7 +249,6 @@ export function useInventoryData({
     return sorted;
   }, [tokenRows, inventorySort, inventorySortDirection]);
 
-  // ── Chain errors ──────────────────────────────────────────────────
   const chainErrors = useMemo(
     () =>
       (walletBalances?.evm?.chains ?? []).filter(
@@ -362,7 +263,6 @@ export function useInventoryData({
     );
   }, [chainErrors, inventoryChainFilters]);
 
-  // ── Flatten NFTs ──────────────────────────────────────────────────
   const allNfts = useMemo((): NftItem[] => {
     if (!walletNfts) return [];
     const items: NftItem[] = [];
@@ -417,15 +317,13 @@ export function useInventoryData({
     inventorySortDirection,
   ]);
 
-  // ── Derived values ────────────────────────────────────────────────
   const focusedChain = useMemo(() => {
     if (!singleChainFocus) return null;
     if (singleChainFocus === "solana") {
       return {
         name: CHAIN_CONFIGS.solana.name,
         nativeSymbol: CHAIN_CONFIGS.solana.nativeSymbol,
-        nativeBalance:
-          walletBalances?.solana?.solBalance ?? (knownSolAddr ? "0" : null),
+        nativeBalance: walletBalances?.solana?.solBalance ?? null,
         error: null,
       };
     }
@@ -445,7 +343,7 @@ export function useInventoryData({
       nativeBalance: evmChain?.nativeBalance ?? (knownEvmAddr ? "0" : null),
       error: evmChain?.error ?? null,
     };
-  }, [singleChainFocus, knownEvmAddr, knownSolAddr, walletBalances]);
+  }, [singleChainFocus, knownEvmAddr, walletBalances]);
 
   const primaryChainError =
     primaryChain?.error ??

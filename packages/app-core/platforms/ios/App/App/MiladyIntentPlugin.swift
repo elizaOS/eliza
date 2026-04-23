@@ -7,13 +7,12 @@ import UserNotifications
 /// Exposes four methods to the JS layer:
 ///   - `scheduleAlarm({ timeIso, title, body })`
 ///       Schedules a local `UNUserNotificationCenter` notification at the
-///       provided ISO-8601 time with a critical-alert sound.
+///       provided ISO-8601 time.
 ///   - `receiveIntent(intent)`
-///       Handoff from the device-bus push channel (plan §6.24). The JS
-///       side forwards decoded intents; this native method dispatches
-///       them to the correct iOS subsystem (alarm → UN, block → Screen
-///       Time helper, etc.). Only the `alarm` branch is wired in T8c;
-///       other branches return `accepted: false` with a reason string.
+///       Handoff from the device-bus push channel. The JS side forwards
+///       decoded intents; alarms and reminders schedule local notifications.
+///       Blocking and chat intents stay in the app layer where their
+///       permission-specific plugins and conversation context live.
 ///   - `getPairingStatus()`
 ///       Reads the pairing record from `UserDefaults.standard` (keys below).
 ///       There is no keychain path yet — keep this aligned with `setPairingStatus`.
@@ -42,29 +41,44 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        scheduleNotification(timeIso: timeIso, title: title, body: body) { result, errorMessage in
+            if let errorMessage = errorMessage {
+                call.reject(errorMessage)
+                return
+            }
+            call.resolve(result ?? [:])
+        }
+    }
+
+    private func scheduleNotification(
+        timeIso: String,
+        title: String,
+        body: String,
+        completion: @escaping ([String: Any]?, String?) -> Void
+    ) {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let fireDate = formatter.date(from: timeIso) ?? ISO8601DateFormatter().date(from: timeIso)
         guard let resolvedDate = fireDate else {
-            call.reject("scheduleAlarm received malformed timeIso: \(timeIso)")
+            completion(nil, "Notification intent received malformed timeIso: \(timeIso)")
             return
         }
 
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                call.reject("UN authorization failed: \(error.localizedDescription)")
+                completion(nil, "UN authorization failed: \(error.localizedDescription)")
                 return
             }
             if !granted {
-                call.reject("User denied notification authorization")
+                completion(nil, "User denied notification authorization")
                 return
             }
 
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.sound = .defaultCritical
+            content.sound = .default
 
             let triggerComponents = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
@@ -82,13 +96,13 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             )
             center.add(request) { addError in
                 if let addError = addError {
-                    call.reject("Failed to schedule alarm: \(addError.localizedDescription)")
+                    completion(nil, "Failed to schedule notification: \(addError.localizedDescription)")
                     return
                 }
-                call.resolve([
+                completion([
                     "scheduledId": scheduledId,
                     "timeIso": timeIso,
-                ])
+                ], nil)
             }
         }
     }
@@ -104,42 +118,35 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         switch kind {
-        case "alarm":
+        case "alarm", "reminder":
             guard let timeIso = payload["timeIso"] as? String,
                   let title = payload["title"] as? String,
                   let body = payload["body"] as? String else {
-                call.reject("alarm intent missing timeIso/title/body")
+                call.reject("\(kind) intent missing timeIso/title/body")
                 return
             }
-            let innerCall = CAPPluginCall(
-                callbackId: call.callbackId,
-                options: [
-                    "timeIso": timeIso,
-                    "title": title,
-                    "body": body,
-                ],
-                success: { result, _ in
-                    var merged: [String: Any] = result?.data ?? [:]
-                    merged["accepted"] = true
-                    merged["reason"] = "scheduled"
-                    call.resolve(merged as PluginCallResultData)
-                },
-                error: { err in
+            scheduleNotification(timeIso: timeIso, title: title, body: body) { result, errorMessage in
+                if let errorMessage = errorMessage {
                     call.resolve([
                         "accepted": false,
-                        "reason": err?.message ?? "scheduleAlarm failed",
+                        "reason": errorMessage,
                     ])
+                    return
                 }
-            )
-            if let innerCall = innerCall {
-                scheduleAlarm(innerCall)
-            } else {
-                call.reject("Failed to construct inner scheduleAlarm call")
+                var merged = result ?? [:]
+                merged["accepted"] = true
+                merged["reason"] = "scheduled"
+                call.resolve(merged as PluginCallResultData)
             }
-        case "reminder", "block", "chat":
+        case "block":
             call.resolve([
                 "accepted": false,
-                "reason": "T8c skeleton: \(kind) intent handler deferred to T9c",
+                "reason": "block intents must be handled by the app-layer Screen Time bridge",
+            ])
+        case "chat":
+            call.resolve([
+                "accepted": false,
+                "reason": "chat intents must be handled by the app-layer conversation runtime",
             ])
         default:
             call.resolve([

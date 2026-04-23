@@ -128,14 +128,22 @@ describe("formatOverviewForQuery", () => {
       localDate: "2026-04-19",
       timezone: "UTC",
       inferredAt: "2026-04-19T13:00:00.000Z",
-      phase: "afternoon",
+      circadianState: "awake",
+      stateConfidence: 0.81,
+      uncertaintyReason: null,
       relativeTime: {
         computedAt: "2026-04-19T13:00:00.000Z",
         localNowAt: "2026-04-19T13:00:00+00:00",
-        phase: "afternoon",
-        isProbablySleeping: false,
-        isAwake: true,
-        awakeState: "awake",
+        circadianState: "awake",
+        stateConfidence: 0.81,
+        uncertaintyReason: null,
+        awakeProbability: {
+          pAwake: 0.81,
+          pAsleep: 0.04,
+          pUnknown: 0.15,
+          contributingSources: [],
+          computedAt: "2026-04-19T13:00:00.000Z",
+        },
         wakeAnchorAt: "2026-04-19T07:30:00.000Z",
         wakeAnchorSource: "sleep_cycle",
         minutesSinceWake: 330,
@@ -150,15 +158,37 @@ describe("formatOverviewForQuery", () => {
         minutesUntilDayBoundaryEnd: 660,
         confidence: 0.81,
       },
+      awakeProbability: {
+        pAwake: 0.81,
+        pAsleep: 0.04,
+        pUnknown: 0.15,
+        contributingSources: [],
+        computedAt: "2026-04-19T13:00:00.000Z",
+      },
+      regularity: {
+        sri: 78,
+        bedtimeStddevMin: 30,
+        wakeStddevMin: 28,
+        midSleepStddevMin: 22,
+        regularityClass: "regular",
+        sampleCount: 8,
+        windowDays: 28,
+      },
+      baseline: {
+        medianWakeLocalHour: 7.5,
+        medianBedtimeLocalHour: 23.5,
+        medianSleepDurationMin: 480,
+        bedtimeStddevMin: 30,
+        wakeStddevMin: 28,
+        sampleCount: 8,
+        windowDays: 28,
+      },
       sleepStatus: "slept",
-      isProbablySleeping: false,
       sleepConfidence: 0.81,
       currentSleepStartedAt: null,
       lastSleepStartedAt: "2026-04-18T23:30:00.000Z",
       lastSleepEndedAt: "2026-04-19T07:30:00.000Z",
       lastSleepDurationMinutes: 480,
-      typicalWakeHour: 7.5,
-      typicalSleepHour: 23.5,
       wakeAt: "2026-04-19T07:30:00.000Z",
       firstActiveAt: "2026-04-19T07:35:00.000Z",
       lastActiveAt: "2026-04-19T12:15:00.000Z",
@@ -172,7 +202,7 @@ describe("formatOverviewForQuery", () => {
 
     const text = formatOverview(overview);
 
-    expect(text).toContain("Schedule phase: afternoon");
+    expect(text).toContain("Circadian state: awake");
     expect(text).toContain("Last wake 2026-04-19T07:30:00.000Z");
     expect(text).toContain("Next lunch window starts 2026-04-19T13:00:00.000Z");
   });

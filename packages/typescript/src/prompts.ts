@@ -684,8 +684,6 @@ export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
 export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
-{{providers}}
-
 # Examples:
 {{evaluationExamples}}
 

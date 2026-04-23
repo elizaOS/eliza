@@ -10,7 +10,7 @@
  * Hash format: `#key=value&key=value` (query-string-in-fragment). Two
  * namespaces live here in practice:
  *
- *   - `lifeops.section`    → "overview" | "setup" | "reminders" | "calendar" | "messages"
+ *   - `lifeops.section`    → current LifeOps section id
  *   - `lifeops.event`      → calendar event id (implies section=calendar)
  *   - `lifeops.message`    → inbox message id  (implies section=messages)
  *   - `automations.trigger`→ trigger id selected on the /automations page
@@ -21,17 +21,25 @@
 
 export type LifeOpsRouteSection =
   | "overview"
+  | "sleep"
+  | "screen-time"
+  | "social"
   | "setup"
   | "reminders"
   | "calendar"
-  | "messages";
+  | "messages"
+  | "mail";
 
 const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
   "overview",
+  "sleep",
+  "screen-time",
+  "social",
   "setup",
   "reminders",
   "calendar",
   "messages",
+  "mail",
 ] as const;
 
 export interface LifeOpsRouteState {
@@ -50,7 +58,9 @@ const LIFEOPS_MESSAGE_KEY = "lifeops.message";
 const AUTOMATIONS_TRIGGER_KEY = "automations.trigger";
 
 function isSection(value: string | null): value is LifeOpsRouteSection {
-  return value !== null && (LIFEOPS_SECTIONS as readonly string[]).includes(value);
+  return (
+    value !== null && (LIFEOPS_SECTIONS as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -80,7 +90,9 @@ export function parseHashParams(hash: string): Record<string, string> {
  * Serialize a map back into a `#key=value&…` hash. Empty / null values are
  * stripped so toggling a key off removes it from the URL cleanly.
  */
-export function serializeHashParams(params: Record<string, string | null | undefined>): string {
+export function serializeHashParams(
+  params: Record<string, string | null | undefined>,
+): string {
   const pairs: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === null || value === undefined || value === "") continue;
@@ -219,7 +231,9 @@ export function getPrimedLifeOpsEvent<T extends { id: string }>(
   return (EVENT_CACHE.get(id) as T | null) ?? null;
 }
 
-export function primeLifeOpsMessage<T extends { id: string }>(message: T): void {
+export function primeLifeOpsMessage<T extends { id: string }>(
+  message: T,
+): void {
   MESSAGE_CACHE.set(message.id, message);
 }
 export function getPrimedLifeOpsMessage<T extends { id: string }>(

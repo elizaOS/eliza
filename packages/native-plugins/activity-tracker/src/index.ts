@@ -42,8 +42,17 @@ export interface ActivityCollectorOptions {
   onEvent: (event: ActivityCollectorEvent) => void;
   /** Called once per parsed HID idle sample. Optional — safe to ignore. */
   onIdleSample?: (sample: ActivityCollectorIdleSample) => void;
+  /** Called when the collector exits without a fatal failure. */
+  onExit?: (exit: ActivityCollectorExit) => void;
   /** Called once per fatal collector error (process exit with non-zero, failed spawn, parse failure >5). */
   onFatal?: (reason: string) => void;
+}
+
+export interface ActivityCollectorExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  clean: boolean;
+  reason: string;
 }
 
 export interface ActivityCollectorHandle {
@@ -114,6 +123,18 @@ function parseEventLine(line: string): ActivityCollectorEvent | null {
   return parsed.kind === "event" ? parsed.value : null;
 }
 
+function describeCollectorExit(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): ActivityCollectorExit {
+  return {
+    code,
+    signal,
+    clean: code === 0 && signal === null,
+    reason: `collector exited (code=${code}, signal=${signal})`,
+  };
+}
+
 export function startActivityCollector(
   options: ActivityCollectorOptions,
 ): ActivityCollectorHandle {
@@ -167,9 +188,14 @@ export function startActivityCollector(
 
   proc.on("exit", (code, signal) => {
     if (stopped) return;
-    const reason = `collector exited (code=${code}, signal=${signal})`;
-    logger.warn({ code, signal }, `[activity-tracker] ${reason}`);
-    options.onFatal?.(reason);
+    const exit = describeCollectorExit(code, signal);
+    if (exit.clean) {
+      logger.info({ code, signal }, `[activity-tracker] ${exit.reason}`);
+      options.onExit?.(exit);
+      return;
+    }
+    logger.warn({ code, signal }, `[activity-tracker] ${exit.reason}`);
+    options.onFatal?.(exit.reason);
   });
 
   return {
@@ -188,4 +214,8 @@ export function startActivityCollector(
 }
 
 // Exposed for tests.
-export const __internal = { parseEventLine, parseCollectorLine };
+export const __internal = {
+  parseEventLine,
+  parseCollectorLine,
+  describeCollectorExit,
+};

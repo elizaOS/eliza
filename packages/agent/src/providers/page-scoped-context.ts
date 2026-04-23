@@ -15,9 +15,15 @@ import type {
   RegistryAppInfo,
 } from "@elizaos/shared/contracts/apps";
 import type {
+  LifeOpsCapabilitiesStatus,
+  LifeOpsOverview,
+  LifeOpsUnifiedInbox,
+} from "@elizaos/shared/contracts/lifeops";
+import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
+  WalletTradingProfileResponse,
 } from "@elizaos/shared/contracts/wallet";
 import {
   extractConversationMetadataFromRoom,
@@ -44,8 +50,10 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":
     "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: launchAppAction, stopAppAction. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
+  "page-lifeops":
+    "The user is in the LifeOps view. They can inspect the overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. The LifeOps app provider and actions are the authoritative execution path for creating or changing personal workflows, reminders, goals, schedules, inbox drafts, connector setup, and executive-assistant follow-through. When the user asks what to do, recommend capability readiness and overview review first, then suggest the smallest concrete LifeOps action. Reference only live LifeOps state below; never invent reminders, messages, calendar events, goals, or connector status.",
   "page-wallet":
-    "The user is in the Wallet view. They can inspect addresses, balances, NFTs, chain filters, RPC/provider readiness, pending Steward approvals, policy controls, transaction history, and wallet/RPC settings. When the user asks what to do, recommend read-only readiness and safety checks first. Wallet operations are user-driven; do not initiate trades, transfers, swaps, approvals, signatures, or fund movements on the user's behalf. Provide read-only guidance only.",
+    "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset, amount, destination, slippage/risk limits, and execution path before invoking any available action. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when connected or suggest connecting it when not connected. Never invent balances, positions, fills, or execution support.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
@@ -160,24 +168,31 @@ interface BrowserBridgeCompanionLiveStatus {
   extensionVersion?: string | null;
 }
 
-function getLocalApiUrl(path: string): string {
-  const port = process.env.API_PORT || process.env.SERVER_PORT || "2138";
-  return `http://127.0.0.1:${port}${path.startsWith("/") ? path : `/${path}`}`;
+function getLocalApiUrls(path: string): string[] {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const configuredPort = process.env.API_PORT || process.env.SERVER_PORT;
+  const ports = configuredPort
+    ? [configuredPort, configuredPort === "31337" ? "2138" : "31337"]
+    : ["2138", "31337"];
+  return [...new Set(ports)].map(
+    (port) => `http://127.0.0.1:${port}${normalizedPath}`,
+  );
 }
 
 async function fetchLocalJson<T>(
   path: string,
   timeoutMs = 1500,
 ): Promise<T | null> {
-  try {
-    const response = await fetch(getLocalApiUrl(path), {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
-  } catch {
-    return null;
+  for (const url of getLocalApiUrls(path)) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) continue;
+      return (await response.json()) as T;
+    } catch {}
   }
+  return null;
 }
 
 async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
@@ -320,6 +335,107 @@ async function renderAppsLiveState(): Promise<string | null> {
   return lines.join("\n");
 }
 
+function formatLifeOpsOverviewSection(
+  label: string,
+  overview: LifeOpsOverview["owner"],
+): string {
+  return `${label}: ${overview.summary.activeOccurrenceCount} active item${overview.summary.activeOccurrenceCount === 1 ? "" : "s"}, ${overview.summary.activeReminderCount} reminder${overview.summary.activeReminderCount === 1 ? "" : "s"}, ${overview.summary.activeGoalCount} goal${overview.summary.activeGoalCount === 1 ? "" : "s"}.`;
+}
+
+async function renderLifeOpsLiveState(): Promise<string | null> {
+  const [overview, capabilities, inbox] = await Promise.all([
+    fetchLocalJson<LifeOpsOverview>("/api/lifeops/overview"),
+    fetchLocalJson<LifeOpsCapabilitiesStatus>("/api/lifeops/capabilities"),
+    fetchLocalJson<LifeOpsUnifiedInbox>("/api/lifeops/inbox/unified?limit=8"),
+  ]);
+
+  if (!overview && !capabilities && !inbox) {
+    return "Live LifeOps state: unavailable from the LifeOps API.";
+  }
+
+  const lines: string[] = ["Live LifeOps state:"];
+
+  if (capabilities) {
+    lines.push(`- App enabled: ${capabilities.appEnabled ? "yes" : "no"}.`);
+    lines.push(
+      `- Capabilities: ${capabilities.summary.workingCount} working, ${capabilities.summary.degradedCount} degraded, ${capabilities.summary.blockedCount} blocked, ${capabilities.summary.notConfiguredCount} not configured.`,
+    );
+    const attention = capabilities.capabilities.filter(
+      (capability) =>
+        capability.state === "blocked" ||
+        capability.state === "degraded" ||
+        capability.state === "not_configured",
+    );
+    for (const capability of attention.slice(0, 5)) {
+      lines.push(
+        `  - ${capability.label}: ${capability.state} — ${capability.summary}`,
+      );
+    }
+  }
+
+  if (overview) {
+    lines.push(
+      `- Overview: ${overview.summary.activeOccurrenceCount} active item${overview.summary.activeOccurrenceCount === 1 ? "" : "s"}, ${overview.summary.overdueOccurrenceCount} overdue, ${overview.summary.activeReminderCount} active reminder${overview.summary.activeReminderCount === 1 ? "" : "s"}, ${overview.summary.activeGoalCount} active goal${overview.summary.activeGoalCount === 1 ? "" : "s"}.`,
+    );
+    lines.push(`- ${formatLifeOpsOverviewSection("Owner", overview.owner)}`);
+    lines.push(
+      `- ${formatLifeOpsOverviewSection("Agent ops", overview.agentOps)}`,
+    );
+    if (overview.schedule) {
+      const relative = overview.schedule.relativeTime;
+      const wake =
+        relative.minutesSinceWake !== null
+          ? `${Math.round(relative.minutesSinceWake)}m since wake`
+          : "wake time unknown";
+      const bedtime =
+        relative.minutesUntilBedtimeTarget !== null
+          ? `${Math.round(relative.minutesUntilBedtimeTarget)}m until bedtime target`
+          : "bedtime target unknown";
+      lines.push(
+        `- Schedule: ${overview.schedule.circadianState} (${Math.round(overview.schedule.stateConfidence * 100)}% confidence), ${overview.schedule.sleepStatus}; ${wake}; ${bedtime}.`,
+      );
+    }
+    const activeReminders = [
+      ...overview.owner.reminders,
+      ...overview.agentOps.reminders,
+    ];
+    if (activeReminders.length > 0) {
+      lines.push("Active reminders:");
+      for (const reminder of activeReminders.slice(0, 5)) {
+        lines.push(
+          `- ${reminder.title} (${reminder.channel}, ${reminder.state}) scheduled ${reminder.scheduledFor}`,
+        );
+      }
+    }
+    const activeGoals = [...overview.owner.goals, ...overview.agentOps.goals];
+    if (activeGoals.length > 0) {
+      lines.push("Active goals:");
+      for (const goal of activeGoals.slice(0, 5)) {
+        lines.push(`- ${goal.title} (${goal.status})`);
+      }
+    }
+  }
+
+  if (inbox) {
+    const unreadCount = Object.values(inbox.channelCounts).reduce(
+      (sum, count) => sum + count.unread,
+      0,
+    );
+    lines.push(
+      `- Unified inbox: ${inbox.messages.length} recent message${inbox.messages.length === 1 ? "" : "s"}, ${unreadCount} unread.`,
+    );
+    for (const message of inbox.messages.slice(0, 5)) {
+      const subject = message.subject ? `${message.subject}: ` : "";
+      const unread = message.unread ? " unread" : "";
+      lines.push(
+        `  - ${message.channel}${unread} from ${message.sender.displayName}: ${subject}${message.snippet.slice(0, 120)}`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
 function shortAddress(address: string | null | undefined): string {
   if (!address) return "(not configured)";
   if (address.length <= 14) return address;
@@ -332,19 +448,40 @@ function readyLabel(value: boolean | undefined): string {
   return "unknown";
 }
 
+function hasPositiveAmount(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
+interface VincentLiveStatus {
+  connected?: boolean;
+  connectedAt?: number | null;
+  tradingVenues?: readonly string[];
+}
+
+interface VincentLiveStrategy {
+  connected?: boolean;
+  strategy?: {
+    name?: string;
+    venues?: readonly string[];
+  } | null;
+}
+
 async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, stewardStatus, pendingApprovals] =
+  const [config, balances, nfts, profile, vincentStatus, vincentStrategy] =
     await Promise.all([
       fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
       fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
       fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-      fetchLocalJson<StewardStatusResponse>("/api/wallet/steward-status"),
-      fetchLocalJson<StewardPendingResponse>(
-        "/api/wallet/steward-pending-approvals",
+      fetchLocalJson<WalletTradingProfileResponse>(
+        "/api/wallet/trading/profile?window=24h&source=all",
       ),
+      fetchLocalJson<VincentLiveStatus>("/api/vincent/status"),
+      fetchLocalJson<VincentLiveStrategy>("/api/vincent/strategy"),
     ]);
 
-  if (!config && !balances && !nfts && !stewardStatus && !pendingApprovals) {
+  if (!config && !balances && !nfts && !profile && !vincentStatus) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
 
@@ -354,10 +491,10 @@ async function renderWalletLiveState(): Promise<string | null> {
     lines.push(`- EVM address: ${shortAddress(config.evmAddress)}`);
     lines.push(`- Solana address: ${shortAddress(config.solanaAddress)}`);
     lines.push(
-      `- RPC providers: EVM=${config.selectedRpcProviders.evm}, BSC=${config.selectedRpcProviders.bsc}, Solana=${config.selectedRpcProviders.solana}`,
+      `- RPC providers: EVM=${config.selectedRpcProviders.evm}, Solana=${config.selectedRpcProviders.solana}`,
     );
     lines.push(
-      `- Readiness: BSC RPC ${readyLabel(config.managedBscRpcReady)}, EVM balances ${readyLabel(config.evmBalanceReady)}, Solana balances ${readyLabel(config.solanaBalanceReady)}, execution ${readyLabel(config.executionReady)}`,
+      `- Readiness: EVM balances ${readyLabel(config.evmBalanceReady)}, Solana balances ${readyLabel(config.solanaBalanceReady)}, execution ${readyLabel(config.executionReady)}`,
     );
     if (config.executionBlockedReason) {
       lines.push(`- Execution blocked: ${config.executionBlockedReason}`);
@@ -367,22 +504,36 @@ async function renderWalletLiveState(): Promise<string | null> {
     );
   }
 
+  const assetLines: string[] = [];
   if (balances?.evm) {
-    lines.push(
-      `- EVM balances: ${balances.evm.chains.length} chain${balances.evm.chains.length === 1 ? "" : "s"} for ${shortAddress(balances.evm.address)}.`,
-    );
-    for (const chain of balances.evm.chains.slice(0, 5)) {
-      const tokenCount = chain.tokens.length;
-      const error = chain.error ? ` error=${chain.error}` : "";
-      lines.push(
-        `  - ${chain.chain}: ${chain.nativeBalance} ${chain.nativeSymbol}, ${tokenCount} token${tokenCount === 1 ? "" : "s"}${error}`,
-      );
+    for (const chain of balances.evm.chains) {
+      if (hasPositiveAmount(chain.nativeBalance)) {
+        assetLines.push(`${chain.nativeBalance} ${chain.nativeSymbol}`);
+      }
+      for (const token of chain.tokens) {
+        if (hasPositiveAmount(token.balance)) {
+          assetLines.push(`${token.balance} ${token.symbol}`);
+        }
+      }
     }
   }
   if (balances?.solana) {
+    if (hasPositiveAmount(balances.solana.solBalance)) {
+      assetLines.push(`${balances.solana.solBalance} SOL`);
+    }
+    for (const token of balances.solana.tokens) {
+      if (hasPositiveAmount(token.balance)) {
+        assetLines.push(`${token.balance} ${token.symbol}`);
+      }
+    }
+  }
+  if (balances?.evm || balances?.solana) {
     lines.push(
-      `- Solana balance: ${balances.solana.solBalance} SOL, ${balances.solana.tokens.length} token${balances.solana.tokens.length === 1 ? "" : "s"} for ${shortAddress(balances.solana.address)}.`,
+      `- Token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"}.`,
     );
+    for (const asset of assetLines.slice(0, 10)) {
+      lines.push(`  - ${asset}`);
+    }
   }
 
   if (nfts) {
@@ -391,16 +542,28 @@ async function renderWalletLiveState(): Promise<string | null> {
       0,
     );
     const solanaNftCount = nfts.solana?.nfts.length ?? 0;
-    lines.push(`- NFTs: EVM=${evmNftCount}, Solana=${solanaNftCount}.`);
+    const nftCount = evmNftCount + solanaNftCount;
+    lines.push(`- NFTs: ${nftCount} item${nftCount === 1 ? "" : "s"}.`);
   }
 
-  if (stewardStatus) {
-    const connected = stewardStatus.connected ? "connected" : "not connected";
-    const health = stewardStatus.vaultHealth ?? "unknown";
-    lines.push(`- Steward: ${connected}, vault=${health}.`);
+  if (profile) {
+    lines.push(
+      `- 24h activity: ${profile.summary.totalSwaps} swap${profile.summary.totalSwaps === 1 ? "" : "s"}, realized P&L ${profile.summary.realizedPnlBnb} BNB, volume ${profile.summary.volumeBnb} BNB.`,
+    );
   }
-  if (pendingApprovals) {
-    lines.push(`- Pending Steward approvals: ${pendingApprovals.length}.`);
+
+  if (vincentStatus) {
+    const connected = vincentStatus.connected ? "connected" : "not connected";
+    const venues = vincentStatus.tradingVenues?.join(", ") ?? "unknown venues";
+    lines.push(`- Vincent: ${connected} for ${venues}.`);
+  }
+  const strategy = vincentStrategy?.strategy;
+  if (strategy) {
+    const venues = strategy.venues ?? [];
+    const venueText = venues.length > 0 ? ` venues=${venues.join(", ")}` : "";
+    lines.push(
+      `- Vincent strategy: ${strategy.name ?? "unknown"}${venueText}.`,
+    );
   }
 
   return lines.join("\n");
@@ -443,6 +606,8 @@ async function renderLiveStateForScope(
       return renderAutomationsLiveState(runtime);
     case "page-apps":
       return renderAppsLiveState();
+    case "page-lifeops":
+      return renderLifeOpsLiveState();
     case "page-wallet":
       return renderWalletLiveState();
     default:
@@ -461,7 +626,7 @@ function formatSourceTail(entries: SourceTailEntry[]): string {
 export const pageScopedContextProvider: Provider = {
   name: "page-scoped-context",
   description:
-    "Operational context for the current page-scoped chat (Browser, Character, Apps, Automations, Wallet).",
+    "Operational context for the current page-scoped chat (Browser, Character, Apps, LifeOps, Automations, Wallet).",
   dynamic: false,
   position: 5,
 

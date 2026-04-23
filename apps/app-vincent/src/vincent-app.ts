@@ -1,9 +1,8 @@
 /**
  * Vincent App — @elizaos/app-vincent
  *
- * Full-screen overlay app for DeFi vault management and autotrading
- * via Vincent (https://heyvincent.ai). Follows the same OverlayApp
- * registration pattern as the Companion app.
+ * Full-screen overlay app for Vincent Hyperliquid and Polymarket trading
+ * access.
  */
 
 import type { OverlayApp } from "@elizaos/app-core";
@@ -15,8 +14,8 @@ export const VINCENT_APP_NAME = "@elizaos/app-vincent";
 export const vincentApp: OverlayApp = {
   name: VINCENT_APP_NAME,
   displayName: "Vincent",
-  description: "DeFi vault management and autotrading",
-  category: "utility",
+  description: "Connect Vincent to trade on Hyperliquid and Polymarket",
+  category: "trading",
   icon: null,
   Component: VincentAppView,
 };

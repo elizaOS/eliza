@@ -73,7 +73,11 @@ import {
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
-import { APPS_ENABLED, isAppsToolTab } from "./navigation";
+import {
+  APPS_ENABLED,
+  isAndroidPhoneSurfaceEnabled,
+  isAppsToolTab,
+} from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
@@ -144,27 +148,34 @@ function ViewRouter({
 }) {
   const { tab } = useApp();
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
+  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const view = (() => {
     switch (tab) {
       case "chat":
         return <ChatView />;
       case "phone":
-        return (
-          <TabContentView>
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
             <PhonePageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "messages":
-        return (
-          <TabContentView>
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
             <MessagesPageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "contacts":
-        return (
-          <TabContentView>
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
             <ContactsPageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
       case "lifeops":
         // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main

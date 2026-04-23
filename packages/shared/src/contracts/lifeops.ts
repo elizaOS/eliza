@@ -1329,6 +1329,9 @@ export const LIFEOPS_UNCLEAR_REASONS = [
   "contradictory_signals",
   "insufficient_history",
   "permission_blocked",
+  "signal_outage",
+  "boot_cold_start",
+  "stale_state",
 ] as const;
 
 export type LifeOpsUnclearReason = (typeof LIFEOPS_UNCLEAR_REASONS)[number];
@@ -1479,12 +1482,24 @@ export interface LifeOpsScheduleMealInsight {
   source: LifeOpsScheduleMealSource;
 }
 
+/**
+ * A single rule firing from `scoreCircadianRules`. Persisted on the schedule
+ * insight so the inspection UI can explain *why* the state machine landed
+ * where it did without re-running inference.
+ */
+export interface LifeOpsCircadianRuleFiring {
+  name: string;
+  contributes: LifeOpsCircadianState;
+  weight: number;
+  observedAt: string;
+  reason: string;
+}
+
 export interface LifeOpsScheduleInsight {
   effectiveDayKey: string;
   localDate: string;
   timezone: string;
   inferredAt: string;
-  phase: LifeOpsCircadianState;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
@@ -1492,8 +1507,12 @@ export interface LifeOpsScheduleInsight {
   awakeProbability: LifeOpsAwakeProbability;
   regularity: LifeOpsScheduleRegularity;
   baseline: LifeOpsPersonalBaseline | null;
+  /**
+   * Named-rules evidence from the circadian scorer. Ordered by descending
+   * weight. Empty when `circadianState === "unclear"` and no rules fired.
+   */
+  circadianRuleFirings: LifeOpsCircadianRuleFiring[];
   sleepStatus: LifeOpsScheduleSleepStatus;
-  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;

@@ -11,6 +11,7 @@ export type InboxChannel = "all" | LifeOpsInboxChannel;
 export interface UseUnifiedInboxOptions {
   maxResults?: number;
   channel?: InboxChannel;
+  channels?: readonly LifeOpsInboxChannel[];
   searchQuery?: string;
 }
 
@@ -41,9 +42,15 @@ export function useUnifiedInbox(
     setLoading(true);
     setError(null);
     try {
+      const selectedChannels =
+        channel === "all"
+          ? opts.channels
+            ? [...opts.channels]
+            : undefined
+          : [channel as LifeOpsInboxChannel];
       const result = await client.getLifeOpsUnifiedInbox({
         limit: opts.maxResults ?? DEFAULT_MAX_RESULTS,
-        channels: channel === "all" ? undefined : [channel],
+        channels: selectedChannels,
       });
       setFeed(result);
     } catch (cause) {
@@ -57,7 +64,7 @@ export function useUnifiedInbox(
     } finally {
       setLoading(false);
     }
-  }, [channel, opts.maxResults, t]);
+  }, [channel, opts.channels, opts.maxResults, t]);
 
   useEffect(() => {
     void fetch();

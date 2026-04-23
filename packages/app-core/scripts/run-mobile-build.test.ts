@@ -86,6 +86,20 @@ describe("run-mobile-build", () => {
         "ios",
         "App",
         "App",
+        "PrivacyInfo.xcprivacy",
+      ),
+      "app-privacy\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "ios",
+        "App",
+        "App",
         "Base.lproj",
         "LaunchScreen.storyboard",
       ),
@@ -143,6 +157,21 @@ describe("run-mobile-build", () => {
         "packages",
         "app-core",
         "platforms",
+        "ios",
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "PrivacyInfo.xcprivacy",
+      ),
+      "extension-privacy\n",
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
         "android",
         "gradlew",
       ),
@@ -190,6 +219,7 @@ describe("run-mobile-build", () => {
       path.join("App", "App.xcodeproj", "project.pbxproj"),
       path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
       path.join("App", "App", "MiladyIntentPlugin.swift"),
+      path.join("App", "App", "PrivacyInfo.xcprivacy"),
       path.join(
         "App",
         "App",
@@ -202,6 +232,12 @@ describe("run-mobile-build", () => {
         "App",
         "WebsiteBlockerContentExtension",
         "WebsiteBlockerContentExtension.entitlements",
+      ),
+      path.join(
+        "App",
+        "App",
+        "WebsiteBlockerContentExtension",
+        "PrivacyInfo.xcprivacy",
       ),
     ]);
     expect(androidCopied).toContain("build.gradle");
@@ -274,6 +310,25 @@ describe("run-mobile-build", () => {
         "utf8",
       ),
     ).toBe("extension-entitlements\n");
+    expect(
+      fs.readFileSync(
+        path.join(appDir, "ios", "App", "App", "PrivacyInfo.xcprivacy"),
+        "utf8",
+      ),
+    ).toBe("app-privacy\n");
+    expect(
+      fs.readFileSync(
+        path.join(
+          appDir,
+          "ios",
+          "App",
+          "App",
+          "WebsiteBlockerContentExtension",
+          "PrivacyInfo.xcprivacy",
+        ),
+        "utf8",
+      ),
+    ).toBe("extension-privacy\n");
     expect(
       fs.readFileSync(path.join(appDir, "android", "build.gradle"), "utf8"),
     ).toBe("android-root\n");
@@ -509,6 +564,7 @@ describe("run-mobile-build", () => {
       projectPath,
       [
         "DEVELOPMENT_TEAM = 25877RY2EH;",
+        "MARKETING_VERSION = 1.0;",
         "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
         "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
       ].join("\n"),
@@ -575,6 +631,9 @@ describe("run-mobile-build", () => {
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
       "DEVELOPMENT_TEAM = ABCDE12345;",
+    );
+    expect(fs.readFileSync(projectPath, "utf8")).toContain(
+      'MILADY_DISPLAY_NAME = "Milady";',
     );
     expect(fs.readFileSync(appEntitlements, "utf8")).toContain(
       "group.com.example.milady",

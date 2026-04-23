@@ -125,10 +125,11 @@ describe("conversation metadata helpers", () => {
     ).toEqual({ scope: "page-apps" });
   });
 
-  it("accepts all five page scopes as valid", () => {
+  it("accepts all six page scopes as valid", () => {
     for (const scope of [
       "page-character",
       "page-apps",
+      "page-lifeops",
       "page-wallet",
       "page-browser",
       "page-automations",

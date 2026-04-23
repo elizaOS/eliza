@@ -171,8 +171,7 @@ describe("LifeOps awake-relative time benchmark", () => {
         ),
       );
       expect(insight.relativeTime.computedAt, item.name).toBe(item.nowAt);
-      expect(insight.relativeTime.isAwake, item.name).toBe(true);
-      expect(insight.relativeTime.awakeState, item.name).toBe("awake");
+      expect(insight.relativeTime.circadianState, item.name).toBe("awake");
       expect(insight.relativeTime.minutesAwake, item.name).toBe(
         insight.relativeTime.minutesSinceWake,
       );
@@ -208,10 +207,9 @@ describe("LifeOps awake-relative time benchmark", () => {
       ],
     });
 
-    expect(insight.isProbablySleeping).toBe(true);
+    expect(insight.circadianState).toBe("sleeping");
     expect(insight.relativeTime.computedAt).toBe(nowAt);
-    expect(insight.relativeTime.isAwake).toBe(false);
-    expect(insight.relativeTime.awakeState).toBe("probably_sleeping");
+    expect(insight.relativeTime.circadianState).toBe("sleeping");
     expect(insight.relativeTime.minutesAwake).toBeNull();
     expect(insight.relativeTime.minutesSinceBedtimeTarget).toBe(120);
   });

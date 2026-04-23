@@ -4,6 +4,7 @@ import type {
   LifeOpsSleepCycleType,
 } from "@elizaos/shared/contracts/lifeops";
 import { getZonedDateParts } from "./time.js";
+import { parseIsoMs } from "./time-util.js";
 
 export interface SleepRegularityEpisodeLike {
   startAt: string;
@@ -22,39 +23,8 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function parseIsoMs(value: string | null): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function durationMinutes(startMs: number, endMs: number): number {
   return Math.max(0, Math.round((endMs - startMs) / 60_000));
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) {
-    return sorted[middle] ?? null;
-  }
-  const lower = sorted[middle - 1];
-  const upper = sorted[middle];
-  if (lower === undefined || upper === undefined) {
-    return null;
-  }
-  return round((lower + upper) / 2);
-}
-
-function normalizedBedtimeHour(ms: number, timezone: string): number {
-  const parts = getZonedDateParts(new Date(ms), timezone);
-  const hour = parts.hour + parts.minute / 60;
-  return hour < 12 ? hour + 24 : hour;
 }
 
 function isRegularityEpisode(
@@ -77,9 +47,7 @@ function localMinuteOfDay(ms: number, timezone: string): number {
   return parts.hour * 60 + parts.minute;
 }
 
-function circularStddevMinutes(
-  minuteValues: readonly number[],
-): number {
+function circularStddevMinutes(minuteValues: readonly number[]): number {
   if (minuteValues.length === 0) {
     return 0;
   }
@@ -272,8 +240,16 @@ function medianNumber(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return round(sorted[middle]!);
-  return round((sorted[middle - 1]! + sorted[middle]!) / 2);
+  if (sorted.length % 2 === 1) {
+    const value = sorted[middle];
+    return value === undefined ? null : round(value);
+  }
+  const lower = sorted[middle - 1];
+  const upper = sorted[middle];
+  if (lower === undefined || upper === undefined) {
+    return null;
+  }
+  return round((lower + upper) / 2);
 }
 
 export function computePersonalBaseline(args: {

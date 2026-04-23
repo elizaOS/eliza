@@ -13,12 +13,19 @@ export interface SmsMessageSummary {
   read: boolean;
 }
 
+export interface SendSmsResult {
+  messageId: string;
+  messageUri: string;
+}
+
 export interface ListMessagesOptions {
   limit?: number;
   threadId?: string;
 }
 
 export interface MessagesPlugin {
-  sendSms(options: SendSmsOptions): Promise<void>;
-  listMessages(options?: ListMessagesOptions): Promise<{ messages: SmsMessageSummary[] }>;
+  sendSms(options: SendSmsOptions): Promise<SendSmsResult>;
+  listMessages(
+    options?: ListMessagesOptions,
+  ): Promise<{ messages: SmsMessageSummary[] }>;
 }

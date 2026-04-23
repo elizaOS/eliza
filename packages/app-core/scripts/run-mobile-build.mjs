@@ -22,7 +22,6 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { assertIosScreenTimeBuildWiring } from "../../native-plugins/mobile-signals/scripts/validate-ios-screen-time.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
@@ -30,10 +29,15 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appDir = path.join(repoRoot, "apps", "app");
-const iosPlatformDir = path.join(appDir, "ios");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const miladyOsVendorDir = path.join(repoRoot, "os", "android", "vendor", "milady");
+const miladyOsVendorDir = path.join(
+  repoRoot,
+  "os",
+  "android",
+  "vendor",
+  "milady",
+);
 const miladyOsApkDir = path.join(miladyOsVendorDir, "apps", "Milady");
 const platformsDir = path.join(
   repoRoot,
@@ -48,8 +52,6 @@ const nativePluginsDir = path.join(
   "packages",
   "native-plugins",
 );
-const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
-
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -60,8 +62,7 @@ function readAppIdentity() {
   const src = fs.readFileSync(cfgPath, "utf8");
   const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
   const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
-  const urlScheme =
-    src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
+  const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
@@ -131,6 +132,50 @@ function escapeXmlText(value) {
     .replace(/>/g, "&gt;");
 }
 
+function escapeXcodeBuildSetting(value) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function replaceOrInsertPlistString(content, key, value) {
+  const escapedValue = escapeXmlText(value);
+  const keyRe = escapeRegExp(key);
+  const existingRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<string>)[^<]*(</string>)`,
+  );
+  if (existingRe.test(content)) {
+    return content.replace(existingRe, `$1${escapedValue}$2`);
+  }
+  return content.replace(
+    "</dict>",
+    `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
+  );
+}
+
+function ensurePlistArrayStrings(content, key, values) {
+  const escapedValues = values.map(escapeXmlText);
+  const keyRe = escapeRegExp(key);
+  const arrayRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
+  );
+  const match = content.match(arrayRe);
+  if (!match) {
+    const body = escapedValues
+      .map((value) => `\t\t<string>${value}</string>`)
+      .join("\n");
+    return content.replace(
+      "</dict>",
+      `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
+    );
+  }
+  let body = match[2];
+  for (const value of escapedValues) {
+    if (!body.includes(`<string>${value}</string>`)) {
+      body += `\n\t\t<string>${value}</string>`;
+    }
+  }
+  return content.replace(arrayRe, `$1${body}$3`);
+}
+
 /**
  * Resolve the real filesystem path to a node_modules package (follows bun
  * symlinks). Returns a path relative to `relativeTo`.
@@ -163,6 +208,7 @@ function templateFilePriority(platform, relPath) {
     path.join("App", "App.xcodeproj", "project.pbxproj"),
     path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
     path.join("App", "App", "MiladyIntentPlugin.swift"),
+    path.join("App", "App", "PrivacyInfo.xcprivacy"),
     path.join(
       "App",
       "App",
@@ -175,6 +221,12 @@ function templateFilePriority(platform, relPath) {
       "App",
       "WebsiteBlockerContentExtension",
       "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "PrivacyInfo.xcprivacy",
     ),
   ];
   const index = priority.indexOf(relPath);
@@ -266,6 +318,7 @@ function replaceInFile(filePath, replacements) {
 export function applyIosAppIdentity({
   appDirValue = appDir,
   appId = APP.appId,
+  appName = APP.appName,
   appGroup = `group.${appId}`,
   developmentTeam = process.env.MILADY_IOS_DEVELOPMENT_TEAM ??
     process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
@@ -286,6 +339,21 @@ export function applyIosAppIdentity({
       "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
     );
+    const displayNameSetting = `MILADY_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
+    if (project.includes("MILADY_DISPLAY_NAME = ")) {
+      project = project.replace(
+        /MILADY_DISPLAY_NAME = .*?;/g,
+        displayNameSetting,
+      );
+    } else {
+      project = project.replace(
+        new RegExp(
+          `(^[ \\t]*MARKETING_VERSION = 1\\.0;\\n)([ \\t]*)PRODUCT_BUNDLE_IDENTIFIER = ${escapeRegExp(appId)};`,
+          "m",
+        ),
+        `$1$2${displayNameSetting}\n$2PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+      );
+    }
     if (developmentTeam) {
       project = project.replace(
         /DEVELOPMENT_TEAM = [A-Z0-9]+;/g,
@@ -411,6 +479,54 @@ function appendMissingGradleDependency(content, notation) {
     /dependencies\s*\{/,
     `dependencies {\n    implementation "${notation}"`,
   );
+}
+
+function patchCapacitorBarcodeScannerGradle() {
+  const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "@capacitor/barcode-scanner",
+  );
+}
+
+function patchLlamaCppCapacitorGradle() {
+  const pkgRel = resolvePackagePath("llama-cpp-capacitor", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "llama-cpp-capacitor",
+  );
+}
+
+function patchGradleFileForAgp9(filePath, label) {
+  if (!fs.existsSync(filePath)) return;
+  const current = fs.readFileSync(filePath, "utf8");
+  const patched = current
+    .replace(
+      /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
+      "",
+    )
+    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n")
+    .replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
+  if (patched !== current) {
+    fs.writeFileSync(filePath, patched, "utf8");
+    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9.`);
+  }
+}
+
+function patchNativePluginGradleForAgp9() {
+  if (!fs.existsSync(nativePluginsDir)) return;
+  for (const entry of fs.readdirSync(nativePluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    patchGradleFileForAgp9(
+      path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
+      `@elizaos/capacitor-${entry.name}`,
+    );
+  }
 }
 
 function appendMissingAndroidManifestBlock(xml, marker, block) {
@@ -849,6 +965,12 @@ const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([
   "CapacitorStatusBar",
 ]);
 
+const IOS_BONJOUR_SERVICES = [
+  "_eliza-gw._tcp",
+  "_elizaos-gw._tcp",
+  "_eliza._tcp",
+];
+
 function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
@@ -866,11 +988,21 @@ function overlayIos() {
         dirty = true;
       }
     }
-    if (!plist.includes("NSBonjourServices")) {
-      plist = plist.replace(
-        "</dict>",
-        `\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_elizaos-gw._tcp</string>\n\t</array>\n</dict>`,
-      );
+    const nextPlist = ensurePlistArrayStrings(
+      ensurePlistArrayStrings(
+        replaceOrInsertPlistString(
+          plist,
+          "CFBundleDisplayName",
+          "$(MILADY_DISPLAY_NAME)",
+        ),
+        "NSBonjourServices",
+        IOS_BONJOUR_SERVICES,
+      ),
+      "UIBackgroundModes",
+      ["fetch"],
+    );
+    if (nextPlist !== plist) {
+      plist = nextPlist;
       dirty = true;
     }
     if (dirty) {
@@ -900,7 +1032,7 @@ function overlayIos() {
   for (const cfg of ["debug", "release"]) {
     const xcPath = path.join(appDir, "ios", `${cfg}.xcconfig`);
     if (fs.existsSync(xcPath)) {
-      let xc = fs.readFileSync(xcPath, "utf8");
+      const xc = fs.readFileSync(xcPath, "utf8");
       const inc = `#include "App/Pods/Target Support Files/Pods-App/Pods-App.${cfg}.xcconfig"`;
       if (!xc.includes(inc)) {
         fs.writeFileSync(xcPath, `${inc}\n${xc}`, "utf8");
@@ -1009,11 +1141,11 @@ function stripSpmIncompatiblePlugins() {
     }
     return true;
   });
-  let changed = filtered.length !== lines.length;
+  const changed = filtered.length !== lines.length;
   content = filtered.join("\n");
 
   if (changed) {
-    content = content.replace(/,(\s*[\]\)])/g, "$1").replace(/\n{3,}/g, "\n\n");
+    content = content.replace(/,(\s*[\])])/g, "$1").replace(/\n{3,}/g, "\n\n");
     fs.writeFileSync(pkgPath, content, "utf8");
     console.log(
       `[mobile-build] Stripped incompatible SPM plugins: ${Array.from(
@@ -1053,24 +1185,26 @@ function patchAndroidGradle() {
   if (fs.existsSync(appGradlePath)) {
     const current = fs.readFileSync(appGradlePath, "utf8");
     let patched = replaceOrInsertGradleString(current, "namespace", APP.appId);
-    patched = replaceOrInsertGradleString(
-      patched,
-      "applicationId",
-      APP.appId,
-    );
+    patched = replaceOrInsertGradleString(patched, "applicationId", APP.appId);
     patched = appendMissingGradleDependency(
       patched,
       "com.google.code.gson:gson:2.13.2",
     );
     patched = appendMissingGradleDependency(
       patched,
-      "com.google.firebase:firebase-common-ktx:20.3.3",
+      "com.google.firebase:firebase-common-ktx:21.0.0",
     );
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
-      console.log(`[mobile-build] Applied Android package identity ${APP.appId}.`);
+      console.log(
+        `[mobile-build] Applied Android package identity ${APP.appId}.`,
+      );
     }
   }
+
+  patchCapacitorBarcodeScannerGradle();
+  patchLlamaCppCapacitorGradle();
+  patchNativePluginGradleForAgp9();
 
   const stringsPath = path.join(
     androidDir,
@@ -1105,27 +1239,14 @@ function patchAndroidGradle() {
       );
     if (patched !== current) {
       fs.writeFileSync(stringsPath, patched, "utf8");
-      console.log(`[mobile-build] Applied Android app strings for ${APP.appName}.`);
+      console.log(
+        `[mobile-build] Applied Android app strings for ${APP.appName}.`,
+      );
     }
   }
 }
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
-
-async function ensureIosWorkspace() {
-  if (fs.existsSync(iosWorkspacePath)) {
-    return;
-  }
-
-  console.log("[mobile-build] Running CocoaPods install for iOS workspace...");
-  await run("pod", ["install"], { cwd: iosDir });
-
-  if (!fs.existsSync(iosWorkspacePath)) {
-    throw new Error(
-      `Expected iOS workspace at ${iosWorkspacePath} after pod install.`,
-    );
-  }
-}
 
 export function shouldRunIosPodInstall(syncedFiles = []) {
   return syncedFiles.includes(path.join("App", "Podfile"));
@@ -1214,9 +1335,33 @@ async function buildAndroid() {
 
 function findAndroidSystemApk() {
   const candidates = [
-    path.join(androidDir, "app", "build", "outputs", "apk", "release", "app-release-unsigned.apk"),
-    path.join(androidDir, "app", "build", "outputs", "apk", "release", "app-release.apk"),
-    path.join(androidDir, "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release-unsigned.apk",
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release.apk",
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "debug",
+      "app-debug.apk",
+    ),
   ];
   return firstExisting(candidates);
 }

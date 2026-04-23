@@ -7,7 +7,7 @@ import {
   PagePanel,
   useApp,
 } from "@elizaos/app-core";
-import { ChatView } from "@elizaos/app-core/components/pages/ChatView";
+import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -22,10 +22,12 @@ import {
   drainLifeOpsGithubCallbacks,
 } from "../platform/lifeops-github.js";
 import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
-import { LifeOpsChatAdapter } from "./LifeOpsChatAdapter.js";
-import { LifeOpsInboxSection } from "./LifeOpsInboxSection.js";
+import {
+  LIFEOPS_MAIL_CHANNELS,
+  LIFEOPS_MESSAGE_CHANNELS,
+  LifeOpsInboxSection,
+} from "./LifeOpsInboxSection.js";
 import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
-import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
@@ -35,12 +37,17 @@ import {
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
+import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
+import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
+  type LifeOpsSelection,
   LifeOpsSelectionProvider,
   useLifeOpsSelection,
 } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
+import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
+import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
 
@@ -404,6 +411,32 @@ function LifeOpsSettingsSectionView({
 
       <PermissionsPanel />
     </div>
+  );
+}
+
+function resolveLifeOpsChatPlaceholder(
+  selection: LifeOpsSelection,
+): string | undefined {
+  if (selection.reminderId) {
+    return "Ask about this reminder";
+  }
+  if (selection.eventId) {
+    return "Ask about this event";
+  }
+  if (selection.messageId) {
+    return "Ask about this message";
+  }
+  return undefined;
+}
+
+function LifeOpsPageChat() {
+  const { selection } = useLifeOpsSelection();
+  return (
+    <PageScopedChatPane
+      scope="page-lifeops"
+      title="LifeOps"
+      placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
+    />
   );
 }
 
@@ -925,10 +958,30 @@ function LifeOpsWorkspaceInner() {
     switch (section) {
       case "overview":
         return <LifeOpsOverviewSection onNavigate={navigate} />;
+      case "sleep":
+        return <LifeOpsSleepSection />;
+      case "screen-time":
+        return <LifeOpsScreenTimeSection />;
+      case "social":
+        return <LifeOpsSocialSection />;
       case "calendar":
         return <LifeOpsCalendarSection />;
       case "messages":
-        return <LifeOpsInboxSection />;
+        return (
+          <LifeOpsInboxSection
+            channels={LIFEOPS_MESSAGE_CHANNELS}
+            title="Messages"
+            emptyLabel="No messages."
+          />
+        );
+      case "mail":
+        return (
+          <LifeOpsInboxSection
+            channels={LIFEOPS_MAIL_CHANNELS}
+            title="Mail"
+            emptyLabel="No mail."
+          />
+        );
       case "reminders":
         return <LifeOpsRemindersSection />;
       case "setup":
@@ -974,11 +1027,7 @@ function LifeOpsWorkspaceInner() {
           </div>
         </div>
       }
-      chat={
-        <LifeOpsChatAdapter>
-          <ChatView variant="default" />
-        </LifeOpsChatAdapter>
-      }
+      chat={<LifeOpsPageChat />}
     />
   );
 }

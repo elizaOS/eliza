@@ -7,6 +7,7 @@ import type {
   LifeOpsBrowserSession,
   LifeOpsCalendarEvent,
   LifeOpsChannelPolicy,
+  LifeOpsCircadianRuleFiring,
   LifeOpsCircadianState,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
@@ -92,6 +93,7 @@ import type {
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
 } from "./subscriptions-types.js";
+import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
 type BrowserCompanionCredential = {
   companion: BrowserBridgeCompanionStatus;
@@ -1472,11 +1474,10 @@ function parseScheduleMergedState(
       localDate: toText(row.local_date),
       timezone: toText(row.timezone, "UTC"),
       inferredAt,
-      phase: toText(
-        row.phase,
-        toText(row.circadian_state, "unclear"),
+      circadianState: toText(
+        row.circadian_state,
+        "unclear",
       ) as LifeOpsCircadianState,
-      circadianState: toText(row.circadian_state) as LifeOpsCircadianState,
       stateConfidence: toNumber(row.state_confidence, 0),
       uncertaintyReason: row.uncertainty_reason
         ? (toText(row.uncertainty_reason) as LifeOpsUnclearReason)
@@ -1487,10 +1488,12 @@ function parseScheduleMergedState(
       ),
       regularity: parseScheduleRegularity(row.regularity_json),
       baseline: parsePersonalBaseline(row.baseline_json),
+      circadianRuleFirings: parseJsonArray<LifeOpsCircadianRuleFiring>(
+        row.circadian_rule_firings_json,
+      ),
       sleepStatus: toText(
         row.sleep_status,
       ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
-      isProbablySleeping: toBoolean(row.is_probably_sleeping, false),
       sleepConfidence: toNumber(row.sleep_confidence, 0),
       currentSleepStartedAt: row.current_sleep_started_at
         ? toText(row.current_sleep_started_at)
@@ -2640,6 +2643,25 @@ export class LifeOpsRepository {
         ${sqlQuote(signal.createdAt)}
       )`,
     );
+
+    // Mirror into the unified telemetry store. Dedupes on
+    // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
+    // Failures here must not block signal persistence — the legacy table is
+    // still the primary source of truth for the scorer.
+    try {
+      const telemetry = buildTelemetryEventFromSignal(
+        signal,
+        new Date().toISOString(),
+      );
+      if (telemetry) {
+        await this.insertTelemetryEvent(telemetry);
+      }
+    } catch (error) {
+      // Intentionally swallow — logging here would risk log-storms on busy
+      // signal sources. The retention + rollup pass surfaces missing data
+      // via observability counters instead.
+      void error;
+    }
   }
 
   async listActivitySignals(
@@ -4867,7 +4889,8 @@ export class LifeOpsRepository {
          last_meal_at,
          next_meal_label, next_meal_window_start_at, next_meal_window_end_at,
          next_meal_confidence, meals_json, awake_probability_json,
-         regularity_json, baseline_json, metadata_json, created_at, updated_at
+         regularity_json, baseline_json, circadian_rule_firings_json,
+         metadata_json, created_at, updated_at
        ) VALUES (
          ${sqlQuote(insight.id)},
          ${sqlQuote(insight.agentId)},
@@ -4896,6 +4919,7 @@ export class LifeOpsRepository {
          ${sqlJson(insight.awakeProbability)},
          ${sqlJson(insight.regularity)},
          ${sqlJson(insight.baseline)},
+         ${sqlJson(insight.circadianRuleFirings)},
          ${sqlJson(insight.metadata)},
          ${sqlQuote(insight.createdAt)},
          ${sqlQuote(insight.updatedAt)}
@@ -4925,6 +4949,7 @@ export class LifeOpsRepository {
          awake_probability_json = EXCLUDED.awake_probability_json,
          regularity_json = EXCLUDED.regularity_json,
          baseline_json = EXCLUDED.baseline_json,
+         circadian_rule_firings_json = EXCLUDED.circadian_rule_firings_json,
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
@@ -5009,6 +5034,67 @@ export class LifeOpsRepository {
         RETURNING id`,
     );
     return { deletedCount: rows.length };
+  }
+
+  /**
+   * Roll up raw telemetry events within `[sinceIso, untilIso)` into daily
+   * per-family aggregates. Upserts per (agent, family, local_date). Callers
+   * should run this before `pruneTelemetryEvents` so the 60-day retention
+   * cutoff doesn't drop un-aggregated history.
+   *
+   * The bucket key (`local_date`) is the UTC date of `occurred_at` — local
+   * timezone bucketing would require per-agent TZ, which higher-level callers
+   * can project off the merged schedule state when they need it.
+   */
+  async upsertTelemetryDailyRollup(args: {
+    agentId: string;
+    sinceIso: string;
+    untilIso: string;
+  }): Promise<{ bucketsWritten: number }> {
+    const nowIso = new Date().toISOString();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT family,
+              SUBSTR(occurred_at, 1, 10) AS local_date,
+              COUNT(*) AS event_count,
+              MAX(occurred_at) AS last_observed_at
+         FROM life_telemetry_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND occurred_at >= ${sqlQuote(args.sinceIso)}
+          AND occurred_at < ${sqlQuote(args.untilIso)}
+        GROUP BY family, SUBSTR(occurred_at, 1, 10)`,
+    );
+    let bucketsWritten = 0;
+    for (const row of rows) {
+      const family = toText(row.family);
+      const localDate = toText(row.local_date);
+      const eventCount = Number(row.event_count ?? 0);
+      const lastObservedAt = toText(row.last_observed_at);
+      if (!family || !localDate || !lastObservedAt) continue;
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO life_telemetry_rollup_daily (
+           agent_id, family, local_date, event_count, transition_count,
+           total_minutes, last_observed_at, created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(args.agentId)},
+           ${sqlQuote(family)},
+           ${sqlQuote(localDate)},
+           ${sqlInteger(eventCount)},
+           ${sqlInteger(0)},
+           ${sqlInteger(0)},
+           ${sqlQuote(lastObservedAt)},
+           ${sqlQuote(nowIso)},
+           ${sqlQuote(nowIso)}
+         )
+         ON CONFLICT(agent_id, family, local_date) DO UPDATE SET
+           event_count = EXCLUDED.event_count,
+           last_observed_at = EXCLUDED.last_observed_at,
+           updated_at = EXCLUDED.updated_at`,
+      );
+      bucketsWritten += 1;
+    }
+    return { bucketsWritten };
   }
 
   async readCircadianState(
@@ -5200,6 +5286,7 @@ export class LifeOpsRepository {
          last_meal_at, next_meal_label, next_meal_window_start_at,
          next_meal_window_end_at, next_meal_confidence, meals_json,
          awake_probability_json, regularity_json, baseline_json,
+         circadian_rule_firings_json,
          observation_count, device_count, contributing_device_kinds_json,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -5232,6 +5319,7 @@ export class LifeOpsRepository {
          ${sqlJson(state.awakeProbability)},
          ${sqlJson(state.regularity)},
          ${state.baseline === null ? "NULL" : sqlJson(state.baseline)},
+         ${sqlJson(state.circadianRuleFirings)},
          ${sqlInteger(state.observationCount)},
          ${sqlInteger(state.deviceCount)},
          ${sqlJson(state.contributingDeviceKinds)},
@@ -5265,6 +5353,7 @@ export class LifeOpsRepository {
          awake_probability_json = EXCLUDED.awake_probability_json,
          regularity_json = EXCLUDED.regularity_json,
          baseline_json = EXCLUDED.baseline_json,
+         circadian_rule_firings_json = EXCLUDED.circadian_rule_firings_json,
          observation_count = EXCLUDED.observation_count,
          device_count = EXCLUDED.device_count,
          contributing_device_kinds_json = EXCLUDED.contributing_device_kinds_json,
