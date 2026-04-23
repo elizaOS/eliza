@@ -2144,11 +2144,13 @@ export interface LifeOpsInboxMessageSender {
   displayName: string;
   avatarUrl: string | null;
 }
+export type LifeOpsUnifiedMessageSender = LifeOpsInboxMessageSender;
 
 export interface LifeOpsInboxMessageSourceRef {
   channel: LifeOpsInboxChannel;
   externalId: string;
 }
+export type LifeOpsUnifiedMessageSourceRef = LifeOpsInboxMessageSourceRef;
 
 export interface LifeOpsInboxMessage {
   /** Channel-prefixed, globally unique identifier. */
@@ -2164,17 +2166,20 @@ export interface LifeOpsInboxMessage {
   deepLink: string | null;
   sourceRef: LifeOpsInboxMessageSourceRef;
 }
+export type LifeOpsUnifiedMessage = LifeOpsInboxMessage;
 
 export interface LifeOpsInboxChannelCount {
   total: number;
   unread: number;
 }
+export type LifeOpsUnifiedInboxChannelCount = LifeOpsInboxChannelCount;
 
 export interface LifeOpsInbox {
   messages: LifeOpsInboxMessage[];
   channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   fetchedAt: string;
 }
+export type LifeOpsUnifiedInbox = LifeOpsInbox;
 
 export interface GetLifeOpsInboxRequest {
   /** Cap on the total number of messages returned. Defaults to 100. */
@@ -2182,6 +2187,7 @@ export interface GetLifeOpsInboxRequest {
   /** If omitted, all connected channels are included. */
   channels?: LifeOpsInboxChannel[];
 }
+export type GetLifeOpsUnifiedInboxRequest = GetLifeOpsInboxRequest;
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
   "connected",
