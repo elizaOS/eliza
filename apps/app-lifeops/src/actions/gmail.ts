@@ -44,6 +44,7 @@ import {
   formatEmailSearch,
   formatEmailTriage,
   formatGmailBatchReplyDrafts,
+  formatGmailRecommendations,
   formatGmailReplyDraft,
   getGoogleCapabilityStatus,
   gmailReadUnavailableMessage,
@@ -57,6 +58,7 @@ import {
 type GmailSubaction =
   | "triage"
   | "needs_response"
+  | "recommend"
   | "unresponded"
   | "search"
   | "read"
@@ -334,6 +336,7 @@ function normalizeGmailSubaction(value: unknown): GmailSubaction | null {
   switch (normalized) {
     case "triage":
     case "needs_response":
+    case "recommend":
     case "unresponded":
     case "search":
     case "read":
@@ -478,6 +481,8 @@ function buildGmailReplyOnlyFallback(subaction: GmailSubaction | null): string {
       return "What exactly do you want me to send in Gmail?";
     case "needs_response":
       return "Do you want emails that need a reply, or something else in Gmail?";
+    case "recommend":
+      return "Do you want Gmail action recommendations for the current inbox or a specific search?";
     case "unresponded":
       return "How far back should I look for sent Gmail threads without replies?";
     case "manage":
@@ -1111,11 +1116,12 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
     "",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"triage"|"needs_response"|"unresponded"|"search"|"read"|"draft_reply"|"draft_batch_replies"|"manage"|"send_reply"|"send_batch_replies"|"send_message"|null,"shouldAct":true|false,"response":"string|null"}',
+    '{"subaction":"triage"|"needs_response"|"recommend"|"unresponded"|"search"|"read"|"draft_reply"|"draft_batch_replies"|"manage"|"send_reply"|"send_batch_replies"|"send_message"|null,"shouldAct":true|false,"response":"string|null"}',
     "",
     "Subactions and when to use each:",
     "  triage — broad inbox overview only",
     "  needs_response — specifically about emails that need a reply",
+    "  recommend — read-only recommended Gmail actions for the current inbox or a search",
     "  unresponded — sent threads where the user is waiting on someone else",
     "  search — search by sender, subject, keyword, label, or time window",
     "  read — read a specific email body",
@@ -1128,6 +1134,7 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "Use triage only for broad inbox overviews.",
     "Use search whenever the request includes a specific sender, subject, keyword, label, or time filter.",
     "Use needs_response only when the user is specifically asking about emails that need a reply.",
+    "Use recommend when the user asks what to archive, mark read, label, spam-review, or otherwise clean up without explicitly executing the write.",
     "Use unresponded when the user asks what sent emails are waiting for a reply.",
     "Use manage for inbox-zero operations such as archive, delete, spam, label, or mark read.",
     "Use send_message only for brand-new outbound email, not for replies to an existing thread.",
@@ -1136,6 +1143,7 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "Examples:",
     '  "check my inbox" -> {"subaction":"triage","shouldAct":true,"response":null}',
     '  "which emails need a response" -> {"subaction":"needs_response","shouldAct":true,"response":null}',
+    '  "recommend inbox filters" -> {"subaction":"recommend","shouldAct":true,"response":null}',
     '  "what sent emails are unresponded to" -> {"subaction":"unresponded","shouldAct":true,"response":null}',
     '  "did Sarah email me this week" -> {"subaction":"search","shouldAct":true,"response":null}',
     '  "archive that email" with recent target context -> {"subaction":"manage","shouldAct":true,"response":null}',
@@ -1195,6 +1203,7 @@ async function extractGmailPayloadWithLlm(args: {
   const { context, subaction } = args;
   const searchLikeSubaction =
     subaction === "needs_response" ||
+    subaction === "recommend" ||
     subaction === "unresponded" ||
     subaction === "search" ||
     subaction === "read" ||
@@ -1620,8 +1629,8 @@ export const gmailAction: Action & {
     "USE this action ONLY when the request explicitly names Gmail or email " +
     "(e.g. 'triage my Gmail', 'summarize my unread emails', 'search for emails from Sarah', " +
     "'draft a reply to the latest email from finance', 'send the email'). " +
-    "Subactions: Gmail-specific triage, true unresponded threads, search by sender/subject/keyword/date/label, " +
-    "read message bodies by Gmail ID, draft reply, send reply, and inbox-zero management. " +
+    "Subactions: Gmail-specific triage, recommended actions, true unresponded threads, search by sender/subject/keyword/date/label, " +
+    "read message bodies by Gmail ID, draft reply, send reply, and Gmail management. " +
     "DO NOT use for a cross-channel inbox digest / inbox-only daily digest / unified inbox / triage across " +
     "Slack / Discord / SMS / Telegram — route owner inbox work to OWNER_INBOX and the agent's " +
     "own mailbox to AGENT_INBOX. If the user says 'my inbox' without specifying Gmail (e.g. " +
@@ -1633,7 +1642,7 @@ export const gmailAction: Action & {
     "DO NOT use for calendar, meetings, scheduling, habits, goals, routines, or reminders. " +
     "Provides the final grounded reply; do not pair with a speculative REPLY.",
   descriptionCompressed:
-    "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, unresponded threads, search, read, manage, and draft/send replies.",
+    "Gmail execution layer under OWNER_INBOX or AGENT_INBOX: triage, recommendations, unresponded threads, search, read, manage, and draft/send replies.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message, state) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
@@ -2004,6 +2013,38 @@ export const gmailAction: Action & {
           text: await renderReply("needs_response_results", fallback, {
             summary: feed.summary,
             messages: feed.messages,
+          }),
+          data: toActionData(feed),
+        });
+      }
+
+      if (subaction === "recommend") {
+        const resolvedQueries = resolveGmailSearchQueries(
+          [...explicitQueryArray, params.query, detailString(details, "query")],
+          llmPlan,
+        );
+        const feed = await service.getGmailRecommendations(INTERNAL_URL, {
+          mode: detailString(details, "mode") as
+            | "local"
+            | "remote"
+            | "cloud_managed"
+            | undefined,
+          side: detailString(details, "side") as "owner" | "agent" | undefined,
+          grantId: detailString(details, "grantId"),
+          forceSync: detailBoolean(details, "forceSync"),
+          maxResults: detailNumber(details, "maxResults") ?? 20,
+          query: resolvedQueries[0],
+          replyNeededOnly:
+            detailBoolean(details, "replyNeededOnly") ??
+            llmPlan.replyNeededOnly,
+          includeSpamTrash: detailBoolean(details, "includeSpamTrash"),
+        });
+        const fallback = formatGmailRecommendations(feed);
+        return respond({
+          success: true,
+          text: await renderReply("recommendations_results", fallback, {
+            summary: feed.summary,
+            recommendations: feed.recommendations,
           }),
           data: toActionData(feed),
         });
@@ -2811,13 +2852,14 @@ export const gmailAction: Action & {
     {
       name: "subaction",
       description:
-        "Gmail operation to run. Use triage, needs_response, search, read, draft_reply, draft_batch_replies, send_reply, send_batch_replies, or send_message (compose a brand-new outbound email).",
+        "Gmail operation to run. Use triage, needs_response, recommend, search, read, draft_reply, draft_batch_replies, manage, send_reply, send_batch_replies, or send_message (compose a brand-new outbound email).",
       required: false,
       schema: {
         type: "string" as const,
         enum: [
           "triage",
           "needs_response",
+          "recommend",
           "unresponded",
           "search",
           "read",
