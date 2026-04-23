@@ -26,11 +26,12 @@ import type {
 import { logger } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent";
 import {
-  runUnifiedSearch,
-  type UnifiedSearchChannel,
-  type UnifiedSearchHit,
-  type UnifiedSearchQuery,
-} from "../lifeops/unified-search.js";
+  CROSS_CHANNEL_SEARCH_CHANNELS,
+  runCrossChannelSearch,
+  type CrossChannelSearchChannel,
+  type CrossChannelSearchHit,
+  type CrossChannelSearchQuery,
+} from "../lifeops/cross-channel-search.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -47,7 +48,7 @@ export type CrossChannelContextRequest = {
   primaryEntityId?: UUID;
   startIso?: string;
   endIso?: string;
-  channels?: UnifiedSearchChannel[];
+  channels?: CrossChannelSearchChannel[];
   limit?: number;
 };
 
@@ -55,20 +56,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isUnifiedChannel(value: unknown): value is UnifiedSearchChannel {
-  const allowed: UnifiedSearchChannel[] = [
-    "gmail",
-    "memory",
-    "telegram",
-    "discord",
-    "imessage",
-    "whatsapp",
-    "signal",
-    "x-dm",
-    "calendly",
-    "calendar",
-  ];
-  return typeof value === "string" && allowed.includes(value as UnifiedSearchChannel);
+function isCrossChannel(value: unknown): value is CrossChannelSearchChannel {
+  return (
+    typeof value === "string" &&
+    (CROSS_CHANNEL_SEARCH_CHANNELS as readonly string[]).includes(value)
+  );
 }
 
 function pickRequestFromState(
@@ -114,7 +106,7 @@ function normalizeRequest(
       ? raw.endIso.trim()
       : undefined;
   const channels = Array.isArray(raw.channels)
-    ? (raw.channels.filter(isUnifiedChannel) as UnifiedSearchChannel[])
+    ? (raw.channels.filter(isCrossChannel) as CrossChannelSearchChannel[])
     : undefined;
   const limit =
     typeof raw.limit === "number" && Number.isFinite(raw.limit)
@@ -132,7 +124,7 @@ function normalizeRequest(
   };
 }
 
-function formatContextLine(hit: UnifiedSearchHit, index: number): string {
+function formatContextLine(hit: CrossChannelSearchHit, index: number): string {
   const ts = hit.timestamp.slice(0, 16);
   const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 180);
   const subject = hit.subject ? ` [${hit.subject}]` : "";
@@ -184,7 +176,7 @@ export const crossChannelContextProvider: Provider = {
         ? { startIso: request.startIso, endIso: request.endIso }
         : undefined;
 
-    const query: UnifiedSearchQuery = {
+    const query: CrossChannelSearchQuery = {
       query: request.query,
       personRef,
       timeWindow,
@@ -193,7 +185,7 @@ export const crossChannelContextProvider: Provider = {
     };
 
     try {
-      const result = await runUnifiedSearch(runtime, query);
+      const result = await runCrossChannelSearch(runtime, query);
       const injected = result.hits.slice(
         0,
         request.limit ?? DEFAULT_INJECT_LIMIT,

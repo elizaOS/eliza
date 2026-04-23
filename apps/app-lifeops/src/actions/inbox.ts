@@ -329,7 +329,7 @@ export const inboxAction: Action & {
     "unread summary",
   ],
   description:
-    "Unified inbox management: triage new messages across all channels, " +
+    "Inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
     "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
     "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
@@ -341,7 +341,7 @@ export const inboxAction: Action & {
     "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
-    "Unified inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Admin only.",
+    "Inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Admin only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

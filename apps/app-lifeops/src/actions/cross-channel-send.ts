@@ -1,5 +1,5 @@
 /**
- * Unified cross-channel draft/send action.
+ * Cross-channel draft/send action.
  *
  * Always drafts first. Callers must re-invoke with `confirmed: true` to
  * actually dispatch. Dispatch is routed per channel:
