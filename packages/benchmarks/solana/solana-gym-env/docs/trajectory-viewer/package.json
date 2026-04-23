@@ -6,7 +6,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.20.0",
-    "recharts": "^2.10.0",
+    "recharts": "^3.0.0",
     "prismjs": "^1.29.0",
     "react-markdown": "^9.0.0"
   },
