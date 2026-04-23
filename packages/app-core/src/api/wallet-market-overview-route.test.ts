@@ -114,6 +114,19 @@ const coinGeckoPayload = [
   },
 ];
 
+const polymarketPayload = [
+  {
+    slug: "will-bitcoin-hit-150k-by-june-30-2026",
+    question: "Will Bitcoin hit $150k by June 30, 2026?",
+    outcomes: JSON.stringify(["Yes", "No"]),
+    outcomePrices: JSON.stringify(["0.0135", "0.9865"]),
+    volume24hr: "5821652.894196",
+    volume: "15734008.014241",
+    endDate: "2026-07-01T04:00:00Z",
+    image: "https://assets.example.com/btc-market.png",
+  },
+];
+
 const cloudPreviewPayload: WalletMarketOverviewResponse = {
   generatedAt: "2026-04-23T12:34:56.000Z",
   cacheTtlSeconds: 120,
@@ -167,13 +180,13 @@ const cloudPreviewPayload: WalletMarketOverviewResponse = {
   ],
   predictions: [
     {
-      id: "bitcoin-above-120k-by-2026",
-      slug: "bitcoin-above-120k-by-2026",
-      question: "Will Bitcoin trade above $120k by 2026?",
+      id: "preview-only-market",
+      slug: "preview-only-market",
+      question: "Preview-only market that should be replaced",
       highlightedOutcomeLabel: "Yes",
       highlightedOutcomeProbability: 0.62,
-      volume24hUsd: 1532450.9,
-      totalVolumeUsd: 10_400_000,
+      volume24hUsd: 25,
+      totalVolumeUsd: 50,
       endsAt: "2026-12-31T23:59:59.000Z",
       imageUrl: "https://assets.example.com/btc-market.png",
     },
@@ -195,10 +208,10 @@ describe("wallet-market-overview-route", () => {
     __resetWalletMarketOverviewCacheForTests();
   });
 
-  it("prefers the cloud preview feed when it is available", async () => {
-    fetchWithTimeoutGuardMock.mockResolvedValueOnce(
-      jsonResponse(cloudPreviewPayload),
-    );
+  it("replaces cloud preview predictions with the live Polymarket feed", async () => {
+    fetchWithTimeoutGuardMock
+      .mockResolvedValueOnce(jsonResponse(cloudPreviewPayload))
+      .mockResolvedValueOnce(jsonResponse(polymarketPayload));
 
     const response = await fetch(
       `${harness.baseUrl}/api/wallet/market-overview`,
@@ -206,15 +219,32 @@ describe("wallet-market-overview-route", () => {
     expect(response.status).toBe(200);
 
     const body = (await response.json()) as WalletMarketOverviewResponse;
-    expect(body).toEqual(cloudPreviewPayload);
-    expect(fetchWithTimeoutGuardMock).toHaveBeenCalledTimes(1);
+    expect(body.prices).toEqual(cloudPreviewPayload.prices);
+    expect(body.movers).toEqual(cloudPreviewPayload.movers);
+    expect(body.predictions).toEqual([
+      {
+        id: "will-bitcoin-hit-150k-by-june-30-2026",
+        slug: "will-bitcoin-hit-150k-by-june-30-2026",
+        question: "Will Bitcoin hit $150k by June 30, 2026?",
+        highlightedOutcomeLabel: "Yes",
+        highlightedOutcomeProbability: 0.0135,
+        volume24hUsd: 5821652.894196,
+        totalVolumeUsd: 15734008.014241,
+        endsAt: "2026-07-01T04:00:00Z",
+        imageUrl: "https://assets.example.com/btc-market.png",
+      },
+    ]);
+    expect(fetchWithTimeoutGuardMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchWithTimeoutGuardMock.mock.calls[1]?.[0])).toContain(
+      "order=volume24hr",
+    );
   });
 
   it("falls back to direct feeds when the cloud preview is unavailable", async () => {
     fetchWithTimeoutGuardMock
       .mockRejectedValueOnce(new Error("Cloud preview responded 503"))
-      .mockResolvedValueOnce(jsonResponse(coinGeckoPayload))
-      .mockRejectedValueOnce(new Error("Polymarket responded 502"));
+      .mockResolvedValueOnce(jsonResponse(polymarketPayload))
+      .mockResolvedValueOnce(jsonResponse(coinGeckoPayload));
 
     const response = await fetch(
       `${harness.baseUrl}/api/wallet/market-overview`,
@@ -224,20 +254,21 @@ describe("wallet-market-overview-route", () => {
     const body = (await response.json()) as WalletMarketOverviewResponse;
     expect(body.prices).toHaveLength(3);
     expect(body.movers.length).toBeGreaterThan(0);
-    expect(body.predictions).toEqual([]);
+    expect(body.predictions[0]?.question).toBe(
+      "Will Bitcoin hit $150k by June 30, 2026?",
+    );
     expect(body.sources.prices.available).toBe(true);
-    expect(body.sources.predictions).toMatchObject({
-      available: false,
-      stale: false,
-      error: "Polymarket responded 502",
-    });
+    expect(body.sources.predictions.available).toBe(true);
+    expect(String(fetchWithTimeoutGuardMock.mock.calls[1]?.[0])).toContain(
+      "order=volume24hr",
+    );
   });
 
   it("returns 502 when every market feed fails", async () => {
     fetchWithTimeoutGuardMock
       .mockRejectedValueOnce(new Error("Cloud preview responded 503"))
-      .mockRejectedValueOnce(new Error("CoinGecko responded 429"))
-      .mockRejectedValueOnce(new Error("Polymarket responded 503"));
+      .mockRejectedValueOnce(new Error("Polymarket responded 503"))
+      .mockRejectedValueOnce(new Error("CoinGecko responded 429"));
 
     const response = await fetch(
       `${harness.baseUrl}/api/wallet/market-overview`,
