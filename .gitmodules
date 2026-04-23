@@ -103,7 +103,7 @@
 [submodule "cloud"]
 	path = cloud
 	url = https://github.com/elizaOS/cloud.git
-	branch = dev
+	branch = develop
 [submodule "plugins/plugin-elizacloud"]
 	path = plugins/plugin-elizacloud
 	url = https://github.com/elizaos-plugins/plugin-elizacloud.git
