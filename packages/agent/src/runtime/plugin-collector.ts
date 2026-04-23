@@ -55,9 +55,6 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
  * `plugins.installs` may still reference the old id.
  */
 export function resolvePluginPackageAlias(packageName: string): string {
-  if (packageName === "@elizaos/plugin-selfcontrol") {
-    return "@elizaos/app-lifeops";
-  }
   return packageName;
 }
 
