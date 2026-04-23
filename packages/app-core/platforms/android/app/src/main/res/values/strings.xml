@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">elizaOS App</string>
-    <string name="title_activity_main">elizaOS App</string>
-    <string name="package_name">ai.elizaos.app</string>
-    <string name="custom_url_scheme">ai.elizaos.app</string>
+    <string name="app_name">Milady</string>
+    <string name="title_activity_main">Milady</string>
+    <string name="package_name">com.miladyai.milady</string>
+    <string name="custom_url_scheme">com.miladyai.milady</string>
 </resources>
