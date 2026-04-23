@@ -205,7 +205,14 @@ function formatAgendaEventMeta(event: LifeOpsCalendarEvent): string {
     : [formatTimeOfDay(event.startAt), formatTimeOfDay(event.endAt)]
         .filter(Boolean)
         .join(" - ");
-  return event.location ? `${timeLabel} · ${event.location}` : timeLabel;
+  const originLabel =
+    typeof event.calendarSummary === "string" && event.calendarSummary.trim()
+      ? event.calendarSummary.trim()
+      : null;
+  const details = [timeLabel, event.location || null, originLabel].filter(
+    (value): value is string => Boolean(value),
+  );
+  return details.join(" · ");
 }
 
 interface EventPosition {
