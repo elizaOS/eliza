@@ -35,7 +35,7 @@ import {
 } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
-import type { Tab } from "../navigation";
+import { APPS_ENABLED, COMPANION_ENABLED, type Tab } from "../navigation";
 import {
   canRevertOnboardingTo,
   getFlaminaTopicForOnboardingStep,
@@ -58,7 +58,11 @@ import {
   type OnboardingNextOptions,
   savePersistedActiveServer,
 } from "./internal";
-import type { AppState, OnboardingStep } from "./types";
+import type {
+  AppState,
+  CompleteOnboardingOptions,
+  OnboardingStep,
+} from "./types";
 import type { OnboardingStateHook } from "./useOnboardingState";
 
 // ── Helpers copied from AppContext (module-level, no React deps) ──────────
@@ -80,6 +84,24 @@ function isPrivateNetworkHost(host: string): boolean {
     return true;
   }
   return false;
+}
+
+function replaceNavigationPathForCompanionLaunch(): void {
+  if (typeof window === "undefined") return;
+  const path = "/apps/companion";
+  try {
+    if (window.location.protocol === "file:") {
+      window.location.hash = path;
+    } else {
+      window.history.replaceState(
+        null,
+        "",
+        `${path}${window.location.search}${window.location.hash}`,
+      );
+    }
+  } catch {
+    /* ignore — sandboxed iframe */
+  }
 }
 
 function normalizeRemoteApiBaseInput(rawValue: string): string {
@@ -221,6 +243,8 @@ export interface OnboardingCallbacksDeps {
   /** Full result of useOnboardingState — state + all dispatch helpers. */
   onboarding: OnboardingStateHook;
 
+  setActiveOverlayApp: (appName: string | null) => void;
+
   /**
    * Compat setter functions that already wrap onboarding.setField / dispatch.
    * Passed in from AppContext so we don't duplicate them here.
@@ -273,6 +297,7 @@ export interface OnboardingCallbacksDeps {
 export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
   const {
     onboarding,
+    setActiveOverlayApp,
     setOnboardingStep,
     setOnboardingMode: _setOnboardingMode,
     setOnboardingActiveGuide,
@@ -348,7 +373,10 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
   // ── completeOnboarding ────────────────────────────────────────────
 
   const completeOnboarding = useCallback(
-    (landingTab: Tab = defaultLandingTab) => {
+    (
+      landingTab: Tab = defaultLandingTab,
+      options?: CompleteOnboardingOptions,
+    ) => {
       clearPersistedOnboardingStep();
       onboardingCompletionCommittedRef.current = true;
       _setOnboardingMode("basic");
@@ -363,7 +391,17 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       setOnboardingComplete(true);
       coordinatorOnboardingCompleteRef.current?.();
       initialTabSetRef.current = true;
-      setTab(landingTab);
+      const launchCompanionOverlay =
+        options?.launchCompanionOverlay === true &&
+        COMPANION_ENABLED &&
+        APPS_ENABLED;
+      if (launchCompanionOverlay) {
+        setActiveOverlayApp("@elizaos/app-companion");
+        replaceNavigationPathForCompanionLaunch();
+        setTab("apps");
+      } else {
+        setTab(landingTab);
+      }
       void loadCharacter();
     },
     [
@@ -374,6 +412,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       setOnboardingDetectedProviders,
       _setOnboardingMode,
       setPostOnboardingChecklistDismissed,
+      setActiveOverlayApp,
       setTab,
       defaultLandingTab,
       loadCharacter,
@@ -525,7 +564,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           }
           await ensureOnboardedAgentRunning(client);
 
-          completeOnboarding();
+          completeOnboarding("chat", { launchCompanionOverlay: true });
           return;
         }
 
@@ -690,7 +729,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         }
         await ensureOnboardedAgentRunning(client);
 
-        completeOnboarding();
+        completeOnboarding("chat", { launchCompanionOverlay: true });
       } catch (err) {
         console.error("[onboarding] Failed to complete onboarding", err);
         const message =
