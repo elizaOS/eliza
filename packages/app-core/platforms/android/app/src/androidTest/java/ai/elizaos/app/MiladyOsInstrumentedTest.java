@@ -7,11 +7,16 @@ import static org.junit.Assume.assumeTrue;
 
 import android.Manifest;
 import android.app.role.RoleManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Build;
+import android.provider.Settings;
+import android.provider.Telephony;
+import android.telecom.TelecomManager;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
@@ -58,6 +63,33 @@ public class MiladyOsInstrumentedTest {
         return context.getPackageManager().getApplicationInfo(context.getPackageName(), 0);
     }
 
+    private String resolveHomePackage() {
+        Intent home = new Intent(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo resolved = context().getPackageManager()
+                .resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+        assertNotNull(resolved);
+        return resolved.activityInfo.packageName;
+    }
+
+    private String resolveDialerPackage() {
+        TelecomManager telecomManager = (TelecomManager) context().getSystemService(Context.TELECOM_SERVICE);
+        assertNotNull(telecomManager);
+        return telecomManager.getDefaultDialerPackage();
+    }
+
+    private String resolveSmsPackage() {
+        return Telephony.Sms.getDefaultSmsPackage(context());
+    }
+
+    private String resolveAssistantPackage() {
+        String assistant = Settings.Secure.getString(context().getContentResolver(), "assistant");
+        assertNotNull(assistant);
+        ComponentName componentName = ComponentName.unflattenFromString(assistant);
+        assertNotNull(componentName);
+        return componentName.getPackageName();
+    }
+
     private void assumeSystemMilady() throws PackageManager.NameNotFoundException {
         ApplicationInfo info = appInfo();
         assumeTrue("MiladyOS tests only run for the system privileged Milady APK",
@@ -80,16 +112,8 @@ public class MiladyOsInstrumentedTest {
         Intent home = new Intent(Intent.ACTION_MAIN);
         home.addCategory(Intent.CATEGORY_HOME);
 
-        assertNotNull(
-                context().getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
-        );
-        assertEquals(
-                PACKAGE_NAME,
-                context().getPackageManager()
-                        .resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
-                        .activityInfo
-                        .packageName
-        );
+        assertNotNull(context().getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY));
+        assertEquals(PACKAGE_NAME, resolveHomePackage());
     }
 
     @Test
@@ -99,16 +123,15 @@ public class MiladyOsInstrumentedTest {
         RoleManager roleManager = (RoleManager) context().getSystemService(Context.ROLE_SERVICE);
         assertNotNull(roleManager);
 
-        String[] roles = {
-                RoleManager.ROLE_HOME,
-                RoleManager.ROLE_DIALER,
-                RoleManager.ROLE_SMS,
-                RoleManager.ROLE_ASSISTANT,
-        };
-        for (String role : roles) {
-            assertTrue(role + " must be available", roleManager.isRoleAvailable(role));
-            assertTrue(role + " must include Milady", roleManager.getRoleHolders(role).contains(PACKAGE_NAME));
-        }
+        assertTrue(RoleManager.ROLE_HOME + " must be available", roleManager.isRoleAvailable(RoleManager.ROLE_HOME));
+        assertTrue(RoleManager.ROLE_DIALER + " must be available", roleManager.isRoleAvailable(RoleManager.ROLE_DIALER));
+        assertTrue(RoleManager.ROLE_SMS + " must be available", roleManager.isRoleAvailable(RoleManager.ROLE_SMS));
+        assertTrue(RoleManager.ROLE_ASSISTANT + " must be available", roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT));
+
+        assertEquals(PACKAGE_NAME, resolveHomePackage());
+        assertEquals(PACKAGE_NAME, resolveDialerPackage());
+        assertEquals(PACKAGE_NAME, resolveSmsPackage());
+        assertEquals(PACKAGE_NAME, resolveAssistantPackage());
     }
 
     @Test
