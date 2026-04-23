@@ -1,15 +1,17 @@
-import type { JSX } from "react";
+import {
+  lazy,
+  Suspense,
+  type ComponentType,
+  type JSX,
+  type LazyExoticComponent,
+} from "react";
 import { CodingAgentSettingsSection } from "../app-shell/task-coordinator-slots.js";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
-import { BrowserWorkspaceView } from "../components/pages/BrowserWorkspaceView";
 import { ChatView } from "../components/pages/ChatView";
 import { ConfigPageView } from "../components/pages/ConfigPageView";
-import { ConnectorsPageView } from "../components/pages/ConnectorsPageView";
 import { CloudDashboard } from "../components/pages/ElizaCloudDashboard";
 import { HeartbeatsView } from "../components/pages/HeartbeatsView";
-import { PluginsPageView } from "../components/pages/PluginsPageView";
 import { ReleaseCenterView } from "../components/pages/ReleaseCenterView";
-import { SettingsView } from "../components/pages/SettingsView";
 import { MediaSettingsSection } from "../components/settings/MediaSettingsSection";
 import { PermissionsSection } from "../components/settings/PermissionsSection";
 import { ProviderSwitcher } from "../components/settings/ProviderSwitcher";
@@ -24,6 +26,56 @@ import { useApp } from "../state/useApp";
 
 interface DetachedShellRootProps {
   route: Exclude<WindowShellRoute, { mode: "main" }>;
+}
+
+function lazyNamedView<
+  TModule extends Record<string, unknown>,
+  TKey extends keyof TModule,
+>(
+  load: () => Promise<TModule>,
+  exportName: TKey,
+): LazyExoticComponent<Extract<TModule[TKey], ComponentType<any>>> {
+  return lazy(async () => {
+    const module = await load();
+    const component = module[exportName];
+    if (typeof component !== "function") {
+      throw new Error(`Missing component export: ${String(exportName)}`);
+    }
+    return {
+      default: component as Extract<TModule[TKey], ComponentType<any>>,
+    };
+  });
+}
+
+const BrowserWorkspaceView = lazyNamedView(
+  () => import("../components/pages/BrowserWorkspaceView"),
+  "BrowserWorkspaceView",
+);
+const ConnectorsPageView = lazyNamedView(
+  () => import("../components/pages/ConnectorsPageView"),
+  "ConnectorsPageView",
+);
+const PluginsPageView = lazyNamedView(
+  () => import("../components/pages/PluginsPageView"),
+  "PluginsPageView",
+);
+const SettingsView = lazyNamedView(
+  () => import("../components/pages/SettingsView"),
+  "SettingsView",
+);
+
+function DetachedLazyBoundary({ children }: { children: JSX.Element }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center text-sm text-muted">
+          Loading…
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
 }
 
 function DetachedSettingsSectionView({
@@ -93,20 +145,34 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 
   switch (target.tab) {
     case "browser":
-      return <BrowserWorkspaceView />;
+      return (
+        <DetachedLazyBoundary>
+          <BrowserWorkspaceView />
+        </DetachedLazyBoundary>
+      );
     case "chat":
       return <DetachedChatView />;
     case "connectors":
-      return <ConnectorsPageView />;
+      return (
+        <DetachedLazyBoundary>
+          <ConnectorsPageView />
+        </DetachedLazyBoundary>
+      );
     case "plugins":
-      return <PluginsPageView />;
+      return (
+        <DetachedLazyBoundary>
+          <PluginsPageView />
+        </DetachedLazyBoundary>
+      );
     case "triggers":
       return <HeartbeatsView />;
     case "settings":
       return (
-        <section className="w-full px-4 py-4 lg:px-6">
-          <DetachedSettingsSectionView section={target.settingsSection} />
-        </section>
+        <DetachedLazyBoundary>
+          <section className="w-full px-4 py-4 lg:px-6">
+            <DetachedSettingsSectionView section={target.settingsSection} />
+          </section>
+        </DetachedLazyBoundary>
       );
     default: {
       const _exhaustive: never = target.tab;

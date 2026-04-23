@@ -169,6 +169,39 @@ describe("PageScopedChatPane", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
   });
 
+  it("stacks multiline inline drafts above the footer controls", async () => {
+    render(<PageScopedChatPane scope="page-apps" />);
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+
+    const composer = screen.getByTestId("page-scoped-chat-composer-page-apps");
+    const textarea = screen.getByRole("textbox", { name: /apps/i });
+    let scrollHeight = 32;
+
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+
+    scrollHeight = 72;
+    fireEvent.change(textarea, {
+      target: {
+        value:
+          "PieChartPieChartPieChartPieChartPieChartPieChartPieChartPieChart",
+      },
+    });
+
+    await waitFor(() =>
+      expect(composer.firstElementChild?.getAttribute("data-inline-layout")).toBe(
+        "stacked",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Start voice input" }),
+    ).toBeTruthy();
+  });
+
   it("sends text and voice turns with page routing metadata", async () => {
     render(<PageScopedChatPane scope="page-apps" />);
 

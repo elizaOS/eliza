@@ -105,6 +105,18 @@ vi.mock("@elizaos/ui", () => {
       {children}
     </button>
   );
+  const Sidebar = ({
+    children,
+    footer,
+  }: {
+    children?: React.ReactNode;
+    footer?: React.ReactNode;
+  }) => (
+    <>
+      {children}
+      {footer ? <div data-testid="sidebar-footer">{footer}</div> : null}
+    </>
+  );
   const SidebarContentNS = {
     SectionLabel: passthrough,
     SectionHeader: passthrough,
@@ -172,7 +184,7 @@ vi.mock("@elizaos/ui", () => {
     SelectItem: passthrough,
     SelectTrigger: passthrough,
     SelectValue: () => null,
-    Sidebar: passthrough,
+    Sidebar,
     SidebarCollapsedActionButton: ({
       children,
       onClick,
@@ -391,5 +403,12 @@ describe("ConversationsSidebar — Terminal channel", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("row-empty-default")).toBeNull();
     });
+  });
+
+  it("renders the manage footer control with a visible label", async () => {
+    renderSidebar();
+
+    const manageToggle = screen.getByTestId("chat-sidebar-manage-toggle");
+    expect(manageToggle.textContent).toContain("Manage");
   });
 });

@@ -13,7 +13,6 @@ import {
   Input,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarPanel,
@@ -73,6 +72,7 @@ import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome";
 import {
   buildAutomationDraftConversationMetadata,
@@ -3388,7 +3388,7 @@ function AutomationsLayout() {
   });
 
   const automationsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="automations-sidebar"
       collapsible
       contentIdentity="automations"
@@ -3400,11 +3400,7 @@ function AutomationsLayout() {
       expandButtonAriaLabel={t("automations.expand", {
         defaultValue: "Expand automations",
       })}
-      header={undefined}
-      className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
-      headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-      collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
-      footer={
+      bottomAction={
         <button
           type="button"
           onClick={() => showNodeCatalog()}
@@ -3418,7 +3414,6 @@ function AutomationsLayout() {
           <span>{nodeCatalogLabel}</span>
         </button>
       }
-      footerClassName="!px-2 !pt-1.5 !pb-1.5 !justify-start"
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label={newAutomationLabel}
@@ -3545,7 +3540,7 @@ function AutomationsLayout() {
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

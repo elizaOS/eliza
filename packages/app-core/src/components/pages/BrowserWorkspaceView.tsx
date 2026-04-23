@@ -9,7 +9,6 @@ import type {
 import {
   Button,
   Input,
-  Sidebar,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarPanel,
@@ -38,6 +37,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
@@ -914,11 +914,10 @@ export function BrowserWorkspaceView(): JSX.Element {
   });
 
   const browserTabsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="browser-workspace-sidebar"
       collapsible
       contentIdentity="browser-workspace-tabs"
-      className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
       collapseButtonTestId="browser-workspace-sidebar-collapse-toggle"
       expandButtonTestId="browser-workspace-sidebar-expand-toggle"
       collapseButtonAriaLabel={t("browserworkspace.CollapseTabs", {
@@ -931,7 +930,6 @@ export function BrowserWorkspaceView(): JSX.Element {
         <SidebarContent.SectionLabel>{tabsLabel}</SidebarContent.SectionLabel>
       }
       mobileMeta={String(workspace.tabs.length)}
-      collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
       collapsedRailAction={
         <SidebarCollapsedActionButton
           aria-label={newTabLabel}
@@ -1108,7 +1106,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   const navNode = (

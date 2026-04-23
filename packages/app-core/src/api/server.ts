@@ -135,6 +135,7 @@ import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
+import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
 // Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
 // Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
@@ -777,6 +778,9 @@ async function handleCompatRoute(
 
   // Workbench / todos routes — extracted to workbench-compat-routes.ts
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
+
+  // Public cached market overview for wallet empty states and cloud feeds.
+  if (await handleWalletMarketOverviewRoute(req, res)) return true;
 
   // Handle all /api/cloud/* routes (except compat and billing which have
   // their own handlers above) through handleCloudRoute. This is

@@ -3,5 +3,7 @@
 3    package="ai.eliza.plugins.canvas" >
 4
 5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
 6
 7</manifest>

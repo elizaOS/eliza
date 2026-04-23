@@ -10,11 +10,8 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
-import {
-  getAppEmoji,
-  getAppShortName,
-  isHiddenFromAppsView,
-} from "../apps/helpers";
+import { AppIdentityTile } from "../apps/app-identity";
+import { getAppShortName, isHiddenFromAppsView } from "../apps/helpers";
 import {
   getInternalToolApps,
   getInternalToolAppTargetTab,
@@ -191,10 +188,10 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                   defaultValue: `Launch ${displayName}`,
                   name: displayName,
                 })}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border border-border/35 bg-card/72 text-base transition-all hover:border-accent/30 hover:bg-bg-hover/70 hover:scale-110 ${ringClass}`}
+                className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
                 onClick={() => void handleLaunch(app)}
               >
-                {getAppEmoji(app)}
+                <AppIdentityTile app={app} active={Boolean(run)} size="sm" />
               </button>
             );
           })}

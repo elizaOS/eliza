@@ -1,4 +1,3 @@
-import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
 import {
   Button,
   ConfirmDialog,
@@ -12,6 +11,7 @@ import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
+import { StewardLogo } from "../steward/injected";
 import type {
   ApprovedAddressesConfig,
   PolicyRule,

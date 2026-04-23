@@ -3,7 +3,6 @@ import {
   MetaPill,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -18,6 +17,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api/client";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import type {
   RelationshipsActivityItem,
   RelationshipsGraphQuery,
@@ -864,7 +864,11 @@ export function RelationshipsView({
   const isStaleDetail = detailLoading && !detail && prevDetail.current !== null;
 
   const sidebar = (
-    <Sidebar testId="relationships-sidebar">
+    <AppPageSidebar
+      testId="relationships-sidebar"
+      collapsible
+      contentIdentity="relationships"
+    >
       <SidebarHeader
         search={{
           value: search,
@@ -985,7 +989,7 @@ export function RelationshipsView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -30,6 +31,8 @@ const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 
 interface AppWorkspaceChatChromeContextValue {
   collapseChat: () => void;
+  openChat: () => void;
+  isChatOpen: boolean;
 }
 
 const AppWorkspaceChatChromeContext =
@@ -263,6 +266,15 @@ export function AppWorkspaceChrome({
 
   const pageScopedChatOwnsCollapse = chat === undefined && chatScope !== undefined;
 
+  const chatChromeContextValue = useMemo<AppWorkspaceChatChromeContextValue>(
+    () => ({
+      collapseChat: () => handleToggle(true),
+      openChat: () => handleToggle(false),
+      isChatOpen: !effectiveCollapsed,
+    }),
+    [effectiveCollapsed, handleToggle],
+  );
+
   const chatContent =
     chat ??
     (chatScope ? (
@@ -280,87 +292,83 @@ export function AppWorkspaceChrome({
     ));
 
   return (
-    <div
-      className="flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)]"
-      data-testid={testId}
-    >
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {nav}
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          {main}
+    <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
+      <div
+        className="flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)]"
+        data-testid={testId}
+      >
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {nav}
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            {main}
+          </div>
         </div>
-      </div>
 
-      {/* Collapsible right-side chat sidebar */}
-      {effectiveCollapsed ? (
-        <aside
-          className="w-0 min-w-0 shrink-0"
-          data-testid={`${testId}-chat-sidebar`}
-          data-collapsed
-        >
-          <button
-            type="button"
-            data-testid={`${testId}-chat-expand`}
-            className={
-              isMobileViewport
-                ? "fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
-                : "fixed bottom-3 right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
-            }
-            aria-label="Open page chat"
-            onClick={() => handleToggle(false)}
+        {/* Collapsible right-side chat sidebar */}
+        {effectiveCollapsed ? (
+          <aside
+            className="w-0 min-w-0 shrink-0"
+            data-testid={`${testId}-chat-sidebar`}
+            data-collapsed
           >
-            <PanelRightOpen className="h-4 w-4" />
-          </button>
-        </aside>
-      ) : (
-        <>
-          {isMobileViewport ? (
             <button
               type="button"
-              className="fixed inset-x-0 z-40 bg-bg/65 backdrop-blur-[2px]"
-              style={{
-                top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-              }}
-              aria-label="Close page chat"
-              onClick={() => handleToggle(true)}
-              data-testid={`${testId}-chat-backdrop`}
-            />
-          ) : null}
-          <aside
-            className={
-              isMobileViewport
-                ? "fixed right-0 z-50 flex w-[min(24rem,92vw)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden bg-bg shadow-2xl"
-                : "relative flex shrink-0 flex-col overflow-hidden bg-bg"
-            }
-            style={
-              isMobileViewport
-                ? {
-                    top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                    bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-                  }
-                : { width: `${chatWidth}px`, minWidth: `${chatWidth}px` }
-            }
-            data-testid={`${testId}-chat-sidebar`}
-          >
-            {isMobileViewport ? null : (
-              <hr
-                aria-label="Resize chat"
-                aria-orientation="vertical"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={50}
-                tabIndex={0}
-                data-testid={`${testId}-chat-resize-handle`}
-                onPointerDown={handleResizePointerDown}
-                className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
-              />
-            )}
-            <AppWorkspaceChatChromeContext.Provider
-              value={{
-                collapseChat: () => handleToggle(true),
-              }}
+              data-testid={`${testId}-chat-expand`}
+              className={
+                isMobileViewport
+                  ? "fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
+                  : "fixed bottom-3 right-3 z-40 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border/40 bg-card/85 text-muted shadow-md backdrop-blur-md transition-colors hover:border-border/60 hover:text-txt"
+              }
+              aria-label="Open page chat"
+              onClick={() => handleToggle(false)}
             >
+              <PanelRightOpen className="h-4 w-4" />
+            </button>
+          </aside>
+        ) : (
+          <>
+            {isMobileViewport ? (
+              <button
+                type="button"
+                className="fixed inset-x-0 z-40 bg-bg/65 backdrop-blur-[2px]"
+                style={{
+                  top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
+                  bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
+                }}
+                aria-label="Close page chat"
+                onClick={() => handleToggle(true)}
+                data-testid={`${testId}-chat-backdrop`}
+              />
+            ) : null}
+            <aside
+              className={
+                isMobileViewport
+                  ? "fixed right-0 z-50 flex w-[min(24rem,92vw)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden bg-bg shadow-2xl"
+                  : "relative flex shrink-0 flex-col overflow-hidden bg-bg"
+              }
+              style={
+                isMobileViewport
+                  ? {
+                      top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
+                      bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
+                    }
+                  : { width: `${chatWidth}px`, minWidth: `${chatWidth}px` }
+              }
+              data-testid={`${testId}-chat-sidebar`}
+            >
+              {isMobileViewport ? null : (
+                <hr
+                  aria-label="Resize chat"
+                  aria-orientation="vertical"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={50}
+                  tabIndex={0}
+                  data-testid={`${testId}-chat-resize-handle`}
+                  onPointerDown={handleResizePointerDown}
+                  className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
+                />
+              )}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {chatContent}
               </div>
@@ -371,10 +379,10 @@ export function AppWorkspaceChrome({
                   />
                 </div>
               )}
-            </AppWorkspaceChatChromeContext.Provider>
-          </aside>
-        </>
-      )}
-    </div>
+            </aside>
+          </>
+        )}
+      </div>
+    </AppWorkspaceChatChromeContext.Provider>
   );
 }

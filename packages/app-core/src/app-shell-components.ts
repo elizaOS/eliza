@@ -5,10 +5,10 @@
  * `./components/index.ts`. Both files must stay in sync.
  */
 
-export { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
 export { GameViewOverlay } from "./components/apps/GameViewOverlay";
 export { CharacterEditor } from "./components/character/CharacterEditor";
 export { SaveCommandModal } from "./components/chat/SaveCommandModal";
+export { FineTuningView } from "./components/training/injected";
 export { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";

@@ -6,7 +6,6 @@ import {
   DropdownMenuTrigger,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -23,6 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { client } from "../../api/client";
 import type {
   TrajectoryListResult,
@@ -315,8 +315,10 @@ export function TrajectoriesView({
   }, [onSelectTrajectory, setActionNotice, t]);
 
   const trajectoriesSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="trajectories-sidebar"
+      collapsible
+      contentIdentity="trajectories"
       aria-label={t("trajectoriesview.Entries", {
         defaultValue: "Entries",
       })}
@@ -515,7 +517,7 @@ export function TrajectoriesView({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

@@ -208,7 +208,7 @@ export function TasksEventsPanel({
           tabIndex={0}
           data-testid="chat-widgets-resize-handle"
           onPointerDown={handleResizePointerDown}
-          className="absolute inset-y-0 left-0 z-20 w-1.5 -ml-0.5 cursor-col-resize touch-none select-none hover:bg-accent/30 transition-colors"
+          className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -ml-1.5 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
         />
       ) : null}
       {editOpen ? (

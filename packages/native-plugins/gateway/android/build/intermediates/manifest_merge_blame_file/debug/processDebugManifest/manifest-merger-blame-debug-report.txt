@@ -3,6 +3,8 @@
 3    package="ai.eliza.plugins.gateway" >
 4
 5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
 6
 7    <uses-permission android:name="android.permission.INTERNET" />
 7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/gateway/android/src/main/AndroidManifest.xml:3:5-67

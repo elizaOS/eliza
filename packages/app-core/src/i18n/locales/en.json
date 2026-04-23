@@ -2729,7 +2729,7 @@
   "whatsappqroverlay.UsesAnUnofficialW": "Uses an unofficial WhatsApp API. Use a dedicated phone number.",
   "whatsappqroverlay.andSelect": "and select",
   "navigation.nodeCatalog": "Nodes",
-  "nodeCatalog.title": "Node Catalog",
+  "nodeCatalog.title": "Nodes",
   "nodeCatalog.subtitle": "Everything your agent can do — actions, integrations, triggers, and context providers.",
   "nodeCatalog.searchPlaceholder": "Search nodes…",
   "nodeCatalog.filterAll": "All",

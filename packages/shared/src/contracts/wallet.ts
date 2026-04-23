@@ -514,6 +514,46 @@ export interface WalletTradingProfileResponse {
   recentSwaps: WalletTradingProfileRecentSwap[];
 }
 
+export interface WalletMarketPriceSnapshot {
+  id: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24hPct: number;
+  imageUrl: string | null;
+}
+
+export interface WalletMarketMover {
+  id: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24hPct: number;
+  marketCapRank: number | null;
+  imageUrl: string | null;
+}
+
+export interface WalletMarketPrediction {
+  id: string;
+  slug: string | null;
+  question: string;
+  highlightedOutcomeLabel: string;
+  highlightedOutcomeProbability: number | null;
+  volume24hUsd: number;
+  totalVolumeUsd: number | null;
+  endsAt: string | null;
+  imageUrl: string | null;
+}
+
+export interface WalletMarketOverviewResponse {
+  generatedAt: string;
+  cacheTtlSeconds: number;
+  stale: boolean;
+  prices: WalletMarketPriceSnapshot[];
+  movers: WalletMarketMover[];
+  predictions: WalletMarketPrediction[];
+}
+
 /** Result from a Steward policy evaluation. */
 export interface StewardPolicyResult {
   policyId?: string;
