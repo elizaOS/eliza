@@ -43,6 +43,8 @@ import type {
   DisconnectLifeOpsMessagingConnectorRequest,
   DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
+  GetLifeOpsGmailRecommendationsRequest,
+  GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
@@ -60,7 +62,10 @@ import type {
   LifeOpsDiscordConnectorStatus,
   LifeOpsGmailEventIngestResult,
   LifeOpsGmailManageResult,
+  LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
+  LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   ManageLifeOpsGmailMessagesRequest,
@@ -219,6 +224,15 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
+    getLifeOpsGmailSearch(
+      options: GetLifeOpsGmailSearchRequest,
+    ): Promise<LifeOpsGmailSearchFeed>;
+    getLifeOpsGmailNeedsResponse(
+      options?: GetLifeOpsGmailTriageRequest,
+    ): Promise<LifeOpsGmailNeedsResponseFeed>;
+    getLifeOpsGmailRecommendations(
+      options?: GetLifeOpsGmailRecommendationsRequest,
+    ): Promise<LifeOpsGmailRecommendationsFeed>;
     getLifeOpsGmailUnresponded(
       options?: GetLifeOpsGmailUnrespondedRequest,
     ): Promise<LifeOpsGmailUnrespondedFeed>;
@@ -701,6 +715,9 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   if (options.side) {
     params.set("side", options.side);
   }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
   if (options.forceSync !== undefined) {
     params.set("forceSync", String(options.forceSync));
   }
@@ -709,6 +726,98 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   }
   const query = params.toString();
   return this.fetch(`/api/lifeops/gmail/triage${query ? `?${query}` : ""}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailSearch = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  if (options.forceSync !== undefined) {
+    params.set("forceSync", String(options.forceSync));
+  }
+  if (options.maxResults !== undefined) {
+    params.set("maxResults", String(options.maxResults));
+  }
+  if (options.replyNeededOnly !== undefined) {
+    params.set("replyNeededOnly", String(options.replyNeededOnly));
+  }
+  if (options.includeSpamTrash !== undefined) {
+    params.set("includeSpamTrash", String(options.includeSpamTrash));
+  }
+  params.set("query", options.query);
+  const query = params.toString();
+  return this.fetch(`/api/lifeops/gmail/search${query ? `?${query}` : ""}`);
+};
+
+ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  if (options.forceSync !== undefined) {
+    params.set("forceSync", String(options.forceSync));
+  }
+  if (options.maxResults !== undefined) {
+    params.set("maxResults", String(options.maxResults));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/gmail/needs-response${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  if (options.forceSync !== undefined) {
+    params.set("forceSync", String(options.forceSync));
+  }
+  if (options.maxResults !== undefined) {
+    params.set("maxResults", String(options.maxResults));
+  }
+  if (options.query) {
+    params.set("query", options.query);
+  }
+  if (options.replyNeededOnly !== undefined) {
+    params.set("replyNeededOnly", String(options.replyNeededOnly));
+  }
+  if (options.includeSpamTrash !== undefined) {
+    params.set("includeSpamTrash", String(options.includeSpamTrash));
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/gmail/recommendations${query ? `?${query}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (

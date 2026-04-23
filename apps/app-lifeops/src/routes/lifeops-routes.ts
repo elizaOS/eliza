@@ -17,6 +17,7 @@ import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
+  GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
@@ -831,6 +832,37 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailNeedsResponse(url, request));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/gmail/recommendations") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const query = url.searchParams.get("query");
+      const request: GetLifeOpsGmailRecommendationsRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        forceSync: parseBooleanQuery(
+          url.searchParams.get("forceSync"),
+          "forceSync",
+        ),
+        maxResults:
+          parsePositiveIntegerQuery(
+            url.searchParams.get("maxResults"),
+            "maxResults",
+          ) ?? undefined,
+        query: query ?? undefined,
+        replyNeededOnly: parseBooleanQuery(
+          url.searchParams.get("replyNeededOnly"),
+          "replyNeededOnly",
+        ),
+        includeSpamTrash: parseBooleanQuery(
+          url.searchParams.get("includeSpamTrash"),
+          "includeSpamTrash",
+        ),
+        grantId: url.searchParams.get("grantId") ?? undefined,
+      };
+      json(res, await service.getGmailRecommendations(url, request));
     });
   }
 

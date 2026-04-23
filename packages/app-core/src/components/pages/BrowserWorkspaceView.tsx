@@ -796,7 +796,9 @@ export function BrowserWorkspaceView(): JSX.Element {
       <Button
         variant="outline"
         size="sm"
-        disabled={busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath}
+        disabled={
+          busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath
+        }
         onClick={() => void revealBrowserBridgeFolder()}
       >
         <FolderOpen className="h-4 w-4" />

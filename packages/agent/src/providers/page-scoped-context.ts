@@ -5,7 +5,10 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import type { StewardPendingResponse, StewardStatusResponse } from "@elizaos/app-steward/types/steward";
+import type {
+  StewardPendingResponse,
+  StewardStatusResponse,
+} from "@elizaos/app-steward/types/steward";
 import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
@@ -45,9 +48,9 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Wallet view. They can inspect addresses, balances, NFTs, chain filters, RPC/provider readiness, pending Steward approvals, policy controls, transaction history, and wallet/RPC settings. When the user asks what to do, recommend read-only readiness and safety checks first. Wallet operations are user-driven; do not initiate trades, transfers, swaps, approvals, signatures, or fund movements on the user's behalf. Provide read-only guidance only.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
-    "- Recurring prompt or schedule (e.g. \"every morning summarize my inbox\") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n" +
-    "- Goal to work toward until done (e.g. \"figure out the onboarding refactor\") → CREATE_TASK with name and description.\n" +
-    "- Deterministic pipeline of integration steps (e.g. \"when a Slack message matches X, post to Discord\") → create an n8n workflow via the n8n actions.\n" +
+    '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
+    '- Goal to work toward until done (e.g. "figure out the onboarding refactor") → CREATE_TASK with name and description.\n' +
+    '- Deterministic pipeline of integration steps (e.g. "when a Slack message matches X, post to Discord") → create an n8n workflow via the n8n actions.\n' +
     "Ask one short clarifying question only if the shape is genuinely ambiguous; otherwise create immediately. After creation, briefly confirm what you made and how to run it.",
 };
 
@@ -237,8 +240,7 @@ async function renderBrowserLiveState(): Promise<string | null> {
           `Agent Browser Bridge companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
         );
         for (const companion of connected.slice(0, 3)) {
-          const browser =
-            companion.browser === "safari" ? "Safari" : "Chrome";
+          const browser = companion.browser === "safari" ? "Safari" : "Chrome";
           const profile = companion.profileLabel?.trim() || "Default";
           const version = companion.extensionVersion
             ? ` v${companion.extensionVersion}`

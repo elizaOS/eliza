@@ -6,6 +6,7 @@ import {
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
+  GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
@@ -19,6 +20,7 @@ import type {
   LifeOpsGmailManageResult,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
@@ -74,6 +76,7 @@ import {
 import {
   buildFallbackGmailReplyDraftBody,
   buildGmailReplyDraft,
+  buildGmailRecommendations,
   compareGmailMessagePriority,
   createGmailMessageId,
   filterGmailMessagesBySearch,
@@ -90,6 +93,7 @@ import {
   isGmailSyncStateFresh,
   summarizeGmailBatchReplyDrafts,
   summarizeGmailNeedsResponse,
+  summarizeGmailRecommendations,
   summarizeGmailSearch,
   summarizeGmailTriage,
   summarizeGmailUnresponded,
@@ -137,6 +141,11 @@ export interface LifeOpsGmailService {
     request?: GetLifeOpsGmailTriageRequest,
     now?: Date,
   ): Promise<LifeOpsGmailNeedsResponseFeed>;
+  getGmailRecommendations(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailRecommendationsRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailRecommendationsFeed>;
   getGmailUnresponded(
     requestUrl: URL,
     request?: GetLifeOpsGmailUnrespondedRequest,
@@ -817,6 +826,47 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         source: triage.source,
         syncedAt: triage.syncedAt,
         summary: summarizeGmailNeedsResponse(messages),
+      };
+    }
+
+    async getGmailRecommendations(
+      requestUrl: URL,
+      request: GetLifeOpsGmailRecommendationsRequest = {},
+      now = new Date(),
+    ): Promise<LifeOpsGmailRecommendationsFeed> {
+      const query = normalizeOptionalString(request.query);
+      const feed = query
+        ? await this.getGmailSearch(
+            requestUrl,
+            {
+              mode: request.mode,
+              side: request.side,
+              grantId: request.grantId,
+              forceSync: request.forceSync,
+              maxResults: request.maxResults,
+              query,
+              replyNeededOnly: request.replyNeededOnly,
+              includeSpamTrash: request.includeSpamTrash,
+            },
+            now,
+          )
+        : await this.getGmailTriage(
+            requestUrl,
+            {
+              mode: request.mode,
+              side: request.side,
+              grantId: request.grantId,
+              forceSync: request.forceSync,
+              maxResults: request.maxResults,
+            },
+            now,
+          );
+      const recommendations = buildGmailRecommendations(feed.messages);
+      return {
+        recommendations,
+        source: feed.source,
+        syncedAt: feed.syncedAt,
+        summary: summarizeGmailRecommendations(recommendations),
       };
     }
 
