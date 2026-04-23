@@ -23,7 +23,6 @@ export * from "./chat/index.ts";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
 export * from "./components/chat/widgets/shared.tsx";
-export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/inventory/index.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side

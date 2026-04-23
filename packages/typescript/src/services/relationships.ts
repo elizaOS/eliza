@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
 import type {
@@ -1784,10 +1785,7 @@ export class RelationshipsService extends Service {
 				"[RelationshipsService] runtime database adapter unavailable",
 			);
 		}
-		const drizzle = (await import("drizzle-orm")) as {
-			sql: { raw: (query: string) => { queryChunks: object[] } };
-		};
-		const result = (await db.execute(drizzle.sql.raw(sqlText))) as {
+		const result = (await db.execute(sql.raw(sqlText))) as {
 			rows?: Record<string, unknown>[];
 		};
 		return { rows: Array.isArray(result.rows) ? result.rows : [] };
@@ -2272,7 +2270,7 @@ export class RelationshipsService extends Service {
 // ───────────────────────────────────────────────────────────────────────
 
 interface RuntimeDbExecutor {
-	execute: (query: { queryChunks: object[] }) => Promise<unknown>;
+	execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
 }
 
 function clampConfidence(value: number): number {

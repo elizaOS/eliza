@@ -1,5 +1,8 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/scripts/ensure-wasm-tools.sh"
 
 echo "Building elizaOS Core Rust..."
 
@@ -9,12 +12,12 @@ cargo build --release
 
 # Build WASM for web
 echo "Building WASM for web..."
-wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm
+wasm-pack build --mode no-install --target web --out-dir pkg/web --no-default-features --features wasm
 echo "✅ WASM web build succeeded"
 
 # Build WASM for Node.js
 echo "Building WASM for Node.js..."
-wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm
+wasm-pack build --mode no-install --target nodejs --out-dir pkg/node --no-default-features --features wasm
 echo "✅ WASM Node.js build succeeded"
 
 # Run tests

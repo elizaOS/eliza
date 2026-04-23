@@ -515,6 +515,56 @@ if (threeVrmNodeTargets.length === 0) {
 }
 
 /**
+ * Patch llama-cpp-capacitor Gradle syntax for Gradle 9 / AGP 9 compatibility.
+ *
+ * The published 0.1.5 package still uses Groovy's deprecated space-assignment
+ * form (`namespace "..."`, `abortOnError false`, etc.). Newer Gradle keeps
+ * warning about it and Bun's patchfile parser is stricter than git's, so we
+ * normalize the installed package directly after install.
+ */
+function patchLlamaCppCapacitorGradle() {
+  const relPath = "android/build.gradle";
+  const replacements = [
+    ['namespace "ai.annadata.plugin.capacitor"', 'namespace = "ai.annadata.plugin.capacitor"'],
+    ['version "3.22.1"', 'version = "3.22.1"'],
+    ['ndkVersion "29.0.13113456"', 'ndkVersion = "29.0.13113456"'],
+    ['abortOnError false', 'abortOnError = false'],
+    ["getDefaultProguardFile('proguard-android.txt')", "getDefaultProguardFile('proguard-android-optimize.txt')"],
+  ];
+  const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
+    includeGlobalBunCache: true,
+  });
+
+  let patched = 0;
+  for (const dir of searchDirs) {
+    const target = resolve(dir, relPath);
+    if (!existsSync(target)) continue;
+
+    let src = readFileSync(target, "utf8");
+    let changed = false;
+    for (const [before, after] of replacements) {
+      if (!src.includes(before)) continue;
+      src = src.replaceAll(before, after);
+      changed = true;
+    }
+
+    if (!changed) continue;
+    writeFileSync(target, src, "utf8");
+    patched++;
+    console.log(
+      `[patch-deps] Applied llama-cpp-capacitor Gradle compatibility patch: ${target}`,
+    );
+  }
+
+  if (patched > 0) {
+    console.log(
+      `[patch-deps] llama-cpp-capacitor: patched ${patched} Gradle file(s).`,
+    );
+  }
+}
+patchLlamaCppCapacitorGradle();
+
+/**
  * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.
  *
  * cssstyle@6.2.0 still calls require("@asamuzakjp/css-color"), but the 5.x
