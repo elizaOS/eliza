@@ -824,6 +824,7 @@ export interface AppActions {
 
   // Inventory
   loadInventory: () => Promise<void>;
+  loadWalletConfig: () => Promise<void>;
   loadBalances: () => Promise<void>;
   loadNfts: () => Promise<void>;
   executeBscTrade: (
