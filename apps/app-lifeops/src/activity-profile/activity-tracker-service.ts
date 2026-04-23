@@ -29,6 +29,7 @@ export type ActivityTrackerMode =
   | "running"
   | "disabled-config"
   | "disabled-non-darwin"
+  | "stopped"
   | "failed";
 
 export class ActivityTrackerService extends Service {
@@ -90,6 +91,13 @@ export class ActivityTrackerService extends Service {
         },
         onIdleSample: (sample) => {
           this.enqueueIdleSample(sample);
+        },
+        onExit: (exit) => {
+          this.mode = "stopped";
+          logger.info(
+            { reason: exit.reason },
+            "[activity-tracker] Collector exited cleanly; events will stop flowing.",
+          );
         },
         onFatal: (reason) => {
           this.mode = "failed";

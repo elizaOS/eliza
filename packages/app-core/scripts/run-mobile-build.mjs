@@ -484,22 +484,34 @@ function appendMissingGradleDependency(content, notation) {
 function patchCapacitorBarcodeScannerGradle() {
   const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
   if (!pkgRel) return;
-  const gradlePath = path.resolve(
-    androidDir,
-    pkgRel,
-    "android",
-    "build.gradle",
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "@capacitor/barcode-scanner",
   );
-  if (!fs.existsSync(gradlePath)) return;
+}
 
-  const current = fs.readFileSync(gradlePath, "utf8");
+function patchGradleFileForAgp9(filePath, label) {
+  if (!fs.existsSync(filePath)) return;
+  const current = fs.readFileSync(filePath, "utf8");
   const patched = current
-    .replace(/^\s*apply plugin:\s*['"]kotlin-android['"]\s*\r?\n/m, "")
+    .replace(
+      /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
+      "",
+    )
     .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n");
   if (patched !== current) {
-    fs.writeFileSync(gradlePath, patched, "utf8");
-    console.log(
-      "[mobile-build] Removed obsolete @capacitor/barcode-scanner Kotlin plugin for AGP 9.",
+    fs.writeFileSync(filePath, patched, "utf8");
+    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9 Kotlin.`);
+  }
+}
+
+function patchNativePluginGradleForAgp9() {
+  if (!fs.existsSync(nativePluginsDir)) return;
+  for (const entry of fs.readdirSync(nativePluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    patchGradleFileForAgp9(
+      path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
+      `@elizaos/capacitor-${entry.name}`,
     );
   }
 }
@@ -1178,6 +1190,7 @@ function patchAndroidGradle() {
   }
 
   patchCapacitorBarcodeScannerGradle();
+  patchNativePluginGradleForAgp9();
 
   const stringsPath = path.join(
     androidDir,

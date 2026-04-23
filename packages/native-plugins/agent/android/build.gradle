@@ -4,7 +4,6 @@ ext {
 }
 
 apply plugin: 'com.android.library'
-
 android {
     namespace "ai.eliza.plugins.agent"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
