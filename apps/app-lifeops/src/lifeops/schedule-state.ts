@@ -147,6 +147,7 @@ function toObservationSnapshot(
   return {
     effectiveDayKey: insight.effectiveDayKey,
     localDate: insight.localDate,
+    phase: insight.phase,
     circadianState: insight.circadianState,
     stateConfidence: roundConfidence(insight.stateConfidence),
     uncertaintyReason: insight.uncertaintyReason,
@@ -155,6 +156,7 @@ function toObservationSnapshot(
     regularity: insight.regularity,
     baseline: insight.baseline,
     sleepStatus: insight.sleepStatus,
+    isProbablySleeping: insight.isProbablySleeping,
     sleepConfidence: roundConfidence(insight.sleepConfidence),
     currentSleepStartedAt: insight.currentSleepStartedAt,
     lastSleepStartedAt: insight.lastSleepStartedAt,
@@ -344,17 +346,16 @@ export function deriveLocalScheduleObservations(args: {
     toObservationSnapshot(args.insight),
     args.timezone,
   );
-  const windowStartAt =
-    isAsleepState(snapshot.circadianState)
-      ? (snapshot.currentSleepStartedAt ??
-        snapshot.lastSleepStartedAt ??
-        bucketIso(observedAt, args.timezone, "floor"))
-      : snapshot.circadianState === "waking"
-        ? (snapshot.wakeAt ?? bucketIso(observedAt, args.timezone, "nearest"))
-        : (snapshot.firstActiveAt ??
-          snapshot.wakeAt ??
-          snapshot.lastActiveAt ??
-          bucketIso(observedAt, args.timezone, "nearest"));
+  const windowStartAt = isAsleepState(snapshot.circadianState)
+    ? (snapshot.currentSleepStartedAt ??
+      snapshot.lastSleepStartedAt ??
+      bucketIso(observedAt, args.timezone, "floor"))
+    : snapshot.circadianState === "waking"
+      ? (snapshot.wakeAt ?? bucketIso(observedAt, args.timezone, "nearest"))
+      : (snapshot.firstActiveAt ??
+        snapshot.wakeAt ??
+        snapshot.lastActiveAt ??
+        bucketIso(observedAt, args.timezone, "nearest"));
   const observations: LifeOpsScheduleObservation[] = [];
   if (windowStartAt) {
     observations.push(
@@ -370,11 +371,10 @@ export function deriveLocalScheduleObservations(args: {
         uncertaintyReason: snapshot.uncertaintyReason,
         mealLabel: null,
         windowStartAt,
-        windowEndAt:
-          isAsleepState(snapshot.circadianState)
-            ? null
-            : (snapshot.lastActiveAt ??
-              bucketIso(observedAt, args.timezone, "nearest")),
+        windowEndAt: isAsleepState(snapshot.circadianState)
+          ? null
+          : (snapshot.lastActiveAt ??
+            bucketIso(observedAt, args.timezone, "nearest")),
         metadata: observationMetadata({
           snapshot,
           source: "schedule_insight",
@@ -455,10 +455,14 @@ function recordFromSyncInput(args: {
     ),
     uncertaintyReason,
     awakeProbability:
-      snapshotSource.awakeProbability ?? defaultAwakeProbability(args.observedAt),
+      snapshotSource.awakeProbability ??
+      defaultAwakeProbability(args.observedAt),
     regularity: snapshotSource.regularity ?? defaultScheduleRegularity(),
     baseline: snapshotSource.baseline ?? null,
     sleepStatus: snapshotSource.sleepStatus ?? "unknown",
+    phase: snapshotSource.phase ?? circadianState,
+    isProbablySleeping:
+      snapshotSource.isProbablySleeping ?? isAsleepState(circadianState),
     sleepConfidence: roundConfidence(
       snapshotSource.sleepConfidence ?? args.input.stateConfidence,
     ),
@@ -696,7 +700,7 @@ function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
         (relevant.length === 0 ? "no_signals" : "contradictory_signals"),
     };
   }
-  const best = candidates.sort((left, right) => {
+  const [best] = candidates.sort((left, right) => {
     const rankDelta =
       STATE_RANK[right.circadianState] - STATE_RANK[left.circadianState];
     if (rankDelta !== 0) {
@@ -708,7 +712,14 @@ function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
     const leftMs = parseIsoMs(left.observedAt) ?? 0;
     const rightMs = parseIsoMs(right.observedAt) ?? 0;
     return rightMs - leftMs;
-  })[0]!;
+  });
+  if (!best) {
+    return {
+      circadianState: "unclear",
+      stateConfidence: 0,
+      uncertaintyReason: "no_signals",
+    };
+  }
   return {
     circadianState: best.circadianState,
     stateConfidence: best.stateConfidence,
@@ -731,9 +742,8 @@ export function mergeScheduleObservations(args: {
   }
   const { circadianState, stateConfidence, uncertaintyReason } =
     resolveMergedCircadianState(relevant);
-  const currentSleep = bestObservation(
-    relevant,
-    (observation) => isAsleepState(observation.circadianState),
+  const currentSleep = bestObservation(relevant, (observation) =>
+    isAsleepState(observation.circadianState),
   );
   const recentWake = bestObservation(
     relevant,
@@ -744,7 +754,10 @@ export function mergeScheduleObservations(args: {
     (observation) => observation.mealLabel !== null,
   );
   const currentSleepStartedAt =
-    latestSnapshotValue(relevant, (snapshot) => snapshot.currentSleepStartedAt) ??
+    latestSnapshotValue(
+      relevant,
+      (snapshot) => snapshot.currentSleepStartedAt,
+    ) ??
     currentSleep?.windowStartAt ??
     null;
   const lastSleepStartedAt =
@@ -767,14 +780,13 @@ export function mergeScheduleObservations(args: {
       (observation) => observation.circadianState === "awake",
     )?.windowStartAt ??
     null;
-  const sleepStatus =
-    isAsleepState(circadianState)
-      ? "sleeping_now"
-      : lastSleepEndedAt
-        ? "slept"
-        : stateConfidence >= 0.55
-          ? "likely_missed"
-          : "unknown";
+  const sleepStatus = isAsleepState(circadianState)
+    ? "sleeping_now"
+    : lastSleepEndedAt
+      ? "slept"
+      : stateConfidence >= 0.55
+        ? "likely_missed"
+        : "unknown";
   const sleepConfidence = roundConfidence(
     currentSleep?.stateConfidence ??
       latestSnapshotValue(relevant, (snapshot) => snapshot.sleepConfidence) ??
@@ -878,6 +890,7 @@ export function mergeScheduleObservations(args: {
     localDate,
     timezone: args.timezone,
     inferredAt: mergedAt,
+    phase: circadianState,
     circadianState,
     stateConfidence: roundConfidence(stateConfidence),
     uncertaintyReason,
@@ -886,6 +899,7 @@ export function mergeScheduleObservations(args: {
     regularity,
     baseline,
     sleepStatus,
+    isProbablySleeping: isAsleepState(circadianState),
     sleepConfidence,
     currentSleepStartedAt,
     lastSleepStartedAt,

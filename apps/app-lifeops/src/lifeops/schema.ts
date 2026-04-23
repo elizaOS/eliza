@@ -9,8 +9,8 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
-  integer,
   index,
+  integer,
   jsonb,
   pgTable,
   real,
@@ -106,7 +106,9 @@ export const lifeTaskOccurrences = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope").notNull().default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope")
+      .notNull()
+      .default("owner_agent_admin"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     definitionId: text("definition_id").notNull(),
     occurrenceKey: text("occurrence_key").notNull(),
@@ -160,12 +162,8 @@ export const lifeGoalDefinitions = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     cadenceJson: text("cadence_json"),
-    supportStrategyJson: text("support_strategy_json")
-      .notNull()
-      .default("{}"),
-    successCriteriaJson: text("success_criteria_json")
-      .notNull()
-      .default("{}"),
+    supportStrategyJson: text("support_strategy_json").notNull().default("{}"),
+    successCriteriaJson: text("success_criteria_json").notNull().default("{}"),
     status: text("status").notNull().default("active"),
     reviewState: text("review_state").notNull().default("pending"),
     metadataJson: text("metadata_json").notNull().default("{}"),
@@ -214,7 +212,13 @@ export const lifeReminderPlans = pgTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [index("idx_life_reminder_plans_owner").on(t.agentId, t.ownerType, t.ownerId)],
+  (t) => [
+    index("idx_life_reminder_plans_owner").on(
+      t.agentId,
+      t.ownerType,
+      t.ownerId,
+    ),
+  ],
 );
 
 export const lifeReminderAttempts = pgTable(
@@ -236,7 +240,13 @@ export const lifeReminderAttempts = pgTable(
       .notNull()
       .default("{}"),
   },
-  (t) => [index("idx_life_reminder_attempts_plan").on(t.planId, t.ownerType, t.ownerId)],
+  (t) => [
+    index("idx_life_reminder_attempts_plan").on(
+      t.planId,
+      t.ownerType,
+      t.ownerId,
+    ),
+  ],
 );
 
 export const lifeAuditEvents = pgTable(
@@ -253,7 +263,14 @@ export const lifeAuditEvents = pgTable(
     actor: text("actor").notNull().default("agent"),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("idx_life_audit_events_owner").on(t.agentId, t.ownerType, t.ownerId, t.createdAt)],
+  (t) => [
+    index("idx_life_audit_events_owner").on(
+      t.agentId,
+      t.ownerType,
+      t.ownerId,
+      t.createdAt,
+    ),
+  ],
 );
 
 export const lifeSubscriptionAudits = pgTable("life_subscription_audits", {
@@ -295,27 +312,30 @@ export const lifeSubscriptionCandidates = pgTable(
   (t) => [unique().on(t.agentId, t.auditId, t.serviceSlug)],
 );
 
-export const lifeSubscriptionCancellations = pgTable("life_subscription_cancellations", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  auditId: text("audit_id"),
-  candidateId: text("candidate_id"),
-  serviceSlug: text("service_slug").notNull(),
-  serviceName: text("service_name").notNull(),
-  executor: text("executor").notNull().default("agent_browser"),
-  status: text("status").notNull().default("draft"),
-  confirmed: boolean("confirmed").notNull().default(false),
-  currentStep: text("current_step"),
-  browserSessionId: text("browser_session_id"),
-  evidenceSummary: text("evidence_summary"),
-  artifactCount: integer("artifact_count").notNull().default(0),
-  managementUrl: text("management_url"),
-  error: text("error"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-  finishedAt: text("finished_at"),
-});
+export const lifeSubscriptionCancellations = pgTable(
+  "life_subscription_cancellations",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    auditId: text("audit_id"),
+    candidateId: text("candidate_id"),
+    serviceSlug: text("service_slug").notNull(),
+    serviceName: text("service_name").notNull(),
+    executor: text("executor").notNull().default("agent_browser"),
+    status: text("status").notNull().default("draft"),
+    confirmed: boolean("confirmed").notNull().default(false),
+    currentStep: text("current_step"),
+    browserSessionId: text("browser_session_id"),
+    evidenceSummary: text("evidence_summary"),
+    artifactCount: integer("artifact_count").notNull().default(0),
+    managementUrl: text("management_url"),
+    error: text("error"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    finishedAt: text("finished_at"),
+  },
+);
 
 export const lifeEmailUnsubscribes = pgTable("life_email_unsubscribes", {
   id: text("id").primaryKey(),
@@ -434,7 +454,9 @@ export const lifeCalendarEvents = pgTable(
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.calendarId, t.externalEventId)],
+  (t) => [
+    unique().on(t.agentId, t.provider, t.side, t.calendarId, t.externalEventId),
+  ],
 );
 
 export const lifeCalendarSyncStates = pgTable(
@@ -563,7 +585,11 @@ export const lifeWorkflowDefinitions = pgTable(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    index("idx_life_workflow_definitions_agent").on(t.agentId, t.status, t.updatedAt),
+    index("idx_life_workflow_definitions_agent").on(
+      t.agentId,
+      t.status,
+      t.updatedAt,
+    ),
     index("idx_life_workflow_definitions_subject").on(
       t.agentId,
       t.domain,
@@ -587,7 +613,13 @@ export const lifeWorkflowRuns = pgTable(
     resultJson: text("result_json").notNull().default("{}"),
     auditRef: text("audit_ref"),
   },
-  (t) => [index("idx_life_workflow_runs_workflow").on(t.agentId, t.workflowId, t.startedAt)],
+  (t) => [
+    index("idx_life_workflow_runs_workflow").on(
+      t.agentId,
+      t.workflowId,
+      t.startedAt,
+    ),
+  ],
 );
 
 // Workflow-bound browser session table. The 4 generic browser tables
@@ -619,7 +651,9 @@ export const lifeWorkflowBrowserSessions = pgTable(
     status: text("status").notNull().default("pending"),
     actionsJson: text("actions_json").notNull().default("[]"),
     currentActionIndex: integer("current_action_index").notNull().default(0),
-    awaitingConfirmationForActionId: text("awaiting_confirmation_for_action_id"),
+    awaitingConfirmationForActionId: text(
+      "awaiting_confirmation_for_action_id",
+    ),
     resultJson: text("result_json").notNull().default("{}"),
     metadataJson: text("metadata_json").notNull().default("{}"),
     createdAt: text("created_at").notNull(),
@@ -660,7 +694,12 @@ export const lifeEscalationStates = pgTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [index("idx_life_escalation_states_agent_resolved").on(t.agentId, t.resolved)],
+  (t) => [
+    index("idx_life_escalation_states_agent_resolved").on(
+      t.agentId,
+      t.resolved,
+    ),
+  ],
 );
 
 export const lifeInboxTriageEntries = pgTable("life_inbox_triage_entries", {
@@ -903,7 +942,94 @@ export const lifeSleepEpisodes = pgTable(
   (t) => [
     unique().on(t.agentId, t.startAt),
     index("idx_life_sleep_episodes_agent_start").on(t.agentId, t.startAt),
-    index("idx_life_sleep_episodes_agent_sealed").on(t.agentId, t.sealed, t.startAt),
+    index("idx_life_sleep_episodes_agent_sealed").on(
+      t.agentId,
+      t.sealed,
+      t.startAt,
+    ),
+  ],
+);
+
+/**
+ * Unified telemetry store. Replaces per-source tables (life_activity_signals,
+ * life_activity_events, life_screen_time_*) with a single append-only event
+ * store keyed by `(agentId, family, occurredAt)`. Payload shape is validated
+ * at ingestion time against `LifeOpsTelemetryPayload` in shared contracts.
+ *
+ * Retention: 60 days for raw events, daily rollups retained indefinitely
+ * (see `pruneTelemetryEvents` + `life_telemetry_rollup_daily` below).
+ */
+export const lifeTelemetryEvents = pgTable(
+  "life_telemetry_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    family: text("family").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    ingestedAt: text("ingested_at").notNull(),
+    /** Content hash used to dedupe at ingest time. */
+    dedupeKey: text("dedupe_key").notNull(),
+    /** Snapshotted source reliability so historical analysis stays stable. */
+    sourceReliability: real("source_reliability").notNull().default(0.5),
+    /** Payload — must match the discriminated union shape for `family`. */
+    payloadJson: text("payload_json").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.dedupeKey),
+    index("idx_life_telemetry_agent_family_occurred").on(
+      t.agentId,
+      t.family,
+      t.occurredAt,
+    ),
+    index("idx_life_telemetry_agent_occurred").on(t.agentId, t.occurredAt),
+  ],
+);
+
+/**
+ * Daily rollup of telemetry events per (agent, family, local_date). Retained
+ * indefinitely so the scorer's 28-day regularity window and the longer-term
+ * baseline query remain cheap even after raw events age out.
+ */
+export const lifeTelemetryRollupDaily = pgTable(
+  "life_telemetry_rollup_daily",
+  {
+    agentId: text("agent_id").notNull(),
+    family: text("family").notNull(),
+    localDate: text("local_date").notNull(),
+    eventCount: integer("event_count").notNull().default(0),
+    transitionCount: integer("transition_count").notNull().default(0),
+    totalMinutes: integer("total_minutes").notNull().default(0),
+    lastObservedAt: text("last_observed_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.family, t.localDate)],
+);
+
+/**
+ * Persisted canonical circadian state per agent. One-row-per-agent with a
+ * history trail in the audit log (life_audit_events with ownerType
+ * circadian_state). Boot rehydration reads this row and downgrades to
+ * `unclear` if it's older than MAX_STATE_AGE_MS. Every scheduler tick that
+ * produces a state update writes here.
+ */
+export const lifeCircadianStates = pgTable(
+  "life_circadian_states",
+  {
+    agentId: text("agent_id").primaryKey(),
+    circadianState: text("circadian_state").notNull(),
+    stateConfidence: real("state_confidence").notNull().default(0),
+    uncertaintyReason: text("uncertainty_reason"),
+    enteredAt: text("entered_at").notNull(),
+    sinceSleepDetectedAt: text("since_sleep_detected_at"),
+    sinceWakeObservedAt: text("since_wake_observed_at"),
+    sinceWakeConfirmedAt: text("since_wake_confirmed_at"),
+    evidenceRefsJson: text("evidence_refs_json").notNull().default("[]"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_circadian_states_updated").on(t.agentId, t.updatedAt),
   ],
 );
 
@@ -918,7 +1044,9 @@ export const lifeScheduleInsights = pgTable(
     inferredAt: text("inferred_at").notNull(),
     phase: text("phase").notNull(),
     sleepStatus: text("sleep_status").notNull(),
-    isProbablySleeping: boolean("is_probably_sleeping").notNull().default(false),
+    isProbablySleeping: boolean("is_probably_sleeping")
+      .notNull()
+      .default(false),
     sleepConfidence: real("sleep_confidence").notNull().default(0),
     currentSleepStartedAt: text("current_sleep_started_at"),
     lastSleepStartedAt: text("last_sleep_started_at"),
@@ -978,7 +1106,9 @@ export const lifeScheduleMergedStates = pgTable(
     inferredAt: text("inferred_at").notNull(),
     phase: text("phase").notNull(),
     sleepStatus: text("sleep_status").notNull(),
-    isProbablySleeping: boolean("is_probably_sleeping").notNull().default(false),
+    isProbablySleeping: boolean("is_probably_sleeping")
+      .notNull()
+      .default(false),
     sleepConfidence: real("sleep_confidence").notNull().default(0),
     currentSleepStartedAt: text("current_sleep_started_at"),
     lastSleepStartedAt: text("last_sleep_started_at"),
@@ -1132,6 +1262,9 @@ export const lifeOpsSchema = {
   lifeScreenTimeSessions,
   lifeScreenTimeDaily,
   lifeSleepEpisodes,
+  lifeCircadianStates,
+  lifeTelemetryEvents,
+  lifeTelemetryRollupDaily,
   lifeScheduleInsights,
   lifeScheduleObservations,
   lifeScheduleMergedStates,

@@ -27,6 +27,7 @@
 #if os(macOS)
 import Foundation
 import AppKit
+import CoreGraphics
 
 // Avoid Swift's JSONEncoder overhead per-event: build the JSON string manually.
 // Escape the minimum set required by RFC 8259 for string scalars.
@@ -66,6 +67,25 @@ func emit(event: String, bundleId: String, appName: String, windowTitle: String?
     }
     let line = "{" + fields.joined(separator: ",") + "}\n"
     FileHandle.standardOutput.write(line.data(using: .utf8) ?? Data())
+}
+
+// Emit a periodic HID idle sample so LifeOps can infer passive-media vs
+// away-from-keyboard without depending on the Electrobun desktop bridge.
+// CGEventSourceSecondsSinceLastEventType is session-bound; it reports the
+// idle time for the active console session which is exactly what we want
+// for the signed-in owner.
+func emitHidIdle(_ idleSeconds: Double) {
+    let tsMs = Int64(Date().timeIntervalSince1970 * 1000)
+    let rounded = max(0, Int(idleSeconds.rounded()))
+    let line = "{\"ts\":\(tsMs),\"event\":\"hid_idle\",\"idleSeconds\":\(rounded)}\n"
+    FileHandle.standardOutput.write(line.data(using: .utf8) ?? Data())
+}
+
+func currentHidIdleSeconds() -> Double {
+    // `anyInputEventType` covers mouse + keyboard; using combinedSessionState
+    // so we read idle for the active session, not the process.
+    let anyInputEventType = CGEventType(rawValue: UInt32.max)!
+    return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInputEventType)
 }
 
 func frontmostWindowTitle(for app: NSRunningApplication) -> String? {
@@ -223,6 +243,16 @@ signal(SIGINT, SIG_IGN)
 
 let collector = Collector()
 collector.start()
+
+// Periodic HID idle sampling. 30s cadence is cheap and gives the LifeOps
+// scorer enough resolution to distinguish passive-media from away-from-desk
+// (20 min idle is the awake_state timeout in `sleep-wake-spec.md`).
+let hidIdleTimer = DispatchSource.makeTimerSource(queue: .main)
+hidIdleTimer.schedule(deadline: .now() + .seconds(5), repeating: .seconds(30))
+hidIdleTimer.setEventHandler {
+    emitHidIdle(currentHidIdleSeconds())
+}
+hidIdleTimer.resume()
 
 RunLoop.main.run()
 #else

@@ -4135,6 +4135,49 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.syncWebsiteAccessState(now);
       const previousSchedule = await this.readEffectiveScheduleState({ now });
       const currentSchedule = await this.refreshEffectiveScheduleState({ now });
+      if (currentSchedule !== null) {
+        // Persist the canonical circadian state row. Boot rehydration reads
+        // this on the next runtime start; downstream consumers can subscribe
+        // to transitions via life_audit_events owner_type=circadian_state.
+        const priorState = await this.repository.readCircadianState(
+          this.agentId(),
+        );
+        const stateChanged =
+          priorState === null ||
+          priorState.circadianState !== currentSchedule.circadianState;
+        await this.repository.upsertCircadianState({
+          agentId: this.agentId(),
+          circadianState: currentSchedule.circadianState,
+          stateConfidence: currentSchedule.stateConfidence,
+          uncertaintyReason: currentSchedule.uncertaintyReason,
+          enteredAt: stateChanged
+            ? now.toISOString()
+            : (priorState?.enteredAt ?? now.toISOString()),
+          sinceSleepDetectedAt:
+            currentSchedule.circadianState === "sleeping" ||
+            currentSchedule.circadianState === "napping"
+              ? (currentSchedule.currentSleepStartedAt ??
+                priorState?.sinceSleepDetectedAt ??
+                null)
+              : null,
+          sinceWakeObservedAt:
+            currentSchedule.circadianState === "waking" ||
+            currentSchedule.circadianState === "awake"
+              ? (currentSchedule.wakeAt ??
+                priorState?.sinceWakeObservedAt ??
+                null)
+              : null,
+          sinceWakeConfirmedAt:
+            currentSchedule.circadianState === "awake"
+              ? (currentSchedule.wakeAt ??
+                priorState?.sinceWakeConfirmedAt ??
+                null)
+              : (priorState?.sinceWakeConfirmedAt ?? null),
+          evidenceRefs: [],
+          createdAt: priorState?.createdAt ?? now.toISOString(),
+          updatedAt: now.toISOString(),
+        });
+      }
       const derivedEvents =
         currentSchedule === null
           ? []

@@ -1,17 +1,9 @@
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgePageContext,
-  BrowserBridgePermissionState,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import type {
-  LifeOpsAwakeProbability,
-  LifeOpsAwakeProbabilityContributor,
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
+  LifeOpsAwakeProbability,
+  LifeOpsAwakeProbabilityContributor,
   LifeOpsBrowserSession,
   LifeOpsCalendarEvent,
   LifeOpsChannelPolicy,
@@ -38,21 +30,49 @@ import type {
   LifeOpsRelationshipInteraction,
   LifeOpsReminderAttempt,
   LifeOpsReminderPlan,
-  LifeOpsScheduleRegularity,
   LifeOpsScheduleInsight,
   LifeOpsScheduleMealInsight,
-  LifeOpsSleepCycleEvidence,
-  LifeOpsSleepCycleType,
+  LifeOpsScheduleRegularity,
   LifeOpsSchedulingNegotiation,
   LifeOpsSchedulingProposal,
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
+  LifeOpsSleepCycleEvidence,
+  LifeOpsSleepCycleType,
   LifeOpsTaskDefinition,
+  LifeOpsTelemetryEvent,
+  LifeOpsTelemetryFamily,
+  LifeOpsTelemetryPayload,
   LifeOpsUnclearReason,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
 } from "@elizaos/app-lifeops/contracts";
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+} from "@elizaos/plugin-browser-bridge/contracts";
 import { browserBridgeSchema } from "@elizaos/plugin-browser-bridge/schema";
+import type {
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXSyncState,
+} from "@elizaos/shared/contracts/lifeops-extensions";
+import type {
+  EmailUnsubscribeMethod,
+  EmailUnsubscribeRecord,
+  EmailUnsubscribeStatus,
+} from "./email-unsubscribe-types.js";
+import { refreshLifeOpsRelativeTime } from "./relative-time.js";
+import type {
+  LifeOpsScheduleMergedState,
+  LifeOpsScheduleObservation,
+} from "./schedule-sync-contracts.js";
+import { lifeOpsSchema } from "./schema.js";
 import {
   executeRawSql,
   parseJsonArray,
@@ -72,23 +92,6 @@ import type {
   LifeOpsSubscriptionCancellation,
   LifeOpsSubscriptionCandidate,
 } from "./subscriptions-types.js";
-import type {
-  EmailUnsubscribeMethod,
-  EmailUnsubscribeRecord,
-  EmailUnsubscribeStatus,
-} from "./email-unsubscribe-types.js";
-import type {
-  LifeOpsScheduleMergedState,
-  LifeOpsScheduleObservation,
-} from "./schedule-sync-contracts.js";
-import type {
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
-import { lifeOpsSchema } from "./schema.js";
-import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 
 type BrowserCompanionCredential = {
   companion: BrowserBridgeCompanionStatus;
@@ -1280,7 +1283,9 @@ function parseAwakeProbability(
             Boolean(candidate) && typeof candidate === "object",
         )
         .map((candidate) => ({
-          source: toText(candidate.source) as LifeOpsAwakeProbabilityContributor["source"],
+          source: toText(
+            candidate.source,
+          ) as LifeOpsAwakeProbabilityContributor["source"],
           logLikelihoodRatio: toNumber(candidate.logLikelihoodRatio, 0),
         }))
     : [];
@@ -1324,9 +1329,65 @@ function parseScheduleRegularity(value: unknown): LifeOpsScheduleRegularity {
   };
 }
 
-function parsePersonalBaseline(
-  value: unknown,
-): LifeOpsPersonalBaseline | null {
+function parseTelemetryEventRow(
+  row: Record<string, unknown>,
+): LifeOpsTelemetryEvent {
+  const payload = parseJsonRecord(
+    row.payload_json,
+  ) as unknown as LifeOpsTelemetryPayload;
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    family: toText(row.family) as LifeOpsTelemetryFamily,
+    occurredAt: toText(row.occurred_at),
+    ingestedAt: toText(row.ingested_at),
+    dedupeKey: toText(row.dedupe_key),
+    sourceReliability: toNumber(row.source_reliability, 0.5),
+    payload,
+  };
+}
+
+export interface LifeOpsCircadianStateRow {
+  agentId: string;
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
+  enteredAt: string;
+  sinceSleepDetectedAt: string | null;
+  sinceWakeObservedAt: string | null;
+  sinceWakeConfirmedAt: string | null;
+  evidenceRefs: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function parseCircadianStateRow(
+  row: Record<string, unknown>,
+): LifeOpsCircadianStateRow {
+  return {
+    agentId: toText(row.agent_id),
+    circadianState: toText(row.circadian_state) as LifeOpsCircadianState,
+    stateConfidence: toNumber(row.state_confidence, 0),
+    uncertaintyReason: row.uncertainty_reason
+      ? (toText(row.uncertainty_reason) as LifeOpsUnclearReason)
+      : null,
+    enteredAt: toText(row.entered_at),
+    sinceSleepDetectedAt: row.since_sleep_detected_at
+      ? toText(row.since_sleep_detected_at)
+      : null,
+    sinceWakeObservedAt: row.since_wake_observed_at
+      ? toText(row.since_wake_observed_at)
+      : null,
+    sinceWakeConfirmedAt: row.since_wake_confirmed_at
+      ? toText(row.since_wake_confirmed_at)
+      : null,
+    evidenceRefs: parseJsonArray<string>(row.evidence_refs_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parsePersonalBaseline(value: unknown): LifeOpsPersonalBaseline | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -1355,7 +1416,10 @@ function parseSleepEpisode(
     endAt: row.end_at ? toText(row.end_at) : null,
     source: toText(row.source) as LifeOpsSleepEpisodeRecord["source"],
     confidence: toNumber(row.confidence, 0),
-    cycleType: toText(row.cycle_type, "unknown") as LifeOpsSleepEpisodeRecord["cycleType"],
+    cycleType: toText(
+      row.cycle_type,
+      "unknown",
+    ) as LifeOpsSleepEpisodeRecord["cycleType"],
     sealed: toBoolean(row.sealed, false),
     evidence: parseJsonArray<LifeOpsSleepCycleEvidence>(row.evidence_json),
     createdAt: toText(row.created_at),
@@ -1408,6 +1472,10 @@ function parseScheduleMergedState(
       localDate: toText(row.local_date),
       timezone: toText(row.timezone, "UTC"),
       inferredAt,
+      phase: toText(
+        row.phase,
+        toText(row.circadian_state, "unclear"),
+      ) as LifeOpsCircadianState,
       circadianState: toText(row.circadian_state) as LifeOpsCircadianState,
       stateConfidence: toNumber(row.state_confidence, 0),
       uncertaintyReason: row.uncertainty_reason
@@ -1422,6 +1490,7 @@ function parseScheduleMergedState(
       sleepStatus: toText(
         row.sleep_status,
       ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
+      isProbablySleeping: toBoolean(row.is_probably_sleeping, false),
       sleepConfidence: toNumber(row.sleep_confidence, 0),
       currentSleepStartedAt: row.current_sleep_started_at
         ? toText(row.current_sleep_started_at)
@@ -4857,6 +4926,133 @@ export class LifeOpsRepository {
          regularity_json = EXCLUDED.regularity_json,
          baseline_json = EXCLUDED.baseline_json,
          metadata_json = EXCLUDED.metadata_json,
+         updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  /**
+   * Insert a telemetry event with content-hash dedupe. Returns `true` when a
+   * new row was written, `false` when the `(agent_id, dedupe_key)` pair
+   * already existed. See `telemetry-event-families.md` §5 for the derivation
+   * of `dedupeKey`.
+   */
+  async insertTelemetryEvent(event: LifeOpsTelemetryEvent): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_telemetry_events (
+         id, agent_id, family, occurred_at, ingested_at, dedupe_key,
+         source_reliability, payload_json
+       ) VALUES (
+         ${sqlQuote(event.id)},
+         ${sqlQuote(event.agentId)},
+         ${sqlQuote(event.family)},
+         ${sqlQuote(event.occurredAt)},
+         ${sqlQuote(event.ingestedAt)},
+         ${sqlQuote(event.dedupeKey)},
+         ${sqlNumber(event.sourceReliability)},
+         ${sqlJson(event.payload)}
+       )
+       ON CONFLICT(agent_id, dedupe_key) DO NOTHING
+       RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
+  async listTelemetryEvents(args: {
+    agentId: string;
+    familyIn?: LifeOpsTelemetryFamily[];
+    sinceIso?: string;
+    untilIso?: string;
+    limit?: number;
+  }): Promise<LifeOpsTelemetryEvent[]> {
+    const clauses = [`agent_id = ${sqlQuote(args.agentId)}`];
+    if (args.familyIn && args.familyIn.length > 0) {
+      const inList = args.familyIn.map((family) => sqlQuote(family)).join(", ");
+      clauses.push(`family IN (${inList})`);
+    }
+    if (args.sinceIso) {
+      clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
+    }
+    if (args.untilIso) {
+      clauses.push(`occurred_at <= ${sqlQuote(args.untilIso)}`);
+    }
+    const limitClause =
+      typeof args.limit === "number" ? `LIMIT ${sqlInteger(args.limit)}` : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_telemetry_events
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY occurred_at ASC
+        ${limitClause}`,
+    );
+    return rows.map(parseTelemetryEventRow);
+  }
+
+  /**
+   * Delete telemetry rows older than the retention window. Callers should
+   * prune daily via the scheduler. Daily rollups in
+   * `life_telemetry_rollup_daily` are retained indefinitely.
+   */
+  async pruneTelemetryEvents(args: {
+    agentId: string;
+    retentionDays: number;
+  }): Promise<{ deletedCount: number }> {
+    const cutoff = new Date(
+      Date.now() - args.retentionDays * 24 * 60 * 60 * 1_000,
+    ).toISOString();
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_telemetry_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND occurred_at < ${sqlQuote(cutoff)}
+        RETURNING id`,
+    );
+    return { deletedCount: rows.length };
+  }
+
+  async readCircadianState(
+    agentId: string,
+  ): Promise<LifeOpsCircadianStateRow | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_circadian_states
+        WHERE agent_id = ${sqlQuote(agentId)}
+        LIMIT 1`,
+    );
+    return rows[0] ? parseCircadianStateRow(rows[0]) : null;
+  }
+
+  async upsertCircadianState(state: LifeOpsCircadianStateRow): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_circadian_states (
+         agent_id, circadian_state, state_confidence, uncertainty_reason,
+         entered_at, since_sleep_detected_at, since_wake_observed_at,
+         since_wake_confirmed_at, evidence_refs_json, created_at, updated_at
+       ) VALUES (
+         ${sqlQuote(state.agentId)},
+         ${sqlQuote(state.circadianState)},
+         ${sqlNumber(state.stateConfidence)},
+         ${sqlText(state.uncertaintyReason)},
+         ${sqlQuote(state.enteredAt)},
+         ${sqlText(state.sinceSleepDetectedAt)},
+         ${sqlText(state.sinceWakeObservedAt)},
+         ${sqlText(state.sinceWakeConfirmedAt)},
+         ${sqlJson(state.evidenceRefs)},
+         ${sqlQuote(state.createdAt)},
+         ${sqlQuote(state.updatedAt)}
+       )
+       ON CONFLICT(agent_id) DO UPDATE SET
+         circadian_state = EXCLUDED.circadian_state,
+         state_confidence = EXCLUDED.state_confidence,
+         uncertainty_reason = EXCLUDED.uncertainty_reason,
+         entered_at = EXCLUDED.entered_at,
+         since_sleep_detected_at = EXCLUDED.since_sleep_detected_at,
+         since_wake_observed_at = EXCLUDED.since_wake_observed_at,
+         since_wake_confirmed_at = EXCLUDED.since_wake_confirmed_at,
+         evidence_refs_json = EXCLUDED.evidence_refs_json,
          updated_at = EXCLUDED.updated_at`,
     );
   }

@@ -448,9 +448,12 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
               <span className="min-w-0 flex-1 truncate text-txt">
                 {trigger.displayName || trigger.id}
               </span>
-              {when ? (
-                <span className="shrink-0 text-3xs text-muted">{when}</span>
-              ) : null}
+              <span className="shrink-0 text-3xs text-muted">
+                {when ??
+                  t("lifeopschannels.automations.awaitingCircadian", {
+                    defaultValue: "waiting on wake/sleep signal",
+                  })}
+              </span>
             </button>
           );
         })}

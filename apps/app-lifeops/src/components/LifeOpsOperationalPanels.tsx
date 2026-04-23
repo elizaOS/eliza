@@ -407,6 +407,49 @@ export function LifeOpsSchedulePanel() {
                 })}
           </div>
         </div>
+        {merged?.baseline ? (
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.baseline", {
+                defaultValue: "Personal baseline",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`Wake ~${merged.baseline.medianWakeLocalHour.toFixed(1)}h · Bed ~${(merged.baseline.medianBedtimeLocalHour % 24).toFixed(1)}h`}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {`${merged.baseline.sampleCount} episodes · ${Math.round(merged.baseline.medianSleepDurationMin)}m median sleep · ${merged.baseline.windowDays}d window`}
+            </div>
+          </div>
+        ) : null}
+        {merged && merged.awakeProbability.contributingSources.length > 0 ? (
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.contributingSources", {
+                defaultValue: "Contributing evidence",
+              })}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {merged.awakeProbability.contributingSources
+                .slice(0, 8)
+                .map((contributor) => {
+                  const llr = contributor.logLikelihoodRatio;
+                  const tone =
+                    llr > 0
+                      ? "bg-emerald-500/14 text-emerald-300"
+                      : "bg-amber-500/14 text-amber-300";
+                  return (
+                    <span
+                      key={`${contributor.source}:${llr.toFixed(4)}`}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                    >
+                      {`${contributor.source}: ${llr >= 0 ? "+" : ""}${llr.toFixed(2)}`}
+                    </span>
+                  );
+                })}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
         <Button

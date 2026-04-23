@@ -1,38 +1,43 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsCircadianState,
-  LifeOpsDayBoundary,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleMealInsight,
-  LifeOpsScheduleMealLabel,
-  LifeOpsSleepCycle,
-  LifeOpsUnclearReason,
+import {
+  LIFEOPS_CIRCADIAN_STATES,
+  type LifeOpsActivitySignal,
+  type LifeOpsCircadianState,
+  type LifeOpsDayBoundary,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleMealInsight,
+  type LifeOpsScheduleMealLabel,
+  type LifeOpsSleepCycle,
+  type LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
+import { computeAwakeProbability } from "./awake-probability.js";
+import {
+  type CircadianScorerResult,
+  scoreCircadianRules,
+} from "./circadian-rules.js";
+import { probeContinuityDevices } from "./continuity-probe.js";
+import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
+import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type {
   LifeOpsRepository,
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
-import { computeAwakeProbability } from "./awake-probability.js";
+import {
+  type LifeOpsActivityWindow,
+  type LifeOpsSleepEpisode,
+  resolveLifeOpsDayBoundary,
+  resolveLifeOpsSleepCycle,
+} from "./sleep-cycle.js";
+import {
+  listHistoricalSleepEpisodes,
+  persistSleepEpisodes,
+} from "./sleep-episode-store.js";
 import {
   computePersonalBaseline,
   computeSleepRegularity,
   type SleepRegularityEpisodeLike,
 } from "./sleep-regularity.js";
-import {
-  listHistoricalSleepEpisodes,
-  persistSleepEpisodes,
-} from "./sleep-episode-store.js";
-import { probeContinuityDevices } from "./continuity-probe.js";
-import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
-import {
-  resolveLifeOpsDayBoundary,
-  resolveLifeOpsSleepCycle,
-  type LifeOpsActivityWindow,
-  type LifeOpsSleepEpisode,
-} from "./sleep-cycle.js";
-import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import { getZonedDateParts } from "./time.js";
 
 const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
@@ -84,10 +89,6 @@ export type LifeOpsScheduleInspection = {
   };
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -103,7 +104,11 @@ function toIso(ms: number | null): string | null {
   return new Date(ms).toISOString();
 }
 
-function toDurationMinutes(startMs: number, endMs: number | null, nowMs: number): number {
+function toDurationMinutes(
+  startMs: number,
+  endMs: number | null,
+  nowMs: number,
+): number {
   return Math.round(intervalDurationMs(startMs, endMs, nowMs) / 60_000);
 }
 
@@ -116,7 +121,11 @@ function normalizeSleepHour(hour: number): number {
   return hour < 12 ? hour + 24 : hour;
 }
 
-function intervalDurationMs(startMs: number, endMs: number | null, nowMs: number): number {
+function intervalDurationMs(
+  startMs: number,
+  endMs: number | null,
+  nowMs: number,
+): number {
   const safeEndMs = endMs ?? nowMs;
   return Math.max(0, safeEndMs - startMs);
 }
@@ -183,7 +192,9 @@ function windowsFromActivityEvents(
 }
 
 function windowsFromScreenTimeSessions(
-  sessions: Awaited<ReturnType<LifeOpsRepository["listScreenTimeSessionsOverlapping"]>>,
+  sessions: Awaited<
+    ReturnType<LifeOpsRepository["listScreenTimeSessionsOverlapping"]>
+  >,
   nowMs: number,
 ): LifeOpsActivityWindow[] {
   const windows: LifeOpsActivityWindow[] = [];
@@ -193,7 +204,11 @@ function windowsFromScreenTimeSessions(
       session.endAt && Number.isFinite(Date.parse(session.endAt))
         ? Date.parse(session.endAt)
         : nowMs;
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    if (
+      !Number.isFinite(startMs) ||
+      !Number.isFinite(endMs) ||
+      endMs <= startMs
+    ) {
       continue;
     }
     windows.push({
@@ -232,11 +247,15 @@ function windowsFromSignals(
   return windows;
 }
 
-function mergeActivityWindows(windows: LifeOpsActivityWindow[]): LifeOpsActivityWindow[] {
+function mergeActivityWindows(
+  windows: LifeOpsActivityWindow[],
+): LifeOpsActivityWindow[] {
   if (windows.length === 0) {
     return [];
   }
-  const sorted = [...windows].sort((left, right) => left.startMs - right.startMs);
+  const sorted = [...windows].sort(
+    (left, right) => left.startMs - right.startMs,
+  );
   const merged: LifeOpsActivityWindow[] = [];
   for (const window of sorted) {
     const previous = merged[merged.length - 1];
@@ -319,7 +338,9 @@ function inferMealCandidates(args: {
       }
     }
 
-    const winner = (Object.entries(scores) as Array<[LifeOpsScheduleMealLabel, number]>)
+    const winner = (
+      Object.entries(scores) as Array<[LifeOpsScheduleMealLabel, number]>
+    )
       .map(([label, score]) => ({
         label,
         score: roundConfidence(score),
@@ -362,10 +383,9 @@ function predictNextMeal(args: {
 } {
   const mealSet = new Set(args.meals.map((meal) => meal.label));
   const nowHour = localHour(args.nowMs, args.timezone);
+  const latestMeal = args.meals.at(-1);
   const latestMealMs =
-    args.meals.length > 0
-      ? Date.parse(args.meals[args.meals.length - 1]!.detectedAt)
-      : Number.NaN;
+    latestMeal !== undefined ? Date.parse(latestMeal.detectedAt) : Number.NaN;
   const minutesSinceWake =
     args.wakeAtMs !== null ? (args.nowMs - args.wakeAtMs) / 60_000 : null;
   const minutesSinceMeal = Number.isFinite(latestMealMs)
@@ -403,20 +423,54 @@ function predictNextMeal(args: {
     ((nowHour >= 11 && nowHour < 15) ||
       (minutesSinceMeal !== null && minutesSinceMeal >= 180))
   ) {
-    return buildWindow("lunch", args.nowMs, args.nowMs + 2 * 60 * 60 * 1_000, 0.55);
+    return buildWindow(
+      "lunch",
+      args.nowMs,
+      args.nowMs + 2 * 60 * 60 * 1_000,
+      0.55,
+    );
   }
   if (
     !mealSet.has("dinner") &&
     ((nowHour >= 17 && nowHour < 22) ||
       (minutesSinceMeal !== null && minutesSinceMeal >= 240))
   ) {
-    return buildWindow("dinner", args.nowMs, args.nowMs + 3 * 60 * 60 * 1_000, 0.52);
+    return buildWindow(
+      "dinner",
+      args.nowMs,
+      args.nowMs + 3 * 60 * 60 * 1_000,
+      0.52,
+    );
   }
   return {
     nextMealLabel: null,
     nextMealWindowStartAt: null,
     nextMealWindowEndAt: null,
     nextMealConfidence: 0,
+  };
+}
+
+const RULE_STATE_MIN_WEIGHT = 0.7;
+
+function deriveRuleState(
+  scorer: CircadianScorerResult,
+): { circadianState: LifeOpsCircadianState; stateConfidence: number } | null {
+  let bestState: LifeOpsCircadianState | null = null;
+  let bestWeight = 0;
+  for (const state of LIFEOPS_CIRCADIAN_STATES) {
+    if (state === "unclear") continue;
+    const weight = scorer.totals[state];
+    if (weight > bestWeight) {
+      bestState = state;
+      bestWeight = weight;
+    }
+  }
+  if (bestState === null || bestWeight < RULE_STATE_MIN_WEIGHT) {
+    return null;
+  }
+  return {
+    circadianState: bestState,
+    stateConfidence: roundConfidence(Math.min(bestWeight, 0.95)),
   };
 }
 
@@ -431,36 +485,67 @@ function deriveCircadianState(args: {
   baseline: LifeOpsScheduleInsight["baseline"];
   signalCount: number;
   windowCount: number;
+  scorer: CircadianScorerResult;
 }): {
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
 } {
-  if (args.sleepCycle.isProbablySleeping || args.awakeProbability.pAsleep >= 0.65) {
+  // Manual override wins because the user explicitly attested it.
+  const manual = args.scorer.firings.find(
+    (firing) => firing.name === "manual.override",
+  );
+  if (manual) {
     return {
-      circadianState: args.sleepCycle.cycleType === "nap" ? "napping" : "sleeping",
+      circadianState: manual.contributes,
+      stateConfidence: 0.99,
+      uncertaintyReason: null,
+    };
+  }
+  const ruleState = deriveRuleState(args.scorer);
+
+  if (
+    args.sleepCycle.isProbablySleeping ||
+    args.awakeProbability.pAsleep >= 0.65
+  ) {
+    const circadianState =
+      ruleState?.circadianState === "sleeping"
+        ? "sleeping"
+        : args.sleepCycle.cycleType === "nap"
+          ? "napping"
+          : "sleeping";
+    return {
+      circadianState,
       stateConfidence: roundConfidence(
-        Math.max(args.sleepCycle.sleepConfidence, args.awakeProbability.pAsleep),
+        Math.max(
+          args.sleepCycle.sleepConfidence,
+          args.awakeProbability.pAsleep,
+        ),
       ),
       uncertaintyReason: null,
     };
   }
-  if (
-    args.wakeAtMs !== null &&
-    args.nowMs - args.wakeAtMs <= 90 * 60 * 1_000
-  ) {
+  if (args.wakeAtMs !== null && args.nowMs - args.wakeAtMs <= 90 * 60 * 1_000) {
     return {
       circadianState: "waking",
-      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.62)),
+      stateConfidence: roundConfidence(
+        Math.max(args.awakeProbability.pAwake, 0.62),
+      ),
       uncertaintyReason: null,
     };
   }
   const nowHour = normalizeSleepHour(localHour(args.nowMs, args.timezone));
   const bedtimeHour = args.baseline?.medianBedtimeLocalHour ?? null;
-  if (bedtimeHour !== null && nowHour >= bedtimeHour - 2 && nowHour <= bedtimeHour + 4) {
+  if (
+    bedtimeHour !== null &&
+    nowHour >= bedtimeHour - 2 &&
+    nowHour <= bedtimeHour + 4
+  ) {
     return {
       circadianState: "winding_down",
-      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.5)),
+      stateConfidence: roundConfidence(
+        Math.max(args.awakeProbability.pAwake, 0.5),
+      ),
       uncertaintyReason: null,
     };
   }
@@ -471,9 +556,14 @@ function deriveCircadianState(args: {
   ) {
     return {
       circadianState: "awake",
-      stateConfidence: roundConfidence(Math.max(args.awakeProbability.pAwake, 0.55)),
+      stateConfidence: roundConfidence(
+        Math.max(args.awakeProbability.pAwake, 0.55),
+      ),
       uncertaintyReason: null,
     };
+  }
+  if (ruleState) {
+    return { ...ruleState, uncertaintyReason: null };
   }
   const uncertaintyReason: LifeOpsUnclearReason =
     args.signalCount === 0 && args.windowCount === 0
@@ -496,7 +586,8 @@ function toHistoricalSleepEpisodes(
     endAt: toIso(episode.endMs),
     cycleType:
       episode.endMs !== null &&
-      intervalDurationMs(episode.startMs, episode.endMs, episode.endMs) < 4 * 60 * 60 * 1_000
+      intervalDurationMs(episode.startMs, episode.endMs, episode.endMs) <
+        4 * 60 * 60 * 1_000
         ? "nap"
         : "unknown",
   }));
@@ -543,8 +634,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       ? Date.parse(sleepCycle.lastSleepEndedAt)
       : null;
   const firstActiveAtMs = firstActiveAfterWake(mergedWindows, wakeAtMs);
-  const lastActiveAtMs =
-    mergedWindows.length > 0 ? mergedWindows[mergedWindows.length - 1]!.endMs : null;
+  const lastActiveAtMs = mergedWindows.at(-1)?.endMs ?? null;
   const meals = inferMealCandidates({
     windows: mergedWindows,
     wakeAtMs,
@@ -558,7 +648,8 @@ function analyzeLifeOpsScheduleInsight(args: {
   });
 
   const historicalEpisodes =
-    args.historicalSleepEpisodes ?? toHistoricalSleepEpisodes(sleepResolution.sleepEpisodes);
+    args.historicalSleepEpisodes ??
+    toHistoricalSleepEpisodes(sleepResolution.sleepEpisodes);
   const regularity = computeSleepRegularity({
     episodes: historicalEpisodes,
     timezone: args.timezone,
@@ -577,6 +668,21 @@ function analyzeLifeOpsScheduleInsight(args: {
     sleepCycle,
     regularity,
   });
+  const scorerResult = scoreCircadianRules({
+    nowMs: args.nowMs,
+    timezone: args.timezone,
+    signals: args.signals,
+    windows: mergedWindows,
+    baseline,
+    regularityClass: regularity.regularityClass,
+    hasCurrentSleepEpisode: sleepCycle.isProbablySleeping,
+    currentSleepStartedAtMs:
+      sleepCycle.currentSleepStartedAt !== null
+        ? Date.parse(sleepCycle.currentSleepStartedAt)
+        : null,
+    lastSleepEndedAtMs: wakeAtMs,
+    currentEpisodeLikelyNap: sleepCycle.cycleType === "nap",
+  });
   const { circadianState, stateConfidence, uncertaintyReason } =
     deriveCircadianState({
       nowMs: args.nowMs,
@@ -589,6 +695,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       baseline,
       signalCount: args.signals.length,
       windowCount: mergedWindows.length,
+      scorer: scorerResult,
     });
 
   const sleepStatus = sleepCycle.sleepStatus;
@@ -620,6 +727,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       localDate: dayBoundary.localDate,
       timezone: args.timezone,
       inferredAt: new Date(args.nowMs).toISOString(),
+      phase: circadianState,
       circadianState,
       stateConfidence,
       uncertaintyReason,
@@ -628,7 +736,11 @@ function analyzeLifeOpsScheduleInsight(args: {
       regularity,
       baseline,
       sleepStatus,
-      sleepConfidence: Math.max(sleepCycle.sleepConfidence, awakeProbability.pAsleep),
+      isProbablySleeping: sleepCycle.isProbablySleeping,
+      sleepConfidence: Math.max(
+        sleepCycle.sleepConfidence,
+        awakeProbability.pAsleep,
+      ),
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
       lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
       lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
@@ -637,7 +749,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       firstActiveAt: toIso(firstActiveAtMs),
       lastActiveAt: toIso(lastActiveAtMs),
       meals,
-      lastMealAt: meals.length > 0 ? meals[meals.length - 1]!.detectedAt : null,
+      lastMealAt: meals.at(-1)?.detectedAt ?? null,
       nextMealLabel: nextMeal.nextMealLabel,
       nextMealWindowStartAt: nextMeal.nextMealWindowStartAt,
       nextMealWindowEndAt: nextMeal.nextMealWindowEndAt,
