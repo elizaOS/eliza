@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.311",
+  "version": "2.0.0-alpha.314",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -23,6 +23,8 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
+    "start": "bun run src/bin.ts",
+    "dev": "bun --hot src/bin.ts",
     "build": "bun run build:dist",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
