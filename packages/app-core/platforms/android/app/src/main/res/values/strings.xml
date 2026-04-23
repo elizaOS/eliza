@@ -3,5 +3,5 @@
     <string name="app_name">Milady</string>
     <string name="title_activity_main">Milady</string>
     <string name="package_name">com.miladyai.milady</string>
-    <string name="custom_url_scheme">com.miladyai.milady</string>
+    <string name="custom_url_scheme">milady</string>
 </resources>
