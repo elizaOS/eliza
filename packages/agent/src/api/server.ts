@@ -1817,7 +1817,13 @@ async function handleRequest(
     }
     if (stewardWalletCoreRoutes) {
       try {
-        if (await stewardWalletCoreRoutes(req, res, state)) {
+        if (
+          await stewardWalletCoreRoutes(req, res, {
+            runtime: state.runtime ?? null,
+            restartRuntime,
+            scheduleRuntimeRestart,
+          })
+        ) {
           return;
         }
       } catch (err) {
