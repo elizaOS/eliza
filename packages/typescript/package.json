@@ -105,7 +105,7 @@
 		"@langchain/core": "^1.1.12",
 		"@langchain/textsplitters": "^1.0.1",
 		"@noble/ciphers": "^2.0.0",
-		"@noble/hashes": "^2.0.0",
+		"@noble/hashes": "2.2.0",
 		"@openrouter/ai-sdk-provider": "^2.0.0",
 		"@toon-format/toon": "^2.1.0",
 		"adze": "^2.2.5",
