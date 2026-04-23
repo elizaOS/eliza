@@ -5,17 +5,20 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
+  ListLifeOpsCalendarsRequest,
 } from "@elizaos/app-lifeops/contracts";
 import {
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
   fetchGoogleCalendarEvent,
   fetchGoogleCalendarEvents,
+  listGoogleCalendars,
   updateGoogleCalendarEvent,
 } from "./google-calendar.js";
 import {
@@ -71,6 +74,10 @@ import type {
 } from "./service-mixin-core.js";
 
 export interface LifeOpsCalendarService {
+  listCalendars(
+    requestUrl: URL,
+    request?: ListLifeOpsCalendarsRequest,
+  ): Promise<LifeOpsCalendarSummary[]>;
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
@@ -121,6 +128,62 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
   return class extends Base {
+
+    public async listCalendars(
+      requestUrl: URL,
+      request?: ListLifeOpsCalendarsRequest,
+    ): Promise<LifeOpsCalendarSummary[]> {
+      const { hasGoogleCalendarReadCapability } = await import(
+        "./service-normalize-calendar.js"
+      );
+      const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
+      const side = normalizeOptionalConnectorSide(request?.side, "side");
+      const allGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((grant) => grant.provider === "google");
+      const grants = resolveGoogleGrants({
+        grants: allGrants,
+        requestedMode: mode,
+        requestedSide: side,
+        grantId: request?.grantId,
+      }).filter((grant) => hasGoogleCalendarReadCapability(grant));
+
+      const summaries: LifeOpsCalendarSummary[] = [];
+      for (const grant of grants) {
+        // Cloud-managed mode has no listCalendars path yet; skip silently so
+        // local grants still work. Follow-up: wire into google-managed-client.
+        if (resolveGoogleExecutionTarget(grant) === "cloud") continue;
+        const accessToken = await ensureFreshGoogleAccessToken(
+          grant.tokenRef ??
+            fail(409, "Google Calendar token reference is missing."),
+        );
+        const entries = await listGoogleCalendars({ accessToken });
+        for (const entry of entries) {
+          summaries.push({
+            provider: "google",
+            side: grant.side,
+            grantId: grant.id,
+            accountEmail:
+              typeof grant.identity.email === "string"
+                ? grant.identity.email.trim().toLowerCase()
+                : null,
+            calendarId: entry.calendarId,
+            summary: entry.summary,
+            description: entry.description,
+            primary: entry.primary,
+            accessRole: entry.accessRole,
+            backgroundColor: entry.backgroundColor,
+            foregroundColor: entry.foregroundColor,
+            timeZone: entry.timeZone,
+            selected: entry.selected,
+            // Preference plumbing lands in Phase 1.2; default to true so new
+            // calendars are never silently hidden from the agent.
+            includeInFeed: true,
+          });
+        }
+      }
+      return summaries;
+    }
 
     public async recordCalendarEventAudit(
       ownerId: string,
