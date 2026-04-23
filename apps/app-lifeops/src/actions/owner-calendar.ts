@@ -430,6 +430,7 @@ async function handleBulkReschedulePreview(args: {
   let events: readonly LifeOpsCalendarEvent[] = [];
   try {
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      includeHiddenCalendars: true,
       timeMin,
       timeMax,
       timeZone,

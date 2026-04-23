@@ -1450,6 +1450,7 @@ async function loadCreateEventCalendarContext(
 
   const requestTimeZone = resolveCalendarTimeZone(details);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    includeHiddenCalendars: true,
     mode: detailString(details, "mode") as
       | "local"
       | "remote"
@@ -3552,6 +3553,7 @@ export const calendarAction: Action & {
                   ...buildWideLookupRange(resolveCalendarTimeZone(details)),
                 };
           const feed = await service.getCalendarFeed(INTERNAL_URL, {
+            includeHiddenCalendars: true,
             mode: detailString(details, "mode") as
               | "local"
               | "remote"
@@ -3720,6 +3722,7 @@ export const calendarAction: Action & {
                   ...buildWideLookupRange(resolveCalendarTimeZone(details)),
                 };
           const feed = await service.getCalendarFeed(INTERNAL_URL, {
+            includeHiddenCalendars: true,
             mode: detailString(details, "mode") as
               | "local"
               | "remote"
@@ -3867,6 +3870,7 @@ export const calendarAction: Action & {
 
       if (subaction === "trip_window" && tripWindowIntent) {
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
+          includeHiddenCalendars: true,
           mode: detailString(details, "mode") as
             | "local"
             | "remote"
@@ -3929,6 +3933,7 @@ export const calendarAction: Action & {
       const label = baseResolved.label;
       const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        includeHiddenCalendars: true,
         mode: detailString(details, "mode") as
           | "local"
           | "remote"

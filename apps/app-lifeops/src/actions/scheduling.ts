@@ -474,6 +474,7 @@ export const proposeMeetingTimesAction: Action & {
     let events: readonly LifeOpsCalendarEvent[] = [];
     try {
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        includeHiddenCalendars: true,
         timeMin: windowStart.toISOString(),
         timeMax: windowEnd.toISOString(),
         timeZone: effectivePreferences.timeZone,
@@ -616,6 +617,7 @@ export const checkAvailabilityAction: Action = {
     let events: readonly LifeOpsCalendarEvent[] = [];
     try {
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
+        includeHiddenCalendars: true,
         timeMin: windowStart.toISOString(),
         timeMax: windowEnd.toISOString(),
         timeZone: preferences.timeZone,

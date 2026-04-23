@@ -798,6 +798,10 @@ export async function handleLifeOpsRoutes(
         mode: parseConnectorModeQuery(url.searchParams.get("mode")),
         side: parseConnectorSideQuery(url.searchParams.get("side")),
         calendarId: url.searchParams.get("calendarId") ?? undefined,
+        includeHiddenCalendars: parseBooleanQuery(
+          url.searchParams.get("includeHiddenCalendars"),
+          "includeHiddenCalendars",
+        ),
         timeMin: url.searchParams.get("timeMin") ?? undefined,
         timeMax: url.searchParams.get("timeMax") ?? undefined,
         timeZone: url.searchParams.get("timeZone") ?? undefined,
