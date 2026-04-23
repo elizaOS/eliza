@@ -190,7 +190,9 @@ export function RuntimeGate() {
     persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
-    completeOnboarding("settings");
+    // Always land on chat. The composer lock + "Set up an LLM provider"
+    // placeholder handles the missing-provider case.
+    completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
   const finishAsRemoteGateway = useCallback(
