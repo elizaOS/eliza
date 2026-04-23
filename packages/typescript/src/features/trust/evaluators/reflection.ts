@@ -15,8 +15,6 @@ import { composePrompt } from "../../../utils.ts";
 
 const reflectionTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
-{{providers}}
-
 # Examples:
 {{evaluationExamples}}
 
@@ -137,13 +135,23 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		}),
 	]);
 
+	// Strip bloated metadata (indicators arrays grow unbounded over time and
+	// blow the prompt past the long-context threshold). Keep only the fields
+	// the reflection LLM needs to dedupe relationships: ids, type, tags.
+	const slimRelationships = existingRelationships.map((r) => ({
+		sourceEntityId: r.sourceEntityId,
+		targetEntityId: r.targetEntityId,
+		tags: r.tags,
+		relationshipType: (r.metadata as { relationshipType?: string } | undefined)
+			?.relationshipType,
+	}));
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
 			knownFacts: formatFacts(knownFacts),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(existingRelationships),
+			existingRelationships: JSON.stringify(slimRelationships),
 			senderId: message.entityId,
 		},
 		template:
