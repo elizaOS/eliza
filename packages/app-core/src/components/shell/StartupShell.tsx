@@ -17,8 +17,8 @@ import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
-import { OnboardingWizard } from "../onboarding/OnboardingWizard";
 import { PairingView } from "./PairingView";
+import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
 
 const FONT = "'Courier New', 'Courier', 'Monaco', monospace";
@@ -195,9 +195,10 @@ export function StartupShell() {
     return <PairingView />;
   }
 
-  // Onboarding — delegate
+  // Onboarding — minimal runtime gate: pick local / cloud / remote.
+  // Further setup (LLM provider, subscriptions, connectors) happens in chat.
   if (phase === "onboarding-required") {
-    return <OnboardingWizard />;
+    return <RuntimeGate />;
   }
 
   // Ready — let the app through
