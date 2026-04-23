@@ -5,7 +5,7 @@
 // TS runtime can locate it deterministically. Skips on non-darwin platforms.
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
