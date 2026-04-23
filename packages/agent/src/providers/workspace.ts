@@ -270,6 +270,10 @@ function shouldUseRuntimeCwdWorkspace(candidateDir: string): boolean {
   );
 }
 
+export function shouldBootstrapWorkspaceInitFiles(candidateDir: string): boolean {
+  return !shouldUseRuntimeCwdWorkspace(candidateDir);
+}
+
 export type WorkspaceInitFileName =
   | typeof DEFAULT_AGENTS_FILENAME
   | typeof DEFAULT_TOOLS_FILENAME
