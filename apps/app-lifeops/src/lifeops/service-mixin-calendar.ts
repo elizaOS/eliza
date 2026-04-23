@@ -189,14 +189,19 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
 
       const summaries: LifeOpsCalendarSummary[] = [];
       for (const grant of grants) {
-        // Cloud-managed mode has no listCalendars path yet; skip silently so
-        // local grants still work. Follow-up: wire into google-managed-client.
-        if (resolveGoogleExecutionTarget(grant) === "cloud") continue;
-        const accessToken = await ensureFreshGoogleAccessToken(
-          grant.tokenRef ??
-            fail(409, "Google Calendar token reference is missing."),
-        );
-        const entries = await listGoogleCalendars({ accessToken });
+        const entries =
+          resolveGoogleExecutionTarget(grant) === "cloud"
+            ? await this.googleManagedClient.listCalendars({
+                side: grant.side,
+                grantId: grant.id,
+              })
+            : await (async () => {
+                const accessToken = await ensureFreshGoogleAccessToken(
+                  grant.tokenRef ??
+                    fail(409, "Google Calendar token reference is missing."),
+                );
+                return listGoogleCalendars({ accessToken });
+              })();
         for (const entry of entries) {
           summaries.push({
             provider: "google",
@@ -534,6 +539,28 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         const selectedCalendars = calendars.filter(
           (calendar) => includeHiddenCalendars || calendar.includeInFeed,
         );
+        if (calendars.length === 0) {
+          const allGrants = (
+            await this.repository.listConnectorGrants(this.agentId())
+          ).filter((g) => g.provider === "google");
+          const grants = resolveGoogleGrants({
+            grants: allGrants,
+            requestedSide: side,
+            requestedMode: mode,
+          });
+          if (grants.length > 0) {
+            return this.aggregateCalendarFeeds(
+              requestUrl,
+              grants,
+              "primary",
+              timeMin,
+              timeMax,
+              timeZone,
+              forceSync,
+              now,
+            );
+          }
+        }
         if (selectedCalendars.length === 0) {
           return {
             calendarId: "all",

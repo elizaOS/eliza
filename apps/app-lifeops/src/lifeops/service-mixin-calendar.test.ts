@@ -2,8 +2,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
+  LifeOpsConnectorGrant,
 } from "@elizaos/app-lifeops/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { LifeOpsService } from "./service.js";
 import { mergeAggregatedCalendarFeedEvents } from "./service-mixin-calendar.js";
 
 function calendar(
@@ -68,6 +70,38 @@ function feed(
     timeMin: "2026-04-23T00:00:00.000Z",
     timeMax: "2026-04-24T00:00:00.000Z",
     syncedAt: "2026-04-23T11:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function runtime() {
+  return {
+    agentId: "agent-calendar-service",
+  } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
+}
+
+function grant(
+  overrides: Partial<LifeOpsConnectorGrant & { identityEmail: string }> = {},
+): LifeOpsConnectorGrant & { identityEmail: string } {
+  return {
+    id: "grant-1",
+    agentId: "agent-calendar-service",
+    provider: "google",
+    side: "owner",
+    mode: "cloud_managed",
+    executionTarget: "cloud",
+    sourceOfTruth: "cloud_profile",
+    preferredByAgent: false,
+    identity: { email: "owner@example.test" },
+    identityEmail: "owner@example.test",
+    grantedScopes: [],
+    capabilities: ["google.calendar.read"],
+    tokenRef: null,
+    metadata: {},
+    lastRefreshAt: null,
+    cloudConnectionId: "cloud-1",
+    createdAt: "2026-04-22T12:00:00.000Z",
+    updatedAt: "2026-04-22T12:00:00.000Z",
     ...overrides,
   };
 }
@@ -139,5 +173,42 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
         accountEmail: "family@example.test",
       }),
     );
+  });
+});
+
+describe("LifeOps calendar feed fallback", () => {
+  it("falls back to primary aggregation when no calendars can be listed", async () => {
+    const service = new LifeOpsService(runtime());
+    vi.spyOn(service, "listCalendars").mockResolvedValue([]);
+    vi.spyOn(service.repository, "listConnectorGrants").mockResolvedValue([
+      grant(),
+    ]);
+    const aggregate = vi
+      .spyOn(service, "aggregateCalendarFeeds")
+      .mockResolvedValue(
+        feed([], {
+          calendarId: "primary",
+          source: "cache",
+          syncedAt: null,
+        }),
+      );
+
+    const result = await service.getCalendarFeed(
+      new URL("http://localhost/api/lifeops/calendar/feed"),
+      { side: "owner", mode: "cloud_managed" },
+      new Date("2026-04-23T12:00:00.000Z"),
+    );
+
+    expect(aggregate).toHaveBeenCalledWith(
+      expect.any(URL),
+      [expect.objectContaining({ id: "grant-1" })],
+      "primary",
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      false,
+      expect.any(Date),
+    );
+    expect(result.calendarId).toBe("primary");
   });
 });
