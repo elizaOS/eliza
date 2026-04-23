@@ -1,4 +1,7 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+import org.gradle.api.logging.LogLevel
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
 def elizaosMavenCentralMirrorUrl = 'https://maven-central.storage-download.googleapis.com/maven2/'
 
 buildscript {
@@ -41,11 +44,16 @@ allprojects {
 }
 
 subprojects { subproject ->
-    if (subproject.path == ':capacitor-android') {
-        subproject.tasks.withType(JavaCompile).configureEach {
-            options.warnings = false
-            options.compilerArgs += ['-Xlint:none', '-nowarn']
-            logging.captureStandardError(org.gradle.api.logging.LogLevel.INFO)
+    subproject.afterEvaluate {
+        subproject.tasks.withType(JavaCompile).configureEach { task ->
+            task.javaCompiler = subproject.javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+            if (subproject.path == ':capacitor-android') {
+                task.options.warnings = false
+                task.options.compilerArgs += ['-Xlint:none', '-nowarn']
+                task.logging.captureStandardError(LogLevel.INFO)
+            }
         }
     }
 }
