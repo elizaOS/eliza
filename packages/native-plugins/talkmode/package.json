@@ -58,7 +58,7 @@
     "@capacitor/docgen": "^0.3.0",
     "rimraf": "^6.0.0",
     "rollup": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^6.0.0"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0"
