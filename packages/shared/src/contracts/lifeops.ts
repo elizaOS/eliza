@@ -484,6 +484,7 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "x_post_sent",
   "seeding_offered",
   "circadian_event_emitted",
+  "manual_override_accepted",
 ] as const;
 export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
 

@@ -626,9 +626,14 @@ export function ChatView({
       />
     </ChatComposerShell>
   ) : (
-    <ChatComposerShell variant="default" before={<CodingAgentControlChip />}>
+    <ChatComposerShell
+      variant="default"
+      className="px-3 sm:px-4 xl:px-5"
+      before={<CodingAgentControlChip />}
+    >
       <ChatComposer
         variant="default"
+        layout="inline"
         textareaRef={textareaRef}
         chatInput={chatInput}
         chatPendingImagesCount={chatPendingImages.length}

@@ -26,6 +26,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
+import type { Conversation } from "../../api/client-types-chat";
 import {
   PULSE_STATUSES,
   STATUS_DOT,
@@ -111,6 +112,15 @@ function rowListId(row: ConversationsSidebarRow): string {
   return row.kind === "inbox" ? `${INBOX_ID_PREFIX}${row.id}` : row.id;
 }
 
+function isLegacyUntitledConversationCandidate(
+  conversation: Conversation,
+): boolean {
+  if (conversation.metadata?.scope) {
+    return false;
+  }
+  return conversation.title.trim().toLowerCase() === "default";
+}
+
 export function ConversationsSidebar({
   mobile = false,
   onClose,
@@ -158,6 +168,9 @@ export function ConversationsSidebar({
   // bar and put our own collapse button inline with the first section
   // header (Messages), keeping that row at the top of the rail.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hiddenConversationIds, setHiddenConversationIds] = useState<
+    Set<string>
+  >(() => new Set());
   const CHAT_SIDEBAR_WIDTH_KEY = "milady:chat:conversations-sidebar:width";
   const CHAT_SIDEBAR_DEFAULT_WIDTH = 240;
   const CHAT_SIDEBAR_MIN_WIDTH = 200;
@@ -230,18 +243,64 @@ export function ConversationsSidebar({
     };
   }, []);
 
+  useEffect(() => {
+    const candidates = conversations.filter(
+      (conversation) =>
+        conversation.id !== activeConversationId &&
+        isLegacyUntitledConversationCandidate(conversation),
+    );
+    if (candidates.length === 0) {
+      setHiddenConversationIds((prev) =>
+        prev.size === 0 ? prev : new Set<string>(),
+      );
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      candidates.map(async (conversation) => {
+        try {
+          const { messages } = await client.getConversationMessages(
+            conversation.id,
+          );
+          const hasUserTurn = messages.some((message) => message.role === "user");
+          return hasUserTurn ? null : conversation.id;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((ids) => {
+      if (cancelled) return;
+      setHiddenConversationIds(
+        new Set(ids.filter((id): id is string => typeof id === "string")),
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId, conversations]);
+
+  const visibleConversations = useMemo(
+    () =>
+      conversations.filter(
+        (conversation) => !hiddenConversationIds.has(conversation.id),
+      ),
+    [conversations, hiddenConversationIds],
+  );
+
   // Messages section: conversations live under the eliza scope.
   const messagesModel = useMemo(
     () =>
       buildConversationsSidebarModel({
-        conversations,
+        conversations: visibleConversations,
         inboxChats,
         searchQuery: "",
         sourceScope: ELIZA_SOURCE_SCOPE,
         t,
         worldScope: ALL_WORLDS_SCOPE,
       }),
-    [conversations, inboxChats, t],
+    [inboxChats, t, visibleConversations],
   );
 
   // Connector sections: surfaces every active connector (Discord, Telegram,
@@ -1085,13 +1144,16 @@ function CollapsibleChannelSection({
         emptyLabel ? (
           <div
             id={`channel-section-body-${sectionKey}`}
-            className="px-3 py-1 text-2xs text-muted"
+            className="pl-8 pr-3 py-1 text-2xs text-muted"
           >
             {emptyLabel}
           </div>
         ) : null
       ) : (
-        <div id={`channel-section-body-${sectionKey}`} className="space-y-0">
+        <div
+          id={`channel-section-body-${sectionKey}`}
+          className="space-y-0 pl-5"
+        >
           {rows.map((row) => {
             const conversationId = rowListId(row);
             return (

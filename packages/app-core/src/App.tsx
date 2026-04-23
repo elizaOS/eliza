@@ -53,7 +53,6 @@ import {
   MessagesPageView,
   PhonePageView,
 } from "./components/pages/MiladyOsAppsView";
-import { PageScopedChatPane } from "./components/pages/PageScopedChatPane";
 import { PluginsPageView } from "./components/pages/PluginsPageView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { RelationshipsView } from "./components/pages/RelationshipsView";
@@ -71,7 +70,10 @@ import { Header } from "./components/shell/Header";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config";
 import {
   BugReportProvider,
@@ -178,19 +180,18 @@ function WalletChatGuideActions() {
   );
 }
 
-function WalletPageChat() {
-  return (
-    <PageScopedChatPane
-      scope="page-wallet"
-      persistentIntro
-      placeholderOverride="Ask about swaps, bridges, positions, or Vincent"
-      introOverride={{
-        title: "Wallet agent",
-        body: <WalletChatGuideBody />,
-        actions: <WalletChatGuideActions />,
-      }}
-    />
-  );
+function buildWalletPageScopedChatPaneProps(): NonNullable<
+  AppWorkspaceChromeProps["pageScopedChatPaneProps"]
+> {
+  return {
+    persistentIntro: true,
+    placeholderOverride: "Ask about swaps, bridges, positions, or Vincent",
+    introOverride: {
+      title: "Wallet agent",
+      body: <WalletChatGuideBody />,
+      actions: <WalletChatGuideActions />,
+    },
+  };
 }
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
@@ -210,17 +211,20 @@ function TabScrollView({
   className = "",
   chat,
   chatScope,
+  pageScopedChatPaneProps,
 }: {
   children: ReactNode;
   className?: string;
   chat?: ReactNode;
   chatScope?: PageScope;
+  pageScopedChatPaneProps?: AppWorkspaceChromeProps["pageScopedChatPaneProps"];
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
       chat={chat}
       chatScope={chat ? undefined : chatScope}
+      pageScopedChatPaneProps={chat ? undefined : pageScopedChatPaneProps}
       main={
         <div
           data-shell-scroll-region="true"
@@ -329,7 +333,10 @@ function ViewRouter({
         );
       case "inventory":
         return (
-          <TabScrollView chat={<WalletPageChat />}>
+          <TabScrollView
+            chatScope="page-wallet"
+            pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
+          >
             <InventoryView />
           </TabScrollView>
         );
@@ -850,24 +857,30 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <SettingsView
-              key={
-                tab === "voice"
-                  ? "settings-media"
-                  : tab === "connectors"
-                    ? "settings-connectors"
-                    : "settings-root"
-              }
-              initialSection={
-                tab === "voice"
-                  ? "media"
-                  : tab === "connectors"
-                    ? "connectors"
-                    : (settingsInitialSection ?? undefined)
-              }
-            />
-          </div>
+          <AppWorkspaceChrome
+            testId="settings-workspace"
+            chatScope="page-settings"
+            main={
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <SettingsView
+                  key={
+                    tab === "voice"
+                      ? "settings-media"
+                      : tab === "connectors"
+                        ? "settings-connectors"
+                        : "settings-root"
+                  }
+                  initialSection={
+                    tab === "voice"
+                      ? "media"
+                      : tab === "connectors"
+                        ? "connectors"
+                        : (settingsInitialSection ?? undefined)
+                  }
+                />
+              </div>
+            }
+          />
         </div>
       ) : isWallets ? (
         <div
@@ -877,7 +890,8 @@ export function App() {
           <Header />
           <AppWorkspaceChrome
             testId="wallets-workspace"
-            chat={<WalletPageChat />}
+            chatScope="page-wallet"
+            pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <InventoryView />

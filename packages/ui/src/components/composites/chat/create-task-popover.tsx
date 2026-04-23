@@ -1,5 +1,11 @@
 import { Code2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "../../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
@@ -21,6 +27,9 @@ export interface CreateTaskPopoverProps {
   disabled: boolean;
   onCreateTask: (description: string, agentType: string) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
+  triggerClassName?: string;
+  triggerIconClassName?: string;
+  triggerVariant?: ComponentProps<typeof Button>["variant"];
 }
 
 export function CreateTaskPopover({
@@ -28,6 +37,9 @@ export function CreateTaskPopover({
   disabled,
   onCreateTask,
   t,
+  triggerClassName,
+  triggerIconClassName,
+  triggerVariant = "surface",
 }: CreateTaskPopoverProps) {
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState("");
@@ -56,9 +68,9 @@ export function CreateTaskPopover({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="surface"
+          variant={triggerVariant}
           size="icon"
-          className="h-[46px] w-[46px] shrink-0"
+          className={triggerClassName ?? "h-[46px] w-[46px] shrink-0"}
           disabled={disabled}
           aria-label={t("chat.createTask", {
             defaultValue: "Create coding task",
@@ -67,7 +79,7 @@ export function CreateTaskPopover({
             defaultValue: "Create coding task",
           })}
         >
-          <Code2 className="h-4 w-4" />
+          <Code2 className={triggerIconClassName ?? "h-4 w-4"} />
         </Button>
       </PopoverTrigger>
       <PopoverContent

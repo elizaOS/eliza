@@ -11,6 +11,7 @@ export type PageScope =
   | "page-apps"
   | "page-phone"
   | "page-lifeops"
+  | "page-settings"
   | "page-wallet";
 
 export const PAGE_SCOPES: readonly PageScope[] = [
@@ -20,6 +21,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-apps",
   "page-phone",
   "page-lifeops",
+  "page-settings",
   "page-wallet",
 ] as const;
 
@@ -29,7 +31,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 7;
+export const PAGE_SCOPE_VERSION = 9;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -81,6 +83,12 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
   },
+  "page-settings": {
+    title: "Settings chat",
+    body: "Use me to tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Recommended: describe the capability you want to enable or troubleshoot, and I'll point to the right section or explain the tradeoffs.",
+    systemAddendum:
+      "You are answering inside the Settings view. The user can change cloud account state, AI models and providers, permissions, wallet RPC providers, feature toggles, appearance, updates, and connector-related configuration. Recommend the smallest concrete settings change that fits the user's goal and reference the visible section when possible. Ask follow-up questions when a setting affects security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
+  },
   "page-wallet": {
     title: "Wallet chat",
     body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, and Vincent trading. Recommended: ask me to prepare a swap, bridge, or Vincent trading plan with the amount and constraints you want.",
@@ -96,6 +104,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-apps": "Apps",
   "page-phone": "Phone",
   "page-lifeops": "LifeOps",
+  "page-settings": "Settings",
   "page-wallet": "Wallet",
 };
 
@@ -107,6 +116,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
  */
 export function getBrowserPageScopeCopy(state: {
   browserBridgeConnected: boolean;
+  browserBridgeInstallAvailable?: boolean;
   browserLabel?: string | null;
   profileLabel?: string | null;
 }): PageScopeIntroCopy {
@@ -118,6 +128,14 @@ export function getBrowserPageScopeCopy(state: {
       title: "Browser chat",
       body: `Agent Browser Bridge is connected in ${where}. Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about any current tab or page.`,
       systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot pages, show or hide tabs, close tabs, inspect current browser state, and answer questions about the current page. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+    };
+  }
+  if (state.browserBridgeInstallAvailable === false) {
+    return {
+      title: "Browser chat",
+      body: "Use me with the embedded browser in this view. Real Chrome control is unavailable in the current runtime, so I can help with embedded tabs, navigation, forms, and page questions only.",
+      systemAddendum:
+        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so real Chrome control cannot be enabled from this session. Help the user with the embedded browser only: opening embedded tabs, navigating URLs, refreshing pages, and answering questions about the current embedded page or tab list. Do not recommend installing Agent Browser Bridge or promise real-browser tab control.",
     };
   }
   return {
@@ -200,6 +218,23 @@ function findPageScopedConversation(
   )[0];
 }
 
+function findPageScopedConversations(
+  conversations: Conversation[],
+  scope: PageScope,
+  pageId?: string,
+): Conversation[] {
+  return conversations
+    .filter(
+      (conversation) =>
+        conversation.metadata?.scope === scope &&
+        (conversation.metadata?.pageId ?? undefined) === (pageId ?? undefined),
+    )
+    .sort(
+      (left, right) =>
+        new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+    );
+}
+
 export async function resolvePageScopedConversation(params: {
   scope: PageScope;
   title?: string;
@@ -227,6 +262,32 @@ export async function resolvePageScopedConversation(params: {
       metadata: desiredMetadata,
     });
     return conversation;
+  }
+
+  const { conversation } = await client.createConversation(title, {
+    metadata: desiredMetadata,
+  });
+  return conversation;
+}
+
+export async function resetPageScopedConversation(params: {
+  scope: PageScope;
+  title?: string;
+  pageId?: string;
+}): Promise<Conversation> {
+  const { scope, pageId } = params;
+  const title = params.title?.trim() || PAGE_SCOPE_DEFAULT_TITLE[scope];
+  const desiredMetadata = buildPageScopedConversationMetadata(scope, {
+    pageId,
+  });
+
+  const { conversations } = await client.listConversations();
+  const matching = findPageScopedConversations(conversations, scope, pageId);
+
+  if (matching.length > 0) {
+    await Promise.allSettled(
+      matching.map((conversation) => client.deleteConversation(conversation.id)),
+    );
   }
 
   const { conversation } = await client.createConversation(title, {

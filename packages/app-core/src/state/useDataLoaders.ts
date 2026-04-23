@@ -48,6 +48,7 @@ import {
 } from "../autonomy";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
+import { normalizeConversationList } from "./chat-conversation-guards";
 import type { LoadConversationMessagesResult } from "./internal";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
@@ -275,8 +276,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   > => {
     try {
       const { conversations: c } = await client.listConversations();
-      setConversations(c);
-      return c;
+      const normalized = normalizeConversationList(c);
+      setConversations(normalized);
+      return normalized;
     } catch {
       return null;
     }
@@ -297,9 +299,12 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (status === 404) {
           const refreshed = await client.listConversations().catch(() => null);
           if (refreshed) {
-            setConversations(refreshed.conversations);
+            const normalized = normalizeConversationList(
+              refreshed.conversations,
+            );
+            setConversations(normalized);
             if (activeConversationIdRef.current === convId) {
-              const fallbackId = refreshed.conversations[0]?.id ?? null;
+              const fallbackId = normalized[0]?.id ?? null;
               setActiveConversationId(fallbackId);
               activeConversationIdRef.current = fallbackId;
             }

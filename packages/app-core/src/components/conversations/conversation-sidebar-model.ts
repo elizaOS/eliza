@@ -3,6 +3,7 @@ import { getChatSourceMeta } from "@elizaos/ui";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import type { TranslateFn } from "../../types";
+import { isMainChatConversation } from "../../state/chat-conversation-guards";
 
 import {
   formatRelativeTime,
@@ -131,14 +132,7 @@ function buildConversationRows(
   t: TranslateFn,
 ): ConversationsSidebarRow[] {
   return conversations
-    .filter((conversation) => {
-      const scope = conversation.metadata?.scope;
-      return (
-        scope !== "automation-coordinator" &&
-        scope !== "automation-workflow" &&
-        scope !== "automation-workflow-draft"
-      );
-    })
+    .filter(isMainChatConversation)
     .map((conversation) => ({
       id: conversation.id,
       kind: "conversation" as const,

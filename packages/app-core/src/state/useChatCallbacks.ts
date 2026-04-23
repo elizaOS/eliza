@@ -759,31 +759,14 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       const previousConversationId = activeConversationIdRef.current;
       const previousMessages = conversationMessagesRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
-
-      if (!title && previousConversationId) {
-        const hasUserMessage = previousMessages.some(
-          (message) => message.role === "user",
-        );
-        if (!hasUserMessage) {
-          resetConversationDraftState();
-          void client
-            .cleanupEmptyConversations({ keepId: previousConversationId })
-            .then((result) => {
-              if (result.deleted.length === 0) return;
-              const deletedSet = new Set(result.deleted);
-              setConversations((prev) =>
-                prev.filter((conversation) => !deletedSet.has(conversation.id)),
-              );
-              setUnreadConversations((prev) => {
-                const next = new Set(prev);
-                for (const id of deletedSet) next.delete(id);
-                return next;
-              });
-            })
-            .catch(() => {});
-          return;
-        }
-      }
+      const hasUserMessage = previousMessages.some(
+        (message) => message.role === "user",
+      );
+      const shouldReplacePreviousDraftConversation =
+        !title &&
+        Boolean(previousConversationId) &&
+        !hasUserMessage &&
+        previousMessages.length <= 1;
 
       send.interruptActiveChatPipeline();
       resetConversationDraftState();
@@ -799,7 +782,14 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
         const conversation = rawConversation;
         const nextCutoffTs = Date.now();
-        setConversations((prev) => [conversation, ...prev]);
+        setConversations((prev) => {
+          const next = shouldReplacePreviousDraftConversation
+            ? prev.filter(
+                (existing) => existing.id !== previousConversationId,
+              )
+            : prev;
+          return [conversation, ...next];
+        });
         setActiveConversationId(conversation.id);
         activeConversationIdRef.current = conversation.id;
         setCompanionMessageCutoffTs(nextCutoffTs);
@@ -842,6 +832,18 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           type: "active-conversation",
           conversationId: conversation.id,
         });
+        if (
+          shouldReplacePreviousDraftConversation &&
+          previousConversationId &&
+          previousConversationId !== conversation.id
+        ) {
+          setUnreadConversations((prev) => {
+            const next = new Set(prev);
+            next.delete(previousConversationId);
+            return next;
+          });
+          void client.deleteConversation(previousConversationId).catch(() => {});
+        }
         void client
           .cleanupEmptyConversations({ keepId: conversation.id })
           .then((result) => {

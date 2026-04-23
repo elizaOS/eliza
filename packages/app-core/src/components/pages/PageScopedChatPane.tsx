@@ -1,8 +1,7 @@
-import { ChatAttachmentStrip, Spinner } from "@elizaos/ui";
-import { ArrowUp, Mic, Plus, Sparkles, Square } from "lucide-react";
+import { ChatAttachmentStrip, ChatComposer, Spinner } from "@elizaos/ui";
+import { RotateCcw, Sparkles } from "lucide-react";
 import {
   type ChangeEvent,
-  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -27,17 +26,12 @@ import {
   isPageScopedConversation,
   PAGE_SCOPE_COPY,
   type PageScope,
+  resetPageScopedConversation,
   resolvePageScopedConversation,
 } from "./page-scoped-conversations";
 
-const PAGE_CHAT_INPUT_MIN_HEIGHT_PX = 32;
-const PAGE_CHAT_INPUT_MAX_HEIGHT_PX = 128;
 const MAX_PAGE_CHAT_IMAGES = 4;
 const CHAT_PREFILL_EVENT = "milady:chat:prefill";
-const NO_FOCUS_CHROME_STYLE: CSSProperties = {
-  boxShadow: "none",
-  outline: "none",
-};
 
 interface ChatPrefillDetail {
   text?: string;
@@ -75,7 +69,7 @@ function resolveSpeechLocale(uiLanguage: string): string {
   }
 }
 
-interface PageScopedChatPaneProps {
+export interface PageScopedChatPaneProps {
   scope: PageScope;
   pageId?: string;
   /** Override the conversation title (defaults to PAGE_SCOPE_DEFAULT_TITLE[scope]). */
@@ -103,6 +97,8 @@ interface PageScopedChatPaneProps {
   placeholderOverride?: string;
   /** Keep the intro visible above the thread, even after the chat has history. */
   persistentIntro?: boolean;
+  /** Optional footer actions rendered inline with the Clear control. */
+  footerActions?: ReactNode;
 }
 
 function shallowEqual(
@@ -126,6 +122,7 @@ export function PageScopedChatPane({
   systemAddendumOverride,
   placeholderOverride,
   persistentIntro = false,
+  footerActions,
 }: PageScopedChatPaneProps) {
   const copy = PAGE_SCOPE_COPY[scope];
   const introTitle = introOverride?.title ?? copy.title;
@@ -148,6 +145,7 @@ export function PageScopedChatPane({
   const [voicePreview, setVoicePreview] = useState("");
   const [sending, setSending] = useState(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // The "main chat" awareness link: only treat the global active conversation
@@ -265,27 +263,6 @@ export function PageScopedChatPane({
     }
     el.scrollTop = el.scrollHeight;
   }, [scrollVersion]);
-
-  useEffect(() => {
-    const textarea = composerRef.current;
-    if (!textarea) return;
-
-    if (!input) {
-      textarea.style.height = `${PAGE_CHAT_INPUT_MIN_HEIGHT_PX}px`;
-      textarea.style.overflowY = "hidden";
-      return;
-    }
-
-    textarea.style.height = "auto";
-    textarea.style.overflowY = "hidden";
-    const height = Math.min(
-      textarea.scrollHeight,
-      PAGE_CHAT_INPUT_MAX_HEIGHT_PX,
-    );
-    textarea.style.height = `${height}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > PAGE_CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, [input]);
 
   const handleSend = useCallback(
     async (options?: {
@@ -476,6 +453,13 @@ export function PageScopedChatPane({
     },
   });
 
+  const hasClearableContent =
+    messages.length > 0 ||
+    input.trim().length > 0 ||
+    pendingImages.length > 0 ||
+    voice.isListening ||
+    voicePreview.trim().length > 0;
+
   useEffect(() => {
     const handlePrefill = (event: Event) => {
       const detail = readChatPrefillDetail(event);
@@ -500,32 +484,15 @@ export function PageScopedChatPane({
   }, [voice.isListening, voice.stopListening]);
 
   const handleInputChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
+    (value: string) => {
       if (voice.isListening) {
         void voice.stopListening();
         setVoicePreview("");
       }
-      setInput(event.target.value);
+      setInput(value);
     },
     [voice.isListening, voice.stopListening],
   );
-
-  const handleVoiceAction = useCallback(() => {
-    if (disabled || sending || !voice.supported) return;
-    setVoicePreview("");
-    if (voice.isListening) {
-      void voice.stopListening({ submit: true });
-      return;
-    }
-    void voice.startListening("compose");
-  }, [
-    disabled,
-    sending,
-    voice.isListening,
-    voice.startListening,
-    voice.stopListening,
-    voice.supported,
-  ]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -538,13 +505,57 @@ export function PageScopedChatPane({
     [handleSend, sending],
   );
 
+  const handleClearConversation = useCallback(async () => {
+    if (clearing || (!conversation && !hasClearableContent)) return;
+
+    abortRef.current?.abort();
+    if (voice.isListening) {
+      void voice.stopListening();
+    }
+
+    setClearing(true);
+    setLoadError(null);
+
+    try {
+      const nextConversation = await resetPageScopedConversation({
+        scope,
+        title,
+        pageId,
+      });
+      setConversation(nextConversation);
+      setMessages([]);
+      setInput("");
+      setPendingImages([]);
+      setAttachmentError(null);
+      setImageDragOver(false);
+      setVoicePreview("");
+      setSending(false);
+      setFirstTokenReceived(false);
+      setLoadError(null);
+      window.requestAnimationFrame(() => {
+        composerRef.current?.focus();
+      });
+    } catch (cause) {
+      const message =
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Failed to clear page chat.";
+      setLoadError(message);
+    } finally {
+      setClearing(false);
+    }
+  }, [
+    clearing,
+    conversation,
+    hasClearableContent,
+    pageId,
+    scope,
+    title,
+    voice.isListening,
+    voice.stopListening,
+  ]);
+
   const showIntro = messages.length === 0 && !sending && !persistentIntro;
-  const hasDraft = input.trim().length > 0 || pendingImages.length > 0;
-  const actionLabel = hasDraft
-    ? "Send"
-    : voice.isListening
-      ? "Stop voice input"
-      : "Start voice input";
   const introCard = (
     <div
       data-testid={`page-scoped-chat-intro-${scope}`}
@@ -559,6 +570,44 @@ export function PageScopedChatPane({
         <div className="mt-3 flex flex-wrap gap-2">{introActions}</div>
       ) : null}
     </div>
+  );
+
+  const composerT = useCallback(
+    (key: string, options?: Record<string, unknown>) => {
+      const fallback =
+        typeof options?.defaultValue === "string" ? options.defaultValue : key;
+
+      switch (key) {
+        case "aria.attachImage":
+        case "chatview.AttachImage":
+          return "Add attachment";
+        case "chat.agentStarting":
+          return "Agent starting";
+        case "chat.inputPlaceholder":
+        case "chat.inputPlaceholderNarrow":
+          return placeholder;
+        case "chat.listening":
+          return "Listening…";
+        case "chat.micTitleIdleEnhanced":
+        case "chat.micTitleIdleStandard":
+          return "Start voice input";
+        case "chat.releaseToSend":
+          return "Release to send";
+        case "chat.send":
+          return "Send";
+        case "chat.stopGeneration":
+          return "Stop";
+        case "chat.stopListening":
+          return "Stop voice input";
+        case "chat.stopSpeaking":
+          return "Stop";
+        case "chat.voiceInput":
+          return "Voice input";
+        default:
+          return fallback;
+      }
+    },
+    [placeholder],
   );
 
   return (
@@ -657,89 +706,60 @@ export function PageScopedChatPane({
           }))}
           onRemove={(_id, index) => removeImage(index)}
         />
-        <div
-          data-testid={`page-scoped-chat-composer-${scope}`}
-          className="flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1"
-        >
+        <div data-testid={`page-scoped-chat-composer-${scope}`}>
+          <ChatComposer
+            variant="default"
+            layout="inline"
+            textareaRef={composerRef}
+            textareaAriaLabel={copy.title}
+            chatInput={input}
+            chatPendingImagesCount={pendingImages.length}
+            isComposerLocked={disabled || sending}
+            isAgentStarting={false}
+            chatSending={sending}
+            voice={{
+              supported: voice.supported,
+              isListening: voice.isListening,
+              captureMode: voice.captureMode,
+              interimTranscript: voicePreview,
+              isSpeaking: voice.isSpeaking,
+              assistantTtsQuality: voice.assistantTtsQuality,
+              toggleListening: voice.toggleListening,
+              startListening: voice.startListening,
+              stopListening: voice.stopListening,
+            }}
+            agentVoiceEnabled={false}
+            showAgentVoiceToggle={false}
+            t={composerT}
+            placeholder={placeholder}
+            onAttachImage={() => fileInputRef.current?.click()}
+            onChatInputChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onSend={() => void handleSend()}
+            onStop={handleStop}
+            onStopSpeaking={() => {}}
+            onToggleAgentVoice={() => {}}
+          />
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2 px-1">
           <button
             type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg/60 text-muted transition-colors hover:text-txt focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Add attachment"
-            title="Add attachment"
-            disabled={disabled || sending}
-            onClick={() => fileInputRef.current?.click()}
-            style={NO_FOCUS_CHROME_STYLE}
+            data-testid={`page-scoped-chat-clear-${scope}`}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-muted transition-colors hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => void handleClearConversation()}
+            disabled={clearing || (!conversation && !hasClearableContent)}
+            aria-label={clearing ? "Clearing page chat" : "Clear page chat"}
           >
-            <Plus className="h-5 w-5" />
+            {clearing ? (
+              <Spinner size={10} className="text-muted" />
+            ) : (
+              <RotateCcw className="h-3 w-3" />
+            )}
+            <span>{clearing ? "Clearing…" : "Clear"}</span>
           </button>
-
-          <div className="relative min-w-0 flex-1">
-            <textarea
-              ref={composerRef}
-              className="block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
-              rows={1}
-              aria-label={copy.title}
-              placeholder={
-                voice.isListening
-                  ? voicePreview
-                    ? ""
-                    : "Listening…"
-                  : placeholder
-              }
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={disabled || sending}
-              style={NO_FOCUS_CHROME_STYLE}
-            />
-            {voice.isListening && voicePreview ? (
-              <div className="pointer-events-none absolute inset-x-2 bottom-2 truncate text-xs text-muted">
-                {voicePreview}
-              </div>
-            ) : null}
-          </div>
-
-          {sending ? (
-            <button
-              type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger transition-colors hover:bg-danger/25 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
-              onClick={handleStop}
-              aria-label="Stop"
-              title="Stop"
-              style={NO_FOCUS_CHROME_STYLE}
-            >
-              <Square className="h-3.5 w-3.5 fill-current" />
-            </button>
-          ) : hasDraft ? (
-            <button
-              type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-txt text-bg transition-transform focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => void handleSend()}
-              disabled={disabled}
-              aria-label={actionLabel}
-              title={actionLabel}
-              style={NO_FOCUS_CHROME_STYLE}
-            >
-              <ArrowUp className="h-4.5 w-4.5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
-                voice.isListening
-                  ? "bg-accent text-bg"
-                  : "bg-bg/60 text-muted hover:text-txt"
-              }`}
-              onClick={handleVoiceAction}
-              disabled={disabled || !voice.supported}
-              aria-label={actionLabel}
-              aria-pressed={voice.isListening}
-              title={voice.supported ? actionLabel : "Voice input unavailable"}
-              style={NO_FOCUS_CHROME_STYLE}
-            >
-              <Mic className="h-4.5 w-4.5" />
-            </button>
-          )}
+          {footerActions ? (
+            <div className="flex items-center gap-1">{footerActions}</div>
+          ) : null}
         </div>
       </div>
     </section>

@@ -3559,7 +3559,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           desiredCircadianState: desiredState,
           bypassedStabilityWindow: true,
         },
-        actor: "owner",
+        actor: "user",
         createdAt: new Date().toISOString(),
       });
 

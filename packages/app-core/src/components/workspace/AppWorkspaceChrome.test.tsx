@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
+import {
+  AppWorkspaceChrome,
+  useAppWorkspaceChatChrome,
+} from "./AppWorkspaceChrome";
 
-const { useMediaQueryMock } = vi.hoisted(() => ({
-  useMediaQueryMock: vi.fn(),
-}));
+var useMediaQueryMock = vi.fn();
 
 vi.mock("../../hooks", () => ({
   useMediaQuery: (query: string) => useMediaQueryMock(query),
@@ -17,8 +19,21 @@ vi.mock("../pages/ChatView.js", () => ({
 }));
 
 vi.mock("../pages/PageScopedChatPane.js", () => ({
-  PageScopedChatPane: ({ scope }: { scope: string }) => (
-    <div data-testid="page-scoped-chat">{scope}</div>
+  PageScopedChatPane: ({
+    footerActions,
+    scope,
+  }: {
+    footerActions?: ReactNode;
+    scope: string;
+  }) => (
+    <div data-testid="page-scoped-chat">
+      <span>{scope}</span>
+      {footerActions ? (
+        <div data-testid="page-scoped-chat-footer-actions">
+          {footerActions}
+        </div>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -26,9 +41,11 @@ describe("AppWorkspaceChrome", () => {
   beforeEach(() => {
     useMediaQueryMock.mockReset();
     useMediaQueryMock.mockReturnValue(false);
+    window.localStorage.clear();
   });
 
   afterEach(() => {
+    window.localStorage.clear();
     cleanup();
   });
 
@@ -73,6 +90,13 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
       "page-apps",
     );
+    expect(screen.queryByTestId("apps-shell-chat-collapse")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("apps-shell-chat-collapse-inline"));
+
+    const collapsedSidebar = screen.getByTestId("apps-shell-chat-sidebar");
+    expect(collapsedSidebar.getAttribute("data-collapsed")).not.toBeNull();
+    expect(screen.getByTestId("apps-shell-chat-expand")).toBeTruthy();
   });
 
   it("does not reserve right-chat width on mobile until the user opens it", () => {
@@ -101,5 +125,40 @@ describe("AppWorkspaceChrome", () => {
     expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
     expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
+  });
+
+  it("lets chat content own the collapse control row", () => {
+    function InlineCollapseOwner() {
+      const chatChrome = useAppWorkspaceChatChrome();
+
+      return (
+        <button
+          type="button"
+          data-testid="inline-chat-collapse"
+          onClick={() => chatChrome?.collapseChat()}
+        >
+          Collapse inline
+        </button>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        testId="owned-footer-shell"
+        hideCollapseButton
+        main={<div data-testid="owned-footer-main">Owned footer content</div>}
+        chat={<InlineCollapseOwner />}
+      />,
+    );
+
+    expect(screen.queryByTestId("owned-footer-shell-chat-collapse")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("inline-chat-collapse"));
+
+    const collapsedSidebar = screen.getByTestId(
+      "owned-footer-shell-chat-sidebar",
+    );
+    expect(collapsedSidebar.getAttribute("data-collapsed")).not.toBeNull();
+    expect(screen.getByTestId("owned-footer-shell-chat-expand")).toBeTruthy();
   });
 });

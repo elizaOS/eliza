@@ -1897,6 +1897,16 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (method === "GET" && pathname === "/api/lifeops/schedule/summary") {
+    const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.readScheduleSummary({ timezone: timezoneParam }),
+      );
+    });
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/lifeops/permissions/full-disk-access"
@@ -1965,6 +1975,137 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/overview") {
     return runRoute(ctx, async (service) => {
       json(res, await service.getOverview());
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/dashboard") {
+    return runRoute(ctx, async (service) => {
+      const windowDaysRaw = url.searchParams.get("windowDays");
+      const windowDays = windowDaysRaw ? Number(windowDaysRaw) : null;
+      json(
+        res,
+        await service.getPaymentsDashboard({
+          windowDays: Number.isFinite(windowDays) ? windowDays : null,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/sources") {
+    return runRoute(ctx, async (service) => {
+      json(res, { sources: await service.listPaymentSources() });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/payments/sources") {
+    const body = await readJsonBody<{
+      kind: string;
+      label: string;
+      institution?: string | null;
+      accountMask?: string | null;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const source = await service.addPaymentSource({
+        kind: body.kind as never,
+        label: body.label,
+        institution: body.institution ?? null,
+        accountMask: body.accountMask ?? null,
+      });
+      json(res, { source }, 201);
+    });
+  }
+
+  if (
+    method === "DELETE" &&
+    pathname.startsWith("/api/lifeops/payments/sources/")
+  ) {
+    const sourceId = pathname.slice("/api/lifeops/payments/sources/".length);
+    if (!sourceId) {
+      ctx.error(res, "sourceId required", 400);
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      await service.deletePaymentSource(decodeURIComponent(sourceId));
+      json(res, { ok: true });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/payments/import-csv") {
+    const body = await readJsonBody<{
+      sourceId: string;
+      csvText: string;
+      dateColumn?: string;
+      amountColumn?: string;
+      merchantColumn?: string;
+      descriptionColumn?: string;
+      categoryColumn?: string;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.importTransactionsCsv(body);
+      json(res, result);
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/transactions") {
+    return runRoute(ctx, async (service) => {
+      const sourceId = url.searchParams.get("sourceId");
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw ? Number(limitRaw) : null;
+      const merchantContains = url.searchParams.get("merchantContains");
+      const onlyDebitsRaw = url.searchParams.get("onlyDebits");
+      const transactions = await service.listTransactions({
+        sourceId: sourceId ?? null,
+        limit: Number.isFinite(limit) ? limit : null,
+        merchantContains: merchantContains ?? null,
+        onlyDebits: onlyDebitsRaw === "true" ? true : null,
+      });
+      json(res, { transactions });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/recurring") {
+    return runRoute(ctx, async (service) => {
+      const sourceId = url.searchParams.get("sourceId");
+      const sinceDaysRaw = url.searchParams.get("sinceDays");
+      const sinceDays = sinceDaysRaw ? Number(sinceDaysRaw) : null;
+      const charges = await service.getRecurringCharges({
+        sourceId: sourceId ?? null,
+        sinceDays: Number.isFinite(sinceDays) ? sinceDays : null,
+      });
+      json(res, { charges });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/email-unsubscribe/scan") {
+    return runRoute(ctx, async (service) => {
+      const requestUrl = ctx.url;
+      const result = await service.scanEmailSubscriptions(requestUrl, {});
+      json(res, result);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/email-unsubscribe/unsubscribe"
+  ) {
+    const body = await readJsonBody<{
+      senderEmail: string;
+      blockAfter?: boolean;
+      trashExisting?: boolean;
+      confirmed?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const requestUrl = ctx.url;
+      const result = await service.unsubscribeEmailSender(requestUrl, {
+        senderEmail: body.senderEmail,
+        blockAfter: body.blockAfter ?? true,
+        trashExisting: body.trashExisting ?? false,
+        confirmed: body.confirmed ?? false,
+      });
+      json(res, result);
     });
   }
 

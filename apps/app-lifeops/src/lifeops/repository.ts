@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { logger } from "@elizaos/core";
 import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
@@ -68,6 +69,13 @@ import type {
   EmailUnsubscribeRecord,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
+import type {
+  LifeOpsPaymentDirection,
+  LifeOpsPaymentSource,
+  LifeOpsPaymentSourceKind,
+  LifeOpsPaymentSourceStatus,
+  LifeOpsPaymentTransaction,
+} from "./payment-types.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import type {
   LifeOpsScheduleMergedState,
@@ -589,6 +597,46 @@ function parseSubscriptionCancellation(
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
     finishedAt: row.finished_at ? toText(row.finished_at) : null,
+  };
+}
+
+function parsePaymentSource(
+  row: Record<string, unknown>,
+): LifeOpsPaymentSource {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    kind: toText(row.kind, "manual") as LifeOpsPaymentSourceKind,
+    label: toText(row.label),
+    institution: row.institution ? toText(row.institution) : null,
+    accountMask: row.account_mask ? toText(row.account_mask) : null,
+    status: toText(row.status, "active") as LifeOpsPaymentSourceStatus,
+    lastSyncedAt: row.last_synced_at ? toText(row.last_synced_at) : null,
+    transactionCount: toNumber(row.transaction_count, 0),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parsePaymentTransaction(
+  row: Record<string, unknown>,
+): LifeOpsPaymentTransaction {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    sourceId: toText(row.source_id),
+    externalId: row.external_id ? toText(row.external_id) : null,
+    postedAt: toText(row.posted_at),
+    amountUsd: toNumber(row.amount_usd, 0),
+    direction: toText(row.direction, "debit") as LifeOpsPaymentDirection,
+    merchantRaw: toText(row.merchant_raw),
+    merchantNormalized: toText(row.merchant_normalized),
+    description: row.description ? toText(row.description) : null,
+    category: row.category ? toText(row.category) : null,
+    currency: toText(row.currency, "USD"),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
   };
 }
 
@@ -1607,6 +1655,16 @@ function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
 }
 
 export class LifeOpsRepository {
+  /**
+   * Per-agent counter for telemetry-mirror failures inside
+   * {@link createActivitySignal}. The live signal insert is the primary
+   * source of truth; mirror failures must not block persistence, but we
+   * still want visibility when the mirror is broken. First failure logs,
+   * then we throttle to once every 100 failures so a broken backend
+   * doesn't flood logs.
+   */
+  private static telemetryMirrorFailures = new Map<string, number>();
+
   constructor(private readonly runtime: IAgentRuntime) {}
 
   /**
@@ -2619,6 +2677,173 @@ export class LifeOpsRepository {
     return row ? parseEmailUnsubscribe(row) : null;
   }
 
+  async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_payment_sources (
+        id, agent_id, kind, label, institution, account_mask, status,
+        last_synced_at, transaction_count, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(source.id)},
+        ${sqlQuote(source.agentId)},
+        ${sqlQuote(source.kind)},
+        ${sqlQuote(source.label)},
+        ${sqlText(source.institution)},
+        ${sqlText(source.accountMask)},
+        ${sqlQuote(source.status)},
+        ${sqlText(source.lastSyncedAt)},
+        ${sqlInteger(source.transactionCount)},
+        ${sqlJson(source.metadata)},
+        ${sqlQuote(source.createdAt)},
+        ${sqlQuote(source.updatedAt)}
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        kind = excluded.kind,
+        label = excluded.label,
+        institution = excluded.institution,
+        account_mask = excluded.account_mask,
+        status = excluded.status,
+        last_synced_at = excluded.last_synced_at,
+        transaction_count = excluded.transaction_count,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_payment_sources
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY created_at DESC`,
+    );
+    return rows.map(parsePaymentSource);
+  }
+
+  async getPaymentSource(
+    agentId: string,
+    sourceId: string,
+  ): Promise<LifeOpsPaymentSource | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_payment_sources
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(sourceId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parsePaymentSource(row) : null;
+  }
+
+  async deletePaymentSource(
+    agentId: string,
+    sourceId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_payment_transactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}`,
+    );
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_payment_sources
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(sourceId)}`,
+    );
+  }
+
+  async insertPaymentTransaction(
+    transaction: LifeOpsPaymentTransaction,
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_payment_transactions (
+        id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
+        merchant_raw, merchant_normalized, description, category, currency,
+        metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(transaction.id)},
+        ${sqlQuote(transaction.agentId)},
+        ${sqlQuote(transaction.sourceId)},
+        ${sqlText(transaction.externalId)},
+        ${sqlQuote(transaction.postedAt)},
+        ${sqlNumber(transaction.amountUsd)},
+        ${sqlQuote(transaction.direction)},
+        ${sqlQuote(transaction.merchantRaw)},
+        ${sqlQuote(transaction.merchantNormalized)},
+        ${sqlText(transaction.description)},
+        ${sqlText(transaction.category)},
+        ${sqlQuote(transaction.currency)},
+        ${sqlJson(transaction.metadata)},
+        ${sqlQuote(transaction.createdAt)}
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
+  async listPaymentTransactions(
+    agentId: string,
+    args: {
+      sourceId?: string | null;
+      sinceAt?: string | null;
+      untilAt?: string | null;
+      limit?: number | null;
+      merchantContains?: string | null;
+      onlyDebits?: boolean | null;
+    } = {},
+  ): Promise<LifeOpsPaymentTransaction[]> {
+    const limit = Math.max(1, Math.min(5000, Math.trunc(args.limit ?? 500)));
+    const sourceClause = args.sourceId
+      ? `AND source_id = ${sqlQuote(args.sourceId)}`
+      : "";
+    const sinceClause = args.sinceAt
+      ? `AND posted_at >= ${sqlQuote(args.sinceAt)}`
+      : "";
+    const untilClause = args.untilAt
+      ? `AND posted_at <= ${sqlQuote(args.untilAt)}`
+      : "";
+    const merchantClause = args.merchantContains
+      ? `AND merchant_normalized LIKE ${sqlQuote(`%${args.merchantContains.trim().toLowerCase()}%`)}`
+      : "";
+    const directionClause = args.onlyDebits
+      ? `AND direction = ${sqlQuote("debit")}`
+      : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_payment_transactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          ${sourceClause}
+          ${sinceClause}
+          ${untilClause}
+          ${merchantClause}
+          ${directionClause}
+        ORDER BY posted_at DESC
+        LIMIT ${limit}`,
+    );
+    return rows.map(parsePaymentTransaction);
+  }
+
+  async countPaymentTransactionsForSource(
+    agentId: string,
+    sourceId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COUNT(*) AS count
+         FROM life_payment_transactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}`,
+    );
+    const row = rows[0] as Record<string, unknown> | undefined;
+    return row ? toNumber(row.count ?? row.COUNT, 0) : 0;
+  }
+
   async createActivitySignal(signal: LifeOpsActivitySignal): Promise<void> {
     const metadata =
       signal.health !== null && signal.health !== undefined
@@ -2647,7 +2872,9 @@ export class LifeOpsRepository {
     // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
     // Failures here must not block signal persistence — the legacy table is
-    // still the primary source of truth for the scorer.
+    // still the primary source of truth for the scorer — but they are
+    // counted and logged (first + every 100th) so broken mirrors surface
+    // in observability instead of silently rotting.
     try {
       const telemetry = buildTelemetryEventFromSignal(
         signal,
@@ -2656,11 +2883,24 @@ export class LifeOpsRepository {
       if (telemetry) {
         await this.insertTelemetryEvent(telemetry);
       }
+      LifeOpsRepository.telemetryMirrorFailures.delete(signal.agentId);
     } catch (error) {
-      // Intentionally swallow — logging here would risk log-storms on busy
-      // signal sources. The retention + rollup pass surfaces missing data
-      // via observability counters instead.
-      void error;
+      const nextCount =
+        (LifeOpsRepository.telemetryMirrorFailures.get(signal.agentId) ?? 0) +
+        1;
+      LifeOpsRepository.telemetryMirrorFailures.set(signal.agentId, nextCount);
+      if (nextCount === 1 || nextCount % 100 === 0) {
+        logger.warn(
+          {
+            agentId: signal.agentId,
+            source: signal.source,
+            platform: signal.platform,
+            consecutiveFailures: nextCount,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[lifeops] Telemetry mirror failed for activity signal.",
+        );
+      }
     }
   }
 
@@ -5074,15 +5314,13 @@ export class LifeOpsRepository {
       await executeRawSql(
         this.runtime,
         `INSERT INTO life_telemetry_rollup_daily (
-           agent_id, family, local_date, event_count, transition_count,
-           total_minutes, last_observed_at, created_at, updated_at
+           agent_id, family, local_date, event_count,
+           last_observed_at, created_at, updated_at
          ) VALUES (
            ${sqlQuote(args.agentId)},
            ${sqlQuote(family)},
            ${sqlQuote(localDate)},
            ${sqlInteger(eventCount)},
-           ${sqlInteger(0)},
-           ${sqlInteger(0)},
            ${sqlQuote(lastObservedAt)},
            ${sqlQuote(nowIso)},
            ${sqlQuote(nowIso)}

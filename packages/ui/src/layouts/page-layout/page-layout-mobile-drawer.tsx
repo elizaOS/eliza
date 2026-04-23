@@ -33,21 +33,28 @@ export function PageLayoutMobileDrawer({
 
   return (
     <>
-      <div className="mb-3 flex items-center md:hidden">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            "h-11 rounded-2xl px-4 text-sm font-semibold shadow-sm",
-            mobileSidebarTriggerClassName,
-          )}
-          onClick={() => onMobileSidebarOpenChange(true)}
+      {!mobileSidebarOpen ? (
+        <div
+          className="pointer-events-none fixed left-2 z-40 md:hidden"
+          style={{ top: "var(--safe-area-top, 0px)" }}
         >
-          <PanelLeftOpen className="h-4 w-4" />
-          {drawerLabel}
-        </Button>
-      </div>
+          <div className="pointer-events-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                "h-[2.375rem] max-w-[min(11rem,calc(100vw-5.5rem))] rounded-full border-border/40 bg-card/92 px-3 text-sm font-semibold text-txt shadow-sm backdrop-blur-md",
+                mobileSidebarTriggerClassName,
+              )}
+              onClick={() => onMobileSidebarOpenChange(true)}
+            >
+              <PanelLeftOpen className="h-4 w-4 shrink-0" />
+              <span className="truncate">{drawerLabel}</span>
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <DrawerSheet
         open={mobileSidebarOpen}
         onOpenChange={onMobileSidebarOpenChange}

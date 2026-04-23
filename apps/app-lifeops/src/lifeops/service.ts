@@ -16,6 +16,7 @@ import { withDiscord } from "./service-mixin-discord.js";
 import { withDossier } from "./service-mixin-dossier.js";
 import { withDrive } from "./service-mixin-drive.js";
 import { withEmailUnsubscribe } from "./service-mixin-email-unsubscribe.js";
+import { withPayments } from "./service-mixin-payments.js";
 import { withGmail } from "./service-mixin-gmail.js";
 import { withGoals } from "./service-mixin-goals.js";
 import { withGoogle } from "./service-mixin-google.js";
@@ -67,7 +68,8 @@ const LIFEOPS_WITH_CONNECTORS = withWhatsApp(
 );
 const LIFEOPS_WITH_TRAVEL = withTravel(LIFEOPS_WITH_CONNECTORS);
 const LIFEOPS_WITH_SCHEDULING = withScheduling(LIFEOPS_WITH_TRAVEL);
-const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_SCHEDULING);
+const LIFEOPS_WITH_PAYMENTS = withPayments(LIFEOPS_WITH_SCHEDULING);
+const LIFEOPS_WITH_SUBS = withSubscriptions(LIFEOPS_WITH_PAYMENTS);
 // TypeScript loses track of constraint satisfaction past ~6 chained generic
 // mixins, so we cast explicitly. The runtime composition has every method
 // `withStatus` depends on (getScheduleMergedState from withScheduling,

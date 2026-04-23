@@ -60,12 +60,53 @@ export function LifeOpsScreenTimeSection() {
     0;
   const phoneSeconds =
     breakdown?.byDevice.find((item) => item.key === "phone")?.totalSeconds ?? 0;
+  const categories = (breakdown?.byCategory ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const devices = (breakdown?.byDevice ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const browsers = (breakdown?.byBrowser ?? []).filter(
+    (item) => item.totalSeconds > 0,
+  );
   const topTargets =
-    breakdown?.items.map((item) => ({
-      key: `${item.source}:${item.identifier}`,
-      label: item.displayName,
-      totalSeconds: item.totalSeconds,
-    })) ?? [];
+    breakdown?.items
+      .filter((item) => item.totalSeconds > 0)
+      .map((item) => ({
+        key: `${item.source}:${item.identifier}`,
+        label: item.displayName,
+        totalSeconds: item.totalSeconds,
+      })) ?? [];
+  const metricTiles = [
+    {
+      key: "today",
+      icon: <Monitor />,
+      value: formatDurationSeconds(totalSeconds),
+      label: "Today",
+      visible: totalSeconds > 0,
+    },
+    {
+      key: "apps",
+      icon: <AppWindow />,
+      value: formatDurationSeconds(appSeconds),
+      label: "Apps",
+      visible: appSeconds > 0,
+    },
+    {
+      key: "web",
+      icon: <Globe2 />,
+      value: formatDurationSeconds(webSeconds),
+      label: "Web",
+      visible: webSeconds > 0,
+    },
+    {
+      key: "phone",
+      icon: <Smartphone />,
+      value: formatDurationSeconds(phoneSeconds),
+      label: "Phone",
+      visible: phoneSeconds > 0,
+    },
+  ].filter((item) => item.visible);
 
   return (
     <div className="space-y-4" data-testid="lifeops-screen-time-section">
@@ -103,28 +144,24 @@ export function LifeOpsScreenTimeSection() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricTile
-          icon={<Monitor />}
-          value={formatDurationSeconds(totalSeconds)}
-          label="Today"
-        />
-        <MetricTile
-          icon={<AppWindow />}
-          value={formatDurationSeconds(appSeconds)}
-          label="Apps"
-        />
-        <MetricTile
-          icon={<Globe2 />}
-          value={formatDurationSeconds(webSeconds)}
-          label="Web"
-        />
-        <MetricTile
-          icon={<Smartphone />}
-          value={formatDurationSeconds(phoneSeconds)}
-          label="Phone"
-        />
-      </div>
+      {metricTiles.length > 0 ? (
+        <div
+          className={
+            metricTiles.length === 1
+              ? "grid gap-3"
+              : "grid grid-cols-2 gap-3 xl:grid-cols-4"
+          }
+        >
+          {metricTiles.map((tile) => (
+            <MetricTile
+              key={tile.key}
+              icon={tile.icon}
+              value={tile.value}
+              label={tile.label}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <HabitPanel
         title="Categories"
@@ -133,18 +170,18 @@ export function LifeOpsScreenTimeSection() {
       >
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
           <DonutChart
-            items={breakdown?.byCategory ?? []}
+            items={categories}
             totalSeconds={totalSeconds}
             label="Today"
           />
           <div className="min-w-0 flex-1">
             <StackedBar
-              items={breakdown?.byCategory ?? []}
+              items={categories}
               totalSeconds={totalSeconds}
             />
             <div className="mt-4">
               <BucketBars
-                items={breakdown?.byCategory ?? []}
+                items={categories}
                 totalSeconds={totalSeconds}
               />
             </div>
@@ -155,13 +192,13 @@ export function LifeOpsScreenTimeSection() {
       <div className="grid gap-4 xl:grid-cols-3">
         <HabitPanel title="Devices" icon={<Smartphone />}>
           <BucketBars
-            items={breakdown?.byDevice ?? []}
+            items={devices}
             totalSeconds={totalSeconds}
           />
         </HabitPanel>
         <HabitPanel title="Browsers" icon={<Globe2 />}>
           <BucketBars
-            items={breakdown?.byBrowser ?? []}
+            items={browsers}
             totalSeconds={webSeconds}
             emptyLabel="No browser data"
           />
