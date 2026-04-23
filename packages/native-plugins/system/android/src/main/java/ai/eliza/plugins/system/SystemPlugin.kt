@@ -31,12 +31,12 @@ class SystemPlugin : Plugin() {
             for ((name, androidRole) in roleMap) {
                 val role = JSObject()
                 val available = roleManager.isRoleAvailable(androidRole)
-                val holders = if (available) roleManager.getRoleHolders(androidRole) else emptyList()
+                val held = available && roleManager.isRoleHeld(androidRole)
                 role.put("role", name)
                 role.put("androidRole", androidRole)
                 role.put("available", available)
-                role.put("held", holders.contains(context.packageName))
-                role.put("holders", JSArray(holders))
+                role.put("held", held)
+                role.put("holders", JSArray(if (held) listOf(context.packageName) else emptyList<String>()))
                 roles.put(role)
             }
         }
