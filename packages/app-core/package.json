@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.317",
+  "version": "2.0.0-alpha.323",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -106,8 +106,6 @@
     "./platform/native-plugin-entrypoints": "./src/platform/native-plugin-entrypoints.ts",
     "./platform/empty-node-module": "./src/platform/empty-node-module.ts",
     "./onboarding/flow": "./src/onboarding/flow.ts",
-    "./onboarding/types": "./src/onboarding/types.ts",
-    "./onboarding/connection-flow": "./src/onboarding/connection-flow.ts",
     "./onboarding-config": "./src/onboarding-config.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./providers": "./src/providers/index.ts",

@@ -237,7 +237,20 @@ export function ChatView({
         message.role === "user" ||
         (message.role === "assistant" && message.text.trim().length > 0),
     );
-  const isComposerLocked = isAgentStarting && !hasCompletedLifecycleActivity;
+  // The agent is up but has no inference model wired — no point letting the
+  // user hit send. Surfaced as a composer lock + a pointer to Settings.
+  const agentModel =
+    typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  const isMissingInferenceProvider =
+    agentStatus?.state === "running" && agentModel.length === 0;
+  const isComposerLocked =
+    (isAgentStarting && !hasCompletedLifecycleActivity) ||
+    isMissingInferenceProvider;
+  const composerPlaceholderOverride = isMissingInferenceProvider
+    ? t("chat.setupProviderToChat", {
+        defaultValue: "Set up an LLM provider in Settings to start chatting",
+      })
+    : undefined;
   const {
     beginVoiceCapture,
     endVoiceCapture,
@@ -597,6 +610,7 @@ export function ChatView({
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
@@ -639,6 +653,7 @@ export function ChatView({
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
