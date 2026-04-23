@@ -91,9 +91,6 @@ export function ChatComposer({
 
   const isGameModal = variant === "game-modal";
   const showVoiceButton = isGameModal || voice.supported;
-  const defaultMicButtonVariant = voice.isListening
-    ? "surfaceAccent"
-    : "surface";
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pushToTalkActiveRef = useRef(false);
   const suppressClickRef = useRef(false);

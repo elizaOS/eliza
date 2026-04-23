@@ -112,7 +112,8 @@ export function syncCharacterIntoConfig(
 
   config.agents.list = [nextAgent, ...existingList.slice(1)];
 
-  const uiConfig = (config.ui ??= {}) as {
+  config.ui ??= {};
+  const uiConfig = config.ui as {
     assistant?: { name?: string };
   };
   if (typeof nextAgent.name === "string" && nextAgent.name.trim()) {

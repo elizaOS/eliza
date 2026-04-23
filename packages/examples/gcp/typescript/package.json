@@ -26,7 +26,7 @@
     "@types/uuid": "^11.0.0",
     "esbuild": "^0.24.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -14,7 +14,6 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "./service-routing.js";
-import type { WalletConfigUpdateRequest } from "./wallet.js";
 
 export const CHARACTER_LANGUAGES = [
   "en",
@@ -1052,7 +1051,7 @@ export function resolveLinkedAccountsInConfig(
   const hasCloudKey = Boolean(normalizeSecretString(cloud?.apiKey));
   const existingCloudAccount = next.elizacloud;
 
-  if (hasCloudKey && (!existingCloudAccount || !existingCloudAccount.status)) {
+  if (hasCloudKey && !existingCloudAccount?.status) {
     next.elizacloud = {
       ...existingCloudAccount,
       status: "linked",

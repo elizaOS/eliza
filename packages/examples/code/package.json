@@ -54,7 +54,7 @@
     "@types/react": "19.2.3",
     "@vitest/coverage-v8": "^4.0.0",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.0"
   }
 }

@@ -3,17 +3,41 @@ import { describe, expect, it } from "vitest";
 import { analyzePluginStateDrift } from "./plugins-compat-routes";
 
 describe("analyzePluginStateDrift", () => {
+  const pluginList: Parameters<typeof analyzePluginStateDrift>[0] = [
+    {
+      id: "discord",
+      npmName: "@elizaos/plugin-discord",
+      category: "connector",
+      enabled: true,
+      isActive: true,
+    },
+  ];
+
+  const disabledPluginList: Parameters<typeof analyzePluginStateDrift>[0] = [
+    {
+      id: "discord",
+      npmName: "@elizaos/plugin-discord",
+      category: "connector",
+      enabled: false,
+      isActive: false,
+    },
+  ];
+
+  const activeButDisabledPluginList: Parameters<
+    typeof analyzePluginStateDrift
+  >[0] = [
+    {
+      id: "discord",
+      npmName: "@elizaos/plugin-discord",
+      category: "connector",
+      enabled: false,
+      isActive: true,
+    },
+  ];
+
   it("reports no drift when entries, compat, allow-list, and runtime agree", () => {
     const report = analyzePluginStateDrift(
-      [
-        {
-          id: "discord",
-          npmName: "@elizaos/plugin-discord",
-          category: "connector",
-          enabled: true,
-          isActive: true,
-        },
-      ] as any[],
+      pluginList,
       {
         connectors: {
           discord: { enabled: true },
@@ -35,15 +59,7 @@ describe("analyzePluginStateDrift", () => {
 
   it("flags entries_vs_compat when connector section diverges from entries", () => {
     const report = analyzePluginStateDrift(
-      [
-        {
-          id: "discord",
-          npmName: "@elizaos/plugin-discord",
-          category: "connector",
-          enabled: true,
-          isActive: true,
-        },
-      ] as any[],
+      pluginList,
       {
         connectors: {
           discord: { enabled: false },
@@ -62,15 +78,7 @@ describe("analyzePluginStateDrift", () => {
 
   it("flags entries_vs_allowlist for optional core plugin drift", () => {
     const report = analyzePluginStateDrift(
-      [
-        {
-          id: "discord",
-          npmName: "@elizaos/plugin-discord",
-          category: "connector",
-          enabled: false,
-          isActive: false,
-        },
-      ] as any[],
+      disabledPluginList,
       {
         connectors: {
           discord: { enabled: false },
@@ -89,15 +97,7 @@ describe("analyzePluginStateDrift", () => {
 
   it("skips entries_vs_allowlist when allow list is unconfigured (null)", () => {
     const report = analyzePluginStateDrift(
-      [
-        {
-          id: "discord",
-          npmName: "@elizaos/plugin-discord",
-          category: "connector",
-          enabled: true,
-          isActive: true,
-        },
-      ] as any[],
+      pluginList,
       {
         connectors: {
           discord: { enabled: true },
@@ -116,15 +116,7 @@ describe("analyzePluginStateDrift", () => {
 
   it("flags active_but_disabled when runtime is active but UI model disabled", () => {
     const report = analyzePluginStateDrift(
-      [
-        {
-          id: "discord",
-          npmName: "@elizaos/plugin-discord",
-          category: "connector",
-          enabled: false,
-          isActive: true,
-        },
-      ] as any[],
+      activeButDisabledPluginList,
       {
         connectors: {
           discord: { enabled: false },

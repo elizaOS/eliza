@@ -1,7 +1,4 @@
-import {
-  dispatchAppEvent,
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-} from "../events";
+import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import type { OnboardingServerTarget } from "./server-target";
 
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";

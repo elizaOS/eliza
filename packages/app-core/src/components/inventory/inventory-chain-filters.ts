@@ -1,8 +1,16 @@
 import type { InventoryChainFilters } from "../../state/types";
 import type { ChainKey } from "./chainConfig";
-import { PRIMARY_CHAIN_KEYS, resolveChainKey } from "./chainConfig";
+import { resolveChainKey } from "./chainConfig";
 
 export type PrimaryInventoryChainKey = keyof InventoryChainFilters;
+
+const PRIMARY_INVENTORY_CHAIN_KEYS = [
+  "ethereum",
+  "base",
+  "bsc",
+  "avax",
+  "solana",
+] as const satisfies readonly PrimaryInventoryChainKey[];
 
 export const DEFAULT_INVENTORY_CHAIN_FILTERS: InventoryChainFilters = {
   ethereum: true,
@@ -20,7 +28,7 @@ type InventoryChainFilterState =
 function isPrimaryInventoryChainKey(
   k: ChainKey,
 ): k is PrimaryInventoryChainKey {
-  return (PRIMARY_CHAIN_KEYS as readonly ChainKey[]).includes(k);
+  return PRIMARY_INVENTORY_CHAIN_KEYS.includes(k as PrimaryInventoryChainKey);
 }
 
 export function matchesInventoryChainFilter(
@@ -38,11 +46,10 @@ export function computeSingleChainFocus(
   filters: InventoryChainFilterState,
 ): PrimaryInventoryChainKey | null {
   const normalizedFilters = normalizeInventoryChainFilters(filters);
-  const enabled = PRIMARY_CHAIN_KEYS.filter(
-    (k): k is PrimaryInventoryChainKey =>
-      isPrimaryInventoryChainKey(k) && normalizedFilters[k],
+  const enabled = PRIMARY_INVENTORY_CHAIN_KEYS.filter(
+    (k) => normalizedFilters[k],
   );
-  return enabled.length === 1 ? enabled[0]! : null;
+  return enabled.length === 1 ? enabled[0] : null;
 }
 
 export function normalizeInventoryChainFilters(

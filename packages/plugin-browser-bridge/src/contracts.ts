@@ -248,6 +248,14 @@ export interface BrowserBridgeCompanionAutoPairResponse {
   config: BrowserBridgeCompanionConfig;
 }
 
+export interface BrowserBridgeCompanionSyncResponse {
+  companion: BrowserBridgeCompanionStatus;
+  tabs: BrowserBridgeTabSummary[];
+  currentPage: BrowserBridgePageContext | null;
+  settings: BrowserBridgeSettings;
+  session: import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserSession | null;
+}
+
 export interface UpdateBrowserBridgeSessionProgressRequest {
   currentActionIndex?: number;
   result?: Record<string, unknown>;

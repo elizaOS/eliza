@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["native"]
 native = ["tokio/full", "sqlx", "which"]
-wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/wasm_js"]
 basic_capabilities = ["native", "dep:quick-xml"]
 basic_capabilities-internal = ["basic_capabilities"]
 
@@ -95,7 +95,7 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", features = ["console"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
-getrandom = { version = "0.4", features = ["js"], optional = true }
+getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
 once_cell = "1.21.3"
 
 [build-dependencies]

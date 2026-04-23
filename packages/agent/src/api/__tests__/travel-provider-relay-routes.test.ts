@@ -61,9 +61,13 @@ function makeReq(url: string, body?: unknown): http.IncomingMessage {
   setImmediate(() => {
     if (body !== undefined) {
       const buf = Buffer.from(JSON.stringify(body), "utf-8");
-      handlers.get("data")?.forEach((fn) => fn(buf));
+      handlers.get("data")?.forEach((fn) => {
+        fn(buf);
+      });
     }
-    handlers.get("end")?.forEach((fn) => fn());
+    handlers.get("end")?.forEach((fn) => {
+      fn();
+    });
   });
 
   return req;

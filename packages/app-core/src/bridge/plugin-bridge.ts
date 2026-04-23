@@ -11,6 +11,7 @@
 import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 import {
+  type ContactsPluginLike,
   type GenericNativePlugin,
   getCameraPlugin,
   getCanvasPlugin,
@@ -24,7 +25,6 @@ import {
   getSwabblePlugin,
   getSystemPlugin,
   getTalkModePlugin,
-  type ContactsPluginLike,
   type MessagesPluginLike,
   type PhonePluginLike,
   type SwabblePluginLike,

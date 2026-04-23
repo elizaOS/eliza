@@ -20,7 +20,6 @@ import type http from "node:http";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
-import { LifeOpsService, LifeOpsServiceError } from "@elizaos/app-lifeops/lifeops/service";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
@@ -42,6 +41,10 @@ import {
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
 } from "./packaging.ts";
+import {
+  BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+  type BrowserBridgeRouteService,
+} from "./service.ts";
 
 export interface BrowserBridgeRouteContext {
   req: http.IncomingMessage;
@@ -67,14 +70,21 @@ export interface BrowserBridgeRouteContext {
   ) => string | null;
 }
 
-function getService(ctx: BrowserBridgeRouteContext): LifeOpsService | null {
+function getService(
+  ctx: BrowserBridgeRouteContext,
+): BrowserBridgeRouteService | null {
   if (!ctx.state.runtime) {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
     return null;
   }
-  return new LifeOpsService(ctx.state.runtime, {
-    ownerEntityId: ctx.state.adminEntityId,
-  });
+  const service = ctx.state.runtime.getService<BrowserBridgeRouteService>(
+    BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+  );
+  if (!service) {
+    ctx.error(ctx.res, "Browser Bridge service is not available", 503);
+    return null;
+  }
+  return service;
 }
 
 function getBrowserCompanionAuth(
@@ -161,6 +171,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isStatusError(
+  error: unknown,
+): error is Error & { readonly status: number } {
+  return (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  );
+}
+
 function decodeMatchedPathComponent(
   ctx: BrowserBridgeRouteContext,
   match: RegExpMatchArray | null,
@@ -174,7 +194,7 @@ function decodeMatchedPathComponent(
 
 async function runRoute(
   ctx: BrowserBridgeRouteContext,
-  fn: (service: LifeOpsService) => Promise<void>,
+  fn: (service: BrowserBridgeRouteService) => Promise<void>,
 ): Promise<boolean> {
   const operation = routeOperation(ctx);
   const span = createIntegrationTelemetrySpan({
@@ -204,7 +224,7 @@ async function runRoute(
     });
     return true;
   } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
+    if (isStatusError(error)) {
       const logFn =
         error.status === 401
           ? logger.debug.bind(logger)
@@ -259,7 +279,7 @@ async function runStatelessRoute(
     });
     return true;
   } catch (error) {
-    if (error instanceof LifeOpsServiceError) {
+    if (isStatusError(error)) {
       logger.warn(
         {
           boundary: "browser-bridge",
@@ -302,13 +322,17 @@ export async function handleBrowserBridgeRoutes(
 
   if (method === "GET" && pathname === "/api/browser-bridge/sessions") {
     return runRoute(ctx, async (service) => {
-      json(res, { sessions: await service.listBrowserSessions() });
+      json(res, {
+        sessions: await service.listBrowserSessions(ctx.state.adminEntityId),
+      });
     });
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/settings") {
     return runRoute(ctx, async (service) => {
-      json(res, { settings: await service.getBrowserSettings() });
+      json(res, {
+        settings: await service.getBrowserSettings(ctx.state.adminEntityId),
+      });
     });
   }
 
@@ -319,7 +343,12 @@ export async function handleBrowserBridgeRoutes(
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, { settings: await service.updateBrowserSettings(body) });
+      json(res, {
+        settings: await service.updateBrowserSettings(
+          body,
+          ctx.state.adminEntityId,
+        ),
+      });
     });
   }
 
@@ -331,7 +360,14 @@ export async function handleBrowserBridgeRoutes(
       await readJsonBody<CreateBrowserBridgeCompanionPairingRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.createBrowserCompanionPairing(body), 201);
+      json(
+        res,
+        await service.createBrowserCompanionPairing(
+          body,
+          ctx.state.adminEntityId,
+        ),
+        201,
+      );
     });
   }
 
@@ -356,7 +392,11 @@ export async function handleBrowserBridgeRoutes(
     return runRoute(ctx, async (service) => {
       json(
         res,
-        await service.autoPairBrowserCompanion(body, ctx.url.origin),
+        await service.autoPairBrowserCompanion(
+          body,
+          ctx.url.origin,
+          ctx.state.adminEntityId,
+        ),
         201,
       );
     });
@@ -364,7 +404,11 @@ export async function handleBrowserBridgeRoutes(
 
   if (method === "GET" && pathname === "/api/browser-bridge/companions") {
     return runRoute(ctx, async (service) => {
-      json(res, { companions: await service.listBrowserCompanions() });
+      json(res, {
+        companions: await service.listBrowserCompanions(
+          ctx.state.adminEntityId,
+        ),
+      });
     });
   }
 
@@ -433,6 +477,7 @@ export async function handleBrowserBridgeRoutes(
           auth.companionId,
           auth.pairingToken,
           body,
+          ctx.state.adminEntityId,
         ),
       );
     });
@@ -440,7 +485,7 @@ export async function handleBrowserBridgeRoutes(
 
   if (method === "GET" && pathname === "/api/browser-bridge/tabs") {
     return runRoute(ctx, async (service) => {
-      json(res, { tabs: await service.listBrowserTabs() });
+      json(res, { tabs: await service.listBrowserTabs(ctx.state.adminEntityId) });
     });
   }
 
@@ -532,7 +577,9 @@ export async function handleBrowserBridgeRoutes(
 
   if (method === "GET" && pathname === "/api/browser-bridge/current-page") {
     return runRoute(ctx, async (service) => {
-      json(res, { page: await service.getCurrentBrowserPage() });
+      json(res, {
+        page: await service.getCurrentBrowserPage(ctx.state.adminEntityId),
+      });
     });
   }
 
@@ -540,7 +587,7 @@ export async function handleBrowserBridgeRoutes(
     const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, await service.syncBrowserState(body));
+      json(res, await service.syncBrowserState(body, ctx.state.adminEntityId));
     });
   }
 
@@ -551,7 +598,16 @@ export async function handleBrowserBridgeRoutes(
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      json(res, { session: await service.createBrowserSession(body) }, 201);
+      json(
+        res,
+        {
+          session: await service.createBrowserSession(
+            body,
+            ctx.state.adminEntityId,
+          ),
+        },
+        201,
+      );
     });
   }
 
@@ -569,7 +625,12 @@ export async function handleBrowserBridgeRoutes(
     if (!sessionId) return true;
     if (method === "GET") {
       return runRoute(ctx, async (service) => {
-        json(res, { session: await service.getBrowserSession(sessionId) });
+        json(res, {
+          session: await service.getBrowserSession(
+            sessionId,
+            ctx.state.adminEntityId,
+          ),
+        });
       });
     }
   }
@@ -593,7 +654,11 @@ export async function handleBrowserBridgeRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, {
-        session: await service.confirmBrowserSession(sessionId, body),
+        session: await service.confirmBrowserSession(
+          sessionId,
+          body,
+          ctx.state.adminEntityId,
+        ),
       });
     });
   }
@@ -617,7 +682,11 @@ export async function handleBrowserBridgeRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, {
-        session: await service.updateBrowserSessionProgress(sessionId, body),
+        session: await service.updateBrowserSessionProgress(
+          sessionId,
+          body,
+          ctx.state.adminEntityId,
+        ),
       });
     });
   }
@@ -641,7 +710,11 @@ export async function handleBrowserBridgeRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, {
-        session: await service.completeBrowserSession(sessionId, body),
+        session: await service.completeBrowserSession(
+          sessionId,
+          body,
+          ctx.state.adminEntityId,
+        ),
       });
     });
   }
@@ -674,6 +747,7 @@ export async function handleBrowserBridgeRoutes(
           auth.pairingToken,
           sessionId,
           body,
+          ctx.state.adminEntityId,
         ),
       });
     });
@@ -707,6 +781,7 @@ export async function handleBrowserBridgeRoutes(
           auth.pairingToken,
           sessionId,
           body,
+          ctx.state.adminEntityId,
         ),
       });
     });

@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("widgetVisibilityKey", () => {
-  it("returns ${pluginId}/${id}", () => {
+  it("returns pluginId/id", () => {
     expect(widgetVisibilityKey("lifeops", "lifeops.calendar")).toBe(
       "lifeops/lifeops.calendar",
     );

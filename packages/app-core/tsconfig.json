@@ -64,6 +64,7 @@
       "@elizaos/skills/*": ["./packages/skills/src/*"],
       "@elizaos/core": ["./packages/typescript/src/index.ts"],
       "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/capacitor-*": ["./packages/native-plugins/*/src/index.ts"],
       "@elizaos/native-activity-tracker": [
         "./packages/native-plugins/activity-tracker/src/index.ts"
       ],

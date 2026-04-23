@@ -44,7 +44,7 @@
     "verify:web": "npm run build",
     "lint": "npm run eslint && npm run prettier -- --check && npm run swiftlint -- lint",
     "fmt": "npm run eslint -- --fix && npm run prettier -- --write && npm run swiftlint -- lint --fix",
-    "eslint": "eslint . --ext ts",
+    "eslint": "eslint . --ext ts --config eslint.config.mjs",
     "prettier": "prettier \"**/*.{css,html,ts,js,java}\"",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",

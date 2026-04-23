@@ -12,11 +12,6 @@ import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 
-type StreamableServerResponse = Pick<
-  http.ServerResponse,
-  "write" | "once" | "off" | "removeListener" | "writableEnded" | "destroyed"
->;
-
 function tokenMatches(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected);
   const providedBuf = Buffer.from(provided);
@@ -681,7 +676,6 @@ const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 import {
   resolveMcpServersRejection as _resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
-  validateMcpServerConfig as _validateMcpServerConfig,
 } from "./server-helpers-mcp.js";
 
 export {
@@ -690,7 +684,6 @@ export {
   validateMcpServerConfig,
 } from "./server-helpers-mcp.js";
 
-const validateMcpServerConfig = _validateMcpServerConfig;
 const resolveMcpServersRejection = _resolveMcpServersRejection;
 
 // ---------------------------------------------------------------------------
@@ -876,11 +869,7 @@ function buildPluginEvmDiagnosticEntry(
 }
 
 // Wallet intent/export helpers extracted to server-helpers-wallet.ts
-import {
-  hasUsableWalletFallbackParams as _hasUsableWalletFallbackParams,
-  inferWalletExecutionFallback as _inferWalletExecutionFallback,
-  resolveWalletExportRejection as _resolveWalletExportRejection,
-} from "./server-helpers-wallet.js";
+import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.js";
 
 export {
   hasUsableWalletFallbackParams,
@@ -889,15 +878,10 @@ export {
   type WalletExportRejection,
 } from "./server-helpers-wallet.js";
 
-const inferWalletExecutionFallback = _inferWalletExecutionFallback;
-const hasUsableWalletFallbackParams = _hasUsableWalletFallbackParams;
 const resolveWalletExportRejection = _resolveWalletExportRejection;
 
 // Plugin config helpers extracted to server-helpers-plugin.ts
-import {
-  resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections,
-  resolvePluginConfigReply as _resolvePluginConfigReply,
-} from "./server-helpers-plugin.js";
+import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.js";
 
 export {
   type PluginConfigMutationRejection,
@@ -905,7 +889,6 @@ export {
   resolvePluginConfigReply,
 } from "./server-helpers-plugin.js";
 
-const resolvePluginConfigReply = _resolvePluginConfigReply;
 const resolvePluginConfigMutationRejections =
   _resolvePluginConfigMutationRejections;
 
@@ -961,7 +944,6 @@ import {
   clearPairing as _clearPairing,
   ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
   ensurePairingCode as _ensurePairingCode,
-  extractAuthToken as _extractAuthToken,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
   isAllowedHost as _isAllowedHost,
@@ -973,7 +955,6 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
-  resolveCorsOrigin as _resolveCorsOrigin,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
@@ -994,9 +975,7 @@ export {
 } from "./server-helpers-auth.js";
 
 const isAllowedHost = _isAllowedHost;
-const resolveCorsOrigin = _resolveCorsOrigin;
 const applyCors = _applyCors;
-const extractAuthToken = _extractAuthToken;
 const isAuthorized = _isAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;

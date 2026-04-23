@@ -25,9 +25,7 @@ export function asRecord(value: unknown): UnknownRecord | null {
  * when the value is not an object record. Useful when you want to chain
  * with `?.` operators.
  */
-export function asRecordOrUndefined(
-  value: unknown,
-): UnknownRecord | undefined {
+export function asRecordOrUndefined(value: unknown): UnknownRecord | undefined {
   return asRecord(value) ?? undefined;
 }
 

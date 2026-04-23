@@ -33,7 +33,7 @@
         "@vitest/coverage-v8": "^4.0.17",
         "@vitest/ui": "^4.0.17",
         "jsdom": "^26.0.0",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.0",
         "vite": "^6.0.1",
         "vitest": "^4.0.17"
     }

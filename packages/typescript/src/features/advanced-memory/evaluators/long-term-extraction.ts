@@ -12,11 +12,11 @@ import {
 	isTransientModelError,
 } from "../../../utils/model-errors.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
-import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
 const spec = requireEvaluatorSpec("LONG_TERM_MEMORY_EXTRACTION");
 const validMemoryCategories = new Set(Object.values(LongTermMemoryCategory));

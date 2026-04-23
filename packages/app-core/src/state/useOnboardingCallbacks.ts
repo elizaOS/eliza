@@ -233,9 +233,7 @@ export interface OnboardingCallbacksDeps {
   setOnboardingDetectedProviders: (
     v: AppState["onboardingDetectedProviders"],
   ) => void;
-  setOnboardingServerTarget: (
-    v: AppState["onboardingServerTarget"],
-  ) => void;
+  setOnboardingServerTarget: (v: AppState["onboardingServerTarget"]) => void;
   setOnboardingCloudApiKey: (v: string) => void;
   setOnboardingProvider: (v: string) => void;
   setOnboardingApiKey: (v: string) => void;
@@ -461,10 +459,11 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           });
           const defaultName =
             style.name ?? getDefaultStylePreset(uiLanguage).name;
-          const fastTrackSandboxMode =
-            isElizaCloudOnboardingTarget(onboardingServerTarget)
-              ? "standard"
-              : "off";
+          const fastTrackSandboxMode = isElizaCloudOnboardingTarget(
+            onboardingServerTarget,
+          )
+            ? "standard"
+            : "off";
 
           await client.submitOnboarding({
             name: onboardingName || defaultName,
@@ -542,8 +541,9 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           ? style.system.replace(/\{\{name\}\}/g, onboardingName)
           : `You are ${onboardingName}, an autonomous AI agent powered by elizaOS. ${onboardingOptions.sharedStyleRules}`;
 
-        const isSandboxMode =
-          isElizaCloudOnboardingTarget(onboardingServerTarget);
+        const isSandboxMode = isElizaCloudOnboardingTarget(
+          onboardingServerTarget,
+        );
         const isLocalMode =
           onboardingServerTarget === "local" || !onboardingServerTarget;
         const isRemoteMode = onboardingServerTarget === "remote";

@@ -10,11 +10,11 @@ import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
 import { useCallback, useReducer, useRef } from "react";
 import type { OnboardingOptions } from "../api";
 import { isElectrobunRuntime } from "../bridge";
+import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import {
   activeServerKindToOnboardingServerTarget,
   type OnboardingServerTarget,
 } from "../onboarding/server-target";
-import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,

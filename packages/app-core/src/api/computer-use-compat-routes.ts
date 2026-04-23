@@ -262,8 +262,14 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
+    const approvalId = match[1];
+    if (approvalId === undefined) {
+      sendJsonErrorResponse(res, 400, "Missing approval id");
+      return true;
+    }
+
     const resolution = service.resolveApproval(
-      decodeURIComponent(match[1]!),
+      decodeURIComponent(approvalId),
       body.approved,
       typeof body.reason === "string" ? body.reason : undefined,
     );

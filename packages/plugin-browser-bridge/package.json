@@ -12,6 +12,7 @@
     "./contracts": "./src/contracts.ts",
     "./packaging": "./src/packaging.ts",
     "./routes": "./src/routes.ts",
+    "./service": "./src/service.ts",
     "./plugin": "./src/plugin.ts"
   },
   "scripts": {
@@ -19,7 +20,6 @@
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
-    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "^0.45.1"

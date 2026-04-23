@@ -5,12 +5,12 @@ import {
   useMemo,
   useState,
 } from "react";
-import { getPlugins } from "../../bridge/plugin-bridge";
 import type {
   AndroidRoleStatus,
   ContactSummary,
   SmsMessageSummary,
 } from "../../bridge/native-plugins";
+import { getPlugins } from "../../bridge/plugin-bridge";
 
 function useLaunchParams(): URLSearchParams {
   const [params, setParams] = useState(() => readLaunchParams());
@@ -182,7 +182,9 @@ function numberFromTelUri(uri: string | null): string {
 
 export function PhonePageView() {
   const params = useLaunchParams();
-  const [number, setNumber] = useState(() => numberFromTelUri(params.get("uri")));
+  const [number, setNumber] = useState(() =>
+    numberFromTelUri(params.get("uri")),
+  );
   const [status, setStatus] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -255,7 +257,9 @@ export function PhonePageView() {
       if (typeof plugins.phone.plugin.openDialer !== "function") {
         throw new Error("MiladyPhone plugin is unavailable");
       }
-      await plugins.phone.plugin.openDialer({ number: number.trim() || undefined });
+      await plugins.phone.plugin.openDialer({
+        number: number.trim() || undefined,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -265,7 +269,10 @@ export function PhonePageView() {
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4">
-      <Panel title="Phone" description="MiladyOS phone role and Android Telecom surface.">
+      <Panel
+        title="Phone"
+        description="MiladyOS phone role and Android Telecom surface."
+      >
         <div className="grid gap-3">
           <TextInput
             label="Number"
@@ -315,7 +322,8 @@ export function MessagesPageView() {
   const [notice, setNotice] = useState<string | null>(() => {
     const event = params.get("event");
     if (!event) return null;
-    if (params.get("unsupported")) return `${event}: MMS WAP push needs parser support.`;
+    if (params.get("unsupported"))
+      return `${event}: MMS WAP push needs parser support.`;
     return event;
   });
   const [error, setError] = useState<string | null>(null);
@@ -402,7 +410,10 @@ export function MessagesPageView() {
           <StatusNotice error={error} notice={notice} />
         </div>
       </Panel>
-      <Panel title="Messages" description="Recent rows from Android's SMS provider.">
+      <Panel
+        title="Messages"
+        description="Recent rows from Android's SMS provider."
+      >
         <div className="mb-3">
           <SecondaryButton disabled={busy} onClick={refresh}>
             Refresh
@@ -422,7 +433,9 @@ export function MessagesPageView() {
                     {new Date(message.date).toLocaleString()}
                   </span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-txt">{message.body}</p>
+                <p className="mt-2 whitespace-pre-wrap text-txt">
+                  {message.body}
+                </p>
               </div>
             ))
           ) : (
@@ -500,7 +513,10 @@ export function ContactsPageView() {
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
-      <Panel title="Create Contact" description="Write into Android ContactsProvider.">
+      <Panel
+        title="Create Contact"
+        description="Write into Android ContactsProvider."
+      >
         <div className="grid gap-3">
           <TextInput
             label="Display Name"
@@ -541,7 +557,9 @@ export function ContactsPageView() {
                 key={contact.id}
                 className="rounded border border-border bg-bg p-3 text-sm"
               >
-                <div className="font-medium text-txt">{contact.displayName}</div>
+                <div className="font-medium text-txt">
+                  {contact.displayName}
+                </div>
                 <div className="mt-1 text-muted">
                   {contact.phoneNumbers.length > 0
                     ? contact.phoneNumbers.join(", ")

@@ -477,7 +477,10 @@ export async function handleCloudTtsPreviewRoute(
     let lastDetails = "unknown error";
     let cloudResponse: Response | null = null;
     for (let i = 0; i < cloudUrls.length; i++) {
-      const cloudUrl = cloudUrls[i]!;
+      const cloudUrl = cloudUrls[i];
+      if (cloudUrl === undefined) {
+        continue;
+      }
       const attempt = await fetch(cloudUrl, {
         method: "POST",
         headers: {
