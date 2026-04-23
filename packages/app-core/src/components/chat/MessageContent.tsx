@@ -323,7 +323,7 @@ function parseSegments(text: string): Segment[] {
   const cleaned = normalizeDisplayText(text);
   if (!cleaned) return [{ kind: "text", text: "" }];
 
-  // Build a unified list of match regions sorted by position
+  // Build a list of match regions sorted by position
   const regions: Array<{ start: number; end: number; segment: Segment }> = [];
 
   // 1. Find [CONFIG:pluginId] markers

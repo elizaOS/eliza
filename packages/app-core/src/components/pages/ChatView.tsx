@@ -760,7 +760,7 @@ export function TerminalChannelPanel({
 }
 
 /**
- * Connector chat panel shown when the unified messages sidebar has a
+ * Connector chat panel shown when the messages sidebar has a
  * room selected. Polls `/api/inbox/messages?roomId=...`, renders the
  * transcript through the same ChatTranscript component the dashboard
  * uses, and routes outbound replies back through the runtime's

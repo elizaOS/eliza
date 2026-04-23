@@ -1,7 +1,7 @@
 /**
  * Media Provider Abstraction Layer
  *
- * Provides a unified interface for media generation across multiple providers:
+ * Provides a single interface for media generation across multiple providers:
  * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI, Eliza Cloud
  * - Video Generation: FAL.ai, OpenAI (Sora), Google (Veo), Eliza Cloud
  * - Audio Generation: Suno, ElevenLabs (SFX), Eliza Cloud

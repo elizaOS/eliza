@@ -25,7 +25,7 @@ describe("assessFit", () => {
   });
 
   it("marks models larger than 90% of effective memory as wontfit", () => {
-    // 16 GB unified memory → 14.4 GB ceiling; 15 GB model wont fit.
+    // 16 GB shared memory → 14.4 GB ceiling; 15 GB model wont fit.
     const probe = makeProbe({ totalRamGb: 16, appleSilicon: true });
     expect(assessFit(probe, 15, 8)).toBe("wontfit");
   });

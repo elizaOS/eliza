@@ -1,5 +1,5 @@
 /**
- * Retention + daily rollup runner for the unified telemetry store. Called
+ * Retention + daily rollup runner for the canonical telemetry store. Called
  * from the scheduler tick (see `service-mixin-reminders.ts`) at most once
  * per UTC day per runtime process.
  *

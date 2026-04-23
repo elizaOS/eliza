@@ -2644,7 +2644,7 @@ export class LifeOpsRepository {
       )`,
     );
 
-    // Mirror into the unified telemetry store. Dedupes on
+    // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
     // Failures here must not block signal persistence — the legacy table is
     // still the primary source of truth for the scorer.

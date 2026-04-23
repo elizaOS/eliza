@@ -783,7 +783,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
       );
 
     _telegramBot = bot;
-    // Telegram bot cleanup is handled by the unified signal handler in
+    // Telegram bot cleanup is handled by the central signal handler in
     // startEliza() via _telegramBot — no separate registration needed.
 
     await new Promise((r) => setTimeout(r, 500));

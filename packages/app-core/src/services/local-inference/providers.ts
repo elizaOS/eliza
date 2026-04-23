@@ -1,5 +1,5 @@
 /**
- * Unified provider registry.
+ * Provider registry.
  *
  * Treats every inference source the same way — cloud subscription, cloud
  * API, local llama.cpp engine, paired-device bridge, Capacitor on-device
@@ -12,7 +12,7 @@
  * report what they can introspect without depending on the specific
  * cloud-plugin internals, and hand off to the existing ProviderSwitcher
  * UI for actual enable/disable via `configureHref`. That avoids the
- * "unified enable matrix is an architectural project" problem by making
+ * "combined enable matrix is an architectural project" problem by making
  * configuration navigable rather than centralised.
  */
 

@@ -2,7 +2,7 @@
  * Shared mapper from a persisted `LifeOpsActivitySignal` into a
  * `LifeOpsTelemetryPayload`. Used by the live writer in
  * `LifeOpsRepository.createActivitySignal` so every signal is mirrored into
- * the unified `life_telemetry_events` store with a dedupe-stable payload.
+ * the canonical `life_telemetry_events` store with a dedupe-stable payload.
  *
  * See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` §8 for the
  * canonical mapping table.

@@ -668,7 +668,7 @@ export interface AppState {
   activeOverlayApp: string | null;
 
   /**
-   * Currently-selected connector chat in the unified messages sidebar.
+   * Currently-selected connector chat in the messages sidebar.
    * When non-null, the Chat view swaps its main panel out for a
    * read-only view of that room's inbox messages. Mutually exclusive
    * with an active dashboard conversation.

@@ -1,4 +1,4 @@
-// Registry loader. Reads, validates, and indexes the unified registry.
+// Registry loader. Reads, validates, and indexes the registry.
 //
 // Static data only. Runtime overlay (enabled, configured, isActive) is merged
 // in at the API layer via mergeWithRuntime() — the loader never touches it.

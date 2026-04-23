@@ -1,5 +1,5 @@
 /**
- * AutomationsView — unified list/detail UI for coordinator and workflow automations.
+ * AutomationsView — list/detail UI for coordinator and workflow automations.
  */
 
 import {

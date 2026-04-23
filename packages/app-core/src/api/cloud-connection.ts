@@ -326,7 +326,7 @@ function withCreditFlags(balance: number): CloudCreditsResponse {
   };
 }
 
-export async function fetchUnifiedCloudCredits(
+export async function fetchCloudCredits(
   config: Partial<ElizaConfig>,
   runtime: AgentRuntime | null,
 ): Promise<CloudCreditsResponse> {
@@ -517,7 +517,7 @@ async function clearRuntimeCloudState(
   }
 }
 
-export async function disconnectUnifiedCloudConnection(args: {
+export async function disconnectCloudConnection(args: {
   cloudManager?: CloudManagerLike;
   config: Partial<ElizaConfig>;
   runtime: AgentRuntime | null;
@@ -528,7 +528,7 @@ export async function disconnectUnifiedCloudConnection(args: {
   if (isElizaSettingsDebugEnabled()) {
     const c = config.cloud as Record<string, unknown> | undefined;
     logger.debug(
-      `[eliza][settings][cloud] disconnectUnifiedCloudConnection start cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
+      `[eliza][settings][cloud] disconnectCloudConnection start cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
     );
   }
 
@@ -566,7 +566,7 @@ export async function disconnectUnifiedCloudConnection(args: {
     if (isElizaSettingsDebugEnabled()) {
       const c = config.cloud as Record<string, unknown> | undefined;
       logger.debug(
-        `[eliza][settings][cloud] disconnectUnifiedCloudConnection saveConfig OK cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
+        `[eliza][settings][cloud] disconnectCloudConnection saveConfig OK cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
       );
     }
   } catch (err) {
@@ -582,7 +582,7 @@ export async function disconnectUnifiedCloudConnection(args: {
 
   if (isElizaSettingsDebugEnabled()) {
     logger.debug(
-      "[eliza][settings][cloud] disconnectUnifiedCloudConnection done (env cleared + runtime cloud state cleared)",
+      "[eliza][settings][cloud] disconnectCloudConnection done (env cleared + runtime cloud state cleared)",
     );
   }
 }

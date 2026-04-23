@@ -319,7 +319,6 @@ export const ownerInboxAction: Action & {
     "EMAIL",
     "CHECK_EMAIL",
     "CHECK_INBOX",
-    "UNIFIED_INBOX",
     "DAILY_BRIEF",
     "DAILY_DIGEST",
     "INBOX_DIGEST",
@@ -347,7 +346,6 @@ export const ownerInboxAction: Action & {
     "SEARCH_ALL_CHANNELS",
     "SEARCH_EVERYWHERE",
     "FIND_ACROSS_PLATFORMS",
-    "UNIFIED_SEARCH",
   ],
   tags: [
     "always-include",

@@ -1,7 +1,7 @@
 /**
  * Onboarding Types
  *
- * Type definitions for the unified onboarding state machine that supports
+ * Type definitions for the onboarding state machine that supports
  * both CLI and conversational (DM) onboarding flows.
  */
 

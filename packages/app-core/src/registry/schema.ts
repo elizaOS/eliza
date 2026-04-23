@@ -1,4 +1,4 @@
-// Unified registry SoT for apps, plugins, and connectors.
+// Registry SoT for apps, plugins, and connectors.
 //
 // Replaces the fragmented surface of:
 //   - plugins.json (97 entries, 5 categories)

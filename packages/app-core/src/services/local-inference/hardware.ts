@@ -22,7 +22,7 @@ function bytesToGb(bytes: number): number {
 /**
  * Pick a default bucket based on total available memory and architecture.
  *
- * On Apple Silicon the GPU shares system RAM, so unified memory acts as VRAM.
+ * On Apple Silicon the GPU shares system RAM, so shared memory acts as VRAM.
  * On discrete-GPU x86 boxes we weight VRAM higher than system RAM.
  */
 function recommendBucket(
@@ -90,7 +90,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 
   if (!binding) {
     // OS-only fallback: we cannot detect GPU without the binding, so treat as
-    // CPU-only. On Apple Silicon unified memory still makes mid-sized models
+    // CPU-only. On Apple Silicon shared memory still makes mid-sized models
     // viable, which `recommendBucket` handles.
     const totalRamGb = bytesToGb(totalRamBytes);
     return {

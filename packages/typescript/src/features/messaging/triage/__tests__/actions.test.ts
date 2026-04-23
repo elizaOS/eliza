@@ -8,7 +8,7 @@ import type {
 import { asUUID } from "../../../../types/index.ts";
 import { draftFollowupAction } from "../actions/draftFollowup.ts";
 import { draftReplyAction } from "../actions/draftReply.ts";
-import { listUnifiedInboxAction } from "../actions/listUnifiedInbox.ts";
+import { listInboxAction } from "../actions/listInbox.ts";
 import { sendDraftAction } from "../actions/sendDraft.ts";
 import { triageMessagesAction } from "../actions/triageMessages.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";
@@ -150,14 +150,10 @@ describe("triage actions", () => {
 		);
 	});
 
-	it("LIST_UNIFIED_INBOX: action metadata matches spec", () => {
-		expect(listUnifiedInboxAction.name).toBe("LIST_UNIFIED_INBOX");
-		expect(listUnifiedInboxAction.similes).toEqual(
-			expect.arrayContaining([
-				"UNIFIED_INBOX",
-				"LIST_MESSAGES",
-				"SHOW_UNREAD_ACROSS",
-			]),
+	it("LIST_INBOX: action metadata matches spec", () => {
+		expect(listInboxAction.name).toBe("LIST_INBOX");
+		expect(listInboxAction.similes).toEqual(
+			expect.arrayContaining(["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"]),
 		);
 	});
 
@@ -204,10 +200,10 @@ describe("triage actions", () => {
 		expect(data?.count).toBeGreaterThanOrEqual(2);
 	});
 
-	it("LIST_UNIFIED_INBOX: returns unread across sources", async () => {
+	it("LIST_INBOX: returns unread across sources", async () => {
 		registerOntoDefault();
 		const runtime = createFakeRuntime();
-		const result = await listUnifiedInboxAction.handler(
+		const result = await listInboxAction.handler(
 			runtime,
 			makeMemory(),
 			undefined,

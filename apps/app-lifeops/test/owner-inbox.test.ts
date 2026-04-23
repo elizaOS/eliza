@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("OWNER_INBOX routing", () => {
-  it("routes gmail digest to gmail triage, not the unified inbox delegate", async () => {
+  it("routes gmail digest to gmail triage, not the inbox delegate", async () => {
     const gmailSpy = vi
       .spyOn(gmailAction, "handler")
       .mockResolvedValue(ok("gmail triage"));

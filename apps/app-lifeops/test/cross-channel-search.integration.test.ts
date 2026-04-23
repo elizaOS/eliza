@@ -1,5 +1,5 @@
 /**
- * Integration test for WS1 cross-channel unified search.
+ * Integration test for WS1 cross-channel search.
  *
  * Boots a real AgentRuntime on PGLite, seeds messages into three rooms
  * (each pinned to a different platform via `source`), runs the
@@ -7,7 +7,7 @@
  * and asserts merged citations across all three platforms.
  *
  * Run:
- *   bunx vitest run eliza/apps/app-lifeops/test/unified-search.integration.test.ts
+ *   bunx vitest run eliza/apps/app-lifeops/test/cross-channel-search.integration.test.ts
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
 import { searchAcrossChannelsAction } from "../src/actions/search-across-channels.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
-import { runUnifiedSearch } from "../src/lifeops/unified-search.js";
+import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
@@ -41,7 +41,7 @@ const isolatedEnvKeys = [
 const previousEnv = new Map<string, string | undefined>();
 
 function setIsolatedEnv(): void {
-  isolatedStateDir = mkdtempSync(join(tmpdir(), "unified-search-state-"));
+  isolatedStateDir = mkdtempSync(join(tmpdir(), "cross-channel-search-state-"));
   isolatedConfigPath = join(isolatedStateDir, "milady.json");
   writeFileSync(
     isolatedConfigPath,
@@ -114,8 +114,6 @@ async function seedMessage(input: SeedMessageInput): Promise<{
     createdAt: Date.now() - input.ageMs,
   };
 
-  // Generate the embedding up-front so searchMemories() matches by cosine
-  // distance rather than text scan.
   const embedded = await runtime.addEmbeddingToMemory(memory as never);
   await runtime.createMemory(embedded as never, "messages");
 
@@ -164,9 +162,9 @@ afterAll(async () => {
   rmSync(isolatedStateDir, { recursive: true, force: true });
 });
 
-describe("unified-search WS1 integration", () => {
-  it("runUnifiedSearch returns hits from all three platforms with typed unsupported markers when asked", async () => {
-    const result = await runUnifiedSearch(runtime, {
+describe("cross-channel-search WS1 integration", () => {
+  it("runCrossChannelSearch returns hits from all three platforms with typed unsupported markers when asked", async () => {
+    const result = await runCrossChannelSearch(runtime, {
       query: "ProjectAtlas",
       channels: [
         "memory",
@@ -179,26 +177,20 @@ describe("unified-search WS1 integration", () => {
       limit: 5,
     });
 
-    // Memory fan-out returns all three seeded messages.
     const platforms = new Set(result.hits.map((h) => h.channel));
     expect(platforms.has("discord")).toBe(true);
     expect(platforms.has("telegram")).toBe(true);
     expect(platforms.has("imessage")).toBe(true);
 
-    // Every hit carries a citation back to its source room + timestamp.
     for (const hit of result.hits) {
       expect(hit.citation.platform).toBeTruthy();
       expect(typeof hit.timestamp).toBe("string");
       expect(hit.sourceRef.length).toBeGreaterThan(0);
     }
 
-    // Connectors without native search that were explicitly requested
-    // emit typed unsupported markers — never fabricated results.
     const unsupportedChannels = result.unsupported.map((u) => u.channel);
     expect(unsupportedChannels).toContain("signal");
 
-    // Gmail lacks a LifeOpsService grant in the isolated test runtime, so
-    // it reports as unsupported rather than failing silently.
     const gmailStatus =
       result.unsupported.find((u) => u.channel === "gmail") ??
       result.degraded.find((d) => d.channel === "gmail");
@@ -249,15 +241,12 @@ describe("unified-search WS1 integration", () => {
     expect(channels.has("telegram")).toBe(true);
     expect(channels.has("imessage")).toBe(true);
 
-    // Each hit carries a line number (clipboard-ready), a channel tag, and
-    // a citation with both platform + label.
     for (const hit of record.data.hits) {
       expect(typeof hit.line).toBe("number");
       expect(hit.citation.platform).toBeTruthy();
       expect(hit.citation.label).toBeTruthy();
     }
 
-    // At least 3 channels surfaced hits.
     expect(record.data.channelsWithHits.length).toBeGreaterThanOrEqual(3);
   }, 120_000);
 
@@ -279,12 +268,7 @@ describe("unified-search WS1 integration", () => {
       success: boolean;
       data: { noop?: boolean };
     };
-    // Either the LLM returned shouldAct:false, or we have no LLM and the
-    // handler falls back to the clarification path. In either case the
-    // response should be a successful no-op, not a fabricated result.
     expect(record.success).toBe(true);
-    // data.noop should be true when the query was not derivable
-    // (or when the LLM returned shouldAct=false / null query).
     expect(record.data?.noop === true || record.data?.noop === undefined).toBe(
       true,
     );
