@@ -2,6 +2,7 @@ import { Button } from "@elizaos/app-core";
 import {
   Bell,
   Camera,
+  FolderLock,
   Heart,
   MapPin,
   Mic,
@@ -70,6 +71,14 @@ function macosPermissions(): PermissionEntry[] {
       name: "Microphone",
       description: "Voice commands",
       icon: <Mic className={ICON_CLASS} />,
+      status: "unknown",
+    },
+    {
+      id: "full-disk-access",
+      name: "Full Disk Access",
+      description:
+        "iMessage outbound timestamps for wake detection (chat.db). Optional — when revoked the iMessage probe is skipped.",
+      icon: <FolderLock className={ICON_CLASS} />,
       status: "unknown",
     },
   ];

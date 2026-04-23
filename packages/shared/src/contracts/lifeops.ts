@@ -767,15 +767,49 @@ export type LifeOpsWorkflowSchedule =
     }
   | {
       kind: "relative_to_wake";
+      /** Minutes offset from wake anchor (wake.confirmed). Negative = before. */
+      offsetMinutes: number;
+      timezone: string;
+      onDays?: number[];
+      /** Minimum regularity required before projecting an anchor. Default: `regular`. */
+      requireRegularityAtLeast?: LifeOpsRegularityClass;
+      /**
+       * Minutes of sustained awake state after `wake.observed` required before
+       * the workflow fires. When set, the resolver waits for a `wake.confirmed`
+       * event rather than using the raw wake anchor.
+       */
+      stabilityWindowMinutes?: number;
+    }
+  | {
+      kind: "relative_to_bedtime";
       offsetMinutes: number;
       timezone: string;
       onDays?: number[];
       requireRegularityAtLeast?: LifeOpsRegularityClass;
     }
   | {
-      kind: "relative_to_bedtime";
-      offsetMinutes: number;
+      /**
+       * Fires during the canonical "morning" window anchored on the latest
+       * wake.confirmed. The window starts at `wakeConfirmedAt` and ends
+       * `windowMinutesFromWake` later (default 240). Workflow scheduler emits
+       * exactly once per morning window when the workflow becomes eligible.
+       */
+      kind: "during_morning";
       timezone: string;
+      windowMinutesFromWake?: number;
+      onDays?: number[];
+      requireRegularityAtLeast?: LifeOpsRegularityClass;
+    }
+  | {
+      /**
+       * Fires during the canonical "night" window anchored on the projected
+       * bedtime target. The window starts `windowMinutesBeforeSleepTarget`
+       * before the bedtime target and ends at `sleep.detected`. Fires exactly
+       * once per night window when the workflow becomes eligible.
+       */
+      kind: "during_night";
+      timezone: string;
+      windowMinutesBeforeSleepTarget?: number;
       onDays?: number[];
       requireRegularityAtLeast?: LifeOpsRegularityClass;
     }

@@ -1,4 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+
+import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,
@@ -10,45 +12,45 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "@elizaos/app-lifeops/contracts";
 import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/app-lifeops/contracts";
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
 import {
   createLifeOpsWorkflowDefinition,
   createLifeOpsWorkflowRun,
 } from "./repository.js";
 import {
-  fail,
-  normalizeIsoString,
-  normalizeOptionalBoolean,
-  normalizeEnumValue,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import {
-  normalizeWorkflowTriggerType,
-  normalizeWorkflowSchedule,
-  normalizeWorkflowPermissionPolicy,
-} from "./service-normalize-connector.js";
-import {
-  normalizeWorkflowActionPlan,
-} from "./service-normalize-task.js";
+  describeWorkflowValue,
+  parseWorkflowSchedulerState,
+} from "./service-helpers-browser.js";
 import {
   isRecord,
   normalizeOptionalRecord,
   requireRecord,
 } from "./service-helpers-misc.js";
-import {
-  describeWorkflowValue,
-  parseWorkflowSchedulerState,
-} from "./service-helpers-browser.js";
-import { addMinutes } from "./time.js";
-import type { LifeOpsWorkflowSchedulerState, ExecuteWorkflowResult } from "./service-types.js";
-import { LifeOpsServiceError } from "./service-types.js";
-import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
-import type { LifeOpsDerivedEvent } from "./sleep-wake-events.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeIsoString,
+  normalizeOptionalBoolean,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import {
+  normalizeWorkflowPermissionPolicy,
+  normalizeWorkflowSchedule,
+  normalizeWorkflowTriggerType,
+} from "./service-normalize-connector.js";
+import { normalizeWorkflowActionPlan } from "./service-normalize-task.js";
+import type {
+  ExecuteWorkflowResult,
+  LifeOpsWorkflowSchedulerState,
+} from "./service-types.js";
+import { LifeOpsServiceError } from "./service-types.js";
+import type { LifeOpsDerivedEvent } from "./sleep-wake-events.js";
+import { addMinutes } from "./time.js";
 
 export interface LifeOpsWorkflowService {
   listWorkflows(): Promise<LifeOpsWorkflowRecord[]>;
@@ -184,8 +186,12 @@ function matchesLifeOpsDerivedEventFilters(
     ) {
       return false;
     }
-    if (Array.isArray(record.fromIncludesAny) && record.fromIncludesAny.length > 0) {
-      const sender = `${String(payload.from ?? "")} ${String(payload.fromEmail ?? "")}`.toLowerCase();
+    if (
+      Array.isArray(record.fromIncludesAny) &&
+      record.fromIncludesAny.length > 0
+    ) {
+      const sender =
+        `${String(payload.from ?? "")} ${String(payload.fromEmail ?? "")}`.toLowerCase();
       if (
         !record.fromIncludesAny.some((needle) =>
           sender.includes(String(needle).toLowerCase()),
@@ -251,7 +257,9 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         schedule.kind === "manual" ||
         schedule.kind === "event" ||
         schedule.kind === "relative_to_wake" ||
-        schedule.kind === "relative_to_bedtime"
+        schedule.kind === "relative_to_bedtime" ||
+        schedule.kind === "during_morning" ||
+        schedule.kind === "during_night"
       ) {
         return null;
       }
@@ -260,7 +268,10 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (schedule.kind === "interval") {
         const baseIso = cursorIso ?? workflow.createdAt;
-        return addMinutes(new Date(baseIso), schedule.everyMinutes).toISOString();
+        return addMinutes(
+          new Date(baseIso),
+          schedule.everyMinutes,
+        ).toISOString();
       }
       const baseMs = cursorIso
         ? Date.parse(cursorIso)
@@ -383,7 +394,9 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         if (
           schedulerState.nextDueAt === null &&
           (nextWorkflow.schedule.kind === "relative_to_wake" ||
-            nextWorkflow.schedule.kind === "relative_to_bedtime")
+            nextWorkflow.schedule.kind === "relative_to_bedtime" ||
+            nextWorkflow.schedule.kind === "during_morning" ||
+            nextWorkflow.schedule.kind === "during_night")
         ) {
           const effectiveSchedule = await this.readEffectiveScheduleState({
             timezone: nextWorkflow.schedule.timezone,
@@ -422,7 +435,9 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
           await this.emitWorkflowRunNudge(nextWorkflow, run);
           const nextDueAt =
             nextWorkflow.schedule.kind === "relative_to_wake" ||
-            nextWorkflow.schedule.kind === "relative_to_bedtime"
+            nextWorkflow.schedule.kind === "relative_to_bedtime" ||
+            nextWorkflow.schedule.kind === "during_morning" ||
+            nextWorkflow.schedule.kind === "during_night"
               ? resolveNextRelativeScheduleInstant({
                   schedule: nextWorkflow.schedule,
                   state: await this.readEffectiveScheduleState({
@@ -490,17 +505,16 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         }
         let nextWorkflow = workflow;
         const existingState = this.readWorkflowSchedulerState(nextWorkflow);
-        let schedulerState: LifeOpsWorkflowSchedulerState =
-          existingState ?? {
-            managedBy: "task_worker",
-            nextDueAt: null,
-            lastDueAt: null,
-            lastRunId: null,
-            lastRunStatus: null,
-            updatedAt: new Date().toISOString(),
-            lastFiredEventEndAt: nextWorkflow.createdAt,
-            lastFiredEventId: null,
-          };
+        let schedulerState: LifeOpsWorkflowSchedulerState = existingState ?? {
+          managedBy: "task_worker",
+          nextDueAt: null,
+          lastDueAt: null,
+          lastRunId: null,
+          lastRunStatus: null,
+          updatedAt: new Date().toISOString(),
+          lastFiredEventEndAt: nextWorkflow.createdAt,
+          lastFiredEventId: null,
+        };
         let stateChanged = existingState === null;
 
         const remaining = args.limit - runs.length;
@@ -682,7 +696,10 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
       const definition = await this.getWorkflowDefinition(workflowId);
       return {
         definition,
-        runs: await this.repository.listWorkflowRuns(this.agentId(), workflowId),
+        runs: await this.repository.listWorkflowRuns(
+          this.agentId(),
+          workflowId,
+        ),
       };
     }
 
@@ -889,8 +906,9 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
             }
           } else if (step.kind === "summarize") {
             const sourceValue =
-              (step.sourceKey ? outputs[step.sourceKey] : steps.at(-1)?.value) ??
-              null;
+              (step.sourceKey
+                ? outputs[step.sourceKey]
+                : steps.at(-1)?.value) ?? null;
             value = {
               text: describeWorkflowValue(sourceValue, step.prompt),
             };

@@ -1,10 +1,13 @@
 package ai.eliza.plugins.system
 
 import android.app.role.RoleManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.provider.Telephony
+import android.telecom.TelecomManager
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -31,7 +34,7 @@ class SystemPlugin : Plugin() {
             for ((name, androidRole) in roleMap) {
                 val role = JSObject()
                 val available = roleManager.isRoleAvailable(androidRole)
-                val holders = if (available) roleManager.getRoleHolders(androidRole) else emptyList()
+                val holders = if (available) roleHolders(name) else emptyList()
                 val held = holders.contains(context.packageName)
                 role.put("role", name)
                 role.put("androidRole", androidRole)
@@ -43,6 +46,34 @@ class SystemPlugin : Plugin() {
         }
         result.put("roles", roles)
         call.resolve(result)
+    }
+
+    private fun roleHolders(name: String): List<String> {
+        return when (name) {
+            "home" -> listOfNotNull(resolveHomePackage())
+            "dialer" -> listOfNotNull(resolveDefaultDialerPackage())
+            "sms" -> listOfNotNull(Telephony.Sms.getDefaultSmsPackage(context))
+            "assistant" -> listOfNotNull(resolveAssistantPackage())
+            else -> emptyList()
+        }
+    }
+
+    private fun resolveHomePackage(): String? {
+        val intent = Intent(Intent.ACTION_MAIN)
+        intent.addCategory(Intent.CATEGORY_HOME)
+        val resolved = context.packageManager.resolveActivity(intent, 0)
+        return resolved?.activityInfo?.packageName
+    }
+
+    private fun resolveDefaultDialerPackage(): String? {
+        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+        return telecom?.defaultDialerPackage
+    }
+
+    private fun resolveAssistantPackage(): String? {
+        val flattened = Settings.Secure.getString(context.contentResolver, "assistant")
+        if (flattened.isNullOrBlank()) return null
+        return ComponentName.unflattenFromString(flattened)?.packageName
     }
 
     @PluginMethod

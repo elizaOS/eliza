@@ -1,14 +1,4 @@
-import type {
-  BrowserBridgeKind,
-  BrowserBridgePermissionState,
-  BrowserBridgeSettings,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import {
-  BROWSER_BRIDGE_KINDS,
-  BROWSER_BRIDGE_SITE_ACCESS_MODES,
-  BROWSER_BRIDGE_TRACKING_MODES,
-} from "@elizaos/plugin-browser-bridge/contracts";
+import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -30,8 +20,27 @@ import {
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
 } from "@elizaos/app-lifeops/contracts";
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
-import { LifeOpsServiceError } from "./service-types.js";
+import type {
+  BrowserBridgeKind,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  BROWSER_BRIDGE_TRACKING_MODES,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  resolveDefaultTimeZone,
+  resolveDefaultWindowPolicy,
+} from "./defaults.js";
+import { normalizeGoogleCapabilities } from "./google-scopes.js";
+import {
+  DAY_MINUTES,
+  DEFAULT_BROWSER_PERMISSION_STATE,
+  DEFAULT_WORKFLOW_PERMISSION_POLICY,
+} from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -44,13 +53,7 @@ import {
   normalizeValidTimeZone,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  DAY_MINUTES,
-  DEFAULT_BROWSER_PERMISSION_STATE,
-  DEFAULT_WORKFLOW_PERMISSION_POLICY,
-} from "./service-constants.js";
-import { resolveDefaultTimeZone, resolveDefaultWindowPolicy } from "./defaults.js";
-import { normalizeGoogleCapabilities } from "./google-scopes.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 function requireRecord(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -71,9 +74,10 @@ function mergeMetadata(
   current: Record<string, unknown>,
   updates?: Record<string, unknown>,
 ): Record<string, unknown> {
-  const cloned = updates && typeof updates === "object" && !Array.isArray(updates)
-    ? { ...updates }
-    : {};
+  const cloned =
+    updates && typeof updates === "object" && !Array.isArray(updates)
+      ? { ...updates }
+      : {};
   const merged = {
     ...current,
     ...cloned,
@@ -175,6 +179,8 @@ export function normalizeWorkflowSchedule(
     "cron",
     "relative_to_wake",
     "relative_to_bedtime",
+    "during_morning",
+    "during_night",
   ] as const);
   if (kind === "once") {
     return {
@@ -193,30 +199,76 @@ export function normalizeWorkflowSchedule(
       timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
     };
   }
-  if (kind === "relative_to_wake" || kind === "relative_to_bedtime") {
+  const regularityAtLeast =
+    schedule.requireRegularityAtLeast === undefined ||
+    schedule.requireRegularityAtLeast === null
+      ? undefined
+      : normalizeEnumValue(
+          schedule.requireRegularityAtLeast,
+          "schedule.requireRegularityAtLeast",
+          [
+            "very_regular",
+            "regular",
+            "irregular",
+            "very_irregular",
+            "insufficient_data",
+          ] as const,
+        );
+  if (kind === "relative_to_wake") {
     return {
       kind,
-      offsetMinutes: normalizeOptionalInteger(
-        schedule.offsetMinutes,
-        "schedule.offsetMinutes",
-      ) ?? 0,
+      offsetMinutes:
+        normalizeOptionalInteger(
+          schedule.offsetMinutes,
+          "schedule.offsetMinutes",
+        ) ?? 0,
       timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
       onDays: normalizeOptionalWeekdays(schedule.onDays, "schedule.onDays"),
-      requireRegularityAtLeast:
-        schedule.requireRegularityAtLeast === undefined ||
-        schedule.requireRegularityAtLeast === null
-          ? undefined
-          : normalizeEnumValue(
-              schedule.requireRegularityAtLeast,
-              "schedule.requireRegularityAtLeast",
-              [
-                "very_regular",
-                "regular",
-                "irregular",
-                "very_irregular",
-                "insufficient_data",
-              ] as const,
-            ),
+      requireRegularityAtLeast: regularityAtLeast,
+      stabilityWindowMinutes:
+        normalizeOptionalInteger(
+          schedule.stabilityWindowMinutes,
+          "schedule.stabilityWindowMinutes",
+        ) ?? undefined,
+    };
+  }
+  if (kind === "relative_to_bedtime") {
+    return {
+      kind,
+      offsetMinutes:
+        normalizeOptionalInteger(
+          schedule.offsetMinutes,
+          "schedule.offsetMinutes",
+        ) ?? 0,
+      timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
+      onDays: normalizeOptionalWeekdays(schedule.onDays, "schedule.onDays"),
+      requireRegularityAtLeast: regularityAtLeast,
+    };
+  }
+  if (kind === "during_morning") {
+    return {
+      kind,
+      timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
+      windowMinutesFromWake:
+        normalizeOptionalInteger(
+          schedule.windowMinutesFromWake,
+          "schedule.windowMinutesFromWake",
+        ) ?? undefined,
+      onDays: normalizeOptionalWeekdays(schedule.onDays, "schedule.onDays"),
+      requireRegularityAtLeast: regularityAtLeast,
+    };
+  }
+  if (kind === "during_night") {
+    return {
+      kind,
+      timezone: normalizeValidTimeZone(schedule.timezone, "schedule.timezone"),
+      windowMinutesBeforeSleepTarget:
+        normalizeOptionalInteger(
+          schedule.windowMinutesBeforeSleepTarget,
+          "schedule.windowMinutesBeforeSleepTarget",
+        ) ?? undefined,
+      onDays: normalizeOptionalWeekdays(schedule.onDays, "schedule.onDays"),
+      requireRegularityAtLeast: regularityAtLeast,
     };
   }
   const cronExpression = requireNonEmptyString(
@@ -288,7 +340,10 @@ function normalizeEventTrigger(
       eventKind,
       filters: {
         kind: "lifeops.sleep.onset_candidate",
-        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+        filters: normalizeMinConfidenceFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -298,7 +353,10 @@ function normalizeEventTrigger(
       eventKind,
       filters: {
         kind: "lifeops.sleep.detected",
-        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+        filters: normalizeMinConfidenceFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -308,7 +366,10 @@ function normalizeEventTrigger(
       eventKind,
       filters: {
         kind: "lifeops.sleep.ended",
-        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+        filters: normalizeMinConfidenceFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -318,7 +379,10 @@ function normalizeEventTrigger(
       eventKind,
       filters: {
         kind: "lifeops.nap.detected",
-        filters: normalizeMinConfidenceFilters(filtersRecord, "schedule.filters"),
+        filters: normalizeMinConfidenceFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -328,7 +392,10 @@ function normalizeEventTrigger(
       eventKind,
       filters: {
         kind: "lifeops.bedtime.imminent",
-        filters: normalizeBedtimeImminentFilters(filtersRecord, "schedule.filters"),
+        filters: normalizeBedtimeImminentFilters(
+          filtersRecord,
+          "schedule.filters",
+        ),
       },
     };
   }
@@ -361,7 +428,10 @@ function normalizeEventTrigger(
   return { kind, eventKind };
 }
 
-function normalizeOptionalInteger(value: unknown, field: string): number | undefined {
+function normalizeOptionalInteger(
+  value: unknown,
+  field: string,
+): number | undefined {
   if (value === undefined || value === null || value === "") {
     return undefined;
   }
@@ -412,7 +482,10 @@ function normalizeWakeEventFilters(
   field: string,
 ): { offsetMinutes?: number; minConfidence?: number } {
   return {
-    offsetMinutes: normalizeOptionalInteger(input.offsetMinutes, `${field}.offsetMinutes`),
+    offsetMinutes: normalizeOptionalInteger(
+      input.offsetMinutes,
+      `${field}.offsetMinutes`,
+    ),
     minConfidence: normalizeOptionalConfidence(
       input.minConfidence,
       `${field}.minConfidence`,
@@ -472,9 +545,7 @@ function normalizeRegularityChangedFilters(
   return { becomes: value as LifeOpsRegularityClass };
 }
 
-function normalizeCalendarEventEndedFilters(
-  input: Record<string, unknown>,
-) {
+function normalizeCalendarEventEndedFilters(input: Record<string, unknown>) {
   const filters: {
     calendarIds?: string[];
     titleIncludesAny?: string[];
