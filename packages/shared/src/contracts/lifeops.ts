@@ -446,6 +446,7 @@ export const LIFEOPS_OWNER_TYPES = [
   "connector",
   "channel_policy",
   "browser_session",
+  "circadian_state",
 ] as const;
 export type LifeOpsOwnerType = (typeof LIFEOPS_OWNER_TYPES)[number];
 
@@ -482,6 +483,7 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "browser_session_updated",
   "x_post_sent",
   "seeding_offered",
+  "circadian_event_emitted",
 ] as const;
 export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
 

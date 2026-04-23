@@ -727,7 +727,7 @@ function overlayAndroid() {
         <receiver
             android:name="${androidPackage}.MiladyBootReceiver"
             android:directBootAware="true"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

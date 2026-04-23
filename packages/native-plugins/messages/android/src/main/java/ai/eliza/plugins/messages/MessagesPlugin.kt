@@ -1,6 +1,13 @@
 package ai.eliza.plugins.messages
 
+import android.app.Activity
+import android.app.PendingIntent
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -10,9 +17,13 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @CapacitorPlugin(name = "MiladyMessages")
 class MessagesPlugin : Plugin() {
+    private val requestCounter = AtomicInteger(1)
+
     @PluginMethod
     fun sendSms(call: PluginCall) {
         if (!hasPermission(Manifest.permission.SEND_SMS)) {
@@ -20,13 +31,69 @@ class MessagesPlugin : Plugin() {
             return
         }
         val address = call.getString("address")?.trim()
-        val body = call.getString("body") ?: ""
+        val body = call.getString("body")?.trim()
         if (address.isNullOrEmpty()) {
             call.reject("address is required")
             return
         }
-        SmsManager.getDefault().sendTextMessage(address, null, body, null, null)
-        call.resolve()
+        if (body.isNullOrEmpty()) {
+            call.reject("body is required")
+            return
+        }
+
+        val smsManager = SmsManager.getDefault()
+        val parts = smsManager.divideMessage(body)
+        if (parts.isEmpty()) {
+            call.reject("body is required")
+            return
+        }
+
+        val requestId = requestCounter.getAndIncrement()
+        val action = "${context.packageName}.MILADY_SMS_SENT.$requestId"
+        val remaining = AtomicInteger(parts.size)
+        val failed = AtomicBoolean(false)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context, intent: Intent) {
+                if (resultCode != Activity.RESULT_OK) {
+                    failed.set(true)
+                }
+                if (remaining.decrementAndGet() == 0) {
+                    receiverContext.unregisterReceiver(this)
+                    if (failed.get()) {
+                        call.reject("SMS send failed with result code $resultCode")
+                    } else {
+                        call.resolve()
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter(action)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+
+        val pendingIntents = ArrayList<PendingIntent>()
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        for (index in parts.indices) {
+            val sentIntent = Intent(action).setPackage(context.packageName)
+            pendingIntents.add(
+                PendingIntent.getBroadcast(context, requestId + index, sentIntent, flags)
+            )
+        }
+
+        try {
+            if (parts.size == 1) {
+                smsManager.sendTextMessage(address, null, parts.first(), pendingIntents.first(), null)
+            } else {
+                smsManager.sendMultipartTextMessage(address, null, parts, pendingIntents, null)
+            }
+        } catch (error: RuntimeException) {
+            context.unregisterReceiver(receiver)
+            call.reject("SMS send failed before radio handoff", error)
+        }
     }
 
     @PluginMethod
@@ -36,11 +103,15 @@ class MessagesPlugin : Plugin() {
             return
         }
         val limit = call.getInt("limit") ?: 100
+        if (limit <= 0 || limit > 500) {
+            call.reject("limit must be between 1 and 500")
+            return
+        }
         val threadId = call.getString("threadId")?.trim()
         val selection = if (threadId.isNullOrEmpty()) null else "${Telephony.Sms.THREAD_ID} = ?"
         val selectionArgs = if (threadId.isNullOrEmpty()) null else arrayOf(threadId)
         val messages = JSArray()
-        context.contentResolver.query(
+        val cursor = context.contentResolver.query(
             Uri.parse("content://sms"),
             arrayOf(
                 Telephony.Sms._ID,
@@ -54,7 +125,12 @@ class MessagesPlugin : Plugin() {
             selection,
             selectionArgs,
             "${Telephony.Sms.DATE} DESC"
-        )?.use { cursor ->
+        )
+        if (cursor == null) {
+            call.reject("SMS provider returned no cursor")
+            return
+        }
+        cursor.use {
             val idCol = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
             val threadCol = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
             val addressCol = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)

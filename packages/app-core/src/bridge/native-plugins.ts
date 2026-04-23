@@ -276,6 +276,68 @@ export interface AppBlockerPluginLike extends NativePlugin {
   getStatus(): Promise<AppBlockerStatus>;
 }
 
+export interface PhonePluginLike extends NativePlugin {
+  getStatus(): Promise<{
+    hasTelecom: boolean;
+    canPlaceCalls: boolean;
+    defaultDialerPackage: string | null;
+  }>;
+  placeCall(options: { number: string }): Promise<void>;
+  openDialer(options?: { number?: string }): Promise<void>;
+}
+
+export interface ContactSummary {
+  id: string;
+  displayName: string;
+  phoneNumbers: string[];
+  photoUri?: string;
+}
+
+export interface ContactsPluginLike extends NativePlugin {
+  listContacts(options?: {
+    query?: string;
+    limit?: number;
+  }): Promise<{ contacts: ContactSummary[] }>;
+  createContact(options: {
+    displayName: string;
+    phoneNumber?: string;
+  }): Promise<{ id: string }>;
+}
+
+export interface SmsMessageSummary {
+  id: string;
+  threadId: string;
+  address: string;
+  body: string;
+  date: number;
+  type: number;
+  read: boolean;
+}
+
+export interface MessagesPluginLike extends NativePlugin {
+  sendSms(options: { address: string; body: string }): Promise<void>;
+  listMessages(options?: {
+    limit?: number;
+    threadId?: string;
+  }): Promise<{ messages: SmsMessageSummary[] }>;
+}
+
+export interface AndroidRoleStatus {
+  role: "home" | "dialer" | "sms" | "assistant";
+  androidRole: string;
+  available: boolean;
+  held: boolean;
+  holders: string[];
+}
+
+export interface SystemPluginLike extends NativePlugin {
+  getStatus(): Promise<{
+    packageName: string;
+    roles: AndroidRoleStatus[];
+  }>;
+  openSettings(): Promise<void>;
+}
+
 export interface MobileSignalsPluginLike extends NativePlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
   requestPermissions(): Promise<MobileSignalsPermissionStatus>;
@@ -492,4 +554,20 @@ export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
   return (plugins.ElizaWebsiteBlocker ??
     plugins.WebsiteBlocker ??
     {}) as WebsiteBlockerPluginLike;
+}
+
+export function getPhonePlugin(): PhonePluginLike {
+  return getNativePlugin<PhonePluginLike>("MiladyPhone");
+}
+
+export function getContactsPlugin(): ContactsPluginLike {
+  return getNativePlugin<ContactsPluginLike>("MiladyContacts");
+}
+
+export function getMessagesPlugin(): MessagesPluginLike {
+  return getNativePlugin<MessagesPluginLike>("MiladyMessages");
+}
+
+export function getSystemPlugin(): SystemPluginLike {
+  return getNativePlugin<SystemPluginLike>("MiladySystem");
 }
