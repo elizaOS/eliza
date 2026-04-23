@@ -14,6 +14,7 @@ import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
 import { resolveStewardCredentialsPath } from "../config/paths.js";
+import { computeValueUsd } from "./wallet-dex-prices.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -99,6 +100,10 @@ export const CLOUD_EVM_ADDRESS_ENV_KEY = "MILADY_CLOUD_EVM_ADDRESS";
 export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "MILADY_CLOUD_SOLANA_ADDRESS";
 export const WALLET_SOURCE_EVM_ENV_KEY = "WALLET_SOURCE_EVM";
 export const WALLET_SOURCE_SOLANA_ENV_KEY = "WALLET_SOURCE_SOLANA";
+const SOLANA_WRAPPED_NATIVE_MINT =
+  "So11111111111111111111111111111111111111112";
+const SOLANA_SPL_TOKEN_PROGRAM_ID =
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 /** Module-level cache for steward wallet addresses (avoids process.env mutation). */
 let stewardAddressCache: { evm: string | null; solana: string | null } | null =
@@ -767,6 +772,134 @@ interface HeliusAsset {
     group_key?: string;
     collection_metadata?: { name?: string };
   }>;
+}
+
+interface SolanaDexScreenerPair {
+  baseToken?: {
+    address?: string;
+    name?: string;
+    symbol?: string;
+  };
+  priceUsd?: string | null;
+  liquidity?: { usd?: number };
+  info?: { imageUrl?: string };
+}
+
+interface SolanaParsedTokenAccountResponse {
+  result?: {
+    value?: Array<{
+      account?: {
+        data?: {
+          parsed?: {
+            info?: {
+              mint?: string;
+              tokenAmount?: {
+                amount?: string;
+                decimals?: number;
+                uiAmountString?: string;
+              };
+            };
+          };
+        };
+      };
+    }>;
+  };
+  error?: { message?: string };
+}
+
+interface SolanaDexMeta {
+  priceUsd: string | null;
+  imageUrl?: string;
+  name?: string;
+  symbol?: string;
+}
+
+function shortenMint(mint: string): string {
+  if (mint.length <= 10) return mint;
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+async function fetchSolanaDexMeta(
+  addresses: string[],
+): Promise<Map<string, SolanaDexMeta>> {
+  const uniqueAddresses = [...new Set(addresses.map((address) => address.trim()))]
+    .filter(Boolean);
+  const results = new Map<string, SolanaDexMeta>();
+  if (uniqueAddresses.length === 0) return results;
+
+  for (let index = 0; index < uniqueAddresses.length; index += 30) {
+    const batch = uniqueAddresses.slice(index, index + 30);
+    try {
+      const res = await fetch(
+        `https://api.dexscreener.com/tokens/v1/solana/${batch.join(",")}`,
+        { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+      );
+      if (!res.ok) continue;
+      const pairs = (await res.json()) as SolanaDexScreenerPair[];
+      if (!Array.isArray(pairs)) continue;
+
+      const bestPairByMint = new Map<string, SolanaDexScreenerPair>();
+      for (const pair of pairs) {
+        const mint = pair.baseToken?.address?.trim();
+        if (!mint) continue;
+        const existing = bestPairByMint.get(mint);
+        if (
+          !existing ||
+          (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)
+        ) {
+          bestPairByMint.set(mint, pair);
+        }
+      }
+
+      for (const [mint, pair] of bestPairByMint) {
+        results.set(mint, {
+          priceUsd: pair.priceUsd ?? null,
+          imageUrl: pair.info?.imageUrl?.trim() || undefined,
+          name: pair.baseToken?.name?.trim() || undefined,
+          symbol: pair.baseToken?.symbol?.trim() || undefined,
+        });
+      }
+    } catch (err) {
+      logger.warn(`[wallet] Solana DexScreener fetch failed: ${String(err)}`);
+    }
+  }
+
+  return results;
+}
+
+function buildSolanaTokenBalance(
+  token: {
+    mint: string;
+    balance: string;
+    decimals: number;
+    symbol?: string | null;
+    name?: string | null;
+    valueUsd?: string | null;
+    logoUrl?: string | null;
+  },
+  dexMeta: Map<string, SolanaDexMeta>,
+): SolanaTokenBalance {
+  const meta = dexMeta.get(token.mint);
+  const computedValueUsd =
+    meta?.priceUsd && meta.priceUsd.length > 0
+      ? computeValueUsd(token.balance, meta.priceUsd)
+      : "0";
+
+  return {
+    mint: token.mint,
+    symbol:
+      token.symbol?.trim() ||
+      meta?.symbol?.trim() ||
+      shortenMint(token.mint).toUpperCase(),
+    name: token.name?.trim() || meta?.name?.trim() || token.mint,
+    balance: token.balance,
+    decimals: token.decimals,
+    valueUsd:
+      token.valueUsd && Number.parseFloat(token.valueUsd) > 0
+        ? token.valueUsd
+        : computedValueUsd,
+    logoUrl: token.logoUrl?.trim() || meta?.imageUrl || "",
+  };
 }
 
 function rpcJsonRequest(body: string): RequestInit {
