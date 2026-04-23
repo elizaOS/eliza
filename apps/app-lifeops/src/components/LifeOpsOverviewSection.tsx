@@ -2,17 +2,14 @@ import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
-  LifeOpsCapabilityStatus,
   LifeOpsInboxChannel,
   LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsUnifiedMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  Activity,
   AtSign,
   CalendarDays,
-  Clock3,
   Flame,
   Loader2,
   MessageCircle,
@@ -36,7 +33,6 @@ import {
 } from "react";
 import type { LifeOpsScreenTimeSummary } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
-import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
@@ -173,18 +169,6 @@ function formatClockTime(iso: string | null | undefined): string {
   }).format(new Date(parsed));
 }
 
-function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const parsed = Date.parse(iso);
-  if (!Number.isFinite(parsed)) return "";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(parsed));
-}
-
 function formatRelative(iso: string): string {
   const parsed = Date.parse(iso);
   if (!Number.isFinite(parsed)) return iso;
@@ -222,16 +206,6 @@ function formatDurationSeconds(value: number | null | undefined): string {
   return formatDurationMinutes(value / 60);
 }
 
-function formatPercent(value: number | null | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return "";
-  }
-  return new Intl.NumberFormat(undefined, {
-    style: "percent",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function humanize(value: string | null | undefined): string {
   if (!value) return "";
   return value
@@ -247,17 +221,6 @@ function startOfLocalDayIso(date = new Date()): string {
   return start.toISOString();
 }
 
-function isToday(iso: string): boolean {
-  const parsed = new Date(iso);
-  if (!Number.isFinite(parsed.getTime())) return false;
-  const today = new Date();
-  return (
-    parsed.getFullYear() === today.getFullYear() &&
-    parsed.getMonth() === today.getMonth() &&
-    parsed.getDate() === today.getDate()
-  );
-}
-
 function classifyReminder(iso: string): ReminderUrgency {
   const parsed = Date.parse(iso);
   if (!Number.isFinite(parsed)) return "later";
@@ -266,10 +229,6 @@ function classifyReminder(iso: string): ReminderUrgency {
   if (diffMin < 60) return "soon";
   if (diffMin < 60 * 24) return "today";
   return "later";
-}
-
-function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : pluralLabel}`;
 }
 
 function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null | undefined) {
@@ -289,52 +248,23 @@ function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null | undefined) {
 function buildHeadline(args: {
   schedule: LifeOpsScheduleInsight | null | undefined;
   nextEvent: LifeOpsCalendarEvent | null;
-  overdueCount: number;
-  unreadCount: number;
+  hasOverdue: boolean;
+  hasUnread: boolean;
 }) {
-  const { schedule, nextEvent, overdueCount, unreadCount } = args;
+  const { schedule, nextEvent, hasOverdue, hasUnread } = args;
   if (schedule?.sleepStatus === "sleeping_now") {
     return "Sleep is the main event.";
   }
-  if (overdueCount > 0) {
-    return `${plural(overdueCount, "overdue item")} needs a decision.`;
+  if (hasOverdue) {
+    return "A reminder needs a decision.";
   }
   if (nextEvent) {
     return `${nextEvent.title} at ${formatClockTime(nextEvent.startAt)}.`;
   }
-  if (unreadCount > 0) {
-    return `${plural(unreadCount, "unread message")} waiting.`;
+  if (hasUnread) {
+    return "Inbox needs attention.";
   }
   return "The day is open.";
-}
-
-function buildSubheadline(args: {
-  schedule: LifeOpsScheduleInsight | null | undefined;
-  screenTime: LifeOpsScreenTimeSummary | null;
-  todayEvents: number;
-  reminders: number;
-}) {
-  const { schedule, screenTime, todayEvents, reminders } = args;
-  const parts: string[] = [];
-  if (schedule) {
-    const confidence = formatPercent(schedule.stateConfidence);
-    parts.push(
-      `${humanize(schedule.circadianState)}${confidence ? ` (${confidence})` : ""}`,
-    );
-  }
-  const screenTimeLabel = formatDurationSeconds(screenTime?.totalSeconds);
-  if (screenTimeLabel) {
-    parts.push(`${screenTimeLabel} screen time`);
-  }
-  if (todayEvents > 0) {
-    parts.push(plural(todayEvents, "event"));
-  }
-  if (reminders > 0) {
-    parts.push(plural(reminders, "reminder"));
-  }
-  return parts.length > 0
-    ? parts.join(" / ")
-    : "LifeOps is collecting today's signals.";
 }
 
 function DashboardPanel({
@@ -368,20 +298,24 @@ function DashboardPanel({
   );
 }
 
-function PanelAction({
+function IconAction({
   label,
+  icon,
   onClick,
 }: {
   label: string;
+  icon: ReactNode;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      className="text-[11px] font-medium text-muted hover:text-txt"
+      aria-label={label}
+      title={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg/40 hover:text-txt"
       onClick={onClick}
     >
-      {label}
+      {icon}
     </button>
   );
 }
@@ -389,12 +323,10 @@ function PanelAction({
 function MetricCell({
   label,
   value,
-  detail,
   tone,
 }: {
   label: string;
   value: string;
-  detail?: string;
   tone?: string;
 }) {
   return (
@@ -407,9 +339,6 @@ function MetricCell({
       >
         {value}
       </div>
-      {detail ? (
-        <div className="mt-0.5 truncate text-[11px] text-muted">{detail}</div>
-      ) : null}
     </div>
   );
 }
@@ -418,15 +347,7 @@ function EmptyState({ children }: { children: ReactNode }) {
   return <div className="py-6 text-center text-xs text-muted">{children}</div>;
 }
 
-function TinyStatus({
-  color,
-  label,
-  detail,
-}: {
-  color: string;
-  label: string;
-  detail?: string;
-}) {
+function TinyStatus({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex min-w-0 items-start gap-2">
       <span
@@ -435,11 +356,6 @@ function TinyStatus({
       />
       <div className="min-w-0">
         <div className="text-sm font-medium leading-5 text-txt">{label}</div>
-        {detail ? (
-          <div className="mt-0.5 text-[11px] leading-4 text-muted">
-            {detail}
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -447,11 +363,9 @@ function TinyStatus({
 
 function CalendarEventRow({
   event,
-  compact = false,
   onClick,
 }: {
   event: LifeOpsCalendarEvent;
-  compact?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -465,11 +379,6 @@ function CalendarEventRow({
         <span className="block truncate text-sm font-medium text-txt">
           {event.title}
         </span>
-        {!compact && event.location ? (
-          <span className="mt-0.5 block truncate text-[11px] text-muted">
-            {event.location}
-          </span>
-        ) : null}
       </span>
       <span className="shrink-0 text-[11px] font-medium text-blue-300">
         {event.isAllDay ? "All day" : formatClockTime(event.startAt)}
@@ -500,11 +409,6 @@ function ReminderAgendaRow({
         <span className="block truncate text-sm font-medium text-txt">
           {reminder.title}
         </span>
-        {reminder.stepLabel ? (
-          <span className="mt-0.5 block truncate text-[11px] text-muted">
-            {reminder.stepLabel}
-          </span>
-        ) : null}
       </span>
       <span className={`shrink-0 text-[11px] font-medium ${style.text}`}>
         {formatRelative(reminder.scheduledFor)}
@@ -522,6 +426,10 @@ function InboxMessageRow({
 }) {
   const style = CHANNEL_STYLES[message.channel];
   const subject = message.subject?.trim() || `${style.label} message`;
+  const rowTitle =
+    subject === `${style.label} message`
+      ? message.sender.displayName
+      : `${message.sender.displayName} - ${subject}`;
   return (
     <button
       type="button"
@@ -541,10 +449,7 @@ function InboxMessageRow({
               : "font-medium text-txt/80"
           }`}
         >
-          {message.sender.displayName}
-        </span>
-        <span className="mt-0.5 block truncate text-[11px] text-muted">
-          {subject}
+          {rowTitle}
         </span>
       </span>
       <span className="shrink-0 text-[11px] font-medium text-muted">
@@ -614,7 +519,6 @@ function ScreenTimeList({
             <div className="truncate text-sm font-medium text-txt">
               {item.displayName}
             </div>
-            <div className="text-[11px] text-muted">{item.source}</div>
           </div>
           <div className="shrink-0 text-sm font-semibold tabular-nums text-txt">
             {formatDurationSeconds(item.totalSeconds)}
@@ -622,28 +526,6 @@ function ScreenTimeList({
         </div>
       ))}
     </div>
-  );
-}
-
-function CapabilityLine({
-  capability,
-}: {
-  capability: LifeOpsCapabilityStatus;
-}) {
-  const tone =
-    capability.state === "working"
-      ? "bg-emerald-400"
-      : capability.state === "degraded"
-        ? "bg-amber-400"
-        : capability.state === "blocked"
-          ? "bg-rose-500"
-          : "bg-zinc-400";
-  return (
-    <TinyStatus
-      color={tone}
-      label={capability.label}
-      detail={capability.summary}
-    />
   );
 }
 
@@ -712,7 +594,6 @@ export function LifeOpsOverviewSection({
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const inbox = useUnifiedInbox({ maxResults: 12 });
-  const capabilities = useLifeOpsCapabilitiesStatus();
 
   const upcomingEvents = useMemo(() => {
     const now = Date.now();
@@ -725,26 +606,17 @@ export function LifeOpsOverviewSection({
       .slice(0, 6);
   }, [calendar.events]);
 
-  const todayEvents = useMemo(
-    () => upcomingEvents.filter((event) => isToday(event.startAt)),
-    [upcomingEvents],
-  );
-
   const summary = overview?.summary;
   const schedule = overview?.schedule ?? null;
   const reminders = overview?.reminders ?? [];
   const activeReminders = reminders.slice(0, 6);
   const unreadMessages = inbox.messages.filter((message) => message.unread);
+  const hasUnread = unreadMessages.length > 0;
+  const hasOverdue = (summary?.overdueOccurrenceCount ?? 0) > 0;
   const nextEvent = upcomingEvents[0] ?? null;
-  const topScreenItem = screenTime?.items[0] ?? null;
   const screenTimeLabel = formatDurationSeconds(screenTime?.totalSeconds);
-  const minutesAwake = formatDurationMinutes(
-    schedule?.relativeTime.minutesAwake,
-  );
   const lastSleep = formatDurationMinutes(schedule?.lastSleepDurationMinutes);
   const bedtime = formatClockTime(schedule?.relativeTime.bedtimeTargetAt);
-  const lastActive = formatDateTime(schedule?.lastActiveAt);
-  const firstActive = formatDateTime(schedule?.firstActiveAt);
 
   const timeline = useMemo<TimelineEntry[]>(() => {
     return [
@@ -766,26 +638,11 @@ export function LifeOpsOverviewSection({
       .slice(0, 7);
   }, [activeReminders, upcomingEvents]);
 
-  const channelBreakdown = useMemo(() => {
-    return CHANNEL_ORDER.map((channel) => {
-      const messages = inbox.messages.filter(
-        (message) => message.channel === channel,
-      );
-      return {
-        channel,
-        total: messages.length,
-        unread: messages.filter((message) => message.unread).length,
-      };
-    }).filter((entry) => entry.total > 0);
+  const activeChannels = useMemo(() => {
+    return CHANNEL_ORDER.filter((channel) =>
+      inbox.messages.some((message) => message.channel === channel),
+    );
   }, [inbox.messages]);
-
-  const capabilityIssues = useMemo(
-    () =>
-      (capabilities.status?.capabilities ?? [])
-        .filter((capability) => capability.state !== "working")
-        .slice(0, 4),
-    [capabilities.status],
-  );
 
   const briefingLines = useMemo(() => {
     const lines: string[] = [];
@@ -801,17 +658,8 @@ export function LifeOpsOverviewSection({
         )}`,
       );
     }
-    if (unreadMessages.length > 0) {
-      lines.push(
-        `${plural(unreadMessages.length, "unread message")} to triage`,
-      );
-    }
-    if (topScreenItem) {
-      lines.push(
-        `${topScreenItem.displayName} leads screen time at ${formatDurationSeconds(
-          topScreenItem.totalSeconds,
-        )}`,
-      );
+    if (hasUnread) {
+      lines.push("Inbox needs triage");
     }
     if (schedule?.nextMealLabel && schedule.nextMealWindowStartAt) {
       lines.push(
@@ -821,21 +669,14 @@ export function LifeOpsOverviewSection({
       );
     }
     return lines.slice(0, 5);
-  }, [
-    activeReminders,
-    nextEvent,
-    schedule,
-    topScreenItem,
-    unreadMessages.length,
-  ]);
+  }, [activeReminders, hasUnread, nextEvent, schedule]);
 
   const refresh = useCallback(() => {
     void loadOverview();
     void loadScreenTime();
     void calendar.refresh();
     void inbox.refresh();
-    void capabilities.refresh();
-  }, [calendar, capabilities, inbox, loadOverview, loadScreenTime]);
+  }, [calendar, inbox, loadOverview, loadScreenTime]);
 
   const openEvent = useCallback(
     (event: LifeOpsCalendarEvent) => {
@@ -872,23 +713,16 @@ export function LifeOpsOverviewSection({
               {buildHeadline({
                 schedule,
                 nextEvent,
-                overdueCount: summary?.overdueOccurrenceCount ?? 0,
-                unreadCount: unreadMessages.length,
+                hasOverdue,
+                hasUnread,
               })}
             </h1>
-            <div className="mt-2 text-sm leading-6 text-muted">
-              {buildSubheadline({
-                schedule,
-                screenTime,
-                todayEvents: todayEvents.length,
-                reminders: summary?.activeReminderCount ?? 0,
-              })}
-            </div>
           </div>
           <button
             type="button"
             aria-label="Refresh LifeOps dashboard"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/20 bg-bg/30 px-3 text-xs font-medium text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
+            title="Refresh"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
             onClick={refresh}
             disabled={
               loading || screenTimeLoading || calendar.loading || inbox.loading
@@ -900,21 +734,13 @@ export function LifeOpsOverviewSection({
               }`}
               aria-hidden
             />
-            Refresh
           </button>
         </div>
 
-        <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10 sm:grid-cols-4">
+        <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10 sm:grid-cols-3">
           <MetricCell
             label="Sleep"
             value={sleepStatusLabel(schedule)}
-            detail={
-              minutesAwake
-                ? `Awake ${minutesAwake}`
-                : bedtime
-                  ? `Bed ${bedtime}`
-                  : undefined
-            }
             tone={
               schedule?.sleepStatus === "sleeping_now"
                 ? "text-blue-300"
@@ -923,23 +749,19 @@ export function LifeOpsOverviewSection({
           />
           <MetricCell
             label="Work"
-            value={nextEvent ? formatClockTime(nextEvent.startAt) : "Open"}
-            detail={
-              nextEvent?.title ?? plural(summary?.activeGoalCount ?? 0, "goal")
+            value={
+              nextEvent
+                ? formatClockTime(nextEvent.startAt)
+                : activeReminders[0]
+                  ? formatRelative(activeReminders[0].scheduledFor)
+                  : "Open"
             }
             tone="text-blue-300"
           />
           <MetricCell
             label="Screen"
             value={screenTimeLabel || "No data"}
-            detail={topScreenItem?.displayName}
             tone={screenTimeLabel ? "text-amber-300" : "text-muted"}
-          />
-          <MetricCell
-            label="Inbox"
-            value={String(unreadMessages.length)}
-            detail={plural(inbox.messages.length, "message")}
-            tone={unreadMessages.length > 0 ? "text-emerald-300" : "text-muted"}
           />
         </div>
       </header>
@@ -990,32 +812,17 @@ export function LifeOpsOverviewSection({
               <div className="text-2xl font-semibold leading-none text-txt">
                 {sleepStatusLabel(schedule)}
               </div>
-              <div className="mt-2 text-xs leading-5 text-muted">
-                {schedule
-                  ? `${humanize(schedule.circadianState)} / ${
-                      formatPercent(schedule.sleepConfidence) || "calibrating"
-                    } confidence`
-                  : "No schedule state yet."}
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 border-t border-border/12 pt-3">
               <TinyStatus
                 color="bg-blue-400"
-                label={lastSleep || "No sleep duration"}
-                detail="Last sleep"
+                label={lastSleep ? `Last sleep ${lastSleep}` : "No sleep"}
               />
               <TinyStatus
                 color="bg-indigo-400"
-                label={bedtime || "No target"}
-                detail="Bedtime"
+                label={bedtime ? `Bed ${bedtime}` : "No target"}
               />
             </div>
-            {schedule?.regularity ? (
-              <div className="border-t border-border/12 pt-3 text-xs leading-5 text-muted">
-                {humanize(schedule.regularity.regularityClass)} / SRI{" "}
-                {Math.round(schedule.regularity.sri)}
-              </div>
-            ) : null}
           </div>
         </DashboardPanel>
 
@@ -1029,13 +836,7 @@ export function LifeOpsOverviewSection({
               <div className="text-2xl font-semibold leading-none text-txt">
                 {screenTimeLabel || "No data"}
               </div>
-              <div className="mt-1 text-xs text-muted">Today</div>
             </div>
-            {topScreenItem ? (
-              <div className="max-w-[12rem] truncate text-right text-xs text-muted">
-                {topScreenItem.displayName}
-              </div>
-            ) : null}
           </div>
           <ScreenTimeList
             screenTime={screenTime}
@@ -1048,8 +849,9 @@ export function LifeOpsOverviewSection({
           title="Timeline"
           icon={<CalendarDays className="h-4 w-4" aria-hidden />}
           action={
-            <PanelAction
+            <IconAction
               label="Calendar"
+              icon={<CalendarDays className="h-3.5 w-3.5" aria-hidden />}
               onClick={() => onNavigate("calendar")}
             />
           }
@@ -1080,26 +882,29 @@ export function LifeOpsOverviewSection({
           title="Inbox"
           icon={<MessageSquare className="h-4 w-4" aria-hidden />}
           action={
-            <PanelAction label="Open" onClick={() => onNavigate("messages")} />
+            <IconAction
+              label="Messages"
+              icon={<MessageSquare className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => onNavigate("messages")}
+            />
           }
           className="xl:col-span-4"
         >
           <div className="mb-3 flex flex-wrap gap-2">
-            {channelBreakdown.length === 0 ? (
+            {activeChannels.length === 0 ? (
               <span className="text-xs text-muted">No live messages.</span>
             ) : (
-              channelBreakdown.slice(0, 5).map((entry) => {
-                const style = CHANNEL_STYLES[entry.channel];
+              activeChannels.slice(0, 5).map((channel) => {
+                const style = CHANNEL_STYLES[channel];
                 return (
                   <span
-                    key={entry.channel}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${style.bg} ${style.text}`}
+                    key={channel}
+                    role="img"
+                    aria-label={style.label}
+                    title={style.label}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${style.bg} ${style.text}`}
                   >
                     {style.icon}
-                    {style.label}
-                    <span className="tabular-nums">
-                      {entry.unread > 0 ? entry.unread : entry.total}
-                    </span>
                   </span>
                 );
               })
@@ -1132,34 +937,15 @@ export function LifeOpsOverviewSection({
           title="Work"
           icon={<Target className="h-4 w-4" aria-hidden />}
           action={
-            <PanelAction
+            <IconAction
               label="Reminders"
+              icon={<Target className="h-3.5 w-3.5" aria-hidden />}
               onClick={() => onNavigate("reminders")}
             />
           }
           className="xl:col-span-4"
         >
-          <div className="grid grid-cols-3 gap-3 border-b border-border/12 pb-3">
-            <div>
-              <div className="text-xl font-semibold tabular-nums text-txt">
-                {summary?.activeOccurrenceCount ?? 0}
-              </div>
-              <div className="text-[11px] text-muted">active</div>
-            </div>
-            <div>
-              <div className="text-xl font-semibold tabular-nums text-rose-300">
-                {summary?.overdueOccurrenceCount ?? 0}
-              </div>
-              <div className="text-[11px] text-muted">overdue</div>
-            </div>
-            <div>
-              <div className="text-xl font-semibold tabular-nums text-emerald-300">
-                {summary?.activeGoalCount ?? 0}
-              </div>
-              <div className="text-[11px] text-muted">goals</div>
-            </div>
-          </div>
-          <div className="mt-3 divide-y divide-border/10">
+          <div className="divide-y divide-border/10">
             {activeReminders.length === 0 ? (
               <EmptyState>No active reminders.</EmptyState>
             ) : (
@@ -1174,71 +960,6 @@ export function LifeOpsOverviewSection({
                 ))
             )}
           </div>
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Activity"
-          icon={<Activity className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-5"
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TinyStatus
-              color="bg-emerald-400"
-              label={lastActive || "No recent activity"}
-              detail="Last active"
-            />
-            <TinyStatus
-              color="bg-blue-400"
-              label={firstActive || "No start signal"}
-              detail="First active"
-            />
-            <TinyStatus
-              color="bg-amber-400"
-              label={String(
-                schedule?.awakeProbability.contributingSources.length ?? 0,
-              )}
-              detail="Activity sources"
-            />
-            <TinyStatus
-              color="bg-zinc-400"
-              label={String(capabilities.status?.summary.workingCount ?? 0)}
-              detail="Capabilities working"
-            />
-          </div>
-        </DashboardPanel>
-
-        <DashboardPanel
-          title="Systems"
-          icon={<Clock3 className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-3"
-        >
-          {capabilities.loading && !capabilities.status ? (
-            <div className="flex items-center gap-2 py-5 text-xs text-muted">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Checking systems...
-            </div>
-          ) : capabilityIssues.length === 0 ? (
-            <TinyStatus
-              color="bg-emerald-400"
-              label="All tracked systems working"
-              detail={
-                capabilities.status
-                  ? `${capabilities.status.summary.workingCount}/${capabilities.status.summary.totalCount}`
-                  : undefined
-              }
-            />
-          ) : (
-            <div className="space-y-3">
-              {capabilityIssues.map((capability) => (
-                <CapabilityLine key={capability.id} capability={capability} />
-              ))}
-            </div>
-          )}
-          {capabilities.error ? (
-            <div className="mt-3 text-xs text-rose-300">
-              {capabilities.error}
-            </div>
-          ) : null}
         </DashboardPanel>
       </div>
     </div>
