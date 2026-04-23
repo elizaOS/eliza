@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 import { ChatView } from "../pages/ChatView.js";
+import { PageScopedChatPane } from "../pages/PageScopedChatPane.js";
+import type { PageScope } from "../pages/page-scoped-conversations.js";
 
 export const APP_WORKSPACE_CHROME_CHAT_STORAGE_KEY =
   "app-workspace-chrome:chat-collapsed";
@@ -30,9 +32,14 @@ export interface AppWorkspaceChromeProps {
   main: ReactNode;
   /**
    * Chat content for the right sidebar. When omitted a shared
-   * `<ChatView variant="default" />` is rendered.
+   * `<ChatView variant="default" />` is rendered, unless `chatScope` is set.
    */
   chat?: ReactNode;
+  /**
+   * Page-scoped assistant context for workspace pages whose right rail should
+   * explain and act within the current surface instead of the global chat.
+   */
+  chatScope?: PageScope;
   /**
    * Controlled: current collapsed state.
    * When provided, `onToggleChat` must also be provided.
@@ -81,6 +88,7 @@ export function AppWorkspaceChrome({
   nav,
   main,
   chat,
+  chatScope,
   chatCollapsed: chatCollapsedProp,
   onToggleChat,
   chatDefaultCollapsed = false,
@@ -182,7 +190,13 @@ export function AppWorkspaceChrome({
     [applyChatWidth, chatWidth, collapsed, collapseThreshold, handleToggle],
   );
 
-  const chatContent = chat ?? <ChatView variant="default" />;
+  const chatContent =
+    chat ??
+    (chatScope ? (
+      <PageScopedChatPane scope={chatScope} />
+    ) : (
+      <ChatView variant="default" />
+    ));
 
   return (
     <div className="flex min-h-0 flex-1 bg-bg" data-testid={testId}>
