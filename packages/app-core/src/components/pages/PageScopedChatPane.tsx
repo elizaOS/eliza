@@ -1,7 +1,8 @@
-import { ChatAttachmentStrip, Spinner, Textarea } from "@elizaos/ui";
+import { ChatAttachmentStrip, Spinner } from "@elizaos/ui";
 import { ArrowUp, Mic, Plus, Sparkles, Square } from "lucide-react";
 import {
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -29,9 +30,13 @@ import {
   resolvePageScopedConversation,
 } from "./page-scoped-conversations";
 
-const PAGE_CHAT_INPUT_MIN_HEIGHT_PX = 46;
-const PAGE_CHAT_INPUT_MAX_HEIGHT_PX = 150;
+const PAGE_CHAT_INPUT_MIN_HEIGHT_PX = 32;
+const PAGE_CHAT_INPUT_MAX_HEIGHT_PX = 128;
 const MAX_PAGE_CHAT_IMAGES = 4;
+const NO_FOCUS_CHROME_STYLE: CSSProperties = {
+  boxShadow: "none",
+  outline: "none",
+};
 
 type PageScopedMessage = ConversationMessage & {
   images?: ImageAttachment[];
@@ -589,7 +594,7 @@ export function PageScopedChatPane({
         ) : null}
       </div>
 
-      <div className="border-t border-border/30 px-3 py-2">
+      <div className="border-t border-border/30 px-2 py-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -612,24 +617,24 @@ export function PageScopedChatPane({
         />
         <div
           data-testid={`page-scoped-chat-composer-${scope}`}
-          className="flex min-h-[46px] items-end gap-1.5 rounded-full border border-border/40 bg-card/45 px-1.5 py-1.5 transition-colors focus-within:border-accent/50"
+          className="flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1"
         >
           <button
             type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg/60 text-muted transition-colors hover:text-txt disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg/60 text-muted transition-colors hover:text-txt focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Add attachment"
             title="Add attachment"
             disabled={disabled || sending}
             onClick={() => fileInputRef.current?.click()}
+            style={NO_FOCUS_CHROME_STYLE}
           >
             <Plus className="h-5 w-5" />
           </button>
 
           <div className="relative min-w-0 flex-1">
-            <Textarea
+            <textarea
               ref={composerRef}
-              variant="default"
-              className="h-[46px] max-h-[150px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden rounded-none border-0 bg-transparent px-2 py-[11px] text-sm leading-[1.55] text-txt shadow-none outline-none placeholder:text-muted/60 focus:border-transparent focus:outline-none focus:ring-0 focus-visible:ring-0"
+              className="block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
               rows={1}
               aria-label={copy.title}
               placeholder={
@@ -643,6 +648,7 @@ export function PageScopedChatPane({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               disabled={disabled || sending}
+              style={NO_FOCUS_CHROME_STYLE}
             />
             {voice.isListening && voicePreview ? (
               <div className="pointer-events-none absolute inset-x-2 bottom-2 truncate text-xs text-muted">
@@ -654,28 +660,30 @@ export function PageScopedChatPane({
           {sending ? (
             <button
               type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger transition-colors hover:bg-danger/25"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger transition-colors hover:bg-danger/25 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
               onClick={handleStop}
               aria-label="Stop"
               title="Stop"
+              style={NO_FOCUS_CHROME_STYLE}
             >
               <Square className="h-3.5 w-3.5 fill-current" />
             </button>
           ) : hasDraft ? (
             <button
               type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-txt text-bg transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-txt text-bg transition-transform focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => void handleSend()}
               disabled={disabled}
               aria-label={actionLabel}
               title={actionLabel}
+              style={NO_FOCUS_CHROME_STYLE}
             >
               <ArrowUp className="h-4.5 w-4.5" />
             </button>
           ) : (
             <button
               type="button"
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
                 voice.isListening
                   ? "bg-accent text-bg"
                   : "bg-bg/60 text-muted hover:text-txt"
@@ -685,6 +693,7 @@ export function PageScopedChatPane({
               aria-label={actionLabel}
               aria-pressed={voice.isListening}
               title={voice.supported ? actionLabel : "Voice input unavailable"}
+              style={NO_FOCUS_CHROME_STYLE}
             >
               <Mic className="h-4.5 w-4.5" />
             </button>
