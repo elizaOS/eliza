@@ -1,11 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
-  GetLifeOpsUnifiedInboxRequest,
+  GetLifeOpsInboxRequest,
   LifeOpsInboxChannel,
-  LifeOpsUnifiedInbox,
-  LifeOpsUnifiedInboxChannelCount,
-  LifeOpsUnifiedMessage,
+  LifeOpsInbox,
+  LifeOpsInboxChannelCount,
+  LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
 import {
@@ -33,11 +33,11 @@ export function normalizeUnifiedInboxChannel(
 
 function emptyChannelCounts(): Record<
   LifeOpsInboxChannel,
-  LifeOpsUnifiedInboxChannelCount
+  LifeOpsInboxChannelCount
 > {
   const counts = {} as Record<
     LifeOpsInboxChannel,
-    LifeOpsUnifiedInboxChannelCount
+    LifeOpsInboxChannelCount
   >;
   for (const channel of LIFEOPS_INBOX_CHANNELS) {
     counts[channel] = { total: 0, unread: 0 };
@@ -49,7 +49,7 @@ export function toUnifiedInboxMessage(
   message: InboundMessage,
   channel: LifeOpsInboxChannel,
   index: number,
-): LifeOpsUnifiedMessage {
+): LifeOpsInboxMessage {
   const externalId =
     channel === "gmail" ? (message.gmailMessageId ?? message.id) : message.id;
   const senderId =
@@ -102,8 +102,8 @@ export function buildUnifiedInbox(
     limit: number;
     allowed: Set<LifeOpsInboxChannel>;
   },
-): LifeOpsUnifiedInbox {
-  const unified: LifeOpsUnifiedMessage[] = [];
+): LifeOpsInbox {
+  const unified: LifeOpsInboxMessage[] = [];
   const counts = emptyChannelCounts();
 
   let index = 0;
@@ -135,7 +135,7 @@ export function buildUnifiedInbox(
 }
 
 export function resolveUnifiedInboxRequest(
-  request: GetLifeOpsUnifiedInboxRequest,
+  request: GetLifeOpsInboxRequest,
 ): { limit: number; allowed: Set<LifeOpsInboxChannel> } {
   const limit =
     typeof request.limit === "number" &&
@@ -154,10 +154,10 @@ export function resolveUnifiedInboxRequest(
 
 export async function fetchUnifiedInbox(
   runtime: IAgentRuntime,
-  request: GetLifeOpsUnifiedInboxRequest = {},
+  request: GetLifeOpsInboxRequest = {},
   gmailSource?: GmailInboxSource,
   xDmSource?: XDmInboxSource,
-): Promise<LifeOpsUnifiedInbox> {
+): Promise<LifeOpsInbox> {
   const { limit, allowed } = resolveUnifiedInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(allowed),
@@ -173,10 +173,10 @@ export async function fetchUnifiedInbox(
 export function withUnifiedInbox<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
-  class LifeOpsUnifiedInboxServiceMixin extends Base {
+  class LifeOpsInboxServiceMixin extends Base {
     async getUnifiedInbox(
-      request: GetLifeOpsUnifiedInboxRequest = {},
-    ): Promise<LifeOpsUnifiedInbox> {
+      request: GetLifeOpsInboxRequest = {},
+    ): Promise<LifeOpsInbox> {
       const { limit, allowed } = resolveUnifiedInboxRequest(request);
       const inbound = await fetchAllMessages(this.runtime, {
         sources: Array.from(allowed),
@@ -189,5 +189,5 @@ export function withUnifiedInbox<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsUnifiedInboxServiceMixin;
+  return LifeOpsInboxServiceMixin;
 }

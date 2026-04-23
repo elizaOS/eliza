@@ -3,11 +3,11 @@ import { logger, ModelType } from "@elizaos/core";
 import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  GetLifeOpsUnifiedInboxRequest,
+  GetLifeOpsInboxRequest,
   LifeOpsCalendarFeed,
   LifeOpsGmailTriageFeed,
   LifeOpsOccurrence,
-  LifeOpsUnifiedInbox,
+  LifeOpsInbox,
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
@@ -57,8 +57,8 @@ const ACTION_TEXT_RE =
 
 export interface CheckinSourceService {
   getUnifiedInbox?(
-    request?: GetLifeOpsUnifiedInboxRequest,
-  ): Promise<LifeOpsUnifiedInbox>;
+    request?: GetLifeOpsInboxRequest,
+  ): Promise<LifeOpsInbox>;
   getGmailTriage?(
     requestUrl: URL,
     request?: GetLifeOpsGmailTriageRequest,

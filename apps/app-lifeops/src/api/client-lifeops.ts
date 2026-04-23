@@ -50,7 +50,7 @@ import type {
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
-  GetLifeOpsUnifiedInboxRequest,
+  GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
@@ -87,7 +87,7 @@ import type {
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsTelegramConnectorStatus,
-  LifeOpsUnifiedInbox,
+  LifeOpsInbox,
   LifeOpsXConnectorStatus,
   ManageLifeOpsGmailMessagesRequest,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
@@ -375,9 +375,9 @@ declare module "@elizaos/app-core/api/client-base" {
       patch: LifeOpsCalendarEventUpdate,
     ): Promise<LifeOpsCalendarEventMutationResult>;
     deleteLifeOpsCalendarEvent(eventId: string): Promise<{ deleted: true }>;
-    getLifeOpsUnifiedInbox(
-      options?: GetLifeOpsUnifiedInboxRequest,
-    ): Promise<LifeOpsUnifiedInbox>;
+    getLifeOpsInbox(
+      options?: GetLifeOpsInboxRequest,
+    ): Promise<LifeOpsInbox>;
     createLifeOpsGmailReplyDraft(
       data: CreateLifeOpsGmailReplyDraftRequest,
     ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
@@ -1155,7 +1155,7 @@ ElizaClient.prototype.deleteLifeOpsCalendarEvent = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsUnifiedInbox = async function (
+ElizaClient.prototype.getLifeOpsInbox = async function (
   this: ElizaClient,
   options = {},
 ) {
