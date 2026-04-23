@@ -1,10 +1,3 @@
-/**
- * Compact wallet-status widget for the chat-sidebar.
- *
- * Surfaces wallet addresses and a compact token-inventory summary in the chat
- * sidebar. Title-click opens the full wallet dashboard.
- */
-
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../../state";
@@ -69,7 +62,7 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
       await navigator.clipboard.writeText(value);
       setCopied(true);
     } catch {
-      // Silent — browsers without clipboard permission just no-op.
+      return;
     }
   }
 
@@ -99,15 +92,10 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
     setTab,
   } = useApp();
 
-  // Auto-fetch balances when the widget first mounts if nothing is cached.
-  // `loadBalances` is a stable useCallback on the app context.
   useEffect(() => {
     if (walletEnabled === false) return;
     if (walletBalances !== null) return;
     void loadBalances();
-    // Intentionally no interval — /wallet is the polling surface. The widget
-    // refreshes whenever the user opens that page or something else mutates
-    // walletBalances in shared state.
   }, [walletEnabled, walletBalances, loadBalances]);
 
   const evmAddress = walletAddresses?.evmAddress ?? null;

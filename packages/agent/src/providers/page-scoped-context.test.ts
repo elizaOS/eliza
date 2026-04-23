@@ -427,7 +427,7 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("Live wallet state:");
     expect(result.text).toContain("0x1234...abcd");
     expect(result.text).toContain("RPC providers");
-    expect(result.text).toContain("EVM token inventory");
+    expect(result.text).toContain("Token inventory");
     expect(result.text).toContain("24h activity: 1 swap");
     expect(result.text).toContain("Vincent: connected");
   });
