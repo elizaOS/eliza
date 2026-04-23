@@ -1105,9 +1105,7 @@ export function VectorBrowserView({
             active={isActive}
             onClick={() => setSelectedMemory(mem)}
           >
-            {mem.type && mem.type !== "undefined"
-              ? mem.type.slice(0, 1)
-              : "M"}
+            {mem.type && mem.type !== "undefined" ? mem.type.slice(0, 1) : "M"}
           </SidebarContent.RailItem>
         );
       })}

@@ -22,10 +22,10 @@ export * from "./character-catalog.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
-export * from "./components/chat/widgets/shared.tsx";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
-export * from "./components/inventory/index.ts";
+export * from "./components/chat/widgets/shared.tsx";
+export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side
 // modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
 // wildcard re-export above should carry these, but Vite's dev-time module
@@ -39,7 +39,7 @@ export {
   isBscChainName,
   toNormalizedAddress,
 } from "./components/inventory/constants.ts";
-export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
+export * from "./components/inventory/index.ts";
 export * from "./components/pages/ChatModalView.tsx";
 export { PhoneCompanionApp } from "./components/phone-companion/PhoneCompanionApp.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
@@ -72,8 +72,8 @@ export * from "./platform/index.ts";
 export * from "./security/agent-vault-id.ts";
 export * from "./security/platform-secure-store.ts";
 export * from "./shell/index.ts";
-export * from "./state/index.ts";
 export * from "./state/CompanionSceneConfigContext.tsx";
+export * from "./state/index.ts";
 export * from "./types/index.ts";
 export * from "./utils/index.ts";
 export * from "./voice/index.ts";

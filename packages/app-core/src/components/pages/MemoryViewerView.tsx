@@ -19,7 +19,6 @@ import {
   useState,
 } from "react";
 import { client } from "../../api/client";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import type {
   MemoryBrowseItem,
   MemoryBrowseResponse,
@@ -29,6 +28,7 @@ import type {
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 // ── Constants ────────────────────────────────────────────────────────────
 

@@ -38,6 +38,7 @@ import {
   SidebarScrollRegion,
   useLinkedSidebarSelection,
 } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
@@ -46,7 +47,6 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 import { ConnectorSidebar } from "./plugin-view-sidebar";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 

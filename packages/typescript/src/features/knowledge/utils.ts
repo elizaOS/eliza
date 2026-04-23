@@ -332,7 +332,8 @@ export function createKnowledgeNoteFilename(
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 64);
 
-	const basename = normalizedTitle.length > 0 ? normalizedTitle : "knowledge-note";
+	const basename =
+		normalizedTitle.length > 0 ? normalizedTitle : "knowledge-note";
 	const normalizedExtension = extension.replace(/^\./, "").trim();
 	return normalizedExtension.length > 0
 		? `${basename}.${normalizedExtension}`
@@ -346,7 +347,9 @@ export function isTextBackedKnowledgeContent(
 	return !isBinaryContentType(contentType, filename);
 }
 
-export function normalizeKnowledgeSourceValue(source: unknown):
+export function normalizeKnowledgeSourceValue(
+	source: unknown,
+):
 	| "upload"
 	| "learned"
 	| "character"

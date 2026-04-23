@@ -29,9 +29,7 @@ vi.mock("../pages/PageScopedChatPane.js", () => ({
     <div data-testid="page-scoped-chat">
       <span>{scope}</span>
       {footerActions ? (
-        <div data-testid="page-scoped-chat-footer-actions">
-          {footerActions}
-        </div>
+        <div data-testid="page-scoped-chat-footer-actions">{footerActions}</div>
       ) : null}
     </div>
   ),
@@ -90,9 +88,7 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
       "page-apps",
     );
-    expect(
-      screen.queryByTestId("page-scoped-chat-footer-actions"),
-    ).toBeNull();
+    expect(screen.queryByTestId("page-scoped-chat-footer-actions")).toBeNull();
     const collapseButton = screen.getByTestId("apps-shell-chat-collapse");
     expect(collapseButton.className).toContain("bottom-2");
     expect(collapseButton.className).toContain("right-2");

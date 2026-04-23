@@ -551,6 +551,7 @@ jobs:
             --filter=@elizaos/app-core
             --filter=elizaos
             --filter=@elizaos/interop
+            --filter=@elizaos/plugin-pdf
             --filter=@elizaos/prompts
             --filter=@elizaos/shared
             --filter=@elizaos/skills
@@ -978,4 +979,3 @@ jobs:
           else
             echo "✅ Main base version (${MAIN_BASE}) already matches develop base (${NEW_DEVELOP_BASE})"
           fi
-

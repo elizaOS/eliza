@@ -10,11 +10,11 @@ import {
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import {
   CompanionInferenceAlertButton as InferenceCloudAlertButton,
   resolveCompanionInferenceNotice,
 } from "../companion/injected";
-import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";

@@ -21,6 +21,19 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function normalizePluginNpmName(name) {
+  return name.endsWith("-root") ? name.slice(0, -5) : name;
+}
+
+function derivePluginId(name) {
+  const normalized = normalizePluginNpmName(name);
+  if (!normalized.startsWith("@elizaos/plugin-")) {
+    return null;
+  }
+
+  return normalized.slice("@elizaos/plugin-".length);
+}
+
 function resolvePackageRoot(dirName) {
   const candidates = [
     path.join(repoRoot, "eliza", "plugins", dirName, "typescript"),
@@ -49,6 +62,9 @@ function resolvePluginCandidates() {
   const candidates = [];
 
   for (const plugin of manifest.plugins ?? []) {
+    if (typeof plugin?.dirName !== "string" || plugin.dirName.length === 0) {
+      continue;
+    }
     const packageRoot = resolvePackageRoot(plugin.dirName);
     if (!packageRoot) {
       continue;
@@ -70,6 +86,16 @@ function resolvePluginFilter(candidates) {
     return match.id;
   }
 
+  const rootWrapperMatch = candidates.find((plugin) => {
+    if (path.basename(plugin.packageRoot) !== "typescript") {
+      return false;
+    }
+    return cwd === path.dirname(plugin.packageRoot);
+  });
+  if (rootWrapperMatch) {
+    return rootWrapperMatch.id;
+  }
+
   const fallbackMatch = candidates.find((plugin) =>
     cwd.startsWith(`${plugin.packageRoot}${path.sep}`),
   );
@@ -80,9 +106,16 @@ function resolvePluginFilter(candidates) {
   const packageJsonPath = path.join(cwd, "package.json");
   if (fs.existsSync(packageJsonPath)) {
     const pkg = readJson(packageJsonPath);
-    const byName = candidates.find((plugin) => plugin.npmName === pkg.name);
+    const byName = candidates.find(
+      (plugin) =>
+        plugin.npmName === pkg.name || `${plugin.npmName}-root` === pkg.name,
+    );
     if (byName) {
       return byName.id;
+    }
+
+    if (typeof pkg.name === "string") {
+      return derivePluginId(pkg.name);
     }
   }
 

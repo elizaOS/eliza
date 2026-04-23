@@ -1,5 +1,5 @@
-import { promises as fs } from "node:fs";
 import type { Dirent } from "node:fs";
+import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -349,8 +349,7 @@ interface CapturedResponse {
 }
 
 export interface AppsRouteContext
-  extends
-    RouteRequestMeta,
+  extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
   url: URL;
   appManager: AppManagerLike;

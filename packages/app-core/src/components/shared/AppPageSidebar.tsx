@@ -209,7 +209,9 @@ export const AppPageSidebar = React.forwardRef<
             onClick={() => handleCollapsedChange(true)}
             aria-label={collapseButtonAriaLabel}
             data-testid={
-              testId ? `${testId}-collapse-inline` : "page-sidebar-collapse-inline"
+              testId
+                ? `${testId}-collapse-inline`
+                : "page-sidebar-collapse-inline"
             }
             className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
           >
@@ -247,7 +249,9 @@ export const AppPageSidebar = React.forwardRef<
         headerClassName,
       )}
       footerClassName={joinClassNames(
-        defaultFooter && desktopDefaultVariant ? PAGE_SIDEBAR_FOOTER_CLASS : undefined,
+        defaultFooter && desktopDefaultVariant
+          ? PAGE_SIDEBAR_FOOTER_CLASS
+          : undefined,
         footerClassName,
       )}
       collapseButtonClassName={joinClassNames(
@@ -259,7 +263,9 @@ export const AppPageSidebar = React.forwardRef<
       onWidthChange={effectiveResizable ? handleWidthChange : onWidthChange}
       minWidth={minWidth}
       maxWidth={maxWidth}
-      onCollapseRequest={onCollapseRequest ?? (() => handleCollapsedChange(true))}
+      onCollapseRequest={
+        onCollapseRequest ?? (() => handleCollapsedChange(true))
+      }
     />
   );
 });

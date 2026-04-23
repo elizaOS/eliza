@@ -34,10 +34,12 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.js";
+
 import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.js";
+
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -2481,7 +2483,8 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
-  const advancedCapabilitiesEnabled = resolveAdvancedCapabilitiesEnabled(config);
+  const advancedCapabilitiesEnabled =
+    resolveAdvancedCapabilitiesEnabled(config);
   const settings = applyAdvancedCapabilitySettings(
     {
       MEMORY_SUMMARY_MODEL_TYPE:

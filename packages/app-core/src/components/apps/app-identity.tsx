@@ -1,4 +1,9 @@
 import {
+  createGeneratedAppHeroDataUrl,
+  getAppHeroMonogram,
+  getAppHeroThemeKey,
+} from "@elizaos/shared/app-hero-art";
+import {
   Bot,
   Briefcase,
   Gamepad2,
@@ -8,12 +13,7 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import {
-  createGeneratedAppHeroDataUrl,
-  getAppHeroMonogram,
-  getAppHeroThemeKey,
-} from "@elizaos/shared/app-hero-art";
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useState } from "react";
 
 export interface AppIdentitySource {
   name: string;
@@ -96,40 +96,60 @@ function useResolvedAppImageSource(app: AppIdentitySource): {
 } {
   const heroSrc = app.heroImage?.trim() || null;
   const iconSrc = iconImageSource(app.icon);
-  const generatedSrc = useMemo(
-    () => createGeneratedAppHeroDataUrl(app),
-    [app.category, app.description, app.displayName, app.name],
-  );
-  const [failedHeroSrc, setFailedHeroSrc] = useState<string | null>(null);
-  const [failedIconSrc, setFailedIconSrc] = useState<string | null>(null);
-  const [generatedFailed, setGeneratedFailed] = useState(false);
-
-  useEffect(() => {
-    setFailedHeroSrc(null);
-    setFailedIconSrc(null);
-    setGeneratedFailed(false);
-  }, [generatedSrc, heroSrc, iconSrc]);
+  const generatedSrc = createGeneratedAppHeroDataUrl(app);
+  const sourceKey = [
+    app.name,
+    app.displayName ?? "",
+    app.category ?? "",
+    app.description ?? "",
+    heroSrc ?? "",
+    iconSrc ?? "",
+  ].join("\u0000");
+  const [failureState, setFailureState] = useState(() => ({
+    sourceKey,
+    failedHeroSrc: null as string | null,
+    failedIconSrc: null as string | null,
+    generatedFailed: false,
+  }));
+  const currentFailureState =
+    failureState.sourceKey === sourceKey
+      ? failureState
+      : {
+          sourceKey,
+          failedHeroSrc: null,
+          failedIconSrc: null,
+          generatedFailed: false,
+        };
 
   const imageSrc =
-    heroSrc && heroSrc !== failedHeroSrc
+    heroSrc && heroSrc !== currentFailureState.failedHeroSrc
       ? heroSrc
-      : iconSrc && iconSrc !== failedIconSrc
+      : iconSrc && iconSrc !== currentFailureState.failedIconSrc
         ? iconSrc
-        : !generatedFailed
+        : !currentFailureState.generatedFailed
           ? generatedSrc
           : null;
 
   const handleImageError = () => {
     if (imageSrc === heroSrc && heroSrc) {
-      setFailedHeroSrc(heroSrc);
+      setFailureState({
+        ...currentFailureState,
+        failedHeroSrc: heroSrc,
+      });
       return;
     }
     if (imageSrc === iconSrc && iconSrc) {
-      setFailedIconSrc(iconSrc);
+      setFailureState({
+        ...currentFailureState,
+        failedIconSrc: iconSrc,
+      });
       return;
     }
     if (imageSrc === generatedSrc) {
-      setGeneratedFailed(true);
+      setFailureState({
+        ...currentFailureState,
+        generatedFailed: true,
+      });
     }
   };
 

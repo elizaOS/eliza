@@ -323,9 +323,7 @@ export function getAppCatalogSectionKey(
     .join(" ")
     .toLowerCase();
 
-  if (
-    /companion|avatar|assistant|friend|chat|social/.test(searchBlob)
-  ) {
+  if (/companion|avatar|assistant|friend|chat|social/.test(searchBlob)) {
     return "games";
   }
   if (
@@ -367,9 +365,7 @@ export function groupAppsForCatalog(
   const groupedApps = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
   const surfacedAppNames = new Set<string>();
 
-  const favoriteApps = apps.filter(
-    (app) => favoriteAppNames.has(app.name),
-  );
+  const favoriteApps = apps.filter((app) => favoriteAppNames.has(app.name));
   if (favoriteApps.length > 0) {
     sections.push({
       key: "favorites",
@@ -382,7 +378,8 @@ export function groupAppsForCatalog(
   }
 
   const featuredApps = apps.filter(
-    (app) => FEATURED_APP_NAMES.has(app.name) && !favoriteAppNames.has(app.name),
+    (app) =>
+      FEATURED_APP_NAMES.has(app.name) && !favoriteAppNames.has(app.name),
   );
   if (featuredApps.length > 0) {
     sections.push({

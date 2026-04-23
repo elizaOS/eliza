@@ -1,13 +1,13 @@
 import fs from "node:fs";
-import path from "node:path";
 import type http from "node:http";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AppManagerLike, AppsRouteContext } from "./apps-routes.js";
-import { handleAppsRoutes } from "./apps-routes.js";
 import type {
   PluginManagerLike,
   RegistryPluginInfo,
 } from "../services/plugin-manager-types.js";
+import type { AppManagerLike, AppsRouteContext } from "./apps-routes.js";
+import { handleAppsRoutes } from "./apps-routes.js";
 
 interface RecordedResponse {
   status: number;

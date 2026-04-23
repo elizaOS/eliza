@@ -150,6 +150,7 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

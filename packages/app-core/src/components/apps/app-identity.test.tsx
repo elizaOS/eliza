@@ -29,4 +29,27 @@ describe("app identity visuals", () => {
       tile.container.querySelector('img[src^="data:image/svg+xml"]'),
     ).not.toBeNull();
   });
+
+  it("can render image-only widgets without badge overlays", () => {
+    const app = {
+      name: "@acme/app-mystery",
+      displayName: "Mystery App",
+      description: "An app with packaged artwork.",
+      category: "utility",
+      icon: null,
+      heroImage: "/heroes/mystery.png",
+    };
+
+    const hero = render(<AppHero app={app} imageOnly />);
+    const tile = render(<AppIdentityTile app={app} imageOnly />);
+
+    expect(
+      hero.container.querySelector('img[src="/heroes/mystery.png"]'),
+    ).not.toBeNull();
+    expect(
+      tile.container.querySelector('img[src="/heroes/mystery.png"]'),
+    ).not.toBeNull();
+    expect(hero.container.textContent?.trim()).toBe("");
+    expect(tile.container.textContent?.trim()).toBe("");
+  });
 });

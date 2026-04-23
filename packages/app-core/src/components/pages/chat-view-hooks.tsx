@@ -24,9 +24,9 @@ import type {
   VoicePlaybackStartEvent,
 } from "../../hooks/voice-chat-types";
 import type { useApp } from "../../state/useApp";
-import { useCompanionSceneStatus } from "../companion/injected";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
+import { useCompanionSceneStatus } from "../companion/injected";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
 

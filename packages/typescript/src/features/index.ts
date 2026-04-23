@@ -107,11 +107,11 @@ import {
 	onboardingSettingsProvider,
 	updateSettingsAction as onboardingUpdateSettingsAction,
 } from "./secrets/onboarding/index.ts";
+import { OnboardingService } from "./secrets/onboarding/service.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
 } from "./secrets/providers/index.ts";
-import { OnboardingService } from "./secrets/onboarding/service.ts";
 import { PluginActivatorService } from "./secrets/services/plugin-activator.ts";
 import { SecretsService } from "./secrets/services/secrets.ts";
 
@@ -153,10 +153,10 @@ const secretsCapability = {
 // ─── Plugin Manager ───────────────────────────────────────────────────────────
 
 import {
+	CoreManagerService,
 	coreStatusAction,
 	getPluginDetailsAction,
 	listEjectedPluginsAction,
-	CoreManagerService,
 	PluginManagerService,
 	pluginConfigurationStatusProvider,
 	pluginStateProvider,

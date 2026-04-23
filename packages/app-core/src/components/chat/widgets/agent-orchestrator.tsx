@@ -247,7 +247,7 @@ function AppRunCard({
     <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-2">
       <div className="flex items-start gap-2">
         <div className="w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/10">
-          <AppHero app={app} className="aspect-[5/4]" />
+          <AppHero app={app} className="aspect-[5/4]" imageOnly />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-2xs font-semibold text-txt">

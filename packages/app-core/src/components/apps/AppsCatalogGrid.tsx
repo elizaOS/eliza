@@ -1,11 +1,5 @@
 import { Skeleton } from "@elizaos/ui";
-import {
-  type MouseEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppHero } from "./app-identity";
@@ -47,7 +41,9 @@ function clampCardsPerRow(value: number): number {
 
 function resolveCardsPerRow(width: number): number {
   if (width <= 0) return MAX_CARDS_PER_ROW;
-  const fit = Math.floor((width + CARD_GAP_PX) / (MIN_CARD_WIDTH_PX + CARD_GAP_PX));
+  const fit = Math.floor(
+    (width + CARD_GAP_PX) / (MIN_CARD_WIDTH_PX + CARD_GAP_PX),
+  );
   return clampCardsPerRow(fit);
 }
 
@@ -89,7 +85,10 @@ function resolveSectionMinSlots(
   itemCount: number,
   maxCardsPerRow: number,
 ): number {
-  const preferredSlots = resolveSectionPreferredSlots(itemCount, maxCardsPerRow);
+  const preferredSlots = resolveSectionPreferredSlots(
+    itemCount,
+    maxCardsPerRow,
+  );
   if (itemCount <= 3 || preferredSlots <= 2) {
     return preferredSlots;
   }
@@ -190,7 +189,10 @@ function buildCatalogSectionRows(
 
     rows.push({
       sections: rowSections,
-      totalSlots: rowSections.reduce((total, section) => total + section.slots, 0),
+      totalSlots: rowSections.reduce(
+        (total, section) => total + section.slots,
+        0,
+      ),
     });
   }
 
@@ -204,6 +206,23 @@ function CatalogSkeletonSection({
   label: string;
   rowSizes: readonly number[];
 }) {
+  const rowDescriptors = useMemo(() => {
+    const seenRowCounts = new Map<number, number>();
+    return rowSizes.map((rowSize) => {
+      const occurrence = (seenRowCounts.get(rowSize) ?? 0) + 1;
+      seenRowCounts.set(rowSize, occurrence);
+      const key = `${label}-${rowSize}-${occurrence}`;
+      return {
+        key,
+        rowSize,
+        cardKeys: Array.from(
+          { length: rowSize },
+          (_, position) => `${key}-${position + 1}`,
+        ),
+      };
+    });
+  }, [label, rowSizes]);
+
   return (
     <section className="space-y-3" aria-hidden="true">
       <div className="flex items-center gap-3">
@@ -212,17 +231,17 @@ function CatalogSkeletonSection({
       </div>
 
       <div className="space-y-2">
-        {rowSizes.map((rowSize, rowIndex) => (
+        {rowDescriptors.map((rowDescriptor) => (
           <div
-            key={`${label}-${rowIndex}`}
+            key={rowDescriptor.key}
             className="grid gap-2"
             style={{
-              gridTemplateColumns: `repeat(${rowSize}, minmax(0, 1fr))`,
+              gridTemplateColumns: `repeat(${rowDescriptor.rowSize}, minmax(0, 1fr))`,
             }}
           >
-            {Array.from({ length: rowSize }, (_, cardIndex) => (
+            {rowDescriptor.cardKeys.map((cardKey) => (
               <div
-                key={`${label}-${rowIndex}-${cardIndex}`}
+                key={cardKey}
                 className="overflow-hidden rounded-2xl border border-border/35 bg-card/72"
               >
                 <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
@@ -299,19 +318,25 @@ export function AppsCatalogGrid({
       ) : null}
 
       {loading ? (
-        <div className="space-y-6" aria-label={t("appsview.Loading")}>
+        <div
+          className="space-y-6"
+          role="status"
+          aria-label={t("appsview.Loading")}
+        >
           <CatalogSkeletonSection label="Featured" rowSizes={[1]} />
           <CatalogSkeletonSection
             label="Games & Entertainment"
-            rowSizes={buildBalancedRows(Array.from({ length: 7 }), cardsPerRow).map(
-              (row) => row.length,
-            )}
+            rowSizes={buildBalancedRows(
+              Array.from({ length: 7 }),
+              cardsPerRow,
+            ).map((row) => row.length)}
           />
           <CatalogSkeletonSection
             label="Developer Utilities"
-            rowSizes={buildBalancedRows(Array.from({ length: 6 }), cardsPerRow).map(
-              (row) => row.length,
-            )}
+            rowSizes={buildBalancedRows(
+              Array.from({ length: 6 }),
+              cardsPerRow,
+            ).map((row) => row.length)}
           />
         </div>
       ) : visibleApps.length === 0 ? (
@@ -324,126 +349,141 @@ export function AppsCatalogGrid({
         </div>
       ) : (
         <div className="space-y-4">
-          {sectionRows.map((sectionRow, rowIndex) => (
-            <div
-              key={`apps-section-row-${rowIndex}`}
-              data-testid={`apps-section-row-${rowIndex}`}
-              className="grid gap-4"
-              style={{
-                gridTemplateColumns: `repeat(${sectionRow.totalSlots}, minmax(0, 1fr))`,
-              }}
-            >
-              {sectionRow.sections.map((section) => (
-                <section
-                  key={section.key}
-                  data-testid={`apps-section-${section.key}`}
-                  className="min-w-0 space-y-3"
-                  style={{
-                    gridColumn: `span ${section.slots} / span ${section.slots}`,
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
-                      {section.label}
-                    </h2>
-                    <div className="h-px flex-1 bg-border/30" />
-                  </div>
+          {sectionRows.map((sectionRow) => {
+            const rowKey = sectionRow.sections
+              .map((section) => section.key)
+              .join("-");
+            return (
+              <div
+                key={rowKey}
+                data-testid={`apps-section-row-${rowKey}`}
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns: `repeat(${sectionRow.totalSlots}, minmax(0, 1fr))`,
+                }}
+              >
+                {sectionRow.sections.map((section) => (
+                  <section
+                    key={section.key}
+                    data-testid={`apps-section-${section.key}`}
+                    className="min-w-0 space-y-3"
+                    style={{
+                      gridColumn: `span ${section.slots} / span ${section.slots}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
+                        {section.label}
+                      </h2>
+                      <div className="h-px flex-1 bg-border/30" />
+                    </div>
 
-                  <div className="space-y-2">
-                    {buildBalancedRows(section.apps, section.slots).map(
-                      (row, sectionRowIndex) => (
-                        <div
-                          key={`${section.key}-${sectionRowIndex}`}
-                          className="grid gap-2"
-                          style={{
-                            gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
-                          }}
-                        >
-                          {row.map((app) => {
-                            const isActive = activeAppNames.has(app.name);
-                            const isFavorite = favoriteAppNames.has(app.name);
-                            const displayName = app.displayName ?? getAppShortName(app);
+                    <div className="space-y-2">
+                      {buildBalancedRows(section.apps, section.slots).map(
+                        (row) => {
+                          const sectionRowKey = row
+                            .map((app) => app.name)
+                            .join("-");
+                          return (
+                            <div
+                              key={`${section.key}-${sectionRowKey}`}
+                              className="grid gap-2"
+                              style={{
+                                gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
+                              }}
+                            >
+                              {row.map((app) => {
+                                const isActive = activeAppNames.has(app.name);
+                                const isFavorite = favoriteAppNames.has(
+                                  app.name,
+                                );
+                                const displayName =
+                                  app.displayName ?? getAppShortName(app);
 
-                            return (
-                              <div
-                                key={app.name}
-                                className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
-                                  isActive
-                                    ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
-                                    : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
-                                  title={displayName}
-                                  aria-label={displayName}
-                                  className="block w-full text-left focus-visible:outline-none"
-                                  onClick={() => onLaunch(app)}
-                                >
-                                  <AppHero
-                                    app={app}
-                                    className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
-                                  />
-                                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
-                                        {displayName}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </button>
-                                {isActive ? (
-                                  <span
-                                    title="Running"
-                                    className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
-                                  />
-                                ) : null}
-                                <button
-                                  type="button"
-                                  aria-label={
-                                    isFavorite
-                                      ? "Remove from favorites"
-                                      : "Add to favorites"
-                                  }
-                                  className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
-                                    isFavorite
-                                      ? "bg-black/30 text-warn backdrop-blur-sm"
-                                      : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
-                                  }`}
-                                  onClick={(
-                                    event: MouseEvent<HTMLButtonElement>,
-                                  ) => {
-                                    event.stopPropagation();
-                                    onToggleFavorite(app.name);
-                                  }}
-                                >
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill={isFavorite ? "currentColor" : "none"}
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
+                                return (
+                                  <div
+                                    key={app.name}
+                                    className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+                                      isActive
+                                        ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
+                                        : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
+                                    }`}
                                   >
-                                    <title>Favorite</title>
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                  </svg>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ),
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ))}
+                                    <button
+                                      type="button"
+                                      data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
+                                      title={displayName}
+                                      aria-label={displayName}
+                                      className="block w-full text-left focus-visible:outline-none"
+                                      onClick={() => onLaunch(app)}
+                                    >
+                                      <AppHero
+                                        app={app}
+                                        className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
+                                      />
+                                      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
+                                        <div className="min-w-0 flex-1">
+                                          <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                                            {displayName}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </button>
+                                    {isActive ? (
+                                      <span
+                                        title="Running"
+                                        className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+                                      />
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      aria-label={
+                                        isFavorite
+                                          ? "Remove from favorites"
+                                          : "Add to favorites"
+                                      }
+                                      className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
+                                        isFavorite
+                                          ? "bg-black/30 text-warn backdrop-blur-sm"
+                                          : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
+                                      }`}
+                                      onClick={(
+                                        event: MouseEvent<HTMLButtonElement>,
+                                      ) => {
+                                        event.stopPropagation();
+                                        onToggleFavorite(app.name);
+                                      }}
+                                    >
+                                      <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill={
+                                          isFavorite ? "currentColor" : "none"
+                                        }
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                      >
+                                        <title>Favorite</title>
+                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

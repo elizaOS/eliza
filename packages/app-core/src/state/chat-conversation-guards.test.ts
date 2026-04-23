@@ -24,9 +24,9 @@ describe("chat-conversation-guards", () => {
     expect(
       isMainChatConversation(makeConversation("page", { scope: "page-apps" })),
     ).toBe(false);
-    expect(isMainChatConversation(makeConversation("legacy-page", undefined))).toBe(
-      true,
-    );
+    expect(
+      isMainChatConversation(makeConversation("legacy-page", undefined)),
+    ).toBe(true);
     expect(
       isMainChatConversation(
         makeConversation("automation", {

@@ -29,7 +29,8 @@ export function IMessageStatusPanel() {
       ? status.permissionAction
       : null;
   const isSendOnly = status?.sendOnly === true;
-  const canReadMessages = status?.connected === true && status?.chatDbAvailable !== false;
+  const canReadMessages =
+    status?.connected === true && status?.chatDbAvailable !== false;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -109,10 +110,10 @@ export function IMessageStatusPanel() {
                   defaultValue:
                     "iMessage can send, but Milady cannot read local messages until Full Disk Access is granted.",
                 })
-            : t("pluginsview.IMessageNotConnected", {
-                defaultValue:
-                  "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
-              })}
+              : t("pluginsview.IMessageNotConnected", {
+                  defaultValue:
+                    "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
+                })}
         </div>
         {error ? <div className="text-danger">{error}</div> : null}
         {!error && status?.reason ? (

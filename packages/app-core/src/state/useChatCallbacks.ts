@@ -784,9 +784,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         const nextCutoffTs = Date.now();
         setConversations((prev) => {
           const next = shouldReplacePreviousDraftConversation
-            ? prev.filter(
-                (existing) => existing.id !== previousConversationId,
-              )
+            ? prev.filter((existing) => existing.id !== previousConversationId)
             : prev;
           return [conversation, ...next];
         });
@@ -842,7 +840,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             next.delete(previousConversationId);
             return next;
           });
-          void client.deleteConversation(previousConversationId).catch(() => {});
+          void client
+            .deleteConversation(previousConversationId)
+            .catch(() => {});
         }
         void client
           .cleanupEmptyConversations({ keepId: conversation.id })

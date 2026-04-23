@@ -8,7 +8,6 @@
 export { GameViewOverlay } from "./components/apps/GameViewOverlay";
 export { CharacterEditor } from "./components/character/CharacterEditor";
 export { SaveCommandModal } from "./components/chat/SaveCommandModal";
-export { FineTuningView } from "./components/training/injected";
 export { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
@@ -40,7 +39,6 @@ export { TasksPageView } from "./components/pages/TasksPageView";
 export { TrajectoriesView } from "./components/pages/TrajectoriesView";
 export { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
 export { BugReportModal } from "./components/shell/BugReportModal";
-
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 export { Header } from "./components/shell/Header";
@@ -49,3 +47,4 @@ export { ShellOverlays } from "./components/shell/ShellOverlays";
 export { StartupFailureView } from "./components/shell/StartupFailureView";
 export { StartupShell } from "./components/shell/StartupShell";
 export { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+export { FineTuningView } from "./components/training/injected";
