@@ -23,7 +23,7 @@
       "bun-types"
     ],
     "baseUrl": "../../..",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": [
         "packages/typescript/dist/node"

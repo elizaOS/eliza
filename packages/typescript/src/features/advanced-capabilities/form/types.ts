@@ -518,7 +518,7 @@ export interface TypeHandler {
 }
 
 // ============================================================================
-// CONTROL TYPE - Unified widget/type registry
+// CONTROL TYPE - widget/type registry
 // ============================================================================
 
 export interface ValidationResult {

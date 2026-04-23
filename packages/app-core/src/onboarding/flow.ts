@@ -23,7 +23,7 @@ import type {
 } from "../state/types";
 import { ONBOARDING_STEPS } from "../state/types";
 
-/** Linear step ids for the unified onboarding flow. */
+/** Linear step ids for the onboarding flow. */
 export function getStepOrder(): OnboardingStep[] {
   return ONBOARDING_STEPS.map((s) => s.id);
 }

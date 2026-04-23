@@ -1,6 +1,6 @@
 export { draftFollowupAction } from "./actions/draftFollowup.ts";
 export { draftReplyAction } from "./actions/draftReply.ts";
-export { listUnifiedInboxAction } from "./actions/listUnifiedInbox.ts";
+export { listInboxAction } from "./actions/listInbox.ts";
 export { sendDraftAction } from "./actions/sendDraft.ts";
 export { triageMessagesAction } from "./actions/triageMessages.ts";
 export { BaseMessageAdapter } from "./adapters/base.ts";
@@ -37,13 +37,13 @@ export * from "./types.ts";
 import type { Action } from "../../../types/index.ts";
 import { draftFollowupAction } from "./actions/draftFollowup.ts";
 import { draftReplyAction } from "./actions/draftReply.ts";
-import { listUnifiedInboxAction } from "./actions/listUnifiedInbox.ts";
+import { listInboxAction } from "./actions/listInbox.ts";
 import { sendDraftAction } from "./actions/sendDraft.ts";
 import { triageMessagesAction } from "./actions/triageMessages.ts";
 
 export const messagingTriageActions: readonly Action[] = [
 	triageMessagesAction,
-	listUnifiedInboxAction,
+	listInboxAction,
 	draftReplyAction,
 	draftFollowupAction,
 	sendDraftAction,

@@ -1437,7 +1437,7 @@ function PluginListView({
 
 /* ── Exported views ────────────────────────────────────────────────── */
 
-/** Unified plugins view — tag-filtered plugin list. */
+/** Plugins view — tag-filtered plugin list. */
 export function PluginsView({
   contentHeader,
   mode = "all",

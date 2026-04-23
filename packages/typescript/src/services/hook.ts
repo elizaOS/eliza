@@ -1,12 +1,12 @@
 /**
- * HookService - Unified Hook Management Service
+ * HookService - Hook Management Service
  *
  * Provides centralized hook registration, management, and execution for the
  * Eliza agent runtime. Integrates with the runtime event system to dispatch
  * hooks when events are emitted.
  *
  * Key features:
- * - Unified registry for all hook sources (bundled, workspace, plugin, runtime)
+ * - registry for all hook sources (bundled, workspace, plugin, runtime)
  * - Priority-based execution with FIFO ordering for same priority
  * - Eligibility checking based on OS, binaries, env vars, and config
  * - Directory-based hook discovery and loading

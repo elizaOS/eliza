@@ -859,7 +859,7 @@ export async function provisionStewardWallet(params: {
  * Sign (and optionally broadcast) a transaction through the Steward vault.
  *
  * This calls `POST /vault/:agentId/sign` directly. The three possible outcomes
- * are mapped to a unified {@link StewardSignResponse}:
+ * are mapped to a combined {@link StewardSignResponse}:
  *
  * - **Approved** (HTTP 200): `{ approved: true, txHash }`.
  * - **Pending approval** (HTTP 202): `{ approved: false, pending: true, txId }`.

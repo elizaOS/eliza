@@ -9,7 +9,7 @@ import {
 import type { State } from "./state";
 
 /**
- * Unified pipeline hooks (`registerPipelineHook` / `applyPipelineHooks`).
+ * pipeline hooks (`registerPipelineHook` / `applyPipelineHooks`).
  *
  * **Why one subsystem:** plugins historically needed many bespoke extension points; a single
  * registration + ordering model keeps behavior discoverable and lets the runtime attach one

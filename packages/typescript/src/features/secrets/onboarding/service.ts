@@ -4,7 +4,7 @@
  * Manages the secrets onboarding flow across platforms (Discord, Telegram, etc.)
  * Supports both conversational and form-based collection modes.
  *
- * Integrates with the unified OnboardingStateMachine for
+ * Integrates with the OnboardingStateMachine for
  * consistent state management across CLI and conversational interfaces.
  */
 
@@ -61,7 +61,7 @@ interface OnboardingSession {
 	lastActivityAt: number;
 	platform: "discord" | "telegram" | "other";
 	mode: "conversational" | "form" | "hybrid";
-	/** Unified state machine instance */
+	/** state machine instance */
 	stateMachine?: OnboardingStateMachine;
 }
 

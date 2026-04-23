@@ -846,7 +846,7 @@ export interface TypeHandler {
 }
 
 // ============================================================================
-// CONTROL TYPE - Unified widget/type registry
+// CONTROL TYPE - widget/type registry
 // ============================================================================
 
 /**
@@ -938,7 +938,7 @@ export interface ExternalFieldState {
 }
 
 /**
- * ControlType - Unified widget/type registry entry
+ * ControlType - widget/type registry entry
  *
  * This is the evolution of TypeHandler into a full widget system.
  * ControlType handles three patterns:
@@ -957,7 +957,7 @@ export interface ExternalFieldState {
  *    - Have activate() for starting async process
  *    - Confirmation comes from external event
  *
- * WHY unified interface:
+ * WHY shared interface:
  * - Plugins register one type of thing (ControlType)
  * - FormService treats all types uniformly
  * - Progressive complexity: simple types just use validate()

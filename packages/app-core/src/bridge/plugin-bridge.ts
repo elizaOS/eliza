@@ -1,7 +1,7 @@
 /**
  * Plugin Bridge
  *
- * This module provides a unified interface to all Capacitor plugins
+ * This module provides a single interface to all Capacitor plugins
  * with platform-specific fallbacks and capability detection.
  *
  * When a native plugin is unavailable, it provides graceful degradation

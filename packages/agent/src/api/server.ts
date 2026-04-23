@@ -1957,7 +1957,7 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
-  // ── Unified inbox routes (/api/inbox/*) ───────────────────────────────
+  // ── Inbox routes (/api/inbox/*) ───────────────────────────────
   // Cross-channel read-only feed that merges connector messages
   // (imessage, telegram, discord, whatsapp, etc.) into a single
   // time-ordered view. See api/inbox-routes.ts for details.

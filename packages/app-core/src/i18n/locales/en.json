@@ -1821,7 +1821,7 @@
   "pluginsview.Back": "Back",
   "pluginsview.BlueBubblesConnected": "BlueBubbles is connected.",
   "pluginsview.BlueBubblesNotConnected": "BlueBubbles is not connected yet. Save the server URL and password above, then refresh.",
-  "pluginsview.BlueBubblesWebhookHint": "Point your BlueBubbles webhook at the {{appName}} API host so new iMessage events stream into the unified inbox.",
+  "pluginsview.BlueBubblesWebhookHint": "Point your BlueBubbles webhook at the {{appName}} API host so new iMessage events stream into the inbox.",
   "pluginsview.BlueBubblesWebhookTarget": "Webhook target",
   "pluginsview.BotRespondsAnyChat": "Bot will respond in any chat",
   "pluginsview.BotRespondsListedChatIds": "Bot will only respond in listed chat IDs",

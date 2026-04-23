@@ -95,14 +95,14 @@ declare module "./client-base" {
       id: string,
     ): Promise<{ messages: ConversationMessage[] }>;
     /**
-     * Fetch the unified cross-channel inbox. Returns the most recent
+     * Fetch the cross-channel inbox. Returns the most recent
      * messages across every connector room the agent participates in,
      * time-ordered newest first. Each message carries its `source`
      * tag (imessage / telegram / discord / etc.) so the UI can render
      * per-source styling without a second lookup.
      *
      * When `roomId` is provided the server scopes the query to that
-     * single connector room — use this when the unified messages view
+     * single connector room — use this when the messages view
      * has a specific chat selected. When `roomId` is omitted the feed
      * merges every room's recent messages.
      */
@@ -117,7 +117,7 @@ declare module "./client-base" {
     }>;
     /**
      * List the distinct connector source tags the agent currently has
-     * inbox messages for. Used by the unified inbox UI to build the
+     * inbox messages for. Used by the inbox UI to build the
      * source filter chip list dynamically.
      */
     getInboxSources(): Promise<{ sources: string[] }>;
@@ -126,7 +126,7 @@ declare module "./client-base" {
      * one sidebar-friendly row per external chat room. Each row carries
      * the room id (for selection), source tag, display title,
      * last-message preview, last-message timestamp, and a total message
-     * count. Used by the unified messages sidebar to render connector
+     * count. Used by the messages sidebar to render connector
      * chats alongside dashboard conversations.
      */
     getInboxChats(options?: { sources?: string[] }): Promise<{

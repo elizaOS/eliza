@@ -30,5 +30,5 @@ export async function requestPermission(
 export async function openPrivacySettings(
   _id: SystemPermissionId,
 ): Promise<void> {
-  // No unified privacy settings on Linux
+  // No standard privacy settings on Linux
 }

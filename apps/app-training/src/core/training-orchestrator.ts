@@ -1,5 +1,5 @@
 /**
- * Unified training-trigger orchestrator.
+ * training-trigger orchestrator.
  *
  * Single entry point for all paths that kick off a training run:
  *   - threshold:  TrainingTriggerService fires when the per-task counter passes

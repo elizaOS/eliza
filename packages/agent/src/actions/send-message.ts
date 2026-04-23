@@ -247,7 +247,7 @@ async function handleRolodexSend(
 }
 
 // ---------------------------------------------------------------------------
-// Unified SEND_MESSAGE action
+// SEND_MESSAGE action
 // ---------------------------------------------------------------------------
 
 export const sendMessageAction: Action = {

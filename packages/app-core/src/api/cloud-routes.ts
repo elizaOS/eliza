@@ -17,7 +17,7 @@ import {
 } from "@elizaos/shared/contracts/onboarding";
 import { isTimeoutError } from "../utils/errors";
 import {
-  disconnectUnifiedCloudConnection,
+  disconnectCloudConnection,
   type RuntimeCloudLike,
 } from "./cloud-connection";
 import { clearCloudSecrets, scrubCloudSecretsFromEnv } from "./cloud-secrets";
@@ -200,7 +200,7 @@ export async function handleCloudRoute(
     // Invalidate any in-flight login poll (see persistCloudLoginStatus).
     cloudDisconnectEpoch++;
     try {
-      await disconnectUnifiedCloudConnection({
+      await disconnectCloudConnection({
         cloudManager: state.cloudManager,
         config: state.config,
         runtime: state.runtime,

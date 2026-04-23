@@ -106,7 +106,7 @@ export function BlueBubblesStatusPanel() {
         <div className="text-muted">
           {t("pluginsview.BlueBubblesWebhookHint", {
             defaultValue:
-              "Point your BlueBubbles webhook at the app API host so new iMessage events stream into the unified inbox.",
+              "Point your BlueBubbles webhook at the app API host so new iMessage events stream into the inbox.",
           })}
         </div>
       </div>

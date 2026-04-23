@@ -20,7 +20,7 @@ import type {
 } from "../api";
 
 /**
- * Currently-selected connector chat in the unified messages sidebar.
+ * Currently-selected connector chat in the messages sidebar.
  * When non-null, ChatView swaps its main panel out for a read-only
  * view of that room's inbox messages (rendered via `/api/inbox/
  * messages?roomId=…`). Mutually exclusive with a live dashboard
@@ -118,7 +118,7 @@ export function useMiscUiState() {
     setActiveGameRunId("");
   }, [activeGameRunId, appRuns, setActiveGameRunId]);
 
-  // ── Unified messages sidebar ───────────────────────────────────────
+  // ── Messages sidebar ───────────────────────────────────────
   const [activeInboxChat, setActiveInboxChat] =
     useState<ActiveInboxChat | null>(null);
 

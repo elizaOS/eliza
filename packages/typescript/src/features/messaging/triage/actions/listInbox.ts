@@ -13,11 +13,11 @@ import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { parseListInboxParams } from "./_shared.ts";
 
-export const listUnifiedInboxAction: Action = {
-	name: "LIST_UNIFIED_INBOX",
+export const listInboxAction: Action = {
+	name: "LIST_INBOX",
 	description:
-		"List unread messages from every connected platform as one unified feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'.",
-	similes: ["UNIFIED_INBOX", "LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
+		"List unread messages from every connected platform as one feed, sorted by priority and recency. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'.",
+	similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
 	examples: [
 		[
 			{
@@ -27,8 +27,8 @@ export const listUnifiedInboxAction: Action = {
 			{
 				name: "Agent",
 				content: {
-					text: "Here's your unified inbox.",
-					action: "LIST_UNIFIED_INBOX",
+					text: "Here's your inbox.",
+					action: "LIST_INBOX",
 				},
 			},
 		],
@@ -67,7 +67,7 @@ export const listUnifiedInboxAction: Action = {
 		const trimmed = unread.slice(0, limit);
 
 		logger.info(
-			`[ListUnifiedInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
+			`[ListInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
 		);
 
 		const text =
@@ -76,7 +76,7 @@ export const listUnifiedInboxAction: Action = {
 				: `You have ${unread.length} unread across ${new Set(unread.map((m) => m.source)).size} platform(s).`;
 
 		if (callback) {
-			await callback({ text, action: "LIST_UNIFIED_INBOX" });
+			await callback({ text, action: "LIST_INBOX" });
 		}
 
 		return {

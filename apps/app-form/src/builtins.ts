@@ -24,7 +24,7 @@
  * ## Architecture Decision: ControlType vs TypeHandler
  *
  * We use ControlType (not the legacy TypeHandler) because:
- * - ControlType is the unified interface for all type categories
+ * - ControlType is the shared interface for all type categories
  * - ControlType supports composite types (subcontrols)
  * - ControlType supports external types (activate/confirm)
  * - TypeHandler is legacy and maintained only for backwards compatibility

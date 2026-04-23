@@ -1,5 +1,5 @@
 /**
- * Plugins view — single unified plugin management surface.
+ * Plugins view — plugin management surface.
  */
 
 import type { ReactNode } from "react";

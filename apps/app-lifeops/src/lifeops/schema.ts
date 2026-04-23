@@ -951,7 +951,7 @@ export const lifeSleepEpisodes = pgTable(
 );
 
 /**
- * Unified telemetry store. Replaces per-source tables (life_activity_signals,
+ * Canonical telemetry store. Replaces per-source tables (life_activity_signals,
  * life_activity_events, life_screen_time_*) with a single append-only event
  * store keyed by `(agentId, family, occurredAt)`. Payload shape is validated
  * at ingestion time against `LifeOpsTelemetryPayload` in shared contracts.

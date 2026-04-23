@@ -55,7 +55,7 @@ export interface HardwareProbe {
   cpuCores: number;
   platform: NodeJS.Platform;
   arch: NodeJS.Architecture;
-  /** True on Apple Silicon (unified memory — large models are viable on 16GB+). */
+  /** True on Apple Silicon (shared memory — large models are viable on 16GB+). */
   appleSilicon: boolean;
   /** Recommended default bucket based on available memory. */
   recommendedBucket: ModelBucket;

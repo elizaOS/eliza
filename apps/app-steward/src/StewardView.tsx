@@ -1,5 +1,5 @@
 /**
- * StewardView — unified transaction history + approval queue panel.
+ * StewardView — transaction history + approval queue panel.
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
