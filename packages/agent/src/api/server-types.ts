@@ -38,6 +38,7 @@ export type ConversationScope =
   | "automation-draft"
   | "page-character"
   | "page-apps"
+  | "page-lifeops"
   | "page-wallet"
   | "page-browser"
   | "page-automations";

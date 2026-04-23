@@ -20,6 +20,7 @@ const VALID_SCOPES = new Set<ConversationScope>([
   "automation-draft",
   "page-character",
   "page-apps",
+  "page-lifeops",
   "page-wallet",
   "page-browser",
   "page-automations",
