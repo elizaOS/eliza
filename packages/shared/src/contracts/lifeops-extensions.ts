@@ -200,10 +200,17 @@ export interface LifeOpsDossier {
 
 // ── iMessage connector ───────────────────────────────────────────────────────
 
+export type LifeOpsIMessageHostPlatform =
+  | "darwin"
+  | "linux"
+  | "win32"
+  | "unknown";
+
 export interface LifeOpsIMessageConnectorStatus {
   available: boolean;
   connected: boolean;
   bridgeType: "imsg" | "bluebubbles" | "none";
+  hostPlatform: LifeOpsIMessageHostPlatform;
   accountHandle: string | null;
   sendMode: "cli" | "private-api" | "apple-script" | "none";
   helperConnected: boolean | null;

@@ -1,3 +1,8 @@
+import {
+  normalizeCloudSiteUrl,
+  resolveCloudApiBaseUrl,
+} from "@elizaos/agent/cloud/base-url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -7,11 +12,7 @@ import type {
   SendLifeOpsGmailMessageRequest,
   StartLifeOpsGoogleConnectorResponse,
 } from "@elizaos/app-lifeops/contracts";
-import {
-  normalizeCloudSiteUrl,
-  resolveCloudApiBaseUrl,
-} from "@elizaos/agent/cloud/base-url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import type { GmailSubscriptionMessageHeaders } from "./email-unsubscribe-gmail.js";
 import type { SyncedGoogleCalendarEvent } from "./google-calendar.js";
 import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
 import { formatInstantAsRfc3339InTimeZone } from "./time.js";
@@ -91,6 +92,11 @@ export interface ManagedGoogleGmailReadResponse {
   bodyText: string;
 }
 
+export interface ManagedGoogleGmailSubscriptionHeadersResponse {
+  headers: GmailSubscriptionMessageHeaders[];
+  syncedAt: string;
+}
+
 export interface ManagedGoogleReplySendRequest {
   side?: LifeOpsConnectorSide;
   grantId?: string;
@@ -123,6 +129,7 @@ const DEFAULT_MANAGED_GOOGLE_CAPABILITIES: readonly LifeOpsGoogleCapability[] =
     "google.calendar.read",
     "google.gmail.triage",
     "google.gmail.send",
+    "google.gmail.manage",
   ] as const;
 
 function normalizeManagedGoogleCapabilities(
@@ -169,6 +176,10 @@ function managedGoogleCapabilitiesToScopes(
     }
     if (capability === "google.gmail.send") {
       scopes.add("https://www.googleapis.com/auth/gmail.send");
+    }
+    if (capability === "google.gmail.manage") {
+      scopes.add("https://www.googleapis.com/auth/gmail.modify");
+      scopes.add("https://www.googleapis.com/auth/gmail.settings.basic");
     }
   }
 
@@ -521,6 +532,24 @@ export class GoogleManagedClient {
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailSearchResponse>(
       `milady/google/gmail/search?${query.toString()}`,
+      {
+        method: "GET",
+      },
+    );
+  }
+
+  async getGmailSubscriptionHeaders(args: {
+    side: LifeOpsConnectorSide;
+    query: string;
+    maxResults: number;
+  }): Promise<ManagedGoogleGmailSubscriptionHeadersResponse> {
+    const query = new URLSearchParams({
+      side: args.side,
+      query: args.query,
+      maxResults: String(args.maxResults),
+    });
+    return this.request<ManagedGoogleGmailSubscriptionHeadersResponse>(
+      `milady/google/gmail/subscription-headers?${query.toString()}`,
       {
         method: "GET",
       },

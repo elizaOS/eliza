@@ -143,6 +143,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
+    "@elizaos/plugin-local-embedding": "^2.0.0-alpha.3",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
     "@elizaos/plugin-solana": "workspace:*",

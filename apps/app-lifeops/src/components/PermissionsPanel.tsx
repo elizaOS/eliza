@@ -8,8 +8,6 @@ import {
   Heart,
   MapPin,
   Mic,
-  Monitor,
-  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
@@ -49,38 +47,10 @@ const ICON_CLASS = "h-4 w-4 shrink-0";
 function macosPermissions(): PermissionEntry[] {
   return [
     {
-      id: "accessibility",
-      name: "Accessibility",
-      description: "Computer use and automation",
-      icon: <ShieldCheck className={ICON_CLASS} />,
-      status: "unknown",
-    },
-    {
-      id: "screen-recording",
-      name: "Screen Recording",
-      description: "Screenshots for context",
-      icon: <Monitor className={ICON_CLASS} />,
-      status: "unknown",
-    },
-    {
-      id: "notifications",
-      name: "Notifications",
-      description: "Reminders and alerts",
-      icon: <Bell className={ICON_CLASS} />,
-      status: "unknown",
-    },
-    {
-      id: "microphone",
-      name: "Microphone",
-      description: "Voice commands",
-      icon: <Mic className={ICON_CLASS} />,
-      status: "unknown",
-    },
-    {
       id: "full-disk-access",
       name: "Full Disk Access",
       description:
-        "iMessage outbound timestamps for wake detection (chat.db). Optional — when revoked the iMessage probe is skipped.",
+        "Read iMessage chat.db for wake detection. Grant Full Disk Access to the app running Milady: usually Milady.app, or Terminal, iTerm, or Cursor in local dev.",
       icon: <FolderLock className={ICON_CLASS} />,
       status: "unknown",
     },
@@ -245,7 +215,7 @@ export function PermissionsPanel() {
             <div className="font-semibold">Full Disk Access revoked</div>
             <div className="mt-0.5 text-amber-200/80">
               {fdaStatus.reason ??
-                "Grant access in System Settings → Privacy & Security → Full Disk Access."}
+                "Grant Full Disk Access to the app running Milady, then relaunch it."}
             </div>
           </div>
         </div>
