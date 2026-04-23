@@ -459,49 +459,49 @@ export function MediaSettingsSection({
                 {CLOUD_MODEL_OPTIONS[
                   activeTab as keyof typeof CLOUD_MODEL_OPTIONS
                 ] && (
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-semibold text-muted">
-                        {t("mediasettingssection.Model", {
-                          defaultValue: "Model",
-                        })}
-                      </span>
-                      <Select
-                        value={
-                          ((getNestedValue(
-                            mediaConfig as Record<string, unknown>,
-                            `${activeTab}.cloud.model`,
-                          ) as string) ??
-                            "") ||
-                          "__default__"
-                        }
-                        onValueChange={(value: string) =>
-                          updateNestedValue(
-                            `${activeTab}.cloud.model`,
-                            value === "__default__" ? undefined : value,
-                          )
-                        }
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-muted">
+                      {t("mediasettingssection.Model", {
+                        defaultValue: "Model",
+                      })}
+                    </span>
+                    <Select
+                      value={
+                        ((getNestedValue(
+                          mediaConfig as Record<string, unknown>,
+                          `${activeTab}.cloud.model`,
+                        ) as string) ??
+                          "") ||
+                        "__default__"
+                      }
+                      onValueChange={(value: string) =>
+                        updateNestedValue(
+                          `${activeTab}.cloud.model`,
+                          value === "__default__" ? undefined : value,
+                        )
+                      }
+                    >
+                      <SettingsControls.SelectTrigger
+                        variant="compact"
+                        className="max-w-sm"
                       >
-                        <SettingsControls.SelectTrigger
-                          variant="compact"
-                          className="max-w-sm"
-                        >
-                          <SelectValue />
-                        </SettingsControls.SelectTrigger>
-                        <SelectContent className="max-h-64">
-                          {CLOUD_MODEL_OPTIONS[
-                            activeTab as keyof typeof CLOUD_MODEL_OPTIONS
-                          ].map((m) => (
-                            <SelectItem
-                              key={m.id || "__default__"}
-                              value={m.id || "__default__"}
-                            >
-                              {m.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                        <SelectValue />
+                      </SettingsControls.SelectTrigger>
+                      <SelectContent className="max-h-64">
+                        {CLOUD_MODEL_OPTIONS[
+                          activeTab as keyof typeof CLOUD_MODEL_OPTIONS
+                        ].map((m) => (
+                          <SelectItem
+                            key={m.id || "__default__"}
+                            value={m.id || "__default__"}
+                          >
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </>
             )}
 
