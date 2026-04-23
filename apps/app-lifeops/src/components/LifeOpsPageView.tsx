@@ -15,7 +15,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -38,7 +37,6 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   LifeOpsInboxSection,
 } from "./LifeOpsInboxSection.js";
-import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
@@ -49,7 +47,6 @@ import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
-import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
@@ -60,6 +57,7 @@ import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
+import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 import { PermissionsPanel } from "./PermissionsPanel";
 
@@ -451,70 +449,6 @@ function LifeOpsPageChat() {
       title="LifeOps"
       placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
     />
-  );
-}
-
-interface LifeOpsWorkspaceMainProps {
-  compactLayout: boolean;
-  section: LifeOpsSection;
-  navigate: (section: LifeOpsSection) => void;
-  children: ReactNode;
-}
-
-export function LifeOpsWorkspaceMain({
-  compactLayout,
-  section,
-  navigate,
-  children,
-}: LifeOpsWorkspaceMainProps) {
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!compactLayout || typeof window === "undefined") {
-      return;
-    }
-    const frame = window.requestAnimationFrame(() => {
-      let node: HTMLElement | null = workspaceRef.current;
-      while (node) {
-        if (node.scrollWidth > node.clientWidth + 1) {
-          node.scrollLeft = 0;
-        }
-        node = node.parentElement;
-      }
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [compactLayout, section]);
-
-  return (
-    <div ref={workspaceRef} className="flex h-full min-h-0 min-w-0">
-      {compactLayout ? null : (
-        <LifeOpsResizableSidebar
-          storageKey="lifeops:nav-rail-width"
-          defaultWidth={296}
-          minWidth={220}
-          maxWidth={420}
-          side="right"
-          testId="lifeops-nav-rail-resizable"
-          className="border-r border-border/12"
-        >
-          <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
-        </LifeOpsResizableSidebar>
-      )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {compactLayout ? (
-          <div className="min-w-0 border-b border-border/12 px-4 py-3 sm:px-6">
-            <LifeOpsNavRail
-              activeSection={section}
-              onNavigate={navigate}
-              layout="compact"
-            />
-          </div>
-        ) : null}
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
-          {children}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1089,13 +1023,13 @@ function LifeOpsWorkspaceInner() {
     <AppWorkspaceChrome
       testId="lifeops-shell"
       main={
-        <LifeOpsWorkspaceMain
+        <LifeOpsWorkspaceShell
           compactLayout={compactLayout}
           section={section}
           navigate={navigate}
         >
           {mainContent}
-        </LifeOpsWorkspaceMain>
+        </LifeOpsWorkspaceShell>
       }
       chat={<LifeOpsPageChat />}
     />

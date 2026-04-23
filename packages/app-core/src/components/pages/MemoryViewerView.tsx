@@ -4,7 +4,6 @@ import {
   PageLayout,
   PagePanel,
   SegmentedControl,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -29,6 +28,7 @@ import type {
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -477,7 +477,11 @@ export function MemoryViewerView({
   };
 
   const sidebar = (
-    <Sidebar testId="memory-viewer-sidebar">
+    <AppPageSidebar
+      testId="memory-viewer-sidebar"
+      collapsible
+      contentIdentity="memory-viewer"
+    >
       <SidebarHeader
         search={{
           value: search,
@@ -635,7 +639,7 @@ export function MemoryViewerView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

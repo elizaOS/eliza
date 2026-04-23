@@ -1,7 +1,3 @@
-import {
-  InferenceCloudAlertButton,
-  resolveCompanionInferenceNotice,
-} from "@elizaos/app-companion/ui";
 import { Button } from "@elizaos/ui";
 import { ListTodo, Settings } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
@@ -15,6 +11,10 @@ import {
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
+import {
+  CompanionInferenceAlertButton as InferenceCloudAlertButton,
+  resolveCompanionInferenceNotice,
+} from "../companion/injected";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";

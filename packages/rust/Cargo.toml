@@ -51,7 +51,7 @@ sha2 = "0.11"
 aes = "0.9"
 cbc = "0.2"
 hex = "0.4"
-aes-gcm = "0.10"
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 base64 = "0.22"
 
 # Async runtime

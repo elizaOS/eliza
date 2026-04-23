@@ -25,7 +25,7 @@ import { RunningAppsRow } from "../apps/RunningAppsRow";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
-/** Max items retained in the sidebar's Recent section. */
+/** Max items retained in launch history. */
 const RECENT_APPS_LIMIT = 10;
 
 const APPS_SIDEBAR_WIDTH_KEY = "milady:apps:sidebar:width";
@@ -511,6 +511,10 @@ export function AppsView() {
     });
   }, [activeAppNames, apps, searchQuery]);
 
+  const browseApps = useMemo(() => {
+    return filterAppsForCatalog(apps);
+  }, [apps]);
+
   const handleToggleFavorite = useCallback(
     (appName: string) => {
       const current = favoriteApps;
@@ -560,10 +564,10 @@ export function AppsView() {
   const appsSidebar = (
     <AppsSidebar
       apps={apps}
+      browseApps={browseApps}
       runs={sortedRuns}
       activeAppNames={activeAppNames}
       favoriteAppNames={favoriteAppNames}
-      recentAppNames={recentApps}
       selectedAppName={activeGameRun?.appName ?? null}
       collapsed={sidebarCollapsed}
       onCollapsedChange={handleSidebarCollapsedChange}

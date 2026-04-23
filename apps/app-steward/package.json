@@ -27,5 +27,10 @@
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
     "viem": "^2.21.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
   }
 }

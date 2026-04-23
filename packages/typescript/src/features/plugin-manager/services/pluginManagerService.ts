@@ -37,6 +37,7 @@ import {
 	loadRegistry,
 	type PluginSearchResult,
 	type RegistryPlugin,
+	searchPluginsByContent,
 } from "./pluginRegistryService.ts";
 
 const execAsync = promisify(exec);
@@ -1025,11 +1026,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		query: string,
 		limit?: number,
 	): Promise<PluginSearchResult[]> {
-		const { searchPluginsByContent } = await import(
-			"./pluginRegistryService.ts"
-		);
-		const results = await searchPluginsByContent(query, limit);
-		return results;
+		return searchPluginsByContent(query, limit);
 	}
 
 	async getRegistryPlugin(name: string): Promise<RegistryPlugin | null> {

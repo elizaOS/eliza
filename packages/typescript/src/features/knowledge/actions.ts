@@ -13,10 +13,11 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	UUID,
 } from "../../types";
-import { stringToUuid } from "../../utils";
+import { addKnowledgeFromFilePath } from "./docs-loader.ts";
 import { KnowledgeService } from "./service.ts";
-import type { AddKnowledgeOptions } from "./types.ts";
+import { createKnowledgeNoteFilename, deriveKnowledgeTitle } from "./utils.ts";
 
 type ExtendedValidator = (
 	runtime: IAgentRuntime,
@@ -149,32 +150,20 @@ export const processKnowledgeAction: Action = {
 					return;
 				}
 
-				const fileBuffer = fs.readFileSync(filePath);
 				const fileName = path.basename(filePath);
-				const fileExt = path.extname(filePath).toLowerCase();
-
-				let contentType = "text/plain";
-				if (fileExt === ".pdf") contentType = "application/pdf";
-				else if (fileExt === ".docx")
-					contentType =
-						"application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-				else if (fileExt === ".doc") contentType = "application/msword";
-				else if ([".txt", ".md", ".tson", ".xml", ".csv"].includes(fileExt))
-					contentType = "text/plain";
-
-				const knowledgeOptions: AddKnowledgeOptions = {
-					clientDocumentId: stringToUuid(
-						runtime.agentId + fileName + Date.now(),
-					),
-					contentType,
-					originalFilename: fileName,
+				const result = await addKnowledgeFromFilePath({
+					service,
+					agentId: runtime.agentId,
 					worldId: runtime.agentId,
-					content: fileBuffer.toString("base64"),
-					roomId: message.roomId,
-					entityId: message.entityId,
-				};
-
-				const result = await service.addKnowledge(knowledgeOptions);
+					roomId: runtime.agentId,
+					entityId: runtime.agentId,
+					filePath,
+					metadata: {
+						source: "learned",
+						learnedVia: "PROCESS_KNOWLEDGE",
+						learnedFromPath: filePath,
+					},
+				});
 
 				response = {
 					text: `I've successfully processed the document "${fileName}". It has been split into ${result?.fragmentCount || 0} searchable fragments and added to my knowledge base.`,
@@ -198,16 +187,31 @@ export const processKnowledgeAction: Action = {
 					return;
 				}
 
-				const knowledgeOptions: AddKnowledgeOptions = {
-					clientDocumentId: stringToUuid(
-						`${runtime.agentId}text${Date.now()}user-knowledge`,
-					),
+				const title = deriveKnowledgeTitle(
+					knowledgeContent,
+					"Learned knowledge",
+				);
+				const filename = createKnowledgeNoteFilename(title);
+				const knowledgeOptions = {
+					clientDocumentId: "" as UUID,
 					contentType: "text/plain",
-					originalFilename: "user-knowledge.txt",
+					originalFilename: filename,
 					worldId: runtime.agentId,
 					content: knowledgeContent,
-					roomId: message.roomId,
-					entityId: message.entityId,
+					roomId: runtime.agentId,
+					entityId: runtime.agentId,
+					metadata: {
+						source: "learned",
+						learnedVia: "PROCESS_KNOWLEDGE",
+						title,
+						filename,
+						originalFilename: filename,
+						fileExt: "txt",
+						fileType: "text/plain",
+						contentType: "text/plain",
+						fileSize: Buffer.byteLength(knowledgeContent, "utf8"),
+						textBacked: true,
+					},
 				};
 
 				await service.addKnowledge(knowledgeOptions);

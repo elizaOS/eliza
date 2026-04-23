@@ -169,6 +169,62 @@ describe("PageScopedChatPane", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
   });
 
+  it("shows the redesigned Character hub sections in the intro copy", async () => {
+    clientMock.createConversation.mockResolvedValueOnce({
+      conversation: {
+        ...conversation,
+        id: "character-page-chat",
+        roomId: "room-character",
+        metadata: { scope: "page-character" },
+        title: "Character assistant",
+      },
+    });
+
+    render(<PageScopedChatPane scope="page-character" />);
+
+    const intro = await screen.findByTestId(
+      "page-scoped-chat-intro-page-character",
+    );
+    expect(intro.textContent).toContain("Overview");
+    expect(intro.textContent).toContain("Personality");
+    expect(intro.textContent).toContain("Knowledge");
+    expect(intro.textContent).toContain("Experience");
+    expect(intro.textContent).toContain("Relationships");
+  });
+
+  it("stacks multiline inline drafts above the footer controls", async () => {
+    render(<PageScopedChatPane scope="page-apps" />);
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+
+    const composer = screen.getByTestId("page-scoped-chat-composer-page-apps");
+    const textarea = screen.getByRole("textbox", { name: /apps/i });
+    let scrollHeight = 32;
+
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+
+    scrollHeight = 72;
+    fireEvent.change(textarea, {
+      target: {
+        value:
+          "PieChartPieChartPieChartPieChartPieChartPieChartPieChartPieChart",
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        composer.firstElementChild?.getAttribute("data-inline-layout"),
+      ).toBe("stacked"),
+    );
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Start voice input" }),
+    ).toBeTruthy();
+  });
+
   it("sends text and voice turns with page routing metadata", async () => {
     render(<PageScopedChatPane scope="page-apps" />);
 
@@ -245,5 +301,46 @@ describe("PageScopedChatPane", () => {
     await waitFor(() =>
       expect(clientMock.createConversation).toHaveBeenCalledTimes(1),
     );
+  });
+
+  it("reuses the shared chat chrome with a custom conversation adapter", async () => {
+    const resolveConversation = vi.fn().mockResolvedValue(conversation);
+    const onAfterSend = vi.fn();
+
+    render(
+      <PageScopedChatPane
+        scope="page-apps"
+        conversationAdapter={{
+          allowClear: false,
+          buildRoutingMetadata: () => ({
+            surface: "automation",
+            taskId: "workflow-room",
+          }),
+          identityKey: "workflow-room",
+          onAfterSend,
+          resolveConversation,
+        }}
+      />,
+    );
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+    expect(resolveConversation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("page-scoped-chat-clear-page-apps")).toBeNull();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /apps/i }), {
+      target: { value: "Describe your workflow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(clientMock.sendConversationMessageStream).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      clientMock.sendConversationMessageStream.mock.calls[0][7],
+    ).toMatchObject({
+      surface: "automation",
+      taskId: "workflow-room",
+    });
+    await waitFor(() => expect(onAfterSend).toHaveBeenCalledTimes(1));
   });
 });

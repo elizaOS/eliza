@@ -270,7 +270,9 @@ function shouldUseRuntimeCwdWorkspace(candidateDir: string): boolean {
   );
 }
 
-export function shouldBootstrapWorkspaceInitFiles(candidateDir: string): boolean {
+export function shouldBootstrapWorkspaceInitFiles(
+  candidateDir: string,
+): boolean {
   return !shouldUseRuntimeCwdWorkspace(candidateDir);
 }
 

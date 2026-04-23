@@ -10,20 +10,11 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
-import {
-  getAppEmoji,
-  getAppShortName,
-  isHiddenFromAppsView,
-} from "../apps/helpers";
-import {
-  getInternalToolApps,
-  getInternalToolAppTargetTab,
-} from "../apps/internal-tool-apps";
-import {
-  getAllOverlayApps,
-  isOverlayApp,
-  overlayAppToRegistryInfo,
-} from "../apps/overlay-app-registry";
+import { AppIdentityTile } from "../apps/app-identity";
+import { loadMergedCatalogApps } from "../apps/catalog-loader";
+import { getAppShortName } from "../apps/helpers";
+import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
+import { isOverlayApp } from "../apps/overlay-app-registry";
 import { WidgetSection } from "./widgets/shared";
 
 // ---------------------------------------------------------------------------
@@ -65,28 +56,13 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   // Fetch the full catalog once for sidebar launch targets.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const serverApps = await client.listApps();
-        const internalToolApps = getInternalToolApps();
-        const overlayDescriptors = getAllOverlayApps()
-          .filter((oa) => !serverApps.some((a) => a.name === oa.name))
-          .map(overlayAppToRegistryInfo);
-        const all = [
-          ...internalToolApps,
-          ...overlayDescriptors,
-          ...serverApps,
-        ].filter(
-          (app, index, items) =>
-            items.findIndex((c) => c.name === app.name) === index,
-        );
+    void loadMergedCatalogApps()
+      .then((apps) => {
         if (!cancelled) {
-          setCatalogApps(all.filter((app) => !isHiddenFromAppsView(app.name)));
+          setCatalogApps(apps);
         }
-      } catch {
-        // Silently fail — the main apps view handles errors
-      }
-    })();
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -191,10 +167,15 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                   defaultValue: `Launch ${displayName}`,
                   name: displayName,
                 })}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border border-border/35 bg-card/72 text-base transition-all hover:border-accent/30 hover:bg-bg-hover/70 hover:scale-110 ${ringClass}`}
+                className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
                 onClick={() => void handleLaunch(app)}
               >
-                {getAppEmoji(app)}
+                <AppIdentityTile
+                  app={app}
+                  active={Boolean(run)}
+                  size="sm"
+                  imageOnly
+                />
               </button>
             );
           })}

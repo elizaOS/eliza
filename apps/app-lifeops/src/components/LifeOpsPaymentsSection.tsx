@@ -22,7 +22,8 @@ import {
   TrendingDown,
   Upload,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 
 function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", {
@@ -67,6 +68,7 @@ export function LifeOpsPaymentsSection(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const { openLifeOpsChat } = useLifeOpsChatLauncher();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -178,34 +180,20 @@ export function LifeOpsPaymentsSection(): JSX.Element {
     }
   }, []);
 
-  const onUnsubscribeSender = useCallback(
-    async (senderEmail: string, label: string) => {
-      if (
-        !window.confirm(
-          `Unsubscribe from ${label} and create a filter to auto-trash future mail?`,
-        )
-      ) {
-        return;
-      }
-      try {
-        const result = await client.unsubscribeLifeOpsEmailSender({
-          senderEmail,
-          blockAfter: true,
-          trashExisting: false,
-          confirmed: true,
-        });
-        window.alert(
-          `${result.record.status}: ${result.record.method}${
-            result.record.filterCreated ? " + auto-trash filter" : ""
-          }`,
-        );
-      } catch (err) {
-        window.alert(
-          `Unsubscribe failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+  const onChatAboutRecurringCharge = useCallback(
+    (charge: LifeOpsRecurringCharge) => {
+      openLifeOpsChat(
+        [
+          `Help me review this recurring charge from ${charge.merchantDisplay}.`,
+          `Cadence: ${cadenceLabel(charge.cadence)}.`,
+          `Average charge: ${formatUsd(charge.averageAmountUsd)}.`,
+          `Annualized cost: ${formatUsd(charge.annualizedCostUsd)}.`,
+          `Last charged: ${formatDate(charge.latestSeenAt)}.`,
+          "If it makes sense, prepare the cancellation steps before doing anything destructive.",
+        ].join(" "),
+      );
     },
-    [],
+    [openLifeOpsChat],
   );
 
   const annualRecurring = useMemo(() => {
@@ -447,18 +435,11 @@ export function LifeOpsPaymentsSection(): JSX.Element {
                     <td className="py-1.5 text-muted">
                       <button
                         type="button"
-                        onClick={() =>
-                          void onUnsubscribeSender(
-                            // Best-effort: try to derive an email from raw merchant.
-                            charge.merchantNormalized.replace(/\s+/g, "") +
-                              "@unknown.example",
-                            charge.merchantDisplay,
-                          )
-                        }
+                        onClick={() => onChatAboutRecurringCharge(charge)}
                         className="mr-1 rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
-                        title="Cancellation flows live in chat — ask the agent to cancel this"
+                        title="Open chat with this recurring charge attached"
                       >
-                        Ask agent to cancel
+                        Chat
                       </button>
                     </td>
                   </tr>

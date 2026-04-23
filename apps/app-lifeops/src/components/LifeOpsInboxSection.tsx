@@ -25,12 +25,23 @@ import {
   Shield,
   Smartphone,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type JSX,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   type InboxChannel,
   useInbox,
 } from "../hooks/useInbox.js";
-import { buildReplyPrefill, postToChat } from "./LifeOpsChatAdapter.js";
+import {
+  buildMessageChatPrefill,
+  buildReplyPrefill,
+  useLifeOpsChatLauncher,
+} from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
@@ -295,10 +306,12 @@ function MessageRow({
 function ReaderPane({
   message,
   onReply,
+  onChat,
   onBack,
 }: {
   message: LifeOpsInboxMessage | null;
   onReply: (msg: LifeOpsInboxMessage) => void;
+  onChat: (msg: LifeOpsInboxMessage) => void;
   onBack?: () => void;
 }) {
   const { t } = useApp();
@@ -382,6 +395,15 @@ function ReaderPane({
         >
           <MessageSquareReply className="mr-1.5 h-3.5 w-3.5" />
           {t("lifeopsInbox.reply", { defaultValue: "Reply" })}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+          onClick={() => onChat(message)}
+        >
+          <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+          {t("common.chat", { defaultValue: "Chat" })}
         </Button>
         {message.channel === "gmail" ? (
           <InboxUnsubscribeButton message={message} />
@@ -550,6 +572,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selection = props.selection ?? ctx.selection;
   const onSelect = props.onSelect ?? ctx.select;
   const { t } = useApp();
+  const { openLifeOpsChat } = useLifeOpsChatLauncher();
   const compactLayout = useMediaQuery("(max-width: 767px)");
   const allowedChannels = props.channels ?? LIFEOPS_INBOX_CHANNELS;
   const channelFilters = useMemo<InboxChannel[]>(
@@ -608,8 +631,17 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       snippet: msg.snippet,
       deepLink: msg.deepLink,
     });
-    postToChat(text);
-  }, []);
+    openLifeOpsChat(text, { messageId: msg.id });
+  }, [openLifeOpsChat]);
+
+  const handleChat = useCallback(
+    (msg: LifeOpsInboxMessage) => {
+      openLifeOpsChat(buildMessageChatPrefill(msg), {
+        messageId: msg.id,
+      });
+    },
+    [openLifeOpsChat],
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -690,6 +722,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
               <ReaderPane
                 message={selectedMessage}
                 onReply={handleReply}
+                onChat={handleChat}
                 onBack={() => onSelect({ messageId: null })}
               />
             ) : (
@@ -713,7 +746,11 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                 />
               </div>
 
-              <ReaderPane message={selectedMessage} onReply={handleReply} />
+              <ReaderPane
+                message={selectedMessage}
+                onReply={handleReply}
+                onChat={handleChat}
+              />
             </>
           )}
         </div>

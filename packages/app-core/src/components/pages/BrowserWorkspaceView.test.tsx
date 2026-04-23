@@ -24,17 +24,23 @@ function createClientMock() {
 }
 
 var useAppMock = vi.fn();
-var clientMock:
-  | ReturnType<typeof createClientMock>
-  | undefined;
+var clientMock: ReturnType<typeof createClientMock> | undefined;
+
+function getClientMock() {
+  if (!clientMock) {
+    clientMock = createClientMock();
+  }
+  return clientMock;
+}
 
 vi.mock("../../state", () => ({
   useApp: () => useAppMock(),
 }));
 
-vi.mock("../../api", () => ({
-  client: clientMock ?? (clientMock = createClientMock()),
-}));
+vi.mock("../../api", () => {
+  const client = getClientMock();
+  return { client };
+});
 
 vi.mock("./useBrowserWorkspaceWalletBridge", () => ({
   useBrowserWorkspaceWalletBridge: () => ({
@@ -85,23 +91,24 @@ function buildPackageStatus() {
 
 describe("BrowserWorkspaceView", () => {
   beforeEach(() => {
+    const mockClient = getClientMock();
     useAppMock.mockReset();
-    clientMock!.fetch.mockReset();
-    clientMock!.getBrowserWorkspace.mockReset();
-    clientMock!.getWalletConfig.mockReset();
-    clientMock!.openBrowserWorkspaceTab.mockReset();
-    clientMock!.showBrowserWorkspaceTab.mockReset();
-    clientMock!.navigateBrowserWorkspaceTab.mockReset();
-    clientMock!.snapshotBrowserWorkspaceTab.mockReset();
-    clientMock!.closeBrowserWorkspaceTab.mockReset();
+    mockClient.fetch.mockReset();
+    mockClient.getBrowserWorkspace.mockReset();
+    mockClient.getWalletConfig.mockReset();
+    mockClient.openBrowserWorkspaceTab.mockReset();
+    mockClient.showBrowserWorkspaceTab.mockReset();
+    mockClient.navigateBrowserWorkspaceTab.mockReset();
+    mockClient.snapshotBrowserWorkspaceTab.mockReset();
+    mockClient.closeBrowserWorkspaceTab.mockReset();
 
     useAppMock.mockReturnValue(buildUseAppState());
-    clientMock!.getBrowserWorkspace.mockResolvedValue({
+    mockClient.getBrowserWorkspace.mockResolvedValue({
       mode: "web",
       tabs: [],
     });
-    clientMock!.getWalletConfig.mockResolvedValue(null);
-    clientMock!.fetch.mockImplementation(async (path: string) => {
+    mockClient.getWalletConfig.mockResolvedValue(null);
+    mockClient.fetch.mockImplementation(async (path: string) => {
       if (path === "/api/browser-bridge/companions") {
         return { companions: [] };
       }
@@ -132,9 +139,10 @@ describe("BrowserWorkspaceView", () => {
   });
 
   it("opens the extension folder and Chrome extensions from the install card", async () => {
+    const mockClient = getClientMock();
     const setActionNotice = vi.fn();
     useAppMock.mockReturnValue(buildUseAppState({ setActionNotice }));
-    clientMock!.fetch.mockImplementation(
+    mockClient.fetch.mockImplementation(
       async (path: string, init?: RequestInit) => {
         if (path === "/api/browser-bridge/companions") {
           return { companions: [] };
@@ -165,13 +173,13 @@ describe("BrowserWorkspaceView", () => {
     fireEvent.click(installButtons[0]);
 
     await waitFor(() => {
-      expect(clientMock!.fetch).toHaveBeenCalledWith(
+      expect(mockClient.fetch).toHaveBeenCalledWith(
         "/api/browser-bridge/packages/open-path",
         expect.objectContaining({
           method: "POST",
         }),
       );
-      expect(clientMock!.fetch).toHaveBeenCalledWith(
+      expect(mockClient.fetch).toHaveBeenCalledWith(
         "/api/browser-bridge/packages/chrome/open-manager",
         expect.objectContaining({
           method: "POST",
@@ -186,6 +194,7 @@ describe("BrowserWorkspaceView", () => {
   });
 
   it("skips browser-bridge requests when the plugin is unavailable", async () => {
+    const mockClient = getClientMock();
     useAppMock.mockReturnValue(buildUseAppState({ plugins: [] }));
 
     render(<BrowserWorkspaceView />);
@@ -195,10 +204,10 @@ describe("BrowserWorkspaceView", () => {
         screen.queryByText(/The agent can drive your real Chrome tabs/i),
       ).toBeNull();
     });
-    expect(clientMock!.fetch).not.toHaveBeenCalledWith(
+    expect(mockClient.fetch).not.toHaveBeenCalledWith(
       "/api/browser-bridge/companions",
     );
-    expect(clientMock!.fetch).not.toHaveBeenCalledWith(
+    expect(mockClient.fetch).not.toHaveBeenCalledWith(
       "/api/browser-bridge/packages",
     );
   });
@@ -233,5 +242,100 @@ describe("BrowserWorkspaceView", () => {
     expect(
       screen.queryByText(/Internal.*discord\.com\/channels\/@me/i),
     ).not.toBeNull();
+  });
+
+  it("renders user, agent, and app tab sections", async () => {
+    const mockClient = getClientMock();
+    mockClient.getBrowserWorkspace.mockResolvedValue({
+      mode: "web",
+      tabs: [
+        {
+          id: "user-tab",
+          title: "milady.ai",
+          url: "https://milady.ai/",
+          partition: "persist:eliza-browser",
+          visible: true,
+          createdAt: "2026-04-20T00:00:00.000Z",
+          updatedAt: "2026-04-20T00:00:00.000Z",
+          lastFocusedAt: "2026-04-20T00:00:00.000Z",
+        },
+        {
+          id: "agent-tab",
+          title: "discord.com",
+          url: "https://discord.com/",
+          partition: "persist:eliza-browser-agent",
+          visible: false,
+          createdAt: "2026-04-20T00:00:00.000Z",
+          updatedAt: "2026-04-20T00:00:00.000Z",
+          lastFocusedAt: null,
+        },
+        {
+          id: "app-tab",
+          title: "pump.fun",
+          url: "https://pump.fun/",
+          partition: "persist:eliza-browser-app",
+          visible: false,
+          createdAt: "2026-04-20T00:00:00.000Z",
+          updatedAt: "2026-04-20T00:00:00.000Z",
+          lastFocusedAt: null,
+        },
+      ],
+    });
+
+    render(<BrowserWorkspaceView />);
+
+    await screen.findByText("User Tabs");
+    expect(screen.getByText("Agent Tabs")).toBeDefined();
+    expect(screen.getByText("App Tabs")).toBeDefined();
+    expect(screen.getByRole("tab", { name: /milady\.ai/i })).toBeDefined();
+    expect(screen.getByRole("tab", { name: /discord\.com/i })).toBeDefined();
+    expect(screen.getByRole("tab", { name: /pump\.fun/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Go" })).toBeDefined();
+  });
+
+  it("navigates the selected tab from the address bar go button", async () => {
+    const mockClient = getClientMock();
+    const initialTab = {
+      id: "user-tab",
+      title: "milady.ai",
+      url: "https://milady.ai/",
+      partition: "persist:eliza-browser",
+      visible: true,
+      createdAt: "2026-04-20T00:00:00.000Z",
+      updatedAt: "2026-04-20T00:00:00.000Z",
+      lastFocusedAt: "2026-04-20T00:00:00.000Z",
+    };
+    const updatedTab = {
+      ...initialTab,
+      title: "example.com",
+      url: "https://example.com/",
+      updatedAt: "2026-04-20T00:01:00.000Z",
+    };
+
+    mockClient.getBrowserWorkspace
+      .mockResolvedValueOnce({
+        mode: "web",
+        tabs: [initialTab],
+      })
+      .mockResolvedValue({
+        mode: "web",
+        tabs: [updatedTab],
+      });
+    mockClient.navigateBrowserWorkspaceTab.mockResolvedValue({
+      tab: updatedTab,
+    });
+
+    render(<BrowserWorkspaceView />);
+
+    const addressInput = await screen.findByDisplayValue("https://milady.ai/");
+    fireEvent.change(addressInput, { target: { value: "example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
+
+    await waitFor(() => {
+      expect(mockClient.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "user-tab",
+        "https://example.com/",
+      );
+    });
   });
 });

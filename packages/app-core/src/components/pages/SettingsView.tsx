@@ -10,7 +10,6 @@ import {
   Label,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -41,11 +40,19 @@ import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { TrainingSettingsPanel } from "../settings/TrainingSettings";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
+import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
 
 type SettingsComplexity = "simple" | "advanced";
+
+const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
+const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
+const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
+const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
+const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
 
 interface SettingsSectionDef {
   id: string;
@@ -82,12 +89,60 @@ function writeStoredComplexity(value: SettingsComplexity): void {
   }
 }
 
+function clampSettingsSidebarWidth(value: number): number {
+  return Math.min(
+    Math.max(value, SETTINGS_SIDEBAR_MIN_WIDTH),
+    SETTINGS_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function readStoredSettingsSidebarWidth(): number {
+  if (typeof window === "undefined") return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) {
+      return clampSettingsSidebarWidth(parsed);
+    }
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function readStoredSettingsSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(SETTINGS_SIDEBAR_COLLAPSED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 const SETTINGS_CONTENT_CLASS =
   "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
 const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
 
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
+  {
+    id: "identity",
+    label: "settings.sections.identity.label",
+    description: "settings.sections.identity.desc",
+    keywords: [
+      "identity",
+      "name",
+      "voice",
+      "system prompt",
+      "persona",
+      "instructions",
+      "agent",
+    ],
+    keywordKeys: ["settings.keyword.voice"],
+    level: "simple",
+  },
   {
     id: "cloud",
     label: "providerswitcher.elizaCloud",
@@ -347,6 +402,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.import",
       "settings.keyword.reset",
     ],
+    level: "advanced",
   },
 ];
 
@@ -765,17 +821,42 @@ export function SettingsView({
 } = {}) {
   const { t, loadPlugins, walletEnabled } = useApp();
   const [activeSection, setActiveSection] = useState(
-    () => initialSection ?? readSettingsHashSection() ?? "cloud",
+    () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [complexity, setComplexity] = useState<SettingsComplexity>(() =>
     readStoredComplexity(),
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    readStoredSettingsSidebarCollapsed,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    readStoredSettingsSidebarWidth,
   );
   const shellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     writeStoredComplexity(complexity);
   }, [complexity]);
+
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampSettingsSidebarWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
 
   const visibleSections = useMemo(() => {
     const searchActive = searchQuery.trim().length > 0;
@@ -874,19 +955,27 @@ export function SettingsView({
     return () => root.removeEventListener("scroll", handleScroll);
   }, [contentContainerRef, visibleSections]);
 
-  const searchLabel = t("settingsview.SearchSettings", {
-    defaultValue: "Search settings",
-  });
   const activeSectionDef =
     visibleSections.find((section) => section.id === activeSection) ??
     SETTINGS_SECTIONS.find((section) => section.id === activeSection) ??
     visibleSections[0] ??
     null;
+  const searchLabel = t("settingsview.SearchSettings", {
+    defaultValue: "Search settings",
+  });
 
   const settingsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="settings-sidebar"
       collapsible
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      resizable
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={SETTINGS_SIDEBAR_MIN_WIDTH}
+      maxWidth={SETTINGS_SIDEBAR_MAX_WIDTH}
+      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
       contentIdentity="settings"
       collapseButtonTestId="settings-sidebar-collapse-toggle"
       expandButtonTestId="settings-sidebar-expand-toggle"
@@ -907,30 +996,32 @@ export function SettingsView({
               spellCheck: false,
             }}
           />
-          <div className="flex items-center justify-between gap-3 px-4 pb-1">
-            <Label
-              htmlFor="settings-advanced-toggle"
-              className="text-xs font-medium text-muted cursor-pointer select-none"
-            >
-              {t("settings.showAdvanced", {
-                defaultValue: "Show advanced",
-              })}
-            </Label>
-            <Switch
-              id="settings-advanced-toggle"
-              checked={complexity === "advanced"}
-              onCheckedChange={(checked) =>
-                setComplexity(checked ? "advanced" : "simple")
-              }
-              aria-label={t("settings.showAdvanced", {
-                defaultValue: "Show advanced",
-              })}
-            />
+          <div className="px-3 pb-2">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card/45 px-3 py-2.5">
+              <Label
+                htmlFor="settings-advanced-toggle"
+                className="cursor-pointer select-none text-xs font-medium text-muted"
+              >
+                {t("settings.showAdvanced", {
+                  defaultValue: "Show advanced",
+                })}
+              </Label>
+              <Switch
+                id="settings-advanced-toggle"
+                checked={complexity === "advanced"}
+                onCheckedChange={(checked) =>
+                  setComplexity(checked ? "advanced" : "simple")
+                }
+                aria-label={t("settings.showAdvanced", {
+                  defaultValue: "Show advanced",
+                })}
+              />
+            </div>
           </div>
         </div>
       }
     >
-      <SidebarScrollRegion>
+      <SidebarScrollRegion className="pt-0">
         <SidebarPanel>
           {visibleSections.length === 0 ? (
             <SidebarContent.EmptyState className="px-4 py-6">
@@ -958,6 +1049,11 @@ export function SettingsView({
                         >
                           {t(section.label)}
                         </SidebarContent.ItemTitle>
+                        {section.description ? (
+                          <SidebarContent.ItemDescription>
+                            {t(section.description)}
+                          </SidebarContent.ItemDescription>
+                        ) : null}
                       </SidebarContent.ItemBody>
                     </SidebarContent.ItemButton>
                   </SidebarContent.Item>
@@ -967,11 +1063,27 @@ export function SettingsView({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   const sectionsContent = (
     <>
+      {visibleSectionIds.has("identity") && (
+        <SettingsSection
+          id="identity"
+          title={t("settings.sections.identity.label", {
+            defaultValue: "Identity",
+          })}
+          description={t("settings.sections.identity.desc", {
+            defaultValue:
+              "Agent name, speaking voice, and system prompt. Avatar and VRM stay in Appearance.",
+          })}
+          ref={registerContentItem("identity")}
+        >
+          <IdentitySettingsSection />
+        </SettingsSection>
+      )}
+
       {visibleSectionIds.has("cloud") && (
         <SettingsSection
           id="cloud"

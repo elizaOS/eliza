@@ -14,6 +14,7 @@ import {
 import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
@@ -1423,9 +1424,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (this.character.advancedMemory === true) {
-			const { createAdvancedMemoryPlugin } = await import(
-				"./features/advanced-memory/index.ts"
-			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedMemoryPlugin()),
 			);

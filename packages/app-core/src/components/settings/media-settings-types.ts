@@ -2,15 +2,20 @@
  * Types, constants, and utility functions for media settings.
  */
 
-import {
-  COMPANION_HALF_FRAMERATE_OPTIONS,
-  COMPANION_VRM_POWER_OPTIONS,
-} from "@elizaos/app-companion/types/render-modes";
+import type {
+  CompanionHalfFramerateMode,
+  CompanionVrmPowerMode,
+} from "../../state";
 import type { DesktopClickAuditItem } from "../../utils";
 
-export { COMPANION_HALF_FRAMERATE_OPTIONS, COMPANION_VRM_POWER_OPTIONS };
+export const COMPANION_VRM_POWER_OPTIONS: readonly CompanionVrmPowerMode[] = [
+  "quality",
+  "balanced",
+  "efficiency",
+];
 
-// ── Types ─────────────────────────────────────────────────────────────
+export const COMPANION_HALF_FRAMERATE_OPTIONS: readonly CompanionHalfFramerateMode[] =
+  ["off", "when_saving_power", "always"];
 
 export type MediaCategory = "image" | "video" | "audio" | "vision" | "voice";
 

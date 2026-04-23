@@ -7,8 +7,9 @@
  */
 import { client, useApp } from "@elizaos/app-core";
 import type { LifeOpsActiveReminderView } from "@elizaos/shared/contracts/lifeops";
-import { Bell, Loader2, RefreshCw } from "lucide-react";
+import { Bell, Loader2, MessageSquare, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 
 type UrgencyKey = "overdue" | "soon" | "today" | "later";
@@ -119,6 +120,7 @@ interface ReminderRowProps {
   urgency: UrgencyKey;
   isSelected: boolean;
   onSelect: () => void;
+  onChat: () => void;
 }
 
 function ReminderRow({
@@ -126,47 +128,63 @@ function ReminderRow({
   urgency,
   isSelected,
   onSelect,
+  onChat,
 }: ReminderRowProps) {
   const style = URGENCY_STYLES[urgency];
   return (
-    <button
-      type="button"
-      aria-pressed={isSelected}
+    <div
       className={[
-        "group flex w-full items-stretch gap-3 border-b border-border/8 pr-3 text-left transition-colors last:border-b-0",
+        "group flex items-stretch gap-2 border-b border-border/8 pr-3 last:border-b-0",
         isSelected ? "bg-accent/8" : "hover:bg-bg-muted/25",
       ].join(" ")}
-      onClick={onSelect}
     >
-      <span
-        aria-hidden
-        className={`w-1 shrink-0 ${style.accent} ${isSelected ? "" : "opacity-70 group-hover:opacity-100"}`}
-      />
-      <span className="flex min-w-0 flex-1 items-start gap-3 py-2.5">
-        <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-bg-muted/30 text-muted">
-          <Bell className="h-3.5 w-3.5" aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1 space-y-0.5">
-          <span className="block truncate text-sm font-medium text-txt">
-            {reminder.title}
+      <button
+        type="button"
+        aria-pressed={isSelected}
+        className="flex min-w-0 flex-1 items-stretch gap-3 text-left"
+        onClick={onSelect}
+      >
+        <span
+          aria-hidden
+          className={`w-1 shrink-0 ${style.accent} ${isSelected ? "" : "opacity-70 group-hover:opacity-100"}`}
+        />
+        <span className="flex min-w-0 flex-1 items-start gap-3 py-2.5">
+          <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-bg-muted/30 text-muted">
+            <Bell className="h-3.5 w-3.5" aria-hidden />
           </span>
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
-            <span>{formatClock(reminder.scheduledFor)}</span>
-            {reminder.stepLabel ? (
-              <span className="text-muted/70">· {reminder.stepLabel}</span>
-            ) : null}
-            <span className="text-muted/70">
-              · {channelLabel(reminder.channel)}
+          <span className="min-w-0 flex-1 space-y-0.5">
+            <span className="block truncate text-sm font-medium text-txt">
+              {reminder.title}
+            </span>
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
+              <span>{formatClock(reminder.scheduledFor)}</span>
+              {reminder.stepLabel ? (
+                <span className="text-muted/70">· {reminder.stepLabel}</span>
+              ) : null}
+              <span className="text-muted/70">
+                · {channelLabel(reminder.channel)}
+              </span>
             </span>
           </span>
+          <span
+            className={`mt-1 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${style.pill}`}
+          >
+            {formatRelative(reminder.scheduledFor)}
+          </span>
         </span>
-        <span
-          className={`mt-1 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${style.pill}`}
+      </button>
+      <div className="flex shrink-0 items-center py-2.5">
+        <button
+          type="button"
+          onClick={onChat}
+          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt"
+          aria-label={`Chat about ${reminder.title}`}
         >
-          {formatRelative(reminder.scheduledFor)}
-        </span>
-      </span>
-    </button>
+          <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+          Chat
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -190,6 +208,7 @@ function BucketHeader({
 export function LifeOpsRemindersSection() {
   const { t } = useApp();
   const { selection, select } = useLifeOpsSelection();
+  const { chatAboutReminder } = useLifeOpsChatLauncher();
 
   const [reminders, setReminders] = useState<LifeOpsActiveReminderView[]>([]);
   const [loading, setLoading] = useState(false);
@@ -325,6 +344,7 @@ export function LifeOpsRemindersSection() {
                             eventId: reminder.eventId ?? null,
                           })
                         }
+                        onChat={() => chatAboutReminder(reminder)}
                       />
                     );
                   })}

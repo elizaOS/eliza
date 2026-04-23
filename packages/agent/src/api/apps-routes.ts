@@ -1,13 +1,15 @@
-import { promises as fs } from "node:fs";
 import type { Dirent } from "node:fs";
+import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { createGeneratedAppHeroSvg } from "@elizaos/shared/app-hero-art";
 import {
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
   hasAppInterface,
+  packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
 import {
@@ -94,6 +96,30 @@ async function streamAppHero(
   response.end?.(data);
 }
 
+function sendGeneratedAppHero(res: http.ServerResponse, svg: string): void {
+  const data = Buffer.from(svg, "utf8");
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, {
+      "Content-Type": "image/svg+xml",
+      "Content-Length": data.byteLength,
+      "Cache-Control": "public, max-age=300",
+    });
+  } else if (typeof response.setHeader === "function") {
+    response.setHeader("Content-Type", "image/svg+xml");
+    response.setHeader("Content-Length", data.byteLength);
+    response.setHeader("Cache-Control", "public, max-age=300");
+  }
+  response.end?.(data);
+}
+
 async function pathExists(absolutePath: string): Promise<boolean> {
   try {
     await fs.access(absolutePath);
@@ -109,7 +135,9 @@ function isRelativeHeroPath(heroImage: string): boolean {
   );
 }
 
-async function readPackageHeroImage(packageDir: string): Promise<string | null> {
+async function readPackageHeroImage(
+  packageDir: string,
+): Promise<string | null> {
   try {
     const packageJson = JSON.parse(
       await fs.readFile(path.join(packageDir, "package.json"), "utf8"),
@@ -207,10 +235,14 @@ async function resolveHeroPathFromPackageDir(
  * Returns null if the slug doesn't match a known app or none of the
  * candidate local package directories contain a valid hero image.
  */
-async function resolveAppHeroPath(
+type ResolvedAppHero =
+  | { kind: "file"; absolutePath: string; contentType: string }
+  | { kind: "generated"; svg: string };
+
+async function resolveAppHero(
   pluginManager: PluginManagerLike,
   slug: string,
-): Promise<{ absolutePath: string; contentType: string } | null> {
+): Promise<ResolvedAppHero | null> {
   const registry = await pluginManager.refreshRegistry();
   for (const entry of registry.values()) {
     const entrySlugs = new Set<string>();
@@ -241,9 +273,20 @@ async function resolveAppHeroPath(
         entry.appMeta?.heroImage ?? null,
       );
       if (resolved) {
-        return resolved;
+        return { kind: "file", ...resolved };
       }
     }
+
+    return {
+      kind: "generated",
+      svg: createGeneratedAppHeroSvg({
+        name: entry.name,
+        displayName:
+          entry.appMeta?.displayName ?? packageNameToAppDisplayName(entry.name),
+        category: entry.appMeta?.category ?? "app",
+        description: entry.description,
+      }),
+    };
   }
   return null;
 }
@@ -668,17 +711,21 @@ export async function handleAppsRoutes(
       return true;
     }
     const pluginManager = getPluginManager();
-    const resolved = await resolveAppHeroPath(pluginManager, slug);
+    const resolved = await resolveAppHero(pluginManager, slug);
     if (!resolved) {
       error(res, `Hero image for "${slug}" is not available`, 404);
       return true;
     }
-    await streamAppHero(
-      res,
-      resolved.absolutePath,
-      resolved.contentType,
-      error as (response: unknown, message: string, status?: number) => void,
-    );
+    if (resolved.kind === "file") {
+      await streamAppHero(
+        res,
+        resolved.absolutePath,
+        resolved.contentType,
+        error as (response: unknown, message: string, status?: number) => void,
+      );
+    } else {
+      sendGeneratedAppHero(res, resolved.svg);
+    }
     return true;
   }
 
