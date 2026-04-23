@@ -313,7 +313,7 @@ function useLifeOpsSideWorkspace({
   const windowDays =
     calendarWindow === "week" ? WEEK_WINDOW_DAYS : TODAY_WINDOW_DAYS;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { forceSync?: boolean }) => {
     if (!connected || !status) {
       setLoading(false);
       setError(null);
@@ -335,6 +335,7 @@ function useLifeOpsSideWorkspace({
               timeMin: startOfLocalDay().toISOString(),
               timeMax: addDays(startOfLocalDay(), windowDays).toISOString(),
               timeZone,
+              forceSync: options?.forceSync,
             })
           : Promise.resolve<LifeOpsCalendarFeed | null>(null),
         emailEnabled
@@ -342,6 +343,7 @@ function useLifeOpsSideWorkspace({
               side: status.side,
               mode: status.mode,
               maxResults: GMAIL_MESSAGE_LIMIT,
+              forceSync: options?.forceSync,
             })
           : Promise.resolve<LifeOpsGmailTriageFeed | null>(null),
       ]);
@@ -438,7 +440,7 @@ function useLifeOpsSideWorkspace({
 
   const refresh = useCallback(async () => {
     await connector.refresh({ silent: true });
-    await load();
+    await load({ forceSync: true });
   }, [connector, load]);
 
   const handleCreateEvent = useCallback(async () => {
