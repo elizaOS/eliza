@@ -65,6 +65,29 @@ export function computeAwakeProbability(args: {
     )
     .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
 
+  const hasConcurrentOwnerInteraction = args.signals.some((signal) => {
+    const observedAt = parseIsoMs(signal.observedAt);
+    if (observedAt === null) return false;
+    if (args.nowMs - observedAt > 5 * 60_000) return false;
+    if (signal.source === "desktop_interaction") return true;
+    if (signal.source === "mobile_device" && signal.state === "active") {
+      return true;
+    }
+    if (
+      signal.source === "app_lifecycle" &&
+      signal.platform === "manual_override"
+    ) {
+      return true;
+    }
+    if (
+      typeof signal.idleTimeSeconds === "number" &&
+      signal.idleTimeSeconds <= 60
+    ) {
+      return true;
+    }
+    return false;
+  });
+
   if (latestSignal) {
     const ageMs = args.nowMs - latestSignal.observedAtMs;
     const state = latestSignal.signal.state;
@@ -72,7 +95,14 @@ export function computeAwakeProbability(args: {
       latestSignal.signal.source,
       latestSignal.signal.platform,
     );
-    const scale = clamp(reliability, 0, 1);
+    let scale = clamp(reliability, 0, 1);
+    const isSharedDeviceRisk =
+      latestSignal.signal.source === "app_lifecycle" &&
+      latestSignal.signal.platform !== "manual_override" &&
+      state === "active";
+    if (isSharedDeviceRisk && !hasConcurrentOwnerInteraction) {
+      scale *= 0.25;
+    }
     let baseWeight = 0;
     if (state === "active" && ageMs <= 5 * 60_000) {
       baseWeight = 2.4;
