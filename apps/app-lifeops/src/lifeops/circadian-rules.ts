@@ -336,7 +336,7 @@ const RULES: readonly Rule[] = [
   },
 ];
 
-function emptyTotals(): Record<CircadianRuleVote, number> {
+function emptyTotals(): Record<LifeOpsCircadianState, number> {
   return {
     awake: 0,
     winding_down: 0,

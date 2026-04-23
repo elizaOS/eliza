@@ -17,12 +17,12 @@
  * ```
  */
 import { cbc, gcm } from "@noble/ciphers/aes.js";
-import { md5, sha1 } from "@noble/hashes/legacy";
-import { ripemd160 } from "@noble/hashes/ripemd160";
+import { md5, ripemd160, sha1 } from "@noble/hashes/legacy";
 import { sha224, sha256, sha384, sha512 } from "@noble/hashes/sha2";
+import type { CHash } from "@noble/hashes/utils";
 import * as BufferUtils from "./buffer";
 
-type SyncHashFactory = typeof sha256;
+type SyncHashFactory = CHash;
 type BufferEncodingName = "utf8" | "utf-8" | "base64" | "hex";
 type OwnedUint8Array = Uint8Array<ArrayBuffer>;
 
