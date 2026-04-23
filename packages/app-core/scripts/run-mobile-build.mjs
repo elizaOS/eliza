@@ -481,6 +481,30 @@ function appendMissingGradleDependency(content, notation) {
   );
 }
 
+function patchCapacitorBarcodeScannerGradle() {
+  const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
+  if (!pkgRel) return;
+  const gradlePath = path.resolve(
+    androidDir,
+    pkgRel,
+    "android",
+    "build.gradle",
+  );
+  if (!fs.existsSync(gradlePath)) return;
+
+  const current = fs.readFileSync(gradlePath, "utf8");
+  const patched = current.replace(
+    /^\s*apply plugin:\s*['"]kotlin-android['"]\s*\r?\n/m,
+    "",
+  );
+  if (patched !== current) {
+    fs.writeFileSync(gradlePath, patched, "utf8");
+    console.log(
+      "[mobile-build] Removed obsolete @capacitor/barcode-scanner Kotlin plugin for AGP 9.",
+    );
+  }
+}
+
 function appendMissingAndroidManifestBlock(xml, marker, block) {
   if (xml.includes(marker)) return xml;
   return xml.replace("</manifest>", `${block}\n</manifest>`);
@@ -1108,6 +1132,8 @@ function stripSpmIncompatiblePlugins() {
 }
 
 function patchAndroidGradle() {
+  patchCapacitorBarcodeScannerGradle();
+
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
   const templateGradle = path.join(platformsDir, "android", "build.gradle");
   const targetGradle = path.join(androidDir, "build.gradle");

@@ -489,6 +489,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     () => (modelOptions ? buildCloudModelSchema(modelOptions) : null),
     [modelOptions],
   );
+  const largeModelOptions = modelOptions?.large ?? [];
 
   const modelValues = useMemo(() => {
     const values: Record<string, unknown> = {};
@@ -729,7 +730,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </div>
             </div>
           </div>
-          ) : (modelOptions?.large?.length ?? 0) > 0 ? (
+        ) : largeModelOptions.length > 0 ? (
           <div className="border-t border-border/40 pt-4">
             <label
               htmlFor="provider-switcher-primary-model"
@@ -752,7 +753,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 />
               </SelectTrigger>
               <SelectContent className="max-h-64">
-                  {(modelOptions.large ?? []).map((model) => (
+                {largeModelOptions.map((model) => (
                   <SelectItem key={model.id} value={model.id}>
                     {model.name}
                   </SelectItem>
