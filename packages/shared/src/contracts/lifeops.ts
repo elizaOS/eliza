@@ -1626,6 +1626,8 @@ export interface LifeOpsCalendarEvent {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set on merged feeds so the UI can show which calendar an event came from. */
+  calendarSummary?: string;
   /** Set when aggregating across multiple Google accounts. */
   grantId?: string;
   /** Set when aggregating across multiple Google accounts. */
@@ -1693,6 +1695,11 @@ export interface GetLifeOpsCalendarFeedRequest {
   /** Target a specific Google account by grant ID (multi-account). */
   grantId?: string;
   calendarId?: string;
+  /**
+   * Internal/agent override: when no calendarId is specified, include every
+   * authorized calendar instead of only the user's feed-enabled subset.
+   */
+  includeHiddenCalendars?: boolean;
   timeMin?: string;
   timeMax?: string;
   timeZone?: string;

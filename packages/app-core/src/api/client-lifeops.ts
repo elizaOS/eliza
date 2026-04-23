@@ -103,6 +103,11 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   appendOptionalParam(params, "mode", options.mode);
   appendOptionalParam(params, "side", options.side);
   appendOptionalParam(params, "calendarId", options.calendarId);
+  appendOptionalParam(
+    params,
+    "includeHiddenCalendars",
+    options.includeHiddenCalendars,
+  );
   appendOptionalParam(params, "timeMin", options.timeMin);
   appendOptionalParam(params, "timeMax", options.timeMax);
   appendOptionalParam(params, "timeZone", options.timeZone);

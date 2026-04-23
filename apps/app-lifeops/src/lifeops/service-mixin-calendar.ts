@@ -132,6 +132,37 @@ export interface LifeOpsCalendarService {
 
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
+type AggregatedCalendarFeedSource = {
+  calendar: Pick<
+    LifeOpsCalendarSummary,
+    "accountEmail" | "calendarId" | "grantId" | "summary"
+  >;
+  feed: LifeOpsCalendarFeed;
+};
+
+export function mergeAggregatedCalendarFeedEvents(
+  sources: readonly AggregatedCalendarFeedSource[],
+): LifeOpsCalendarEvent[] {
+  const dedupedEvents = new Map<string, LifeOpsCalendarEvent>();
+  for (const source of sources) {
+    for (const event of source.feed.events) {
+      const existing = dedupedEvents.get(event.id);
+      if (existing) {
+        continue;
+      }
+      dedupedEvents.set(event.id, {
+        ...event,
+        grantId: event.grantId ?? source.calendar.grantId,
+        accountEmail: event.accountEmail ?? source.calendar.accountEmail ?? undefined,
+        calendarSummary: event.calendarSummary ?? source.calendar.summary,
+      });
+    }
+  }
+  return [...dedupedEvents.values()].sort((a, b) =>
+    a.startAt.localeCompare(b.startAt),
+  );
+}
+
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
@@ -479,7 +510,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
       const { grantId } = request;
-      const calendarId = normalizeCalendarId(request.calendarId);
+      const explicitCalendarId = normalizeOptionalString(request.calendarId);
+      const includeHiddenCalendars =
+        normalizeOptionalBoolean(
+          request.includeHiddenCalendars,
+          "includeHiddenCalendars",
+        ) ?? false;
       const timeZone = normalizeCalendarTimeZone(request.timeZone);
       const { timeMin, timeMax } = resolveCalendarWindow({
         now,
@@ -489,6 +525,37 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
+
+      if (!grantId && !explicitCalendarId) {
+        const calendars = await this.listCalendars(requestUrl, {
+          mode,
+          side,
+        });
+        const selectedCalendars = calendars.filter(
+          (calendar) => includeHiddenCalendars || calendar.includeInFeed,
+        );
+        if (selectedCalendars.length === 0) {
+          return {
+            calendarId: "all",
+            events: [],
+            source: "cache",
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          };
+        }
+        return this.aggregateCalendarFeedsAcrossCalendars(
+          requestUrl,
+          selectedCalendars,
+          timeMin,
+          timeMax,
+          timeZone,
+          forceSync,
+          now,
+        );
+      }
+
+      const calendarId = normalizeCalendarId(explicitCalendarId);
 
       // Multi-account aggregation: when no grantId specified, check if
       // there are multiple grants and aggregate from all of them.
@@ -557,6 +624,71 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         timeMax,
         timeZone,
       });
+    }
+
+    public async aggregateCalendarFeedsAcrossCalendars(
+      requestUrl: URL,
+      calendars: readonly LifeOpsCalendarSummary[],
+      timeMin: string,
+      timeMax: string,
+      timeZone: string,
+      forceSync: boolean,
+      now: Date,
+    ): Promise<LifeOpsCalendarFeed> {
+      const results = await Promise.allSettled(
+        calendars.map((calendar) =>
+          this.getCalendarFeed(
+            requestUrl,
+            {
+              grantId: calendar.grantId,
+              calendarId: calendar.calendarId,
+              timeMin,
+              timeMax,
+              timeZone,
+              forceSync,
+            },
+            now,
+          ).then((feed) => ({
+            calendar,
+            feed,
+          })),
+        ),
+      );
+
+      const sources: AggregatedCalendarFeedSource[] = [];
+      let latestSyncedAt: string | null = null;
+      let source: "cache" | "synced" = "cache";
+
+      for (const result of results) {
+        if (result.status === "rejected") {
+          this.logLifeOpsWarn(
+            "calendar_feed_aggregate",
+            `Calendar failed: ${result.reason}`,
+            {},
+          );
+          continue;
+        }
+        const value = result.value;
+        sources.push(value);
+        if (value.feed.source === "synced") {
+          source = "synced";
+        }
+        if (
+          value.feed.syncedAt &&
+          (!latestSyncedAt || value.feed.syncedAt > latestSyncedAt)
+        ) {
+          latestSyncedAt = value.feed.syncedAt;
+        }
+      }
+
+      return {
+        calendarId: "all",
+        events: mergeAggregatedCalendarFeedEvents(sources),
+        source,
+        timeMin,
+        timeMax,
+        syncedAt: latestSyncedAt,
+      };
     }
 
     public async aggregateCalendarFeeds(
