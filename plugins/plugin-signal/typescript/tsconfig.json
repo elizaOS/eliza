@@ -16,7 +16,7 @@
     "allowImportingTsExtensions": true,
     "types": ["node"],
     "baseUrl": "../../..",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["packages/typescript/dist/node"],
       "@elizaos/core/*": ["packages/typescript/dist/*"]

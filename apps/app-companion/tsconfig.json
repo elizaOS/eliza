@@ -21,7 +21,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "baseUrl": "../../",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
