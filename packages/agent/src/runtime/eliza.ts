@@ -55,7 +55,6 @@ export {
 
 import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
 import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
 import {
   AgentRuntime,
   AutonomyService,
@@ -78,6 +77,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginAnthropic from "@elizaos/plugin-anthropic";
+import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
@@ -3879,9 +3879,38 @@ export async function startEliza(
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
           // Stop the old runtime to release resources (DB connections, timers, etc.)
-
+          //
+          // WHY the 2s timeout: some services — notably PTYService —
+          // shut down gracefully by awaiting each active session with a
+          // per-session timeout (up to ~5s). runtime.stop() awaits every
+          // service.stop() sequentially, so a single idle PTY session
+          // turns a provider switch into a multi-second block. During
+          // that window server.ts's providerSwitchInProgress flag +
+          // agentState === "restarting" guard reject further clicks,
+          // which is why flipping through providers rapidly feels stuck.
+          //
+          // Cap the shutdown window at 2s; if it doesn't finish, log and
+          // bring the new runtime up anyway. Services that miss the
+          // window get GC'd when the process unwinds. This is fine for a
+          // user-initiated restart — the user asked for a new runtime;
+          // in-flight work on the old one is already obsolete.
           try {
-            await shutdownRuntime(runtime, "hot-reload cleanup");
+            const SHUTDOWN_TIMEOUT_MS = 2000;
+            let shutdownTimedOut = false;
+            await Promise.race([
+              shutdownRuntime(runtime, "hot-reload cleanup"),
+              new Promise<void>((resolve) =>
+                setTimeout(() => {
+                  shutdownTimedOut = true;
+                  resolve();
+                }, SHUTDOWN_TIMEOUT_MS),
+              ),
+            ]);
+            if (shutdownTimedOut) {
+              logger.warn(
+                `[eliza] Hot-reload: old runtime shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms; proceeding with new runtime`,
+              );
+            }
           } catch (stopErr) {
             logger.warn(
               `[eliza] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,
