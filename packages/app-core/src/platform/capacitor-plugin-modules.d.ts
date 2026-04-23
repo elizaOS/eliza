@@ -1,0 +1,14 @@
+declare module "@elizaos/capacitor-appblocker";
+declare module "@elizaos/capacitor-camera";
+declare module "@elizaos/capacitor-canvas";
+declare module "@elizaos/capacitor-contacts";
+declare module "@elizaos/capacitor-gateway";
+declare module "@elizaos/capacitor-location";
+declare module "@elizaos/capacitor-messages";
+declare module "@elizaos/capacitor-mobile-signals";
+declare module "@elizaos/capacitor-phone";
+declare module "@elizaos/capacitor-screencapture";
+declare module "@elizaos/capacitor-swabble";
+declare module "@elizaos/capacitor-system";
+declare module "@elizaos/capacitor-talkmode";
+declare module "@elizaos/capacitor-websiteblocker";
