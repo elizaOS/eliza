@@ -4,6 +4,7 @@ import {
   deriveEvmAddress,
   deriveSolanaAddress,
   fetchSolanaBalances,
+  fetchSolanaNativeBalanceViaRpc,
   getWalletAddresses,
 } from "./wallet.js";
 
@@ -92,5 +93,173 @@ describe("fetchSolanaBalances", () => {
     ).rejects.toThrow("rpc unavailable");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enriches native SOL and SPL tokens with DexScreener pricing", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            result: { value: 2_500_000_000 },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            result: {
+              items: [
+                {
+                  id: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                  interface: "FungibleToken",
+                  content: {
+                    metadata: { name: "USD Coin", symbol: "USDC" },
+                    links: { image: "https://example.com/usdc.png" },
+                  },
+                  token_info: {
+                    balance: 15_000_000,
+                    decimals: 6,
+                  },
+                },
+              ],
+            },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            baseToken: {
+              address: "So11111111111111111111111111111111111111112",
+              symbol: "SOL",
+              name: "Wrapped SOL",
+            },
+            priceUsd: "150",
+            liquidity: { usd: 1000000 },
+            info: { imageUrl: "https://example.com/sol.png" },
+          },
+          {
+            baseToken: {
+              address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              symbol: "USDC",
+              name: "USD Coin",
+            },
+            priceUsd: "1",
+            liquidity: { usd: 2000000 },
+            info: { imageUrl: "https://example.com/usdc-dex.png" },
+          },
+        ],
+      } as Response);
+
+    await expect(
+      fetchSolanaBalances(
+        "8RsmpM7Ztk5H2nesQSjk8okmFTiZFk4kBUcyaygPrVxa",
+        "test-key",
+      ),
+    ).resolves.toEqual({
+      solBalance: "2.500000000",
+      solValueUsd: "375.00",
+      tokens: [
+        {
+          mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          symbol: "USDC",
+          name: "USD Coin",
+          balance: "15",
+          decimals: 6,
+          valueUsd: "15.00",
+          logoUrl: "https://example.com/usdc.png",
+        },
+      ],
+    });
+  });
+});
+
+describe("fetchSolanaNativeBalanceViaRpc", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("loads SPL token balances and SOL USD value from RPC plus DexScreener", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            result: { value: 1_000_000_000 },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            result: {
+              value: [
+                {
+                  account: {
+                    data: {
+                      parsed: {
+                        info: {
+                          mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6k5WqfVnEmC3i7YA",
+                          tokenAmount: {
+                            amount: "1250000",
+                            decimals: 5,
+                            uiAmountString: "12.5",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            baseToken: {
+              address: "So11111111111111111111111111111111111111112",
+              symbol: "SOL",
+              name: "Wrapped SOL",
+            },
+            priceUsd: "140",
+            liquidity: { usd: 1000000 },
+            info: { imageUrl: "https://example.com/sol.png" },
+          },
+          {
+            baseToken: {
+              address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6k5WqfVnEmC3i7YA",
+              symbol: "BONK",
+              name: "Bonk",
+            },
+            priceUsd: "0.00002",
+            liquidity: { usd: 900000 },
+            info: { imageUrl: "https://example.com/bonk.png" },
+          },
+        ],
+      } as Response);
+
+    await expect(
+      fetchSolanaNativeBalanceViaRpc(
+        "8RsmpM7Ztk5H2nesQSjk8okmFTiZFk4kBUcyaygPrVxa",
+        ["https://solana.example/rpc"],
+      ),
+    ).resolves.toEqual({
+      solBalance: "1.000000000",
+      solValueUsd: "140.00",
+      tokens: [
+        {
+          mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6k5WqfVnEmC3i7YA",
+          symbol: "BONK",
+          name: "Bonk",
+          balance: "12.5",
+          decimals: 5,
+          valueUsd: "0.00",
+          logoUrl: "https://example.com/bonk.png",
+        },
+      ],
+    });
   });
 });
