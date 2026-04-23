@@ -542,7 +542,7 @@ function overlayAndroid() {
     xml = ensureMiladyOsActivityFilters(xml);
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
+      /\n\s*<service\b(?=[\s\S]*?android:name="[^"]*GatewayConnectionService")[\s\S]*?\/>\s*/g;
     const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
     if (withoutGatewayServices !== xml) {
       xml = withoutGatewayServices;
