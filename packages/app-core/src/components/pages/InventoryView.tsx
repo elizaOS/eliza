@@ -8,9 +8,7 @@ import {
   Button,
   cn,
   PageLayout,
-  PagePanel,
   Sidebar,
-  SidebarContent,
   SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
@@ -23,7 +21,6 @@ import {
   ChevronDown,
   Copy,
   DollarSign,
-  Download,
   EyeOff,
   Image as ImageIcon,
   Layers3,
@@ -31,10 +28,9 @@ import {
   PieChart,
   RefreshCw,
   Search,
+  Send,
   Settings,
   Sparkles,
-  Send,
-  ShieldCheck,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -43,7 +39,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type { InventoryChainFilters } from "../../state/types";
 import { useApp } from "../../state/useApp";
-import { WidgetHost } from "../../widgets";
 import {
   formatBalance,
   type NftItem,
@@ -901,7 +896,11 @@ function TokenRail({
     { id: "tokens", label: "Tokens", count: filteredRows.length },
     { id: "defi", label: "DeFi", count: positions.length },
     { id: "nfts", label: "NFTs", count: nfts.length },
-    { id: "activity", label: "Activity", count: profile?.recentSwaps.length ?? 0 },
+    {
+      id: "activity",
+      label: "Activity",
+      count: profile?.recentSwaps.length ?? 0,
+    },
   ];
 
   return (
@@ -958,7 +957,7 @@ function TokenRail({
                 onClick={() => onWalletAction("send")}
               />
               <WalletRailActionButton
-                icon={Download}
+                icon={ArrowDownLeft}
                 label="Receive"
                 onClick={() => onWalletAction("receive")}
               />
@@ -1501,21 +1500,19 @@ export function InventoryView() {
       className="h-full"
       data-testid="wallet-shell"
       sidebar={tokenSidebar}
-      footer={<WidgetHost slot="wallet" />}
-      footerClassName="pt-2"
-      contentClassName="bg-bg/10"
+      contentClassName="bg-bg"
       contentInnerClassName="w-full min-h-0"
-      mobileSidebarLabel="Tokens"
+      mobileSidebarLabel="Wallet"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-5 py-6 sm:px-7 lg:px-9">
+        <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
               <Wallet className="h-4 w-4" />
               Wallet
             </div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-txt">
-              Agent wallet dashboard
+            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-txt">
+              Dashboard
             </h1>
             <div className="mt-1 text-sm text-muted">
               {displayedAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
@@ -1526,7 +1523,7 @@ export function InventoryView() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              className="rounded-lg"
+              className="rounded-full"
               onClick={handleRefresh}
               disabled={walletLoading || walletNftsLoading}
             >
@@ -1539,152 +1536,148 @@ export function InventoryView() {
               Refresh
             </Button>
             {walletEnabled === false ? (
-              <Button className="rounded-lg" onClick={handleEnableWallet}>
+              <Button className="rounded-full" onClick={handleEnableWallet}>
                 Enable wallet
               </Button>
             ) : null}
           </div>
-        </div>
+        </header>
 
         {walletError ? (
-          <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatCard
-            label="Current balance"
-            value={formatUsd(displayedTotalUsd)}
-            detail={`${displayedAssetRows.length} visible tokens`}
-          />
-          <StatCard
-            label="Agent P&L"
-            value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-            detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
-            tone={pnlTone}
-          />
-          <StatCard
-            label="Agent activity"
-            value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
-            detail={`${tradingProfile?.summary.settledCount ?? 0} settled`}
-          />
-        </div>
-
-        <PagePanel variant="section">
-          <div className="p-4 sm:p-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
-              <PieChart className="h-4 w-4 text-accent" />
-              Wallet composition
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
+          <div className="min-w-0">
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+              Current balance
             </div>
-            <WalletCompositionPanel rows={displayedAssetRows} />
-          </div>
-        </PagePanel>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.8fr)]">
-          <div className="space-y-4">
-            <PagePanel variant="section">
-              <div className="p-4 sm:p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                      <BarChart3 className="h-4 w-4 text-accent" />
-                      Agent P&L
-                    </div>
-                    <div className="mt-1 text-xs-tight text-muted">
-                      Realized trade performance from the wallet ledger.
-                    </div>
-                  </div>
-                  <div className="flex rounded-lg border border-border/60 bg-bg/40 p-1">
-                    {DASHBOARD_WINDOWS.map((window) => (
-                      <button
-                        key={window}
-                        type="button"
-                        className={cn(
-                          "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                          dashboardWindow === window
-                            ? "bg-accent text-[color:var(--accent-foreground)]"
-                            : "text-muted hover:text-txt",
-                        )}
-                        onClick={() => setDashboardWindow(window)}
-                      >
-                        {window}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <PnlChart profile={tradingProfile} />
-                </div>
-                {tradingProfileError ? (
-                  <div className="mt-3 text-xs-tight text-danger">
-                    {tradingProfileError}
-                  </div>
-                ) : null}
-              </div>
-            </PagePanel>
-
-            <PagePanel variant="section">
-              <div className="p-4 sm:p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
-                  <Activity className="h-4 w-4 text-accent" />
-                  Agent activity
-                </div>
-                <ActivityList profile={tradingProfile} />
-              </div>
-            </PagePanel>
-
-            <PagePanel variant="section">
-              <div className="p-4 sm:p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
-                  <ImageIcon className="h-4 w-4 text-accent" />
-                  NFTs
-                </div>
-                <NftPreview nfts={inventoryData.allNfts} />
-              </div>
-            </PagePanel>
+            <div className="mt-2 font-mono text-5xl font-semibold tracking-normal text-txt">
+              {formatUsd(displayedTotalUsd)}
+            </div>
+            <div className={cn("mt-3 text-base font-semibold", pnlTone)}>
+              {pnlValue !== null ? (
+                <>
+                  {pnlValue > 0 ? "+" : ""}
+                  {formatBnb(tradingProfile?.summary.realizedPnlBnb)}
+                </>
+              ) : (
+                "No P&L loaded"
+              )}
+            </div>
           </div>
 
-          <div className="space-y-4">
-            <RpcStatusCard
-              walletConfig={walletConfig}
-              onOpenSettings={handleOpenRpcSettings}
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <StatCard
+              label="P&L"
+              value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
+              detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
+              tone={pnlTone}
             />
+            <StatCard
+              label="Activity"
+              value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
+              detail={`${tradingProfile?.summary.settledCount ?? 0} settled`}
+            />
+            <StatCard
+              label="Hidden"
+              value={String(hiddenCount)}
+              detail="spam filter"
+            />
+          </div>
+        </section>
 
-            <PagePanel variant="section">
-              <div className="space-y-3 p-4 sm:p-5">
-                <div className="text-sm font-semibold text-txt">Addresses</div>
-                {addresses.evmAddress || addresses.solanaAddress ? (
-                  <div className="grid gap-2">
-                    {addresses.evmAddress ? (
-                      <AddressPill label="EVM" address={addresses.evmAddress} />
-                    ) : null}
-                    {addresses.solanaAddress ? (
-                      <AddressPill
-                        label="Solana"
-                        address={addresses.solanaAddress}
-                      />
-                    ) : null}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Wallet}
-                    title="No wallet addresses"
-                    body="Configure the agent wallet to show EVM and Solana addresses here."
-                  />
-                )}
-              </div>
-            </PagePanel>
+        <section className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <RpcStatusCard
+            walletConfig={walletConfig}
+            onOpenSettings={handleOpenRpcSettings}
+          />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {addresses.evmAddress ? (
+              <AddressPill label="EVM" address={addresses.evmAddress} />
+            ) : null}
+            {addresses.solanaAddress ? (
+              <AddressPill label="Solana" address={addresses.solanaAddress} />
+            ) : null}
+            {!addresses.evmAddress && !addresses.solanaAddress ? (
+              <EmptyState
+                icon={Wallet}
+                title="No wallet addresses"
+                body="Configure wallet keys in settings."
+              />
+            ) : null}
+          </div>
+        </section>
 
-            <PagePanel variant="section">
-              <div className="p-4 sm:p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-txt">
-                  <Layers3 className="h-4 w-4 text-accent" />
-                  LP positions
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.22fr)_minmax(20rem,0.8fr)]">
+          <div className="space-y-8">
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                  <BarChart3 className="h-4 w-4 text-accent" />
+                  P&L
                 </div>
-                <LpPositionsPanel positions={lpPositions} />
+                <div className="flex rounded-full bg-bg/35 p-1">
+                  {DASHBOARD_WINDOWS.map((window) => (
+                    <button
+                      key={window}
+                      type="button"
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                        dashboardWindow === window
+                          ? "bg-accent text-[color:var(--accent-foreground)]"
+                          : "text-muted hover:text-txt",
+                      )}
+                      onClick={() => setDashboardWindow(window)}
+                    >
+                      {window}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </PagePanel>
+              <PnlChart profile={tradingProfile} />
+              {tradingProfileError ? (
+                <div className="text-xs-tight text-danger">
+                  {tradingProfileError}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                <Activity className="h-4 w-4 text-accent" />
+                Activity
+              </div>
+              <ActivityList profile={tradingProfile} />
+            </section>
+          </div>
+
+          <div className="space-y-8">
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                <PieChart className="h-4 w-4 text-accent" />
+                Composition
+              </div>
+              <WalletCompositionPanel rows={displayedAssetRows} />
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                <Layers3 className="h-4 w-4 text-accent" />
+                LP positions
+              </div>
+              <LpPositionsPanel positions={lpPositions} />
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                <ImageIcon className="h-4 w-4 text-accent" />
+                NFTs
+              </div>
+              <NftPreview nfts={inventoryData.allNfts} />
+            </section>
 
             <VincentPanel
               connected={vincentConnected}
