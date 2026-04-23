@@ -2,11 +2,21 @@ import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { openExternalUrl } from "../../utils";
 
 type IMessageStatus = {
   available: boolean;
   connected: boolean;
-  reason?: string;
+  chatDbAvailable?: boolean;
+  sendOnly?: boolean;
+  chatDbPath?: string;
+  reason?: string | null;
+  permissionAction?: {
+    type: "full_disk_access";
+    label: string;
+    url: string;
+    instructions: string[];
+  } | null;
 };
 
 export function IMessageStatusPanel() {
@@ -14,6 +24,12 @@ export function IMessageStatusPanel() {
   const [status, setStatus] = useState<IMessageStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const permissionAction =
+    status?.permissionAction?.type === "full_disk_access"
+      ? status.permissionAction
+      : null;
+  const isSendOnly = status?.sendOnly === true;
+  const canReadMessages = status?.connected === true && status?.chatDbAvailable !== false;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -39,31 +55,60 @@ export function IMessageStatusPanel() {
 
   return (
     <PagePanel.Notice
-      tone={error ? "danger" : status?.connected ? "accent" : "default"}
+      tone={
+        error
+          ? "danger"
+          : permissionAction || isSendOnly
+            ? "warning"
+            : status?.connected
+              ? "accent"
+              : "default"
+      }
       className="mt-4"
       actions={
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
-          onClick={() => {
-            void refresh();
-          }}
-          disabled={loading}
-        >
-          {loading
-            ? t("common.loading", { defaultValue: "Loading\u2026" })
-            : t("common.refresh", { defaultValue: "Refresh" })}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {permissionAction ? (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+              onClick={() => {
+                void openExternalUrl(permissionAction.url);
+              }}
+            >
+              {t("pluginsview.IMessageOpenFullDiskAccess", {
+                defaultValue: permissionAction.label,
+              })}
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            onClick={() => {
+              void refresh();
+            }}
+            disabled={loading}
+          >
+            {loading
+              ? t("common.loading", { defaultValue: "Loading\u2026" })
+              : t("common.refresh", { defaultValue: "Refresh" })}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-2 text-xs">
         <div className="font-semibold text-txt">
-          {status?.connected
+          {canReadMessages
             ? t("pluginsview.IMessageConnected", {
                 defaultValue:
                   "iMessage is connected. Messages are being read from the local database.",
               })
+            : isSendOnly
+              ? t("pluginsview.IMessageSendOnly", {
+                  defaultValue:
+                    "iMessage can send, but Milady cannot read local messages until Full Disk Access is granted.",
+                })
             : t("pluginsview.IMessageNotConnected", {
                 defaultValue:
                   "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
@@ -73,10 +118,20 @@ export function IMessageStatusPanel() {
         {!error && status?.reason ? (
           <div className="text-muted">{status.reason}</div>
         ) : null}
+        {status?.chatDbPath ? (
+          <div className="text-muted">Database: {status.chatDbPath}</div>
+        ) : null}
+        {permissionAction ? (
+          <ol className="list-decimal space-y-1 pl-4 text-muted">
+            {permissionAction.instructions.map((instruction) => (
+              <li key={instruction}>{instruction}</li>
+            ))}
+          </ol>
+        ) : null}
         <div className="text-muted">
           {t("pluginsview.IMessagePermissionHint", {
             defaultValue:
-              "iMessage reads ~/Library/Messages/chat.db directly. Grant Full Disk Access in System Settings > Privacy & Security for the process running the app.",
+              "iMessage reads ~/Library/Messages/chat.db directly. Full Disk Access must be granted to Milady Desktop, or to Terminal/iTerm when running Milady from a shell.",
           })}
         </div>
       </div>
