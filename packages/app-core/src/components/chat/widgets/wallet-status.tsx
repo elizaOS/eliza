@@ -1,16 +1,10 @@
 /**
  * Compact wallet-status widget for the chat-sidebar.
  *
- * Surfaces a one-glance summary of the user's wallet so the right rail can
- * mirror what /wallet would show without the full panel:
- *   - Short EVM + Solana addresses with copy-to-clipboard buttons
- *   - Per-chain aggregated USD balance rows; rows below $0.01 are hidden
- *     entirely so the widget stays quiet when nothing material is held
- *
- * Title-click opens the full /wallet (inventory) view.
+ * Surfaces wallet addresses and a compact token-inventory summary in the chat
+ * sidebar. Title-click opens the full wallet dashboard.
  */
 
-import type { EvmChainBalance } from "@elizaos/shared/contracts/wallet";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../../state";
@@ -45,18 +39,10 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function chainLabel(chain: string): string {
-  if (!chain) return "Chain";
-  return chain.charAt(0).toUpperCase() + chain.slice(1);
-}
-
-function chainTotalUsd(chain: EvmChainBalance): number {
-  const nativeUsd = parseUsd(chain.nativeValueUsd);
-  const tokenUsd = chain.tokens.reduce(
-    (sum, token) => sum + parseUsd(token.valueUsd),
-    0,
-  );
-  return nativeUsd + tokenUsd;
+function hasPositiveBalance(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0;
 }
 
 interface CopyButtonProps {
@@ -129,32 +115,60 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const evmShort = shortenAddress(evmAddress);
   const solanaShort = shortenAddress(solanaAddress);
 
-  const evmChainRows = useMemo(() => {
-    if (!walletBalances?.evm)
-      return [] as Array<{ chain: string; usd: number }>;
-    return walletBalances.evm.chains
-      .map((chain) => ({ chain: chain.chain, usd: chainTotalUsd(chain) }))
-      .filter((entry) => entry.usd >= DUST_THRESHOLD_USD)
-      .sort((a, b) => b.usd - a.usd);
+  const walletSummary = useMemo(() => {
+    let assetCount = 0;
+    let totalUsd = 0;
+    if (walletBalances?.evm) {
+      for (const chain of walletBalances.evm.chains) {
+        const nativeUsd = parseUsd(chain.nativeValueUsd);
+        totalUsd += nativeUsd;
+        if (
+          nativeUsd >= DUST_THRESHOLD_USD ||
+          hasPositiveBalance(chain.nativeBalance)
+        ) {
+          assetCount += 1;
+        }
+        for (const token of chain.tokens) {
+          const tokenUsd = parseUsd(token.valueUsd);
+          totalUsd += tokenUsd;
+          if (
+            tokenUsd >= DUST_THRESHOLD_USD ||
+            hasPositiveBalance(token.balance)
+          ) {
+            assetCount += 1;
+          }
+        }
+      }
+    }
+    if (walletBalances?.solana) {
+      const nativeUsd = parseUsd(walletBalances.solana.solValueUsd);
+      totalUsd += nativeUsd;
+      if (
+        nativeUsd >= DUST_THRESHOLD_USD ||
+        hasPositiveBalance(walletBalances.solana.solBalance)
+      ) {
+        assetCount += 1;
+      }
+      for (const token of walletBalances.solana.tokens) {
+        const tokenUsd = parseUsd(token.valueUsd);
+        totalUsd += tokenUsd;
+        if (
+          tokenUsd >= DUST_THRESHOLD_USD ||
+          hasPositiveBalance(token.balance)
+        ) {
+          assetCount += 1;
+        }
+      }
+    }
+    return { assetCount, totalUsd };
   }, [walletBalances]);
-
-  const solanaTotalUsd = useMemo(() => {
-    if (!walletBalances?.solana) return 0;
-    const native = parseUsd(walletBalances.solana.solValueUsd);
-    const tokens = walletBalances.solana.tokens.reduce(
-      (sum, token) => sum + parseUsd(token.valueUsd),
-      0,
-    );
-    return native + tokens;
-  }, [walletBalances]);
-  const showSolanaRow = solanaTotalUsd >= DUST_THRESHOLD_USD;
 
   if (walletEnabled === false) {
     return null;
   }
 
   const hasAnyAddress = Boolean(evmAddress || solanaAddress);
-  const hasAnyBalanceRow = evmChainRows.length > 0 || showSolanaRow;
+  const hasAnyBalanceRow = walletSummary.assetCount > 0;
 
   return (
     <WidgetSection
@@ -205,31 +219,24 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
 
           {hasAnyBalanceRow ? (
             <div className="mt-1 flex flex-col gap-1 border-t border-border/20 pt-1.5">
-              {evmChainRows.map((row) => (
-                <div
-                  key={row.chain}
-                  className="flex items-center justify-between text-3xs"
-                  data-testid={`chat-widget-wallet-row-balance-${row.chain}`}
-                >
-                  <span className="truncate text-muted">
-                    {chainLabel(row.chain)}
-                  </span>
-                  <span className="shrink-0 text-txt">
-                    {formatUsd(row.usd)}
-                  </span>
-                </div>
-              ))}
-              {showSolanaRow ? (
-                <div
-                  className="flex items-center justify-between text-3xs"
-                  data-testid="chat-widget-wallet-row-balance-solana"
-                >
-                  <span className="truncate text-muted">Solana</span>
-                  <span className="shrink-0 text-txt">
-                    {formatUsd(solanaTotalUsd)}
-                  </span>
-                </div>
-              ) : null}
+              <div
+                className="flex items-center justify-between text-3xs"
+                data-testid="chat-widget-wallet-row-assets"
+              >
+                <span className="truncate text-muted">Assets</span>
+                <span className="shrink-0 text-txt">
+                  {walletSummary.assetCount}
+                </span>
+              </div>
+              <div
+                className="flex items-center justify-between text-3xs"
+                data-testid="chat-widget-wallet-row-value"
+              >
+                <span className="truncate text-muted">Value</span>
+                <span className="shrink-0 text-txt">
+                  {formatUsd(walletSummary.totalUsd)}
+                </span>
+              </div>
             </div>
           ) : null}
         </div>

@@ -23,6 +23,7 @@ import {
   LifeOpsRepository,
 } from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
+import { isSystemInactivityApp } from "./system-inactivity-apps.js";
 
 export type ActivityTrackerMode =
   | "running"
@@ -125,11 +126,18 @@ export class ActivityTrackerService extends Service {
     if (!runtime) return;
     const agentId = String(runtime.agentId);
     const observedAt = new Date(event.ts).toISOString();
+    const eventKind = isSystemInactivityApp({
+      bundleId: event.bundleId,
+      appName: event.appName,
+      platform: process.platform,
+    })
+      ? "deactivate"
+      : event.event;
     try {
       await insertActivityEvent(runtime, {
         agentId,
         observedAt,
-        eventKind: event.event,
+        eventKind,
         bundleId: event.bundleId,
         appName: event.appName,
         windowTitle: event.windowTitle ?? null,

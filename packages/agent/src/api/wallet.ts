@@ -9,10 +9,11 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
+
 import { logger } from "@elizaos/core";
-import { resolveStewardCredentialsPath } from "../config/paths.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -813,74 +814,66 @@ export async function fetchSolanaBalances(
   });
 
   let solBalance = "0";
-  try {
-    const data = await jsonOrThrow<{
-      result?: { value?: number };
-      error?: { message?: string };
-    }>(
-      await fetch(
-        url,
-        rpc(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "getBalance",
-            params: [address],
-          }),
-        ),
+  const balanceData = await jsonOrThrow<{
+    result?: { value?: number };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getBalance",
+          params: [address],
+        }),
       ),
-    );
-    if (data.error?.message) throw new Error(data.error.message);
-    solBalance = ((data.result?.value ?? 0) / 1e9).toFixed(9);
-  } catch (err) {
-    logger.warn(`SOL balance fetch failed: ${String(err)}`);
-  }
+    ),
+  );
+  if (balanceData.error?.message) throw new Error(balanceData.error.message);
+  solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
 
   const tokens: SolanaTokenBalance[] = [];
-  try {
-    const data = await jsonOrThrow<{
-      result?: { items?: HeliusAsset[] };
-      error?: { message?: string };
-    }>(
-      await fetch(
-        url,
-        rpc(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "getAssetsByOwner",
-            params: {
-              ownerAddress: address,
-              displayOptions: { showFungible: true, showNativeBalance: true },
-              page: 1,
-              limit: 100,
-            },
-          }),
-        ),
+  const tokenData = await jsonOrThrow<{
+    result?: { items?: HeliusAsset[] };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: address,
+            displayOptions: { showFungible: true, showNativeBalance: true },
+            page: 1,
+            limit: 100,
+          },
+        }),
       ),
-    );
-    if (data.error?.message) throw new Error(data.error.message);
-    for (const item of data.result?.items ?? []) {
-      if (
-        item.interface !== "FungibleToken" &&
-        item.interface !== "FungibleAsset"
-      )
-        continue;
-      const dec = item.token_info?.decimals ?? 0;
-      const raw = item.token_info?.balance ?? 0;
-      tokens.push({
-        symbol:
-          item.token_info?.symbol ?? item.content?.metadata?.symbol ?? "???",
-        name: item.content?.metadata?.name ?? "Unknown",
-        mint: item.id,
-        balance: dec > 0 ? (raw / 10 ** dec).toString() : raw.toString(),
-        decimals: dec,
-        valueUsd: item.token_info?.price_info?.total_price?.toFixed(2) ?? "0",
-        logoUrl: item.content?.links?.image ?? "",
-      });
-    }
-  } catch (err) {
-    logger.warn(`Solana token fetch failed: ${String(err)}`);
+    ),
+  );
+  if (tokenData.error?.message) throw new Error(tokenData.error.message);
+  for (const item of tokenData.result?.items ?? []) {
+    if (
+      item.interface !== "FungibleToken" &&
+      item.interface !== "FungibleAsset"
+    )
+      continue;
+    const dec = item.token_info?.decimals ?? 0;
+    const raw = item.token_info?.balance ?? 0;
+    tokens.push({
+      symbol:
+        item.token_info?.symbol ?? item.content?.metadata?.symbol ?? "???",
+      name: item.content?.metadata?.name ?? "Unknown",
+      mint: item.id,
+      balance: dec > 0 ? (raw / 10 ** dec).toString() : raw.toString(),
+      decimals: dec,
+      valueUsd: item.token_info?.price_info?.total_price?.toFixed(2) ?? "0",
+      logoUrl: item.content?.links?.image ?? "",
+    });
   }
 
   return { solBalance, solValueUsd: "0", tokens };

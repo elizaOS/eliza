@@ -28,6 +28,7 @@ import {
   getLocalDateKey,
   getZonedDateParts,
 } from "./time.js";
+import { parseIsoMs, roundConfidence } from "./time-util.js";
 
 export const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
 export const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1_000;
@@ -60,13 +61,6 @@ export type ResolvedScheduleDeviceIdentity = {
   deviceKind: LifeOpsScheduleDeviceKind;
 };
 
-function roundConfidence(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
-}
-
 function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
   return {
     pAwake: 0,
@@ -87,14 +81,6 @@ function defaultScheduleRegularity(): LifeOpsScheduleRegularity {
     sampleCount: 0,
     windowDays: 28,
   };
-}
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function bucketIso(
@@ -147,7 +133,6 @@ function toObservationSnapshot(
   return {
     effectiveDayKey: insight.effectiveDayKey,
     localDate: insight.localDate,
-    phase: insight.phase,
     circadianState: insight.circadianState,
     stateConfidence: roundConfidence(insight.stateConfidence),
     uncertaintyReason: insight.uncertaintyReason,
@@ -156,7 +141,6 @@ function toObservationSnapshot(
     regularity: insight.regularity,
     baseline: insight.baseline,
     sleepStatus: insight.sleepStatus,
-    isProbablySleeping: insight.isProbablySleeping,
     sleepConfidence: roundConfidence(insight.sleepConfidence),
     currentSleepStartedAt: insight.currentSleepStartedAt,
     lastSleepStartedAt: insight.lastSleepStartedAt,
@@ -460,9 +444,6 @@ function recordFromSyncInput(args: {
     regularity: snapshotSource.regularity ?? defaultScheduleRegularity(),
     baseline: snapshotSource.baseline ?? null,
     sleepStatus: snapshotSource.sleepStatus ?? "unknown",
-    phase: snapshotSource.phase ?? circadianState,
-    isProbablySleeping:
-      snapshotSource.isProbablySleeping ?? isAsleepState(circadianState),
     sleepConfidence: roundConfidence(
       snapshotSource.sleepConfidence ?? args.input.stateConfidence,
     ),
@@ -890,7 +871,6 @@ export function mergeScheduleObservations(args: {
     localDate,
     timezone: args.timezone,
     inferredAt: mergedAt,
-    phase: circadianState,
     circadianState,
     stateConfidence: roundConfidence(stateConfidence),
     uncertaintyReason,
@@ -898,8 +878,11 @@ export function mergeScheduleObservations(args: {
     awakeProbability,
     regularity,
     baseline,
+    // Merged states do not preserve individual observation firings — the
+    // scorer runs per-device. Inspection UIs should read the latest local
+    // insight row when they need to enumerate contributing rules.
+    circadianRuleFirings: [],
     sleepStatus,
-    isProbablySleeping: isAsleepState(circadianState),
     sleepConfidence,
     currentSleepStartedAt,
     lastSleepStartedAt,

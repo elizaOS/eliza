@@ -91,14 +91,16 @@ const stubCatalogApps = [
   stubCatalogApp({
     name: "@elizaos/app-lifeops",
     displayName: "LifeOps",
-    description: "Run tasks, reminders, calendar, inbox, and connected workflows.",
+    description:
+      "Run tasks, reminders, calendar, inbox, and connected workflows.",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     heroImage: "/app-heroes/lifeops.png",
   }),
   stubCatalogApp({
     name: "@elizaos/app-plugin-viewer",
     displayName: "Plugin Viewer",
-    description: "Inspect installed plugins, connectors, and runtime feature flags.",
+    description:
+      "Inspect installed plugins, connectors, and runtime feature flags.",
     capabilities: ["plugins", "connectors", "viewer"],
     heroImage: "/app-heroes/plugin-viewer.png",
   }),
@@ -112,7 +114,8 @@ const stubCatalogApps = [
   stubCatalogApp({
     name: "@elizaos/app-training",
     displayName: "Fine Tuning",
-    description: "Build datasets, inspect trajectories, and activate tuned models.",
+    description:
+      "Build datasets, inspect trajectories, and activate tuned models.",
     capabilities: ["training", "fine-tuning", "datasets", "models"],
   }),
   stubCatalogApp({
@@ -139,7 +142,8 @@ const stubCatalogApps = [
   stubCatalogApp({
     name: "@elizaos/app-runtime-debugger",
     displayName: "Runtime Debugger",
-    description: "Inspect runtime objects, plugin order, providers, and services.",
+    description:
+      "Inspect runtime objects, plugin order, providers, and services.",
     capabilities: ["runtime", "debug", "viewer"],
     heroImage: "/app-heroes/runtime-debugger.png",
   }),
@@ -603,7 +607,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/vincent/status") {
-    sendJson(req, res, 200, { connected: false, connectedAt: null });
+    sendJson(req, res, 200, {
+      connected: false,
+      connectedAt: null,
+      tradingVenues: ["hyperliquid", "polymarket"],
+    });
     return;
   }
 
@@ -924,18 +932,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/local-inference/catalog"
-  ) {
+  if (req.method === "GET" && url.pathname === "/api/local-inference/catalog") {
     sendJson(req, res, 200, { models: [] });
     return;
   }
 
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/local-inference/routing"
-  ) {
+  if (req.method === "GET" && url.pathname === "/api/local-inference/routing") {
     sendJson(req, res, 200, {
       registrations: [],
       preferences: {
@@ -1001,10 +1003,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "POST" &&
-    url.pathname === "/api/local-inference/active"
-  ) {
+  if (req.method === "POST" && url.pathname === "/api/local-inference/active") {
     const body = (await readJsonBody(req)) || {};
     const modelId =
       typeof body.modelId === "string" && body.modelId.trim().length > 0

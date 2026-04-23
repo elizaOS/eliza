@@ -267,7 +267,10 @@ export async function handleWalletBscRoutes(
     const sourceParam = url.searchParams.get("source");
 
     const window =
-      windowParam === "7d" || windowParam === "30d" || windowParam === "all"
+      windowParam === "24h" ||
+      windowParam === "7d" ||
+      windowParam === "30d" ||
+      windowParam === "all"
         ? windowParam
         : "30d";
     const source =

@@ -2,72 +2,38 @@
  * useVincentDashboard — aggregated data hook for the Vincent overlay app.
  *
  * Polls Vincent-specific endpoints every 15 s when connected, and fetches
- * the agent's internal wallet addresses + balances (not steward — steward
- * is a separate optional vault layer).
+ * the agent wallet addresses and balances for dashboard context.
  */
 
+import { client } from "@elizaos/app-core";
 import type {
   WalletAddresses,
   WalletBalancesResponse,
 } from "@elizaos/shared/contracts/wallet";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { client } from "@elizaos/app-core";
-
-// ── Vincent endpoint types ──────────────────────────────────────────────
-
-export interface VincentStrategy {
-  name: "dca" | "rebalance" | "threshold" | "manual" | null;
-  params: Record<string, unknown>;
-  intervalSeconds: number;
-  dryRun: boolean;
-  running: boolean;
-}
-
-export interface VincentTradingProfile {
-  totalPnl: string;
-  winRate: number;
-  totalSwaps: number;
-  volume24h: string;
-  tokenBreakdown: Array<{ symbol: string; pnl: string; swaps: number }>;
-}
-
-// ── Hook state shape ──────────────────────────────────────────────────────
+import type {
+  VincentStrategy,
+  VincentTradingProfile,
+} from "./vincent-contracts";
 
 export interface VincentDashboardState {
-  // Vincent OAuth status
   vincentConnected: boolean;
   vincentConnectedAt: number | null;
 
-  // Internal agent wallet (addresses + balances)
   walletAddresses: WalletAddresses | null;
   walletBalances: WalletBalancesResponse | null;
 
-  // Current strategy config (GET /api/vincent/strategy)
   strategy: VincentStrategy | null;
 
-  // P&L analytics (GET /api/vincent/trading-profile)
   tradingProfile: VincentTradingProfile | null;
 
-  // Loading + error state
   loading: boolean;
   error: string | null;
 
-  // Manual refresh
   refresh: () => void;
 }
 
 const POLL_INTERVAL_MS = 15_000;
-
-async function fetchOrNull<T>(url: string): Promise<T | null> {
-  try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
 
 export function useVincentDashboard(): VincentDashboardState {
   const [vincentConnected, setVincentConnected] = useState(false);
@@ -104,8 +70,8 @@ export function useVincentDashboard(): VincentDashboardState {
       ] = await Promise.allSettled([
         client.getWalletAddresses(),
         client.getWalletBalances(),
-        fetchOrNull<VincentStrategy>("/api/vincent/strategy"),
-        fetchOrNull<VincentTradingProfile>("/api/vincent/trading-profile"),
+        client.vincentStrategy(),
+        client.vincentTradingProfile(),
       ]);
 
       if (!mountedRef.current) return;
@@ -116,30 +82,11 @@ export function useVincentDashboard(): VincentDashboardState {
       if (balanceResult.status === "fulfilled") {
         setWalletBalances(balanceResult.value);
       }
-      if (strategyResult.status === "fulfilled" && strategyResult.value) {
-        // API wraps in { connected, strategy: {...} }
-        const raw = strategyResult.value as
-          | VincentStrategy
-          | { strategy: VincentStrategy };
-        setStrategy(
-          "strategy" in raw && raw.strategy
-            ? raw.strategy
-            : (raw as VincentStrategy),
-        );
+      if (strategyResult.status === "fulfilled") {
+        setStrategy(strategyResult.value.strategy);
       }
-      if (
-        tradingProfileResult.status === "fulfilled" &&
-        tradingProfileResult.value
-      ) {
-        // API wraps in { connected, profile: {...} }
-        const raw = tradingProfileResult.value as
-          | VincentTradingProfile
-          | { profile: VincentTradingProfile };
-        setTradingProfile(
-          "profile" in raw && raw.profile
-            ? raw.profile
-            : (raw as VincentTradingProfile),
-        );
+      if (tradingProfileResult.status === "fulfilled") {
+        setTradingProfile(tradingProfileResult.value.profile);
       }
 
       setError(null);

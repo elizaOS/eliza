@@ -544,7 +544,7 @@ export function resolveSolanaRpcUrls(
       process.env.SOLANA_RPC_URL,
       cloudRpcUrl,
     ],
-    options.cloudManagedAccess ? publicDefaults : [],
+    publicDefaults,
   );
 }
 

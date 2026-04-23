@@ -113,7 +113,6 @@ export function TokensTable({
                   key={`${row.chain}-${row.symbol}-${row.contractAddress ?? ""}`}
                   className="hover:bg-bg-hover/65 transition-colors"
                 >
-                  {/* Logo */}
                   <td className="pl-3 pr-2 py-3 align-middle">
                     <TokenLogo
                       symbol={row.symbol}
@@ -123,7 +122,6 @@ export function TokensTable({
                       size={32}
                     />
                   </td>
-                  {/* Symbol + name */}
                   <td className="px-3 py-3 align-middle">
                     <div className="flex items-center gap-2">
                       <div>
@@ -156,17 +154,14 @@ export function TokensTable({
                       )}
                     </div>
                   </td>
-                  {/* Balance */}
                   <td className="px-3 py-3 align-middle font-mono text-sm text-right whitespace-nowrap">
                     {formatBalance(row.balance)}
                   </td>
-                  {/* Value */}
                   <td className="px-3 py-3 align-middle font-mono text-sm text-right text-muted whitespace-nowrap">
                     {row.valueUsd >= 0.01
                       ? `$${row.valueUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       : "\u2014"}
                   </td>
-                  {/* Actions */}
                   <td className="pl-2 pr-3 py-3 align-middle whitespace-nowrap text-right">
                     {row.isTracked && contractAddress && (
                       <Button

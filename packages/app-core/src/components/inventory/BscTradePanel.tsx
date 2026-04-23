@@ -13,8 +13,6 @@ import { useCallback, useState } from "react";
 import { useApp } from "../../state/useApp";
 import { formatBalance, HEX_ADDRESS_RE, type TrackedToken } from "./constants";
 
-/* ── Constants ─────────────────────────────────────────────────────── */
-
 const AMOUNT_PRESETS = [0.05, 0.1, 0.2, 0.5];
 const DEFAULT_QUICK_AMOUNT = "0.1";
 
@@ -35,8 +33,6 @@ export interface TradePanelProps {
   /** When true, trades are routed through Steward vault for policy enforcement. */
   stewardConnected?: boolean;
 }
-
-/* ── Component ─────────────────────────────────────────────────────── */
 
 export function TradePanel({
   tradeReady,
@@ -69,8 +65,6 @@ export function TradePanel({
     amount: string;
     token: string;
   } | null>(null);
-
-  // ── Trade handlers ──────────────────────────────────────────────────
 
   const requestQuote = useCallback(
     async (side: "buy" | "sell") => {
@@ -251,7 +245,6 @@ export function TradePanel({
           );
         }
       } else if (result?.mode === "steward" && !result?.requiresUserSignature) {
-        // Steward pending approval or rejection
         const execStatus = result.execution?.status;
         if (
           result.approval?.status === "pending_approval" ||
@@ -312,8 +305,6 @@ export function TradePanel({
     setActionNotice(t("bsctradepanel.TokenAddedToWatchlist"), "success", 2600);
   }, [quickTokenAddress, onAddToken, setActionNotice, t]);
 
-  // ── Render helpers ──────────────────────────────────────────────────
-
   function renderPolicyResults(policyResults?: StewardPolicyResult[]) {
     if (!policyResults?.length) return null;
     return (
@@ -333,7 +324,7 @@ export function TradePanel({
             >
               {p.status}
             </span>
-            {p.reason && <span> — {p.reason}</span>}
+            {p.reason && <span> - {p.reason}</span>}
           </div>
         ))}
       </div>
@@ -359,7 +350,9 @@ export function TradePanel({
               {t("bsctradepanel.ViewTx")} {shortHash}
             </a>
             {latestExecution.mode === "steward" && (
-              <span className="text-2xs text-purple-400 ml-1">🔐 Steward</span>
+              <span className="text-2xs text-purple-400 ml-1 inline-flex items-center gap-1">
+                <StewardLogo size={12} className="inline-block" /> Steward
+              </span>
             )}
           </div>
           {status === "pending" && (
@@ -387,7 +380,6 @@ export function TradePanel({
       );
     }
 
-    // Steward: pending approval
     if (
       latestExecution.mode === "steward" &&
       !latestExecution.requiresUserSignature &&
@@ -403,7 +395,7 @@ export function TradePanel({
         return (
           <div className="border border-border p-2 text-xs space-y-1">
             <div className="flex items-center gap-1 text-[color:var(--warn,var(--accent))]">
-              <span>🔐</span>
+              <StewardLogo size={13} className="shrink-0" />
               <span>{t("bsctradepanel.WaitingForStewardPolicyApproval")}</span>
             </div>
             {renderPolicyResults(
@@ -418,7 +410,6 @@ export function TradePanel({
         return (
           <div className="border border-border p-2 text-xs space-y-1">
             <div className="flex items-center gap-1 text-status-danger">
-              <span>🚫</span>
               <span>{t("bsctradepanel.StewardPolicyRejectedTransaction")}</span>
             </div>
             {latestExecution.error && (
@@ -471,11 +462,8 @@ export function TradePanel({
     return null;
   }
 
-  // ── Main render ─────────────────────────────────────────────────────
-
   return (
     <>
-      {/* Status bar */}
       <div className="flex items-center gap-2 text-xs">
         <span
           className={
@@ -543,7 +531,6 @@ export function TradePanel({
         </div>
       )}
 
-      {/* Quick trade panel */}
       <div className="border border-border bg-card p-3 space-y-2">
         <div className="flex items-center gap-2">
           <Input
@@ -608,7 +595,6 @@ export function TradePanel({
           </Button>
         </div>
 
-        {/* Latest quote display */}
         {latestQuote && (
           <div className="border border-border p-2 text-xs">
             <div className="font-bold mb-1">
@@ -679,12 +665,8 @@ export function TradePanel({
           </div>
         )}
 
-        {/* Execution result */}
         {latestExecution && renderExecutionResult()}
       </div>
     </>
   );
 }
-
-export type { TradePanelProps as BscTradePanelProps };
-export { TradePanel as BscTradePanel };

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Eliza</string>
+	<string>$(MILADY_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -43,11 +43,17 @@
 	<true/>
 	<key>NSBonjourServices</key>
 	<array>
+		<string>_eliza-gw._tcp</string>
 		<string>_elizaos-gw._tcp</string>
+		<string>_eliza._tcp</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>ai.eliza.mobile-signals.sleep-refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses your camera to capture photos and video when you ask it to.</string>

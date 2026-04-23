@@ -40,6 +40,7 @@ import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { TrainingSettingsPanel } from "../settings/TrainingSettings";
+import { ConfigPageView } from "./ConfigPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
@@ -176,6 +177,23 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
   },
   {
+    id: "wallet-rpc",
+    label: "settings.sections.walletrpc.label",
+    description: "settings.sections.walletrpc.desc",
+    keywords: [
+      "wallet",
+      "rpc",
+      "evm",
+      "solana",
+      "api key",
+      "alchemy",
+      "quicknode",
+      "helius",
+      "birdeye",
+    ],
+    keywordKeys: ["settings.keyword.wallet", "settings.keyword.apiKey"],
+  },
+  {
     id: "feature-toggles",
     label: "settings.sections.features.label",
     description: "settings.sections.features.desc",
@@ -295,6 +313,13 @@ function matchesSettingsSection(
       t(key).toLowerCase().includes(normalized),
     )
   );
+}
+
+function readSettingsHashSection(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) return null;
+  return SETTINGS_SECTIONS.some((section) => section.id === hash) ? hash : null;
 }
 
 interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
@@ -680,17 +705,22 @@ export function SettingsView({
   onClose?: () => void;
   initialSection?: string;
 } = {}) {
-  const { t, loadPlugins } = useApp();
-  const [activeSection, setActiveSection] = useState(initialSection ?? "cloud");
+  const { t, loadPlugins, walletEnabled } = useApp();
+  const [activeSection, setActiveSection] = useState(
+    () => initialSection ?? readSettingsHashSection() ?? "cloud",
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const shellRef = useRef<HTMLDivElement>(null);
 
   const visibleSections = useMemo(
     () =>
-      SETTINGS_SECTIONS.filter((section) =>
-        matchesSettingsSection(section, searchQuery, t),
-      ),
-    [searchQuery, t],
+      SETTINGS_SECTIONS.filter((section) => {
+        if (section.id === "wallet-rpc" && walletEnabled === false) {
+          return false;
+        }
+        return matchesSettingsSection(section, searchQuery, t);
+      }),
+    [searchQuery, t, walletEnabled],
   );
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
@@ -946,6 +976,18 @@ export function SettingsView({
           ref={registerContentItem("capabilities")}
         >
           <CapabilitiesSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("wallet-rpc") && (
+        <SettingsSection
+          id="wallet-rpc"
+          title={t("settings.sections.walletrpc.label")}
+          description={t("settings.sections.walletrpc.desc")}
+          bodyClassName="p-4 sm:p-5"
+          ref={registerContentItem("wallet-rpc")}
+        >
+          <ConfigPageView embedded />
         </SettingsSection>
       )}
 

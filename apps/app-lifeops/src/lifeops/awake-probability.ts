@@ -7,6 +7,7 @@ import type {
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 import { getZonedDateParts } from "./time.js";
+import { parseIsoMs } from "./time-util.js";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -18,14 +19,6 @@ function round(value: number): number {
 
 function logistic(value: number): number {
   return 1 / (1 + Math.exp(-value));
-}
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function localHour(nowMs: number, timezone: string): number {

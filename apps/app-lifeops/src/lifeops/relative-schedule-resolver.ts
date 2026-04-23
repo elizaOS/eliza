@@ -4,6 +4,7 @@ import type {
 } from "@elizaos/shared/contracts/lifeops";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
+import { parseIsoMs } from "./time-util.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   insufficient_data: 0,
@@ -12,14 +13,6 @@ const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   regular: 3,
   very_regular: 4,
 };
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function zonedWeekday(ms: number, timezone: string): number {
   return new Date(

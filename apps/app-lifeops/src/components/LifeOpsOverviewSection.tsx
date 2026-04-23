@@ -12,6 +12,7 @@ import {
   CalendarDays,
   Flame,
   Loader2,
+  Mail,
   MessageCircle,
   MessageSquare,
   Monitor,
@@ -19,6 +20,7 @@ import {
   Phone,
   RefreshCw,
   Send,
+  Share2,
   Shield,
   Smartphone,
   Sun,
@@ -31,10 +33,17 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { LifeOpsScreenTimeSummary } from "../api/client-lifeops.js";
+import type {
+  LifeOpsScreenTimeSummary,
+  LifeOpsSocialHabitSummary,
+} from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useUnifiedInbox } from "../hooks/useUnifiedInbox.js";
+import {
+  LIFEOPS_MAIL_CHANNELS,
+  LIFEOPS_MESSAGE_CHANNELS,
+} from "./LifeOpsInboxSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
 import { LifeOpsSetupGate, useLifeOpsSetupGate } from "./LifeOpsSetupGate.js";
 
@@ -262,7 +271,7 @@ function buildHeadline(args: {
     return `${nextEvent.title} at ${formatClockTime(nextEvent.startAt)}.`;
   }
   if (hasUnread) {
-    return "Inbox needs attention.";
+    return "Messages need attention.";
   }
   return "The day is open.";
 }
@@ -546,6 +555,9 @@ export function LifeOpsOverviewSection({
   );
   const [screenTimeLoading, setScreenTimeLoading] = useState(false);
   const [screenTimeError, setScreenTimeError] = useState<string | null>(null);
+  const [social, setSocial] = useState<LifeOpsSocialHabitSummary | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -587,13 +599,44 @@ export function LifeOpsOverviewSection({
     }
   }, []);
 
+  const loadSocial = useCallback(async () => {
+    setSocialLoading(true);
+    setSocialError(null);
+    try {
+      setSocial(
+        await client.getLifeOpsSocialHabitSummary({
+          since: startOfLocalDayIso(),
+          until: new Date().toISOString(),
+          topN: 5,
+        }),
+      );
+    } catch (cause) {
+      setSocialError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Social habits failed to load.",
+      );
+    } finally {
+      setSocialLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadOverview();
     void loadScreenTime();
-  }, [loadOverview, loadScreenTime]);
+    void loadSocial();
+  }, [loadOverview, loadScreenTime, loadSocial]);
 
   const calendar = useCalendarWeek({ viewMode: "week" });
-  const inbox = useUnifiedInbox({ maxResults: 12 });
+  const messagesInbox = useUnifiedInbox({
+    maxResults: 8,
+    channels: LIFEOPS_MESSAGE_CHANNELS,
+  });
+  const mailInbox = useUnifiedInbox({
+    maxResults: 8,
+    channel: "gmail",
+    channels: LIFEOPS_MAIL_CHANNELS,
+  });
 
   const upcomingEvents = useMemo(() => {
     const now = Date.now();
@@ -610,11 +653,16 @@ export function LifeOpsOverviewSection({
   const schedule = overview?.schedule ?? null;
   const reminders = overview?.reminders ?? [];
   const activeReminders = reminders.slice(0, 6);
-  const unreadMessages = inbox.messages.filter((message) => message.unread);
+  const unreadMessages = [
+    ...messagesInbox.messages,
+    ...mailInbox.messages,
+  ].filter((message) => message.unread);
   const hasUnread = unreadMessages.length > 0;
   const hasOverdue = (summary?.overdueOccurrenceCount ?? 0) > 0;
   const nextEvent = upcomingEvents[0] ?? null;
   const screenTimeLabel = formatDurationSeconds(screenTime?.totalSeconds);
+  const socialLabel = formatDurationSeconds(social?.totalSeconds);
+  const topSocial = social?.services[0] ?? null;
   const lastSleep = formatDurationMinutes(schedule?.lastSleepDurationMinutes);
   const bedtime = formatClockTime(schedule?.relativeTime.bedtimeTargetAt);
 
@@ -640,9 +688,9 @@ export function LifeOpsOverviewSection({
 
   const activeChannels = useMemo(() => {
     return CHANNEL_ORDER.filter((channel) =>
-      inbox.messages.some((message) => message.channel === channel),
+      messagesInbox.messages.some((message) => message.channel === channel),
     );
-  }, [inbox.messages]);
+  }, [messagesInbox.messages]);
 
   const briefingLines = useMemo(() => {
     const lines: string[] = [];
@@ -659,7 +707,7 @@ export function LifeOpsOverviewSection({
       );
     }
     if (hasUnread) {
-      lines.push("Inbox needs triage");
+      lines.push("Messages need triage");
     }
     if (schedule?.nextMealLabel && schedule.nextMealWindowStartAt) {
       lines.push(
@@ -674,9 +722,18 @@ export function LifeOpsOverviewSection({
   const refresh = useCallback(() => {
     void loadOverview();
     void loadScreenTime();
+    void loadSocial();
     void calendar.refresh();
-    void inbox.refresh();
-  }, [calendar, inbox, loadOverview, loadScreenTime]);
+    void messagesInbox.refresh();
+    void mailInbox.refresh();
+  }, [
+    calendar.refresh,
+    loadSocial,
+    loadOverview,
+    loadScreenTime,
+    mailInbox.refresh,
+    messagesInbox.refresh,
+  ]);
 
   const openEvent = useCallback(
     (event: LifeOpsCalendarEvent) => {
@@ -725,7 +782,11 @@ export function LifeOpsOverviewSection({
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
             onClick={refresh}
             disabled={
-              loading || screenTimeLoading || calendar.loading || inbox.loading
+              loading ||
+              screenTimeLoading ||
+              calendar.loading ||
+              messagesInbox.loading ||
+              mailInbox.loading
             }
           >
             <RefreshCw
@@ -783,7 +844,7 @@ export function LifeOpsOverviewSection({
         <DashboardPanel
           title="Briefing"
           icon={<Flame className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-5"
+          className="xl:col-span-4"
         >
           <div className="space-y-3">
             {briefingLines.length === 0 ? (
@@ -805,7 +866,14 @@ export function LifeOpsOverviewSection({
               <Sun className="h-4 w-4" aria-hidden />
             )
           }
-          className="xl:col-span-3"
+          action={
+            <IconAction
+              label="Sleep"
+              icon={<Moon className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => onNavigate("sleep")}
+            />
+          }
+          className="xl:col-span-2"
         >
           <div className="space-y-3">
             <div>
@@ -829,7 +897,14 @@ export function LifeOpsOverviewSection({
         <DashboardPanel
           title="Screen Time"
           icon={<Monitor className="h-4 w-4" aria-hidden />}
-          className="xl:col-span-4"
+          action={
+            <IconAction
+              label="Screen Time"
+              icon={<Monitor className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => onNavigate("screen-time")}
+            />
+          }
+          className="xl:col-span-3"
         >
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
@@ -843,6 +918,50 @@ export function LifeOpsOverviewSection({
             loading={screenTimeLoading}
             error={screenTimeError}
           />
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Social"
+          icon={<Share2 className="h-4 w-4" aria-hidden />}
+          action={
+            <IconAction
+              label="Social"
+              icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => onNavigate("social")}
+            />
+          }
+          className="xl:col-span-3"
+        >
+          <div className="mb-3 text-2xl font-semibold leading-none text-txt">
+            {socialLabel || "No data"}
+          </div>
+          {socialLoading && !social ? (
+            <div className="flex items-center gap-2 py-5 text-xs text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Reading social...
+            </div>
+          ) : socialError ? (
+            <div className="py-4 text-xs text-rose-300">{socialError}</div>
+          ) : (
+            <div className="space-y-3">
+              <TinyStatus
+                color="bg-cyan-300"
+                label={
+                  topSocial
+                    ? `${topSocial.label} ${formatDurationSeconds(
+                        topSocial.totalSeconds,
+                      )}`
+                    : "No social time"
+                }
+              />
+              <TinyStatus
+                color="bg-emerald-300"
+                label={`${social?.messages.opened ?? 0} opened / ${
+                  social?.messages.outbound ?? 0
+                } sent`}
+              />
+            </div>
+          )}
         </DashboardPanel>
 
         <DashboardPanel
@@ -879,7 +998,7 @@ export function LifeOpsOverviewSection({
         </DashboardPanel>
 
         <DashboardPanel
-          title="Inbox"
+          title="Messages"
           icon={<MessageSquare className="h-4 w-4" aria-hidden />}
           action={
             <IconAction
@@ -910,22 +1029,57 @@ export function LifeOpsOverviewSection({
               })
             )}
           </div>
-          {inbox.loading && inbox.messages.length === 0 ? (
+          {messagesInbox.loading && messagesInbox.messages.length === 0 ? (
             <div className="flex items-center gap-2 py-5 text-xs text-muted">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              Reading inbox...
+              Reading messages...
             </div>
-          ) : inbox.messages.length === 0 ? (
-            <EmptyState>Inbox clear.</EmptyState>
+          ) : messagesInbox.messages.length === 0 ? (
+            <EmptyState>No messages.</EmptyState>
           ) : (
             <div className="divide-y divide-border/10">
-              {inbox.messages.slice(0, 5).map((message) => (
+              {messagesInbox.messages.slice(0, 5).map((message) => (
                 <InboxMessageRow
                   key={message.id}
                   message={message}
                   onClick={() => {
                     select({ messageId: message.id });
                     onNavigate("messages");
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Mail"
+          icon={<Mail className="h-4 w-4" aria-hidden />}
+          action={
+            <IconAction
+              label="Mail"
+              icon={<Mail className="h-3.5 w-3.5" aria-hidden />}
+              onClick={() => onNavigate("mail")}
+            />
+          }
+          className="xl:col-span-4"
+        >
+          {mailInbox.loading && mailInbox.messages.length === 0 ? (
+            <div className="flex items-center gap-2 py-5 text-xs text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Reading mail...
+            </div>
+          ) : mailInbox.messages.length === 0 ? (
+            <EmptyState>No mail.</EmptyState>
+          ) : (
+            <div className="divide-y divide-border/10">
+              {mailInbox.messages.slice(0, 5).map((message) => (
+                <InboxMessageRow
+                  key={message.id}
+                  message={message}
+                  onClick={() => {
+                    select({ messageId: message.id });
+                    onNavigate("mail");
                   }}
                 />
               ))}

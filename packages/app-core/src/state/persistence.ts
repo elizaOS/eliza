@@ -29,6 +29,10 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /* ── Theme persistence ────────────────────────────────────────────────── */
 
 export type { UiTheme } from "./ui-preferences";
@@ -174,21 +178,24 @@ export function saveCompanionAnimateWhenHidden(enabled: boolean): void {
 
 const COMPANION_HALF_FRAMERATE_STORAGE_KEY = "eliza:companion-half-framerate";
 
-const COMPANION_HALF_FRAMERATE_VALUES = new Set<CompanionHalfFramerateMode>([
+const COMPANION_HALF_FRAMERATE_VALUES = new Set<string>([
   "off",
   "when_saving_power",
   "always",
 ]);
 
+function isCompanionHalfFramerateMode(
+  value: unknown,
+): value is CompanionHalfFramerateMode {
+  return (
+    typeof value === "string" && COMPANION_HALF_FRAMERATE_VALUES.has(value)
+  );
+}
+
 export function normalizeCompanionHalfFramerateMode(
   raw: string | null | undefined,
 ): CompanionHalfFramerateMode {
-  if (
-    raw &&
-    COMPANION_HALF_FRAMERATE_VALUES.has(raw as CompanionHalfFramerateMode)
-  ) {
-    return raw as CompanionHalfFramerateMode;
-  }
+  if (isCompanionHalfFramerateMode(raw)) return raw;
   return "when_saving_power";
 }
 
@@ -770,19 +777,16 @@ export function createPersistedActiveServer(args: {
 function normalizePersistedActiveServer(
   value: unknown,
 ): PersistedActiveServer | null {
-  if (typeof value !== "object" || value === null) {
+  if (!isPlainObject(value)) {
     return null;
   }
 
-  const parsed = value as Record<string, unknown>;
   const kind =
-    parsed.kind === "local" ||
-    parsed.kind === "cloud" ||
-    parsed.kind === "remote"
-      ? parsed.kind
+    value.kind === "local" || value.kind === "cloud" || value.kind === "remote"
+      ? value.kind
       : null;
-  const id = trimPersistedValue(parsed.id);
-  const label = trimPersistedValue(parsed.label);
+  const id = trimPersistedValue(value.id);
+  const label = trimPersistedValue(value.label);
   if (!kind || !id || !label) {
     return null;
   }
@@ -791,11 +795,11 @@ function normalizePersistedActiveServer(
     id,
     kind,
     label,
-    ...(normalizeApiBase(parsed.apiBase)
-      ? { apiBase: normalizeApiBase(parsed.apiBase) }
+    ...(normalizeApiBase(value.apiBase)
+      ? { apiBase: normalizeApiBase(value.apiBase) }
       : {}),
-    ...(trimPersistedValue(parsed.accessToken)
-      ? { accessToken: trimPersistedValue(parsed.accessToken) }
+    ...(trimPersistedValue(value.accessToken)
+      ? { accessToken: trimPersistedValue(value.accessToken) }
       : {}),
   };
 }

@@ -17,8 +17,13 @@
  */
 
 import type {
+  WalletAddresses,
+  WalletBalancesResponse,
   WalletChainKind,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletEntry,
+  WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/shared/contracts/wallet";
@@ -29,12 +34,7 @@ import {
   type DropStatus,
   type MintResult,
   type RegistryStatus,
-  type WalletAddresses,
-  type WalletBalancesResponse,
-  type WalletConfigStatus,
-  type WalletConfigUpdateRequest,
   type WalletExportResult,
-  type WalletNftsResponse,
   type WhitelistStatus,
 } from "../api";
 import { confirmDesktopAction } from "../utils";

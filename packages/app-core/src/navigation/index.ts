@@ -4,6 +4,7 @@
 
 /// <reference types="vite/client" />
 
+import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
@@ -96,6 +97,37 @@ export interface TabGroup {
   description?: string;
 }
 
+export interface AndroidPhoneSurfaceDetection {
+  platform?: string;
+  isNative?: boolean;
+  search?: string;
+  hash?: string;
+}
+
+function hasAndroidTestFlag(search: string, hash: string): boolean {
+  const searchParams = new URLSearchParams(search);
+  if (searchParams.get("android") === "true") return true;
+  const hashQuery = hash.includes("?") ? hash.slice(hash.indexOf("?")) : "";
+  if (!hashQuery) return false;
+  return new URLSearchParams(hashQuery).get("android") === "true";
+}
+
+export function isAndroidPhoneSurfaceEnabled(
+  detection: AndroidPhoneSurfaceDetection = {},
+): boolean {
+  const search =
+    detection.search ??
+    (typeof window === "undefined" ? "" : window.location.search);
+  const hash =
+    detection.hash ??
+    (typeof window === "undefined" ? "" : window.location.hash);
+  if (hasAndroidTestFlag(search, hash)) return true;
+
+  const platform = detection.platform ?? Capacitor.getPlatform();
+  const isNative = detection.isNative ?? Capacitor.isNativePlatform();
+  return isNative && platform === "android";
+}
+
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",
@@ -174,10 +206,12 @@ export function getTabGroups(
   walletEnabled = true,
   browserEnabled = true,
   dynamicTabs?: DynamicNavTab[],
+  phoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled(),
 ): TabGroup[] {
   const groups = ALL_TAB_GROUPS.filter(
     (g) =>
       (APPS_ENABLED || g.label !== "Apps") &&
+      (phoneSurfaceEnabled || g.label !== "Phone") &&
       (streamEnabled || g.label !== "Stream") &&
       (walletEnabled || g.label !== "Wallet") &&
       (browserEnabled || g.label !== "Browser"),

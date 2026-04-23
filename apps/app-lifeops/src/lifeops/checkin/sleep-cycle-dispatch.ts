@@ -1,4 +1,5 @@
 import type { LifeOpsCircadianState } from "@elizaos/shared/contracts/lifeops";
+import { parseIsoMs } from "../time-util.js";
 
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;
 export const NIGHT_CHECKIN_LEAD_MINUTES = 3 * 60;
@@ -9,14 +10,6 @@ export interface CheckinSleepCycleState {
   readonly relativeTime: {
     readonly minutesUntilBedtimeTarget: number | null;
   };
-}
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function shouldRunMorningCheckinFromSleepCycle(args: {

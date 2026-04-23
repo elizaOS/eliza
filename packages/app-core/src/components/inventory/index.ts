@@ -1,4 +1,3 @@
-export { CopyableAddress } from "./CopyableAddress";
 export {
   CHAIN_CONFIGS,
   type ChainConfig,
@@ -22,7 +21,6 @@ export {
   type TrackedToken,
   toNormalizedAddress,
 } from "./constants";
-export { InventoryToolbar } from "./InventoryToolbar";
 export { NftGrid } from "./NftGrid";
 export { TokenLogo } from "./TokenLogo";
 export { TokensTable } from "./TokensTable";

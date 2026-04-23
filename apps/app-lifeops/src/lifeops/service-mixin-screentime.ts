@@ -5,8 +5,13 @@ import type {
   LifeOpsScreenTimeSession,
 } from "@elizaos/shared/contracts/lifeops";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
+import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
+import {
+  classifyScreenTimeTarget,
+  isSocialCategory,
+} from "./social-taxonomy.js";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -17,7 +22,11 @@ function computeDurationSeconds(
   endAt: string | null | undefined,
   provided: number | undefined,
 ): number {
-  if (typeof provided === "number" && Number.isFinite(provided) && provided >= 0) {
+  if (
+    typeof provided === "number" &&
+    Number.isFinite(provided) &&
+    provided >= 0
+  ) {
     return Math.floor(provided);
   }
   if (!endAt) return 0;
@@ -46,6 +55,67 @@ type ScreenTimeWeeklyAverageItem = {
   averageMinutesPerDay: number;
 };
 
+type ScreenTimeBucket = {
+  key: string;
+  label: string;
+  totalSeconds: number;
+};
+
+type ScreenTimeBreakdownItem = {
+  source: "app" | "website";
+  identifier: string;
+  displayName: string;
+  totalSeconds: number;
+  sessionCount: number;
+  category: string;
+  device: string;
+  service: string | null;
+  serviceLabel: string | null;
+  browser: string | null;
+};
+
+type ScreenTimeBreakdown = {
+  items: ScreenTimeBreakdownItem[];
+  totalSeconds: number;
+  bySource: ScreenTimeBucket[];
+  byCategory: ScreenTimeBucket[];
+  byDevice: ScreenTimeBucket[];
+  byService: ScreenTimeBucket[];
+  byBrowser: ScreenTimeBucket[];
+  fetchedAt: string;
+};
+
+type SocialHabitSummary = {
+  since: string;
+  until: string;
+  totalSeconds: number;
+  services: ScreenTimeBucket[];
+  devices: ScreenTimeBucket[];
+  surfaces: ScreenTimeBucket[];
+  browsers: ScreenTimeBucket[];
+  sessions: ScreenTimeBreakdownItem[];
+  messages: {
+    channels: Array<{
+      channel: "x_dm";
+      label: string;
+      inbound: number;
+      outbound: number;
+      opened: number;
+      replied: number;
+    }>;
+    inbound: number;
+    outbound: number;
+    opened: number;
+    replied: number;
+  };
+  dataSources: Array<{
+    id: string;
+    label: string;
+    state: "live" | "partial" | "unwired";
+  }>;
+  fetchedAt: string;
+};
+
 function resolveUtcDateWindow(date: string): {
   startIso: string;
   endIso: string;
@@ -62,13 +132,20 @@ function resolveUtcDateWindow(date: string): {
   return { startIso, endIso, startMs, endMs };
 }
 
-function buildWindowBounds(since: string, until: string): {
+function buildWindowBounds(
+  since: string,
+  until: string,
+): {
   sinceMs: number;
   untilMs: number;
 } {
   const sinceMs = Date.parse(since);
   const untilMs = Date.parse(until);
-  if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs) || untilMs <= sinceMs) {
+  if (
+    !Number.isFinite(sinceMs) ||
+    !Number.isFinite(untilMs) ||
+    untilMs <= sinceMs
+  ) {
     fail(400, "since and until must be valid ISO strings with until > since");
   }
   return { sinceMs, untilMs };
@@ -135,6 +212,20 @@ function aggregateWebsiteSessions(
   });
 }
 
+function isSystemInactivitySession(session: LifeOpsScreenTimeSession): boolean {
+  return (
+    session.source === "app" &&
+    isSystemInactivityApp({
+      bundleId: session.identifier,
+      appName: session.displayName,
+      platform:
+        typeof session.metadata?.platform === "string"
+          ? session.metadata.platform
+          : null,
+    })
+  );
+}
+
 function mergeAggregateRows(
   rows: ScreenTimeAggregateRow[],
 ): ScreenTimeAggregateRow[] {
@@ -190,7 +281,10 @@ function toDailyRows(
   }));
 }
 
-function toSummaryItems(rows: ScreenTimeAggregateRow[], topN?: number): {
+function toSummaryItems(
+  rows: ScreenTimeAggregateRow[],
+  topN?: number,
+): {
   items: Array<{
     source: "app" | "website";
     identifier: string;
@@ -230,6 +324,221 @@ function toWeeklyAverageItems(
     averageSecondsPerDay: Math.round(item.totalSeconds / safeDays),
     averageMinutesPerDay: Math.round(item.totalSeconds / safeDays / 60),
   }));
+}
+
+function addBucket(
+  buckets: Map<string, ScreenTimeBucket>,
+  key: string | null | undefined,
+  label: string | null | undefined,
+  totalSeconds: number,
+): void {
+  if (!key || totalSeconds <= 0) return;
+  const existing = buckets.get(key);
+  if (existing) {
+    existing.totalSeconds += totalSeconds;
+    return;
+  }
+  buckets.set(key, {
+    key,
+    label: label || key,
+    totalSeconds,
+  });
+}
+
+function bucketList(
+  buckets: Map<string, ScreenTimeBucket>,
+): ScreenTimeBucket[] {
+  return [...buckets.values()].sort((left, right) => {
+    if (right.totalSeconds !== left.totalSeconds) {
+      return right.totalSeconds - left.totalSeconds;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function categoryLabel(category: string): string {
+  switch (category) {
+    case "browser":
+      return "Browser";
+    case "communication":
+      return "Messages";
+    case "social":
+      return "Social";
+    case "system":
+      return "System";
+    case "video":
+      return "Video";
+    case "work":
+      return "Work";
+    default:
+      return "Other";
+  }
+}
+
+function deviceLabel(device: string): string {
+  switch (device) {
+    case "browser":
+      return "Browser";
+    case "computer":
+      return "Computer";
+    case "phone":
+      return "Phone";
+    case "tablet":
+      return "Tablet";
+    default:
+      return "Unknown";
+  }
+}
+
+function sourceLabel(source: string): string {
+  return source === "website" ? "Web" : "Apps";
+}
+
+function toBreakdownItems(
+  rows: ScreenTimeAggregateRow[],
+  topN?: number,
+): ScreenTimeBreakdown {
+  const sorted = mergeAggregateRows(rows);
+  const sourceBuckets = new Map<string, ScreenTimeBucket>();
+  const categoryBuckets = new Map<string, ScreenTimeBucket>();
+  const deviceBuckets = new Map<string, ScreenTimeBucket>();
+  const serviceBuckets = new Map<string, ScreenTimeBucket>();
+  const browserBuckets = new Map<string, ScreenTimeBucket>();
+
+  const items = sorted.map((row) => {
+    const classification = classifyScreenTimeTarget(row);
+    addBucket(
+      sourceBuckets,
+      row.source,
+      sourceLabel(row.source),
+      row.totalSeconds,
+    );
+    addBucket(
+      categoryBuckets,
+      classification.category,
+      categoryLabel(classification.category),
+      row.totalSeconds,
+    );
+    addBucket(
+      deviceBuckets,
+      classification.device,
+      deviceLabel(classification.device),
+      row.totalSeconds,
+    );
+    addBucket(
+      serviceBuckets,
+      classification.service,
+      classification.serviceLabel,
+      row.totalSeconds,
+    );
+    addBucket(
+      browserBuckets,
+      classification.browser?.toLowerCase(),
+      classification.browser,
+      row.totalSeconds,
+    );
+    return {
+      source: row.source,
+      identifier: row.identifier,
+      displayName: row.displayName,
+      totalSeconds: row.totalSeconds,
+      sessionCount: row.sessionCount,
+      category: classification.category,
+      device: classification.device,
+      service: classification.service,
+      serviceLabel: classification.serviceLabel,
+      browser: classification.browser,
+    };
+  });
+
+  return {
+    items: items.slice(0, topN ?? items.length),
+    totalSeconds: sorted.reduce((sum, row) => sum + row.totalSeconds, 0),
+    bySource: bucketList(sourceBuckets),
+    byCategory: bucketList(categoryBuckets),
+    byDevice: bucketList(deviceBuckets),
+    byService: bucketList(serviceBuckets),
+    byBrowser: bucketList(browserBuckets),
+    fetchedAt: isoNow(),
+  };
+}
+
+function inWindow(
+  iso: string | null | undefined,
+  sinceMs: number,
+  untilMs: number,
+): boolean {
+  if (!iso) return false;
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) && parsed >= sinceMs && parsed <= untilMs;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function positiveNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
+
+function androidPackageLabel(packageName: string): string {
+  switch (packageName) {
+    case "com.google.android.youtube":
+      return "YouTube";
+    case "com.twitter.android":
+      return "X";
+    case "com.discord":
+      return "Discord";
+    case "com.reddit.frontpage":
+      return "Reddit";
+    case "com.instagram.android":
+      return "Instagram";
+    case "com.zhiliaoapp.musically":
+      return "TikTok";
+    default:
+      return packageName;
+  }
+}
+
+function androidUsageRowsFromSignals(
+  signals: Array<{ metadata: Record<string, unknown> }>,
+): ScreenTimeAggregateRow[] {
+  const byPackage = new Map<string, ScreenTimeAggregateRow>();
+  for (const signal of signals) {
+    const screenTime = asRecord(signal.metadata.screenTime);
+    if (!screenTime || screenTime.granted !== true) continue;
+    for (const rawApp of asArray(screenTime.topApps)) {
+      const app = asRecord(rawApp);
+      const packageName =
+        typeof app?.packageName === "string" ? app.packageName.trim() : "";
+      const foregroundMs = positiveNumber(app?.totalTimeForegroundMs);
+      if (!packageName || foregroundMs <= 0) continue;
+      const totalSeconds = Math.floor(foregroundMs / 1000);
+      const existing = byPackage.get(packageName);
+      if (existing && existing.totalSeconds >= totalSeconds) continue;
+      byPackage.set(packageName, {
+        source: "app",
+        identifier: packageName,
+        displayName: androidPackageLabel(packageName),
+        totalSeconds,
+        sessionCount: 1,
+        metadata: {
+          platform: "android",
+          packageName,
+          lastTimeUsed: app?.lastTimeUsed ?? null,
+        },
+      });
+    }
+  }
+  return [...byPackage.values()];
 }
 
 /** @internal */
@@ -294,75 +603,11 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    async getScreenTimeDaily(opts: {
-      date: string;
-      source?: "app" | "website";
-      limit?: number;
-    }): Promise<LifeOpsScreenTimeDaily[]> {
-      const { startIso, endIso, startMs, endMs } = resolveUtcDateWindow(
-        opts.date,
-      );
-      const rows: ScreenTimeAggregateRow[] = [];
-
-      if (!opts.source || opts.source === "app") {
-        const appReport = await getActivityReportBetween(
-          this.runtime,
-          this.agentId(),
-          {
-            sinceMs: startMs,
-            untilMs: Math.min(endMs, Date.now()),
-          },
-        );
-        rows.push(
-          ...appReport.apps.map((app) => ({
-            source: "app" as const,
-            identifier: app.bundleId || app.appName,
-            displayName: app.appName || app.bundleId,
-            totalSeconds: Math.floor(app.totalMs / 1000),
-            sessionCount: app.sessionCount,
-            metadata: {
-              sampleWindowTitles: app.sampleWindowTitles,
-            },
-          })),
-        );
-        const appSessions = await this.repository.listScreenTimeSessionsOverlapping(
-          this.agentId(),
-          startIso,
-          endIso,
-          { source: "app" },
-        );
-        rows.push(...aggregateWebsiteSessions(appSessions, startMs, endMs));
-      }
-
-      if (!opts.source || opts.source === "website") {
-        const websiteSessions =
-          await this.repository.listScreenTimeSessionsOverlapping(
-            this.agentId(),
-            startIso,
-            endIso,
-            { source: "website" },
-          );
-        rows.push(...aggregateWebsiteSessions(websiteSessions, startMs, endMs));
-      }
-
-      const dailyRows = toDailyRows(this.agentId(), opts.date, rows);
-      return dailyRows.slice(0, opts.limit ?? dailyRows.length);
-    }
-
-    async getScreenTimeSummary(opts: {
+    async collectScreenTimeRows(opts: {
       since: string;
       until: string;
       source?: "app" | "website";
-      topN?: number;
-    }): Promise<{
-      items: Array<{
-        source: "app" | "website";
-        identifier: string;
-        displayName: string;
-        totalSeconds: number;
-      }>;
-      totalSeconds: number;
-    }> {
+    }): Promise<ScreenTimeAggregateRow[]> {
       const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
       const rows: ScreenTimeAggregateRow[] = [];
 
@@ -387,13 +632,38 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
             },
           })),
         );
-        const appSessions = await this.repository.listScreenTimeSessionsOverlapping(
-          this.agentId(),
-          opts.since,
-          opts.until,
-          { source: "app" },
+        const appSessions =
+          await this.repository.listScreenTimeSessionsOverlapping(
+            this.agentId(),
+            opts.since,
+            opts.until,
+            { source: "app" },
+          );
+        rows.push(
+          ...aggregateWebsiteSessions(
+            appSessions.filter(
+              (session) => !isSystemInactivitySession(session),
+            ),
+            sinceMs,
+            untilMs,
+          ),
         );
-        rows.push(...aggregateWebsiteSessions(appSessions, sinceMs, untilMs));
+        const mobileSignals = await this.repository.listActivitySignals(
+          this.agentId(),
+          {
+            sinceAt: opts.since,
+            limit: 200,
+          },
+        );
+        rows.push(
+          ...androidUsageRowsFromSignals(
+            mobileSignals.filter(
+              (signal) =>
+                signal.platform === "android" &&
+                inWindow(signal.observedAt, sinceMs, untilMs),
+            ),
+          ),
+        );
       }
 
       if (!opts.source || opts.source === "website") {
@@ -404,10 +674,160 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
             opts.until,
             { source: "website" },
           );
-        rows.push(...aggregateWebsiteSessions(websiteSessions, sinceMs, untilMs));
+        rows.push(
+          ...aggregateWebsiteSessions(websiteSessions, sinceMs, untilMs),
+        );
       }
 
+      return rows;
+    }
+
+    async getScreenTimeDaily(opts: {
+      date: string;
+      source?: "app" | "website";
+      limit?: number;
+    }): Promise<LifeOpsScreenTimeDaily[]> {
+      const { startIso, endIso } = resolveUtcDateWindow(opts.date);
+      const rows = await this.collectScreenTimeRows({
+        since: startIso,
+        until: endIso,
+        source: opts.source,
+      });
+
+      const dailyRows = toDailyRows(this.agentId(), opts.date, rows);
+      return dailyRows.slice(0, opts.limit ?? dailyRows.length);
+    }
+
+    async getScreenTimeSummary(opts: {
+      since: string;
+      until: string;
+      source?: "app" | "website";
+      topN?: number;
+    }): Promise<{
+      items: Array<{
+        source: "app" | "website";
+        identifier: string;
+        displayName: string;
+        totalSeconds: number;
+      }>;
+      totalSeconds: number;
+    }> {
+      const rows = await this.collectScreenTimeRows(opts);
       return toSummaryItems(rows, opts.topN);
+    }
+
+    async getScreenTimeBreakdown(opts: {
+      since: string;
+      until: string;
+      source?: "app" | "website";
+      topN?: number;
+    }): Promise<ScreenTimeBreakdown> {
+      const rows = await this.collectScreenTimeRows(opts);
+      return toBreakdownItems(rows, opts.topN);
+    }
+
+    async getSocialHabitSummary(opts: {
+      since: string;
+      until: string;
+      topN?: number;
+    }): Promise<SocialHabitSummary> {
+      const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
+      const fullBreakdown = await this.getScreenTimeBreakdown({
+        since: opts.since,
+        until: opts.until,
+      });
+      const socialRows = fullBreakdown.items.filter(
+        (item) => item.service || isSocialCategory(item.category),
+      );
+      const deviceBuckets = new Map<string, ScreenTimeBucket>();
+      const surfaceBuckets = new Map<string, ScreenTimeBucket>();
+      const browserBuckets = new Map<string, ScreenTimeBucket>();
+      for (const row of socialRows) {
+        addBucket(
+          deviceBuckets,
+          row.device,
+          deviceLabel(row.device),
+          row.totalSeconds,
+        );
+        addBucket(
+          surfaceBuckets,
+          row.source,
+          sourceLabel(row.source),
+          row.totalSeconds,
+        );
+        addBucket(
+          browserBuckets,
+          row.browser?.toLowerCase(),
+          row.browser,
+          row.totalSeconds,
+        );
+      }
+
+      const xDms = await this.repository.listXDms(this.agentId(), {
+        limit: 500,
+      });
+      const xReceivedWindowDms = xDms.filter((dm) =>
+        inWindow(dm.receivedAt, sinceMs, untilMs),
+      );
+      const xInbound = xReceivedWindowDms.filter((dm) => dm.isInbound).length;
+      const xOutbound = xReceivedWindowDms.length - xInbound;
+      const xOpened = xDms.filter((dm) =>
+        inWindow(dm.readAt, sinceMs, untilMs),
+      ).length;
+      const xReplied = xDms.filter((dm) =>
+        inWindow(dm.repliedAt, sinceMs, untilMs),
+      ).length;
+
+      const messageChannels = [
+        {
+          channel: "x_dm" as const,
+          label: "X DMs",
+          inbound: xInbound,
+          outbound: xOutbound,
+          opened: xOpened,
+          replied: xReplied,
+        },
+      ];
+      const hasBrowserRows = socialRows.some((row) => row.source === "website");
+      const hasPhoneRows = socialRows.some(
+        (row) => row.device === "phone" || row.device === "tablet",
+      );
+
+      return {
+        since: opts.since,
+        until: opts.until,
+        totalSeconds: socialRows.reduce(
+          (sum, row) => sum + row.totalSeconds,
+          0,
+        ),
+        services: fullBreakdown.byService.slice(0, opts.topN ?? 8),
+        devices: bucketList(deviceBuckets),
+        surfaces: bucketList(surfaceBuckets),
+        browsers: bucketList(browserBuckets),
+        sessions: socialRows.slice(0, opts.topN ?? 8),
+        messages: {
+          channels: messageChannels,
+          inbound: xInbound,
+          outbound: xOutbound,
+          opened: xOpened,
+          replied: xReplied,
+        },
+        dataSources: [
+          { id: "macos_activity", label: "Mac apps", state: "live" },
+          {
+            id: "browser_bridge",
+            label: "Chrome/Safari",
+            state: hasBrowserRows ? "live" : "partial",
+          },
+          {
+            id: "android_usage_stats",
+            label: "Android apps",
+            state: hasPhoneRows ? "live" : "partial",
+          },
+          { id: "ios_device_activity", label: "iOS apps", state: "unwired" },
+        ],
+        fetchedAt: isoNow(),
+      };
     }
 
     async getScreenTimeWeeklyAverageByApp(opts: {

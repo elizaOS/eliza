@@ -1,20 +1,20 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ActivityCollectorEvent } from "@elizaos/native-activity-tracker";
 import { describe, expect, test, vi } from "vitest";
-import { ActivityTrackerService } from "./activity-tracker-service.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
+import { ActivityTrackerService } from "./activity-tracker-service.js";
 
 let capturedOnEvent: ((event: ActivityCollectorEvent) => void) | null = null;
 const stopCollector = vi.fn(async () => undefined);
 
 vi.mock("@elizaos/native-activity-tracker", () => ({
   isSupportedPlatform: vi.fn(() => true),
-  startActivityCollector: vi.fn((options: {
-    onEvent: (event: ActivityCollectorEvent) => void;
-  }) => {
-    capturedOnEvent = options.onEvent;
-    return { pid: 123, stop: stopCollector };
-  }),
+  startActivityCollector: vi.fn(
+    (options: { onEvent: (event: ActivityCollectorEvent) => void }) => {
+      capturedOnEvent = options.onEvent;
+      return { pid: 123, stop: stopCollector };
+    },
+  ),
 }));
 
 vi.mock("./activity-tracker-repo.js", () => ({
@@ -28,7 +28,7 @@ const runtime = {
 function activityEvent(ts: number, appName: string): ActivityCollectorEvent {
   return {
     ts,
-    event: "focus",
+    event: "activate",
     bundleId: `com.example.${appName}`,
     appName,
     windowTitle: `${appName} window`,
@@ -71,5 +71,31 @@ describe("ActivityTrackerService", () => {
 
     expect(persisted).toEqual(["first", "second"]);
     expect(insertActivityEvent).toHaveBeenCalledTimes(2);
+  });
+
+  test("persists OS login surfaces as inactive boundaries", async () => {
+    capturedOnEvent = null;
+    stopCollector.mockClear();
+    vi.mocked(insertActivityEvent).mockClear();
+
+    const service = await ActivityTrackerService.start(runtime);
+    capturedOnEvent?.({
+      ts: 1_000,
+      event: "activate",
+      bundleId: "com.apple.loginwindow",
+      appName: "loginwindow",
+      windowTitle: "Login Window",
+    });
+    await service.stop();
+
+    expect(insertActivityEvent).toHaveBeenCalledOnce();
+    expect(insertActivityEvent).toHaveBeenCalledWith(
+      runtime,
+      expect.objectContaining({
+        eventKind: "deactivate",
+        bundleId: "com.apple.loginwindow",
+        appName: "loginwindow",
+      }),
+    );
   });
 });

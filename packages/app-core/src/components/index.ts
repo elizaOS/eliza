@@ -36,7 +36,6 @@ export * from "./custom-actions/CustomActionEditor";
 export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
 export * from "./inventory/BscTradePanel";
-export type { ChainIconProps, ChainIconSize } from "./inventory/ChainIcon";
 export { ChainIcon } from "./inventory/ChainIcon";
 export * from "./inventory/chainConfig";
 export * from "./inventory/constants";

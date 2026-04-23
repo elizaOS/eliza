@@ -9,19 +9,31 @@ export interface WalletKeys {
   solanaAddress: string;
 }
 
-export interface WalletAddresses {
+export interface WalletAddressPair {
   evmAddress: string | null;
   solanaAddress: string | null;
 }
 
-export interface EvmTokenBalance {
+export interface WalletAddresses extends WalletAddressPair {}
+
+export interface WalletTokenBalanceBase {
   symbol: string;
   name: string;
-  contractAddress: string;
   balance: string;
   decimals: number;
   valueUsd: string;
   logoUrl: string;
+}
+
+export interface WalletNftMetadataBase {
+  name: string;
+  description: string;
+  imageUrl: string;
+  collectionName: string;
+}
+
+export interface EvmTokenBalance extends WalletTokenBalanceBase {
+  contractAddress: string;
 }
 
 export interface EvmChainBalance {
@@ -34,47 +46,49 @@ export interface EvmChainBalance {
   error: string | null;
 }
 
-export interface SolanaTokenBalance {
-  symbol: string;
-  name: string;
+export interface SolanaTokenBalance extends WalletTokenBalanceBase {
   mint: string;
-  balance: string;
-  decimals: number;
-  valueUsd: string;
-  logoUrl: string;
+}
+
+export interface WalletEvmBalances {
+  address: string;
+  chains: EvmChainBalance[];
+}
+
+export interface WalletSolanaBalances {
+  address: string;
+  solBalance: string;
+  solValueUsd: string;
+  tokens: SolanaTokenBalance[];
 }
 
 export interface WalletBalancesResponse {
-  evm: { address: string; chains: EvmChainBalance[] } | null;
-  solana: {
-    address: string;
-    solBalance: string;
-    solValueUsd: string;
-    tokens: SolanaTokenBalance[];
-  } | null;
+  evm: WalletEvmBalances | null;
+  solana: WalletSolanaBalances | null;
 }
 
-export interface EvmNft {
+export interface EvmNft extends WalletNftMetadataBase {
   contractAddress: string;
   tokenId: string;
-  name: string;
-  description: string;
-  imageUrl: string;
-  collectionName: string;
   tokenType: string;
 }
 
-export interface SolanaNft {
+export interface SolanaNft extends WalletNftMetadataBase {
   mint: string;
-  name: string;
-  description: string;
-  imageUrl: string;
-  collectionName: string;
+}
+
+export interface WalletEvmNftCollection {
+  chain: string;
+  nfts: EvmNft[];
+}
+
+export interface WalletSolanaNftCollection {
+  nfts: SolanaNft[];
 }
 
 export interface WalletNftsResponse {
-  evm: Array<{ chain: string; nfts: EvmNft[] }>;
-  solana: { nfts: SolanaNft[] } | null;
+  evm: WalletEvmNftCollection[];
+  solana: WalletSolanaNftCollection | null;
 }
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {
@@ -211,7 +225,7 @@ export type EvmSigningCapabilityKind =
   | "cloud-view-only"
   | "none";
 
-export interface WalletConfigStatus {
+export interface WalletConfigStatus extends WalletAddressPair {
   selectedRpcProviders: WalletRpcSelections;
   walletNetwork?: WalletNetworkMode;
   legacyCustomChains: WalletRpcChain[];
@@ -234,8 +248,6 @@ export interface WalletConfigStatus {
   heliusKeySet: boolean;
   birdeyeKeySet: boolean;
   evmChains: string[];
-  evmAddress: string | null;
-  solanaAddress: string | null;
   walletSource?: "local" | "managed" | "none";
   automationMode?: "full" | "connectors-only";
   pluginEvmLoaded?: boolean;
@@ -410,7 +422,7 @@ export interface BscTradeTxStatusResponse {
 
 export type WalletTradeSource = "agent" | "manual";
 
-export type WalletTradingProfileWindow = "7d" | "30d" | "all";
+export type WalletTradingProfileWindow = "24h" | "7d" | "30d" | "all";
 
 export type WalletTradingProfileSourceFilter = "all" | WalletTradeSource;
 
@@ -517,10 +529,7 @@ export interface StewardApprovalInfo {
 }
 
 /** Response from GET /api/wallet/steward-addresses. */
-export interface StewardWalletAddressesResponse {
-  evmAddress: string | null;
-  solanaAddress: string | null;
-}
+export interface StewardWalletAddressesResponse extends WalletAddressPair {}
 
 /** Response from GET /api/wallet/steward-balances. */
 export interface StewardBalanceResponse {
@@ -530,19 +539,21 @@ export interface StewardBalanceResponse {
   chainId: number;
 }
 
+export interface StewardTokenBalance {
+  address: string;
+  symbol: string;
+  name: string;
+  balance: string;
+  formatted: string;
+  decimals: number;
+  valueUsd?: string;
+  logoUrl?: string;
+}
+
 /** Response from GET /api/wallet/steward-tokens. */
 export interface StewardTokenBalancesResponse {
   native: StewardBalanceResponse;
-  tokens: Array<{
-    address: string;
-    symbol: string;
-    name: string;
-    balance: string;
-    formatted: string;
-    decimals: number;
-    valueUsd?: string;
-    logoUrl?: string;
-  }>;
+  tokens: StewardTokenBalance[];
 }
 
 export type StewardWebhookEventType =
