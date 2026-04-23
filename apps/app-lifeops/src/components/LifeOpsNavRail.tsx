@@ -23,6 +23,7 @@ import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 interface LifeOpsNavRailProps {
   activeSection: LifeOpsSection;
   onNavigate: (section: LifeOpsSection) => void;
+  layout?: "sidebar" | "compact";
 }
 
 interface NavGroup {
@@ -107,12 +108,14 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
+
 export function LifeOpsNavRail({
   activeSection,
   onNavigate,
+  layout = "sidebar",
 }: LifeOpsNavRailProps) {
-  const allItems = NAV_GROUPS.flatMap((group) => group.items);
-  const collapsedRailItems = allItems.map((item) => {
+  const collapsedRailItems = NAV_ITEMS.map((item) => {
     const isActive = item.id === activeSection;
     return (
       <SidebarContent.RailItem
@@ -126,6 +129,47 @@ export function LifeOpsNavRail({
       </SidebarContent.RailItem>
     );
   });
+
+  if (layout === "compact") {
+    return (
+      <nav
+        aria-label="LifeOps sections"
+        data-testid="lifeops-nav-compact"
+        className="overflow-x-auto"
+      >
+        <div className="flex min-w-max items-center gap-2">
+          {NAV_ITEMS.map((item) => {
+            const isActive = item.id === activeSection;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => onNavigate(item.id)}
+                className={[
+                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors",
+                  isActive
+                    ? "border-accent/30 bg-accent/14 text-txt"
+                    : "border-border/20 bg-bg/60 text-muted hover:border-border/40 hover:bg-bg-muted/70 hover:text-txt",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "flex h-5 w-5 shrink-0 items-center justify-center",
+                    isActive ? "text-txt" : "text-muted/80",
+                  ].join(" ")}
+                >
+                  {item.icon}
+                </span>
+                <span className="whitespace-nowrap">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={320} skipDelayDuration={120}>
