@@ -748,7 +748,7 @@ function PnlChart({
       className="h-40 w-full rounded-3xl bg-bg/30"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      aria-label="Agent P&L chart"
+      aria-label="Agent trading P&L chart"
     >
       <polyline
         fill="none"
@@ -793,6 +793,15 @@ function WalletRailAccount({
   addresses: { evmAddress: string | null; solanaAddress: string | null };
 }) {
   const primaryAddress = addresses.evmAddress ?? addresses.solanaAddress;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!primaryAddress) return;
+    void navigator.clipboard.writeText(primaryAddress).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  }, [primaryAddress]);
 
   return (
     <div className="flex min-w-0 flex-col">
@@ -803,7 +812,19 @@ function WalletRailAccount({
       {primaryAddress ? (
         <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.68rem] text-muted">
           <span className="truncate">{shortAddress(primaryAddress)}</span>
-          <Copy className="h-3 w-3 shrink-0" />
+          <button
+            type="button"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:text-txt"
+            onClick={handleCopy}
+            aria-label="Copy primary wallet address"
+            title="Copy primary wallet address"
+          >
+            {copied ? (
+              <span className="text-[0.6rem] text-ok">✓</span>
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
         </div>
       ) : (
         <div className="mt-0.5 text-[0.68rem] text-muted">No address</div>
@@ -1123,14 +1144,25 @@ function TokenRail({
     () => maxAbsTokenPnl(filteredRows, profile),
     [filteredRows, profile],
   );
-  const tabs: Array<{ id: WalletRailTab; label: string; count: number }> = [
-    { id: "tokens", label: "Tokens", count: filteredRows.length },
-    { id: "defi", label: "DeFi", count: positions.length },
-    { id: "nfts", label: "NFTs", count: nfts.length },
+  const tabs: Array<{
+    id: WalletRailTab;
+    label: string;
+    count: number;
+    icon: LucideIcon;
+  }> = [
+    {
+      id: "tokens",
+      label: "Tokens",
+      count: filteredRows.length,
+      icon: Wallet,
+    },
+    { id: "defi", label: "DeFi", count: positions.length, icon: Layers3 },
+    { id: "nfts", label: "NFTs", count: nfts.length, icon: ImageIcon },
     {
       id: "activity",
       label: "Activity",
       count: profile?.recentSwaps.length ?? 0,
+      icon: Activity,
     },
   ];
 
@@ -1200,13 +1232,14 @@ function TokenRail({
                   key={tab.id}
                   type="button"
                   className={cn(
-                    "shrink-0 border-b-2 pb-2 transition-colors",
+                    "inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 transition-colors",
                     activeTab === tab.id
                       ? "border-accent text-txt"
                       : "border-transparent text-muted hover:text-txt",
                   )}
                   onClick={() => setActiveTab(tab.id)}
                 >
+                  <tab.icon className="h-3.5 w-3.5" />
                   {tab.label}
                   {tab.count > 0 ? (
                     <span className="ml-1 font-mono text-xs text-muted">
@@ -1331,8 +1364,8 @@ function ActivityList({
     return (
       <EmptyState
         icon={Activity}
-        title="No wallet activity yet"
-        body="No settled wallet actions."
+        title="No agent activity yet"
+        body="No settled agent trades."
       />
     );
   }
@@ -1795,27 +1828,31 @@ export function InventoryView() {
                   {formatBnb(tradingProfile?.summary.realizedPnlBnb)}
                 </>
               ) : (
-                "No P&L loaded"
+                "No agent P&L loaded"
               )}
             </div>
           </div>
 
           <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <StatCard
-              label="P&L"
+              label="Agent P&L"
               value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-              detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
+              detail={`${tradingProfile?.summary.totalSwaps ?? 0} trades`}
               tone={pnlTone}
             />
             <StatCard
-              label="Activity"
+              label="Settled"
               value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
-              detail={`${tradingProfile?.summary.settledCount ?? 0} settled`}
+              detail={`${tradingProfile?.summary.buyCount ?? 0} buys • ${tradingProfile?.summary.sellCount ?? 0} sells`}
             />
             <StatCard
-              label="Hidden"
-              value={String(hiddenCount)}
-              detail="spam filter"
+              label="Assets"
+              value={String(displayedAssetRows.length)}
+              detail={
+                hiddenCount > 0
+                  ? `${hiddenCount} hidden`
+                  : `${inventoryData.allNfts.length} NFTs`
+              }
             />
           </div>
         </section>
@@ -1848,7 +1885,7 @@ export function InventoryView() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-txt">
                   <BarChart3 className="h-4 w-4 text-accent" />
-                  P&L
+                  Agent P&L
                 </div>
                 <div className="flex rounded-full bg-bg/35 p-1">
                   {DASHBOARD_WINDOWS.map((window) => (
@@ -1879,7 +1916,7 @@ export function InventoryView() {
             <section className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-txt">
                 <Activity className="h-4 w-4 text-accent" />
-                Activity
+                Agent Activity
               </div>
               <ActivityList profile={tradingProfile} />
             </section>
