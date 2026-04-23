@@ -267,7 +267,7 @@ describe("pageScopedContextProvider", () => {
           },
         });
       }
-      if (url.pathname === "/api/lifeops/inbox/unified") {
+      if (url.pathname === "/api/lifeops/inbox") {
         return jsonResponse({
           messages: [
             {
@@ -317,7 +317,7 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("Capabilities: 0 working");
     expect(result.text).toContain("Drink water");
     expect(result.text).toContain("Sleep before midnight");
-    expect(result.text).toContain("Unified inbox");
+    expect(result.text).toContain("Inbox");
   });
 
   it("injects the wallet brief and live wallet readiness state", async () => {

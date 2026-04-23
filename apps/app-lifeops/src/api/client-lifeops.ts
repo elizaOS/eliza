@@ -1167,7 +1167,7 @@ ElizaClient.prototype.getLifeOpsInbox = async function (
     params.set("channels", options.channels.join(","));
   }
   const query = params.toString();
-  return this.fetch(`/api/lifeops/inbox/unified${query ? `?${query}` : ""}`);
+  return this.fetch(`/api/lifeops/inbox${query ? `?${query}` : ""}`);
 };
 
 ElizaClient.prototype.createLifeOpsGmailReplyDraft = async function (

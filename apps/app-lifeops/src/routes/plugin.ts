@@ -109,7 +109,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/gmail/spam-review" },
   { type: "GET", path: "/api/lifeops/gmail/unresponded" },
   { type: "POST", path: "/api/lifeops/calendar/events" },
-  { type: "GET", path: "/api/lifeops/inbox/unified" },
+  { type: "GET", path: "/api/lifeops/inbox" },
   { type: "POST", path: "/api/lifeops/gmail/reply-drafts" },
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-drafts" },
   { type: "POST", path: "/api/lifeops/gmail/reply-send" },

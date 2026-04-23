@@ -346,7 +346,7 @@ async function renderLifeOpsLiveState(): Promise<string | null> {
   const [overview, capabilities, inbox] = await Promise.all([
     fetchLocalJson<LifeOpsOverview>("/api/lifeops/overview"),
     fetchLocalJson<LifeOpsCapabilitiesStatus>("/api/lifeops/capabilities"),
-    fetchLocalJson<LifeOpsInbox>("/api/lifeops/inbox/unified?limit=8"),
+    fetchLocalJson<LifeOpsInbox>("/api/lifeops/inbox?limit=8"),
   ]);
 
   if (!overview && !capabilities && !inbox) {
@@ -422,7 +422,7 @@ async function renderLifeOpsLiveState(): Promise<string | null> {
       0,
     );
     lines.push(
-      `- Unified inbox: ${inbox.messages.length} recent message${inbox.messages.length === 1 ? "" : "s"}, ${unreadCount} unread.`,
+      `- Inbox: ${inbox.messages.length} recent message${inbox.messages.length === 1 ? "" : "s"}, ${unreadCount} unread.`,
     );
     for (const message of inbox.messages.slice(0, 5)) {
       const subject = message.subject ? `${message.subject}: ` : "";

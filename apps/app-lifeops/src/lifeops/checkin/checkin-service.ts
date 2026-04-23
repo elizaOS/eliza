@@ -56,7 +56,7 @@ const ACTION_TEXT_RE =
   /\b(urgent|asap|blocked|deadline|today|tonight|tomorrow|confirm|review|send|reply|respond|need|please|important|agreement|agreed|promise|promised|follow up|circle back)\b/i;
 
 export interface CheckinSourceService {
-  getUnifiedInbox?(
+  getInbox?(
     request?: GetLifeOpsInboxRequest,
   ): Promise<LifeOpsInbox>;
   getGmailTriage?(
@@ -706,18 +706,18 @@ async function collectXFeedSection(
   }
 }
 
-async function collectUnifiedInboxSection(
+async function collectInboxSection(
   source: CheckinSourceService | undefined,
 ): Promise<CheckinBriefingSection> {
-  if (!source?.getUnifiedInbox) {
+  if (!source?.getInbox) {
     return unavailableSection(
-      "unified_inbox",
-      "Unified inbox",
-      "Unified inbox reader is not registered on this runtime.",
+      "inbox",
+      "Inbox",
+      "Inbox reader is not registered on this runtime.",
     );
   }
   try {
-    const inbox = await source.getUnifiedInbox({ limit: 50 });
+    const inbox = await source.getInbox({ limit: 50 });
     const counts = Object.entries(inbox.channelCounts)
       .filter(([, count]) => count.total > 0)
       .map(
@@ -748,8 +748,8 @@ async function collectUnifiedInboxSection(
       }),
     );
     return {
-      key: "unified_inbox",
-      title: "Unified inbox",
+      key: "inbox",
+      title: "Inbox",
       summary:
         counts.length === 0
           ? "No inbox items found across connected channels."
@@ -759,7 +759,7 @@ async function collectUnifiedInboxSection(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return unavailableSection("unified_inbox", "Unified inbox", message);
+    return unavailableSection("inbox", "Inbox", message);
   }
 }
 
@@ -1132,7 +1132,7 @@ async function collectBriefingSections(args: {
       "X timeline",
     ),
     collectXFeedSection(args.source, "x_mentions", "mentions", "X mentions"),
-    collectUnifiedInboxSection(args.source),
+    collectInboxSection(args.source),
     collectGmailSection(args.source, args.now),
     collectGitHubSection(args.runtime, args.now, args.timezone),
     collectCalendarChangeSection(args.runtime, args.now, args.timezone),

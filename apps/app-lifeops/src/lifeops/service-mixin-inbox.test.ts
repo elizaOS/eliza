@@ -3,30 +3,30 @@ import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
 
 import type { InboundMessage } from "../inbox/types.js";
 import {
-  buildUnifiedInbox,
-  normalizeUnifiedInboxChannel,
-  resolveUnifiedInboxRequest,
-  toUnifiedInboxMessage,
-} from "./service-mixin-unified-inbox.js";
+  buildInbox,
+  normalizeInboxChannel,
+  resolveInboxRequest,
+  toInboxMessage,
+} from "./service-mixin-inbox.js";
 
-describe("normalizeUnifiedInboxChannel", () => {
+describe("normalizeInboxChannel", () => {
   it("maps a canonical channel name to itself", () => {
-    expect(normalizeUnifiedInboxChannel("gmail")).toBe("gmail");
-    expect(normalizeUnifiedInboxChannel("telegram")).toBe("telegram");
-    expect(normalizeUnifiedInboxChannel("SMS")).toBe("sms");
+    expect(normalizeInboxChannel("gmail")).toBe("gmail");
+    expect(normalizeInboxChannel("telegram")).toBe("telegram");
+    expect(normalizeInboxChannel("SMS")).toBe("sms");
   });
 
   it("rejects unknown sources", () => {
-    expect(normalizeUnifiedInboxChannel("slack")).toBeNull();
-    expect(normalizeUnifiedInboxChannel("")).toBeNull();
-    expect(normalizeUnifiedInboxChannel(null)).toBeNull();
-    expect(normalizeUnifiedInboxChannel(undefined)).toBeNull();
+    expect(normalizeInboxChannel("slack")).toBeNull();
+    expect(normalizeInboxChannel("")).toBeNull();
+    expect(normalizeInboxChannel(null)).toBeNull();
+    expect(normalizeInboxChannel(undefined)).toBeNull();
   });
 });
 
-describe("resolveUnifiedInboxRequest", () => {
+describe("resolveInboxRequest", () => {
   it("falls back to the default limit and all channels when omitted", () => {
-    const { limit, allowed } = resolveUnifiedInboxRequest({});
+    const { limit, allowed } = resolveInboxRequest({});
     expect(limit).toBe(100);
     expect(allowed.has("gmail")).toBe(true);
     expect(allowed.has("x_dm")).toBe(true);
@@ -36,17 +36,17 @@ describe("resolveUnifiedInboxRequest", () => {
   });
 
   it("clamps limit to the maximum of 500", () => {
-    expect(resolveUnifiedInboxRequest({ limit: 9999 }).limit).toBe(500);
+    expect(resolveInboxRequest({ limit: 9999 }).limit).toBe(500);
   });
 
   it("ignores non-positive or non-finite limits", () => {
-    expect(resolveUnifiedInboxRequest({ limit: 0 }).limit).toBe(100);
-    expect(resolveUnifiedInboxRequest({ limit: -5 }).limit).toBe(100);
-    expect(resolveUnifiedInboxRequest({ limit: Number.NaN }).limit).toBe(100);
+    expect(resolveInboxRequest({ limit: 0 }).limit).toBe(100);
+    expect(resolveInboxRequest({ limit: -5 }).limit).toBe(100);
+    expect(resolveInboxRequest({ limit: Number.NaN }).limit).toBe(100);
   });
 
   it("narrows the allow-list to the requested channels", () => {
-    const { allowed } = resolveUnifiedInboxRequest({
+    const { allowed } = resolveInboxRequest({
       channels: ["gmail", "discord"],
     });
     expect(allowed.has("gmail")).toBe(true);
@@ -56,7 +56,7 @@ describe("resolveUnifiedInboxRequest", () => {
   });
 });
 
-describe("toUnifiedInboxMessage", () => {
+describe("toInboxMessage", () => {
   it("prefixes the id with the channel and preserves the external id", () => {
     const msg: InboundMessage = {
       id: "mem-1",
@@ -71,7 +71,7 @@ describe("toUnifiedInboxMessage", () => {
       timestamp: Date.UTC(2025, 0, 1, 12, 0, 0),
       deepLink: "tg://resolve?domain=alice",
     };
-    const out = toUnifiedInboxMessage(msg, "telegram", 0);
+    const out = toInboxMessage(msg, "telegram", 0);
     expect(out.id).toBe("telegram:mem-1");
     expect(out.channel).toBe("telegram");
     expect(out.subject).toBeNull();
@@ -98,7 +98,7 @@ describe("toUnifiedInboxMessage", () => {
       gmailIsImportant: true,
       gmailLikelyReplyNeeded: true,
     };
-    const out = toUnifiedInboxMessage(msg, "gmail", 0);
+    const out = toInboxMessage(msg, "gmail", 0);
     expect(out.id).toBe("gmail:gm-1-ext");
     expect(out.subject).toBe("boss@corp.com");
     expect(out.unread).toBe(true);
@@ -119,11 +119,11 @@ describe("toUnifiedInboxMessage", () => {
       gmailIsImportant: false,
       gmailLikelyReplyNeeded: false,
     };
-    expect(toUnifiedInboxMessage(msg, "gmail", 0).unread).toBe(false);
+    expect(toInboxMessage(msg, "gmail", 0).unread).toBe(false);
   });
 });
 
-describe("buildUnifiedInbox", () => {
+describe("buildInbox", () => {
   const makeMessages = (): InboundMessage[] => [
     {
       id: "mem-tg",
@@ -166,9 +166,7 @@ describe("buildUnifiedInbox", () => {
 
   it("sorts messages newest-first and fills channel counts", () => {
     const allowed = new Set<
-      ReturnType<typeof resolveUnifiedInboxRequest>["allowed"] extends Set<
-        infer T
-      >
+      ReturnType<typeof resolveInboxRequest>["allowed"] extends Set<infer T>
         ? T
         : never
     >([
@@ -180,7 +178,7 @@ describe("buildUnifiedInbox", () => {
       "whatsapp",
       "sms",
     ]);
-    const inbox = buildUnifiedInbox(makeMessages(), { limit: 10, allowed });
+    const inbox = buildInbox(makeMessages(), { limit: 10, allowed });
     expect(inbox.messages.map((m) => m.channel)).toEqual([
       "discord",
       "gmail",
@@ -196,12 +194,10 @@ describe("buildUnifiedInbox", () => {
 
   it("drops channels that are not in the allow-list", () => {
     const allowed = new Set(["gmail"] as const);
-    const inbox = buildUnifiedInbox(makeMessages(), {
+    const inbox = buildInbox(makeMessages(), {
       limit: 10,
       allowed: allowed as unknown as Set<
-        ReturnType<typeof resolveUnifiedInboxRequest>["allowed"] extends Set<
-          infer T
-        >
+        ReturnType<typeof resolveInboxRequest>["allowed"] extends Set<infer T>
           ? T
           : never
       >,
@@ -235,12 +231,10 @@ describe("buildUnifiedInbox", () => {
       "whatsapp",
       "sms",
     ] as const);
-    const inbox = buildUnifiedInbox(inbound, {
+    const inbox = buildInbox(inbound, {
       limit: 2,
       allowed: allowed as unknown as Set<
-        ReturnType<typeof resolveUnifiedInboxRequest>["allowed"] extends Set<
-          infer T
-        >
+        ReturnType<typeof resolveInboxRequest>["allowed"] extends Set<infer T>
           ? T
           : never
       >,
@@ -259,7 +253,7 @@ describe("buildUnifiedInbox", () => {
       "whatsapp",
       "sms",
     ] as const);
-    const inbox = buildUnifiedInbox(
+    const inbox = buildInbox(
       [
         {
           id: "mem-x",
@@ -275,9 +269,7 @@ describe("buildUnifiedInbox", () => {
       {
         limit: 10,
         allowed: allowed as unknown as Set<
-          ReturnType<typeof resolveUnifiedInboxRequest>["allowed"] extends Set<
-            infer T
-          >
+          ReturnType<typeof resolveInboxRequest>["allowed"] extends Set<infer T>
             ? T
             : never
         >,

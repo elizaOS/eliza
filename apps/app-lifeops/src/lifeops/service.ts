@@ -34,7 +34,7 @@ import {
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withTravel } from "./service-mixin-travel.js";
-import { withUnifiedInbox } from "./service-mixin-unified-inbox.js";
+import { withInbox } from "./service-mixin-inbox.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withWorkflows } from "./service-mixin-workflows.js";
 import { withX } from "./service-mixin-x.js";
@@ -77,7 +77,7 @@ type LifeOpsSubsCtor = typeof LIFEOPS_WITH_SUBS;
 const LIFEOPS_WITH_STATUS = withStatus(
   LIFEOPS_WITH_SUBS as LifeOpsSubsCtor & Constructor<StatusMixinDependencies>,
 );
-const LIFEOPS_COMPOSED = withUnifiedInbox(
+const LIFEOPS_COMPOSED = withInbox(
   withScreenTime(LIFEOPS_WITH_STATUS),
 );
 
