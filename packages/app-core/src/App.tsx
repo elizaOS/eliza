@@ -155,7 +155,7 @@ function ViewRouter({
         return <ChatView />;
       case "phone":
         return androidPhoneSurfaceEnabled ? (
-          <TabContentView>
+          <TabContentView chatScope="page-phone">
             <PhonePageView />
           </TabContentView>
         ) : (
@@ -163,7 +163,7 @@ function ViewRouter({
         );
       case "messages":
         return androidPhoneSurfaceEnabled ? (
-          <TabContentView>
+          <TabContentView chatScope="page-phone">
             <MessagesPageView />
           </TabContentView>
         ) : (
@@ -171,7 +171,7 @@ function ViewRouter({
         );
       case "contacts":
         return androidPhoneSurfaceEnabled ? (
-          <TabContentView>
+          <TabContentView chatScope="page-phone">
             <ContactsPageView />
           </TabContentView>
         ) : (

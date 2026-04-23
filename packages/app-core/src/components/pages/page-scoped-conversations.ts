@@ -9,6 +9,7 @@ export type PageScope =
   | "page-character"
   | "page-automations"
   | "page-apps"
+  | "page-phone"
   | "page-lifeops"
   | "page-wallet";
 
@@ -17,6 +18,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-character",
   "page-automations",
   "page-apps",
+  "page-phone",
   "page-lifeops",
   "page-wallet",
 ] as const;
@@ -27,7 +29,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 6;
+export const PAGE_SCOPE_VERSION = 7;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -67,6 +69,12 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
   },
+  "page-phone": {
+    title: "Phone chat",
+    body: "Use me to review calls, SMS, contacts, imported vCards, caller context, and transcript notes. Recommended: ask me to draft a reply, summarize a call, decide who to call back, or organize a contact from the phone workspace. Ask me what to do with any visible call or message.",
+    systemAddendum:
+      "You are answering inside the Android Phone view. The user can place calls through Android Telecom, open the dialer, send SMS through Android SMS, review recent calls, browse contacts, import vCards, and save call transcripts or summaries. Recommend the smallest concrete phone action that fits the user's goal. For calls or SMS, confirm the target number/contact and message content before sending. When discussing calls, messages, contacts, or transcripts, ground the answer in visible phone surface state when present and never invent call logs, contacts, message bodies, transcripts, or delivery results.",
+  },
   "page-lifeops": {
     title: "LifeOps chat",
     body: "Use me to plan and inspect today, goals, reminders, calendar, messages, mail, sleep, screen time, social, connectors, and LifeOps setup. Recommended: start with capability readiness and the current overview, then ask me to create or adjust the next reminder, goal, reply draft, or schedule block. Ask me to explain any LifeOps item or turn it into an action.",
@@ -86,6 +94,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-character": "Character",
   "page-automations": "Automations",
   "page-apps": "Apps",
+  "page-phone": "Phone",
   "page-lifeops": "LifeOps",
   "page-wallet": "Wallet",
 };

@@ -896,10 +896,44 @@ function messageTypeLabel(type: number): string {
   return `type ${type}`;
 }
 
+interface IncomingSmsContext {
+  sender: string;
+  body: string;
+  timestamp: number | null;
+  messageId: string | null;
+}
+
+function readIncomingSmsContext(
+  params: URLSearchParams,
+): IncomingSmsContext | null {
+  if (params.get("event") !== "sms-deliver") return null;
+  const sender = params.get("sender") ?? "";
+  const body = params.get("body") ?? "";
+  const rawTimestamp = Number(params.get("timestamp"));
+  if (!sender && !body) return null;
+  return {
+    sender,
+    body,
+    timestamp: Number.isFinite(rawTimestamp) ? rawTimestamp : null,
+    messageId: params.get("messageId"),
+  };
+}
+
+function initialMessageBody(params: URLSearchParams): string {
+  return params.get("event") === "sms-deliver"
+    ? ""
+    : (params.get("body") ?? "");
+}
+
 export function MessagesPageView() {
   const params = useLaunchParams();
-  const [address, setAddress] = useState(() => params.get("recipient") ?? "");
-  const [body, setBody] = useState(() => params.get("body") ?? "");
+  const [address, setAddress] = useState(
+    () => params.get("recipient") ?? params.get("sender") ?? "",
+  );
+  const [body, setBody] = useState(() => initialMessageBody(params));
+  const [incomingSms, setIncomingSms] = useState<IncomingSmsContext | null>(
+    () => readIncomingSmsContext(params),
+  );
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(() => {
@@ -912,8 +946,10 @@ export function MessagesPageView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const incoming = readIncomingSmsContext(params);
+    setIncomingSms(incoming);
     setAddress(params.get("recipient") ?? params.get("sender") ?? "");
-    setBody(params.get("body") ?? "");
+    setBody(initialMessageBody(params));
     const event = params.get("event");
     if (event) {
       setNotice(
@@ -975,6 +1011,26 @@ export function MessagesPageView() {
     <div className="mx-auto grid w-full max-w-5xl gap-4 p-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
       <Panel title="Compose" description="Send through Android SMS Manager.">
         <div className="grid gap-3">
+          {incomingSms ? (
+            <div className="rounded border border-border bg-bg p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                <span>{incomingSms.sender || "unknown sender"}</span>
+                <span>
+                  {incomingSms.timestamp
+                    ? formatTimestamp(incomingSms.timestamp)
+                    : "Unknown time"}
+                </span>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-txt">
+                {incomingSms.body || "Empty SMS body"}
+              </p>
+              {incomingSms.messageId ? (
+                <div className="mt-2 text-xs text-muted">
+                  message {incomingSms.messageId}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <TextInput
             label="Address"
             placeholder="+15551234567"
