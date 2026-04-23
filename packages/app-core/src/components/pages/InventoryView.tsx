@@ -507,47 +507,78 @@ function TokenIdentityIcon({
   );
 }
 
-function AssetAllocationStrip({ rows }: { rows: TokenRow[] }) {
+function allocationToneClass(index: number): string {
+  return index === 0
+    ? "bg-accent"
+    : index === 1
+      ? "bg-ok"
+      : index === 2
+        ? "bg-warn"
+        : index === 3
+          ? "bg-danger"
+          : "bg-muted";
+}
+
+function AssetAllocationStrip({
+  rows,
+  compact = false,
+}: {
+  rows: TokenRow[];
+  compact?: boolean;
+}) {
   const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
   const total = allocationRows.reduce((sum, row) => sum + row.valueUsd, 0);
   if (total <= 0 || allocationRows.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      <div className="flex h-2 overflow-hidden rounded-full bg-border/40">
+    <div className={cn("space-y-2", compact && "space-y-3")}>
+      <div
+        className={cn(
+          "flex overflow-hidden rounded-full bg-border/40",
+          compact ? "h-2.5" : "h-2",
+        )}
+      >
         {allocationRows.map((row, index) => (
           <span
             key={tokenId(row)}
-            className={cn(
-              "h-full",
-              index === 0
-                ? "bg-accent"
-                : index === 1
-                  ? "bg-ok"
-                  : index === 2
-                    ? "bg-warn"
-                    : index === 3
-                      ? "bg-danger"
-                      : "bg-muted",
-            )}
+            className={cn("h-full", allocationToneClass(index))}
             style={{ width: `${(row.valueUsd / total) * 100}%` }}
             title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
           />
         ))}
       </div>
-      <div className="grid gap-1">
-        {allocationRows.slice(0, 3).map((row) => (
-          <div
-            key={tokenId(row)}
-            className="flex items-center justify-between gap-2 text-[0.68rem]"
-          >
-            <span className="truncate text-muted">{row.symbol}</span>
-            <span className="shrink-0 font-mono text-txt">
-              {formatUsd(row.valueUsd)}
-            </span>
-          </div>
-        ))}
-      </div>
+      {compact ? (
+        <div className="flex flex-wrap gap-2">
+          {allocationRows.slice(0, 3).map((row, index) => (
+            <div
+              key={tokenId(row)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/35 px-2.5 py-1 text-[0.68rem] font-medium text-txt"
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  allocationToneClass(index),
+                )}
+              />
+              <span>{row.symbol}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-1">
+          {allocationRows.slice(0, 3).map((row) => (
+            <div
+              key={tokenId(row)}
+              className="flex items-center justify-between gap-2 text-[0.68rem]"
+            >
+              <span className="truncate text-muted">{row.symbol}</span>
+              <span className="shrink-0 font-mono text-txt">
+                {formatUsd(row.valueUsd)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -862,26 +893,31 @@ function PnlChart({
   );
 }
 
-function StatCard({
-  label,
+function SummaryChip({
+  icon: Icon,
   value,
-  detail,
-  tone = "text-txt",
+  tone = "default",
+  title,
 }: {
-  label: string;
+  icon: LucideIcon;
   value: string;
-  detail?: string;
-  tone?: string;
+  tone?: "default" | "gain" | "loss";
+  title?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
-        {label}
-      </div>
-      <div className={cn("mt-1 text-xl font-semibold", tone)}>{value}</div>
-      {detail ? (
-        <div className="mt-1 text-xs-tight text-muted">{detail}</div>
-      ) : null}
+    <div
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
+        tone === "gain"
+          ? "border-ok/30 bg-ok/10 text-ok"
+          : tone === "loss"
+            ? "border-danger/30 bg-danger/10 text-danger"
+            : "border-border/35 bg-bg/35 text-txt",
+      )}
+      title={title}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span>{value}</span>
     </div>
   );
 }
@@ -1829,12 +1865,6 @@ export function InventoryView() {
 
   const pnlValue = parseAmount(tradingProfile?.summary.realizedPnlBnb);
   const showTradePnl = hasClosedTradePnl(tradingProfile);
-  const pnlTone =
-    !showTradePnl || pnlValue === null || pnlValue === 0
-      ? "text-muted"
-      : pnlValue > 0
-        ? "text-ok"
-        : "text-danger";
 
   const handleHideToken = useCallback(
     (row: TokenRow) => {
@@ -1930,97 +1960,88 @@ export function InventoryView() {
       mobileSidebarLabel="Wallet"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-5 py-6 sm:px-7 lg:px-9">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              <Wallet className="h-4 w-4" />
-              Wallet
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-5xl font-semibold tracking-normal text-txt sm:text-6xl">
+                {formatUsd(displayedTotalUsd)}
+              </div>
             </div>
-            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-txt">
-              Dashboard
-            </h1>
-            <div className="mt-1 text-sm text-muted">
-              {displayedAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
-              NFTs
-              {hiddenCount > 0 ? `, ${hiddenCount} hidden` : ""}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={handleRefresh}
-              disabled={walletLoading || walletNftsLoading}
-            >
-              <RefreshCw
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  (walletLoading || walletNftsLoading) && "animate-spin",
-                )}
-              />
-              Refresh
-            </Button>
-            {walletEnabled === false ? (
-              <Button className="rounded-full" onClick={handleEnableWallet}>
-                Enable wallet
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 rounded-full"
+                onClick={handleRefresh}
+                disabled={walletLoading || walletNftsLoading}
+                aria-label="Refresh wallet"
+                title="Refresh wallet"
+              >
+                <RefreshCw
+                  className={cn(
+                    "h-4 w-4",
+                    (walletLoading || walletNftsLoading) && "animate-spin",
+                  )}
+                />
               </Button>
-            ) : null}
+              {walletEnabled === false ? (
+                <Button className="rounded-full" onClick={handleEnableWallet}>
+                  Enable wallet
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </header>
+
+          {showTradePnl ||
+          displayedAssetRows.length > 0 ||
+          inventoryData.allNfts.length > 0 ||
+          hiddenCount > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {showTradePnl && pnlValue !== null ? (
+                <SummaryChip
+                  icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
+                  value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
+                  tone={pnlValue >= 0 ? "gain" : "loss"}
+                  title="Trade P&L"
+                />
+              ) : null}
+              {displayedAssetRows.length > 0 ? (
+                <SummaryChip
+                  icon={PieChart}
+                  value={`${displayedAssetRows.length} assets`}
+                  title="Visible assets"
+                />
+              ) : null}
+              {inventoryData.allNfts.length > 0 ? (
+                <SummaryChip
+                  icon={ImageIcon}
+                  value={`${inventoryData.allNfts.length} NFTs`}
+                  title="NFTs"
+                />
+              ) : null}
+              {hiddenCount > 0 ? (
+                <SummaryChip
+                  icon={EyeOff}
+                  value={`${hiddenCount} hidden`}
+                  title="Hidden tokens"
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          {displayedAssetRows.length > 0 ? (
+            <div className="max-w-2xl">
+              <AssetAllocationStrip rows={displayedAssetRows} compact />
+            </div>
+          ) : null}
+        </section>
 
         {walletError ? (
           <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
           </div>
         ) : null}
-
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
-          <div className="min-w-0">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
-              Current balance
-            </div>
-            <div className="mt-2 font-mono text-5xl font-semibold tracking-normal text-txt">
-              {formatUsd(displayedTotalUsd)}
-            </div>
-            <div className={cn("mt-3 text-base font-semibold", pnlTone)}>
-              {showTradePnl && pnlValue !== null ? (
-                <>
-                  {pnlValue > 0 ? "+" : ""}
-                  {formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-                </>
-              ) : (
-                "—"
-              )}
-            </div>
-          </div>
-
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <StatCard
-              label="Trade P&L"
-              value={
-                showTradePnl
-                  ? formatBnb(tradingProfile?.summary.realizedPnlBnb)
-                  : "—"
-              }
-              detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
-              tone={pnlTone}
-            />
-            <StatCard
-              label="Settled"
-              value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
-              detail={`${tradingProfile?.summary.buyCount ?? 0} buys • ${tradingProfile?.summary.sellCount ?? 0} sells`}
-            />
-            <StatCard
-              label="Assets"
-              value={String(displayedAssetRows.length)}
-              detail={
-                hiddenCount > 0
-                  ? `${hiddenCount} hidden`
-                  : `${inventoryData.allNfts.length} NFTs`
-              }
-            />
-          </div>
-        </section>
 
         <section className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <RpcStatusCard
