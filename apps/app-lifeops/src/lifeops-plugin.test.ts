@@ -75,6 +75,7 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/goals");
     expect(paths).toContain("/api/lifeops/definitions");
     expect(paths).toContain("/api/lifeops/workflows");
+    expect(paths).toContain("/api/lifeops/screen-time/summary");
     expect(paths).toContain("/api/lifeops/overview");
     expect(paths).toContain("/api/lifeops/gmail/batch-reply-drafts");
     // Browser routes moved to `@elizaos/plugin-browser-bridge`

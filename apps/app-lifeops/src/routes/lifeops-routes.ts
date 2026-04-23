@@ -459,6 +459,30 @@ function parseActivitySignalStates(
   return states;
 }
 
+function parseScreenTimeSourceQuery(
+  value: string | null,
+): "app" | "website" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized !== "app" && normalized !== "website") {
+    throw new LifeOpsServiceError(400, "source must be app or website");
+  }
+  return normalized;
+}
+
+function parseRequiredIsoQuery(url: URL, field: string): string {
+  const value = url.searchParams.get(field)?.trim();
+  if (!value) {
+    throw new LifeOpsServiceError(400, `${field} is required`);
+  }
+  if (!Number.isFinite(Date.parse(value))) {
+    throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
+  }
+  return value;
+}
+
 async function runRoute(
   ctx: LifeOpsRouteContext,
   fn: (service: LifeOpsService) => Promise<void>,
@@ -1862,6 +1886,23 @@ export async function handleLifeOpsRoutes(
           refresh,
         }),
       });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getScreenTimeSummary({
+          since: parseRequiredIsoQuery(url, "since"),
+          until: parseRequiredIsoQuery(url, "until"),
+          source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 20,
+            }) ?? undefined,
+        }),
+      );
     });
   }
 

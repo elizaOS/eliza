@@ -20,7 +20,7 @@
     "declaration": false,
     "noEmit": true,
     "baseUrl": "../../",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
