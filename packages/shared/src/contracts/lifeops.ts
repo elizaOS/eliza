@@ -1063,7 +1063,7 @@ export interface LifeOpsActivitySignal {
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry event families (canonical unified store).
+// Telemetry event families (canonical store).
 //
 // See `eliza/apps/app-lifeops/docs/telemetry-event-families.md` for the full
 // spec. Every telemetry payload is a fully-typed discriminated-union variant
@@ -2139,22 +2139,22 @@ export const LIFEOPS_INBOX_CHANNELS = [
 ] as const;
 export type LifeOpsInboxChannel = (typeof LIFEOPS_INBOX_CHANNELS)[number];
 
-export interface LifeOpsUnifiedMessageSender {
+export interface LifeOpsInboxMessageSender {
   id: string;
   displayName: string;
   avatarUrl: string | null;
 }
 
-export interface LifeOpsUnifiedMessageSourceRef {
+export interface LifeOpsInboxMessageSourceRef {
   channel: LifeOpsInboxChannel;
   externalId: string;
 }
 
-export interface LifeOpsUnifiedMessage {
+export interface LifeOpsInboxMessage {
   /** Channel-prefixed, globally unique identifier. */
   id: string;
   channel: LifeOpsInboxChannel;
-  sender: LifeOpsUnifiedMessageSender;
+  sender: LifeOpsInboxMessageSender;
   /** Gmail-style subject; `null` for chat channels. */
   subject: string | null;
   snippet: string;
@@ -2162,21 +2162,21 @@ export interface LifeOpsUnifiedMessage {
   receivedAt: string;
   unread: boolean;
   deepLink: string | null;
-  sourceRef: LifeOpsUnifiedMessageSourceRef;
+  sourceRef: LifeOpsInboxMessageSourceRef;
 }
 
-export interface LifeOpsUnifiedInboxChannelCount {
+export interface LifeOpsInboxChannelCount {
   total: number;
   unread: number;
 }
 
-export interface LifeOpsUnifiedInbox {
-  messages: LifeOpsUnifiedMessage[];
-  channelCounts: Record<LifeOpsInboxChannel, LifeOpsUnifiedInboxChannelCount>;
+export interface LifeOpsInbox {
+  messages: LifeOpsInboxMessage[];
+  channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   fetchedAt: string;
 }
 
-export interface GetLifeOpsUnifiedInboxRequest {
+export interface GetLifeOpsInboxRequest {
   /** Cap on the total number of messages returned. Defaults to 100. */
   limit?: number;
   /** If omitted, all connected channels are included. */
