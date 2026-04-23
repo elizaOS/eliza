@@ -13,6 +13,7 @@ public class MiladyMmsReceiver extends BroadcastReceiver {
         launch.setAction(Intent.ACTION_VIEW);
         launch.setData(Uri.parse("ai.elizaos.app://messages").buildUpon()
                 .appendQueryParameter("event", "mms-deliver")
+                .appendQueryParameter("unsupported", "wap-push")
                 .build());
         launch.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         context.startActivity(launch);

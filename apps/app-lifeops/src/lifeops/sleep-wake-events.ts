@@ -44,6 +44,7 @@ function buildEvent(args: {
       circadianState: args.current.circadianState,
       stateConfidence: args.current.stateConfidence,
       uncertaintyReason: args.current.uncertaintyReason,
+      regularityClass: args.current.regularity.regularityClass,
       wakeAt: args.current.wakeAt,
       bedtimeTargetAt: args.current.relativeTime.bedtimeTargetAt,
       minutesUntilBedtimeTarget:

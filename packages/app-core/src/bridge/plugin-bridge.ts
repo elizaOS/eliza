@@ -14,13 +14,21 @@ import {
   type GenericNativePlugin,
   getCameraPlugin,
   getCanvasPlugin,
+  getContactsPlugin,
   getDesktopPlugin,
   getGatewayPlugin,
   getLocationPlugin,
+  getMessagesPlugin,
+  getPhonePlugin,
   getScreenCapturePlugin,
   getSwabblePlugin,
+  getSystemPlugin,
   getTalkModePlugin,
+  type ContactsPluginLike,
+  type MessagesPluginLike,
+  type PhonePluginLike,
   type SwabblePluginLike,
+  type SystemPluginLike,
   type TalkModePluginLike,
 } from "./native-plugins";
 
@@ -85,6 +93,22 @@ export interface PluginCapabilities {
   canvas: {
     available: boolean;
   };
+  /** Android phone stack */
+  phone: {
+    available: boolean;
+  };
+  /** Android contacts provider */
+  contacts: {
+    available: boolean;
+  };
+  /** Android SMS provider */
+  messages: {
+    available: boolean;
+  };
+  /** Android system role/status bridge */
+  system: {
+    available: boolean;
+  };
   /** Desktop features (macOS/Electrobun) */
   desktop: {
     available: boolean;
@@ -131,6 +155,18 @@ export function getPluginCapabilities(): PluginCapabilities {
     },
     canvas: {
       available: true, // HTML Canvas available on all platforms
+    },
+    phone: {
+      available: isNative && platform === "android",
+    },
+    contacts: {
+      available: isNative && platform === "android",
+    },
+    messages: {
+      available: isNative && platform === "android",
+    },
+    system: {
+      available: isNative && platform === "android",
     },
     desktop: {
       available: isDesktop,
@@ -230,6 +266,14 @@ export interface ElizaPlugins {
   screenCapture: WrappedPlugin<GenericNativePlugin>;
   /** Canvas plugin */
   canvas: WrappedPlugin<GenericNativePlugin>;
+  /** Android phone plugin */
+  phone: WrappedPlugin<PhonePluginLike>;
+  /** Android contacts plugin */
+  contacts: WrappedPlugin<ContactsPluginLike>;
+  /** Android messages plugin */
+  messages: WrappedPlugin<MessagesPluginLike>;
+  /** Android system plugin */
+  system: WrappedPlugin<SystemPluginLike>;
   /** Desktop plugin (macOS/Electrobun) */
   desktop: WrappedPlugin<GenericNativePlugin>;
   /** Plugin capabilities */
@@ -288,6 +332,26 @@ export function getPlugins(): ElizaPlugins {
       isNative: isNative,
       hasFallback: true,
     },
+    phone: {
+      plugin: wrapPlugin(getPhonePlugin(), "MiladyPhone"),
+      isNative: isNative,
+      hasFallback: capabilities.phone.available,
+    },
+    contacts: {
+      plugin: wrapPlugin(getContactsPlugin(), "MiladyContacts"),
+      isNative: isNative,
+      hasFallback: capabilities.contacts.available,
+    },
+    messages: {
+      plugin: wrapPlugin(getMessagesPlugin(), "MiladyMessages"),
+      isNative: isNative,
+      hasFallback: capabilities.messages.available,
+    },
+    system: {
+      plugin: wrapPlugin(getSystemPlugin(), "MiladySystem"),
+      isNative: isNative,
+      hasFallback: capabilities.system.available,
+    },
     desktop: {
       plugin: wrapPlugin(getDesktopPlugin(), "Desktop"),
       isNative: isDesktop,
@@ -312,6 +376,10 @@ export function isFeatureAvailable(
     | "location"
     | "backgroundLocation"
     | "screenCapture"
+    | "phone"
+    | "contacts"
+    | "messages"
+    | "system"
     | "desktopTray",
 ): boolean {
   const caps = getPluginCapabilities();
@@ -333,6 +401,14 @@ export function isFeatureAvailable(
       return caps.location.background;
     case "screenCapture":
       return caps.screenCapture.available;
+    case "phone":
+      return caps.phone.available;
+    case "contacts":
+      return caps.contacts.available;
+    case "messages":
+      return caps.messages.available;
+    case "system":
+      return caps.system.available;
     case "desktopTray":
       return caps.desktop.tray;
     default:

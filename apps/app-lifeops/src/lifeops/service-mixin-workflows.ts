@@ -156,6 +156,22 @@ function matchesLifeOpsDerivedEventFilters(
     }
   }
   if (
+    event.kind === "lifeops.regularity.changed" &&
+    typeof record.becomes === "string"
+  ) {
+    // The event fires on any class transition; the filter narrows to the
+    // specific target class. The target class lands in the payload via the
+    // merged state's regularity block.
+    const payload = event.payload ?? {};
+    const regularity =
+      typeof payload === "object" && payload !== null
+        ? (payload as { regularityClass?: unknown }).regularityClass
+        : undefined;
+    if (regularity !== record.becomes) {
+      return false;
+    }
+  }
+  if (
     event.kind === "gmail.message.received" ||
     event.kind === "gmail.thread.needs_response"
   ) {

@@ -21,6 +21,10 @@ class ContactsPlugin : Plugin() {
 
         val query = call.getString("query")?.trim()
         val limit = call.getInt("limit") ?: 100
+        if (limit <= 0 || limit > 500) {
+            call.reject("limit must be between 1 and 500")
+            return
+        }
         val contacts = JSArray()
         val projection = arrayOf(
             ContactsContract.Contacts._ID,
@@ -30,13 +34,18 @@ class ContactsPlugin : Plugin() {
         )
         val selection = if (query.isNullOrEmpty()) null else "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} LIKE ?"
         val selectionArgs = if (query.isNullOrEmpty()) null else arrayOf("%$query%")
-        context.contentResolver.query(
+        val cursor = context.contentResolver.query(
             ContactsContract.Contacts.CONTENT_URI,
             projection,
             selection,
             selectionArgs,
             "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} ASC"
-        )?.use { cursor ->
+        )
+        if (cursor == null) {
+            call.reject("Contacts provider returned no cursor")
+            return
+        }
+        cursor.use {
             val idCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID)
             val nameCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
             val photoCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI)
@@ -96,21 +105,48 @@ class ContactsPlugin : Plugin() {
             )
         }
         val results = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+        val rawContactId = results.firstOrNull()?.uri?.lastPathSegment
+        if (rawContactId.isNullOrEmpty()) {
+            call.reject("Contacts provider did not return a raw contact id")
+            return
+        }
+        val contactId = resolveContactId(rawContactId)
+        if (contactId.isNullOrEmpty()) {
+            call.reject("Contacts provider did not link the inserted raw contact")
+            return
+        }
         val result = JSObject()
-        result.put("id", results.firstOrNull()?.uri?.lastPathSegment ?: "")
+        result.put("id", contactId)
         call.resolve(result)
+    }
+
+    private fun resolveContactId(rawContactId: String): String? {
+        context.contentResolver.query(
+            ContactsContract.RawContacts.CONTENT_URI,
+            arrayOf(ContactsContract.RawContacts.CONTACT_ID),
+            "${ContactsContract.RawContacts._ID} = ?",
+            arrayOf(rawContactId),
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val contactIdCol = cursor.getColumnIndexOrThrow(ContactsContract.RawContacts.CONTACT_ID)
+                return cursor.getString(contactIdCol)
+            }
+        }
+        return null
     }
 
     private fun readPhoneNumbers(contactId: String, hasPhone: Boolean): JSArray {
         val numbers = JSArray()
         if (!hasPhone) return numbers
-        context.contentResolver.query(
+        val cursor = context.contentResolver.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
             "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
             arrayOf(contactId),
             null
-        )?.use { cursor ->
+        ) ?: return numbers
+        cursor.use {
             val numberCol = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
             while (cursor.moveToNext()) {
                 numbers.put(cursor.getString(numberCol))
