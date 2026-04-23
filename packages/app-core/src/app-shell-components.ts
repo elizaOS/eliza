@@ -12,7 +12,6 @@ export { SaveCommandModal } from "./components/chat/SaveCommandModal";
 export { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-export { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 export { AdvancedPageView } from "./components/pages/AdvancedPageView";
 export { AppsPageView } from "./components/pages/AppsPageView";
 export {

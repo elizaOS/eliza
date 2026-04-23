@@ -31,6 +31,8 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
+import { normalizeLanguage } from "../../i18n";
+import type { UiLanguage } from "../../i18n/messages";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { isDesktopPlatform } from "../../platform/init";
 import {
@@ -39,8 +41,6 @@ import {
   savePersistedActiveServer,
   useApp,
 } from "../../state";
-import { normalizeLanguage } from "../../i18n";
-import type { UiLanguage } from "../../i18n/messages";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
@@ -190,7 +190,9 @@ export function RuntimeGate() {
     persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
-    completeOnboarding("settings");
+    // Always land on chat. The composer lock + "Set up an LLM provider"
+    // placeholder handles the missing-provider case.
+    completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
   const finishAsRemoteGateway = useCallback(
@@ -232,7 +234,13 @@ export function RuntimeGate() {
     setState("onboardingServerTarget", "remote");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
     completeOnboarding();
-  }, [remoteToken, remoteUrl, completeOnboarding, setState, startupCoordinator]);
+  }, [
+    remoteToken,
+    remoteUrl,
+    completeOnboarding,
+    setState,
+    startupCoordinator,
+  ]);
 
   // ── Cloud: provision + connect ─────────────────────────────────────
 
@@ -372,11 +380,7 @@ export function RuntimeGate() {
 
   if (subView === "chooser") {
     return (
-      <GateShell
-        uiLanguage={uiLanguage}
-        setUiLanguage={setUiLanguage}
-        t={t}
-      >
+      <GateShell uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} t={t}>
         <GateHeader t={t} />
 
         <div className="mt-6 flex w-full flex-col gap-3 text-left">
@@ -476,11 +480,7 @@ export function RuntimeGate() {
 
   if (subView === "cloud") {
     return (
-      <GateShell
-        uiLanguage={uiLanguage}
-        setUiLanguage={setUiLanguage}
-        t={t}
-      >
+      <GateShell uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} t={t}>
         <GateHeader t={t} />
 
         {cloudStage === "login" && (

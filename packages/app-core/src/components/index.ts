@@ -38,7 +38,6 @@ export * from "./custom-actions/CustomActionsView";
 export { ChainIcon } from "./inventory/ChainIcon";
 export * from "./inventory/chainConfig";
 export * from "./inventory/constants";
-export * from "./onboarding/OnboardingWizard";
 export * from "./pages/AdvancedPageView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
