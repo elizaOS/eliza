@@ -13,6 +13,7 @@ import {
 
 interface AppsSidebarProps {
   apps: RegistryAppInfo[];
+  browseApps: RegistryAppInfo[];
   runs: AppRunSummary[];
   activeAppNames: ReadonlySet<string>;
   favoriteAppNames: ReadonlySet<string>;
@@ -34,13 +35,13 @@ interface AppsSidebarProps {
 const GENRE_ORDER: readonly AppCatalogSectionKey[] = [
   "games",
   "finance",
-  "lifeManagement",
   "developerUtilities",
   "other",
 ];
 
 export function AppsSidebar({
   apps,
+  browseApps,
   runs,
   activeAppNames,
   favoriteAppNames,
@@ -62,12 +63,12 @@ export function AppsSidebar({
   }, [apps]);
 
   const starredEntries = useMemo(() => {
-    return apps
+    return browseApps
       .filter((app) => favoriteAppNames.has(app.name))
       .sort((a, b) =>
         (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name),
       );
-  }, [apps, favoriteAppNames]);
+  }, [browseApps, favoriteAppNames]);
 
   const activeEntries = useMemo(() => {
     return runs
@@ -92,13 +93,13 @@ export function AppsSidebar({
     const result: RegistryAppInfo[] = [];
     for (const name of recentAppNames) {
       if (seen.has(name) || aboveRecentAppNames.has(name)) continue;
-      const app = appsByName.get(name);
+      const app = browseApps.find((candidate) => candidate.name === name);
       if (!app) continue;
       seen.add(name);
       result.push(app);
     }
     return result;
-  }, [aboveRecentAppNames, appsByName, recentAppNames]);
+  }, [aboveRecentAppNames, browseApps, recentAppNames]);
 
   const aboveGenreAppNames = useMemo(() => {
     const set = new Set(aboveRecentAppNames);
@@ -108,7 +109,7 @@ export function AppsSidebar({
 
   const genreEntries = useMemo(() => {
     const buckets = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
-    for (const app of apps) {
+    for (const app of browseApps) {
       if (aboveGenreAppNames.has(app.name)) continue;
       const key = getAppCatalogSectionKey(app);
       const list = buckets.get(key) ?? [];
@@ -131,7 +132,7 @@ export function AppsSidebar({
         },
       ];
     });
-  }, [aboveGenreAppNames, apps]);
+  }, [aboveGenreAppNames, browseApps]);
 
   const hasAnyResults =
     starredEntries.length > 0 ||
@@ -267,7 +268,7 @@ function AppsSidebarSection({
         {icon}
         {label}
       </SidebarContent.SectionLabel>
-      <div className="space-y-0.5">{children}</div>
+      <div className="space-y-0.5 pl-3">{children}</div>
     </div>
   );
 }

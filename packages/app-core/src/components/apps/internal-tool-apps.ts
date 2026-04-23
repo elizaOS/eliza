@@ -46,6 +46,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
+    heroImage: "/api/apps/hero/training",
     targetTab: "fine-tuning",
     capabilities: ["training", "fine-tuning", "datasets", "models"],
     order: 3,
@@ -83,6 +84,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "Steward",
     description:
       "Review wallet approvals, transaction history, and signing execution status.",
+    heroImage: "/api/apps/hero/steward",
     targetTab: "inventory",
     capabilities: ["wallet", "transactions", "approvals", "trading"],
     order: 7,
@@ -111,6 +113,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "ElizaMaker",
     description:
       "Run drop, mint, whitelist, and verification workflows through the agent surfaces.",
+    heroImage: "/api/apps/hero/elizamaker",
     targetTab: "chat",
     capabilities: ["drops", "minting", "whitelist", "verification"],
     order: 10,

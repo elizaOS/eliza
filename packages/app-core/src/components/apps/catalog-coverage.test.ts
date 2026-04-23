@@ -13,12 +13,15 @@ import { getInternalToolApps } from "./internal-tool-apps";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamAppsDir = path.resolve(here, "../../../../../apps");
 
-function makeCatalogCandidate(name: string): RegistryAppInfo {
+function makeCatalogCandidate(
+  name: string,
+  category: RegistryAppInfo["category"] = "utility",
+): RegistryAppInfo {
   return {
     name,
     displayName: name,
     description: "",
-    category: "utility",
+    category,
     launchType: "local",
     launchUrl: null,
     icon: null,
@@ -62,6 +65,7 @@ describe("apps catalog coverage", () => {
         upstreamPackageNames
           .filter((name) => !injectedCatalogNames.has(name))
           .map(makeCatalogCandidate),
+        { showAllApps: true },
       ).map((app) => app.name),
     );
 
@@ -85,5 +89,43 @@ describe("apps catalog coverage", () => {
         APPS_VIEW_HIDDEN_APP_NAMES.map(makeCatalogCandidate),
       ).map((app) => app.name),
     ).toEqual([]);
+  });
+
+  it("hides non-primary game and finance apps by default", () => {
+    const visibleNames = filterAppsForCatalog([
+      makeCatalogCandidate("@elizaos/app-lifeops"),
+      makeCatalogCandidate("@elizaos/app-companion", "game"),
+      makeCatalogCandidate("@elizaos/app-defense-of-the-agents", "game"),
+      makeCatalogCandidate("@clawville/app-clawville", "game"),
+      makeCatalogCandidate("@elizaos/app-babylon", "game"),
+      makeCatalogCandidate("@elizaos/app-2004scape", "game"),
+      makeCatalogCandidate("@elizaos/app-scape", "game"),
+      makeCatalogCandidate("@hyperscape/plugin-hyperscape", "game"),
+      makeCatalogCandidate("@elizaos/app-vincent", "platform"),
+      makeCatalogCandidate("@elizaos/app-shopify", "platform"),
+      makeCatalogCandidate("@elizaos/app-steward"),
+      makeCatalogCandidate("@elizaos/app-elizamaker"),
+    ]).map((app) => app.name);
+
+    expect(visibleNames).toEqual(
+      expect.arrayContaining([
+        "@elizaos/app-lifeops",
+        "@elizaos/app-companion",
+        "@elizaos/app-defense-of-the-agents",
+        "@clawville/app-clawville",
+        "@elizaos/app-vincent",
+      ]),
+    );
+    expect(visibleNames).not.toEqual(
+      expect.arrayContaining([
+        "@elizaos/app-babylon",
+        "@elizaos/app-2004scape",
+        "@elizaos/app-scape",
+        "@hyperscape/plugin-hyperscape",
+        "@elizaos/app-shopify",
+        "@elizaos/app-steward",
+        "@elizaos/app-elizamaker",
+      ]),
+    );
   });
 });
