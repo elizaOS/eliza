@@ -2104,6 +2104,8 @@
   "settings.resetEverything": "全部重置",
   "settings.rpcConfiguration": "RPC 配置",
   "settings.sections.advanced.desc": "导出、导入和危险操作",
+  "settings.sections.backupReset.desc": "备份代理、从备份恢复，或清空所有内容重新开始",
+  "settings.sections.backupReset.label": "备份与重置",
   "settings.sections.aimodel.desc": "提供商和模型设置",
   "settings.sections.aimodel.label": "AI 模型",
   "settings.sections.appearance.desc": "内容包、VRM 头像、背景和主题",
