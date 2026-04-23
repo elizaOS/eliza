@@ -8,7 +8,6 @@ import {
   ArrowLeftRight,
   Layers3,
   MessagesSquare,
-  Sparkles,
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
@@ -111,11 +110,11 @@ function WalletChatGuideBody() {
     },
     {
       icon: Layers3,
-      label: "Inspect tokens, NFTs, LPs, and agent trades",
+      label: "Inspect tokens, NFTs, LPs, and activity",
     },
     {
-      icon: Sparkles,
-      label: "Connect Vincent for Hyperliquid or Polymarket",
+      icon: MessagesSquare,
+      label: "Ask how the agent can use this wallet",
     },
   ];
 
@@ -154,12 +153,6 @@ function WalletChatGuideActions() {
         "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
       icon: ArrowDownLeft,
     },
-    {
-      label: "Vincent",
-      prompt:
-        "Check whether Vincent is connected for Hyperliquid and Polymarket. If it is not connected, help me connect it before any trading action.",
-      icon: Sparkles,
-    },
   ];
 
   return (
@@ -185,7 +178,7 @@ function buildWalletPageScopedChatPaneProps(): NonNullable<
 > {
   return {
     persistentIntro: true,
-    placeholderOverride: "Ask about swaps, bridges, positions, or Vincent",
+    placeholderOverride: "Ask about how the agent can use a wallet",
     introOverride: {
       title: "Wallet agent",
       body: <WalletChatGuideBody />,
