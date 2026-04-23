@@ -13,11 +13,7 @@ import {
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
 } from "./chainConfig";
-import {
-  isBscChainName,
-  type NftItem,
-  type TokenRow,
-} from "./constants";
+import { isBscChainName, type NftItem, type TokenRow } from "./constants";
 import {
   computeSingleChainFocus,
   matchesInventoryChainFilter,
@@ -108,7 +104,6 @@ function buildTokenRowsAllChains({
           valueUsd: Number.parseFloat(tk.valueUsd) || 0,
           balanceRaw: Number.parseFloat(tk.balance) || 0,
           isNative: false,
-          isTracked: false,
         });
       }
     }
