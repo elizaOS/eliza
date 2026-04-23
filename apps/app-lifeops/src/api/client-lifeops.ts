@@ -31,6 +31,7 @@ import type {
 } from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
   CompleteLifeOpsBrowserSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest,
@@ -77,6 +78,7 @@ import type {
   LifeOpsIMessageChat,
   LifeOpsIMessageConnectorStatus,
   LifeOpsIMessageMessage,
+  LifeOpsManualOverrideResult,
   LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
@@ -222,6 +224,9 @@ declare module "@elizaos/app-core/api/client-base" {
     captureLifeOpsActivitySignal(
       data: CaptureLifeOpsActivitySignalRequest,
     ): Promise<{ signal: LifeOpsActivitySignal }>;
+    captureLifeOpsManualOverride(
+      data: CaptureLifeOpsManualOverrideRequest,
+    ): Promise<LifeOpsManualOverrideResult>;
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
@@ -680,6 +685,16 @@ ElizaClient.prototype.captureLifeOpsActivitySignal = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/activity-signals", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.captureLifeOpsManualOverride = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/manual-override", {
     method: "POST",
     body: JSON.stringify(data),
   });

@@ -1,13 +1,19 @@
 import { Badge, Button, Textarea, useApp } from "@elizaos/app-core";
-import type { LifeOpsCapabilityState } from "@elizaos/shared/contracts/lifeops";
+import { client } from "@elizaos/app-core/api";
+import type {
+  LifeOpsCapabilityState,
+  LifeOpsManualOverrideKind,
+} from "@elizaos/shared/contracts/lifeops";
 import {
   Activity,
   Clock3,
   FileText,
   Loader2,
+  Moon,
   RefreshCw,
   Send,
   Sparkles,
+  Sun,
   Unplug,
   Wand2,
 } from "lucide-react";
@@ -201,6 +207,11 @@ export function LifeOpsCapabilitiesPanel() {
 export function LifeOpsSchedulePanel() {
   const { t } = useApp();
   const schedule = useLifeOpsScheduleState({ scope: "effective" });
+  const [manualOverrideKind, setManualOverrideKind] =
+    useState<LifeOpsManualOverrideKind | null>(null);
+  const [manualOverrideError, setManualOverrideError] = useState<string | null>(
+    null,
+  );
   const merged = schedule.state;
   const sleepLabel = merged
     ? merged.sleepStatus === "sleeping_now"
@@ -225,9 +236,7 @@ export function LifeOpsSchedulePanel() {
         ? t("lifeopspanels.relativePhaseCalibrating", {
             defaultValue: "{{state}} · {{confidence}}% confidence",
             state: merged.relativeTime.circadianState,
-            confidence: Math.round(
-              merged.relativeTime.stateConfidence * 100,
-            ),
+            confidence: Math.round(merged.relativeTime.stateConfidence * 100),
           })
         : "—";
   const bedtimeRelativeLabel =
@@ -250,6 +259,28 @@ export function LifeOpsSchedulePanel() {
         : t("lifeopspanels.bedtimeRelativeCalibrating", {
             defaultValue: "calibrating",
           });
+
+  const captureManualOverride = useCallback(
+    async (kind: LifeOpsManualOverrideKind) => {
+      setManualOverrideKind(kind);
+      setManualOverrideError(null);
+      try {
+        await client.captureLifeOpsManualOverride({ kind });
+        await schedule.refresh();
+      } catch (cause) {
+        setManualOverrideError(
+          cause instanceof Error
+            ? cause.message
+            : t("lifeopspanels.manualOverrideFailed", {
+                defaultValue: "Manual schedule update failed.",
+              }),
+        );
+      } finally {
+        setManualOverrideKind(null);
+      }
+    },
+    [schedule.refresh, t],
+  );
 
   return (
     <PanelShell
@@ -284,7 +315,9 @@ export function LifeOpsSchedulePanel() {
           <div className="mt-1 text-xs text-muted">
             {merged
               ? `${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
-                  merged.uncertaintyReason ? ` · ${merged.uncertaintyReason}` : ""
+                  merged.uncertaintyReason
+                    ? ` · ${merged.uncertaintyReason}`
+                    : ""
                 }`
               : t("lifeopspanels.scheduleUnavailable", {
                   defaultValue: "No schedule state available.",
@@ -374,6 +407,41 @@ export function LifeOpsSchedulePanel() {
                 })}
           </div>
         </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void captureManualOverride("just_woke_up")}
+          disabled={manualOverrideKind !== null}
+        >
+          {manualOverrideKind === "just_woke_up" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sun className="h-3.5 w-3.5" />
+          )}
+          {t("lifeopspanels.justWokeUp", { defaultValue: "Just woke up" })}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void captureManualOverride("going_to_bed")}
+          disabled={manualOverrideKind !== null}
+        >
+          {manualOverrideKind === "going_to_bed" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Moon className="h-3.5 w-3.5" />
+          )}
+          {t("lifeopspanels.goingToBed", { defaultValue: "Going to bed" })}
+        </Button>
+        {manualOverrideError ? (
+          <span className="self-center text-xs text-danger">
+            {manualOverrideError}
+          </span>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2 text-xs">
         {merged ? (

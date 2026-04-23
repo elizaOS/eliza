@@ -163,6 +163,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/channels/phone-consent" },
   { type: "GET", path: "/api/lifeops/activity-signals" },
   { type: "POST", path: "/api/lifeops/activity-signals" },
+  { type: "POST", path: "/api/lifeops/manual-override" },
   { type: "POST", path: "/api/lifeops/reminders/process" },
   { type: "GET", path: "/api/lifeops/reminder-preferences" },
   { type: "POST", path: "/api/lifeops/reminder-preferences" },
