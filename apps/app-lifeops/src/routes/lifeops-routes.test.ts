@@ -197,6 +197,48 @@ describe("LifeOps route validation", () => {
     expect(getXDmDigest).not.toHaveBeenCalled();
   });
 
+  it("passes Gmail recommendation query inputs through to the service", async () => {
+    const getGmailRecommendations = vi
+      .spyOn(LifeOpsService.prototype, "getGmailRecommendations")
+      .mockResolvedValue({
+        recommendations: [],
+        source: "synced",
+        syncedAt: "2026-04-22T12:00:00.000Z",
+        summary: {
+          totalCount: 0,
+          replyCount: 0,
+          archiveCount: 0,
+          markReadCount: 0,
+          spamReviewCount: 0,
+          destructiveCount: 0,
+        },
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/gmail/recommendations?side=owner&mode=local&grantId=grant-1&query=in%3Aspam&forceSync=true&includeSpamTrash=true&replyNeededOnly=false&maxResults=7",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getGmailRecommendations).toHaveBeenCalledWith(expect.any(URL), {
+      mode: "local",
+      side: "owner",
+      forceSync: true,
+      maxResults: 7,
+      query: "in:spam",
+      replyNeededOnly: false,
+      includeSpamTrash: true,
+      grantId: "grant-1",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        recommendations: [],
+      }),
+    );
+  });
+
   // Browser companion + package routes moved to
   // `@elizaos/plugin-browser-bridge` (Phase 3). Tests for those routes now
   // live alongside the plugin package.
