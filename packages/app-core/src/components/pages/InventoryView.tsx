@@ -9,7 +9,6 @@ import {
   cn,
   PageLayout,
   Sidebar,
-  SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
@@ -19,6 +18,7 @@ import {
   ArrowLeftRight,
   BarChart3,
   ChevronDown,
+  ChevronsLeft,
   Copy,
   DollarSign,
   EyeOff,
@@ -62,6 +62,11 @@ const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "milady:wallet:hidden-token-ids:v1";
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const WALLET_SIDEBAR_WIDTH_KEY = "milady:wallets:sidebar:width";
+const WALLET_SIDEBAR_COLLAPSED_KEY = "milady:wallets:sidebar:collapsed";
+const WALLET_SIDEBAR_DEFAULT_WIDTH = 352;
+const WALLET_SIDEBAR_MIN_WIDTH = 240;
+const WALLET_SIDEBAR_MAX_WIDTH = 520;
 const VINCENT_APP_NAME = "@elizaos/app-vincent";
 
 interface InventoryPositionAsset {
@@ -168,15 +173,89 @@ function formatSignedBnb(value: number): string {
   return `${sign}${compactFormatter.format(Math.abs(value))} BNB`;
 }
 
+function hasClosedTradePnl(
+  profile: WalletTradingProfileResponse | null,
+): boolean {
+  return (profile?.summary.evaluatedTrades ?? 0) > 0;
+}
+
 function shortAddress(address: string): string {
   if (address.length <= 14) return address;
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
 }
 
-function providerLabel(provider: string | null | undefined): string {
+function clampWalletSidebarWidth(value: number): number {
+  return Math.min(
+    Math.max(value, WALLET_SIDEBAR_MIN_WIDTH),
+    WALLET_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function loadInitialWalletSidebarWidth(): number {
+  if (typeof window === "undefined") return WALLET_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(WALLET_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) return clampWalletSidebarWidth(parsed);
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return WALLET_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function loadInitialWalletSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(WALLET_SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function useWalletSidebarDesktopMode() {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return true;
+    }
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      setIsDesktop(true);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(mediaQuery.matches);
+
+    update();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", update);
+      return () => mediaQuery.removeEventListener("change", update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
+
+  return isDesktop;
+}
+
+function providerLabel(
+  provider: string | null | undefined,
+  chain?: "evm" | "bsc" | "solana",
+): string {
   switch (provider) {
     case "eliza-cloud":
-      return "Eliza Cloud";
+      return chain === "solana" ? "Eliza Cloud / Helius" : "Eliza Cloud";
     case "alchemy":
       return "Alchemy";
     case "quicknode":
@@ -483,7 +562,7 @@ function WalletCompositionPanel({ rows }: { rows: TokenRow[] }) {
       <EmptyState
         icon={Wallet}
         title="No visible tokens"
-        body="No indexed token balances."
+        body="Balances will show here."
       />
     );
   }
@@ -637,8 +716,8 @@ function PortfolioMoversPanel({
     return (
       <EmptyState
         icon={TrendingUp}
-        title="No movers"
-        body="No token P&L yet."
+        title="No trade movers"
+        body="Closed trades will show here."
       />
     );
   }
@@ -661,14 +740,34 @@ function PortfolioMoversPanel({
   );
 }
 
-function AddressPill({ label, address }: { label: string; address: string }) {
+function AddressPill({
+  label,
+  address,
+}: {
+  label: string;
+  address: string | null;
+}) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
+    if (!address) return;
     void navigator.clipboard.writeText(address).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     });
   }, [address]);
+
+  if (!address) {
+    return (
+      <div className="min-w-0 rounded-2xl border border-border/35 bg-bg/35 px-3 py-2">
+        <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-muted">
+          {label}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-xs text-muted">
+          No address
+        </span>
+      </div>
+    );
+  }
 
   return (
     <Button
@@ -725,7 +824,7 @@ function PnlChart({
   if (values.length < 2) {
     return (
       <div className="flex h-40 items-center justify-center rounded-3xl bg-bg/30 text-xs text-muted">
-        No P&L series yet
+        No closed trades yet
       </div>
     );
   }
@@ -748,7 +847,7 @@ function PnlChart({
       className="h-40 w-full rounded-3xl bg-bg/30"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      aria-label="Agent trading P&L chart"
+      aria-label="Trade P&L chart"
     >
       <polyline
         fill="none"
@@ -945,7 +1044,7 @@ function RailNftList({ nfts }: { nfts: NftItem[] }) {
       <WalletRailEmpty
         icon={ImageIcon}
         title="No NFTs"
-        body="No indexed collections."
+        body="Collections will show here."
       />
     );
   }
@@ -993,7 +1092,7 @@ function RailPositionList({
       <WalletRailEmpty
         icon={Layers3}
         title="No DeFi assets"
-        body="No indexed LP tokens or position NFTs."
+        body="LPs and vaults will show here."
       />
     );
   }
@@ -1048,7 +1147,7 @@ function RailActivityList({
       <WalletRailEmpty
         icon={Activity}
         title="No activity"
-        body="No settled wallet actions."
+        body="Settled trades will show here."
       />
     );
   }
@@ -1116,6 +1215,13 @@ function TokenRail({
   onWalletAction: (action: "buy" | "swap" | "send" | "receive") => void;
 }) {
   const [activeTab, setActiveTab] = useState<WalletRailTab>("tokens");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    loadInitialWalletSidebarCollapsed,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    loadInitialWalletSidebarWidth,
+  );
+  const isDesktopSidebar = useWalletSidebarDesktopMode();
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return rows.filter((row) => {
@@ -1134,8 +1240,9 @@ function TokenRail({
     [filteredRows],
   );
   const pnlValue = parseAmount(profile?.summary.realizedPnlBnb);
+  const showTradePnl = hasClosedTradePnl(profile);
   const pnlClassName =
-    pnlValue === null || pnlValue === 0
+    !showTradePnl || pnlValue === null || pnlValue === 0
       ? "text-muted"
       : pnlValue > 0
         ? "text-ok"
@@ -1165,117 +1272,159 @@ function TokenRail({
       icon: Activity,
     },
   ];
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(WALLET_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampWalletSidebarWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(WALLET_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+  const collapseFooter = isDesktopSidebar ? (
+    <button
+      type="button"
+      onClick={() => handleSidebarCollapsedChange(true)}
+      aria-label="Collapse wallet sidebar"
+      data-testid="wallets-sidebar-collapse-inline"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-bg-muted/60 hover:text-txt"
+    >
+      <ChevronsLeft className="h-4 w-4" aria-hidden />
+    </button>
+  ) : undefined;
+  const headerContent = (
+    <div className="space-y-5">
+      <div>
+        <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted">
+          Balance
+        </div>
+        <div className="mt-2 font-mono text-[2.35rem] font-semibold leading-none text-txt">
+          {formatUsd(totalUsd)}
+        </div>
+        <div className={cn("mt-2 text-sm font-semibold", pnlClassName)}>
+          {showTradePnl && pnlValue !== null ? (
+            <>
+              {pnlValue > 0 ? "+" : ""}
+              {formatBnb(profile?.summary.realizedPnlBnb)}
+            </>
+          ) : (
+            `${filteredRows.length} visible tokens`
+          )}
+        </div>
+      </div>
+
+      {filteredRows.length > 0 ? (
+        <AssetAllocationStrip rows={filteredRows} />
+      ) : null}
+
+      <div className="grid grid-cols-4 gap-2">
+        <WalletRailActionButton
+          icon={DollarSign}
+          label="Buy"
+          onClick={() => onWalletAction("buy")}
+        />
+        <WalletRailActionButton
+          icon={ArrowLeftRight}
+          label="Swap"
+          onClick={() => onWalletAction("swap")}
+        />
+        <WalletRailActionButton
+          icon={Send}
+          label="Send"
+          onClick={() => onWalletAction("send")}
+        />
+        <WalletRailActionButton
+          icon={ArrowDownLeft}
+          label="Receive"
+          onClick={() => onWalletAction("receive")}
+        />
+      </div>
+
+      <div className="flex items-center gap-4 overflow-x-auto text-sm font-semibold">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 transition-colors",
+              activeTab === tab.id
+                ? "border-accent text-txt"
+                : "border-transparent text-muted hover:text-txt",
+            )}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <tab.icon className="h-3.5 w-3.5" />
+            {tab.label}
+            {tab.count > 0 ? (
+              <span className="ml-1 font-mono text-xs text-muted">
+                {tab.count}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "tokens" ? (
+        <label className="flex h-10 items-center gap-2 rounded-full bg-bg/55 px-3 text-sm text-muted">
+          <Search className="h-4 w-4 shrink-0" />
+          <input
+            value={searchQuery}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search tokens"
+            aria-label="Search tokens"
+            autoComplete="off"
+            spellCheck={false}
+            className="min-w-0 flex-1 bg-transparent text-txt outline-none placeholder:text-muted/70"
+          />
+        </label>
+      ) : null}
+    </div>
+  );
 
   return (
     <Sidebar
-      testId="wallet-token-sidebar"
-      className="!w-[22rem] !min-w-[22rem] xl:!w-[23rem] xl:!min-w-[23rem]"
-      bodyClassName="px-2 pb-3"
-      headerClassName="px-4 pb-3 pt-3"
+      testId="wallets-sidebar"
+      className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
       collapsible
-      contentIdentity={`wallet-${activeTab}`}
-      collapseButtonLeading={<WalletRailAccount addresses={addresses} />}
-      collapseButtonTestId="wallet-token-sidebar-collapse-toggle"
-      expandButtonTestId="wallet-token-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse wallet"
-      expandButtonAriaLabel="Expand wallet"
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      resizable
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={WALLET_SIDEBAR_MIN_WIDTH}
+      maxWidth={WALLET_SIDEBAR_MAX_WIDTH}
+      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
+      contentIdentity={`wallets:${activeTab}`}
+      header={undefined}
+      headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
+      footer={collapseFooter}
+      footerClassName="!justify-start !px-1 !pb-2 !pt-1"
+      collapseButtonClassName="!bottom-3 !left-3"
+      expandButtonTestId="wallets-sidebar-expand-toggle"
+      expandButtonAriaLabel="Expand wallet sidebar"
       mobileTitle="Wallet"
       mobileMeta={`${filteredRows.length} tokens`}
-      header={
-        <SidebarHeader>
-          <div className="space-y-5">
-            <div>
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted">
-                Balance
-              </div>
-              <div className="mt-2 font-mono text-[2.35rem] font-semibold leading-none text-txt">
-                {formatUsd(totalUsd)}
-              </div>
-              <div className={cn("mt-2 text-sm font-semibold", pnlClassName)}>
-                {pnlValue !== null ? (
-                  <>
-                    {pnlValue > 0 ? "+" : ""}
-                    {formatBnb(profile?.summary.realizedPnlBnb)}
-                  </>
-                ) : (
-                  `${filteredRows.length} visible tokens`
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2">
-              <WalletRailActionButton
-                icon={DollarSign}
-                label="Buy"
-                onClick={() => onWalletAction("buy")}
-              />
-              <WalletRailActionButton
-                icon={ArrowLeftRight}
-                label="Swap"
-                onClick={() => onWalletAction("swap")}
-              />
-              <WalletRailActionButton
-                icon={Send}
-                label="Send"
-                onClick={() => onWalletAction("send")}
-              />
-              <WalletRailActionButton
-                icon={ArrowDownLeft}
-                label="Receive"
-                onClick={() => onWalletAction("receive")}
-              />
-            </div>
-
-            <div className="flex items-center gap-4 overflow-x-auto text-sm font-semibold">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 transition-colors",
-                    activeTab === tab.id
-                      ? "border-accent text-txt"
-                      : "border-transparent text-muted hover:text-txt",
-                  )}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <tab.icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                  {tab.count > 0 ? (
-                    <span className="ml-1 font-mono text-xs text-muted">
-                      {tab.count}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-
-            {activeTab === "tokens" ? (
-              <label className="flex h-10 items-center gap-2 rounded-full bg-bg/55 px-3 text-sm text-muted">
-                <Search className="h-4 w-4 shrink-0" />
-                <input
-                  value={searchQuery}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search tokens"
-                  aria-label="Search tokens"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="min-w-0 flex-1 bg-transparent text-txt outline-none placeholder:text-muted/70"
-                />
-              </label>
-            ) : null}
-          </div>
-        </SidebarHeader>
-      }
     >
-      <SidebarScrollRegion>
+      <div className="shrink-0 px-4 pb-3 pt-3">
+        <WalletRailAccount addresses={addresses} />
+        <div className="mt-4">{headerContent}</div>
+      </div>
+      <SidebarScrollRegion className="pt-0">
         <SidebarPanel className="space-y-1">
           {activeTab === "tokens" ? (
             filteredRows.length === 0 ? (
               <WalletRailEmpty
                 icon={Wallet}
                 title="No tokens"
-                body="No visible token balances."
+                body="Balances will show here."
               />
             ) : (
               filteredRows.map((row) => (
@@ -1312,10 +1461,17 @@ function RpcStatusCard({
   const rpcGood = Boolean(
     walletConfig?.evmBalanceReady && walletConfig?.solanaBalanceReady,
   );
-  const evmProvider = providerLabel(walletConfig?.selectedRpcProviders?.evm);
-  const solanaProvider = providerLabel(
-    walletConfig?.selectedRpcProviders?.solana,
-  );
+  const rpcStateLabel = !walletConfig
+    ? "Checking"
+    : rpcGood
+      ? "Good"
+      : "Needs attention";
+  const evmProvider = walletConfig
+    ? providerLabel(walletConfig.selectedRpcProviders?.evm, "evm")
+    : "—";
+  const solanaProvider = walletConfig
+    ? providerLabel(walletConfig.selectedRpcProviders?.solana, "solana")
+    : "—";
 
   return (
     <button
@@ -1333,10 +1489,10 @@ function RpcStatusCard({
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
-                rpcGood ? "bg-ok" : "bg-warn",
+                !walletConfig ? "bg-muted" : rpcGood ? "bg-ok" : "bg-warn",
               )}
             />
-            {rpcGood ? "Good" : "Needs attention"}
+            {rpcStateLabel}
           </div>
         </div>
         <Settings className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
@@ -1364,8 +1520,8 @@ function ActivityList({
     return (
       <EmptyState
         icon={Activity}
-        title="No agent activity yet"
-        body="No settled agent trades."
+        title="No trade activity"
+        body="Settled trades will show here."
       />
     );
   }
@@ -1414,8 +1570,8 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
     return (
       <EmptyState
         icon={ImageIcon}
-        title="No NFTs detected"
-        body="No indexed NFT collections."
+        title="No NFTs"
+        body="Collections will show here."
       />
     );
   }
@@ -1462,8 +1618,8 @@ function LpPositionsPanel({
     return (
       <EmptyState
         icon={Layers3}
-        title="No LP assets detected"
-        body="No indexed LP tokens or position NFTs."
+        title="No LP positions"
+        body="LPs and vaults will show here."
       />
     );
   }
@@ -1532,7 +1688,7 @@ function VincentPanel({
             Vincent trading
           </div>
           <div className="mt-1 max-w-xl text-xs-tight text-muted">
-            Hyperliquid and Polymarket execution.
+            Hyperliquid + Polymarket
           </div>
         </div>
         <div className="flex gap-2">
@@ -1554,7 +1710,7 @@ function VincentPanel({
             connected ? "bg-ok" : "bg-muted",
           )}
         />
-        {connected ? "Connected to Vincent" : "Not connected"}
+        {connected ? "Connected" : "Not connected"}
       </div>
       {error ? (
         <div className="mt-2 text-xs-tight text-danger">{error}</div>
@@ -1573,6 +1729,7 @@ export function InventoryView() {
     walletLoading,
     walletNftsLoading,
     walletError,
+    loadWalletConfig,
     loadBalances,
     loadNfts,
     setState,
@@ -1600,10 +1757,11 @@ export function InventoryView() {
   useEffect(() => {
     if (initialLoadRef.current) return;
     initialLoadRef.current = true;
+    void loadWalletConfig();
     if (walletEnabled === false) return;
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts, walletEnabled]);
+  }, [loadBalances, loadNfts, loadWalletConfig, walletEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1670,9 +1828,10 @@ export function InventoryView() {
   );
 
   const pnlValue = parseAmount(tradingProfile?.summary.realizedPnlBnb);
+  const showTradePnl = hasClosedTradePnl(tradingProfile);
   const pnlTone =
-    pnlValue === null || pnlValue === 0
-      ? "text-txt"
+    !showTradePnl || pnlValue === null || pnlValue === 0
+      ? "text-muted"
       : pnlValue > 0
         ? "text-ok"
         : "text-danger";
@@ -1689,9 +1848,10 @@ export function InventoryView() {
   );
 
   const handleRefresh = useCallback(() => {
+    void loadWalletConfig();
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts]);
+  }, [loadBalances, loadNfts, loadWalletConfig]);
 
   const handleTokenAction = useCallback(
     (row: TokenRow, action: "swap" | "bridge") => {
@@ -1731,9 +1891,10 @@ export function InventoryView() {
 
   const handleEnableWallet = useCallback(() => {
     setState("walletEnabled", true);
+    void loadWalletConfig();
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts, setState]);
+  }, [loadBalances, loadNfts, loadWalletConfig, setState]);
 
   const handleOpenVincent = useCallback(() => {
     setState("activeOverlayApp", VINCENT_APP_NAME);
@@ -1822,22 +1983,26 @@ export function InventoryView() {
               {formatUsd(displayedTotalUsd)}
             </div>
             <div className={cn("mt-3 text-base font-semibold", pnlTone)}>
-              {pnlValue !== null ? (
+              {showTradePnl && pnlValue !== null ? (
                 <>
                   {pnlValue > 0 ? "+" : ""}
                   {formatBnb(tradingProfile?.summary.realizedPnlBnb)}
                 </>
               ) : (
-                "No agent P&L loaded"
+                "—"
               )}
             </div>
           </div>
 
           <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <StatCard
-              label="Agent P&L"
-              value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-              detail={`${tradingProfile?.summary.totalSwaps ?? 0} trades`}
+              label="Trade P&L"
+              value={
+                showTradePnl
+                  ? formatBnb(tradingProfile?.summary.realizedPnlBnb)
+                  : "—"
+              }
+              detail={`${tradingProfile?.summary.totalSwaps ?? 0} swaps`}
               tone={pnlTone}
             />
             <StatCard
@@ -1863,19 +2028,8 @@ export function InventoryView() {
             onOpenSettings={handleOpenRpcSettings}
           />
           <div className="grid gap-2 sm:grid-cols-2">
-            {addresses.evmAddress ? (
-              <AddressPill label="EVM" address={addresses.evmAddress} />
-            ) : null}
-            {addresses.solanaAddress ? (
-              <AddressPill label="Solana" address={addresses.solanaAddress} />
-            ) : null}
-            {!addresses.evmAddress && !addresses.solanaAddress ? (
-              <EmptyState
-                icon={Wallet}
-                title="No wallet addresses"
-                body="Configure wallet keys in settings."
-              />
-            ) : null}
+            <AddressPill label="EVM" address={addresses.evmAddress} />
+            <AddressPill label="Solana" address={addresses.solanaAddress} />
           </div>
         </section>
 
@@ -1885,7 +2039,7 @@ export function InventoryView() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-txt">
                   <BarChart3 className="h-4 w-4 text-accent" />
-                  Agent P&L
+                  Trade P&L
                 </div>
                 <div className="flex rounded-full bg-bg/35 p-1">
                   {DASHBOARD_WINDOWS.map((window) => (
@@ -1916,7 +2070,7 @@ export function InventoryView() {
             <section className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-txt">
                 <Activity className="h-4 w-4 text-accent" />
-                Agent Activity
+                Trade Activity
               </div>
               <ActivityList profile={tradingProfile} />
             </section>
@@ -1929,6 +2083,13 @@ export function InventoryView() {
                 Portfolio
               </div>
               <WalletCompositionPanel rows={displayedAssetRows} />
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+                <TrendingUp className="h-4 w-4 text-accent" />
+                Trade Movers
+              </div>
               <PortfolioMoversPanel
                 rows={displayedAssetRows}
                 profile={tradingProfile}

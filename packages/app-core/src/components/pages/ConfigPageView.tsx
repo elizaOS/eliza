@@ -319,7 +319,8 @@ export function ConfigPageView({
           </div>
           <span className="text-xs-tight text-muted leading-snug">
             {t("configpageview.CloudModeDesc", {
-              defaultValue: "Managed RPC for all chains. No API keys needed.",
+              defaultValue:
+                "Managed RPC for EVM, BSC, and Solana via Eliza Cloud, with Helius on Solana.",
             })}
           </span>
           {rpcMode === "cloud" && (
