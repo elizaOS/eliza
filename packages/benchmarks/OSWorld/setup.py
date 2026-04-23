@@ -41,7 +41,7 @@ setup(
         "numpy>=1.26,<3",
         "Pillow~=12.2.0",
         "fabric",
-        "gymnasium~=1.2.3",
+        "gymnasium~=1.3.0",
         "requests~=2.33.0",
         "pytz~=2026.1.post1",
         "transformers~=5.6.0",
