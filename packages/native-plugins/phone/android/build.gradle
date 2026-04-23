@@ -7,7 +7,7 @@ ext {
 
 apply plugin: 'com.android.library'
 android {
-    namespace "ai.eliza.plugins.phone"
+    namespace = "ai.eliza.plugins.phone"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
