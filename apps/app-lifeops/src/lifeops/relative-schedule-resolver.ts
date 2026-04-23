@@ -3,10 +3,7 @@ import type {
   LifeOpsWorkflowSchedule,
 } from "@elizaos/shared/contracts/lifeops";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
-import {
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "./time.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
 
 const REGULARITY_RANK: Record<LifeOpsRegularityClass, number> = {
   insufficient_data: 0,
@@ -79,10 +76,44 @@ function nextProjectedLocalInstant(args: {
   return null;
 }
 
+type RelativeScheduleKind = Extract<
+  LifeOpsWorkflowSchedule,
+  {
+    kind:
+      | "relative_to_wake"
+      | "relative_to_bedtime"
+      | "during_morning"
+      | "during_night";
+  }
+>;
+
+function isAnchorKind(
+  schedule: RelativeScheduleKind,
+): schedule is Extract<
+  LifeOpsWorkflowSchedule,
+  { kind: "relative_to_wake" | "during_morning" }
+> {
+  return (
+    schedule.kind === "relative_to_wake" || schedule.kind === "during_morning"
+  );
+}
+
+function offsetMinutesFor(schedule: RelativeScheduleKind): number {
+  if (
+    schedule.kind === "relative_to_wake" ||
+    schedule.kind === "relative_to_bedtime"
+  ) {
+    return schedule.offsetMinutes;
+  }
+  if (schedule.kind === "during_morning") {
+    return 0;
+  }
+  // during_night: fires at (bedtimeTarget - windowMinutesBeforeSleepTarget).
+  return -(schedule.windowMinutesBeforeSleepTarget ?? 120);
+}
+
 export function resolveNextRelativeScheduleInstant(args: {
-  schedule:
-    | Extract<LifeOpsWorkflowSchedule, { kind: "relative_to_wake" }>
-    | Extract<LifeOpsWorkflowSchedule, { kind: "relative_to_bedtime" }>;
+  schedule: RelativeScheduleKind;
   state: LifeOpsScheduleMergedStateRecord | null;
   cursorIso?: string | null;
   nowMs: number;
@@ -101,13 +132,26 @@ export function resolveNextRelativeScheduleInstant(args: {
     return null;
   }
 
-  const anchorIso =
-    args.schedule.kind === "relative_to_wake"
-      ? state.wakeAt
-      : state.relativeTime.bedtimeTargetAt;
+  const anchorIso = isAnchorKind(args.schedule)
+    ? state.wakeAt
+    : state.relativeTime.bedtimeTargetAt;
   const anchorMs = parseIsoMs(anchorIso);
+  const offsetMinutes = offsetMinutesFor(args.schedule);
+
+  // relative_to_wake with stabilityWindowMinutes requires `wake.confirmed`,
+  // which is signalled by the merged-state circadianState having advanced
+  // past `waking` (i.e. `awake`). When the stability condition is not met,
+  // defer to the event-workflow path — return null rather than project.
+  if (
+    args.schedule.kind === "relative_to_wake" &&
+    typeof args.schedule.stabilityWindowMinutes === "number" &&
+    state.circadianState !== "awake"
+  ) {
+    return null;
+  }
+
   if (anchorMs !== null) {
-    const targetMs = anchorMs + args.schedule.offsetMinutes * 60_000;
+    const targetMs = anchorMs + offsetMinutes * 60_000;
     if (
       targetMs > cursorMs &&
       weekdayMatches(targetMs, state.timezone, args.schedule.onDays)
@@ -120,10 +164,9 @@ export function resolveNextRelativeScheduleInstant(args: {
   if (baseline === null) {
     return null;
   }
-  const projectedHour =
-    args.schedule.kind === "relative_to_wake"
-      ? baseline.medianWakeLocalHour
-      : baseline.medianBedtimeLocalHour;
+  const projectedHour = isAnchorKind(args.schedule)
+    ? baseline.medianWakeLocalHour
+    : baseline.medianBedtimeLocalHour;
   if (!Number.isFinite(projectedHour)) {
     return null;
   }
@@ -136,7 +179,5 @@ export function resolveNextRelativeScheduleInstant(args: {
   if (projectedAnchorMs === null) {
     return null;
   }
-  return new Date(
-    projectedAnchorMs + args.schedule.offsetMinutes * 60_000,
-  ).toISOString();
+  return new Date(projectedAnchorMs + offsetMinutes * 60_000).toISOString();
 }
