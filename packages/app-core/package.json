@@ -169,7 +169,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@stwd/sdk": "^0.8.0",
     "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^5.5.0",
+    "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.10.2",
     "chalk": "^5.3.0",
     "class-variance-authority": "^0.7.1",
