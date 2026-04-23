@@ -911,6 +911,13 @@ export interface AppActions {
   goToOnboardingStep: (step: OnboardingStep) => void;
   handleOnboardingRemoteConnect: () => Promise<void>;
   handleOnboardingUseLocalBackend: () => void;
+  /**
+   * Finalize onboarding without running the chat handoff.
+   * Used by RuntimeGate: the gate only picks a runtime target; it does
+   * not collect provider/character info, so there is no submit payload.
+   * Dispatches ONBOARDING_COMPLETE to the startup coordinator.
+   */
+  completeOnboarding: (landingTab?: Tab) => void;
 
   // Cloud
   handleCloudLogin: () => Promise<void>;
