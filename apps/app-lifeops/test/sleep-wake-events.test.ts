@@ -14,11 +14,15 @@ function buildState(
     localDate: "2026-04-20",
     timezone: "UTC",
     inferredAt: "2026-04-20T08:00:00.000Z",
-    phase: "morning",
+    circadianState: "awake",
+    stateConfidence: 0.9,
+    uncertaintyReason: null,
     relativeTime: {
       computedAt: "2026-04-20T08:00:00.000Z",
       localNowAt: "2026-04-20T08:00:00Z",
-      phase: "morning",
+      circadianState: "awake",
+      stateConfidence: 0.9,
+      uncertaintyReason: null,
       awakeProbability: {
         pAwake: 0.9,
         pAsleep: 0.05,
@@ -26,9 +30,6 @@ function buildState(
         contributingSources: [],
         computedAt: "2026-04-20T08:00:00.000Z",
       },
-      isProbablySleeping: false,
-      isAwake: true,
-      awakeState: "awake",
       wakeAnchorAt: "2026-04-20T07:30:00.000Z",
       wakeAnchorSource: "sleep_cycle",
       minutesSinceWake: 30,
@@ -59,15 +60,21 @@ function buildState(
       sampleCount: 10,
       windowDays: 28,
     },
+    baseline: {
+      medianWakeLocalHour: 7.5,
+      medianBedtimeLocalHour: 23.5,
+      medianSleepDurationMin: 480,
+      bedtimeStddevMin: 28,
+      wakeStddevMin: 25,
+      sampleCount: 10,
+      windowDays: 28,
+    },
     sleepStatus: "slept",
-    isProbablySleeping: false,
     sleepConfidence: 0.8,
     currentSleepStartedAt: null,
     lastSleepStartedAt: "2026-04-19T23:30:00.000Z",
     lastSleepEndedAt: "2026-04-20T07:30:00.000Z",
     lastSleepDurationMinutes: 480,
-    typicalWakeHour: 7.5,
-    typicalSleepHour: 23.5,
     wakeAt: "2026-04-20T07:30:00.000Z",
     firstActiveAt: "2026-04-20T07:35:00.000Z",
     lastActiveAt: "2026-04-20T08:00:00.000Z",
@@ -88,26 +95,59 @@ function buildState(
 }
 
 describe("sleep wake events", () => {
-  it("emits wake events for an awake schedule state", () => {
+  it("emits wake.observed on sleeping -> waking transition", () => {
     const events = deriveSleepWakeEvents({
-      previous: buildState({
-        awakeProbability: {
-          pAwake: 0.1,
-          pAsleep: 0.8,
-          pUnknown: 0.1,
-          contributingSources: [],
-          computedAt: "2026-04-20T07:20:00.000Z",
-        },
-      }),
-      current: buildState({}),
+      previous: buildState({ circadianState: "sleeping" }),
+      current: buildState({ circadianState: "waking" }),
       now: new Date("2026-04-20T08:00:00.000Z"),
     });
-
-    expect(events.map((event) => event.kind)).toContain("lifeops.wake.detected");
-    expect(events.map((event) => event.kind)).toContain("lifeops.wake.confirmed");
+    expect(events.map((event) => event.kind)).toContain(
+      "lifeops.wake.observed",
+    );
   });
 
-  it("emits bedtime imminent when the target is within 30 minutes", () => {
+  it("emits wake.confirmed + sleep.ended on waking -> awake transition", () => {
+    const events = deriveSleepWakeEvents({
+      previous: buildState({ circadianState: "waking" }),
+      current: buildState({ circadianState: "awake" }),
+      now: new Date("2026-04-20T08:00:00.000Z"),
+    });
+    const kinds = events.map((event) => event.kind);
+    expect(kinds).toContain("lifeops.wake.confirmed");
+    expect(kinds).toContain("lifeops.sleep.ended");
+  });
+
+  it("emits sleep.onset_candidate + sleep.detected on awake -> sleeping transition", () => {
+    const events = deriveSleepWakeEvents({
+      previous: buildState({ circadianState: "awake" }),
+      current: buildState({
+        circadianState: "sleeping",
+        currentSleepStartedAt: "2026-04-20T23:30:00.000Z",
+      }),
+      now: new Date("2026-04-20T23:35:00.000Z"),
+    });
+    const kinds = events.map((event) => event.kind);
+    expect(kinds).toContain("lifeops.sleep.onset_candidate");
+    expect(kinds).toContain("lifeops.sleep.detected");
+  });
+
+  it("does not re-emit on stable state (edge-triggered only)", () => {
+    const state = buildState({ circadianState: "awake" });
+    const events = deriveSleepWakeEvents({
+      previous: state,
+      current: state,
+      now: new Date("2026-04-20T08:00:00.000Z"),
+    });
+    // No state transition -> no circadian events should fire
+    expect(
+      events.filter((event) => event.kind.startsWith("lifeops.sleep")),
+    ).toHaveLength(0);
+    expect(
+      events.filter((event) => event.kind.startsWith("lifeops.wake")),
+    ).toHaveLength(0);
+  });
+
+  it("emits bedtime imminent when the target is within 30 minutes (edge)", () => {
     const events = deriveSleepWakeEvents({
       previous: buildState({
         relativeTime: {
@@ -127,6 +167,24 @@ describe("sleep wake events", () => {
 
     expect(events.map((event) => event.kind)).toContain(
       "lifeops.bedtime.imminent",
+    );
+  });
+
+  it("emits regularity.changed on regularityClass transition", () => {
+    const events = deriveSleepWakeEvents({
+      previous: buildState({
+        regularity: {
+          ...buildState({}).regularity,
+          regularityClass: "irregular",
+        },
+      }),
+      current: buildState({
+        regularity: { ...buildState({}).regularity, regularityClass: "regular" },
+      }),
+      now: new Date("2026-04-20T08:00:00.000Z"),
+    });
+    expect(events.map((event) => event.kind)).toContain(
+      "lifeops.regularity.changed",
     );
   });
 });
