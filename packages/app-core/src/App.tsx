@@ -73,13 +73,16 @@ import type { FlaminaGuideTopic } from "./state/types";
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 
+type ExtractComponent<TValue> =
+  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
 function lazyNamedView<
   TModule extends Record<string, unknown>,
   TKey extends keyof TModule,
 >(
   load: () => Promise<TModule>,
   exportName: TKey,
-): LazyExoticComponent<Extract<TModule[TKey], ComponentType<any>>> {
+): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
   return lazy(async () => {
     const module = await load();
     const component = module[exportName];
@@ -87,7 +90,7 @@ function lazyNamedView<
       throw new Error(`Missing component export: ${String(exportName)}`);
     }
     return {
-      default: component as Extract<TModule[TKey], ComponentType<any>>,
+      default: component as ExtractComponent<TModule[TKey]>,
     };
   });
 }

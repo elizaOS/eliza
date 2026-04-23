@@ -1,9 +1,9 @@
 import {
-  lazy,
-  Suspense,
   type ComponentType,
   type JSX,
   type LazyExoticComponent,
+  lazy,
+  Suspense,
 } from "react";
 import { CodingAgentSettingsSection } from "../app-shell/task-coordinator-slots.js";
 import { ConversationsSidebar } from "../components/conversations/ConversationsSidebar";
@@ -28,13 +28,16 @@ interface DetachedShellRootProps {
   route: Exclude<WindowShellRoute, { mode: "main" }>;
 }
 
+type ExtractComponent<TValue> =
+  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
 function lazyNamedView<
   TModule extends Record<string, unknown>,
   TKey extends keyof TModule,
 >(
   load: () => Promise<TModule>,
   exportName: TKey,
-): LazyExoticComponent<Extract<TModule[TKey], ComponentType<any>>> {
+): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
   return lazy(async () => {
     const module = await load();
     const component = module[exportName];
@@ -42,7 +45,7 @@ function lazyNamedView<
       throw new Error(`Missing component export: ${String(exportName)}`);
     }
     return {
-      default: component as Extract<TModule[TKey], ComponentType<any>>,
+      default: component as ExtractComponent<TModule[TKey]>,
     };
   });
 }

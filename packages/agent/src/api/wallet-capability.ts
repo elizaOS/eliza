@@ -75,9 +75,7 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
           ) {
             return true;
           }
-        } catch {
-          continue;
-        }
+        } catch {}
       }
     }
     return false;
@@ -91,9 +89,7 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
         if (getService(serviceName)) {
           return true;
         }
-      } catch {
-        continue;
-      }
+      } catch {}
     }
     return false;
   } catch {

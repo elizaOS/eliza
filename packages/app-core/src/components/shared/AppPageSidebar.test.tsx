@@ -45,7 +45,9 @@ describe("AppPageSidebar", () => {
       </AppPageSidebar>,
     );
 
-    const collapseInlineButton = screen.getByTestId("page-sidebar-collapse-inline");
+    const collapseInlineButton = screen.getByTestId(
+      "page-sidebar-collapse-inline",
+    );
     expect(collapseInlineButton.className).toContain("h-6");
     expect(collapseInlineButton.className).toContain("w-6");
     expect(collapseInlineButton.className).toContain("bg-transparent");

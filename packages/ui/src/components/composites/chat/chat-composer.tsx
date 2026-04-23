@@ -278,7 +278,9 @@ export function ChatComposer({
     const inlineTextarea = (
       <div
         className={
-          isInlineMultiline ? "relative min-w-0 w-full" : "relative min-w-0 flex-1"
+          isInlineMultiline
+            ? "relative min-w-0 w-full"
+            : "relative min-w-0 flex-1"
         }
       >
         <Textarea

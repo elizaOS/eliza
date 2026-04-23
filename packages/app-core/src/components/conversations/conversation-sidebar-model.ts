@@ -2,8 +2,8 @@ import { normalizeConnectorSource } from "@elizaos/shared/connectors";
 import { getChatSourceMeta } from "@elizaos/ui";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
-import type { TranslateFn } from "../../types";
 import { isMainChatConversation } from "../../state/chat-conversation-guards";
+import type { TranslateFn } from "../../types";
 
 import {
   formatRelativeTime,

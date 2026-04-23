@@ -11,7 +11,6 @@ import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { StewardLogo } from "../steward/injected";
 import type {
   ApprovedAddressesConfig,
   PolicyRule,
@@ -32,6 +31,7 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
+import { StewardLogo } from "../steward/injected";
 
 const asRecord = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};

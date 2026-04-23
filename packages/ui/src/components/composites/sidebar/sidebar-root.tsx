@@ -9,8 +9,6 @@ import {
   type SidebarAutoRailItem,
 } from "./sidebar-auto-rail";
 import { SidebarBody } from "./sidebar-body";
-import { SidebarCollapsedRail } from "./sidebar-collapsed-rail";
-import { SidebarRailItem } from "./sidebar-content";
 import type { SidebarProps, SidebarVariant } from "./sidebar-types";
 
 const sidebarRootVariants = cva(
@@ -102,9 +100,6 @@ const sidebarContentLayerClassName =
 
 const sidebarContentOverlayLayerClassName =
   "pointer-events-none absolute inset-0 z-10 select-none";
-
-const sidebarCollapsedFallbackBodyClassName =
-  "custom-scrollbar flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto px-2 pb-3 pt-2 [&_[data-sidebar-panel]]:min-h-0 [&_[data-sidebar-panel]]:gap-2 [&_[data-sidebar-panel]]:rounded-sm [&_[data-sidebar-panel]]:p-1.5 [&_[data-sidebar-filter-bar]]:hidden [&_[data-sidebar-section-label]]:hidden [&_[data-sidebar-section-header]]:hidden [&_[data-sidebar-toolbar-actions]]:hidden [&_[data-segmented-control]]:grid [&_[data-segmented-control]]:w-full [&_[data-segmented-control]]:max-w-none [&_[data-segmented-control]]:grid-cols-1 [&_[data-segmented-control]]:border-transparent [&_[data-segmented-control]]:bg-transparent [&_[data-segmented-control]]:p-0 [&_[data-segmented-control-button]]:w-full [&_[data-segmented-control-button]]:justify-center [&_[data-segmented-control-button]]:px-2.5 [&_[data-segmented-control-button]]:py-2.5 [&_[data-segmented-control-button]]:text-xs-tight [&_[data-sidebar-item]]:rounded-sm [&_[data-sidebar-item]]:px-2.5 [&_[data-sidebar-item]]:py-2.5 [&_[data-sidebar-item]]:gap-2 [&_[data-sidebar-item]]:items-center [&_[data-sidebar-item]]:justify-center [&_[data-sidebar-item]>div.absolute]:hidden [&_[data-sidebar-item-button]]:w-full [&_[data-sidebar-item-button]]:flex-col [&_[data-sidebar-item-button]]:items-center [&_[data-sidebar-item-button]]:justify-center [&_[data-sidebar-item-button]]:gap-2 [&_[data-sidebar-item-body]]:flex [&_[data-sidebar-item-body]]:w-full [&_[data-sidebar-item-body]]:flex-col [&_[data-sidebar-item-body]]:items-center [&_[data-sidebar-item-body]]:text-center [&_[data-sidebar-item-body]>*+*]:hidden [&_[data-sidebar-item-title]]:line-clamp-2 [&_[data-sidebar-item-title]]:text-center [&_[data-sidebar-item-title]]:text-xs-tight [&_[data-sidebar-item-title]]:leading-tight [&_[data-sidebar-item-description]]:hidden [&_[data-sidebar-item-icon]]:mx-auto [&_[data-sidebar-item-icon]]:mt-0 [&_[data-sidebar-item-action]]:hidden [&_.grid]:grid-cols-1 [&_.grid]:gap-2 [&_button]:min-h-11";
 
 const sidebarMetaClassName = "mt-1.5 text-xs text-muted";
 
@@ -493,9 +488,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         hasStructuredCollapsedRail,
       ],
     );
-    const [autoRailItems, setAutoRailItems] = React.useState(
-      autoRailItemsFromTree,
-    );
+    const [, setAutoRailItems] = React.useState(autoRailItemsFromTree);
     const renderedContentIdentity = contentIdentity ?? variant;
 
     React.useEffect(() => {

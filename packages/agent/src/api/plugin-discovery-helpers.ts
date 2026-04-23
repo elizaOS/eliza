@@ -109,9 +109,9 @@ export function getReleaseBundledPluginIds(): Set<string> {
 
 export interface PluginIndexEntry {
   id: string;
-  dirName: string;
+  dirName?: string;
   name: string;
-  npmName: string;
+  npmName?: string;
   description: string;
   tags?: string[];
   category:
@@ -290,7 +290,7 @@ function normalizeConfigUiHints(
 
 function extractPluginPackageMetadata(
   pkg: PackageJsonLike,
-  keyFallback: { dirName: string; npmName?: string },
+  keyFallback: { dirName?: string; npmName?: string },
 ): PluginPackageMetadata {
   const pluginParameters = normalizePluginParameters(
     pkg.agentConfig?.pluginParameters,
@@ -1304,14 +1304,22 @@ export function formatPluginName(id: string): string {
 
 export function readBundledPluginPackageMetadata(
   packageRoot: string,
-  dirName: string,
+  dirName: string | undefined,
   npmName?: string,
 ): PluginPackageMetadata {
-  const candidates = [
-    path.join(packageRoot, "packages", dirName, "package.json"),
-    path.join(packageRoot, "plugins", dirName, "typescript", "package.json"),
-    path.join(packageRoot, "plugins", dirName, "package.json"),
-  ];
+  const candidates = dirName
+    ? [
+        path.join(packageRoot, "packages", dirName, "package.json"),
+        path.join(
+          packageRoot,
+          "plugins",
+          dirName,
+          "typescript",
+          "package.json",
+        ),
+        path.join(packageRoot, "plugins", dirName, "package.json"),
+      ]
+    : [];
 
   if (npmName) {
     try {

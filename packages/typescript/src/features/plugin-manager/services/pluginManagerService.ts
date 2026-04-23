@@ -35,9 +35,9 @@ import { resolveStateDir } from "../utils/paths.ts";
 import {
 	getRegistryEntry,
 	loadRegistry,
-	searchPluginsByContent,
 	type PluginSearchResult,
 	type RegistryPlugin,
+	searchPluginsByContent,
 } from "./pluginRegistryService.ts";
 
 const execAsync = promisify(exec);

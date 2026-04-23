@@ -7,8 +7,8 @@ import type { Conversation, ConversationMessage } from "../api";
 import type { Tab } from "../navigation";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
-  useChatCallbacks,
   type UseChatCallbacksDeps,
+  useChatCallbacks,
 } from "./useChatCallbacks";
 
 const { clientMock, sendHookMock } = vi.hoisted(() => ({
@@ -42,10 +42,7 @@ vi.mock("./useChatSend", () => ({
 
 type HookState = ReturnType<typeof createHookState>;
 
-function createConversation(
-  id: string,
-  title = "New Chat",
-): Conversation {
+function createConversation(id: string, title = "New Chat"): Conversation {
   const isoNow = new Date().toISOString();
   return {
     id,
@@ -80,18 +77,13 @@ function createHookState(options?: {
   let conversationMessagesState = options?.conversationMessages ?? [];
   let unreadConversationsState =
     options?.unreadConversations ?? new Set<string>();
-  let companionMessageCutoffTsState =
-    options?.companionMessageCutoffTs ?? 0;
+  let companionMessageCutoffTsState = options?.companionMessageCutoffTs ?? 0;
 
   const activeConversationIdRef = { current: activeConversationIdState };
   const conversationMessagesRef = { current: conversationMessagesState };
 
   const setConversations = vi.fn(
-    (
-      next:
-        | Conversation[]
-        | ((prev: Conversation[]) => Conversation[]),
-    ) => {
+    (next: Conversation[] | ((prev: Conversation[]) => Conversation[])) => {
       conversationsState =
         typeof next === "function" ? next(conversationsState) : next;
     },
@@ -106,26 +98,16 @@ function createHookState(options?: {
     (
       next:
         | ConversationMessage[]
-        | ((
-            prev: ConversationMessage[],
-          ) => ConversationMessage[]),
+        | ((prev: ConversationMessage[]) => ConversationMessage[]),
     ) => {
       conversationMessagesState =
-        typeof next === "function"
-          ? next(conversationMessagesState)
-          : next;
+        typeof next === "function" ? next(conversationMessagesState) : next;
     },
   );
   const setUnreadConversations = vi.fn(
-    (
-      next:
-        | Set<string>
-        | ((prev: Set<string>) => Set<string>),
-    ) => {
+    (next: Set<string> | ((prev: Set<string>) => Set<string>)) => {
       unreadConversationsState =
-        typeof next === "function"
-          ? next(unreadConversationsState)
-          : next;
+        typeof next === "function" ? next(unreadConversationsState) : next;
     },
   );
 
@@ -316,7 +298,10 @@ describe("useChatCallbacks handleNewConversation", () => {
   it("keeps prior conversations once the user has already spoken", async () => {
     const activeConversation = createConversation("chat-1");
     const state = createHookState({
-      conversations: [activeConversation, createConversation("saved-1", "Saved")],
+      conversations: [
+        activeConversation,
+        createConversation("saved-1", "Saved"),
+      ],
       activeConversationId: activeConversation.id,
       conversationMessages: [
         createMessage("assistant", "Intro"),

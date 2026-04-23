@@ -121,7 +121,10 @@ export interface AppWorkspaceChromeProps {
    * Optional overrides forwarded into the shared page-scoped chat pane when
    * `chatScope` is provided.
    */
-  pageScopedChatPaneProps?: Omit<PageScopedChatPaneProps, "scope" | "footerActions">;
+  pageScopedChatPaneProps?: Omit<
+    PageScopedChatPaneProps,
+    "scope" | "footerActions"
+  >;
   /**
    * Controlled: current collapsed state.
    * When provided, `onToggleChat` must also be provided.

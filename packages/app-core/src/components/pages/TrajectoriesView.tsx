@@ -22,7 +22,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { client } from "../../api/client";
 import type {
   TrajectoryListResult,
@@ -34,6 +33,7 @@ import {
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 

@@ -27,6 +27,7 @@ type PluginManifest = {
 };
 
 type PackageJson = {
+  name?: string;
   main?: string;
   module?: string;
   exports?: Record<string, string | Record<string, string>> | string;
@@ -217,6 +218,19 @@ function resolvePackageEntrySync(packageRoot: string): string | null {
   return chooseExistingPath(fallbackCandidates);
 }
 
+function normalizePluginNpmName(name: string): string {
+  return name.endsWith("-root") ? name.slice(0, -5) : name;
+}
+
+function derivePluginId(npmName: string): string | null {
+  const normalized = normalizePluginNpmName(npmName);
+  if (!normalized.startsWith("@elizaos/plugin-")) {
+    return null;
+  }
+
+  return normalized.slice("@elizaos/plugin-".length);
+}
+
 export async function listLocalWorkspacePlugins(): Promise<
   LocalWorkspacePlugin[]
 > {
@@ -226,7 +240,13 @@ export async function listLocalWorkspacePlugins(): Promise<
     const localPlugins: LocalWorkspacePlugin[] = [];
 
     for (const entry of manifest.plugins) {
-      if (entry.category === "app" || !entry.npmName.includes("/plugin-")) {
+      if (
+        entry.category === "app" ||
+        typeof entry.npmName !== "string" ||
+        !entry.npmName.includes("/plugin-") ||
+        typeof entry.dirName !== "string" ||
+        entry.dirName.length === 0
+      ) {
         continue;
       }
       if (seen.has(entry.npmName)) {
@@ -257,6 +277,60 @@ export async function listLocalWorkspacePlugins(): Promise<
         supportedOs: metadata.supportedOs,
         requiredEnvKeys: metadata.requiredEnvKeys,
       });
+    }
+
+    const pluginsDir = path.join(REPO_ROOT, "eliza", "plugins");
+    if (fs.existsSync(pluginsDir)) {
+      for (const dirName of fs.readdirSync(pluginsDir).sort()) {
+        const rootDir = path.join(pluginsDir, dirName);
+        if (!fs.statSync(rootDir).isDirectory()) {
+          continue;
+        }
+
+        const typescriptRoot = path.join(rootDir, "typescript");
+        const typescriptPkg = readPackageJson(
+          path.join(typescriptRoot, "package.json"),
+        );
+        const rootPkg = readPackageJson(path.join(rootDir, "package.json"));
+        const rawName =
+          typeof typescriptPkg?.name === "string"
+            ? typescriptPkg.name
+            : typeof rootPkg?.name === "string"
+              ? rootPkg.name
+              : null;
+        if (!rawName) {
+          continue;
+        }
+
+        const npmName = normalizePluginNpmName(rawName);
+        const id = derivePluginId(npmName);
+        if (!id || seen.has(npmName)) {
+          continue;
+        }
+
+        const packageRoot =
+          typeof typescriptPkg?.name === "string" ? typescriptRoot : rootDir;
+        const entryPath = resolvePackageEntrySync(packageRoot);
+        if (!entryPath) {
+          continue;
+        }
+
+        seen.add(npmName);
+        const metadata = collectPackageMetadata(packageRoot);
+        localPlugins.push({
+          id,
+          dirName,
+          name: id,
+          npmName,
+          category: "feature",
+          packageRoot,
+          packageJsonPath: path.join(packageRoot, "package.json"),
+          entryPath,
+          entryUrl: pathToFileURL(entryPath).href,
+          supportedOs: metadata.supportedOs,
+          requiredEnvKeys: metadata.requiredEnvKeys,
+        });
+      }
     }
 
     return localPlugins.sort((a, b) => a.id.localeCompare(b.id));

@@ -42,7 +42,8 @@ const DEFAULT_COMPANION_SCENE_STATUS: CompanionSceneStatus = {
 
 export function useCompanionSceneStatus(): CompanionSceneStatus {
   return (
-    getBootConfig().useCompanionSceneStatus?.() ?? DEFAULT_COMPANION_SCENE_STATUS
+    getBootConfig().useCompanionSceneStatus?.() ??
+    DEFAULT_COMPANION_SCENE_STATUS
   );
 }
 
