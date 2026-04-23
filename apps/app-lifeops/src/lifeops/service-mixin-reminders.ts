@@ -4078,7 +4078,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.syncWebsiteAccessState(now);
       const previousSchedule = await this.readEffectiveScheduleState({ now });
       const currentSchedule = await this.refreshEffectiveScheduleState({ now });
-      const lifeOpsEvents =
+      const derivedEvents =
         currentSchedule === null
           ? []
           : deriveSleepWakeEvents({
@@ -4086,12 +4086,44 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               current: currentSchedule,
               now,
             });
-      for (const event of lifeOpsEvents) {
-        await this.runtime.emitEvent(event.kind, {
-          occurredAt: event.occurredAt,
-          confidence: event.confidence,
-          payload: event.payload,
+      // Persist each derived circadian event via createAuditEventIfNew so a
+      // runtime restart that re-runs deriveSleepWakeEvents on the same state
+      // pair does not duplicate the emit (audit id is deterministic:
+      // `${eventKind}:${agentId}:${occurredAt}`). Only events that were
+      // newly inserted get dispatched to runtime.emitEvent.
+      const lifeOpsEvents: typeof derivedEvents = [];
+      for (const event of derivedEvents) {
+        const inserted = await this.repository.createAuditEventIfNew({
+          id: event.id,
+          agentId: this.agentId(),
+          eventType: "circadian_event_emitted",
+          ownerType: "circadian_state",
+          ownerId:
+            currentSchedule?.id ??
+            `lifeops-schedule-merged:${this.agentId()}:local:${currentSchedule?.timezone ?? "UTC"}`,
+          reason: event.kind,
+          inputs: {
+            previousStateId: event.payload.previousStateId,
+            currentStateId: event.payload.currentStateId,
+          },
+          decision: {
+            kind: event.kind,
+            occurredAt: event.occurredAt,
+            confidence: event.confidence,
+            circadianState: event.payload.circadianState,
+            uncertaintyReason: event.payload.uncertaintyReason,
+          },
+          actor: "agent",
+          createdAt: now.toISOString(),
         });
+        if (inserted) {
+          lifeOpsEvents.push(event);
+          await this.runtime.emitEvent(event.kind, {
+            occurredAt: event.occurredAt,
+            confidence: event.confidence,
+            payload: event.payload,
+          });
+        }
       }
       const reminderResult = await this.processReminders({
         now: now.toISOString(),

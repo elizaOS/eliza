@@ -2168,8 +2168,38 @@ export class LifeOpsRepository {
         ${sqlJson(event.decision)},
         ${sqlQuote(event.actor)},
         ${sqlQuote(event.createdAt)}
-      )`,
+      )
+      ON CONFLICT(id) DO NOTHING`,
     );
+  }
+
+  /**
+   * Returns `true` when the audit row for this id was newly inserted, `false`
+   * when the id already existed. Used by circadian event emission to dedupe
+   * across runtime restarts (same state transition -> same id).
+   */
+  async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO life_audit_events (
+        id, agent_id, event_type, owner_type, owner_id, reason,
+        inputs_json, decision_json, actor, created_at
+      ) VALUES (
+        ${sqlQuote(event.id)},
+        ${sqlQuote(event.agentId)},
+        ${sqlQuote(event.eventType)},
+        ${sqlQuote(event.ownerType)},
+        ${sqlQuote(event.ownerId)},
+        ${sqlQuote(event.reason)},
+        ${sqlJson(event.inputs)},
+        ${sqlJson(event.decision)},
+        ${sqlQuote(event.actor)},
+        ${sqlQuote(event.createdAt)}
+      )
+      ON CONFLICT(id) DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length > 0;
   }
 
   async listAuditEvents(
