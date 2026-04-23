@@ -95,7 +95,8 @@ describe("useInventoryData", () => {
                 error: null,
                 tokens: [
                   {
-                    contractAddress: "0x0000000000000000000000000000000000000001",
+                    contractAddress:
+                      "0x0000000000000000000000000000000000000001",
                     symbol: "SPAM",
                     name: "Spam Token",
                     balance: "0.00000001",

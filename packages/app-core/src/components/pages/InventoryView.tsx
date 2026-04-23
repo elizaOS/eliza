@@ -730,11 +730,7 @@ function deriveLpPositions({
   return positions;
 }
 
-function LpPositionsPanel({
-  positions,
-}: {
-  positions: LpPositionPreview[];
-}) {
+function LpPositionsPanel({ positions }: { positions: LpPositionPreview[] }) {
   const positionsByProtocol = useMemo(() => {
     const map = new Map<LpProtocol, LpPositionPreview[]>();
     for (const protocol of LP_PROTOCOLS) {
@@ -757,9 +753,7 @@ function LpPositionsPanel({
               className="rounded-lg border border-border/50 bg-bg/40 px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-txt">
-                  {protocol}
-                </div>
+                <div className="text-sm font-semibold text-txt">{protocol}</div>
                 <div className="text-xs-tight text-muted">
                   {protocolPositions.length}
                 </div>
