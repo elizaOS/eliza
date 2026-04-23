@@ -423,6 +423,19 @@ function appendMissingApplicationBlock(xml, marker, block) {
   return xml.replace("</application>", `${block}\n    </application>`);
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeApplicationComponentBlock(xml, componentName) {
+  const escapedName = escapeRegExp(componentName);
+  const componentRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  return xml.replace(componentRe, "\n");
+}
+
 function ensureMiladyOsActivityFilters(xml) {
   if (xml.includes("android.intent.category.HOME")) {
     return xml;
@@ -500,6 +513,8 @@ function overlayAndroid() {
       "MiladyDialActivity.java",
       "MiladyInCallService.java",
       "MiladyMmsReceiver.java",
+      "MiladyRespondViaMessageService.java",
+      "MiladySmsComposeActivity.java",
       "MiladySmsReceiver.java",
     ]) {
       const src = path.join(srcJava, file);
@@ -572,6 +587,25 @@ function overlayAndroid() {
       `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
     );
     dirty = true;
+    for (const component of [
+      "MiladyDialActivity",
+      "MiladyAssistActivity",
+      "MiladyInCallService",
+      "MiladySmsReceiver",
+      "MiladyMmsReceiver",
+      "MiladyRespondViaMessageService",
+      "MiladySmsComposeActivity",
+      "MiladyBootReceiver",
+    ]) {
+      const nextXml = removeApplicationComponentBlock(
+        xml,
+        `${androidPackage}.${component}`,
+      );
+      if (nextXml !== xml) {
+        xml = nextXml;
+        dirty = true;
+      }
+    }
     xml = appendMissingApplicationBlock(
       xml,
       `${androidPackage}.MiladyDialActivity`,
@@ -580,6 +614,10 @@ function overlayAndroid() {
             android:name="${androidPackage}.MiladyDialActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -646,6 +684,41 @@ function overlayAndroid() {
                 <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyRespondViaMessageService`,
+      `
+        <service
+            android:name="${androidPackage}.MiladyRespondViaMessageService"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladySmsComposeActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladySmsComposeActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </activity>`,
     );
     xml = appendMissingApplicationBlock(
       xml,
