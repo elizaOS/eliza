@@ -27,6 +27,7 @@ import type {
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
+  ListLifeOpsCalendarsRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsInboxChannel,
@@ -806,6 +807,19 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: ListLifeOpsCalendarsRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
+      };
+      const calendars = await service.listCalendars(url, request);
+      json(res, { calendars });
     });
   }
 

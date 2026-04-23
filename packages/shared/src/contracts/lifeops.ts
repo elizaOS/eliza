@@ -1641,6 +1641,52 @@ export interface LifeOpsCalendarFeed {
   syncedAt: string | null;
 }
 
+/**
+ * Summary of one Google Calendar the user has access to (from calendarList.list).
+ * `includeInFeed` reflects whether the user has opted this calendar into the
+ * aggregated sidebar feed / briefing. Defaults to true for every calendar the
+ * user can see — opt-out, never opt-in, so new calendars are not silently
+ * hidden from the agent's picture of the user's life.
+ */
+export interface LifeOpsCalendarSummary {
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  accountEmail: string | null;
+  calendarId: string;
+  summary: string;
+  description: string | null;
+  primary: boolean;
+  accessRole: string;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  timeZone: string | null;
+  selected: boolean;
+  includeInFeed: boolean;
+}
+
+export interface ListLifeOpsCalendarsRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+}
+
+export interface ListLifeOpsCalendarsResponse {
+  calendars: LifeOpsCalendarSummary[];
+}
+
+export interface SetLifeOpsCalendarIncludedRequest {
+  calendarId: string;
+  includeInFeed: boolean;
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+}
+
+export interface SetLifeOpsCalendarIncludedResponse {
+  calendar: LifeOpsCalendarSummary;
+}
+
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
