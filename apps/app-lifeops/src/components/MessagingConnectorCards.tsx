@@ -16,6 +16,19 @@ import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 
+function isIosRuntime(): boolean {
+  if (
+    typeof navigator !== "undefined" &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent)
+  ) {
+    return true;
+  }
+  const capacitor = (
+    globalThis as { Capacitor?: { getPlatform?: () => string } }
+  ).Capacitor;
+  return capacitor?.getPlatform?.() === "ios";
+}
+
 function ConnectorCardShell({
   icon,
   platform,
@@ -212,7 +225,10 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
     if (access.tabState === "missing") {
       return `${sourceLabel} is connected, but Discord is not open in that browser profile yet.`;
     }
-    if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+    if (
+      access.authState === "logged_in" &&
+      access.tabState !== "dm_inbox_visible"
+    ) {
       return `${sourceLabel} sees your Discord session, but not the DM inbox yet.`;
     }
     return `${sourceLabel} is ready for Discord.`;
@@ -227,7 +243,10 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   if (access.tabState === "missing") {
     return "Milady Desktop Browser is available, but Discord is not open there yet.";
   }
-  if (access.authState === "logged_in" && access.tabState !== "dm_inbox_visible") {
+  if (
+    access.authState === "logged_in" &&
+    access.tabState !== "dm_inbox_visible"
+  ) {
     return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
   }
   return "Milady Desktop Browser is ready for Discord.";
@@ -675,8 +694,8 @@ export function TelegramConnectorCard() {
             </Button>
           </div>
           <div className="text-xs text-muted">
-            Enter the login code Telegram sent to your app or SMS, then retry
-            if the code was wrong or expired.
+            Enter the login code Telegram sent to your app or SMS, then retry if
+            the code was wrong or expired.
           </div>
         </div>
       ) : null}
@@ -807,6 +826,7 @@ function formatIMessageDiagnostic(code: string): string {
 
 export function IMessageConnectorCard() {
   const imessage = useIMessageConnector();
+  const iosRuntime = isIosRuntime();
   const status = imessage.status;
   const busy = imessage.loading;
   const isConnected = status?.connected === true;
@@ -850,10 +870,12 @@ export function IMessageConnectorCard() {
           {isConnected
             ? bridgeLabel === "BlueBubbles"
               ? status?.sendMode === "private-api"
-                ? "LifeOps is using the local BlueBubbles bridge with Private API enabled."
-                : "LifeOps is using the local BlueBubbles bridge. Sends are currently using the AppleScript fallback."
-              : "LifeOps is using the local imsg bridge for iMessage access."
-            : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
+                ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
+                : "LifeOps is using the Mac-side BlueBubbles bridge. Sends are currently using the AppleScript fallback."
+              : "LifeOps is using the Mac-side imsg bridge for iMessage access."
+            : iosRuntime
+              ? "iMessage access must run through a paired Mac or BlueBubbles bridge. Connect this iPhone to a remote Mac or cloud backend that has iMessage configured."
+              : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
         </div>
         {status?.accountHandle ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">

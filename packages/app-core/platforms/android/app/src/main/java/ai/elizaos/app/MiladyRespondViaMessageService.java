@@ -1,9 +1,11 @@
 package ai.elizaos.app;
 
 import android.app.Service;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.IBinder;
+import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -56,6 +58,7 @@ public class MiladyRespondViaMessageService extends Service {
         SmsManager smsManager = SmsManager.getDefault();
         for (String recipient : recipients) {
             sendTextMessage(smsManager, recipient, message);
+            persistSentMessage(recipient, message);
         }
     }
 
@@ -94,6 +97,23 @@ public class MiladyRespondViaMessageService extends Service {
             smsManager.sendMultipartTextMessage(recipient, null, parts, null, null);
         } else {
             smsManager.sendTextMessage(recipient, null, message, null, null);
+        }
+    }
+
+    private void persistSentMessage(String recipient, String message) {
+        long sentAt = System.currentTimeMillis();
+        ContentValues values = new ContentValues();
+        values.put(Telephony.Sms.ADDRESS, recipient);
+        values.put(Telephony.Sms.BODY, message);
+        values.put(Telephony.Sms.DATE, sentAt);
+        values.put(Telephony.Sms.DATE_SENT, sentAt);
+        values.put(Telephony.Sms.READ, 1);
+        values.put(Telephony.Sms.SEEN, 1);
+        values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT);
+
+        Uri inserted = getContentResolver().insert(Telephony.Sms.Sent.CONTENT_URI, values);
+        if (inserted == null) {
+            throw new IllegalStateException("SMS provider returned no sent row URI.");
         }
     }
 }

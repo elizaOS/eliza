@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { __internal } from "./index.js";
 
-const { parseCollectorLine, parseEventLine } = __internal;
+const { describeCollectorExit, parseCollectorLine, parseEventLine } =
+  __internal;
 
 describe("parseEventLine", () => {
   it("parses a complete activate line with window title", () => {
@@ -57,5 +58,25 @@ describe("parseEventLine", () => {
   it("ignores blank lines", () => {
     expect(parseEventLine("")).toBeNull();
     expect(parseEventLine("   ")).toBeNull();
+  });
+});
+
+describe("describeCollectorExit", () => {
+  it("classifies code 0 with no signal as a clean exit", () => {
+    expect(describeCollectorExit(0, null)).toEqual({
+      code: 0,
+      signal: null,
+      clean: true,
+      reason: "collector exited (code=0, signal=null)",
+    });
+  });
+
+  it("classifies non-zero exits as fatal", () => {
+    expect(describeCollectorExit(1, null)).toEqual({
+      code: 1,
+      signal: null,
+      clean: false,
+      reason: "collector exited (code=1, signal=null)",
+    });
   });
 });

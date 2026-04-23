@@ -24,10 +24,7 @@ export function hasPartialOnboardingConnectionConfig(
     return true;
   }
 
-  const root =
-    config && typeof config === "object" && !Array.isArray(config)
-      ? (config as Record<string, unknown>)
-      : null;
+  const root = asRecord(config);
   if (
     root &&
     (Object.hasOwn(root, "deploymentTarget") ||

@@ -187,6 +187,139 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("Catalog sample:");
   });
 
+  it("injects the LifeOps brief and live overview state", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/lifeops/overview") {
+        return jsonResponse({
+          occurrences: [],
+          goals: [],
+          reminders: [],
+          summary: {
+            activeOccurrenceCount: 2,
+            overdueOccurrenceCount: 1,
+            snoozedOccurrenceCount: 0,
+            activeReminderCount: 1,
+            activeGoalCount: 1,
+          },
+          owner: {
+            occurrences: [],
+            goals: [
+              {
+                title: "Sleep before midnight",
+                status: "active",
+              },
+            ],
+            reminders: [
+              {
+                title: "Drink water",
+                channel: "push",
+                state: "upcoming",
+                scheduledFor: "2026-04-22T21:00:00.000Z",
+              },
+            ],
+            summary: {
+              activeOccurrenceCount: 1,
+              overdueOccurrenceCount: 0,
+              snoozedOccurrenceCount: 0,
+              activeReminderCount: 1,
+              activeGoalCount: 1,
+            },
+          },
+          agentOps: {
+            occurrences: [],
+            goals: [],
+            reminders: [],
+            summary: {
+              activeOccurrenceCount: 0,
+              overdueOccurrenceCount: 0,
+              snoozedOccurrenceCount: 0,
+              activeReminderCount: 0,
+              activeGoalCount: 0,
+            },
+          },
+          schedule: null,
+        });
+      }
+      if (url.pathname === "/api/lifeops/capabilities") {
+        return jsonResponse({
+          generatedAt: "2026-04-22T20:00:00.000Z",
+          appEnabled: true,
+          relativeTime: null,
+          capabilities: [
+            {
+              id: "calendar",
+              domain: "connectors",
+              label: "Calendar",
+              state: "blocked",
+              summary: "Google Calendar needs setup",
+              confidence: 1,
+              lastCheckedAt: "2026-04-22T20:00:00.000Z",
+              evidence: [],
+            },
+          ],
+          summary: {
+            totalCount: 1,
+            workingCount: 0,
+            degradedCount: 0,
+            blockedCount: 1,
+            notConfiguredCount: 0,
+          },
+        });
+      }
+      if (url.pathname === "/api/lifeops/inbox/unified") {
+        return jsonResponse({
+          messages: [
+            {
+              id: "gmail-1",
+              channel: "gmail",
+              sender: {
+                id: "sender-1",
+                displayName: "Ada",
+                avatarUrl: null,
+              },
+              subject: "Launch",
+              snippet: "Can you review the launch checklist?",
+              receivedAt: "2026-04-22T19:00:00.000Z",
+              unread: true,
+              deepLink: null,
+              sourceRef: {
+                channel: "gmail",
+                externalId: "msg-1",
+              },
+            },
+          ],
+          channelCounts: {
+            gmail: { total: 1, unread: 1 },
+          },
+          fetchedAt: "2026-04-22T20:00:00.000Z",
+        });
+      }
+      return jsonResponse(null);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const runtime = {
+      agentId: AGENT_ID,
+      getRoom: vi.fn(async () => ({
+        id: "room-1",
+        metadata: pageRoomMetadata("page-lifeops"),
+      })),
+    };
+    const result = await pageScopedContextProvider.get(
+      runtime as never,
+      buildMessage(),
+      {} as never,
+    );
+
+    expect(result.text).toContain("LifeOps view");
+    expect(result.text).toContain("Live LifeOps state:");
+    expect(result.text).toContain("Capabilities: 0 working");
+    expect(result.text).toContain("Drink water");
+    expect(result.text).toContain("Sleep before midnight");
+    expect(result.text).toContain("Unified inbox");
+  });
+
   it("injects the wallet brief and live wallet readiness state", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = new URL(String(input)).pathname;
@@ -236,16 +369,42 @@ describe("pageScopedContextProvider", () => {
       if (path === "/api/wallet/nfts") {
         return jsonResponse({ evm: [], solana: null });
       }
-      if (path === "/api/wallet/steward-status") {
+      if (path === "/api/wallet/trading/profile") {
         return jsonResponse({
-          configured: true,
-          available: true,
-          connected: true,
-          vaultHealth: "ok",
+          window: "24h",
+          source: "all",
+          generatedAt: new Date().toISOString(),
+          summary: {
+            totalSwaps: 1,
+            buyCount: 1,
+            sellCount: 0,
+            settledCount: 1,
+            successCount: 1,
+            revertedCount: 0,
+            tradeWinRate: null,
+            txSuccessRate: 100,
+            winningTrades: 0,
+            evaluatedTrades: 0,
+            realizedPnlBnb: "0",
+            volumeBnb: "0.1",
+          },
+          pnlSeries: [],
+          tokenBreakdown: [],
+          recentSwaps: [],
         });
       }
-      if (path === "/api/wallet/steward-pending-approvals") {
-        return jsonResponse([]);
+      if (path === "/api/vincent/status") {
+        return jsonResponse({ connected: true, connectedAt: 1 });
+      }
+      if (path === "/api/vincent/strategy") {
+        return jsonResponse({
+          connected: true,
+          strategy: {
+            name: "balanced",
+            running: true,
+            tradingVenues: ["hyperliquid", "polymarket"],
+          },
+        });
       }
       return jsonResponse(null);
     });
@@ -268,7 +427,9 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("Live wallet state:");
     expect(result.text).toContain("0x1234...abcd");
     expect(result.text).toContain("RPC providers");
-    expect(result.text).toContain("Pending Steward approvals: 0");
+    expect(result.text).toContain("Token inventory");
+    expect(result.text).toContain("24h activity: 1 swap");
+    expect(result.text).toContain("Vincent: connected");
   });
 
   it("includes a substantive main-chat tail when sourceConversationId points to one", async () => {

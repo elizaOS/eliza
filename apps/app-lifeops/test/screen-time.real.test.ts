@@ -28,6 +28,14 @@ function makeMessage(runtime: IAgentRuntime, text: string) {
   };
 }
 
+function requireScreenTimeHandler() {
+  const handler = screenTimeAction.handler;
+  if (!handler) {
+    throw new Error("SCREEN_TIME action handler is required");
+  }
+  return handler;
+}
+
 describe("screen-time handler — real PGLite", () => {
   let runtime: AgentRuntime;
   let service: LifeOpsService;
@@ -86,9 +94,11 @@ describe("screen-time handler — real PGLite", () => {
     const safari = daily.find(
       (d) => d.identifier === "com.apple.SafariAggTest",
     );
-    expect(safari).toBeTruthy();
-    expect(safari!.totalSeconds).toBeGreaterThanOrEqual(1200);
-    expect(safari!.sessionCount).toBeGreaterThanOrEqual(2);
+    if (!safari) {
+      throw new Error("Expected Safari aggregate row");
+    }
+    expect(safari.totalSeconds).toBeGreaterThanOrEqual(1200);
+    expect(safari.sessionCount).toBeGreaterThanOrEqual(2);
   });
 
   it("getScreenTimeSummary returns top apps in descending order", async () => {
@@ -138,6 +148,43 @@ describe("screen-time handler — real PGLite", () => {
     // VSCode (1200) should rank above Chrome (300); top-2 must include VSCode first.
     expect(summary.items[0].identifier).toBe("com.summary.VSCodeX");
     expect(summary.items.length).toBe(2);
+  });
+
+  it("excludes OS login surfaces from app screen-time summaries", async () => {
+    const startAt = new Date("2025-01-16T01:00:00.000Z");
+    const endAt = new Date("2025-01-16T01:30:00.000Z");
+    await service.recordScreenTimeEvent({
+      source: "app",
+      identifier: "com.apple.loginwindow",
+      displayName: "loginwindow",
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      durationSeconds: 30 * 60,
+      metadata: { platform: "darwin" },
+    });
+    await service.recordScreenTimeEvent({
+      source: "app",
+      identifier: "com.summary.RealEditor",
+      displayName: "RealEditor",
+      startAt: new Date("2025-01-16T02:00:00.000Z").toISOString(),
+      endAt: new Date("2025-01-16T02:20:00.000Z").toISOString(),
+      durationSeconds: 20 * 60,
+      metadata: {},
+    });
+
+    const summary = await service.getScreenTimeSummary({
+      since: "2025-01-16T00:00:00.000Z",
+      until: "2025-01-16T03:00:00.000Z",
+      source: "app",
+      topN: 10,
+    });
+
+    expect(summary.items.map((item) => item.identifier)).not.toContain(
+      "com.apple.loginwindow",
+    );
+    expect(summary.items.map((item) => item.identifier)).toContain(
+      "com.summary.RealEditor",
+    );
   });
 
   it("getScreenTimeWeeklyAverageByApp returns structured per-day averages", async () => {
@@ -204,7 +251,7 @@ describe("screen-time handler — real PGLite", () => {
       });
     }
 
-    const result = await screenTimeAction.handler!(
+    const result = await requireScreenTimeHandler()(
       runtime,
       makeMessage(runtime, "What's my weekly average per app?") as never,
       undefined,
@@ -336,7 +383,7 @@ describe("screen-time handler — real PGLite", () => {
 
   it("screenTimeAction today handler returns text and data", async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const result = await screenTimeAction.handler!(
+    const result = await requireScreenTimeHandler()(
       runtime,
       makeMessage(runtime, "screen time today") as never,
       undefined,
@@ -350,7 +397,7 @@ describe("screen-time handler — real PGLite", () => {
   });
 
   it("screenTimeAction summary handler returns ranked items", async () => {
-    const result = await screenTimeAction.handler!(
+    const result = await requireScreenTimeHandler()(
       runtime,
       makeMessage(runtime, "screen time summary") as never,
       undefined,

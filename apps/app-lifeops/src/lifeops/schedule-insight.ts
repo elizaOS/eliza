@@ -11,15 +11,20 @@ import {
   type LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
+import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import { computeAwakeProbability } from "./awake-probability.js";
 import {
   type CircadianScorerResult,
+  MIN_STABILITY_WINDOW_MS,
+  SLEEP_ONSET_WINDOW_MS,
   scoreCircadianRules,
+  WAKE_CONFIRM_WINDOW_MS,
 } from "./circadian-rules.js";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type {
+  LifeOpsCircadianStateRow,
   LifeOpsRepository,
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
@@ -39,6 +44,7 @@ import {
   type SleepRegularityEpisodeLike,
 } from "./sleep-regularity.js";
 import { getZonedDateParts } from "./time.js";
+import { roundConfidence } from "./time-util.js";
 
 const LOOKBACK_MS = 72 * 60 * 60 * 1_000;
 const SIGNAL_ACTIVITY_PAD_MS = 3 * 60 * 1_000;
@@ -91,10 +97,6 @@ export type LifeOpsScheduleInspection = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function roundConfidence(value: number): number {
-  return Math.round(clamp(value, 0, 1) * 100) / 100;
 }
 
 function toIso(ms: number | null): string | null {
@@ -165,6 +167,9 @@ function windowsFromActivityEvents(
   for (let index = 0; index < events.length; index += 1) {
     const current = events[index];
     if (!current || current.eventKind !== "activate") {
+      continue;
+    }
+    if (isSystemInactivityApp(current)) {
       continue;
     }
     const startMs = timestamps[index] ?? Number.NaN;
@@ -474,7 +479,69 @@ function deriveRuleState(
   };
 }
 
-function deriveCircadianState(args: {
+/**
+ * Enforces the stability-window policy from `sleep-wake-spec.md` section 4:
+ *
+ *   - Manual override: bypass (instant).
+ *   - (sleeping|napping) -> waking: bypass (wake must never be delayed).
+ *   - waking -> awake: requires WAKE_CONFIRM_WINDOW_MS dwell.
+ *   - (awake|winding_down) -> (sleeping|napping): requires SLEEP_ONSET_WINDOW_MS dwell.
+ *   - Any other transition: requires MIN_STABILITY_WINDOW_MS dwell.
+ *
+ * Returns the incoming state when the transition is allowed, or the prior
+ * state (with uncertaintyReason="stale_state") when the dwell requirement
+ * isn't met yet.
+ */
+export function enforceStabilityWindow(args: {
+  incoming: {
+    circadianState: LifeOpsCircadianState;
+    stateConfidence: number;
+    uncertaintyReason: LifeOpsUnclearReason | null;
+  };
+  prior: { circadianState: LifeOpsCircadianState; enteredAtMs: number } | null;
+  hasManualOverride: boolean;
+  nowMs: number;
+}): {
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
+} {
+  if (args.hasManualOverride || !args.prior) return args.incoming;
+  if (args.prior.circadianState === args.incoming.circadianState)
+    return args.incoming;
+
+  const dwellMs = args.nowMs - args.prior.enteredAtMs;
+  const from = args.prior.circadianState;
+  const to = args.incoming.circadianState;
+
+  if ((from === "sleeping" || from === "napping") && to === "waking") {
+    return args.incoming;
+  }
+
+  let required = MIN_STABILITY_WINDOW_MS;
+  if (from === "waking" && to === "awake") required = WAKE_CONFIRM_WINDOW_MS;
+  if (
+    (from === "awake" || from === "winding_down") &&
+    (to === "sleeping" || to === "napping")
+  ) {
+    required = SLEEP_ONSET_WINDOW_MS;
+  }
+  if (dwellMs >= required) return args.incoming;
+
+  return {
+    circadianState: from,
+    stateConfidence: Math.min(args.incoming.stateConfidence, 0.6),
+    uncertaintyReason: "stale_state",
+  };
+}
+
+interface CircadianDecision {
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
+}
+
+interface CircadianDecisionInputs {
   nowMs: number;
   timezone: string;
   wakeAtMs: number | null;
@@ -486,54 +553,61 @@ function deriveCircadianState(args: {
   signalCount: number;
   windowCount: number;
   scorer: CircadianScorerResult;
-}): {
-  circadianState: LifeOpsCircadianState;
-  stateConfidence: number;
-  uncertaintyReason: LifeOpsUnclearReason | null;
+}
+
+/**
+ * Ordered decision table. Returns the first matching state plus a flag that
+ * tells the stability-window layer whether to bypass the dwell check (only
+ * true for explicit manual overrides).
+ */
+function decideCircadianState(args: CircadianDecisionInputs): {
+  decision: CircadianDecision;
+  hasManualOverride: boolean;
 } {
-  // Manual override wins because the user explicitly attested it.
-  const manual = args.scorer.firings.find(
-    (firing) => firing.name === "manual.override",
-  );
+  const manual = args.scorer.firings.find((f) => f.name === "manual.override");
   if (manual) {
     return {
-      circadianState: manual.contributes,
-      stateConfidence: 0.99,
-      uncertaintyReason: null,
+      decision: {
+        circadianState: manual.contributes,
+        stateConfidence: 0.99,
+        uncertaintyReason: null,
+      },
+      hasManualOverride: true,
     };
   }
-  const ruleState = deriveRuleState(args.scorer);
 
-  if (
-    args.sleepCycle.isProbablySleeping ||
-    args.awakeProbability.pAsleep >= 0.65
-  ) {
-    const circadianState =
-      ruleState?.circadianState === "sleeping"
-        ? "sleeping"
-        : args.sleepCycle.cycleType === "nap"
-          ? "napping"
-          : "sleeping";
+  const ruleState = deriveRuleState(args.scorer);
+  const { sleepCycle, awakeProbability: ap } = args;
+
+  if (sleepCycle.isProbablySleeping || ap.pAsleep >= 0.65) {
     return {
-      circadianState,
-      stateConfidence: roundConfidence(
-        Math.max(
-          args.sleepCycle.sleepConfidence,
-          args.awakeProbability.pAsleep,
+      decision: {
+        circadianState:
+          ruleState?.circadianState === "sleeping"
+            ? "sleeping"
+            : sleepCycle.cycleType === "nap"
+              ? "napping"
+              : "sleeping",
+        stateConfidence: roundConfidence(
+          Math.max(sleepCycle.sleepConfidence, ap.pAsleep),
         ),
-      ),
-      uncertaintyReason: null,
+        uncertaintyReason: null,
+      },
+      hasManualOverride: false,
     };
   }
+
   if (args.wakeAtMs !== null && args.nowMs - args.wakeAtMs <= 90 * 60 * 1_000) {
     return {
-      circadianState: "waking",
-      stateConfidence: roundConfidence(
-        Math.max(args.awakeProbability.pAwake, 0.62),
-      ),
-      uncertaintyReason: null,
+      decision: {
+        circadianState: "waking",
+        stateConfidence: roundConfidence(Math.max(ap.pAwake, 0.62)),
+        uncertaintyReason: null,
+      },
+      hasManualOverride: false,
     };
   }
+
   const nowHour = normalizeSleepHour(localHour(args.nowMs, args.timezone));
   const bedtimeHour = args.baseline?.medianBedtimeLocalHour ?? null;
   if (
@@ -542,29 +616,36 @@ function deriveCircadianState(args: {
     nowHour <= bedtimeHour + 4
   ) {
     return {
-      circadianState: "winding_down",
-      stateConfidence: roundConfidence(
-        Math.max(args.awakeProbability.pAwake, 0.5),
-      ),
-      uncertaintyReason: null,
+      decision: {
+        circadianState: "winding_down",
+        stateConfidence: roundConfidence(Math.max(ap.pAwake, 0.5)),
+        uncertaintyReason: null,
+      },
+      hasManualOverride: false,
     };
   }
-  if (
-    args.awakeProbability.pAwake >= 0.65 ||
-    (args.lastActiveAtMs !== null &&
-      args.nowMs - args.lastActiveAtMs <= 2 * 60 * 60 * 1_000)
-  ) {
+
+  const recentlyActive =
+    args.lastActiveAtMs !== null &&
+    args.nowMs - args.lastActiveAtMs <= 2 * 60 * 60 * 1_000;
+  if (ap.pAwake >= 0.65 || recentlyActive) {
     return {
-      circadianState: "awake",
-      stateConfidence: roundConfidence(
-        Math.max(args.awakeProbability.pAwake, 0.55),
-      ),
-      uncertaintyReason: null,
+      decision: {
+        circadianState: "awake",
+        stateConfidence: roundConfidence(Math.max(ap.pAwake, 0.55)),
+        uncertaintyReason: null,
+      },
+      hasManualOverride: false,
     };
   }
+
   if (ruleState) {
-    return { ...ruleState, uncertaintyReason: null };
+    return {
+      decision: { ...ruleState, uncertaintyReason: null },
+      hasManualOverride: false,
+    };
   }
+
   const uncertaintyReason: LifeOpsUnclearReason =
     args.signalCount === 0 && args.windowCount === 0
       ? "no_signals"
@@ -572,10 +653,34 @@ function deriveCircadianState(args: {
         ? "insufficient_history"
         : "contradictory_signals";
   return {
-    circadianState: "unclear",
-    stateConfidence: roundConfidence(args.awakeProbability.pUnknown),
-    uncertaintyReason,
+    decision: {
+      circadianState: "unclear",
+      stateConfidence: roundConfidence(ap.pUnknown),
+      uncertaintyReason,
+    },
+    hasManualOverride: false,
   };
+}
+
+/**
+ * Pick the decision-table result then run it through the stability-window
+ * hysteresis against the persisted prior state row.
+ */
+function deriveCircadianState(
+  args: CircadianDecisionInputs & {
+    priorState: {
+      circadianState: LifeOpsCircadianState;
+      enteredAtMs: number;
+    } | null;
+  },
+): CircadianDecision {
+  const { decision, hasManualOverride } = decideCircadianState(args);
+  return enforceStabilityWindow({
+    incoming: decision,
+    prior: args.priorState,
+    hasManualOverride,
+    nowMs: args.nowMs,
+  });
 }
 
 function toHistoricalSleepEpisodes(
@@ -593,11 +698,44 @@ function toHistoricalSleepEpisodes(
   }));
 }
 
+/**
+ * Translate a persisted `life_circadian_states` row into the
+ * `deriveCircadianState` prior-state shape, applying the stale-state downgrade
+ * from `sleep-wake-spec.md` section 5: if the row is older than
+ * {@link STALE_CIRCADIAN_STATE_MS} (default 6h) or already `unclear`, skip the
+ * stability-window check entirely so a stale process doesn't pin the state.
+ */
+export const STALE_CIRCADIAN_STATE_MS = 6 * 60 * 60 * 1_000;
+
+export function resolvePriorStateForDerivation(
+  row: LifeOpsCircadianStateRow | null,
+  nowMs: number,
+): {
+  circadianState: LifeOpsCircadianState;
+  enteredAtMs: number;
+} | null {
+  if (!row) return null;
+  if (row.circadianState === "unclear") return null;
+  const enteredAtMs = Date.parse(row.enteredAt);
+  if (!Number.isFinite(enteredAtMs)) return null;
+  const updatedAtMs = Date.parse(row.updatedAt);
+  const ageMs =
+    Number.isFinite(updatedAtMs) && updatedAtMs > enteredAtMs
+      ? nowMs - updatedAtMs
+      : nowMs - enteredAtMs;
+  if (ageMs >= STALE_CIRCADIAN_STATE_MS) return null;
+  return { circadianState: row.circadianState, enteredAtMs };
+}
+
 export function inferLifeOpsScheduleInsight(args: {
   nowMs: number;
   timezone: string;
   windows: LifeOpsActivityWindow[];
   signals: LifeOpsActivitySignal[];
+  priorState?: {
+    circadianState: LifeOpsCircadianState;
+    enteredAtMs: number;
+  } | null;
 }): LifeOpsScheduleInsight {
   return analyzeLifeOpsScheduleInsight(args).insight;
 }
@@ -608,6 +746,10 @@ function analyzeLifeOpsScheduleInsight(args: {
   windows: LifeOpsActivityWindow[];
   signals: LifeOpsActivitySignal[];
   historicalSleepEpisodes?: readonly SleepRegularityEpisodeLike[];
+  priorState?: {
+    circadianState: LifeOpsCircadianState;
+    enteredAtMs: number;
+  } | null;
 }): {
   insight: LifeOpsScheduleInsight;
   mergedWindows: LifeOpsActivityWindow[];
@@ -696,6 +838,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       signalCount: args.signals.length,
       windowCount: mergedWindows.length,
       scorer: scorerResult,
+      priorState: args.priorState ?? null,
     });
 
   const sleepStatus = sleepCycle.sleepStatus;
@@ -721,13 +864,15 @@ function analyzeLifeOpsScheduleInsight(args: {
     },
   });
 
+  const circadianRuleFirings = [...scorerResult.firings].sort(
+    (left, right) => right.weight - left.weight,
+  );
   return {
     insight: {
       effectiveDayKey,
       localDate: dayBoundary.localDate,
       timezone: args.timezone,
       inferredAt: new Date(args.nowMs).toISOString(),
-      phase: circadianState,
       circadianState,
       stateConfidence,
       uncertaintyReason,
@@ -735,8 +880,8 @@ function analyzeLifeOpsScheduleInsight(args: {
       awakeProbability,
       regularity,
       baseline,
+      circadianRuleFirings,
       sleepStatus,
-      isProbablySleeping: sleepCycle.isProbablySleeping,
       sleepConfidence: Math.max(
         sleepCycle.sleepConfidence,
         awakeProbability.pAsleep,
@@ -783,6 +928,8 @@ export async function inspectLifeOpsSchedule(args: {
     agentId: args.agentId,
     now,
   });
+  const priorStateRow = await args.repository.readCircadianState(args.agentId);
+  const priorState = resolvePriorStateForDerivation(priorStateRow, nowMs);
   const [signals, sessions, activityEvents] = await Promise.all([
     args.repository.listActivitySignals(args.agentId, {
       sinceAt,
@@ -801,18 +948,9 @@ export async function inspectLifeOpsSchedule(args: {
     ...windowsFromScreenTimeSessions(sessions, nowMs),
     ...windowsFromSignals(signals, nowMs),
   ];
-  const initialAnalysis = analyzeLifeOpsScheduleInsight({
-    nowMs,
-    timezone: args.timezone,
-    windows,
-    signals,
-  });
-  await persistSleepEpisodes({
-    repository: args.repository,
-    agentId: args.agentId,
-    episodes: initialAnalysis.sleepEpisodes,
-    nowMs,
-  });
+  // Load the 60-day historical episode roll before inference so baseline and
+  // regularity land in a single analysis pass. Freshly-detected episodes are
+  // persisted after analysis completes.
   const historicalSleepEpisodes = await listHistoricalSleepEpisodes({
     repository: args.repository,
     agentId: args.agentId,
@@ -825,6 +963,13 @@ export async function inspectLifeOpsSchedule(args: {
     windows,
     signals,
     historicalSleepEpisodes,
+    priorState,
+  });
+  await persistSleepEpisodes({
+    repository: args.repository,
+    agentId: args.agentId,
+    episodes: analysis.sleepEpisodes,
+    nowMs,
   });
   const record: LifeOpsScheduleInsightRecord = {
     ...analysis.insight,

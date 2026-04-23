@@ -2,13 +2,14 @@
 
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
+  type WalletBalancesResponse,
   type WalletChainKind,
+  type WalletConfigStatus,
   type WalletEntry,
   type WalletPrimaryMap,
 } from "@elizaos/shared/contracts/wallet";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WalletBalancesResponse, WalletConfigStatus } from "../api";
 
 type RefreshCloudWalletsResponse = {
   ok: boolean;

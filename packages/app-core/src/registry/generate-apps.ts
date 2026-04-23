@@ -122,7 +122,7 @@ interface CuratedDef {
   npmName: string;
   displayName: string;
   description: string;
-  subtype: "game" | "tool" | "shell" | "marketplace" | "other";
+  subtype: "game" | "tool" | "shell" | "marketplace" | "trading" | "other";
   launchType: "internal-tab" | "overlay" | "server-launch";
   target?: string;
   icon?: string;
@@ -185,10 +185,11 @@ const CURATED_APPS: CuratedDef[] = [
     id: "vincent",
     npmName: "@elizaos/app-vincent",
     displayName: "Vincent",
-    description: "Lit Protocol's agent-permissioned execution environment.",
-    subtype: "tool",
+    description:
+      "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
+    subtype: "trading",
     launchType: "server-launch",
-    icon: "LockKeyhole",
+    icon: "Wallet",
     groupOrder: 6,
   },
   {

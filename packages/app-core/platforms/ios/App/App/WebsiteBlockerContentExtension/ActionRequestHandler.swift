@@ -16,16 +16,30 @@ final class ActionRequestHandler: NSObject, NSExtensionRequestHandling {
 }
 
 private enum WebsiteBlockerContentBlockerStore {
-    static let appGroupIdentifier = "group.ai.elizaos.app"
+    static var appGroupIdentifier: String {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            return "group.ai.elizaos.app"
+        }
+        let extensionSuffix = ".WebsiteBlockerContentExtension"
+        let appBundleIdentifier = bundleIdentifier.hasSuffix(extensionSuffix)
+            ? String(bundleIdentifier.dropLast(extensionSuffix.count))
+            : bundleIdentifier
+        return "group.\(appBundleIdentifier)"
+    }
+
     static let stateKey = "website_blocker_state_v1"
 
     private struct StoredState: Codable {
         let websites: [String]
         let endsAtEpochMs: Double?
+        let requestedWebsites: [String]?
+        let blockedWebsites: [String]?
+        let allowedWebsites: [String]?
+        let matchMode: String?
     }
 
     static func writeRulesFile() throws -> URL {
-        let rules = buildRules(for: loadActiveWebsites())
+        let rules = buildRules(for: loadActiveState())
         let data = try JSONSerialization.data(withJSONObject: rules, options: [])
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("elizaos-website-blocker-rules", isDirectory: true)
@@ -39,24 +53,47 @@ private enum WebsiteBlockerContentBlockerStore {
         return url
     }
 
-    private static func loadActiveWebsites() -> [String] {
+    private static func loadActiveState() -> StoredState? {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
               let data = defaults.data(forKey: stateKey),
               let decoded = try? JSONDecoder().decode(StoredState.self, from: data) else {
-            return []
+            return nil
         }
 
         if let endsAtEpochMs = decoded.endsAtEpochMs,
            endsAtEpochMs <= Date().timeIntervalSince1970 * 1000 {
             defaults.removeObject(forKey: stateKey)
-            return []
+            return nil
         }
 
-        return decoded.websites.compactMap(normalizeHostname)
+        let websites = normalizedHosts(decoded.websites)
+        guard !websites.isEmpty else {
+            defaults.removeObject(forKey: stateKey)
+            return nil
+        }
+
+        return StoredState(
+            websites: websites,
+            endsAtEpochMs: decoded.endsAtEpochMs,
+            requestedWebsites: normalizedHosts(decoded.requestedWebsites),
+            blockedWebsites: normalizedHosts(decoded.blockedWebsites),
+            allowedWebsites: normalizedHosts(decoded.allowedWebsites),
+            matchMode: decoded.matchMode
+        )
     }
 
-    private static func buildRules(for websites: [String]) -> [[String: Any]] {
-        websites.map { website in
+    private static func buildRules(for state: StoredState?) -> [[String: Any]] {
+        guard let state else {
+            return []
+        }
+        let blockedWebsites: [String]
+        if let blocked = state.blockedWebsites, !blocked.isEmpty {
+            blockedWebsites = blocked
+        } else {
+            blockedWebsites = state.websites
+        }
+        let allowedWebsites = state.allowedWebsites ?? []
+        let blockedRules = blockedWebsites.map { website in
             [
                 "trigger": [
                     "url-filter": "^https?://([A-Za-z0-9-]+\\\\.)*\(NSRegularExpression.escapedPattern(for: website))([/:?#]|$)",
@@ -66,6 +103,21 @@ private enum WebsiteBlockerContentBlockerStore {
                 ],
             ]
         }
+        let allowRules = allowedWebsites.map { website in
+            [
+                "trigger": [
+                    "url-filter": "^https?://([A-Za-z0-9-]+\\\\.)*\(NSRegularExpression.escapedPattern(for: website))([/:?#]|$)",
+                ],
+                "action": [
+                    "type": "ignore-previous-rules",
+                ],
+            ]
+        }
+        return blockedRules + allowRules
+    }
+
+    private static func normalizedHosts(_ values: [String]?) -> [String] {
+        Array(Set((values ?? []).compactMap(normalizeHostname))).sorted()
     }
 
     private static func normalizeHostname(_ value: String) -> String? {

@@ -1,16 +1,16 @@
 {
   "id": "vincent",
   "name": "Vincent",
-  "description": "Lit Protocol's agent-permissioned execution environment.",
+  "description": "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
   "npmName": "@elizaos/app-vincent",
   "source": "bundled",
-  "tags": [],
+  "tags": ["trading", "hyperliquid", "polymarket", "prediction-markets"],
   "config": {},
   "render": {
     "visible": true,
     "pinTo": [],
     "style": "hero-card",
-    "icon": "LockKeyhole",
+    "icon": "Wallet",
     "group": "Curated",
     "groupOrder": 6,
     "actions": ["launch", "configure"]
@@ -18,10 +18,15 @@
   "resources": {},
   "dependsOn": [],
   "kind": "app",
-  "subtype": "tool",
+  "subtype": "trading",
   "launch": {
     "type": "server-launch",
-    "capabilities": [],
+    "capabilities": [
+      "hyperliquid",
+      "polymarket",
+      "trading",
+      "prediction-markets"
+    ],
     "curatedSlug": "vincent"
   }
 }

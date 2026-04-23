@@ -9,10 +9,14 @@ export type LifeOpsSection = LifeOpsRouteSection;
 
 export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
   "overview",
+  "sleep",
+  "screen-time",
+  "social",
   "setup",
   "reminders",
   "calendar",
   "messages",
+  "mail",
 ];
 
 function isLifeOpsSection(value: unknown): value is LifeOpsSection {
@@ -76,8 +80,12 @@ export interface UseLifeOpsSectionReturn {
   closeDetail: () => void;
 }
 
-export function useLifeOpsSection(initial?: string | null): UseLifeOpsSectionReturn {
-  const [state, setState] = useState<ReadHashShape>(() => readFromHash(initial));
+export function useLifeOpsSection(
+  initial?: string | null,
+): UseLifeOpsSectionReturn {
+  const [state, setState] = useState<ReadHashShape>(() =>
+    readFromHash(initial),
+  );
 
   // Keep the hook in sync with back/forward navigation (including other
   // widgets that write the hash, like the chat-sidebar widget rows).

@@ -1,8 +1,30 @@
 import type {
   LifeOpsCircadianState,
   LifeOpsEventKind,
+  LifeOpsRegularityClass,
+  LifeOpsScheduleSleepStatus,
+  LifeOpsUnclearReason,
 } from "@elizaos/shared/contracts/lifeops";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
+import { parseIsoMs } from "./time-util.js";
+
+/**
+ * Typed payload for every circadian-state event emitted from the scheduler
+ * tick. Every field is derived from the merged state record, and must not
+ * contain `unknown` / `any` (per repo rule).
+ */
+interface LifeOpsDerivedEventPayload {
+  currentStateId: string;
+  previousStateId: string | null;
+  sleepStatus: LifeOpsScheduleSleepStatus;
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+  uncertaintyReason: LifeOpsUnclearReason | null;
+  regularityClass: LifeOpsRegularityClass;
+  wakeAt: string | null;
+  bedtimeTargetAt: string | null;
+  minutesUntilBedtimeTarget: number | null;
+}
 
 export interface LifeOpsDerivedEvent {
   id: string;
@@ -14,15 +36,7 @@ export interface LifeOpsDerivedEvent {
   >;
   occurredAt: string;
   confidence: number;
-  payload: Record<string, unknown>;
-}
-
-function parseIsoMs(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  payload: LifeOpsDerivedEventPayload;
 }
 
 function buildEvent(args: {
@@ -170,24 +184,10 @@ export function deriveSleepWakeEvents(args: {
       }
     }
 
-    // Cold-boot case: if there's no previous state at all and we land in
-    // awake with a recent wakeAt, treat it as a wake.confirmed for
-    // downstream automations (audit will record the cold-boot path).
-    if (
-      previousState === null &&
-      currentState === "awake" &&
-      current.wakeAt
-    ) {
-      events.push(
-        buildEvent({
-          kind: "lifeops.wake.observed",
-          occurredAt: current.wakeAt,
-          confidence: current.awakeProbability.pAwake,
-          current,
-          previous,
-        }),
-      );
-    }
+    // Note: cold-boot (no previous state) does not synthesize any circadian
+    // event. The first tick landed in its scored state because the
+    // stability-window gate bypassed when priorState was null; the next
+    // real transition will emit the appropriate edge-triggered event.
   }
 
   // bedtime.imminent — edge-triggered when minutesUntilBedtimeTarget crosses
@@ -201,8 +201,7 @@ export function deriveSleepWakeEvents(args: {
     currentMinutesUntilBedtime >= 0 &&
     currentMinutesUntilBedtime <= 30;
   const wasOutsideWindow =
-    previousMinutesUntilBedtime === null ||
-    previousMinutesUntilBedtime > 30;
+    previousMinutesUntilBedtime === null || previousMinutesUntilBedtime > 30;
   if (nowInBedtimeWindow && wasOutsideWindow && isAwakeState(currentState)) {
     const occurredAtMs = parseIsoMs(current.relativeTime.bedtimeTargetAt);
     events.push(

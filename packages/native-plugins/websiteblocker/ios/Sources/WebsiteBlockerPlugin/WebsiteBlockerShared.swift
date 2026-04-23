@@ -11,8 +11,14 @@ struct WebsiteBlockerStoredState: Codable {
 }
 
 enum WebsiteBlockerShared {
-    static let appGroupIdentifier = "group.com.elizaos.eliza"
-    static let contentBlockerIdentifier = "com.elizaos.eliza.WebsiteBlockerContentExtension"
+    static var appGroupIdentifier: String {
+        "group.\(Bundle.main.bundleIdentifier ?? "ai.elizaos.app")"
+    }
+
+    static var contentBlockerIdentifier: String {
+        "\(Bundle.main.bundleIdentifier ?? "ai.elizaos.app").WebsiteBlockerContentExtension"
+    }
+
     static let stateKey = "website_blocker_state_v1"
     static let iso8601Formatter = ISO8601DateFormatter()
     static let exactMatchMode = "exact"

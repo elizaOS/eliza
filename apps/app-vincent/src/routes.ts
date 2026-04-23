@@ -1,10 +1,8 @@
 /**
- * Vincent OAuth backend routes.
+ * Vincent OAuth backend routes for Hyperliquid and Polymarket access.
  *
  * POST /api/vincent/start-login — Begin OAuth: register app, generate PKCE, return authUrl
  * GET  /callback/vincent        — OAuth redirect target: exchange code, persist tokens
- * POST /api/vincent/register    — (legacy) Register app with Vincent, get client_id
- * POST /api/vincent/token       — (legacy) Exchange auth code + verifier for tokens
  * GET  /api/vincent/status      — Check if Vincent is connected
  * POST /api/vincent/disconnect  — Clear stored Vincent tokens
  *
@@ -16,10 +14,20 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/agent/config/config";
 import { saveElizaConfig } from "@elizaos/agent/config/config";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+import { logger } from "@elizaos/core";
+import type {
+  VincentStartLoginResponse,
+  VincentStatusResponse,
+  VincentStrategyName,
+  VincentStrategyResponse,
+  VincentStrategyUpdateRequest,
+  VincentStrategyUpdateResponse,
+  VincentTradingProfileResponse,
+} from "./vincent-contracts";
+import { VINCENT_TRADING_VENUES } from "./vincent-contracts";
 
 const VINCENT_API_BASE = "https://heyvincent.ai";
 
@@ -84,19 +92,97 @@ interface VincentTokens {
   connectedAt: number;
 }
 
-/**
- * Read/write the `vincent` field on ElizaConfig. The schema doesn't type this
- * field yet — keep the unsafe cast isolated in one place.
- */
+interface VincentConfigState {
+  vincent?: VincentTokens;
+  trading?: {
+    strategy?: VincentStrategyName;
+    params?: Record<string, unknown>;
+    intervalSeconds?: number;
+    dryRun?: boolean;
+  };
+}
+
+function isVincentTradingConfig(
+  value: unknown,
+): value is NonNullable<VincentConfigState["trading"]> {
+  return (
+    isPlainRecord(value) &&
+    (value.strategy === undefined ||
+      readVincentStrategyName(value.strategy) !== null) &&
+    (value.params === undefined || isPlainRecord(value.params)) &&
+    (value.intervalSeconds === undefined ||
+      typeof value.intervalSeconds === "number") &&
+    (value.dryRun === undefined || typeof value.dryRun === "boolean")
+  );
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseJsonRecord(body: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return isPlainRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStringField(
+  value: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const field = value?.[key];
+  return typeof field === "string" && field.trim() ? field.trim() : null;
+}
+
+function readVincentStrategyName(value: unknown): VincentStrategyName | null {
+  return value === "dca" ||
+    value === "rebalance" ||
+    value === "threshold" ||
+    value === "manual"
+    ? value
+    : null;
+}
+
 function getVincentTokens(config: ElizaConfig): VincentTokens | undefined {
-  return (config as unknown as { vincent?: VincentTokens }).vincent;
+  const vincent: unknown = Reflect.get(config, "vincent");
+  return isPlainRecord(vincent) &&
+    typeof vincent.accessToken === "string" &&
+    typeof vincent.clientId === "string" &&
+    typeof vincent.connectedAt === "number"
+    ? {
+        accessToken: vincent.accessToken,
+        refreshToken:
+          typeof vincent.refreshToken === "string"
+            ? vincent.refreshToken
+            : null,
+        clientId: vincent.clientId,
+        connectedAt: vincent.connectedAt,
+      }
+    : undefined;
 }
 
 function setVincentTokens(
   config: ElizaConfig,
   tokens: VincentTokens | undefined,
 ): void {
-  (config as unknown as { vincent?: VincentTokens }).vincent = tokens;
+  Reflect.set(config, "vincent", tokens);
+}
+
+function getVincentTradingConfig(
+  config: ElizaConfig,
+): VincentConfigState["trading"] | undefined {
+  const trading: unknown = Reflect.get(config, "trading");
+  return isVincentTradingConfig(trading) ? trading : undefined;
+}
+
+function setVincentTradingConfig(
+  config: ElizaConfig,
+  trading: VincentConfigState["trading"],
+): void {
+  Reflect.set(config, "trading", trading);
 }
 
 export interface VincentRouteState {
@@ -131,8 +217,8 @@ export async function handleVincentRoute(
       const redirectUri = `${origin}/callback/vincent`;
 
       const body = await readBody(req).catch(() => "");
-      const parsed = body ? (JSON.parse(body) as { appName?: string }) : {};
-      const appName = parsed.appName?.trim() || "Eliza";
+      const parsed = body ? parseJsonRecord(body) : null;
+      const appName = readStringField(parsed, "appName") ?? "Eliza";
 
       const registerRes = await fetch(
         `${VINCENT_API_BASE}/api/oauth/public/register`,
@@ -154,21 +240,28 @@ export async function handleVincentRoute(
         );
         return true;
       }
-      const { client_id } = (await registerRes.json()) as { client_id: string };
+      const registerJson = parseJsonRecord(
+        await registerRes.text().catch(() => ""),
+      );
+      const clientId = readStringField(registerJson, "client_id");
+      if (!clientId) {
+        sendJsonError(res, 502, "Vincent register returned an invalid payload");
+        return true;
+      }
 
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier);
       const stateParam = crypto.randomUUID();
 
       pendingLogins.set(stateParam, {
-        clientId: client_id,
+        clientId,
         codeVerifier,
         redirectUri,
         createdAt: Date.now(),
       });
 
       const params = new URLSearchParams({
-        client_id,
+        client_id: clientId,
         response_type: "code",
         redirect_uri: redirectUri,
         scope: "all",
@@ -178,8 +271,13 @@ export async function handleVincentRoute(
         state: stateParam,
       });
       const authUrl = `${VINCENT_API_BASE}/api/oauth/public/authorize?${params.toString()}`;
+      const payload: VincentStartLoginResponse = {
+        authUrl,
+        state: stateParam,
+        redirectUri,
+      };
 
-      sendJson(res, 200, { authUrl, state: stateParam, redirectUri });
+      sendJson(res, 200, payload);
     } catch (err) {
       logger.error(
         `[vincent/start-login] ${err instanceof Error ? err.message : String(err)}`,
@@ -285,15 +383,26 @@ export async function handleVincentRoute(
         return true;
       }
 
-      const tokens = (await tokenRes.json()) as {
-        access_token: string;
-        refresh_token?: string;
-      };
+      const tokenJson = parseJsonRecord(await tokenRes.text().catch(() => ""));
+      const accessToken = readStringField(tokenJson, "access_token");
+      if (!accessToken) {
+        logger.error(
+          "[vincent/callback] token response was missing access_token",
+        );
+        sendCallbackHtml(
+          res,
+          502,
+          "Vincent login failed",
+          "Token exchange with Vincent returned an invalid payload. Please return to the app and try again.",
+        );
+        return true;
+      }
+      const refreshToken = readStringField(tokenJson, "refresh_token");
 
       const config = state.config;
       setVincentTokens(config, {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token ?? null,
+        accessToken,
+        refreshToken,
         clientId: pending.clientId,
         connectedAt: Math.floor(Date.now() / 1000),
       });
@@ -320,110 +429,15 @@ export async function handleVincentRoute(
     return true;
   }
 
-  // ── POST /api/vincent/register ──────────────────────────────────
-  if (method === "POST" && pathname === "/api/vincent/register") {
-    try {
-      const body = await readBody(req);
-      const { appName, redirectUris } = JSON.parse(body);
-
-      const upstream = await fetch(
-        `${VINCENT_API_BASE}/api/oauth/public/register`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            client_name: appName ?? "Eliza",
-            redirect_uris: redirectUris ?? [],
-          }),
-        },
-      );
-
-      if (!upstream.ok) {
-        const text = await upstream.text().catch(() => "");
-        sendJsonError(res, upstream.status, `Vincent register failed: ${text}`);
-        return true;
-      }
-
-      const data = await upstream.json();
-      sendJson(res, 200, data);
-    } catch (err) {
-      logger.error(
-        `[vincent/register] ${err instanceof Error ? err.message : String(err)}`,
-      );
-      sendJsonError(res, 500, "Vincent registration failed");
-    }
-    return true;
-  }
-
-  // ── POST /api/vincent/token ─────────────────────────────────────
-  if (method === "POST" && pathname === "/api/vincent/token") {
-    try {
-      const body = await readBody(req);
-      const { code, clientId, codeVerifier } = JSON.parse(body);
-
-      if (!code || !clientId || !codeVerifier) {
-        sendJsonError(res, 400, "Missing code, clientId, or codeVerifier");
-        return true;
-      }
-
-      const upstream = await fetch(
-        `${VINCENT_API_BASE}/api/oauth/public/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "authorization_code",
-            code,
-            client_id: clientId,
-            code_verifier: codeVerifier,
-          }),
-        },
-      );
-
-      if (!upstream.ok) {
-        const text = await upstream.text().catch(() => "");
-        sendJsonError(
-          res,
-          upstream.status,
-          `Vincent token exchange failed: ${text}`,
-        );
-        return true;
-      }
-
-      const tokens = (await upstream.json()) as {
-        access_token: string;
-        refresh_token?: string;
-      };
-
-      // Persist tokens to config
-      const config = state.config;
-      setVincentTokens(config, {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token ?? null,
-        clientId,
-        connectedAt: Math.floor(Date.now() / 1000),
-      });
-      await saveElizaConfig(config);
-
-      logger.info("[vincent/token] Vincent connected successfully");
-      sendJson(res, 200, { ok: true, connected: true });
-    } catch (err) {
-      logger.error(
-        `[vincent/token] ${err instanceof Error ? err.message : String(err)}`,
-      );
-      sendJsonError(res, 500, "Vincent token exchange failed");
-    }
-    return true;
-  }
-
   // ── GET /api/vincent/status ─────────────────────────────────────
   if (method === "GET" && pathname === "/api/vincent/status") {
     const vincent = getVincentTokens(state.config);
-    const connected = Boolean(vincent?.accessToken);
-    sendJson(res, 200, {
-      connected,
+    const payload: VincentStatusResponse = {
+      connected: Boolean(vincent?.accessToken),
       connectedAt: vincent?.connectedAt ?? null,
-    });
+      tradingVenues: VINCENT_TRADING_VENUES,
+    };
+    sendJson(res, 200, payload);
     return true;
   }
 
@@ -444,58 +458,18 @@ export async function handleVincentRoute(
     return true;
   }
 
-  // ── GET /api/vincent/vault-status ──────────────────────────────
-  // Aggregated vault info for the Vincent app dashboard.
-  if (method === "GET" && pathname === "/api/vincent/vault-status") {
-    const vincent = getVincentTokens(state.config);
-    const connected = Boolean(vincent?.accessToken);
-    if (!connected) {
-      sendJson(res, 200, {
-        connected: false,
-        connectedAt: null,
-        vaultHealth: null,
-        evmAddress: null,
-        solanaAddress: null,
-        nativeBalance: null,
-        tokenBalance: null,
-        treasuryValueUsd: null,
-      });
-      return true;
-    }
-    // Return what we know from the config; the UI can enrich from
-    // steward-status and wallet-balances endpoints separately.
-    sendJson(res, 200, {
-      connected: true,
-      connectedAt: vincent?.connectedAt ?? null,
-      vaultHealth: null, // populated by steward-status on the client side
-      evmAddress: null,
-      solanaAddress: null,
-      nativeBalance: null,
-      tokenBalance: null,
-      treasuryValueUsd: null,
-    });
-    return true;
-  }
-
   // ── GET /api/vincent/trading-profile ───────────────────────────
-  // P&L analytics stub — returns empty profile until the trading
-  // backend feeds real data.
   if (method === "GET" && pathname === "/api/vincent/trading-profile") {
     const vincent = getVincentTokens(state.config);
     if (!vincent?.accessToken) {
       sendJson(res, 200, { connected: false, profile: null });
       return true;
     }
-    sendJson(res, 200, {
+    const payload: VincentTradingProfileResponse = {
       connected: true,
-      profile: {
-        totalPnl: "0",
-        winRate: 0,
-        totalSwaps: 0,
-        volume24h: "0",
-        tokenBreakdown: [],
-      },
-    });
+      profile: null,
+    };
+    sendJson(res, 200, payload);
     return true;
   }
 
@@ -507,28 +481,23 @@ export async function handleVincentRoute(
       sendJson(res, 200, { connected: false, strategy: null });
       return true;
     }
-    // Read strategy from config if available
-    const tradingConfig = (
-      state.config as unknown as {
-        trading?: {
-          strategy?: string;
-          params?: Record<string, unknown>;
-          intervalSeconds?: number;
-          dryRun?: boolean;
-          running?: boolean;
-        };
-      }
-    ).trading;
-    sendJson(res, 200, {
+    const tradingConfig = getVincentTradingConfig(state.config);
+    if (!tradingConfig) {
+      sendJson(res, 200, { connected: true, strategy: null });
+      return true;
+    }
+    const payload: VincentStrategyResponse = {
       connected: true,
       strategy: {
         name: tradingConfig?.strategy ?? "manual",
+        venues: VINCENT_TRADING_VENUES,
         params: tradingConfig?.params ?? {},
         intervalSeconds: tradingConfig?.intervalSeconds ?? 60,
         dryRun: tradingConfig?.dryRun ?? false,
-        running: tradingConfig?.running ?? false,
+        running: false,
       },
-    });
+    };
+    sendJson(res, 200, payload);
     return true;
   }
 
@@ -542,17 +511,19 @@ export async function handleVincentRoute(
         return true;
       }
       const body = await readBody(req);
-      const updates = JSON.parse(body) as {
-        strategy?: string;
-        params?: Record<string, unknown>;
-        intervalSeconds?: number;
-        dryRun?: boolean;
+      const parsed = parseJsonRecord(body);
+      const updates: VincentStrategyUpdateRequest = {
+        strategy: readVincentStrategyName(parsed?.strategy) ?? undefined,
+        params: isPlainRecord(parsed?.params) ? parsed.params : undefined,
+        intervalSeconds:
+          typeof parsed?.intervalSeconds === "number"
+            ? parsed.intervalSeconds
+            : undefined,
+        dryRun: typeof parsed?.dryRun === "boolean" ? parsed.dryRun : undefined,
       };
-      const config = state.config as unknown as {
-        trading?: Record<string, unknown>;
-      };
-      config.trading = {
-        ...(config.trading ?? {}),
+      const config = getVincentTradingConfig(state.config);
+      const nextTrading = {
+        ...(config ?? {}),
         ...(updates.strategy !== undefined && { strategy: updates.strategy }),
         ...(updates.params !== undefined && { params: updates.params }),
         ...(updates.intervalSeconds !== undefined && {
@@ -560,48 +531,26 @@ export async function handleVincentRoute(
         }),
         ...(updates.dryRun !== undefined && { dryRun: updates.dryRun }),
       };
+      setVincentTradingConfig(state.config, nextTrading);
       await saveElizaConfig(state.config);
-      sendJson(res, 200, { ok: true, strategy: config.trading });
+      const payload: VincentStrategyUpdateResponse = {
+        ok: true,
+        strategy: {
+          name: nextTrading.strategy ?? "manual",
+          venues: VINCENT_TRADING_VENUES,
+          params: nextTrading.params ?? {},
+          intervalSeconds: nextTrading.intervalSeconds ?? 60,
+          dryRun: nextTrading.dryRun ?? false,
+          running: false,
+        },
+      };
+      sendJson(res, 200, payload);
     } catch (err) {
       logger.error(
         `[vincent/strategy] ${err instanceof Error ? err.message : String(err)}`,
       );
       sendJsonError(res, 500, "Strategy update failed");
     }
-    return true;
-  }
-
-  // ── POST /api/vincent/trading/start ────────────────────────────
-  if (method === "POST" && pathname === "/api/vincent/trading/start") {
-    const vincent = getVincentTokens(state.config);
-    if (!vincent?.accessToken) {
-      sendJsonError(res, 401, "Vincent not connected");
-      return true;
-    }
-    const config = state.config as unknown as {
-      trading?: Record<string, unknown>;
-    };
-    config.trading = { ...(config.trading ?? {}), running: true };
-    await saveElizaConfig(state.config);
-    logger.info("[vincent/trading] Trading loop started");
-    sendJson(res, 200, { ok: true, running: true });
-    return true;
-  }
-
-  // ── POST /api/vincent/trading/stop ─────────────────────────────
-  if (method === "POST" && pathname === "/api/vincent/trading/stop") {
-    const vincent = getVincentTokens(state.config);
-    if (!vincent?.accessToken) {
-      sendJsonError(res, 401, "Vincent not connected");
-      return true;
-    }
-    const config = state.config as unknown as {
-      trading?: Record<string, unknown>;
-    };
-    config.trading = { ...(config.trading ?? {}), running: false };
-    await saveElizaConfig(state.config);
-    logger.info("[vincent/trading] Trading loop stopped");
-    sendJson(res, 200, { ok: true, running: false });
     return true;
   }
 

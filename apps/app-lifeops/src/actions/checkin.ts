@@ -1,7 +1,8 @@
-import type { Action, ActionExample, ProviderDataRecord } from "@elizaos/core";
 import { hasOwnerAccess } from "@elizaos/agent";
+import type { Action, ActionExample, ProviderDataRecord } from "@elizaos/core";
 import { CheckinService } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinReport } from "../lifeops/checkin/types.js";
+import { LifeOpsService } from "../lifeops/service.js";
 
 /**
  * Actions for the morning/night check-in engine. The actions expose explicit
@@ -20,6 +21,8 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
     yesterdaysWins: report.yesterdaysWins,
     habitSummaries: report.habitSummaries,
     habitEscalationLevel: report.habitEscalationLevel,
+    briefingSections: report.briefingSections,
+    summaryText: report.summaryText,
     collectorErrors: {
       overdueTodos: report.collectorErrors.overdueTodos,
       todaysMeetings: report.collectorErrors.todaysMeetings,
@@ -41,6 +44,9 @@ function reportToActionData(report: CheckinReport): ProviderDataRecord {
  * "(unavailable: <reason>)" marker instead.
  */
 function formatCheckinReportText(report: CheckinReport): string {
+  if (report.summaryText.trim().length > 0) {
+    return report.summaryText;
+  }
   const prefix =
     report.kind === "morning" ? "Morning check-in" : "Night check-in";
   const overdueErr = report.collectorErrors.overdueTodos;
@@ -98,7 +104,7 @@ export const runMorningCheckinAction: Action & {
   ],
   description:
     "Run the morning check-in: assemble the owner's start-of-day operating picture across overdue todos, today's meetings, " +
-    "priority inbox items, and yesterday's wins. Use this for explicit start-of-day review requests like 'run my morning check-in', " +
+    "priority inbox items, X/socials, GitHub, calendar changes, promises/follow-ups, contacted people, and yesterday's wins. Use this for explicit start-of-day review requests like 'run my morning check-in', " +
     "'morning review', 'morning brief', 'start my day', 'what matters today', 'today's priorities', 'what's on my plate this morning', " +
     "'give me my operating picture', or 'show me the command center for today'. " +
     "When the owner asks for a morning brief or morning check-in, you must call this action rather than replying conversationally. " +
@@ -115,10 +121,11 @@ export const runMorningCheckinAction: Action & {
         data: { error: "PERMISSION_DENIED" },
       };
     }
-    const service = new CheckinService(runtime);
+    const service = new CheckinService(runtime, {
+      sources: new LifeOpsService(runtime),
+    });
     const report = await service.runMorningCheckin({
-      roomId:
-        typeof message.roomId === "string" ? message.roomId : undefined,
+      roomId: typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
       text: formatCheckinReportText(report),
@@ -179,7 +186,7 @@ export const runNightCheckinAction: Action & {
     "DAY_REVIEW",
   ],
   description:
-    "Run the night check-in: review the owner's end-of-day picture across today's meetings, completed wins, outstanding todos, and any inbox or calendar loose ends that matter for tomorrow. " +
+    "Run the night check-in: review the owner's end-of-day picture across today's meetings, completed wins, outstanding todos, X/socials, GitHub, contacted people, promises/follow-ups, and any inbox or calendar loose ends that matter for tomorrow. " +
     "Use this for explicit end-of-day review requests like 'give me my night check-in', 'evening wrap-up', 'night brief', 'daily wrap-up', " +
     "'end of day review', 'end-of-day brief', 'day recap', 'what happened today', or 'how did today go?'. " +
     "When the owner asks for a night brief or night check-in, you must call this action rather than replying conversationally. " +
@@ -196,10 +203,11 @@ export const runNightCheckinAction: Action & {
         data: { error: "PERMISSION_DENIED" },
       };
     }
-    const service = new CheckinService(runtime);
+    const service = new CheckinService(runtime, {
+      sources: new LifeOpsService(runtime),
+    });
     const report = await service.runNightCheckin({
-      roomId:
-        typeof message.roomId === "string" ? message.roomId : undefined,
+      roomId: typeof message.roomId === "string" ? message.roomId : undefined,
     });
     return {
       text: formatCheckinReportText(report),

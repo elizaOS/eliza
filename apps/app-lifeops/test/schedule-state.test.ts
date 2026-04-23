@@ -11,14 +11,22 @@ const BASE_INSIGHT: LifeOpsScheduleInsight = {
   localDate: "2026-04-19",
   timezone: "UTC",
   inferredAt: "2026-04-19T13:00:00.000Z",
-  phase: "afternoon",
+  circadianState: "awake",
+  stateConfidence: 0.81,
+  uncertaintyReason: null,
   relativeTime: {
     computedAt: "2026-04-19T13:00:00.000Z",
     localNowAt: "2026-04-19T13:00:00+00:00",
-    phase: "afternoon",
-    isProbablySleeping: false,
-    isAwake: true,
-    awakeState: "awake",
+    circadianState: "awake",
+    stateConfidence: 0.81,
+    uncertaintyReason: null,
+    awakeProbability: {
+      pAwake: 0.78,
+      pAsleep: 0.07,
+      pUnknown: 0.15,
+      contributingSources: [],
+      computedAt: "2026-04-19T13:00:00.000Z",
+    },
     wakeAnchorAt: "2026-04-19T07:17:00.000Z",
     wakeAnchorSource: "sleep_cycle",
     minutesSinceWake: 343,
@@ -33,15 +41,37 @@ const BASE_INSIGHT: LifeOpsScheduleInsight = {
     minutesUntilDayBoundaryEnd: 660,
     confidence: 0.81,
   },
+  awakeProbability: {
+    pAwake: 0.78,
+    pAsleep: 0.07,
+    pUnknown: 0.15,
+    contributingSources: [],
+    computedAt: "2026-04-19T13:00:00.000Z",
+  },
+  regularity: {
+    sri: 82,
+    bedtimeStddevMin: 28,
+    wakeStddevMin: 25,
+    midSleepStddevMin: 19,
+    regularityClass: "regular",
+    sampleCount: 10,
+    windowDays: 28,
+  },
+  baseline: {
+    medianWakeLocalHour: 7.25,
+    medianBedtimeLocalHour: 23.5,
+    medianSleepDurationMin: 480,
+    bedtimeStddevMin: 28,
+    wakeStddevMin: 25,
+    sampleCount: 10,
+    windowDays: 28,
+  },
   sleepStatus: "slept",
-  isProbablySleeping: false,
   sleepConfidence: 0.81,
   currentSleepStartedAt: null,
   lastSleepStartedAt: "2026-04-18T23:12:00.000Z",
   lastSleepEndedAt: "2026-04-19T07:17:00.000Z",
   lastSleepDurationMinutes: 485,
-  typicalWakeHour: 7.25,
-  typicalSleepHour: 23.5,
   wakeAt: "2026-04-19T07:17:00.000Z",
   firstActiveAt: "2026-04-19T07:23:00.000Z",
   lastActiveAt: "2026-04-19T12:52:00.000Z",
@@ -66,10 +96,10 @@ function observation(
     observedAt: "2026-04-19T13:00:00.000Z",
     windowStartAt: "2026-04-19T12:30:00.000Z",
     windowEndAt: "2026-04-19T13:00:00.000Z",
-    state: "active_recently",
-    phase: "afternoon",
+    circadianState: "awake",
+    stateConfidence: 0.6,
+    uncertaintyReason: null,
     mealLabel: null,
-    confidence: 0.6,
     metadata: {},
     createdAt: "2026-04-19T13:00:00.000Z",
     updatedAt: "2026-04-19T13:00:00.000Z",
@@ -91,12 +121,11 @@ describe("schedule-state", () => {
     expect(observations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          state: "probably_awake",
+          circadianState: "awake",
           windowStartAt: "2026-04-19T07:30:00.000Z",
           windowEndAt: "2026-04-19T13:00:00.000Z",
         }),
         expect.objectContaining({
-          state: "meal_window_likely",
           mealLabel: "lunch",
           windowStartAt: "2026-04-19T13:00:00.000Z",
           windowEndAt: "2026-04-19T15:00:00.000Z",
@@ -116,37 +145,35 @@ describe("schedule-state", () => {
           id: "wake",
           deviceId: "iphone-1",
           deviceKind: "iphone",
-          state: "woke_recently",
-          confidence: 0.82,
+          circadianState: "waking",
+          stateConfidence: 0.82,
           windowStartAt: "2026-04-19T11:30:00.000Z",
-          phase: "waking",
         }),
         observation({
           id: "active",
           deviceId: "macbook-1",
           deviceKind: "mac",
-          state: "active_recently",
-          confidence: 0.73,
+          circadianState: "awake",
+          stateConfidence: 0.73,
           windowStartAt: "2026-04-19T12:30:00.000Z",
-          phase: "afternoon",
         }),
         observation({
           id: "meal",
           deviceId: "iphone-1",
           deviceKind: "iphone",
-          state: "meal_window_likely",
-          confidence: 0.66,
+          circadianState: "awake",
+          stateConfidence: 0.66,
           mealLabel: "lunch",
           windowStartAt: "2026-04-19T13:00:00.000Z",
           windowEndAt: "2026-04-19T15:00:00.000Z",
-          phase: "afternoon",
         }),
       ],
     });
 
     expect(merged).not.toBeNull();
     expect(merged?.scope).toBe("cloud");
-    expect(merged?.phase).toBe("waking");
+    // `waking` outranks `awake` when both fire in the merge.
+    expect(merged?.circadianState).toBe("waking");
     expect(merged?.wakeAt).toBe("2026-04-19T11:30:00.000Z");
     expect(merged?.relativeTime.minutesSinceWake).toBe(90);
     expect(merged?.nextMealLabel).toBe("lunch");
@@ -154,7 +181,7 @@ describe("schedule-state", () => {
     expect(merged?.contributingDeviceKinds).toEqual(["iphone", "mac"]);
   });
 
-  it("drops stale meal_window_likely observations whose window has already passed", () => {
+  it("drops stale meal window observations whose window has already passed", () => {
     const merged = mergeScheduleObservations({
       agentId: "agent-1",
       scope: "local",
@@ -166,27 +193,24 @@ describe("schedule-state", () => {
           id: "active-late",
           deviceId: "macbook-1",
           deviceKind: "mac",
-          state: "active_recently",
-          confidence: 0.7,
+          circadianState: "winding_down",
+          stateConfidence: 0.7,
           observedAt: "2026-04-21T07:55:00.000Z",
           windowStartAt: "2026-04-21T07:30:00.000Z",
           windowEndAt: "2026-04-21T08:00:00.000Z",
-          phase: "winding_down",
         }),
         observation({
           id: "stale-dinner",
           deviceId: "macbook-1",
           deviceKind: "mac",
-          state: "meal_window_likely",
-          confidence: 0.52,
+          circadianState: "awake",
+          stateConfidence: 0.52,
           mealLabel: "dinner",
-          // Dinner window created at 9:30 PM Apr 20 local (04:30 UTC Apr 21),
-          // ending at 12:30 AM Apr 21 local (07:30 UTC Apr 21). Now is 01:00
-          // AM local (08:00 UTC) — the entire window is behind us.
+          // Dinner window from 9:30 PM Apr 20 to 12:30 AM Apr 21 local —
+          // entire window is now in the past.
           observedAt: "2026-04-21T04:30:00.000Z",
           windowStartAt: "2026-04-21T04:30:00.000Z",
           windowEndAt: "2026-04-21T07:30:00.000Z",
-          phase: "evening",
           metadata: {
             source: "schedule_insight",
             snapshot: {
@@ -207,7 +231,7 @@ describe("schedule-state", () => {
     expect(merged?.nextMealConfidence).toBe(0);
   });
 
-  it("keeps a future meal_window_likely observation untouched", () => {
+  it("keeps a future meal window observation untouched", () => {
     const merged = mergeScheduleObservations({
       agentId: "agent-1",
       scope: "local",
@@ -218,13 +242,12 @@ describe("schedule-state", () => {
           id: "upcoming-lunch",
           deviceId: "macbook-1",
           deviceKind: "mac",
-          state: "meal_window_likely",
-          confidence: 0.6,
+          circadianState: "awake",
+          stateConfidence: 0.6,
           mealLabel: "lunch",
           observedAt: "2026-04-19T11:25:00.000Z",
           windowStartAt: "2026-04-19T12:00:00.000Z",
           windowEndAt: "2026-04-19T14:00:00.000Z",
-          phase: "morning",
         }),
       ],
     });
@@ -246,14 +269,14 @@ describe("schedule-state", () => {
         effectiveDayKey: "2026-04-18",
         localDate: "2026-04-19",
         inferredAt: "2026-04-19T02:00:00.000Z",
-        phase: "sleeping",
+        circadianState: "sleeping",
+        stateConfidence: 0.9,
         relativeTime: {
+          ...BASE_INSIGHT.relativeTime,
           computedAt: "2026-04-19T02:00:00.000Z",
           localNowAt: "2026-04-19T02:00:00+00:00",
-          phase: "sleeping",
-          isProbablySleeping: true,
-          isAwake: false,
-          awakeState: "probably_sleeping",
+          circadianState: "sleeping",
+          stateConfidence: 0.9,
           wakeAnchorAt: null,
           wakeAnchorSource: null,
           minutesSinceWake: null,
@@ -266,10 +289,9 @@ describe("schedule-state", () => {
           dayBoundaryEndAt: "2026-04-20T00:00:00.000Z",
           minutesSinceDayBoundaryStart: 120,
           minutesUntilDayBoundaryEnd: 1320,
-          confidence: 0.81,
+          confidence: 0.9,
         },
         sleepStatus: "sleeping_now",
-        isProbablySleeping: true,
         currentSleepStartedAt: "2026-04-18T23:30:00.000Z",
         lastSleepStartedAt: "2026-04-18T23:30:00.000Z",
         lastSleepEndedAt: null,
@@ -287,7 +309,7 @@ describe("schedule-state", () => {
       observations,
     });
 
-    expect(merged?.phase).toBe("sleeping");
+    expect(merged?.circadianState).toBe("sleeping");
     expect(merged?.effectiveDayKey).toBe("2026-04-18");
     expect(merged?.localDate).toBe("2026-04-19");
     expect(merged?.relativeTime.minutesUntilBedtimeTarget).toBeNull();

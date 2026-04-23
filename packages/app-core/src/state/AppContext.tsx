@@ -26,6 +26,7 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
   COMPANION_ENABLED,
+  canonicalPathForPath,
   isRouteRootPath,
   resolveInitialTabForPath,
   type Tab,
@@ -1066,6 +1067,18 @@ function AppProviderInner({
       return;
     }
     const routeTab = tabFromPath(navPath);
+    const canonicalPath = canonicalPathForPath(navPath);
+    if (canonicalPath && typeof window !== "undefined") {
+      if (window.location.protocol === "file:") {
+        window.location.hash = canonicalPath;
+      } else {
+        window.history.replaceState(
+          null,
+          "",
+          `${canonicalPath}${window.location.search}${window.location.hash}`,
+        );
+      }
+    }
     if (routeTab && routeTab !== tab) {
       setTabRaw(routeTab);
     }
@@ -2362,7 +2375,6 @@ function AppProviderInner({
       setState,
       copyToClipboard,
     }),
-    // biome-ignore lint/correctness/useExhaustiveDependencies: several fields are intentionally excluded from deps — see comments in the dep array below. chatInput/chatSending/chatPendingImages are provided fresh via ChatComposerCtx; ptySessions via PtySessionsCtx.
     // prettier-ignore
     [
       t,

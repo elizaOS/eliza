@@ -5,7 +5,7 @@
 // TS runtime can locate it deterministically. Skips on non-darwin platforms.
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +14,9 @@ const pkgRoot = resolve(here, "..");
 const source = resolve(pkgRoot, "swift-helper", "main.swift");
 const outDir = resolve(pkgRoot, "bin");
 const outBin = resolve(outDir, "macosalarm-helper");
+const verbosePluginBuild =
+  process.env.MILADY_VERBOSE_PLUGIN_BUILD === "1" ||
+  process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
 
 if (process.platform !== "darwin") {
   // eslint-disable-next-line no-console
@@ -34,10 +37,10 @@ const result = spawnSync("swiftc", [source, "-O", "-o", outBin], {
 });
 
 if (result.status !== 0) {
-  throw new Error(
-    `swiftc failed with status ${result.status ?? "unknown"}`,
-  );
+  throw new Error(`swiftc failed with status ${result.status ?? "unknown"}`);
 }
 
-// eslint-disable-next-line no-console
-console.log(`[macosalarm] built ${outBin}`);
+if (verbosePluginBuild) {
+  // eslint-disable-next-line no-console
+  console.log(`[macosalarm] built ${outBin}`);
+}

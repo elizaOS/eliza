@@ -1,11 +1,11 @@
-export * from "./VincentAppView";
-export * from "./VincentConnectionCard";
+export * from "./client";
+export { vincentPlugin } from "./plugin";
+export * from "./routes";
 export * from "./TradingProfileCard";
 export * from "./TradingStrategyPanel";
-export * from "./client";
-export * from "./routes";
-export * from "./useVincentState";
-export * from "./VaultStatusCard";
 export * from "./useVincentDashboard";
+export * from "./useVincentState";
+export * from "./VincentAppView";
+export * from "./VincentConnectionCard";
 export { VINCENT_APP_NAME, vincentApp } from "./vincent-app";
-export { vincentPlugin } from "./plugin";
+export * from "./WalletStatusCard";

@@ -1017,7 +1017,7 @@ export const lifeCircadianStates = pgTable(
   "life_circadian_states",
   {
     agentId: text("agent_id").primaryKey(),
-    circadianState: text("circadian_state").notNull(),
+    circadianState: text("circadian_state").notNull().default("unclear"),
     stateConfidence: real("state_confidence").notNull().default(0),
     uncertaintyReason: text("uncertainty_reason"),
     enteredAt: text("entered_at").notNull(),
@@ -1042,18 +1042,17 @@ export const lifeScheduleInsights = pgTable(
     localDate: text("local_date").notNull(),
     timezone: text("timezone").notNull(),
     inferredAt: text("inferred_at").notNull(),
-    phase: text("phase").notNull(),
+    // Canonical circadian state - default `unclear` so migrations on existing
+    // rows succeed; new rows always write the real value from the scorer.
+    circadianState: text("circadian_state").notNull().default("unclear"),
+    stateConfidence: real("state_confidence").notNull().default(0),
+    uncertaintyReason: text("uncertainty_reason"),
     sleepStatus: text("sleep_status").notNull(),
-    isProbablySleeping: boolean("is_probably_sleeping")
-      .notNull()
-      .default(false),
     sleepConfidence: real("sleep_confidence").notNull().default(0),
     currentSleepStartedAt: text("current_sleep_started_at"),
     lastSleepStartedAt: text("last_sleep_started_at"),
     lastSleepEndedAt: text("last_sleep_ended_at"),
     lastSleepDurationMinutes: integer("last_sleep_duration_minutes"),
-    typicalWakeHour: real("typical_wake_hour"),
-    typicalSleepHour: real("typical_sleep_hour"),
     wakeAt: text("wake_at"),
     firstActiveAt: text("first_active_at"),
     lastActiveAt: text("last_active_at"),
@@ -1067,6 +1066,15 @@ export const lifeScheduleInsights = pgTable(
       .notNull()
       .default("{}"),
     regularityJson: text("regularity_json").notNull().default("{}"),
+    baselineJson: text("baseline_json"),
+    /**
+     * Scorer rule firings that fed this insight, as a JSON array of
+     * `LifeOpsCircadianRuleFiring`. Surfaced by the inspection UI so the
+     * user can see exactly which rules drove the current state.
+     */
+    circadianRuleFiringsJson: text("circadian_rule_firings_json")
+      .notNull()
+      .default("[]"),
     metadataJson: text("metadata_json").notNull().default("{}"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1084,10 +1092,12 @@ export const lifeScheduleObservations = pgTable("life_schedule_observations", {
   observedAt: text("observed_at").notNull(),
   windowStartAt: text("window_start_at").notNull(),
   windowEndAt: text("window_end_at"),
-  state: text("state").notNull(),
-  phase: text("phase"),
+  // Canonical circadian state replaces the legacy `state` + `phase` columns.
+  // Default `unclear` so ADD COLUMN migrations succeed on tables with rows.
+  circadianState: text("circadian_state").notNull().default("unclear"),
+  stateConfidence: real("state_confidence").notNull().default(0),
+  uncertaintyReason: text("uncertainty_reason"),
   mealLabel: text("meal_label"),
-  confidence: real("confidence").notNull().default(0),
   metadataJson: text("metadata_json").notNull().default("{}"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -1104,18 +1114,15 @@ export const lifeScheduleMergedStates = pgTable(
     timezone: text("timezone").notNull(),
     mergedAt: text("merged_at").notNull(),
     inferredAt: text("inferred_at").notNull(),
-    phase: text("phase").notNull(),
+    circadianState: text("circadian_state").notNull().default("unclear"),
+    stateConfidence: real("state_confidence").notNull().default(0),
+    uncertaintyReason: text("uncertainty_reason"),
     sleepStatus: text("sleep_status").notNull(),
-    isProbablySleeping: boolean("is_probably_sleeping")
-      .notNull()
-      .default(false),
     sleepConfidence: real("sleep_confidence").notNull().default(0),
     currentSleepStartedAt: text("current_sleep_started_at"),
     lastSleepStartedAt: text("last_sleep_started_at"),
     lastSleepEndedAt: text("last_sleep_ended_at"),
     lastSleepDurationMinutes: integer("last_sleep_duration_minutes"),
-    typicalWakeHour: real("typical_wake_hour"),
-    typicalSleepHour: real("typical_sleep_hour"),
     wakeAt: text("wake_at"),
     firstActiveAt: text("first_active_at"),
     lastActiveAt: text("last_active_at"),
@@ -1129,6 +1136,10 @@ export const lifeScheduleMergedStates = pgTable(
       .notNull()
       .default("{}"),
     regularityJson: text("regularity_json").notNull().default("{}"),
+    baselineJson: text("baseline_json"),
+    circadianRuleFiringsJson: text("circadian_rule_firings_json")
+      .notNull()
+      .default("[]"),
     observationCount: integer("observation_count").notNull().default(0),
     deviceCount: integer("device_count").notNull().default(0),
     contributingDeviceKindsJson: text("contributing_device_kinds_json")

@@ -1,12 +1,30 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
+import { logger, ModelType } from "@elizaos/core";
+import type {
+  GetLifeOpsCalendarFeedRequest,
+  GetLifeOpsGmailTriageRequest,
+  GetLifeOpsUnifiedInboxRequest,
+  LifeOpsCalendarFeed,
+  LifeOpsGmailTriageFeed,
+  LifeOpsOccurrence,
+  LifeOpsUnifiedInbox,
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+} from "@elizaos/shared/contracts/lifeops";
+import {
+  LIFEOPS_OCCURRENCE_STATES,
+  type LifeOpsOccurrenceState,
+} from "@elizaos/shared/contracts/lifeops";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
 } from "../service-helpers-occurrence.js";
-import type { LifeOpsOccurrence } from "@elizaos/shared/contracts/lifeops";
+import { executeRawSql, parseJsonRecord, sqlQuote, toText } from "../sql.js";
+import { buildUtcDateFromLocalParts, getZonedDateParts } from "../time.js";
 import type {
+  CheckinBriefingItem,
+  CheckinBriefingSection,
   CheckinKind,
   CheckinReport,
   EscalationLevel,
@@ -17,10 +35,6 @@ import type {
   RecordAcknowledgementRequest,
   RunCheckinRequest,
 } from "./types.js";
-import {
-  LIFEOPS_OCCURRENCE_STATES,
-  type LifeOpsOccurrenceState,
-} from "@elizaos/shared/contracts/lifeops";
 
 /**
  * Check-in engine (T9f). Assembles morning/night reports from existing LifeOps data
@@ -36,6 +50,43 @@ import {
 export const CHECKIN_REPORTS_TABLE = "life_checkin_reports";
 
 const ACK_WINDOW_MS = 72 * 60 * 60 * 1000;
+const DEFAULT_SECTION_LIMIT = 8;
+const INTERNAL_URL = new URL("http://127.0.0.1/");
+const ACTION_TEXT_RE =
+  /\b(urgent|asap|blocked|deadline|today|tonight|tomorrow|confirm|review|send|reply|respond|need|please|important|agreement|agreed|promise|promised|follow up|circle back)\b/i;
+
+export interface CheckinSourceService {
+  getUnifiedInbox?(
+    request?: GetLifeOpsUnifiedInboxRequest,
+  ): Promise<LifeOpsUnifiedInbox>;
+  getGmailTriage?(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailTriageRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailTriageFeed>;
+  getCalendarFeed?(
+    requestUrl: URL,
+    request?: GetLifeOpsCalendarFeedRequest,
+    now?: Date,
+  ): Promise<LifeOpsCalendarFeed>;
+  syncXDms?(opts?: { limit?: number }): Promise<{ synced: number }>;
+  getXDms?(opts?: {
+    conversationId?: string;
+    limit?: number;
+  }): Promise<LifeOpsXDm[]>;
+  syncXFeed?(
+    feedType: LifeOpsXFeedType,
+    opts?: { limit?: number; query?: string },
+  ): Promise<{ synced: number }>;
+  getXFeedItems?(
+    feedType: LifeOpsXFeedType,
+    opts?: { limit?: number },
+  ): Promise<LifeOpsXFeedItem[]>;
+}
+
+export interface CheckinServiceOptions {
+  readonly sources?: CheckinSourceService;
+}
 
 // Single-shot logging for graceful-degradation paths.
 const loggedMissingSources = new Set<string>();
@@ -55,6 +106,145 @@ function newReportId(): string {
     .crypto;
   if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID();
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function clip(text: string, maxLength = 220): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function parseMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function toBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const text = toText(value).toLowerCase();
+  return text === "true" || text === "1" || text === "yes";
+}
+
+function summarizeCount(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function localDayWindow(
+  date: Date,
+  timezone: string,
+): { start: Date; end: Date; key: string } {
+  const parts = getZonedDateParts(date, timezone);
+  const start = buildUtcDateFromLocalParts(timezone, {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+  const end = buildUtcDateFromLocalParts(timezone, {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day + 1,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+  return {
+    start,
+    end,
+    key: `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
+  };
+}
+
+function rankTextSignal(args: {
+  text: string;
+  occurredAt: string | null;
+  unread?: boolean;
+  inbound?: boolean;
+  replyNeeded?: boolean;
+  important?: boolean;
+}): { score: number; reason: string | null } {
+  const reasons: string[] = [];
+  let score = 0;
+  if (args.inbound) {
+    score += 20;
+    reasons.push("incoming");
+  }
+  if (args.unread) {
+    score += 15;
+    reasons.push("unread");
+  }
+  if (args.replyNeeded) {
+    score += 25;
+    reasons.push("needs reply");
+  }
+  if (args.important) {
+    score += 20;
+    reasons.push("important");
+  }
+  if (args.text.includes("?")) {
+    score += 10;
+    reasons.push("question");
+  }
+  if (ACTION_TEXT_RE.test(args.text)) {
+    score += 20;
+    reasons.push("action language");
+  }
+  const occurredAtMs = parseMs(args.occurredAt);
+  if (
+    occurredAtMs !== null &&
+    Date.now() - occurredAtMs <= 24 * 60 * 60 * 1000
+  ) {
+    score += 10;
+    reasons.push("recent");
+  }
+  return {
+    score,
+    reason: reasons.length > 0 ? reasons.join(", ") : null,
+  };
+}
+
+function sortBriefingItems(
+  entries: Array<CheckinBriefingItem & { score: number }>,
+): CheckinBriefingItem[] {
+  return entries
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return (parseMs(right.occurredAt) ?? 0) - (parseMs(left.occurredAt) ?? 0);
+    })
+    .slice(0, DEFAULT_SECTION_LIMIT)
+    .map(({ score: _score, ...item }) => item);
+}
+
+function unavailableSection(
+  key: CheckinBriefingSection["key"],
+  title: string,
+  message: string,
+): CheckinBriefingSection {
+  return {
+    key,
+    title,
+    summary: `${title} unavailable.`,
+    items: [],
+    error: message,
+  };
 }
 
 interface CollectorResult<T> {
@@ -82,7 +272,9 @@ const LIFEOPS_OCCURRENCE_STATE_SET: ReadonlySet<string> = new Set(
   LIFEOPS_OCCURRENCE_STATES,
 );
 
-function parseHabitOccurrenceState(value: unknown): LifeOpsOccurrenceState | null {
+function parseHabitOccurrenceState(
+  value: unknown,
+): LifeOpsOccurrenceState | null {
   const state = toText(value);
   return LIFEOPS_OCCURRENCE_STATE_SET.has(state)
     ? (state as LifeOpsOccurrenceState)
@@ -300,20 +492,18 @@ async function collectOverdueTodos(
 async function collectTodaysMeetings(
   runtime: IAgentRuntime,
   now: Date,
+  timezone: string,
 ): Promise<CollectorResult<MeetingEntry>> {
   const agentId = String(runtime.agentId);
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(now);
-  endOfDay.setHours(23, 59, 59, 999);
+  const day = localDayWindow(now, timezone);
   try {
     const rows = await executeRawSql(
       runtime,
       `SELECT id, title, start_at, end_at
          FROM life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND start_at >= ${sqlQuote(startOfDay.toISOString())}
-          AND start_at <= ${sqlQuote(endOfDay.toISOString())}
+          AND start_at >= ${sqlQuote(day.start.toISOString())}
+          AND start_at < ${sqlQuote(day.end.toISOString())}
         ORDER BY start_at ASC
         LIMIT 50`,
     );
@@ -336,16 +526,19 @@ async function collectTodaysMeetings(
   }
 }
 
-async function collectYesterdaysWins(
+async function collectCompletedWins(
   runtime: IAgentRuntime,
+  kind: CheckinKind,
   now: Date,
+  timezone: string,
 ): Promise<CollectorResult<RecentWin>> {
   const agentId = String(runtime.agentId);
-  const startOfYesterday = new Date(now);
-  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  startOfYesterday.setHours(0, 0, 0, 0);
-  const endOfYesterday = new Date(startOfYesterday);
-  endOfYesterday.setHours(23, 59, 59, 999);
+  const day =
+    kind === "morning"
+      ? localDayWindow(new Date(now.getTime() - 24 * 60 * 60 * 1000), timezone)
+      : localDayWindow(now, timezone);
+  const start = day.start;
+  const end = kind === "morning" ? day.end : now;
   try {
     const rows = await executeRawSql(
       runtime,
@@ -356,8 +549,8 @@ async function collectYesterdaysWins(
          LEFT JOIN life_task_definitions def ON def.id = occ.definition_id
         WHERE occ.agent_id = ${sqlQuote(agentId)}
           AND occ.state = 'completed'
-          AND occ.updated_at >= ${sqlQuote(startOfYesterday.toISOString())}
-          AND occ.updated_at <= ${sqlQuote(endOfYesterday.toISOString())}
+          AND occ.updated_at >= ${sqlQuote(start.toISOString())}
+          AND occ.updated_at <= ${sqlQuote(end.toISOString())}
         ORDER BY occ.updated_at DESC
         LIMIT 50`,
     );
@@ -365,8 +558,7 @@ async function collectYesterdaysWins(
       rows: rows.map((row) => ({
         id: toText(row.id),
         title: toText(row.title) || "(untitled)",
-        completedAt:
-          row.completed_at == null ? null : toText(row.completed_at),
+        completedAt: row.completed_at == null ? null : toText(row.completed_at),
       })),
       error: null,
     };
@@ -374,7 +566,7 @@ async function collectYesterdaysWins(
     const message = error instanceof Error ? error.message : String(error);
     logMissingOnce(
       "yesterdays-wins",
-      `yesterdays-wins collector unavailable: ${message}`,
+      `completed-wins collector unavailable: ${message}`,
     );
     return { rows: [], error: message };
   }
@@ -387,7 +579,9 @@ function clampEscalation(count: number): EscalationLevel {
   return 3;
 }
 
-function resolveHabitEscalationLevel(summaries: readonly HabitSummary[]): EscalationLevel {
+function resolveHabitEscalationLevel(
+  summaries: readonly HabitSummary[],
+): EscalationLevel {
   const maxMissedStreak = summaries.reduce(
     (max, summary) => Math.max(max, summary.missedOccurrenceStreak),
     0,
@@ -395,8 +589,563 @@ function resolveHabitEscalationLevel(summaries: readonly HabitSummary[]): Escala
   return clampEscalation(maxMissedStreak);
 }
 
+async function collectXDmSection(
+  source: CheckinSourceService | undefined,
+): Promise<CheckinBriefingSection> {
+  if (!source?.syncXDms || !source.getXDms) {
+    return unavailableSection(
+      "x_dms",
+      "X DMs",
+      "X DM reader is not registered on this runtime.",
+    );
+  }
+  try {
+    await source.syncXDms({ limit: 30 });
+    const dms = await source.getXDms({ limit: 30 });
+    const items = sortBriefingItems(
+      dms.map((dm) => {
+        const ranked = rankTextSignal({
+          text: dm.text,
+          occurredAt: dm.receivedAt,
+          inbound: dm.isInbound,
+          unread: dm.readAt === null,
+          replyNeeded: dm.isInbound && dm.repliedAt === null,
+        });
+        return {
+          title: dm.senderHandle ? `@${dm.senderHandle}` : dm.senderId,
+          detail: clip(dm.text),
+          occurredAt: dm.receivedAt,
+          href: null,
+          reason: ranked.reason,
+          score: ranked.score,
+        };
+      }),
+    );
+    const actionNeeded = items.filter((item) =>
+      item.reason?.includes("needs reply"),
+    ).length;
+    return {
+      key: "x_dms",
+      title: "X DMs",
+      summary:
+        dms.length === 0
+          ? "No recent X DMs found."
+          : `${summarizeCount(dms.length, "recent X DM")} checked; ${summarizeCount(actionNeeded, "looks reply-needed", "look reply-needed")}.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection("x_dms", "X DMs", message);
+  }
+}
+
+async function collectXFeedSection(
+  source: CheckinSourceService | undefined,
+  key: Extract<CheckinBriefingSection["key"], "x_timeline" | "x_mentions">,
+  feedType: Extract<LifeOpsXFeedType, "home_timeline" | "mentions">,
+  title: string,
+): Promise<CheckinBriefingSection> {
+  if (!source?.syncXFeed || !source.getXFeedItems) {
+    return unavailableSection(
+      key,
+      title,
+      "X feed reader is not registered on this runtime.",
+    );
+  }
+  try {
+    await source.syncXFeed(feedType, { limit: 30 });
+    const feedItems = await source.getXFeedItems(feedType, { limit: 30 });
+    const items = sortBriefingItems(
+      feedItems.map((feedItem) => {
+        const raw = (feedItem.metadata?.raw ?? {}) as {
+          referenced_tweets?: Array<{ type?: string }>;
+          public_metrics?: Record<string, number>;
+        };
+        const referenceTypes = (raw.referenced_tweets ?? [])
+          .map((reference) => reference.type)
+          .filter((type): type is string => typeof type === "string");
+        const isReply = referenceTypes.includes("replied_to");
+        const metrics = raw.public_metrics ?? {};
+        const engagement =
+          (metrics.like_count ?? 0) +
+          (metrics.reply_count ?? 0) * 3 +
+          (metrics.retweet_count ?? 0) * 2 +
+          (metrics.quote_count ?? 0) * 2;
+        const ranked = rankTextSignal({
+          text: feedItem.text,
+          occurredAt: feedItem.createdAtSource,
+          replyNeeded: isReply,
+          important: engagement >= 25,
+        });
+        return {
+          title: feedItem.authorHandle
+            ? `@${feedItem.authorHandle}`
+            : feedItem.authorId,
+          detail: clip(feedItem.text),
+          occurredAt: feedItem.createdAtSource,
+          href: `https://x.com/i/web/status/${feedItem.externalTweetId}`,
+          reason: ranked.reason,
+          score: ranked.score + Math.min(30, engagement),
+        };
+      }),
+    );
+    return {
+      key,
+      title,
+      summary:
+        feedItems.length === 0
+          ? `No recent ${title.toLowerCase()} items found.`
+          : `${summarizeCount(feedItems.length, "item")} scanned from ${title.toLowerCase()}.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection(key, title, message);
+  }
+}
+
+async function collectUnifiedInboxSection(
+  source: CheckinSourceService | undefined,
+): Promise<CheckinBriefingSection> {
+  if (!source?.getUnifiedInbox) {
+    return unavailableSection(
+      "unified_inbox",
+      "Unified inbox",
+      "Unified inbox reader is not registered on this runtime.",
+    );
+  }
+  try {
+    const inbox = await source.getUnifiedInbox({ limit: 50 });
+    const counts = Object.entries(inbox.channelCounts)
+      .filter(([, count]) => count.total > 0)
+      .map(
+        ([channel, count]) =>
+          `${channel}: ${count.total}${count.unread > 0 ? `/${count.unread} unread` : ""}`,
+      );
+    const items = sortBriefingItems(
+      inbox.messages.map((message) => {
+        const text = `${message.subject ?? ""} ${message.snippet}`;
+        const ranked = rankTextSignal({
+          text,
+          occurredAt: message.receivedAt,
+          unread: message.unread,
+          inbound: true,
+        });
+        return {
+          title: `${message.channel}: ${message.sender.displayName}`,
+          detail: clip(
+            message.subject
+              ? `${message.subject}: ${message.snippet}`
+              : message.snippet,
+          ),
+          occurredAt: message.receivedAt,
+          href: message.deepLink,
+          reason: ranked.reason,
+          score: ranked.score,
+        };
+      }),
+    );
+    return {
+      key: "unified_inbox",
+      title: "Unified inbox",
+      summary:
+        counts.length === 0
+          ? "No inbox items found across connected channels."
+          : `Inbox channels scanned: ${counts.join(", ")}.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection("unified_inbox", "Unified inbox", message);
+  }
+}
+
+async function collectGmailSection(
+  source: CheckinSourceService | undefined,
+  now: Date,
+): Promise<CheckinBriefingSection> {
+  if (!source?.getGmailTriage) {
+    return unavailableSection(
+      "gmail",
+      "Gmail",
+      "Gmail triage reader is not registered on this runtime.",
+    );
+  }
+  try {
+    const feed = await source.getGmailTriage(
+      INTERNAL_URL,
+      { maxResults: 25 },
+      now,
+    );
+    const items = sortBriefingItems(
+      feed.messages.map((message) => {
+        const text = `${message.subject} ${message.snippet}`;
+        const ranked = rankTextSignal({
+          text,
+          occurredAt: message.receivedAt,
+          unread: message.isUnread,
+          inbound: true,
+          replyNeeded: message.likelyReplyNeeded,
+          important: message.isImportant,
+        });
+        return {
+          title: `${message.from || "Unknown"}${
+            message.subject ? `: ${message.subject}` : ""
+          }`,
+          detail: clip(message.snippet || message.triageReason),
+          occurredAt: message.receivedAt,
+          href: message.htmlLink,
+          reason: ranked.reason ?? (message.triageReason || null),
+          score: ranked.score + message.triageScore,
+        };
+      }),
+    );
+    return {
+      key: "gmail",
+      title: "Gmail",
+      summary: `${feed.summary.unreadCount} unread, ${feed.summary.importantNewCount} important, ${feed.summary.likelyReplyNeededCount} likely needing reply.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection("gmail", "Gmail", message);
+  }
+}
+
+async function collectCalendarChangeSection(
+  runtime: IAgentRuntime,
+  now: Date,
+  timezone: string,
+): Promise<CheckinBriefingSection> {
+  const agentId = String(runtime.agentId);
+  const day = localDayWindow(now, timezone);
+  const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const rows = await executeRawSql(
+      runtime,
+      `SELECT title, start_at, end_at, status, html_link, updated_at
+         FROM life_calendar_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND side = 'owner'
+          AND (
+            (start_at >= ${sqlQuote(day.start.toISOString())}
+             AND start_at < ${sqlQuote(day.end.toISOString())})
+            OR updated_at >= ${sqlQuote(sinceIso)}
+          )
+        ORDER BY
+          CASE WHEN updated_at >= ${sqlQuote(sinceIso)} THEN 0 ELSE 1 END,
+          start_at ASC
+        LIMIT 40`,
+    );
+    const todayCount = rows.filter((row) => {
+      const startMs = parseMs(toText(row.start_at));
+      return (
+        startMs !== null &&
+        startMs >= day.start.getTime() &&
+        startMs < day.end.getTime()
+      );
+    }).length;
+    const changedCount = rows.filter(
+      (row) => (parseMs(toText(row.updated_at)) ?? 0) >= Date.parse(sinceIso),
+    ).length;
+    const items = sortBriefingItems(
+      rows.map((row) => {
+        const status = toText(row.status);
+        const title = toText(row.title) || "(untitled event)";
+        const updatedAt = toText(row.updated_at) || null;
+        const isChanged = (parseMs(updatedAt) ?? 0) >= Date.parse(sinceIso);
+        const reason =
+          status.toLowerCase() === "cancelled"
+            ? "removed/cancelled"
+            : isChanged
+              ? "added or updated"
+              : "on schedule";
+        return {
+          title,
+          detail: `${toText(row.start_at)} - ${toText(row.end_at)}${
+            status ? ` (${status})` : ""
+          }`,
+          occurredAt: updatedAt ?? toText(row.start_at),
+          href: toText(row.html_link) || null,
+          reason,
+          score: (isChanged ? 30 : 10) + (status === "cancelled" ? 30 : 0),
+        };
+      }),
+    );
+    return {
+      key: "calendar_changes",
+      title: "Calendar and schedule changes",
+      summary: `${summarizeCount(todayCount, "event")} on today's calendar; ${summarizeCount(changedCount, "calendar item")} added or updated in the last 24h.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection(
+      "calendar_changes",
+      "Calendar and schedule changes",
+      message,
+    );
+  }
+}
+
+async function collectGitHubSection(
+  runtime: IAgentRuntime,
+  now: Date,
+  timezone: string,
+): Promise<CheckinBriefingSection> {
+  const agentId = String(runtime.agentId);
+  const day = localDayWindow(now, timezone);
+  const sinceIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const [mailRows, screenRows] = await Promise.all([
+      executeRawSql(
+        runtime,
+        `SELECT subject, from_display, snippet, received_at, html_link,
+                is_unread, is_important, likely_reply_needed, triage_score
+           FROM life_gmail_messages
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND side = 'owner'
+            AND received_at >= ${sqlQuote(sinceIso)}
+            AND LOWER(COALESCE(subject, '') || ' ' || COALESCE(from_display, '') || ' ' || COALESCE(snippet, '')) LIKE '%github%'
+          ORDER BY received_at DESC
+          LIMIT 12`,
+      ),
+      executeRawSql(
+        runtime,
+        `SELECT identifier, display_name, start_at, duration_seconds
+           FROM life_screen_time_sessions
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND start_at >= ${sqlQuote(day.start.toISOString())}
+            AND start_at < ${sqlQuote(day.end.toISOString())}
+            AND LOWER(identifier || ' ' || display_name) LIKE '%github%'
+          ORDER BY start_at DESC
+          LIMIT 12`,
+      ),
+    ]);
+    const mailItems = mailRows.map((row) => {
+      const text = `${toText(row.subject)} ${toText(row.snippet)}`;
+      const ranked = rankTextSignal({
+        text,
+        occurredAt: toText(row.received_at),
+        unread: toBoolean(row.is_unread),
+        important: toBoolean(row.is_important),
+        replyNeeded: toBoolean(row.likely_reply_needed),
+        inbound: true,
+      });
+      return {
+        title: `GitHub email: ${toText(row.subject) || "(no subject)"}`,
+        detail: clip(toText(row.snippet) || toText(row.from_display)),
+        occurredAt: toText(row.received_at) || null,
+        href: toText(row.html_link) || null,
+        reason: ranked.reason,
+        score: ranked.score + Number(row.triage_score ?? 0),
+      };
+    });
+    const screenItems = screenRows.map((row) => {
+      const minutes = Math.round(Number(row.duration_seconds ?? 0) / 60);
+      return {
+        title: `GitHub activity: ${
+          toText(row.display_name) || toText(row.identifier)
+        }`,
+        detail: `${minutes}m active`,
+        occurredAt: toText(row.start_at) || null,
+        href: null,
+        reason: "workspace activity",
+        score: 10 + Math.min(30, minutes),
+      };
+    });
+    const items = sortBriefingItems([...mailItems, ...screenItems]);
+    return {
+      key: "github",
+      title: "GitHub",
+      summary:
+        items.length === 0
+          ? "No GitHub-specific email or activity signals found in the last day."
+          : `${summarizeCount(mailRows.length, "GitHub email")} and ${summarizeCount(screenRows.length, "GitHub activity session")} found.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection("github", "GitHub", message);
+  }
+}
+
+async function collectContactSection(
+  runtime: IAgentRuntime,
+  now: Date,
+  timezone: string,
+): Promise<CheckinBriefingSection> {
+  const agentId = String(runtime.agentId);
+  const day = localDayWindow(now, timezone);
+  try {
+    const rows = await executeRawSql(
+      runtime,
+      `SELECT COALESCE(rel.name, interaction.relationship_id) AS name,
+              interaction.channel,
+              interaction.direction,
+              interaction.summary,
+              interaction.occurred_at
+         FROM life_relationship_interactions interaction
+         LEFT JOIN life_relationships rel
+           ON rel.agent_id = interaction.agent_id
+          AND rel.id = interaction.relationship_id
+        WHERE interaction.agent_id = ${sqlQuote(agentId)}
+          AND interaction.occurred_at >= ${sqlQuote(day.start.toISOString())}
+          AND interaction.occurred_at < ${sqlQuote(day.end.toISOString())}
+        ORDER BY interaction.occurred_at DESC
+        LIMIT 30`,
+    );
+    const uniqueNames = new Set(
+      rows.map((row) => toText(row.name)).filter(Boolean),
+    );
+    const items = sortBriefingItems(
+      rows.map((row) => ({
+        title: `${toText(row.name) || "Unknown"} (${
+          toText(row.channel) || "unknown"
+        })`,
+        detail: clip(toText(row.summary) || toText(row.direction)),
+        occurredAt: toText(row.occurred_at) || null,
+        href: null,
+        reason: toText(row.direction) || null,
+        score: 20,
+      })),
+    );
+    return {
+      key: "contacts",
+      title: "Contacts and conversations",
+      summary:
+        rows.length === 0
+          ? "No relationship interactions logged today."
+          : `${summarizeCount(uniqueNames.size, "person", "people")} contacted across ${summarizeCount(rows.length, "logged interaction")}.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection(
+      "contacts",
+      "Contacts and conversations",
+      message,
+    );
+  }
+}
+
+async function collectPromiseSection(
+  runtime: IAgentRuntime,
+  now: Date,
+  timezone: string,
+): Promise<CheckinBriefingSection> {
+  const agentId = String(runtime.agentId);
+  const day = localDayWindow(now, timezone);
+  const tomorrowIso = day.end.toISOString();
+  try {
+    const rows = await executeRawSql(
+      runtime,
+      `SELECT followup.reason,
+              followup.status,
+              followup.priority,
+              followup.due_at,
+              followup.completed_at,
+              followup.updated_at,
+              COALESCE(rel.name, followup.relationship_id) AS name
+         FROM life_follow_ups followup
+         LEFT JOIN life_relationships rel
+           ON rel.agent_id = followup.agent_id
+          AND rel.id = followup.relationship_id
+        WHERE followup.agent_id = ${sqlQuote(agentId)}
+          AND (
+            followup.status = 'pending'
+            OR followup.due_at < ${sqlQuote(tomorrowIso)}
+            OR followup.updated_at >= ${sqlQuote(day.start.toISOString())}
+          )
+        ORDER BY
+          CASE followup.status WHEN 'pending' THEN 0 ELSE 1 END,
+          followup.priority ASC,
+          followup.due_at ASC
+        LIMIT 30`,
+    );
+    const pendingCount = rows.filter(
+      (row) => toText(row.status) === "pending",
+    ).length;
+    const completedToday = rows.filter((row) => {
+      const completedMs = parseMs(toText(row.completed_at));
+      return (
+        completedMs !== null &&
+        completedMs >= day.start.getTime() &&
+        completedMs < day.end.getTime()
+      );
+    }).length;
+    const items = sortBriefingItems(
+      rows.map((row) => {
+        const status = toText(row.status);
+        const priority = Number(row.priority ?? 3);
+        return {
+          title: `${toText(row.name) || "Follow-up"}: ${status}`,
+          detail: clip(toText(row.reason)),
+          occurredAt: toText(row.due_at) || toText(row.updated_at) || null,
+          href: null,
+          reason:
+            status === "pending"
+              ? "open promise/follow-up"
+              : status === "completed"
+                ? "completed"
+                : status || null,
+          score: (status === "pending" ? 40 : 10) + Math.max(0, 10 - priority),
+        };
+      }),
+    );
+    return {
+      key: "promises",
+      title: "Promises, agreements, and follow-ups",
+      summary: `${summarizeCount(pendingCount, "open follow-up")} tracked; ${summarizeCount(completedToday, "completed today", "completed today")}.`,
+      items,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return unavailableSection(
+      "promises",
+      "Promises, agreements, and follow-ups",
+      message,
+    );
+  }
+}
+
+async function collectBriefingSections(args: {
+  runtime: IAgentRuntime;
+  source: CheckinSourceService | undefined;
+  now: Date;
+  timezone: string;
+}): Promise<CheckinBriefingSection[]> {
+  return Promise.all([
+    collectXDmSection(args.source),
+    collectXFeedSection(
+      args.source,
+      "x_timeline",
+      "home_timeline",
+      "X timeline",
+    ),
+    collectXFeedSection(args.source, "x_mentions", "mentions", "X mentions"),
+    collectUnifiedInboxSection(args.source),
+    collectGmailSection(args.source, args.now),
+    collectGitHubSection(args.runtime, args.now, args.timezone),
+    collectCalendarChangeSection(args.runtime, args.now, args.timezone),
+    collectContactSection(args.runtime, args.now, args.timezone),
+    collectPromiseSection(args.runtime, args.now, args.timezone),
+  ]);
+}
+
 export class CheckinService {
-  constructor(private readonly runtime: IAgentRuntime) {}
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly options: CheckinServiceOptions = {},
+  ) {}
 
   async runMorningCheckin(
     request: RunCheckinRequest = {},
@@ -429,6 +1178,26 @@ export class CheckinService {
     return clampEscalation(Number.isFinite(count) ? count : 0);
   }
 
+  async hasCheckinForLocalDay(args: {
+    kind: CheckinKind;
+    now: Date;
+    timezone: string;
+  }): Promise<boolean> {
+    const agentId = String(this.runtime.agentId);
+    const day = localDayWindow(args.now, args.timezone);
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT id
+         FROM ${CHECKIN_REPORTS_TABLE}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND kind = ${sqlQuote(args.kind)}
+          AND generated_at_ms >= ${day.start.getTime()}
+          AND generated_at_ms < ${day.end.getTime()}
+        LIMIT 1`,
+    );
+    return rows.length > 0;
+  }
+
   async recordCheckinAcknowledgement(
     request: RecordAcknowledgementRequest,
   ): Promise<void> {
@@ -453,40 +1222,113 @@ export class CheckinService {
     request: RunCheckinRequest,
   ): Promise<CheckinReport> {
     const now = request.now ?? new Date();
+    const timezone =
+      request.timezone ??
+      Intl.DateTimeFormat().resolvedOptions().timeZone ??
+      "UTC";
     const habitCollector = await collectHabitSummaries(this.runtime, now);
-    const [overdueTodos, todaysMeetings, yesterdaysWins] = await Promise.all([
-      collectOverdueTodos(this.runtime, now, habitCollector.pausedDefinitionIds),
-      collectTodaysMeetings(this.runtime, now),
-      collectYesterdaysWins(this.runtime, now),
-    ]);
+    const [overdueTodos, todaysMeetings, completedWins, briefingSections] =
+      await Promise.all([
+        collectOverdueTodos(
+          this.runtime,
+          now,
+          habitCollector.pausedDefinitionIds,
+        ),
+        collectTodaysMeetings(this.runtime, now, timezone),
+        collectCompletedWins(this.runtime, kind, now, timezone),
+        collectBriefingSections({
+          runtime: this.runtime,
+          source: this.options.sources,
+          now,
+          timezone,
+        }),
+      ]);
     const escalationLevel = await this.getEscalationLevel(now);
     const habitEscalationLevel = resolveHabitEscalationLevel(
       habitCollector.rows,
     );
-    const report: CheckinReport = {
+    const reportWithoutSummary = {
       reportId: newReportId(),
       kind,
       generatedAt: now.toISOString(),
       escalationLevel,
       overdueTodos: overdueTodos.rows,
       todaysMeetings: todaysMeetings.rows,
-      yesterdaysWins: yesterdaysWins.rows,
+      yesterdaysWins: completedWins.rows,
       habitSummaries: habitCollector.rows,
       habitEscalationLevel,
+      briefingSections,
       collectorErrors: {
         overdueTodos: overdueTodos.error,
         todaysMeetings: todaysMeetings.error,
-        yesterdaysWins: yesterdaysWins.error,
+        yesterdaysWins: completedWins.error,
       },
+    };
+    const report: CheckinReport = {
+      ...reportWithoutSummary,
+      summaryText: await this.renderSummary(reportWithoutSummary),
     };
     await this.persistReport(report, now);
     return report;
   }
 
-  private async persistReport(
-    report: CheckinReport,
-    now: Date,
-  ): Promise<void> {
+  private fallbackSummary(report: Omit<CheckinReport, "summaryText">): string {
+    const prefix =
+      report.kind === "morning" ? "Morning check-in" : "Night check-in";
+    const winsLabel =
+      report.kind === "morning" ? "yesterday's wins" : "wins today";
+    const sourceLine = report.briefingSections
+      .map((section) =>
+        section.error
+          ? `${section.title}: unavailable`
+          : `${section.title}: ${section.summary}`,
+      )
+      .join(" ");
+    return `${prefix}: ${summarizeCount(report.overdueTodos.length, "overdue todo")}, ${summarizeCount(report.todaysMeetings.length, "meeting")} today, ${summarizeCount(report.yesterdaysWins.length, winsLabel, winsLabel)}, and ${summarizeCount(report.habitSummaries.length, "tracked habit")}. ${sourceLine}`.trim();
+  }
+
+  private async renderSummary(
+    report: Omit<CheckinReport, "summaryText">,
+  ): Promise<string> {
+    const fallback = this.fallbackSummary(report);
+    const runModel = this.runtime.useModel?.bind(this.runtime);
+    if (typeof runModel !== "function") {
+      return fallback;
+    }
+    const prompt = [
+      report.kind === "morning"
+        ? "Write the owner's morning personal-assistant intro summary."
+        : "Write the owner's night personal-assistant closeout summary.",
+      "This is generated from LifeOps source data. Do not invent facts.",
+      "Rank for genuinely interesting, important, reply-needed, or schedule-changing items.",
+      "Include X/socials (timeline, mentions, DMs), inboxes/messages/Discord, Gmail, GitHub, calendar changes, completed work, contacts, promises, agreements, and follow-ups when present.",
+      "When a source is unavailable, say that source is unavailable in one compact clause instead of pretending it was empty.",
+      report.kind === "morning"
+        ? "Tone: concise start-of-day briefing, with what matters now and first next steps."
+        : "Tone: concise evening recap sent before the owner's predicted bedtime, with what happened, loose ends, and tomorrow carry-forward.",
+      "Use short sections or tight bullets. No markdown table. No emojis.",
+      "",
+      "Report JSON:",
+      JSON.stringify(report),
+      "",
+      "Summary:",
+    ].join("\n");
+    try {
+      const response = await runModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
+      const text = typeof response === "string" ? response.trim() : "";
+      return text.length > 0 ? text : fallback;
+    } catch (error) {
+      logMissingOnce(
+        "checkin-summary-model",
+        `summary model unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return fallback;
+    }
+  }
+
+  private async persistReport(report: CheckinReport, now: Date): Promise<void> {
     const agentId = String(this.runtime.agentId);
     const payload = JSON.stringify({
       overdueTodos: report.overdueTodos,
@@ -494,6 +1336,8 @@ export class CheckinService {
       yesterdaysWins: report.yesterdaysWins,
       habitSummaries: report.habitSummaries,
       habitEscalationLevel: report.habitEscalationLevel,
+      briefingSections: report.briefingSections,
+      summaryText: report.summaryText,
     }).replace(/'/g, "''");
     await executeRawSql(
       this.runtime,

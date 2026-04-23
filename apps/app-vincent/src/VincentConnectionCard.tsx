@@ -80,7 +80,7 @@ export function VincentConnectionCard({
               <div className="mt-0.5 text-xs text-muted">
                 {t("vincent.connectDescription", {
                   defaultValue:
-                    "Connect your Vincent account to enable DeFi vault management.",
+                    "Connect Vincent to let its agent handle Hyperliquid and Polymarket execution.",
                 })}
               </div>
             )}

@@ -440,7 +440,13 @@ export function updateWalletTradeLedgerEntryStatus(
 function resolveWindow(
   window: WalletTradingProfileWindow | undefined,
 ): WalletTradingProfileWindow {
-  if (window === "7d" || window === "30d" || window === "all") return window;
+  if (
+    window === "24h" ||
+    window === "7d" ||
+    window === "30d" ||
+    window === "all"
+  )
+    return window;
   return "30d";
 }
 
@@ -517,11 +523,13 @@ export function buildWalletTradingProfile(
   const source = resolveSource(options.source);
   const now = Date.now();
   const cutoffMs =
-    window === "7d"
-      ? now - 7 * ONE_DAY_MS
-      : window === "30d"
-        ? now - 30 * ONE_DAY_MS
-        : 0;
+    window === "24h"
+      ? now - ONE_DAY_MS
+      : window === "7d"
+        ? now - 7 * ONE_DAY_MS
+        : window === "30d"
+          ? now - 30 * ONE_DAY_MS
+          : 0;
 
   const filtered = entries
     .filter((entry) => {

@@ -67,6 +67,7 @@ import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
+import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -457,6 +458,30 @@ function parseActivitySignalStates(
     states.push(value);
   }
   return states;
+}
+
+function parseScreenTimeSourceQuery(
+  value: string | null,
+): "app" | "website" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized !== "app" && normalized !== "website") {
+    throw new LifeOpsServiceError(400, "source must be app or website");
+  }
+  return normalized;
+}
+
+function parseRequiredIsoQuery(url: URL, field: string): string {
+  const value = url.searchParams.get(field)?.trim();
+  if (!value) {
+    throw new LifeOpsServiceError(400, `${field} is required`);
+  }
+  if (!Number.isFinite(Date.parse(value))) {
+    throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
+  }
+  return value;
 }
 
 async function runRoute(
@@ -1862,6 +1887,72 @@ export async function handleLifeOpsRoutes(
           refresh,
         }),
       });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/schedule/inspection") {
+    const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
+    return runRoute(ctx, async (service) => {
+      json(res, await service.inspectSchedule({ timezone: timezoneParam }));
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/permissions/full-disk-access"
+  ) {
+    return runRoute(ctx, async () => {
+      json(res, await probeFullDiskAccess());
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getScreenTimeSummary({
+          since: parseRequiredIsoQuery(url, "since"),
+          until: parseRequiredIsoQuery(url, "until"),
+          source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 20,
+            }) ?? undefined,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/screen-time/breakdown") {
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getScreenTimeBreakdown({
+          since: parseRequiredIsoQuery(url, "since"),
+          until: parseRequiredIsoQuery(url, "until"),
+          source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 50,
+            }) ?? undefined,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/social/summary") {
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getSocialHabitSummary({
+          since: parseRequiredIsoQuery(url, "since"),
+          until: parseRequiredIsoQuery(url, "until"),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 50,
+            }) ?? undefined,
+        }),
+      );
     });
   }
 

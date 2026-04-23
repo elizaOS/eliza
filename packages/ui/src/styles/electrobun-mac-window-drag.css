@@ -18,6 +18,7 @@ html.eliza-electrobun-frameless {
    * on Apple Silicon macOS (was 56px — still overlapped the lights).
    */
   --eliza-macos-frame-left-inset: 78px;
+  --eliza-macos-frame-top-inset: 26px;
   --eliza-mobile-nav-offset: 0px;
 }
 
@@ -46,7 +47,10 @@ html.eliza-electrobun-frameless [data-window-titlebar-padding] {
     var(--eliza-macos-frame-left-inset)
   );
   padding-inline-end: 0.75rem;
-  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  padding-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--eliza-macos-frame-top-inset)
+  );
 }
 
 html.eliza-electrobun-frameless a,

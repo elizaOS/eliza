@@ -47,15 +47,12 @@ describeIf(LIVE)("Vincent API live route coverage", () => {
     expect(response.data).toEqual({
       connected: false,
       connectedAt: null,
+      tradingVenues: ["hyperliquid", "polymarket"],
     });
   });
 
   it("serves /api/vincent/disconnect through the real API server", async () => {
-    const response = await req(
-      runtime.port,
-      "POST",
-      "/api/vincent/disconnect",
-    );
+    const response = await req(runtime.port, "POST", "/api/vincent/disconnect");
     expect(response.status).toBe(200);
     expect(response.data).toEqual({ ok: true });
   });

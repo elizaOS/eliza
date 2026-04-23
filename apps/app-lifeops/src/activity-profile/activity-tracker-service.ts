@@ -23,11 +23,13 @@ import {
   LifeOpsRepository,
 } from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
+import { isSystemInactivityApp } from "./system-inactivity-apps.js";
 
 export type ActivityTrackerMode =
   | "running"
   | "disabled-config"
   | "disabled-non-darwin"
+  | "stopped"
   | "failed";
 
 export class ActivityTrackerService extends Service {
@@ -90,6 +92,13 @@ export class ActivityTrackerService extends Service {
         onIdleSample: (sample) => {
           this.enqueueIdleSample(sample);
         },
+        onExit: (exit) => {
+          this.mode = "stopped";
+          logger.info(
+            { reason: exit.reason },
+            "[activity-tracker] Collector exited cleanly; events will stop flowing.",
+          );
+        },
         onFatal: (reason) => {
           this.mode = "failed";
           logger.error(
@@ -125,11 +134,18 @@ export class ActivityTrackerService extends Service {
     if (!runtime) return;
     const agentId = String(runtime.agentId);
     const observedAt = new Date(event.ts).toISOString();
+    const eventKind = isSystemInactivityApp({
+      bundleId: event.bundleId,
+      appName: event.appName,
+      platform: process.platform,
+    })
+      ? "deactivate"
+      : event.event;
     try {
       await insertActivityEvent(runtime, {
         agentId,
         observedAt,
-        eventKind: event.event,
+        eventKind,
         bundleId: event.bundleId,
         appName: event.appName,
         windowTitle: event.windowTitle ?? null,

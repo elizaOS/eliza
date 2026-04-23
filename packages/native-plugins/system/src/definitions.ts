@@ -13,7 +13,16 @@ export interface SystemStatus {
   roles: AndroidRoleStatus[];
 }
 
+export interface AndroidRoleRequestResult {
+  role: AndroidRoleName;
+  held: boolean;
+  resultCode: number;
+}
+
 export interface SystemPlugin {
   getStatus(): Promise<SystemStatus>;
+  requestRole(options: {
+    role: AndroidRoleName;
+  }): Promise<AndroidRoleRequestResult>;
   openSettings(): Promise<void>;
 }

@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   deriveEvmAddress,
   deriveSolanaAddress,
+  fetchSolanaBalances,
   getWalletAddresses,
 } from "./wallet.js";
 
@@ -68,5 +69,28 @@ describe("getWalletAddresses", () => {
       evmAddress: deriveEvmAddress(process.env.EVM_PRIVATE_KEY),
       solanaAddress: deriveSolanaAddress(process.env.SOLANA_PRIVATE_KEY),
     });
+  });
+});
+
+describe("fetchSolanaBalances", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fails fast when the Solana RPC request fails instead of fabricating a zero balance", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "rpc unavailable",
+    } as Response);
+
+    await expect(
+      fetchSolanaBalances(
+        "8RsmpM7Ztk5H2nesQSjk8okmFTiZFk4kBUcyaygPrVxa",
+        "test-key",
+      ),
+    ).rejects.toThrow("rpc unavailable");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

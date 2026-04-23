@@ -573,6 +573,15 @@ export const ImageProviderSchema = z.enum([
   "xai",
 ]);
 
+// Shared cloud sub-config: pin a specific cloud-hosted model per category
+// (image/video/audio/vision). Applied when `mode === "cloud"`.
+export const CloudMediaConfigSchema = z
+  .object({
+    model: z.string().optional(),
+  })
+  .strict()
+  .optional();
+
 export const ImageFalConfigSchema = z
   .object({
     apiKey: z.string().optional(),
@@ -615,6 +624,7 @@ export const ImageConfigSchema = z
     mode: MediaModeSchema.optional(),
     provider: ImageProviderSchema.optional(),
     defaultSize: z.string().optional(),
+    cloud: CloudMediaConfigSchema,
     fal: ImageFalConfigSchema,
     openai: ImageOpenaiConfigSchema,
     google: ImageGoogleConfigSchema,
@@ -658,6 +668,7 @@ export const VideoConfigSchema = z
     mode: MediaModeSchema.optional(),
     provider: VideoProviderSchema.optional(),
     defaultDuration: z.number().int().positive().optional(),
+    cloud: CloudMediaConfigSchema,
     fal: VideoFalConfigSchema,
     openai: VideoOpenaiConfigSchema,
     google: VideoGoogleConfigSchema,
@@ -691,6 +702,7 @@ export const AudioGenConfigSchema = z
     enabled: z.boolean().optional(),
     mode: MediaModeSchema.optional(),
     provider: AudioGenProviderSchema.optional(),
+    cloud: CloudMediaConfigSchema,
     suno: AudioSunoConfigSchema,
     elevenlabs: AudioElevenlabsSfxConfigSchema,
   })
@@ -756,6 +768,7 @@ export const VisionConfigSchema = z
     enabled: z.boolean().optional(),
     mode: MediaModeSchema.optional(),
     provider: VisionProviderSchema.optional(),
+    cloud: CloudMediaConfigSchema,
     openai: VisionOpenaiConfigSchema,
     google: VisionGoogleConfigSchema,
     anthropic: VisionAnthropicConfigSchema,
