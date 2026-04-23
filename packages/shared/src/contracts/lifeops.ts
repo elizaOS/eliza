@@ -2684,6 +2684,33 @@ export interface CaptureLifeOpsActivitySignalRequest {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * User-attested circadian override. Emitted with maximum reliability weight;
+ * force-transitions the state machine. See `sleep-wake-spec.md` §2 (manual
+ * override row in the transition table).
+ */
+export const LIFEOPS_MANUAL_OVERRIDE_KINDS = [
+  "going_to_bed",
+  "just_woke_up",
+] as const;
+export type LifeOpsManualOverrideKind =
+  (typeof LIFEOPS_MANUAL_OVERRIDE_KINDS)[number];
+
+export interface CaptureLifeOpsManualOverrideRequest {
+  kind: LifeOpsManualOverrideKind;
+  occurredAt?: string;
+  /** Optional user note capped at 500 chars. */
+  note?: string;
+}
+
+export interface LifeOpsManualOverrideResult {
+  accepted: true;
+  kind: LifeOpsManualOverrideKind;
+  occurredAt: string;
+  circadianState: LifeOpsCircadianState;
+  stateConfidence: number;
+}
+
 export interface ProcessLifeOpsRemindersRequest {
   now?: string;
   limit?: number;

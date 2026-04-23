@@ -9,12 +9,7 @@
 
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  executeRawSql,
-  sqlQuote,
-  sqlText,
-  toText,
-} from "../lifeops/sql.js";
+import { executeRawSql, sqlQuote, sqlText, toText } from "../lifeops/sql.js";
 
 export interface ActivityEventRow {
   id: string;
@@ -74,7 +69,7 @@ export async function insertActivityEvent(
       ${sqlQuote(event.eventKind)},
       ${sqlQuote(event.bundleId)},
       ${sqlQuote(event.appName)},
-      ${sqlText(event.windowTitle)},
+      ${sqlText(null)},
       ${sqlQuote("{}")},
       ${sqlQuote(createdAt)}
     )`,

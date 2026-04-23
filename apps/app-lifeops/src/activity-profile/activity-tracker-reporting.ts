@@ -2,8 +2,8 @@
  * Reporting layer for T8d activity tracker.
  *
  * Converts the append-only `life_activity_events` stream into per-app dwell
- * summaries. Window titles are passed through {@link redactWindowTitle} when
- * ACTIVITY_REDACT_TITLES is enabled.
+ * summaries. New repository writes do not persist raw window titles; any
+ * legacy titles are passed through {@link redactWindowTitle} before reporting.
  *
  * Duration model:
  *   - Events are sorted ascending by observed_at.
@@ -20,9 +20,9 @@ import {
   listActivityEvents,
 } from "./activity-tracker-repo.js";
 import {
+  type RedactorConfig,
   redactWindowTitle,
   resolveRedactorConfigFromEnv,
-  type RedactorConfig,
 } from "./redactor.js";
 
 export interface ActivityAppBreakdown {
@@ -64,12 +64,14 @@ function intervalsFromEvents(
   const timestamps: number[] = events.map((e) => Date.parse(e.observedAt));
 
   for (let i = 0; i < events.length; i++) {
-    const ev = events[i]!;
+    const ev = events[i];
+    if (!ev) continue;
     if (ev.eventKind !== "activate") continue;
-    const startMs = timestamps[i]!;
-    if (!Number.isFinite(startMs)) continue;
-    const nextTs = i + 1 < events.length ? timestamps[i + 1]! : untilMs;
-    const endMs = Number.isFinite(nextTs) ? nextTs : untilMs;
+    const startMs = timestamps[i];
+    if (typeof startMs !== "number" || !Number.isFinite(startMs)) continue;
+    const nextTs = i + 1 < events.length ? timestamps[i + 1] : untilMs;
+    const endMs =
+      typeof nextTs === "number" && Number.isFinite(nextTs) ? nextTs : untilMs;
     const clippedStart = Math.max(startMs, sinceMs);
     const clippedEnd = Math.min(endMs, untilMs);
     if (clippedEnd <= clippedStart) continue;

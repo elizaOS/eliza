@@ -5,6 +5,7 @@ import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
   CaptureLifeOpsPhoneConsentRequest,
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsCalendarEventRequest,
@@ -1685,6 +1686,17 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, { signal: await service.captureActivitySignal(body) }, 201);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/manual-override") {
+    const body = await readJsonBody<CaptureLifeOpsManualOverrideRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.captureManualOverride(body), 201);
     });
   }
 

@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   insertActivityEvent,
@@ -212,7 +212,7 @@ describe("activity-tracker reporting (pglite)", () => {
     expect(miss.matchedBy).toBe("none");
   });
 
-  it("redacts PII from sample window titles when redactor is on", async () => {
+  it("does not persist sample window titles when redactor is on", async () => {
     const now = Date.now();
     await seed(h.runtime, [
       {
@@ -229,10 +229,11 @@ describe("activity-tracker reporting (pglite)", () => {
       redactor: { enabled: true },
     });
     const mail = report.apps.find((a) => a.appName === "Mail");
-    expect(mail?.sampleWindowTitles[0]).toBe("Inbox — [redacted-email]");
+    expect(mail?.totalMs).toBe(5 * 60_000);
+    expect(mail?.sampleWindowTitles).toEqual([]);
   });
 
-  it("leaves titles raw when redactor is off", async () => {
+  it("does not expose raw sample window titles when redactor is off", async () => {
     const now = Date.now();
     await seed(h.runtime, [
       {
@@ -249,7 +250,8 @@ describe("activity-tracker reporting (pglite)", () => {
       redactor: { enabled: false },
     });
     const mail = report.apps.find((a) => a.appName === "Mail");
-    expect(mail?.sampleWindowTitles[0]).toBe("Inbox — alice@example.com");
+    expect(mail?.totalMs).toBe(5 * 60_000);
+    expect(mail?.sampleWindowTitles).toEqual([]);
   });
 
   it("returns empty report when no events exist", async () => {

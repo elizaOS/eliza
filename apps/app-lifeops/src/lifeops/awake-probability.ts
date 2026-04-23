@@ -5,6 +5,7 @@ import type {
   LifeOpsSleepCycle,
 } from "@elizaos/shared/contracts/lifeops";
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
+import { resolveActivitySignalReliability } from "./source-reliability.js";
 import { getZonedDateParts } from "./time.js";
 
 function clamp(value: number, min: number, max: number): number {
@@ -67,29 +68,30 @@ export function computeAwakeProbability(args: {
   if (latestSignal) {
     const ageMs = args.nowMs - latestSignal.observedAtMs;
     const state = latestSignal.signal.state;
+    const reliability = resolveActivitySignalReliability(
+      latestSignal.signal.source,
+      latestSignal.signal.platform,
+    );
+    const scale = clamp(reliability, 0, 1);
+    let baseWeight = 0;
     if (state === "active" && ageMs <= 5 * 60_000) {
-      contributors.push({
-        source: latestSignal.signal.source,
-        logLikelihoodRatio: 2.4,
-      });
-      llr += 2.4;
+      baseWeight = 2.4;
     } else if (state === "active" && ageMs <= 15 * 60_000) {
-      contributors.push({
-        source: latestSignal.signal.source,
-        logLikelihoodRatio: 1.4,
-      });
-      llr += 1.4;
+      baseWeight = 1.4;
     } else if (
       (state === "idle" || state === "locked" || state === "sleeping") &&
       ageMs <= 90 * 60_000
     ) {
-      const asleepWeight =
+      baseWeight =
         state === "sleeping" ? -2.2 : state === "locked" ? -1.2 : -0.8;
+    }
+    if (baseWeight !== 0) {
+      const scaledWeight = baseWeight * scale;
       contributors.push({
         source: latestSignal.signal.source,
-        logLikelihoodRatio: asleepWeight,
+        logLikelihoodRatio: scaledWeight,
       });
-      llr += asleepWeight;
+      llr += scaledWeight;
     }
   }
 
@@ -100,9 +102,9 @@ export function computeAwakeProbability(args: {
     args.nowMs >= currentSleepStartMs
   ) {
     const strongestEvidence =
-      [...args.sleepCycle.evidence]
-        .sort((left, right) => right.confidence - left.confidence)[0]?.source ??
-      "activity_gap";
+      [...args.sleepCycle.evidence].sort(
+        (left, right) => right.confidence - left.confidence,
+      )[0]?.source ?? "activity_gap";
     const sleepWeight = -2.8 * clamp(args.sleepCycle.sleepConfidence, 0.3, 1);
     contributors.push({
       source: strongestEvidence,
@@ -124,9 +126,14 @@ export function computeAwakeProbability(args: {
   }
 
   const latestWindowEndMs =
-    args.windows.length > 0 ? args.windows[args.windows.length - 1]?.endMs ?? null : null;
+    args.windows.length > 0
+      ? (args.windows[args.windows.length - 1]?.endMs ?? null)
+      : null;
   if (latestWindowEndMs !== null) {
-    const gapMinutes = Math.max(0, Math.round((args.nowMs - latestWindowEndMs) / 60_000));
+    const gapMinutes = Math.max(
+      0,
+      Math.round((args.nowMs - latestWindowEndMs) / 60_000),
+    );
     if (gapMinutes >= 180) {
       const sleepGapWeight = -clamp(gapMinutes / 240, 0.8, 1.8);
       contributors.push({
@@ -143,15 +150,15 @@ export function computeAwakeProbability(args: {
     }
   }
 
-  if (args.regularity.regularityClass === "regular" || args.regularity.regularityClass === "very_regular") {
+  if (
+    args.regularity.regularityClass === "regular" ||
+    args.regularity.regularityClass === "very_regular"
+  ) {
     const hour = localHour(args.nowMs, args.timezone);
     const sleepWindowWeight =
-      hour >= 22 || hour < 6
-        ? -0.9
-        : hour >= 6 && hour < 10
-          ? 0.5
-          : 0.1;
-    const scaledWeight = sleepWindowWeight * clamp(args.regularity.sri / 100, 0.4, 1);
+      hour >= 22 || hour < 6 ? -0.9 : hour >= 6 && hour < 10 ? 0.5 : 0.1;
+    const scaledWeight =
+      sleepWindowWeight * clamp(args.regularity.sri / 100, 0.4, 1);
     contributors.push({
       source: "prior",
       logLikelihoodRatio: scaledWeight,
@@ -162,13 +169,18 @@ export function computeAwakeProbability(args: {
   const signalCoverage = clamp(args.signals.length / 12, 0, 1);
   const windowCoverage = args.windows.length > 0 ? 1 : 0;
   let evidenceCoverage = clamp(
-    signalCoverage * 0.7 + windowCoverage * 0.2 + Math.min(contributors.length, 4) * 0.1,
+    signalCoverage * 0.7 +
+      windowCoverage * 0.2 +
+      Math.min(contributors.length, 4) * 0.1,
     0.15,
     1,
   );
   if (args.sleepCycle.sleepStatus === "sleeping_now") {
     evidenceCoverage = Math.max(evidenceCoverage, 0.9);
-  } else if (wakeAtMs !== null && args.nowMs - wakeAtMs <= 2 * 60 * 60 * 1_000) {
+  } else if (
+    wakeAtMs !== null &&
+    args.nowMs - wakeAtMs <= 2 * 60 * 60 * 1_000
+  ) {
     evidenceCoverage = Math.max(evidenceCoverage, 0.75);
   }
   const pKnown = round(evidenceCoverage);

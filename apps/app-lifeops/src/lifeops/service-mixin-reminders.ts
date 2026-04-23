@@ -10,9 +10,12 @@ import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
+  CaptureLifeOpsManualOverrideRequest,
   CaptureLifeOpsPhoneConsentRequest,
   LifeOpsActivitySignal,
   LifeOpsChannelPolicy,
+  LifeOpsCircadianState,
+  LifeOpsManualOverrideResult,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
   LifeOpsReminderAttempt,
@@ -32,7 +35,10 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
 } from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_CHANNEL_TYPES } from "@elizaos/app-lifeops/contracts";
+import {
+  LIFEOPS_CHANNEL_TYPES,
+  LIFEOPS_MANUAL_OVERRIDE_KINDS,
+} from "@elizaos/app-lifeops/contracts";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
@@ -73,10 +79,6 @@ import {
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
 import {
-  deriveSleepWakeEvents,
-  type LifeOpsDerivedEvent,
-} from "./sleep-wake-events.js";
-import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
   mergeScheduleObservations,
@@ -108,6 +110,10 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import { normalizeHealthSignal } from "./service-normalize-health.js";
+import {
+  deriveSleepWakeEvents,
+  type LifeOpsDerivedEvent,
+} from "./sleep-wake-events.js";
 import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
@@ -331,6 +337,9 @@ export interface LifeOpsReminderService {
   captureActivitySignal(
     request: CaptureLifeOpsActivitySignalRequest,
   ): Promise<LifeOpsActivitySignal>;
+  captureManualOverride(
+    request: CaptureLifeOpsManualOverrideRequest,
+  ): Promise<LifeOpsManualOverrideResult>;
   listActivitySignals(args?: {
     sinceAt?: string | null;
     limit?: number | null;
@@ -3462,6 +3471,53 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return signal;
     }
 
+    async captureManualOverride(
+      request: CaptureLifeOpsManualOverrideRequest,
+    ): Promise<LifeOpsManualOverrideResult> {
+      const kind = normalizeEnumValue(
+        request.kind,
+        "kind",
+        LIFEOPS_MANUAL_OVERRIDE_KINDS,
+      );
+      const occurredAt =
+        normalizeOptionalIsoString(request.occurredAt, "occurredAt") ??
+        new Date().toISOString();
+      const note = normalizeOptionalString(request.note);
+      if (note !== undefined && note.length > 500) {
+        fail(400, "note must be <= 500 characters");
+      }
+      const desiredState: LifeOpsCircadianState =
+        kind === "going_to_bed" ? "sleeping" : "awake";
+      const signal = createLifeOpsActivitySignal({
+        agentId: this.agentId(),
+        source: "app_lifecycle",
+        platform: "manual_override",
+        state: kind === "going_to_bed" ? "sleeping" : "active",
+        observedAt: occurredAt,
+        idleState: kind === "going_to_bed" ? "idle" : "active",
+        idleTimeSeconds: 0,
+        onBattery: null,
+        health: null,
+        metadata: {
+          userAttested: true,
+          manualOverrideKind: kind,
+          ...(note ? { note } : {}),
+        },
+      });
+      await this.repository.createActivitySignal(signal);
+
+      const refreshed = await this.refreshEffectiveScheduleState({
+        now: new Date(occurredAt),
+      });
+      return {
+        accepted: true,
+        kind,
+        occurredAt,
+        circadianState: refreshed?.circadianState ?? desiredState,
+        stateConfidence: refreshed?.stateConfidence ?? 0.99,
+      };
+    }
+
     async listActivitySignals(
       args: {
         sinceAt?: string | null;
@@ -3808,7 +3864,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             definitionPreferencesById.get(reminder.definitionId ?? "") ??
             globalReminderPreference;
           const urgency = occurrenceUrgencies.get(reminder.ownerId) ?? "medium";
-          const definition = definitionsById.get(occurrence.definitionId) ?? null;
+          const definition =
+            definitionsById.get(occurrence.definitionId) ?? null;
           if (
             !shouldDeliverReminderForIntensity(
               preference.effective.intensity,
