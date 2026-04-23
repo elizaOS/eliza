@@ -105,11 +105,12 @@ describe("BrowserWorkspaceView", () => {
 
     expect(screen.queryByText(/Embedded fallback only/i)).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Install Agent Browser Bridge" }),
-    ).toBeTruthy();
+      screen.getAllByRole("button", { name: "Install Agent Browser Bridge" })
+        .length,
+    ).toBeGreaterThan(0);
     expect(
-      screen.getByRole("button", { name: "Open extension folder" }),
-    ).toBeTruthy();
+      screen.getAllByRole("button", { name: "Open extension folder" }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("opens the extension folder and Chrome extensions from the install card", async () => {
@@ -140,11 +141,10 @@ describe("BrowserWorkspaceView", () => {
 
     render(<BrowserWorkspaceView />);
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Install Agent Browser Bridge",
-      }),
-    );
+    const installButtons = await screen.findAllByRole("button", {
+      name: "Install Agent Browser Bridge",
+    });
+    fireEvent.click(installButtons[0]);
 
     await waitFor(() => {
       expect(clientMock.fetch).toHaveBeenCalledWith(

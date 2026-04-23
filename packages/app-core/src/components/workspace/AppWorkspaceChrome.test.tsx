@@ -8,6 +8,12 @@ vi.mock("../pages/ChatView.js", () => ({
   ChatView: () => <div data-testid="default-chat" />,
 }));
 
+vi.mock("../pages/PageScopedChatPane.js", () => ({
+  PageScopedChatPane: ({ scope }: { scope: string }) => (
+    <div data-testid="page-scoped-chat">{scope}</div>
+  ),
+}));
+
 describe("AppWorkspaceChrome", () => {
   afterEach(() => {
     cleanup();
@@ -35,5 +41,20 @@ describe("AppWorkspaceChrome", () => {
     expect(chatSidebar.parentElement).toBe(root);
     expect(chatSidebar.previousElementSibling).toBe(leftPane);
     expect(chatSidebar.contains(browserControls)).toBe(false);
+  });
+
+  it("renders page-scoped chat when a chat scope is provided", () => {
+    render(
+      <AppWorkspaceChrome
+        testId="apps-shell"
+        chatScope="page-apps"
+        main={<div data-testid="apps-main">Apps</div>}
+      />,
+    );
+
+    expect(screen.queryByTestId("default-chat")).toBeNull();
+    expect(screen.getByTestId("page-scoped-chat").textContent).toBe(
+      "page-apps",
+    );
   });
 });
