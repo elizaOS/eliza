@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 import { mergeAggregatedCalendarFeedEvents } from "./service-mixin-calendar.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 function calendar(
   overrides: Partial<LifeOpsCalendarSummary> = {},
@@ -209,6 +210,37 @@ describe("LifeOps calendar feed fallback", () => {
       false,
       expect.any(Date),
     );
+    expect(result.calendarId).toBe("primary");
+  });
+
+  it("falls back to primary aggregation when managed calendar discovery is unavailable", async () => {
+    const service = new LifeOpsService(runtime());
+    vi.spyOn(service, "listCalendars").mockRejectedValue(
+      new LifeOpsServiceError(
+        503,
+        "Google calendar discovery is unavailable for this connection. The connector backend needs the managed calendar-list route.",
+      ),
+    );
+    vi.spyOn(service.repository, "listConnectorGrants").mockResolvedValue([
+      grant(),
+    ]);
+    const aggregate = vi
+      .spyOn(service, "aggregateCalendarFeeds")
+      .mockResolvedValue(
+        feed([], {
+          calendarId: "primary",
+          source: "cache",
+          syncedAt: null,
+        }),
+      );
+
+    const result = await service.getCalendarFeed(
+      new URL("http://localhost/api/lifeops/calendar/feed"),
+      { side: "owner", mode: "cloud_managed" },
+      new Date("2026-04-23T12:00:00.000Z"),
+    );
+
+    expect(aggregate).toHaveBeenCalledOnce();
     expect(result.calendarId).toBe("primary");
   });
 });
