@@ -7,6 +7,8 @@ ext {
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
 android {
     namespace "ai.eliza.plugins.websiteblocker"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34

@@ -41,15 +41,6 @@ allprojects {
 }
 
 subprojects { subproject ->
-    subproject.plugins.withId('com.android.library') {
-        def kotlinSources = subproject.fileTree('src') {
-            include '**/*.kt'
-        }
-        if (!kotlinSources.isEmpty()) {
-            subproject.pluginManager.apply('org.jetbrains.kotlin.android')
-        }
-    }
-
     if (subproject.path == ':capacitor-android') {
         subproject.tasks.withType(JavaCompile).configureEach {
             options.warnings = false
