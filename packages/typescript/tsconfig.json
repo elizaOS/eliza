@@ -5,7 +5,7 @@
 		"outDir": "./dist",
 		"rootDir": "../../",
 		"baseUrl": "../../",
-		"ignoreDeprecations": "5.0",
+		"ignoreDeprecations": "6.0",
 		"typeRoots": [
 			"../../../node_modules/@types",
 			"../../../node_modules/.bun/node_modules/@types",
