@@ -1430,6 +1430,15 @@ export interface LifeOpsGmailSearchFeed {
   summary: LifeOpsGmailSearchSummary;
 }
 
+export const LIFEOPS_GMAIL_RECOMMENDATION_KINDS = [
+  "reply",
+  "archive",
+  "mark_read",
+  "review_spam",
+] as const;
+export type LifeOpsGmailRecommendationKind =
+  (typeof LIFEOPS_GMAIL_RECOMMENDATION_KINDS)[number];
+
 export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
   "archive",
   "trash",
@@ -1464,6 +1473,59 @@ export interface LifeOpsGmailManageResult {
   destructive: boolean;
   grantId?: string;
   accountEmail?: string;
+}
+
+export interface LifeOpsGmailRecommendationMessage {
+  messageId: string;
+  subject: string;
+  from: string;
+  fromEmail: string | null;
+  receivedAt: string;
+  snippet: string;
+  labels: string[];
+}
+
+export interface LifeOpsGmailRecommendation {
+  id: string;
+  kind: LifeOpsGmailRecommendationKind;
+  title: string;
+  rationale: string;
+  operation: LifeOpsGmailBulkOperation | null;
+  messageIds: string[];
+  query: string | null;
+  labelIds: string[];
+  affectedCount: number;
+  destructive: boolean;
+  requiresConfirmation: boolean;
+  confidence: number;
+  sampleMessages: LifeOpsGmailRecommendationMessage[];
+}
+
+export interface LifeOpsGmailRecommendationsSummary {
+  totalCount: number;
+  replyCount: number;
+  archiveCount: number;
+  markReadCount: number;
+  spamReviewCount: number;
+  destructiveCount: number;
+}
+
+export interface LifeOpsGmailRecommendationsFeed {
+  recommendations: LifeOpsGmailRecommendation[];
+  source: "cache" | "synced";
+  syncedAt: string | null;
+  summary: LifeOpsGmailRecommendationsSummary;
+}
+
+export interface GetLifeOpsGmailRecommendationsRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+  forceSync?: boolean;
+  maxResults?: number;
+  query?: string;
+  replyNeededOnly?: boolean;
+  includeSpamTrash?: boolean;
 }
 
 export interface LifeOpsGmailUnrespondedThread {

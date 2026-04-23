@@ -1,6 +1,6 @@
 import type { Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { pageScopedContextProvider } from "./page-scoped-context.js";
 
@@ -26,7 +26,18 @@ function buildMessage(overrides?: Partial<Memory>): Memory {
   } as Memory;
 }
 
+function jsonResponse(payload: unknown): Response {
+  return {
+    ok: true,
+    json: async () => payload,
+  } as Response;
+}
+
 describe("pageScopedContextProvider", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns empty for non-page-scoped rooms", async () => {
     const runtime = {
       agentId: AGENT_ID,
@@ -109,6 +120,150 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("Live automations state: 2 tasks.");
     expect(result.text).toContain("Daily check-in");
     expect(result.text).toContain("Email digest");
+  });
+
+  it("injects the apps brief and live catalog/run state", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/catalog/apps") {
+        return jsonResponse([
+          {
+            name: "chess-coach",
+            displayName: "Chess Coach",
+            description: "Practice chess lines.",
+            category: "game",
+            launchType: "session",
+            launchUrl: null,
+            icon: null,
+            heroImage: null,
+            capabilities: ["commands", "telemetry"],
+            stars: 0,
+            repository: "",
+            latestVersion: null,
+            supports: { v0: false, v1: true, v2: true },
+            npm: { package: "", v0Version: null, v1Version: null, v2Version: null },
+          },
+        ]);
+      }
+      if (path === "/api/apps") return jsonResponse([]);
+      if (path === "/api/apps/runs") {
+        return jsonResponse([
+          {
+            appName: "chess-coach",
+            displayName: "Chess Coach",
+            status: "running",
+            summary: "Waiting for the next move.",
+            health: { state: "healthy", message: null },
+            viewerAttachment: "attached",
+          },
+        ]);
+      }
+      return jsonResponse(null);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const runtime = {
+      agentId: AGENT_ID,
+      getRoom: vi.fn(async () => ({
+        id: "room-1",
+        metadata: pageRoomMetadata("page-apps"),
+      })),
+    };
+    const result = await pageScopedContextProvider.get(
+      runtime as never,
+      buildMessage(),
+      {} as never,
+    );
+
+    expect(result.text).toContain("Apps view");
+    expect(result.text).toContain("Live apps state:");
+    expect(result.text).toContain("Running apps:");
+    expect(result.text).toContain("Chess Coach");
+    expect(result.text).toContain("Catalog sample:");
+  });
+
+  it("injects the wallet brief and live wallet readiness state", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/wallet/config") {
+        return jsonResponse({
+          selectedRpcProviders: {
+            evm: "eliza-cloud",
+            bsc: "eliza-cloud",
+            solana: "helius-birdeye",
+          },
+          walletSource: "managed",
+          evmAddress: "0x1234567890abcdefabcd",
+          solanaAddress: "So11111111111111111111111111111111111111112",
+          managedBscRpcReady: true,
+          evmBalanceReady: true,
+          solanaBalanceReady: false,
+          executionReady: false,
+          executionBlockedReason: "User signing required",
+          evmSigningCapability: "cloud-view-only",
+          solanaSigningAvailable: false,
+        });
+      }
+      if (path === "/api/wallet/balances") {
+        return jsonResponse({
+          evm: {
+            address: "0x1234567890abcdefabcd",
+            chains: [
+              {
+                chain: "bsc",
+                chainId: 56,
+                nativeBalance: "0.1",
+                nativeSymbol: "BNB",
+                nativeValueUsd: "50",
+                tokens: [],
+                error: null,
+              },
+            ],
+          },
+          solana: {
+            address: "So11111111111111111111111111111111111111112",
+            solBalance: "1",
+            solValueUsd: "100",
+            tokens: [],
+          },
+        });
+      }
+      if (path === "/api/wallet/nfts") {
+        return jsonResponse({ evm: [], solana: null });
+      }
+      if (path === "/api/wallet/steward-status") {
+        return jsonResponse({
+          configured: true,
+          available: true,
+          connected: true,
+          vaultHealth: "ok",
+        });
+      }
+      if (path === "/api/wallet/steward-pending-approvals") {
+        return jsonResponse([]);
+      }
+      return jsonResponse(null);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const runtime = {
+      agentId: AGENT_ID,
+      getRoom: vi.fn(async () => ({
+        id: "room-1",
+        metadata: pageRoomMetadata("page-wallet"),
+      })),
+    };
+    const result = await pageScopedContextProvider.get(
+      runtime as never,
+      buildMessage(),
+      {} as never,
+    );
+
+    expect(result.text).toContain("Wallet view");
+    expect(result.text).toContain("Live wallet state:");
+    expect(result.text).toContain("0x1234...abcd");
+    expect(result.text).toContain("RPC providers");
+    expect(result.text).toContain("Pending Steward approvals: 0");
   });
 
   it("includes a substantive main-chat tail when sourceConversationId points to one", async () => {

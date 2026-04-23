@@ -6,6 +6,8 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendation,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
@@ -631,6 +633,186 @@ export function summarizeGmailUnresponded(
       threads.length > 0
         ? Math.max(...threads.map((thread) => thread.daysWaiting))
         : null,
+  };
+}
+
+function recommendationMessage(
+  message: LifeOpsGmailMessageSummary,
+): LifeOpsGmailRecommendation["sampleMessages"][number] {
+  return {
+    messageId: message.id,
+    subject: message.subject,
+    from: message.from,
+    fromEmail: message.fromEmail,
+    receivedAt: message.receivedAt,
+    snippet: message.snippet,
+    labels: message.labels,
+  };
+}
+
+function hasGmailLabel(
+  message: LifeOpsGmailMessageSummary,
+  labelId: string,
+): boolean {
+  const normalized = labelId.trim().toUpperCase();
+  return message.labels.some((label) => label.trim().toUpperCase() === normalized);
+}
+
+function isAutomatedLowValueGmailMessage(
+  message: LifeOpsGmailMessageSummary,
+): boolean {
+  const precedence =
+    typeof message.metadata.precedence === "string"
+      ? message.metadata.precedence.trim().toLowerCase()
+      : "";
+  return (
+    !message.likelyReplyNeeded &&
+    (Boolean(message.metadata.listId) ||
+      precedence === "bulk" ||
+      precedence === "list" ||
+      hasGmailLabel(message, "CATEGORY_PROMOTIONS"))
+  );
+}
+
+function buildRecommendation(args: {
+  id: string;
+  kind: LifeOpsGmailRecommendation["kind"];
+  title: string;
+  rationale: string;
+  operation: LifeOpsGmailRecommendation["operation"];
+  messages: LifeOpsGmailMessageSummary[];
+  query?: string | null;
+  labelIds?: string[];
+  destructive?: boolean;
+  confidence: number;
+}): LifeOpsGmailRecommendation | null {
+  const messageIds = args.messages.map((message) => message.id);
+  if (messageIds.length === 0) {
+    return null;
+  }
+  const destructive = args.destructive === true;
+  return {
+    id: args.id,
+    kind: args.kind,
+    title: args.title,
+    rationale: args.rationale,
+    operation: args.operation,
+    messageIds,
+    query: args.query ?? null,
+    labelIds: args.labelIds ?? [],
+    affectedCount: messageIds.length,
+    destructive,
+    requiresConfirmation: true,
+    confidence: args.confidence,
+    sampleMessages: args.messages.slice(0, 5).map(recommendationMessage),
+  };
+}
+
+export function buildGmailRecommendations(
+  messages: LifeOpsGmailMessageSummary[],
+): LifeOpsGmailRecommendation[] {
+  const recommendations: Array<LifeOpsGmailRecommendation | null> = [];
+  const replyMessages = messages
+    .filter((message) => message.likelyReplyNeeded)
+    .slice(0, 25);
+  recommendations.push(
+    buildRecommendation({
+      id: "gmail-reply-needed",
+      kind: "reply",
+      title: "Draft replies for messages that need you",
+      rationale:
+        "These messages are direct, non-automated Gmail threads that LifeOps classified as likely needing a response.",
+      operation: null,
+      messages: replyMessages,
+      confidence: replyMessages.length > 0 ? 0.84 : 0,
+    }),
+  );
+
+  const archiveMessages = messages
+    .filter(
+      (message) =>
+        hasGmailLabel(message, "INBOX") &&
+        isAutomatedLowValueGmailMessage(message),
+    )
+    .slice(0, 50);
+  recommendations.push(
+    buildRecommendation({
+      id: "gmail-archive-low-value",
+      kind: "archive",
+      title: "Archive low-value automated mail",
+      rationale:
+        "These inbox messages carry list, bulk, or promotions signals and do not look reply-worthy.",
+      operation: "archive",
+      messages: archiveMessages,
+      confidence: archiveMessages.length > 0 ? 0.78 : 0,
+    }),
+  );
+
+  const markReadMessages = messages
+    .filter(
+      (message) =>
+        message.isUnread &&
+        !message.isImportant &&
+        !message.likelyReplyNeeded &&
+        isAutomatedLowValueGmailMessage(message),
+    )
+    .slice(0, 50);
+  recommendations.push(
+    buildRecommendation({
+      id: "gmail-mark-read-low-value",
+      kind: "mark_read",
+      title: "Mark low-value automated mail as read",
+      rationale:
+        "These unread messages are automated or promotional and do not currently need a response.",
+      operation: "mark_read",
+      messages: markReadMessages,
+      confidence: markReadMessages.length > 0 ? 0.74 : 0,
+    }),
+  );
+
+  const spamMessages = messages
+    .filter((message) => hasGmailLabel(message, "SPAM"))
+    .slice(0, 25);
+  recommendations.push(
+    buildRecommendation({
+      id: "gmail-review-spam",
+      kind: "review_spam",
+      title: "Review spam folder candidates",
+      rationale:
+        "These messages are already in Gmail spam and should be reviewed before any destructive action.",
+      operation: null,
+      messages: spamMessages,
+      destructive: false,
+      confidence: spamMessages.length > 0 ? 0.9 : 0,
+    }),
+  );
+
+  return recommendations.filter(
+    (recommendation): recommendation is LifeOpsGmailRecommendation =>
+      recommendation !== null,
+  );
+}
+
+export function summarizeGmailRecommendations(
+  recommendations: LifeOpsGmailRecommendation[],
+): LifeOpsGmailRecommendationsFeed["summary"] {
+  return {
+    totalCount: recommendations.length,
+    replyCount: recommendations.filter(
+      (recommendation) => recommendation.kind === "reply",
+    ).length,
+    archiveCount: recommendations.filter(
+      (recommendation) => recommendation.kind === "archive",
+    ).length,
+    markReadCount: recommendations.filter(
+      (recommendation) => recommendation.kind === "mark_read",
+    ).length,
+    spamReviewCount: recommendations.filter(
+      (recommendation) => recommendation.kind === "review_spam",
+    ).length,
+    destructiveCount: recommendations.filter(
+      (recommendation) => recommendation.destructive,
+    ).length,
   };
 }
 
