@@ -1,11 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  CheckinService,
   __resetCheckinMissingSourceLog,
+  CheckinService,
+  type CheckinSourceService,
 } from "../checkin-service.js";
 
 interface CheckinTestHarness {
@@ -122,13 +123,183 @@ describe("CheckinService", () => {
     expect(await service.getEscalationLevel()).toBe(0);
   });
 
+  it("includes social, inbox, Gmail, and rendered briefing sections", async () => {
+    const source: CheckinSourceService = {
+      syncXDms: async () => ({ synced: 1 }),
+      getXDms: async () => [
+        {
+          id: "dm-1",
+          agentId: String(harness.runtime.agentId),
+          externalDmId: "dm-1",
+          conversationId: "conversation-1",
+          senderHandle: "alice",
+          senderId: "alice-id",
+          isInbound: true,
+          text: "Can you review the GitHub PR today?",
+          receivedAt: "2026-04-22T15:00:00.000Z",
+          readAt: null,
+          repliedAt: null,
+          metadata: {},
+          syncedAt: "2026-04-22T15:00:00.000Z",
+          updatedAt: "2026-04-22T15:00:00.000Z",
+        },
+      ],
+      syncXFeed: async () => ({ synced: 1 }),
+      getXFeedItems: async (feedType) => [
+        {
+          id: `feed-${feedType}`,
+          agentId: String(harness.runtime.agentId),
+          externalTweetId: `tweet-${feedType}`,
+          authorHandle: "builder",
+          authorId: "builder-id",
+          text: "Interesting launch thread with a question?",
+          createdAtSource: "2026-04-22T14:00:00.000Z",
+          feedType,
+          metadata: {
+            raw: {
+              public_metrics: { like_count: 10, reply_count: 3 },
+            },
+          },
+          syncedAt: "2026-04-22T14:00:00.000Z",
+          updatedAt: "2026-04-22T14:00:00.000Z",
+        },
+      ],
+      getUnifiedInbox: async () => ({
+        messages: [
+          {
+            id: "discord:1",
+            channel: "discord",
+            sender: {
+              id: "bob",
+              displayName: "Bob",
+              avatarUrl: null,
+            },
+            subject: null,
+            snippet: "Need an answer on the launch room.",
+            receivedAt: "2026-04-22T16:00:00.000Z",
+            unread: true,
+            deepLink: null,
+            sourceRef: { channel: "discord", externalId: "1" },
+          },
+        ],
+        channelCounts: {
+          gmail: { total: 0, unread: 0 },
+          telegram: { total: 0, unread: 0 },
+          discord: { total: 1, unread: 1 },
+          signal: { total: 0, unread: 0 },
+          sms: { total: 0, unread: 0 },
+          imessage: { total: 0, unread: 0 },
+          whatsapp: { total: 0, unread: 0 },
+          x_dm: { total: 0, unread: 0 },
+        },
+        fetchedAt: "2026-04-22T16:00:00.000Z",
+      }),
+      getGmailTriage: async () => ({
+        messages: [
+          {
+            id: "gmail-1",
+            externalId: "gmail-1",
+            agentId: String(harness.runtime.agentId),
+            provider: "google",
+            side: "owner",
+            threadId: "thread-1",
+            subject: "GitHub review requested",
+            from: "GitHub",
+            fromEmail: "noreply@github.com",
+            replyTo: null,
+            to: [],
+            cc: [],
+            snippet: "A PR needs your review.",
+            receivedAt: "2026-04-22T13:00:00.000Z",
+            isUnread: true,
+            isImportant: true,
+            likelyReplyNeeded: true,
+            triageScore: 90,
+            triageReason: "review requested",
+            labels: ["INBOX", "UNREAD"],
+            htmlLink: "https://mail.example/message",
+            metadata: {},
+            syncedAt: "2026-04-22T13:00:00.000Z",
+            updatedAt: "2026-04-22T13:00:00.000Z",
+          },
+        ],
+        source: "synced",
+        syncedAt: "2026-04-22T13:00:00.000Z",
+        summary: {
+          unreadCount: 1,
+          importantNewCount: 1,
+          likelyReplyNeededCount: 1,
+        },
+      }),
+    };
+    const runtime = {
+      ...harness.runtime,
+      useModel: async () =>
+        "Morning brief: X, Discord, Gmail, GitHub, calendar, contacts, and promises are covered.",
+    } as unknown as IAgentRuntime;
+
+    const service = new CheckinService(runtime, { sources: source });
+    const report = await service.runMorningCheckin({
+      now: new Date("2026-04-22T16:05:00.000Z"),
+      timezone: "America/Los_Angeles",
+    });
+
+    expect(report.summaryText).toContain("GitHub");
+    expect(report.briefingSections.map((section) => section.key)).toEqual([
+      "x_dms",
+      "x_timeline",
+      "x_mentions",
+      "unified_inbox",
+      "gmail",
+      "github",
+      "calendar_changes",
+      "contacts",
+      "promises",
+    ]);
+    expect(
+      report.briefingSections.find((section) => section.key === "x_dms")
+        ?.items[0]?.detail,
+    ).toContain("GitHub PR");
+  });
+
+  it("gates check-ins once per owner local day", async () => {
+    const service = new CheckinService(harness.runtime);
+    const now = new Date("2026-04-22T16:00:00.000Z");
+
+    await service.runMorningCheckin({
+      now,
+      timezone: "America/Los_Angeles",
+    });
+
+    await expect(
+      service.hasCheckinForLocalDay({
+        kind: "morning",
+        now,
+        timezone: "America/Los_Angeles",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      service.hasCheckinForLocalDay({
+        kind: "morning",
+        now: new Date("2026-04-23T16:00:00.000Z"),
+        timezone: "America/Los_Angeles",
+      }),
+    ).resolves.toBe(false);
+  });
+
   it("runMorningCheckin reports habit missed streaks and respects pause windows", async () => {
     const agentId = String(harness.runtime.agentId);
     const now = new Date();
     const firstDue = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
-    const secondDue = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
-    const pausedUntil = new Date(now.getTime() + 6 * 60 * 60 * 1000).toISOString();
-    const createdAt = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    const secondDue = new Date(
+      now.getTime() - 26 * 60 * 60 * 1000,
+    ).toISOString();
+    const pausedUntil = new Date(
+      now.getTime() + 6 * 60 * 60 * 1000,
+    ).toISOString();
+    const createdAt = new Date(
+      now.getTime() - 48 * 60 * 60 * 1000,
+    ).toISOString();
     await harness.execute(
       `INSERT INTO life_task_definitions (id, agent_id, kind, title, status, metadata_json, created_at)
        VALUES ('def-habit', '${agentId}', 'habit', 'Stretch', 'active', '{"pauseUntil":"${pausedUntil}"}', '${createdAt}')`,
@@ -158,8 +329,12 @@ describe("CheckinService", () => {
     const agentId = String(harness.runtime.agentId);
     const now = new Date();
     const firstDue = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
-    const secondDue = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
-    const createdAt = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    const secondDue = new Date(
+      now.getTime() - 26 * 60 * 60 * 1000,
+    ).toISOString();
+    const createdAt = new Date(
+      now.getTime() - 48 * 60 * 60 * 1000,
+    ).toISOString();
     await harness.execute(
       `INSERT INTO life_task_definitions (id, agent_id, kind, title, status, created_at)
        VALUES ('def-habit-missed', '${agentId}', 'habit', 'Stretch', 'active', '${createdAt}')`,
