@@ -62,23 +62,49 @@ describe("Integration: X DM inbound", () => {
   });
 
   it("connector status reports dmInbound: true when x.dm.read is granted", async () => {
-    runtime = await createLifeOpsTestRuntime();
-    const service = new LifeOpsService(runtime.runtime);
-    await service.repository.upsertConnectorGrant(
-      createLifeOpsConnectorGrant({
-        agentId: runtime.runtime.agentId,
-        provider: "x",
-        identity: {},
-        grantedScopes: [],
-        capabilities: ["x.read", "x.dm.read"],
-        tokenRef: null,
-        mode: "local",
-        metadata: {},
-        lastRefreshAt: new Date().toISOString(),
-      }),
-    );
-    const status = await service.getXConnectorStatus();
-    expect(status.dmInbound).toBe(true);
+    // The local X connector gates capabilities on both the stored grant and
+    // locally-available credentials (poster creds + TWITTER_USER_ID). Stub
+    // them here so the test exercises the pure grant path.
+    const prevTwitterEnv = {
+      TWITTER_API_KEY: process.env.TWITTER_API_KEY,
+      TWITTER_API_SECRET: process.env.TWITTER_API_SECRET,
+      TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
+      TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_ACCESS_TOKEN_SECRET,
+      TWITTER_USER_ID: process.env.TWITTER_USER_ID,
+    };
+    process.env.TWITTER_API_KEY = prevTwitterEnv.TWITTER_API_KEY ?? "stub-key";
+    process.env.TWITTER_API_SECRET =
+      prevTwitterEnv.TWITTER_API_SECRET ?? "stub-secret";
+    process.env.TWITTER_ACCESS_TOKEN =
+      prevTwitterEnv.TWITTER_ACCESS_TOKEN ?? "stub-access-token";
+    process.env.TWITTER_ACCESS_TOKEN_SECRET =
+      prevTwitterEnv.TWITTER_ACCESS_TOKEN_SECRET ?? "stub-access-secret";
+    process.env.TWITTER_USER_ID =
+      prevTwitterEnv.TWITTER_USER_ID ?? "stub-user-id";
+    try {
+      runtime = await createLifeOpsTestRuntime();
+      const service = new LifeOpsService(runtime.runtime);
+      await service.repository.upsertConnectorGrant(
+        createLifeOpsConnectorGrant({
+          agentId: runtime.runtime.agentId,
+          provider: "x",
+          identity: {},
+          grantedScopes: [],
+          capabilities: ["x.read", "x.dm.read"],
+          tokenRef: null,
+          mode: "local",
+          metadata: {},
+          lastRefreshAt: new Date().toISOString(),
+        }),
+      );
+      const status = await service.getXConnectorStatus();
+      expect(status.dmInbound).toBe(true);
+    } finally {
+      for (const [key, value] of Object.entries(prevTwitterEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("getXDms returns empty array before any sync", async () => {

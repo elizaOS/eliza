@@ -4,7 +4,6 @@ import {
   NewActionButton,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarHeader,
@@ -28,6 +27,7 @@ import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { WidgetHost } from "../../widgets";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   BUILT_IN_TEMPLATES,
@@ -465,7 +465,7 @@ function HeartbeatsLayout() {
   };
 
   const heartbeatsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="heartbeats-sidebar"
       collapsible
       contentIdentity="heartbeats"
@@ -648,7 +648,7 @@ function HeartbeatsLayout() {
           </div>
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

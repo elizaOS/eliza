@@ -3,15 +3,18 @@ import {
   Button,
   SegmentedControl,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
-import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
+import { client } from "@elizaos/app-core/api";
 import type {
+  LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/app-lifeops/contracts";
-import { Copy, ExternalLink, GitBranch, Plug2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Copy, ExternalLink, GitBranch, Plug2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
@@ -125,18 +128,6 @@ function modeLabel(mode: LifeOpsConnectorMode, t: TranslateFn): string {
       })
     : t("lifeopssettings.cloud", {
         defaultValue: "Cloud",
-      });
-}
-
-function modeDescription(mode: VisibleConnectorMode, t: TranslateFn): string {
-  return mode === "local"
-    ? t("lifeopssettings.localModeDescription", {
-        defaultValue:
-          "Tokens stay on this device. LifeOps can only access Google while the app is running.",
-      })
-    : t("lifeopssettings.cloudModeDescription", {
-        defaultValue:
-          "Tokens live in Eliza Cloud. The agent can check Google on your behalf even when the app is closed.",
       });
 }
 
@@ -267,12 +258,17 @@ function PendingAuthBanner({
           })}
         </Button>
       </div>
-      <div className="mt-2 break-all text-[11px] text-muted/90">{url}</div>
     </div>
   );
 }
 
-function GithubRow({ github }: { github: GithubSetupState }) {
+function GithubRow({
+  github,
+  compactLayout,
+}: {
+  github: GithubSetupState;
+  compactLayout: boolean;
+}) {
   const { t } = useApp();
   return (
     <div className="space-y-2 pt-2">
@@ -314,7 +310,9 @@ function GithubRow({ github }: { github: GithubSetupState }) {
           ) : null}
         </div>
       </div>
-      <div className="text-xs text-muted">{github.status}</div>
+      {!compactLayout && github.status.trim().length > 0 ? (
+        <div className="text-xs text-muted">{github.status}</div>
+      ) : null}
     </div>
   );
 }
@@ -344,6 +342,11 @@ function GoogleConnectorSideCard({
     status,
   } = connector;
   const [dismissedAuthUrl, setDismissedAuthUrl] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [calendarPendingId, setCalendarPendingId] = useState<string | null>(null);
+  const compactLayout = useMediaQuery("(max-width: 767px)");
   const connectedAccounts = accounts.filter((account) => account.connected);
   const primaryIdentity = readIdentity(
     connectedAccounts[0]?.identity ?? status?.identity ?? null,
@@ -363,15 +366,84 @@ function GoogleConnectorSideCard({
       : null;
   const preferredGrantId = status?.grant?.id ?? null;
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!status?.connected) {
+      setCalendars([]);
+      setCalendarError(null);
+      setCalendarLoading(false);
+      return;
+    }
+    const loadCalendars = async () => {
+      setCalendarLoading(true);
+      setCalendarError(null);
+      try {
+        const response = await client.getLifeOpsCalendars({
+          side,
+          mode: status.mode,
+        });
+        if (!cancelled) {
+          setCalendars(response.calendars);
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setCalendarError(
+            cause instanceof Error && cause.message.trim().length > 0
+              ? cause.message.trim()
+              : "Could not load calendars.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setCalendarLoading(false);
+        }
+      }
+    };
+    void loadCalendars();
+    return () => {
+      cancelled = true;
+    };
+  }, [side, status?.connected, status?.mode]);
+
+  const toggleCalendar = useCallback(
+    async (calendar: LifeOpsCalendarSummary) => {
+      setCalendarPendingId(calendar.calendarId);
+      setCalendarError(null);
+      try {
+        const response = await client.setLifeOpsCalendarIncluded({
+          calendarId: calendar.calendarId,
+          includeInFeed: !calendar.includeInFeed,
+          side,
+          mode: status?.mode,
+          grantId: calendar.grantId,
+        });
+        setCalendars((current) =>
+          current.map((entry) =>
+            entry.calendarId === response.calendar.calendarId &&
+            entry.grantId === response.calendar.grantId
+              ? response.calendar
+              : entry,
+          ),
+        );
+      } catch (cause) {
+        setCalendarError(
+          cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message.trim()
+            : "Could not update calendar visibility.",
+        );
+      } finally {
+        setCalendarPendingId(null);
+      }
+    },
+    [side, status?.mode],
+  );
+
   return (
-    <section className="space-y-3 space-y-3 px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
+    <section className="space-y-3 px-4 py-4">
+      <div className="flex items-center gap-3">
         <div className="text-sm font-semibold text-txt">
           {sideTitle(side, t)}
         </div>
-        <Badge variant="outline" className="text-2xs">
-          {connectedAccounts.length} / {MAX_GOOGLE_ACCOUNTS_PER_SIDE}
-        </Badge>
       </div>
 
       <div className="min-w-0">
@@ -385,69 +457,71 @@ function GoogleConnectorSideCard({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
           <GoogleIcon className="h-4 w-4 shrink-0" />
           <span>Google</span>
         </div>
-        <SegmentedControl<VisibleConnectorMode>
-          aria-label={t("lifeopssettings.googleModeAria", {
-            defaultValue: "{{side}} Google mode",
-            side: sideTitle(side, t),
-          })}
-          value={visibleMode}
-          onValueChange={(mode) => void selectMode(mode)}
-          items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
-            value: mode,
-            label: modeLabel(mode, t),
-            disabled: controlDisabled,
-          }))}
-          className="bg-bg/40 p-0.5"
-          buttonClassName="min-h-8 px-3 py-1.5 text-xs"
-        />
-        {!status?.connected ? (
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void connect()}
-          >
-            {status?.reason === "needs_reauth"
-              ? t("common.reconnect", {
-                  defaultValue: "Reconnect",
-                })
-              : t("common.connect", {
-                  defaultValue: "Connect",
-                })}
-          </Button>
-        ) : null}
-        {status?.connected &&
-        connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void connectAdditional()}
-          >
-            {t("common.add", {
-              defaultValue: "Add",
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl<VisibleConnectorMode>
+            aria-label={t("lifeopssettings.googleModeAria", {
+              defaultValue: "{{side}} Google mode",
+              side: sideTitle(side, t),
             })}
-          </Button>
-        ) : null}
-        {status?.connected && connectedAccounts.length <= 1 ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void disconnect()}
-          >
-            {t("common.disconnect", {
-              defaultValue: "Disconnect",
-            })}
-          </Button>
-        ) : null}
+            value={visibleMode}
+            onValueChange={(mode) => void selectMode(mode)}
+            items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
+              value: mode,
+              label: modeLabel(mode, t),
+              disabled: controlDisabled,
+            }))}
+            className="w-full bg-bg/40 p-0.5 sm:w-auto"
+            buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
+          />
+          {!status?.connected ? (
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void connect()}
+            >
+              {status?.reason === "needs_reauth"
+                ? t("common.reconnect", {
+                    defaultValue: "Reconnect",
+                  })
+                : t("common.connect", {
+                    defaultValue: "Connect",
+                  })}
+            </Button>
+          ) : null}
+          {status?.connected &&
+          connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void connectAdditional()}
+            >
+              {t("common.add", {
+                defaultValue: "Add",
+              })}
+            </Button>
+          ) : null}
+          {status?.connected && connectedAccounts.length <= 1 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void disconnect()}
+            >
+              {t("common.disconnect", {
+                defaultValue: "Disconnect",
+              })}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div
@@ -456,12 +530,8 @@ function GoogleConnectorSideCard({
         {currentStatusLabel}
       </div>
 
-      <div className="text-xs leading-5 text-muted">
-        {modeDescription(visibleMode, t)}
-      </div>
-
       {connectedAccounts.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-2">
           {connectedAccounts.map((account) => {
             const accountIdentity = readIdentity(account.identity ?? null, t);
             const labels = capabilityLabels(account.grantedCapabilities, t);
@@ -471,43 +541,116 @@ function GoogleConnectorSideCard({
             return (
               <div
                 key={account.grant?.id ?? accountIdentity.primary}
-                className="flex items-center gap-2 rounded-2xl bg-bg/40 px-3 py-2 text-xs"
+                className="rounded-2xl bg-bg/40 px-3 py-2 text-xs"
               >
-                <span className="max-w-[14rem] truncate font-medium text-txt">
-                  {accountIdentity.primary}
-                </span>
-                {isPreferred ? (
-                  <Badge variant="secondary" className="text-3xs">
-                    {t("lifeopssettings.active", {
-                      defaultValue: "Active",
-                    })}
-                  </Badge>
-                ) : null}
-                {labels.map((label) => (
-                  <Badge key={label} variant="outline" className="text-3xs">
-                    {label}
-                  </Badge>
-                ))}
-                {account.grant?.id ? (
-                  <button
-                    type="button"
-                    className="text-muted transition-colors hover:text-danger"
-                    aria-label={t("lifeopssettings.disconnectAccount", {
-                      defaultValue: "Disconnect {{label}}",
-                      label: accountIdentity.primary,
-                    })}
-                    disabled={controlDisabled}
-                    onClick={() => {
-                      if (!account.grant?.id) return;
-                      void disconnectAccount(account.grant.id);
-                    }}
-                  >
-                    x
-                  </button>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate font-medium text-txt">
+                    {accountIdentity.primary}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isPreferred ? (
+                      <Badge variant="secondary" className="text-3xs">
+                        {t("lifeopssettings.active", {
+                          defaultValue: "Active",
+                        })}
+                      </Badge>
+                    ) : null}
+                    {account.grant?.id ? (
+                      <button
+                        type="button"
+                        className="text-muted transition-colors hover:text-danger"
+                        aria-label={t("lifeopssettings.disconnectAccount", {
+                          defaultValue: "Disconnect {{label}}",
+                          label: accountIdentity.primary,
+                        })}
+                        disabled={controlDisabled}
+                        onClick={() => {
+                          if (!account.grant?.id) return;
+                          void disconnectAccount(account.grant.id);
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {labels.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {labels.map((label) => (
+                      <Badge key={label} variant="outline" className="text-3xs">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             );
           })}
+        </div>
+      ) : null}
+
+      {status?.connected ? (
+        <div className="space-y-2 rounded-2xl bg-bg/30 px-3 py-3">
+          <div className="text-xs font-semibold text-txt">
+            {t("lifeopssettings.calendarFeedTitle", {
+              defaultValue: "Which calendars appear in your feed?",
+            })}
+          </div>
+          <div className="text-xs leading-5 text-muted">
+            {t("lifeopssettings.calendarFeedDescription", {
+              defaultValue:
+                "These toggles affect the sidebar feed and proactive briefings. Direct calendar actions still read every authorized calendar.",
+            })}
+          </div>
+          {calendarLoading ? (
+            <div className="text-xs text-muted">
+              {t("lifeopssettings.loadingCalendars", {
+                defaultValue: "Loading calendars…",
+              })}
+            </div>
+          ) : calendars.length > 0 ? (
+            <div className="grid gap-2">
+              {calendars.map((calendar) => {
+                const disabled =
+                  controlDisabled || calendarPendingId === calendar.calendarId;
+                return (
+                  <label
+                    key={`${calendar.grantId}:${calendar.calendarId}`}
+                    className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
+                      checked={calendar.includeInFeed}
+                      disabled={disabled}
+                      onChange={() => void toggleCalendar(calendar)}
+                    />
+                    <span
+                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          calendar.backgroundColor ?? "rgba(148, 163, 184, 0.8)",
+                      }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-txt">
+                        {calendar.summary}
+                      </span>
+                      <span className="block truncate text-muted">
+                        {calendar.accountEmail ?? calendar.calendarId}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-xs text-muted">
+              {t("lifeopssettings.noCalendars", {
+                defaultValue: "No readable calendars found for this connector.",
+              })}
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -518,8 +661,11 @@ function GoogleConnectorSideCard({
         />
       ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
+      {calendarError ? (
+        <div className="text-xs text-danger">{calendarError}</div>
+      ) : null}
 
-      <GithubRow github={github} />
+      <GithubRow github={github} compactLayout={compactLayout} />
     </section>
   );
 }
@@ -585,9 +731,7 @@ export function LifeOpsSettingsSection({
       </div>
 
       {githubError ? (
-        <div className="py-1 text-xs text-muted">
-          {githubError}
-        </div>
+        <div className="py-1 text-xs text-muted">{githubError}</div>
       ) : null}
 
       <MobileSignalsSetupCard />
@@ -604,6 +748,8 @@ export function LifeOpsSettingsSection({
           github={resolvedAgentGithub}
         />
       </div>
+
+      <BrowserBridgeSetupPanel />
     </section>
   );
 }

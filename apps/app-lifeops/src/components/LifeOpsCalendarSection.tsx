@@ -7,9 +7,14 @@
  * the same feed keeps the same colour across renders.
  */
 
-import { Button, SegmentedControl, Spinner, useApp } from "@elizaos/app-core";
+import {
+  SegmentedControl,
+  Spinner,
+  useApp,
+  useMediaQuery,
+} from "@elizaos/app-core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPrimedLifeOpsEvent } from "../lifeops-route.js";
 import {
@@ -17,6 +22,7 @@ import {
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
+import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
@@ -63,6 +69,15 @@ function formatMonthHeader(start: Date, end: Date): string {
     timeZone: TIME_ZONE,
   }).format(end);
   return startMonth === endMonth ? startMonth : `${startMonth} – ${endMonth}`;
+}
+
+function formatAgendaDayLabel(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(date);
 }
 
 function toLocalDayKey(date: Date): string {
@@ -171,6 +186,33 @@ function paletteFor(event: LifeOpsCalendarEvent) {
     .filter(Boolean)
     .join("|");
   return EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length];
+}
+
+function sortAgendaEvents(
+  events: LifeOpsCalendarEvent[],
+): LifeOpsCalendarEvent[] {
+  return [...events].sort((left, right) => {
+    if (left.isAllDay !== right.isAllDay) {
+      return left.isAllDay ? -1 : 1;
+    }
+    return left.startAt.localeCompare(right.startAt);
+  });
+}
+
+function formatAgendaEventMeta(event: LifeOpsCalendarEvent): string {
+  const timeLabel = event.isAllDay
+    ? "All day"
+    : [formatTimeOfDay(event.startAt), formatTimeOfDay(event.endAt)]
+        .filter(Boolean)
+        .join(" - ");
+  const originLabel =
+    typeof event.calendarSummary === "string" && event.calendarSummary.trim()
+      ? event.calendarSummary.trim()
+      : null;
+  const details = [timeLabel, event.location || null, originLabel].filter(
+    (value): value is string => Boolean(value),
+  );
+  return details.join(" · ");
 }
 
 interface EventPosition {
@@ -706,6 +748,88 @@ function MonthGrid({
   );
 }
 
+function AgendaView({
+  days,
+  eventsByDay,
+  selectedEventId,
+  onSelectEvent,
+  emptyLabel,
+}: {
+  days: Date[];
+  eventsByDay: Map<string, LifeOpsCalendarEvent[]>;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+  emptyLabel: string;
+}) {
+  const sections = useMemo(
+    () =>
+      days
+        .map((day) => {
+          const key = toLocalDayKey(day);
+          return {
+            key,
+            day,
+            events: sortAgendaEvents(eventsByDay.get(key) ?? []),
+          };
+        })
+        .filter((section) => section.events.length > 0),
+    [days, eventsByDay],
+  );
+
+  if (sections.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border/12 bg-bg/20 px-4 py-8 text-xs text-muted">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sections.map((section) => (
+        <div
+          key={section.key}
+          className="rounded-2xl border border-border/12 bg-bg/20"
+        >
+          <div className="border-b border-border/10 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted">
+            {formatAgendaDayLabel(section.day)}
+          </div>
+          <div className="divide-y divide-border/10">
+            {section.events.map((event) => {
+              const color = paletteFor(event);
+              const isSelected = event.id === selectedEventId;
+              return (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={() => onSelectEvent(event)}
+                  aria-pressed={isSelected}
+                  className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                    isSelected ? "bg-white/5" : "hover:bg-white/3"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-txt">
+                      {event.title}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted">
+                      {formatAgendaEventMeta(event)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main section
 // ---------------------------------------------------------------------------
@@ -723,6 +847,8 @@ export function LifeOpsCalendarSection(
   const onSelect = props.onSelect ?? ctx.select;
   const { t } = useApp();
   const calendar = useCalendarWeek();
+  const compactLayout = useMediaQuery("(max-width: 767px)");
+  const { chatAboutEvent } = useLifeOpsChatLauncher();
   const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
     null,
   );
@@ -752,6 +878,11 @@ export function LifeOpsCalendarSection(
     },
     [onSelect],
   );
+
+  const handleCloseEditor = useCallback(() => {
+    setDrawerEvent(null);
+    onSelect({ eventId: null });
+  }, [onSelect]);
 
   // When an external caller (widget row, deep link) selects an event, the
   // grid's local `drawerEvent` state is still null. Look up the id first in
@@ -801,7 +932,7 @@ export function LifeOpsCalendarSection(
         data-testid="lifeops-calendar-section"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden rounded-xl border border-border/16 bg-card/22">
               <button
                 type="button"
@@ -831,12 +962,12 @@ export function LifeOpsCalendarSection(
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <h2 className="text-base font-semibold tracking-tight text-txt">
+            <h2 className="min-w-0 text-sm font-semibold tracking-tight text-txt sm:text-base">
               {rangeLabel}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="w-full sm:w-auto">
             <SegmentedControl<CalendarViewMode>
               aria-label={t("lifeopsCalendar.viewModeAria", {
                 defaultValue: "Calendar view",
@@ -844,16 +975,9 @@ export function LifeOpsCalendarSection(
               value={calendar.viewMode}
               onValueChange={calendar.setViewMode}
               items={VIEW_ITEMS}
-              className="border-border/24 bg-card/24 p-0.5"
-              buttonClassName="min-h-7 px-3 py-1 text-xs"
+              className="w-full border-border/24 bg-card/24 p-0.5"
+              buttonClassName="min-h-8 flex-1 px-3 py-1 text-xs"
             />
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 rounded-xl px-3 text-xs font-semibold"
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              {t("lifeopsCalendar.newEvent", { defaultValue: "New" })}
-            </Button>
           </div>
         </div>
 
@@ -868,6 +992,16 @@ export function LifeOpsCalendarSection(
             <Spinner size={14} />
             {t("lifeopsCalendar.loading", { defaultValue: "Loading events…" })}
           </div>
+        ) : compactLayout ? (
+          <AgendaView
+            days={days}
+            eventsByDay={eventsByDay}
+            selectedEventId={selectedEventId}
+            onSelectEvent={handleSelectEvent}
+            emptyLabel={t("lifeopsCalendar.empty", {
+              defaultValue: "Nothing scheduled.",
+            })}
+          />
         ) : calendar.viewMode === "month" ? (
           <MonthGrid
             baseDate={calendar.windowStart}
@@ -888,7 +1022,8 @@ export function LifeOpsCalendarSection(
       <EventEditorDrawer
         open={drawerEvent !== null}
         event={drawerEvent}
-        onClose={() => setDrawerEvent(null)}
+        onChat={chatAboutEvent}
+        onClose={handleCloseEditor}
         onSaved={(updatedEvent) => {
           void calendar.refresh();
           setDrawerEvent(updatedEvent);

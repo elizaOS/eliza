@@ -290,6 +290,7 @@ export function cloneWebBrowserWorkspaceTabState(
     title: tab.title,
     url: tab.url,
     partition: tab.partition,
+    kind: tab.kind,
     visible: tab.visible,
     createdAt: tab.createdAt,
     updatedAt: tab.updatedAt,

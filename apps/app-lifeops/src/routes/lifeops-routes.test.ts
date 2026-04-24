@@ -331,6 +331,88 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("passes calendar update provider context through to the service", async () => {
+    const updateCalendarEvent = vi
+      .spyOn(LifeOpsService.prototype, "updateCalendarEvent")
+      .mockResolvedValue({
+        id: "life-event-1",
+        externalId: "google-event-1",
+        agentId: "agent-1",
+        provider: "google",
+        side: "owner",
+        calendarId: "primary",
+        title: "Dentist",
+        description: "",
+        location: "",
+        status: "confirmed",
+        startAt: "2026-04-23T15:00:00.000Z",
+        endAt: "2026-04-23T16:00:00.000Z",
+        isAllDay: false,
+        timezone: "America/Los_Angeles",
+        htmlLink: null,
+        conferenceLink: null,
+        organizer: null,
+        attendees: [],
+        metadata: {},
+        syncedAt: "2026-04-23T14:00:00.000Z",
+        updatedAt: "2026-04-23T14:00:00.000Z",
+      });
+    const readJsonBody = vi.fn(async () => ({
+      side: "owner",
+      grantId: "grant-1",
+      calendarId: "primary",
+      title: "Dentist",
+      timeZone: "America/Los_Angeles",
+    }));
+    const { context, error, json } = createContext(
+      "PATCH",
+      "/api/lifeops/calendar/events/google-event-1",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).toHaveBeenCalledWith(expect.any(URL), {
+      eventId: "google-event-1",
+      side: "owner",
+      grantId: "grant-1",
+      calendarId: "primary",
+      title: "Dentist",
+      description: undefined,
+      startAt: undefined,
+      endAt: undefined,
+      timeZone: "America/Los_Angeles",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({
+        event: expect.objectContaining({ externalId: "google-event-1" }),
+      }),
+    );
+  });
+
+  it("passes calendar delete provider context through to the service", async () => {
+    const deleteCalendarEvent = vi
+      .spyOn(LifeOpsService.prototype, "deleteCalendarEvent")
+      .mockResolvedValue(undefined);
+    const { context, error, json } = createContext(
+      "DELETE",
+      "/api/lifeops/calendar/events/google-event-1?side=owner&grantId=grant-1&calendarId=primary",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(expect.any(URL), {
+      eventId: "google-event-1",
+      side: "owner",
+      grantId: "grant-1",
+      calendarId: "primary",
+    });
+    expect(json).toHaveBeenCalledWith(context.res, { deleted: true });
+  });
+
   it("passes screen-time summary query inputs through to the service", async () => {
     const getScreenTimeSummary = vi
       .spyOn(LifeOpsService.prototype, "getScreenTimeSummary")

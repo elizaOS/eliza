@@ -1,12 +1,8 @@
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import { ChevronsLeft, Clock, Play, Star } from "lucide-react";
+import { SidebarContent, SidebarPanel, SidebarScrollRegion } from "@elizaos/ui";
+import { Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
 import {
   APP_CATALOG_SECTION_LABELS,
@@ -17,11 +13,10 @@ import {
 
 interface AppsSidebarProps {
   apps: RegistryAppInfo[];
+  browseApps: RegistryAppInfo[];
   runs: AppRunSummary[];
   activeAppNames: ReadonlySet<string>;
   favoriteAppNames: ReadonlySet<string>;
-  /** Ordered list of recently launched app names, most-recent first. */
-  recentAppNames: readonly string[];
   selectedAppName: string | null;
   /** Controlled collapsed state. */
   collapsed: boolean;
@@ -38,17 +33,16 @@ interface AppsSidebarProps {
 const GENRE_ORDER: readonly AppCatalogSectionKey[] = [
   "games",
   "finance",
-  "lifeManagement",
   "developerUtilities",
   "other",
 ];
 
 export function AppsSidebar({
   apps,
+  browseApps,
   runs,
   activeAppNames,
   favoriteAppNames,
-  recentAppNames,
   selectedAppName,
   collapsed,
   onCollapsedChange,
@@ -65,13 +59,21 @@ export function AppsSidebar({
     return map;
   }, [apps]);
 
+  const featuredEntries = useMemo(() => {
+    return browseApps.filter(
+      (app) =>
+        getAppCatalogSectionKey(app) === "featured" &&
+        !favoriteAppNames.has(app.name),
+    );
+  }, [browseApps, favoriteAppNames]);
+
   const starredEntries = useMemo(() => {
-    return apps
+    return browseApps
       .filter((app) => favoriteAppNames.has(app.name))
       .sort((a, b) =>
         (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name),
       );
-  }, [apps, favoriteAppNames]);
+  }, [browseApps, favoriteAppNames]);
 
   const activeEntries = useMemo(() => {
     return runs
@@ -83,37 +85,22 @@ export function AppsSidebar({
       .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
   }, [appsByName, runs]);
 
-  /** Apps already surfaced above the Recent/genre sections. */
-  const aboveRecentAppNames = useMemo(() => {
+  const featuredAppNames = useMemo(() => {
+    return new Set(featuredEntries.map((app) => app.name));
+  }, [featuredEntries]);
+
+  const surfacedAppNames = useMemo(() => {
     const set = new Set<string>();
+    for (const appName of featuredAppNames) set.add(appName);
     for (const app of starredEntries) set.add(app.name);
     for (const entry of activeEntries) set.add(entry.run.appName);
     return set;
-  }, [activeEntries, starredEntries]);
-
-  const recentEntries = useMemo(() => {
-    const seen = new Set<string>();
-    const result: RegistryAppInfo[] = [];
-    for (const name of recentAppNames) {
-      if (seen.has(name) || aboveRecentAppNames.has(name)) continue;
-      const app = appsByName.get(name);
-      if (!app) continue;
-      seen.add(name);
-      result.push(app);
-    }
-    return result;
-  }, [aboveRecentAppNames, appsByName, recentAppNames]);
-
-  const aboveGenreAppNames = useMemo(() => {
-    const set = new Set(aboveRecentAppNames);
-    for (const app of recentEntries) set.add(app.name);
-    return set;
-  }, [aboveRecentAppNames, recentEntries]);
+  }, [activeEntries, featuredAppNames, starredEntries]);
 
   const genreEntries = useMemo(() => {
     const buckets = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
-    for (const app of apps) {
-      if (aboveGenreAppNames.has(app.name)) continue;
+    for (const app of browseApps) {
+      if (surfacedAppNames.has(app.name)) continue;
       const key = getAppCatalogSectionKey(app);
       const list = buckets.get(key) ?? [];
       list.push(app);
@@ -135,40 +122,22 @@ export function AppsSidebar({
         },
       ];
     });
-  }, [aboveGenreAppNames, apps]);
+  }, [browseApps, surfacedAppNames]);
 
   const hasAnyResults =
+    featuredEntries.length > 0 ||
     starredEntries.length > 0 ||
     activeEntries.length > 0 ||
-    recentEntries.length > 0 ||
     genreEntries.length > 0;
 
-  const collapseFooter = (
-    <button
-      type="button"
-      onClick={() => onCollapsedChange(true)}
-      aria-label="Collapse apps sidebar"
-      data-testid="apps-sidebar-collapse-inline"
-      className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-bg-muted/60 hover:text-txt"
-    >
-      <ChevronsLeft className="h-4 w-4" aria-hidden />
-    </button>
-  );
-
   return (
-    <Sidebar
+    <AppPageSidebar
       testId="apps-sidebar"
       collapsible
       contentIdentity="apps"
       collapseButtonAriaLabel="Collapse apps sidebar"
       expandButtonAriaLabel="Expand apps sidebar"
       expandButtonTestId="apps-sidebar-expand-toggle"
-      header={undefined}
-      className="!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0"
-      headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
-      // Re-position the default (floating) expand button to the true
-      // bottom-left corner so it mirrors the right-side collapse toggle.
-      collapseButtonClassName="!bottom-3 !left-3"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
       resizable
@@ -177,8 +146,6 @@ export function AppsSidebar({
       minWidth={minWidth}
       maxWidth={maxWidth}
       onCollapseRequest={() => onCollapsedChange(true)}
-      footer={collapseFooter}
-      footerClassName="!justify-start !px-1 !pt-1 !pb-2"
     >
       <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
@@ -194,6 +161,25 @@ export function AppsSidebar({
                   icon={<Star className="h-3 w-3" aria-hidden />}
                 >
                   {starredEntries.map((app) => (
+                    <AppsSidebarAppButton
+                      key={app.name}
+                      name={app.name}
+                      displayName={app.displayName ?? getAppShortName(app)}
+                      active={activeAppNames.has(app.name)}
+                      selected={selectedAppName === app.name}
+                      identitySource={app}
+                      onClick={() => onLaunchApp(app)}
+                    />
+                  ))}
+                </AppsSidebarSection>
+              )}
+
+              {featuredEntries.length > 0 && (
+                <AppsSidebarSection
+                  label="Featured"
+                  icon={<Star className="h-3 w-3" aria-hidden />}
+                >
+                  {featuredEntries.map((app) => (
                     <AppsSidebarAppButton
                       key={app.name}
                       name={app.name}
@@ -234,25 +220,6 @@ export function AppsSidebar({
                 </AppsSidebarSection>
               )}
 
-              {recentEntries.length > 0 && (
-                <AppsSidebarSection
-                  label="Recent"
-                  icon={<Clock className="h-3 w-3" aria-hidden />}
-                >
-                  {recentEntries.map((app) => (
-                    <AppsSidebarAppButton
-                      key={app.name}
-                      name={app.name}
-                      displayName={app.displayName ?? getAppShortName(app)}
-                      active={activeAppNames.has(app.name)}
-                      selected={selectedAppName === app.name}
-                      identitySource={app}
-                      onClick={() => onLaunchApp(app)}
-                    />
-                  ))}
-                </AppsSidebarSection>
-              )}
-
               {genreEntries.map((section) => (
                 <AppsSidebarSection key={section.key} label={section.label}>
                   {section.apps.map((app) => (
@@ -272,7 +239,7 @@ export function AppsSidebar({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 }
 
@@ -291,7 +258,7 @@ function AppsSidebarSection({
         {icon}
         {label}
       </SidebarContent.SectionLabel>
-      <div className="space-y-0.5">{children}</div>
+      <div className="space-y-0.5 pl-3">{children}</div>
     </div>
   );
 }

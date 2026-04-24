@@ -27,6 +27,7 @@ import type {
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
+  ListLifeOpsCalendarsRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsInboxChannel,
@@ -39,6 +40,7 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
+  SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -796,6 +798,10 @@ export async function handleLifeOpsRoutes(
         mode: parseConnectorModeQuery(url.searchParams.get("mode")),
         side: parseConnectorSideQuery(url.searchParams.get("side")),
         calendarId: url.searchParams.get("calendarId") ?? undefined,
+        includeHiddenCalendars: parseBooleanQuery(
+          url.searchParams.get("includeHiddenCalendars"),
+          "includeHiddenCalendars",
+        ),
         timeMin: url.searchParams.get("timeMin") ?? undefined,
         timeMax: url.searchParams.get("timeMax") ?? undefined,
         timeZone: url.searchParams.get("timeZone") ?? undefined,
@@ -806,6 +812,53 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: ListLifeOpsCalendarsRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
+      };
+      const calendars = await service.listCalendars(url, request);
+      json(res, { calendars });
+    });
+  }
+
+  const setCalendarIncludedMatch =
+    method === "PUT"
+      ? pathname.match(/^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/)
+      : null;
+  if (setCalendarIncludedMatch) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const calendarId = decodeMatchedPathComponent(
+      ctx,
+      setCalendarIncludedMatch,
+      1,
+      res,
+      "calendarId",
+    );
+    if (!calendarId) return true;
+    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      if (body.calendarId && body.calendarId !== calendarId) {
+        throw new LifeOpsServiceError(
+          400,
+          "calendarId must match between path and request body",
+        );
+      }
+      const calendar = await service.setCalendarIncluded(url, {
+        calendarId,
+        includeInFeed: body.includeInFeed,
+        mode: body.mode,
+        side: body.side,
+        grantId: body.grantId,
+      });
+      json(res, { calendar });
     });
   }
 
@@ -1029,10 +1082,16 @@ export async function handleLifeOpsRoutes(
       return runRoute(ctx, async (service) => {
         const event = await service.updateCalendarEvent(url, {
           eventId,
+          side:
+            body.side ?? parseConnectorSideQuery(url.searchParams.get("side")),
+          grantId: body.grantId ?? url.searchParams.get("grantId") ?? undefined,
+          calendarId:
+            body.calendarId ?? url.searchParams.get("calendarId") ?? undefined,
           title: body.title,
           description: body.notes,
           startAt: body.startAt,
           endAt: body.endAt,
+          timeZone: body.timeZone,
         });
         json(res, { event });
       });
@@ -1040,7 +1099,12 @@ export async function handleLifeOpsRoutes(
     if (method === "DELETE") {
       if (rateLimitRequest(ctx, "calendar_delete")) return true;
       return runRoute(ctx, async (service) => {
-        await service.deleteCalendarEvent(url, { eventId });
+        await service.deleteCalendarEvent(url, {
+          eventId,
+          side: parseConnectorSideQuery(url.searchParams.get("side")),
+          grantId: url.searchParams.get("grantId") ?? undefined,
+          calendarId: url.searchParams.get("calendarId") ?? undefined,
+        });
         json(res, { deleted: true });
       });
     }
@@ -1276,6 +1340,37 @@ export async function handleLifeOpsRoutes(
         ),
       );
     });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/connectors/x/success") {
+    const rawSide = url.searchParams.get("side");
+    const rawMode = url.searchParams.get("mode");
+    const connected = url.searchParams.get("twitter_connected") === "true";
+    const error =
+      url.searchParams.get("twitter_error_detail") ??
+      url.searchParams.get("twitter_error");
+    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
+      ctx.error(res, "side must be one of: owner, agent", 400);
+      return true;
+    }
+    if (
+      rawMode !== null &&
+      rawMode !== "local" &&
+      rawMode !== "remote" &&
+      rawMode !== "cloud_managed"
+    ) {
+      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
+      return true;
+    }
+    writeHtml(
+      res,
+      connected && !error ? 200 : 400,
+      connected && !error ? "X Connected" : "X Connection Failed",
+      connected && !error
+        ? "X access is now available in Eliza. You can close this window."
+        : (error ?? "X authorization did not complete successfully."),
+    );
+    return true;
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
@@ -1660,6 +1755,15 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/whatsapp/status"
+  ) {
+    return runRoute(ctx, async (service) => {
+      json(res, await service.getWhatsAppConnectorStatus());
+    });
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/channel-policies") {
     return runRoute(ctx, async (service) => {
       json(res, { policies: await service.listChannelPolicies() });
@@ -1897,6 +2001,13 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (method === "GET" && pathname === "/api/lifeops/schedule/summary") {
+    const timezoneParam = url.searchParams.get("timezone")?.trim() || "UTC";
+    return runRoute(ctx, async (service) => {
+      json(res, await service.readScheduleSummary({ timezone: timezoneParam }));
+    });
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/lifeops/permissions/full-disk-access"
@@ -1965,6 +2076,137 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/overview") {
     return runRoute(ctx, async (service) => {
       json(res, await service.getOverview());
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/dashboard") {
+    return runRoute(ctx, async (service) => {
+      const windowDaysRaw = url.searchParams.get("windowDays");
+      const windowDays = windowDaysRaw ? Number(windowDaysRaw) : null;
+      json(
+        res,
+        await service.getPaymentsDashboard({
+          windowDays: Number.isFinite(windowDays) ? windowDays : null,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/sources") {
+    return runRoute(ctx, async (service) => {
+      json(res, { sources: await service.listPaymentSources() });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/payments/sources") {
+    const body = await readJsonBody<{
+      kind: string;
+      label: string;
+      institution?: string | null;
+      accountMask?: string | null;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const source = await service.addPaymentSource({
+        kind: body.kind as never,
+        label: body.label,
+        institution: body.institution ?? null,
+        accountMask: body.accountMask ?? null,
+      });
+      json(res, { source }, 201);
+    });
+  }
+
+  if (
+    method === "DELETE" &&
+    pathname.startsWith("/api/lifeops/payments/sources/")
+  ) {
+    const sourceId = pathname.slice("/api/lifeops/payments/sources/".length);
+    if (!sourceId) {
+      ctx.error(res, "sourceId required", 400);
+      return true;
+    }
+    return runRoute(ctx, async (service) => {
+      await service.deletePaymentSource(decodeURIComponent(sourceId));
+      json(res, { ok: true });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/payments/import-csv") {
+    const body = await readJsonBody<{
+      sourceId: string;
+      csvText: string;
+      dateColumn?: string;
+      amountColumn?: string;
+      merchantColumn?: string;
+      descriptionColumn?: string;
+      categoryColumn?: string;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.importTransactionsCsv(body);
+      json(res, result);
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/transactions") {
+    return runRoute(ctx, async (service) => {
+      const sourceId = url.searchParams.get("sourceId");
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw ? Number(limitRaw) : null;
+      const merchantContains = url.searchParams.get("merchantContains");
+      const onlyDebitsRaw = url.searchParams.get("onlyDebits");
+      const transactions = await service.listTransactions({
+        sourceId: sourceId ?? null,
+        limit: Number.isFinite(limit) ? limit : null,
+        merchantContains: merchantContains ?? null,
+        onlyDebits: onlyDebitsRaw === "true" ? true : null,
+      });
+      json(res, { transactions });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/payments/recurring") {
+    return runRoute(ctx, async (service) => {
+      const sourceId = url.searchParams.get("sourceId");
+      const sinceDaysRaw = url.searchParams.get("sinceDays");
+      const sinceDays = sinceDaysRaw ? Number(sinceDaysRaw) : null;
+      const charges = await service.getRecurringCharges({
+        sourceId: sourceId ?? null,
+        sinceDays: Number.isFinite(sinceDays) ? sinceDays : null,
+      });
+      json(res, { charges });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/email-unsubscribe/scan") {
+    return runRoute(ctx, async (service) => {
+      const requestUrl = ctx.url;
+      const result = await service.scanEmailSubscriptions(requestUrl, {});
+      json(res, result);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/email-unsubscribe/unsubscribe"
+  ) {
+    const body = await readJsonBody<{
+      senderEmail: string;
+      blockAfter?: boolean;
+      trashExisting?: boolean;
+      confirmed?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const requestUrl = ctx.url;
+      const result = await service.unsubscribeEmailSender(requestUrl, {
+        senderEmail: body.senderEmail,
+        blockAfter: body.blockAfter ?? true,
+        trashExisting: body.trashExisting ?? false,
+        confirmed: body.confirmed ?? false,
+      });
+      json(res, result);
     });
   }
 

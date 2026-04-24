@@ -1,6 +1,6 @@
 import { client } from "@elizaos/app-core/api";
 import { useCallback, useEffect, useState } from "react";
-import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
+import type { LifeOpsScheduleSummary } from "../lifeops/schedule-insight.js";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -15,20 +15,17 @@ export interface UseLifeOpsScheduleInspectionOptions {
 }
 
 /**
- * Loads the server-side schedule inspection (insight + sleep episodes +
- * merged-window inventory + contributing rules) at a steady cadence.
- *
- * The inspection object is the same shape returned by
- * `service.inspectSchedule`, and the underlying route
- * (`GET /api/lifeops/schedule/inspection`) runs live against the repository
- * each time — UI callers should debounce/throttle visibility gates if they
- * only need a snapshot on demand (`refreshIntervalMs <= 0`).
+ * Loads the lightweight schedule summary (cached merged state + last 7 days
+ * of persisted sleep episodes) at a steady cadence. Reads from cached
+ * tables only — the scheduler tick is the sole writer. Safe to call on
+ * every panel mount without triggering probes.
  */
 export function useLifeOpsScheduleInspection(
   options: UseLifeOpsScheduleInspectionOptions = {},
 ) {
-  const [inspection, setInspection] =
-    useState<LifeOpsScheduleInspection | null>(null);
+  const [inspection, setInspection] = useState<LifeOpsScheduleSummary | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,14 +35,14 @@ export function useLifeOpsScheduleInspection(
       try {
         const timezone =
           options.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const response = await client.getLifeOpsScheduleInspection(timezone);
+        const response = await client.getLifeOpsScheduleSummary(timezone);
         if (isCancelled?.()) return;
         setInspection(response);
         setError(null);
       } catch (cause) {
         if (isCancelled?.()) return;
         setError(
-          formatError(cause, "LifeOps schedule inspection failed to load."),
+          formatError(cause, "LifeOps schedule summary failed to load."),
         );
       } finally {
         if (!isCancelled?.()) setLoading(false);

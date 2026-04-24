@@ -1,26 +1,4 @@
-/**
- * ClawVille app — Eliza plugin routes
- *
- * Registers at `/api/apps/clawville/*` inside Eliza's embedded HTTP server
- * and handles:
- *
- *   GET  /api/apps/clawville/viewer         — serves the embedded game HTML
- *   GET  /api/apps/clawville/session/:id    — current session state
- *   POST /api/apps/clawville/session/:id/command — execute an in-game command
- *   POST /api/apps/clawville/session/:id/control — pause/resume
- *
- * The `resolveLaunchSession` hook fires when the user clicks "Launch" on the
- * ClawVille app card. It POSTs to ClawVille's /api/agent/connect with the
- * Eliza runtime's agentId + character name (runtime-trust model — no token
- * exchange) and stashes the returned sessionId + wallet address back on the
- * runtime via setSetting.
- *
- * Pattern is adapted from app-babylon (thin proxy, simple session state) +
- * app-defense-of-the-agents (viewer HTML rewrite with bootstrap script
- * injection for embed-mode styling).
- */
-
-import type { IAgentRuntime } from "@elizaos/core";
+import { logger, type IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
@@ -52,7 +30,7 @@ const VIEWER_FETCH_TIMEOUT_MS = 8_000;
 
 /**
  * CSP frame-ancestors directive we send on the viewer HTML response so that
- * Eliza's various host shells (desktop Electrobun, mobile Capacitor, plus
+ * Host shells (desktop Electrobun, mobile Capacitor, plus
  * the dev http://localhost and https://localhost cases) can embed us in an
  * iframe. Mirrors the value used by app-defense-of-the-agents.
  */
@@ -61,6 +39,62 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
+
+const BUILDINGS = [
+  {
+    id: "tool-workshop",
+    label: "Krusty Krab",
+    aliases: ["tool workshop", "krusty krab", "mcp", "tools"],
+  },
+  {
+    id: "skill-forge",
+    label: "Chum Bucket",
+    aliases: ["skill forge", "chum bucket", "code", "debugging"],
+  },
+  {
+    id: "memory-vault",
+    label: "Squidward's House",
+    aliases: ["memory vault", "squidward", "rag", "memory"],
+  },
+  {
+    id: "canvas-studio",
+    label: "Pineapple House",
+    aliases: ["canvas studio", "pineapple", "sql", "analytics"],
+  },
+  {
+    id: "security-fortress",
+    label: "Patrick's Rock",
+    aliases: ["security fortress", "patrick", "solana", "wallet"],
+  },
+  {
+    id: "channel-bridge",
+    label: "Sandy's Treedome",
+    aliases: ["channel bridge", "sandy", "discord", "telegram", "email"],
+  },
+  {
+    id: "webhook-gateway",
+    label: "Salty Spitoon",
+    aliases: ["webhook gateway", "salty spitoon", "api", "webhook"],
+  },
+  {
+    id: "cron-hub",
+    label: "Downtown Building",
+    aliases: ["cron hub", "downtown", "automation", "cron"],
+  },
+  {
+    id: "voice-tower",
+    label: "Boating School",
+    aliases: ["voice tower", "boating school", "research", "search"],
+  },
+  {
+    id: "config-citadel",
+    label: "Lighthouse",
+    aliases: ["config citadel", "lighthouse", "config", "deployment"],
+  },
+] as const;
+
+type ClawvilleSubroute = "move" | "visit-building" | "chat" | "buy";
+type ClawvilleBuildingId = (typeof BUILDINGS)[number]["id"];
 
 interface RouteContext {
   method: string;
@@ -100,12 +134,12 @@ function parseSessionId(pathValue: string): string | null {
 /** Parse the final segment of `/session/:id/<subroute>`. */
 function parseSessionSubroute(
   pathValue: string,
-): "move" | "visit-building" | "chat" | "buy" | "control" | null {
+): "message" | "move" | "visit-building" | "chat" | "buy" | null {
+  if (pathValue.endsWith("/message")) return "message";
   if (pathValue.endsWith("/move")) return "move";
   if (pathValue.endsWith("/visit-building")) return "visit-building";
   if (pathValue.endsWith("/chat")) return "chat";
   if (pathValue.endsWith("/buy")) return "buy";
-  if (pathValue.endsWith("/control")) return "control";
   return null;
 }
 
@@ -113,29 +147,63 @@ function parseSessionSubroute(
 // Session state construction
 // ---------------------------------------------------------------------------
 
+function readNearestBuilding(
+  perception?: Record<string, unknown> | null,
+): { buildingId?: string; label?: string } | null {
+  const nearby = perception?.nearbyBuildings;
+  if (!Array.isArray(nearby)) return null;
+  const first = nearby[0];
+  return first && typeof first === "object"
+    ? (first as { buildingId?: string; label?: string })
+    : null;
+}
+
+function readNearestBuildingId(
+  perception?: Record<string, unknown> | null,
+): string | null {
+  const id = readNearestBuilding(perception)?.buildingId;
+  return typeof id === "string" && id.trim().length > 0 ? id.trim() : null;
+}
+
+function readNearestBuildingLabel(
+  perception?: Record<string, unknown> | null,
+): string | null {
+  const label = readNearestBuilding(perception)?.label;
+  return typeof label === "string" && label.trim().length > 0
+    ? label.trim()
+    : null;
+}
+
+function formatNearestBuildingGoal(
+  perception?: Record<string, unknown> | null,
+): string | null {
+  const label = readNearestBuildingLabel(perception);
+  return label ? `Nearest: ${label}` : "Exploring the reef";
+}
+
 function buildSessionState(
   config: ClawvilleConfig,
   connectResult: ClawvilleConnectResponse | null,
   perception?: Record<string, unknown> | null,
 ): AppSessionState {
-  const agentName = config.elizaCharacterName ?? "Eliza Agent";
+  const agentName = config.miladyCharacterName ?? "Milady Agent";
 
   if (!connectResult) {
     return {
-      sessionId: config.elizaAgentId ?? "clawville",
+      sessionId: config.miladyAgentId ?? "clawville",
       appName: APP_NAME,
       mode: "spectate-and-steer",
       status: "connecting",
       displayName: APP_DISPLAY_NAME,
-      agentId: config.elizaAgentId ?? undefined,
+      agentId: config.miladyAgentId ?? undefined,
       canSendCommands: false,
-      controls: ["pause", "resume"],
+      controls: [],
       summary: "Connecting to ClawVille...",
       goalLabel: null,
       suggestedPrompts: [
-        "Visit the Salvage Workshop to learn about MCP",
-        "Visit the Tide Clock Grotto to learn about cron jobs",
-        "Visit the Memory Vault to learn about RAG",
+        "Move to Krusty Krab",
+        "Visit the nearest building",
+        "Ask the nearest NPC what to learn next",
       ],
       telemetry: null,
     };
@@ -160,18 +228,14 @@ function buildSessionState(
     displayName: APP_DISPLAY_NAME,
     agentId: connectResult.agentId,
     canSendCommands: true,
-    controls: ["pause", "resume"],
+    controls: [],
     summary: summaryParts.join(" | "),
-    goalLabel: perception
-      ? (perception.nearestBuilding as { id?: string } | null)?.id
-        ? `Near ${(perception.nearestBuilding as { id?: string }).id}`
-        : "Exploring the reef"
-      : null,
+    goalLabel: formatNearestBuildingGoal(perception),
     suggestedPrompts: [
-      "Visit the Salvage Workshop",
-      "Buy a knowledge book",
-      "Chat with the building NPC",
-      "Check my wallet balance",
+      "Move to Krusty Krab",
+      "Visit the nearest building",
+      "Ask the nearest NPC what to learn next",
+      "Move to Chum Bucket",
     ],
     telemetry: {
       walletAddress: connectResult.walletAddress,
@@ -181,6 +245,9 @@ function buildSessionState(
       knowledgeCount: connectResult.knowledge.length,
       identityType: connectResult.identityType,
       autonomyMode: connectResult.autonomyMode,
+      sessionTicketUrl: connectResult.sessionTicket?.url ?? null,
+      nearestBuildingId: readNearestBuildingId(perception),
+      nearestBuildingLabel: readNearestBuildingLabel(perception),
     },
   };
 }
@@ -189,101 +256,28 @@ function buildSessionState(
 // Viewer HTML rewrite + embed header injection
 // ---------------------------------------------------------------------------
 
-/**
- * Build the bootstrap <script> we inject into the ClawVille viewer HTML.
- * When ClawVille's `/game` page loads inside a Eliza iframe, this script
- * runs in its DOM context and:
- *
- *   1. Sets localStorage flags that tell the ClawVille frontend to skip
- *      the login/create-pet overlay
- *   2. Hides any login-gate UI elements if they do render
- *   3. Adds a small "Watching {agentName}" banner so players know the
- *      Eliza agent is the one driving the avatar
- *
- * This mirrors the approach in app-defense-of-the-agents'
- * buildViewerShellInjection(agentName, viewerUrl) — fetch the real site,
- * inject a bootstrap block before </head>, let the SPA continue normally
- * with embed-mode flags pre-set.
- */
 function buildViewerShellInjection(
   agentName: string,
   sessionId: string | null,
-  viewerUrl: string,
 ): string {
-  const safeAgentName = JSON.stringify(agentName || "Eliza Agent");
+  const safeAgentName = JSON.stringify(agentName || "Milady Agent");
   const safeSessionId = JSON.stringify(sessionId ?? "");
-  const safeFullSiteUrl = JSON.stringify(viewerUrl);
 
-  return `<style id="eliza-clawville-embed-style">
-#eliza-clawville-spectator-banner {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 9999;
-  min-width: 200px;
-  padding: 12px 14px;
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(10, 22, 40, 0.92), rgba(5, 14, 28, 0.88));
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 16px rgba(0, 229, 255, 0.08);
-  color: #d6f4ff;
-  font: 12px system-ui, -apple-system, "Segoe UI", sans-serif;
-  pointer-events: auto;
-}
-#eliza-clawville-spectator-banner .eliza-clawville-title {
-  color: #7fe6ff;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  letter-spacing: 0.02em;
-}
-#eliza-clawville-spectator-banner .eliza-clawville-body {
-  color: rgba(214, 244, 255, 0.72);
-  line-height: 1.5;
-  margin-bottom: 8px;
-}
-#eliza-clawville-spectator-banner .eliza-clawville-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 229, 255, 0.4);
-  color: #7fe6ff;
-  text-decoration: none;
-  background: rgba(0, 229, 255, 0.08);
-  font-size: 11px;
-}
-#eliza-clawville-spectator-banner .eliza-clawville-link:hover {
-  background: rgba(0, 229, 255, 0.15);
-}
-</style>
-<script id="eliza-clawville-embedded-bootstrap">
+  return `<script id="milady-clawville-embedded-bootstrap">
 (() => {
   const agentName = ${safeAgentName};
   const sessionId = ${safeSessionId};
-  const fullSiteUrl = ${safeFullSiteUrl};
 
-  // Tell the ClawVille SPA it's embedded inside a Eliza host so it can
-  // skip landing-page overlays and login gates. ClawVille reads these
-  // flags from localStorage on boot (it's a best-effort hint — if
-  // ClawVille doesn't check them yet, the banner below still appears
-  // and the rest of the app keeps working).
   try {
-    localStorage.setItem("clawville-embed-mode", "eliza");
-    localStorage.setItem("clawville-eliza-agent-name", agentName);
+    localStorage.setItem("clawville-embed-mode", "milady");
+    localStorage.setItem("clawville-milady-agent-name", agentName);
     if (sessionId) {
-      localStorage.setItem("clawville-eliza-session-id", sessionId);
+      localStorage.setItem("clawville-milady-session-id", sessionId);
     }
     localStorage.setItem("landing-closed", "1");
   } catch {
-    // localStorage may be blocked in some embed contexts — banner still works.
   }
 
-  // Hide any landing-page / auth overlay that might render in the first
-  // paint. IDs here are best-guess based on ClawVille's current frontend;
-  // unknown IDs are no-ops. ClawVille can add more to this list by
-  // observing what Eliza passes in its postMessage handshake (future).
   const hiddenIds = [
     "landing-overlay",
     "auth-modal",
@@ -299,60 +293,20 @@ function buildViewerShellInjection(
     }
   }
 
-  // postMessage the Eliza identity to the iframe — ClawVille's
-  // /game page can listen on window.addEventListener('message', ...)
-  // and call /api/auth/eliza-session-exchange to mint a ClawVille
-  // guest cookie. (ClawVille-side wiring is planned but not required
-  // for the plugin to load — if ClawVille ignores the message the
-  // viewer still works in read-only mode.)
   window.parent?.postMessage?.(
-    { type: "eliza-clawville-ready", agentName, sessionId },
+    { type: "milady-clawville-ready", agentName, sessionId },
     "*",
   );
-
-  // Drop a small "Watching <agentName>" banner in the top-right so
-  // players know the visible avatar is being steered by Eliza.
-  const ensureBanner = () => {
-    if (document.getElementById("eliza-clawville-spectator-banner")) return;
-    if (!document.body) return;
-    const banner = document.createElement("div");
-    banner.id = "eliza-clawville-spectator-banner";
-    const title = document.createElement("div");
-    title.className = "eliza-clawville-title";
-    title.textContent = "Watching " + agentName;
-    const body = document.createElement("div");
-    body.className = "eliza-clawville-body";
-    body.textContent =
-      "Eliza is steering this agent inside ClawVille. Open the full site if you want to create your own pet.";
-    const link = document.createElement("a");
-    link.className = "eliza-clawville-link";
-    link.href = fullSiteUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Open Full Game";
-    banner.append(title, body, link);
-    document.body.appendChild(banner);
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", ensureBanner, { once: true });
-  } else {
-    ensureBanner();
-  }
-  window.addEventListener("load", ensureBanner, { once: true });
 })();
 </script>`;
 }
 
 /**
  * Rewrite relative asset URLs in the fetched HTML so they resolve against
- * the real clawville.world origin instead of against Eliza's localhost.
+ * the real clawville.world origin instead of against localhost.
  * Handles `src="..."`, `href="..."`, and `srcset="..."` attributes.
  */
-function absolutizeViewerHtmlAssetUrls(
-  html: string,
-  baseUrl: string,
-): string {
+function absolutizeViewerHtmlAssetUrls(html: string, baseUrl: string): string {
   const base = new URL(baseUrl);
   const origin = `${base.protocol}//${base.host}`;
 
@@ -367,8 +321,7 @@ function absolutizeViewerHtmlAssetUrls(
             const trimmed = item.trim();
             if (!trimmed) return trimmed;
             const spaceIdx = trimmed.indexOf(" ");
-            const url =
-              spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+            const url = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
             const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx);
             if (url.startsWith("/") && !url.startsWith("//")) {
               return `${origin}${url}${rest}`;
@@ -400,9 +353,8 @@ async function buildEmbeddedViewerHtml(
 
   const absolutized = absolutizeViewerHtmlAssetUrls(html, config.viewerUrl);
   const injection = buildViewerShellInjection(
-    config.elizaCharacterName ?? "Eliza Agent",
+    config.miladyCharacterName ?? "Milady Agent",
     config.storedSessionId ?? null,
-    config.viewerUrl,
   );
 
   if (absolutized.includes("</head>")) {
@@ -448,20 +400,8 @@ function applyViewerEmbedHeaders(response: {
 }
 
 // ---------------------------------------------------------------------------
-// Launch session resolver — fires on "Launch" click in Eliza's app UI
+// Launch session resolver
 // ---------------------------------------------------------------------------
-
-/**
- * Called by Eliza when the user clicks "Launch" on the ClawVille app card.
- * We POST to ClawVille's /api/agent/connect with runtime.agentId +
- * runtime.character.name, stash the returned session artifacts back onto
- * the runtime via setSetting, and return a populated AppSessionState for
- * Eliza's side panel to render.
- *
- * On failure we return a degraded "connecting" session state and log a
- * diagnostic — the user sees a clear error message in the panel without
- * the whole app launch being rejected.
- */
 export async function resolveLaunchSession(
   ctx: AppLaunchSessionContext,
 ): Promise<AppLaunchResult["session"]> {
@@ -478,7 +418,7 @@ export async function resolveLaunchSession(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "ClawVille connect failed.";
-    console.error("[app-clawville] resolveLaunchSession error:", message);
+    logger.warn(`[ClawVille] resolveLaunchSession failed: ${message}`);
     return {
       ...buildSessionState(config, null),
       status: "degraded",
@@ -487,23 +427,32 @@ export async function resolveLaunchSession(
   }
 }
 
-/**
- * Called periodically by Eliza to refresh the side-panel state after
- * launch. We avoid another /connect call (which would bump totalSessions)
- * and instead fetch perception data for the stored sessionId. If the
- * sessionId has expired server-side (e.g. container restart), we fall
- * back to a fresh /connect via resolveLaunchSession.
- */
-/**
- * Called by the host app-manager when the user stops the ClawVille run.
- * ClawVille is a thin proxy to the external ClawVille API — session state
- * is stored in runtime settings (non-volatile) and the game server is
- * managed externally. No local resources to tear down. Iframe unmount is
- * sufficient. This hook is present so the app-manager lifecycle path
- * stays uniform across all game apps.
- */
-export async function stopRun(): Promise<void> {
-  // Intentional no-op — no server-side state to clean up.
+export async function stopRun(): Promise<void> {}
+
+function buildCachedConnect(
+  config: ClawvilleConfig,
+  sessionId: string,
+  session?: AppSessionState | null,
+): ClawvilleConnectResponse {
+  return {
+    agentId:
+      typeof session?.agentId === "string"
+        ? session.agentId
+        : config.miladyAgentId
+          ? `milady:${config.miladyAgentId}`
+          : "clawville",
+    sessionId,
+    uuid: config.storedUuid ?? "",
+    isReturning: true,
+    totalSessions:
+      typeof session?.telemetry?.totalSessions === "number"
+        ? session.telemetry.totalSessions
+        : 1,
+    knowledge: [],
+    identityType: "milady",
+    autonomyMode: "server-managed",
+    walletAddress: config.storedWalletAddress ?? null,
+  };
 }
 
 export async function refreshRunSession(
@@ -522,28 +471,13 @@ export async function refreshRunSession(
     return resolveLaunchSession(ctx);
   }
 
-  // Rebuild state with the cached connect-time data + fresh perception
-  const fauxConnect: ClawvilleConnectResponse = {
-    agentId: (ctx.session?.agentId as string) ?? `eliza:${config.elizaAgentId ?? "unknown"}`,
-    sessionId,
-    uuid: config.storedUuid ?? "",
-    isReturning: true,
-    totalSessions:
-      (ctx.session?.telemetry as { totalSessions?: number } | null)?.totalSessions ?? 1,
-    knowledge: [],
-    identityType: "eliza",
-    autonomyMode: "server-managed",
-    walletAddress: config.storedWalletAddress ?? null,
-  };
-
-  return buildSessionState(config, fauxConnect, perception);
+  return buildSessionState(
+    config,
+    buildCachedConnect(config, sessionId, ctx.session),
+    perception,
+  );
 }
 
-/**
- * Emit launch diagnostics (warnings shown in the Eliza UI below the app
- * card). We use this to surface config issues early — e.g. if the runtime
- * somehow has no agentId.
- */
 export async function collectLaunchDiagnostics(ctx: {
   runtime: IAgentRuntime | null;
   session: AppSessionState | null;
@@ -551,12 +485,12 @@ export async function collectLaunchDiagnostics(ctx: {
   const config = resolveClawvilleConfig(ctx.runtime);
   const diagnostics: AppLaunchDiagnostic[] = [];
 
-  if (!config.elizaAgentId) {
+  if (!config.miladyAgentId) {
     diagnostics.push({
       code: "clawville-missing-agent-id",
       severity: "error",
       message:
-        "ClawVille requires a Eliza runtime agentId. Restart the agent after configuring.",
+        "ClawVille requires a runtime agentId. Restart the agent after configuring.",
     });
   }
 
@@ -571,6 +505,239 @@ export async function collectLaunchDiagnostics(ctx: {
   }
 
   return diagnostics;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
+function resolveBuildingIdFromText(
+  content: string,
+): ClawvilleBuildingId | null {
+  const normalized = normalizeText(content);
+  for (const building of BUILDINGS) {
+    const candidates = [building.id, building.label, ...building.aliases].map(
+      normalizeText,
+    );
+    if (candidates.some((candidate) => normalized.includes(candidate))) {
+      return building.id;
+    }
+  }
+  return null;
+}
+
+function readStringField(
+  body: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function readNumberField(
+  body: Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function coerceBuildingId(
+  body: Record<string, unknown>,
+  perception?: Record<string, unknown> | null,
+): string | null {
+  const explicit = readStringField(body, [
+    "buildingId",
+    "locationId",
+    "building",
+    "location",
+  ]);
+  if (explicit) return explicit;
+  const content = readStringField(body, ["content", "message", "command"]);
+  if (content) return resolveBuildingIdFromText(content);
+  return readNearestBuildingId(perception);
+}
+
+function normalizeDirectCommandBody(
+  subroute: ClawvilleSubroute,
+  body: unknown,
+  perception?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const record = isRecord(body) ? body : {};
+
+  if (subroute === "move") {
+    const targetX = readNumberField(record, ["targetX", "x"]);
+    const targetY = readNumberField(record, ["targetY", "y"]);
+    if (targetX !== null && targetY !== null) {
+      return { targetX, targetY };
+    }
+    const buildingId = coerceBuildingId(record, perception);
+    return buildingId ? { buildingId } : record;
+  }
+
+  if (subroute === "visit-building") {
+    const buildingId = coerceBuildingId(record, perception);
+    return buildingId ? { buildingId } : record;
+  }
+
+  if (subroute === "chat") {
+    const message = readStringField(record, ["message", "content", "command"]);
+    return message ? { message } : record;
+  }
+
+  return record;
+}
+
+async function resolveNearestBuildingId(
+  config: ClawvilleConfig,
+  sessionId: string,
+): Promise<string | null> {
+  const perception = await clawvillePerception(config, sessionId);
+  return readNearestBuildingId(perception);
+}
+
+async function buildMessageCommand(
+  config: ClawvilleConfig,
+  sessionId: string,
+  content: string,
+): Promise<{
+  subroute: ClawvilleSubroute;
+  body: Record<string, unknown>;
+}> {
+  const normalized = normalizeText(content);
+  const explicitBuildingId = resolveBuildingIdFromText(content);
+
+  if (/\b(buy|shop|book|market|purchase)\b/.test(normalized)) {
+    return {
+      subroute: "buy",
+      body: { message: content },
+    };
+  }
+
+  if (/\b(visit|enter|learn|skill)\b/.test(normalized)) {
+    const buildingId =
+      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
+    if (!buildingId) {
+      return {
+        subroute: "chat",
+        body: { message: content },
+      };
+    }
+    return {
+      subroute: "visit-building",
+      body: { buildingId },
+    };
+  }
+
+  if (/\b(move|go|head|travel|walk|path)\b/.test(normalized)) {
+    const buildingId =
+      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
+    if (!buildingId) {
+      return {
+        subroute: "chat",
+        body: { message: content },
+      };
+    }
+    return {
+      subroute: "move",
+      body: { buildingId },
+    };
+  }
+
+  return {
+    subroute: "chat",
+    body: { message: content },
+  };
+}
+
+function resultMessage(
+  subroute: ClawvilleSubroute,
+  data: Record<string, unknown>,
+): string {
+  const message = readStringField(data, ["message", "status", "error"]);
+  if (message) return message;
+  switch (subroute) {
+    case "move":
+      return "Moving.";
+    case "visit-building":
+      return "Visiting building.";
+    case "chat":
+      return "Message sent.";
+    case "buy":
+      return "ClawVille agent shop control is not exposed by the current API.";
+  }
+}
+
+async function proxyCommand(
+  config: ClawvilleConfig,
+  sessionId: string,
+  subroute: ClawvilleSubroute,
+  body: Record<string, unknown>,
+): Promise<{
+  ok: boolean;
+  status: number;
+  data: Record<string, unknown>;
+}> {
+  if (subroute === "buy") {
+    return {
+      ok: false,
+      status: 400,
+      data: {
+        error:
+          "ClawVille agent shop control is not exposed by the current API.",
+      },
+    };
+  }
+
+  const response = await proxyClawvilleRequest(
+    config,
+    "POST",
+    `/api/agent/${encodeURIComponent(sessionId)}/${subroute}`,
+    body,
+  );
+  const data = await response.json().catch(() => ({}));
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: isRecord(data) ? data : {},
+  };
+}
+
+async function buildCommandResult(
+  config: ClawvilleConfig,
+  sessionId: string,
+  subroute: ClawvilleSubroute,
+  body: Record<string, unknown>,
+): Promise<AppSessionActionResult> {
+  const response = await proxyCommand(config, sessionId, subroute, body);
+  const perception = response.ok
+    ? await clawvillePerception(config, sessionId)
+    : null;
+  return {
+    success: response.ok,
+    message: resultMessage(subroute, response.data),
+    session: response.ok
+      ? buildSessionState(
+          config,
+          buildCachedConnect(config, sessionId),
+          perception,
+        )
+      : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -610,21 +777,14 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   if (ctx.method === "GET" && !subroute) {
     try {
       const perception = await clawvillePerception(config, sessionId);
-      const fauxConnect: ClawvilleConnectResponse = {
-        agentId:
-          config.elizaAgentId
-            ? `eliza:${config.elizaAgentId}`
-            : "clawville",
-        sessionId,
-        uuid: config.storedUuid ?? "",
-        isReturning: true,
-        totalSessions: 1,
-        knowledge: [],
-        identityType: "eliza",
-        autonomyMode: "server-managed",
-        walletAddress: config.storedWalletAddress ?? null,
-      };
-      ctx.json(ctx.res, buildSessionState(config, fauxConnect, perception));
+      ctx.json(
+        ctx.res,
+        buildSessionState(
+          config,
+          buildCachedConnect(config, sessionId),
+          perception,
+        ),
+      );
     } catch (err) {
       ctx.error(
         ctx.res,
@@ -635,31 +795,55 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return true;
   }
 
-  // POST /api/apps/clawville/session/:id/control — pause/resume
-  if (ctx.method === "POST" && subroute === "control") {
-    // ClawVille has no server-side pause/resume concept yet — return a
-    // no-op success so Eliza's UI doesn't show an error.
-    const result: AppSessionActionResult = {
-      success: true,
-      message: "ClawVille pause/resume is a no-op (simulation runs server-side).",
-      session: null,
-    };
-    ctx.json(ctx.res, result);
+  if (ctx.method === "POST" && subroute === "message") {
+    try {
+      const body = await ctx.readJsonBody();
+      const content =
+        isRecord(body) && typeof body.content === "string"
+          ? body.content.trim()
+          : "";
+      if (!content) {
+        ctx.error(ctx.res, "Command content is required.", 400);
+        return true;
+      }
+      const command = await buildMessageCommand(config, sessionId, content);
+      const result = await buildCommandResult(
+        config,
+        sessionId,
+        command.subroute,
+        command.body,
+      );
+      ctx.json(ctx.res, result, result.success ? 200 : 400);
+    } catch (err) {
+      ctx.error(
+        ctx.res,
+        err instanceof Error ? err.message : "ClawVille command failed.",
+        502,
+      );
+    }
     return true;
   }
 
-  // POST /api/apps/clawville/session/:id/{move,visit-building,chat,buy}
   if (ctx.method === "POST" && subroute) {
     try {
       const body = await ctx.readJsonBody();
-      const response = await proxyClawvilleRequest(
-        config,
-        "POST",
-        `/api/agent/${encodeURIComponent(sessionId)}/${subroute}`,
+      const needsPerception =
+        subroute === "move" || subroute === "visit-building";
+      const perception = needsPerception
+        ? await clawvillePerception(config, sessionId)
+        : null;
+      const commandBody = normalizeDirectCommandBody(
+        subroute,
         body,
+        perception,
       );
-      const data = await response.json().catch(() => ({}));
-      ctx.json(ctx.res, data, response.ok ? 200 : response.status);
+      const result = await buildCommandResult(
+        config,
+        sessionId,
+        subroute,
+        commandBody,
+      );
+      ctx.json(ctx.res, result, result.success ? 200 : 400);
     } catch (err) {
       ctx.error(
         ctx.res,

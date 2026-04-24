@@ -336,6 +336,40 @@ describe("LifeOps operational hooks", () => {
     );
   });
 
+  it("uses the local LifeOps success endpoint for cloud-managed X auth", async () => {
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        origin: "http://localhost:31337",
+      },
+    });
+
+    try {
+      const { result } = renderHook(() => useLifeOpsXConnector());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.connect("cloud_managed");
+      });
+
+      expect(clientMock.startXLifeOpsConnector).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "cloud_managed",
+          side: "owner",
+          redirectUrl:
+            "http://localhost:31337/api/lifeops/connectors/x/success?side=owner&mode=cloud_managed",
+        }),
+      );
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
   it("seeds and inspects the stretch reminder flow", async () => {
     const { result } = renderHook(() => useLifeOpsStretchReminder());
 

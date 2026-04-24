@@ -131,6 +131,21 @@ export interface KnowledgeStats {
   agentId: string;
 }
 
+export type KnowledgeDocumentProvenanceKind =
+  | "upload"
+  | "learned"
+  | "character"
+  | "url"
+  | "youtube"
+  | "bundled"
+  | "unknown";
+
+export interface KnowledgeDocumentProvenance {
+  kind: KnowledgeDocumentProvenanceKind;
+  label: string;
+  detail?: string;
+}
+
 export interface KnowledgeDocument {
   id: string;
   filename: string;
@@ -138,13 +153,18 @@ export interface KnowledgeDocument {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: string;
+  source: KnowledgeDocumentProvenanceKind;
   url?: string;
+  provenance: KnowledgeDocumentProvenance;
+  canEditText: boolean;
+  editabilityReason?: string;
+  canDelete: boolean;
+  deleteabilityReason?: string;
   content?: { text?: string };
 }
 
 export interface KnowledgeDocumentDetail extends KnowledgeDocument {
-  content: { text?: string };
+  content?: { text?: string };
 }
 
 export interface KnowledgeDocumentsResponse {
@@ -173,6 +193,7 @@ export interface KnowledgeSearchResult {
   similarity: number;
   documentId?: string;
   documentTitle?: string;
+  documentProvenance?: KnowledgeDocumentProvenance;
   position?: number;
 }
 
@@ -191,6 +212,12 @@ export interface KnowledgeUploadResult {
   contentType?: string;
   isYouTubeTranscript?: boolean;
   warnings?: string[];
+}
+
+export interface KnowledgeDocumentUpdateResult {
+  ok: boolean;
+  documentId: string;
+  fragmentCount: number;
 }
 
 export interface KnowledgeBulkUploadItemResult {
@@ -363,10 +390,13 @@ export interface N8nWorkflowNode {
   id: string;
   name: string;
   type: string;
+  typeVersion?: number;
   /** Canvas position from n8n — [x, y]. Present on single-workflow GET; absent on list. */
   position?: [number, number];
   /** Node parameters from n8n. Present on single-workflow GET; absent on list. */
   parameters?: Record<string, unknown>;
+  notes?: string;
+  notesInFlow?: boolean;
 }
 
 /** A single outbound connection edge from n8n's connection map. */
@@ -393,4 +423,38 @@ export interface N8nWorkflow {
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: N8nConnectionMap;
+}
+
+export interface N8nWorkflowWriteNode {
+  id?: string;
+  name: string;
+  type: string;
+  typeVersion: number;
+  position: [number, number];
+  parameters: Record<string, unknown>;
+  credentials?: Record<string, { id: string; name: string }>;
+  disabled?: boolean;
+  notes?: string;
+  notesInFlow?: boolean;
+  color?: string;
+  continueOnFail?: boolean;
+  executeOnce?: boolean;
+  alwaysOutputData?: boolean;
+  retryOnFail?: boolean;
+  maxTries?: number;
+  waitBetweenTries?: number;
+  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
+}
+
+export interface N8nWorkflowWriteRequest {
+  name: string;
+  nodes: N8nWorkflowWriteNode[];
+  connections: N8nConnectionMap;
+  settings?: Record<string, unknown>;
+}
+
+export interface N8nWorkflowGenerateRequest {
+  prompt: string;
+  name?: string;
+  workflowId?: string;
 }

@@ -12,8 +12,30 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const APP_CORE_SCRIPTS_DIR = __dirname;
 
+/**
+ * Post-install / setup:sync step list.
+ *
+ * These run AFTER `bun install` in the root workspace. The steps come in
+ * two halves:
+ *
+ *   1. First patch pass (patch-deps, ensure-type-package-aliases) — fix up
+ *      node_modules after the initial bun install, so subsequent steps
+ *      can import from a healthy @elizaos/core / @elizaos/ui.
+ *   2. `scripts/setup-upstreams.mjs` may run `bun install --cwd eliza`
+ *      and rebuild workspace packages. That mutates node_modules again.
+ *   3. Second patch pass (patch-deps, ensure-type-package-aliases) at the
+ *      end re-applies the same fixes against the now-final node_modules
+ *      tree. This is intentional, not a bug.
+ *
+ * Submodule init is NOT in this list. It runs as the `preinstall` hook
+ * (and again via `./install` / `install.cmd` for the fresh-clone case,
+ * which chain submodule init + `bun install` explicitly because Bun
+ * resolves workspace globs before preinstall runs). Callers who invoke
+ * setup:sync standalone and need submodules should run
+ * `git submodule update --init --recursive` themselves (or use
+ * `bun run workspace:prepare`).
+ */
 export const repoSetupSteps = [
-  "scripts/init-submodules.mjs",
   "patch-workspace-plugins.mjs",
   "patch-deps.mjs",
   "ensure-type-package-aliases.mjs",
@@ -26,11 +48,18 @@ export const repoSetupSteps = [
   "link-browser-server.mjs",
   "link-external-plugins.mjs",
   "ensure-vision-deps.mjs",
+  // Re-patch: setup-upstreams may have re-installed @elizaos/* into
+  // node_modules, wiping earlier patch-deps fixes. Run again.
   "patch-deps.mjs",
   "ensure-type-package-aliases.mjs",
 ];
 
 function resolveRepoSetupStepPath(repoRoot, step) {
+  // Step paths prefixed with "scripts/" resolve to the consuming repo
+  // root (e.g. Milady's /scripts/setup-upstreams.mjs). Unprefixed names
+  // resolve to this app-core/scripts/ directory. This split lets Milady
+  // override specific steps while reusing the rest of the elizaOS-provided
+  // setup machinery.
   if (step.startsWith("scripts/")) {
     return path.join(repoRoot, step);
   }

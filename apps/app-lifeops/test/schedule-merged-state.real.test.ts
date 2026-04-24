@@ -78,7 +78,9 @@ function buildCloudState(
     localDate: "2026-04-19",
     timezone,
     inferredAt: nowIso,
-    phase: "winding_down",
+    circadianState: "winding_down",
+    stateConfidence: 0.91,
+    uncertaintyReason: null,
     relativeTime: {
       computedAt: nowIso,
       localNowAt: "2026-04-19T17:30:00+00:00",
@@ -100,6 +102,25 @@ function buildCloudState(
       minutesUntilDayBoundaryEnd: 390,
       confidence: 0.91,
     },
+    awakeProbability: {
+      computedAt: nowIso,
+      awake: 0.95,
+      asleep: 0.05,
+      unclear: 0,
+      sampleCount: 5,
+      windowMinutes: 60,
+    },
+    regularity: {
+      sampleCount: 5,
+      wakeConsistency: 0.8,
+      sleepConsistency: 0.8,
+      typicalWakeHour: 10.5,
+      typicalSleepHour: 24,
+      wakeHourStdDev: 0.5,
+      sleepHourStdDev: 0.5,
+    },
+    baseline: null,
+    circadianRuleFirings: [],
     sleepStatus: "slept",
     isProbablySleeping: false,
     sleepConfidence: 0.91,
@@ -107,8 +128,6 @@ function buildCloudState(
     lastSleepStartedAt: "2026-04-18T23:30:00.000Z",
     lastSleepEndedAt: "2026-04-19T10:30:00.000Z",
     lastSleepDurationMinutes: 660,
-    typicalWakeHour: 10.5,
-    typicalSleepHour: 24,
     wakeAt: "2026-04-19T10:30:00.000Z",
     firstActiveAt: "2026-04-19T10:45:00.000Z",
     lastActiveAt: "2026-04-19T12:45:00.000Z",
@@ -166,9 +185,9 @@ describe("merged schedule state", () => {
       const snapshot =
         await fixture.service.readReminderActivityProfileSnapshot();
 
-      expect(overview.schedule?.phase).toBe("winding_down");
+      expect(overview.schedule?.circadianState).toBe("winding_down");
       expect(overview.schedule?.nextMealLabel).toBe("dinner");
-      expect(snapshot?.schedulePhase).toBe("winding_down");
+      expect(snapshot?.circadianState).toBe("winding_down");
       expect(snapshot?.nextMealLabel).toBe("dinner");
       expect(snapshot?.lastSleepEndedAt).toBe("2026-04-19T10:30:00.000Z");
     } finally {

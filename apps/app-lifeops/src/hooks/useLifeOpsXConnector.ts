@@ -33,7 +33,7 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
         ? window.location.origin.trim()
         : "");
     if (!origin) return undefined;
-    const url = new URL("/auth/success?platform=twitter", origin);
+    const url = new URL("/api/lifeops/connectors/x/success", origin);
     url.searchParams.set("side", side);
     url.searchParams.set("mode", "cloud_managed");
     return url.toString();

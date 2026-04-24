@@ -56,6 +56,16 @@ function primaryActionLabel(
   });
 }
 
+function nonMobileBadgeLabel(t: TranslateFn): string {
+  return isElectrobunRuntime()
+    ? t("lifeopssettings.deviceSetupDesktop", {
+        defaultValue: "Desktop",
+      })
+    : t("lifeopssettings.deviceSetupWeb", {
+        defaultValue: "Web",
+      });
+}
+
 export function MobileSignalsSetupCard() {
   const { t } = useApp();
   const nativeMobile = isNative && !isElectrobunRuntime();
@@ -184,22 +194,9 @@ export function MobileSignalsSetupCard() {
               >
                 {nativeMobile
                   ? (permissionStatus?.status ?? "checking")
-                  : t("lifeopssettings.deviceSetupDesktop", {
-                      defaultValue: "Desktop/Web",
-                    })}
+                  : nonMobileBadgeLabel(t)}
               </Badge>
             </div>
-            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-              {nativeMobile
-                ? t("lifeopssettings.deviceSetupDescription", {
-                    defaultValue:
-                      "This phone sends lock, wake, Health, and usage signals to the active LifeOps agent.",
-                  })
-                : t("lifeopssettings.deviceSetupDesktopDescription", {
-                    defaultValue:
-                      "Mac, Windows, and Linux app signals are captured by the desktop runtime. Phone setup appears inside the iOS or Android app connected to the same backend.",
-                  })}
-            </p>
             {message ? <p className="text-xs text-muted">{message}</p> : null}
           </div>
         </div>

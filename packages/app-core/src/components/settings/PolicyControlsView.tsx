@@ -1,4 +1,3 @@
-import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
 import {
   Button,
   ConfirmDialog,
@@ -32,6 +31,7 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
+import { StewardLogo } from "../steward/injected";
 
 const asRecord = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};

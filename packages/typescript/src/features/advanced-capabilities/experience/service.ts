@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../../logger.ts";
+import type { Memory } from "../../../types/memory.ts";
 import { ModelType } from "../../../types/model.ts";
 import type { JsonValue, UUID } from "../../../types/primitives.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
@@ -48,146 +49,75 @@ export class ExperienceService extends Service {
 		return service;
 	}
 
-	private async loadExperiences(): Promise<void> {
-		// Load experiences from the "experiences" table (same table we write to)
-		const memories = await this.runtime.getMemories({
-			entityId: this.runtime.agentId,
-			tableName: "experiences",
-		});
-
-		for (const memory of memories) {
-			const experienceData = memory.content.data as Partial<Experience> | null;
-			if (experienceData?.id) {
-				const memoryCreatedAt =
-					typeof memory.createdAt === "number" ? memory.createdAt : Date.now();
-
-				const toTimestamp = (
-					value: number | Date | undefined,
-					fallback: number,
-				): number => {
-					if (value === undefined) return fallback;
-					if (typeof value === "number") return value;
-					if (value instanceof Date) return value.getTime();
-					return fallback;
-				};
-
-				const experience: Experience = {
-					id: experienceData.id as UUID,
-					agentId: this.runtime.agentId,
-					type: experienceData.type || ExperienceType.LEARNING,
-					outcome: experienceData.outcome || OutcomeType.NEUTRAL,
-					context: experienceData.context || "",
-					action: experienceData.action || "",
-					result: experienceData.result || "",
-					learning: experienceData.learning || "",
-					domain: experienceData.domain || "general",
-					tags: experienceData.tags || [],
-					confidence: experienceData.confidence || 0.5,
-					importance: experienceData.importance || 0.5,
-					createdAt: toTimestamp(
-						experienceData.createdAt as number | Date | undefined,
-						memoryCreatedAt,
-					),
-					updatedAt: toTimestamp(
-						experienceData.updatedAt as number | Date | undefined,
-						memoryCreatedAt,
-					),
-					accessCount: experienceData.accessCount ?? 0,
-					lastAccessedAt: toTimestamp(
-						experienceData.lastAccessedAt as number | Date | undefined,
-						memoryCreatedAt,
-					),
-					// Persisted memory rows keep the vector on the top-level Memory record.
-					// Restoring it here preserves semantic recall across runtime restarts.
-					embedding:
-						Array.isArray(memory.embedding) && memory.embedding.length > 0
-							? memory.embedding
-							: experienceData.embedding,
-					relatedExperiences: experienceData.relatedExperiences,
-					supersedes: experienceData.supersedes,
-					previousBelief: experienceData.previousBelief,
-					correctedBelief: experienceData.correctedBelief,
-				};
-
-				this.experiences.set(experience.id, experience);
-
-				// Update indexes
-				if (!this.experiencesByDomain.has(experience.domain)) {
-					this.experiencesByDomain.set(experience.domain, new Set());
-				}
-				this.experiencesByDomain.get(experience.domain)?.add(experience.id);
-
-				if (!this.experiencesByType.has(experience.type)) {
-					this.experiencesByType.set(experience.type, new Set());
-				}
-				this.experiencesByType.get(experience.type)?.add(experience.id);
-			}
-		}
-
-		logger.info(
-			`[ExperienceService] Loaded ${this.experiences.size} experiences from memory`,
-		);
+	private toTimestamp(
+		value: number | Date | undefined,
+		fallback: number,
+	): number {
+		if (value === undefined) return fallback;
+		if (typeof value === "number") return value;
+		if (value instanceof Date) return value.getTime();
+		return fallback;
 	}
 
-	async recordExperience(
-		experienceData: Partial<Experience>,
-	): Promise<Experience> {
-		// Generate embedding for the experience (graceful fallback if unavailable)
-		const embeddingText = `${experienceData.context} ${experienceData.action} ${experienceData.result} ${experienceData.learning}`;
-		const runModel = this.runtime.useModel.bind(this.runtime);
-		let embedding: number[] | undefined;
-		try {
-			const result = await runModel(ModelType.TEXT_EMBEDDING, {
-				text: embeddingText,
-			});
-			// Validate the embedding is non-zero (some providers return zero vectors on error)
-			if (
-				Array.isArray(result) &&
-				result.length > 0 &&
-				result.some((v: number) => v !== 0)
-			) {
-				embedding = result;
-			} else {
-				logger.warn(
-					"[ExperienceService] Embedding model returned empty/zero vector, storing without embedding",
-				);
-			}
-		} catch (err) {
-			logger.warn(
-				`[ExperienceService] Embedding generation failed, storing without embedding: ${err}`,
-			);
+	private toOptionalTimestamp(value: unknown): number | undefined {
+		if (typeof value === "number") return value;
+		if (value instanceof Date) return value.getTime();
+		return undefined;
+	}
+
+	private asStringArray(value: unknown): string[] {
+		if (!Array.isArray(value)) {
+			return [];
 		}
 
-		const now = Date.now();
+		return value.filter((item): item is string => typeof item === "string");
+	}
 
-		const experience: Experience = {
-			id: uuidv4() as UUID,
-			agentId: this.runtime.agentId,
-			type: experienceData.type || ExperienceType.LEARNING,
-			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
-			context: experienceData.context || "",
-			action: experienceData.action || "",
-			result: experienceData.result || "",
-			learning: experienceData.learning || "",
-			domain: experienceData.domain || "general",
-			tags: experienceData.tags || [],
-			confidence: experienceData.confidence || 0.5,
-			importance: experienceData.importance || 0.5,
-			createdAt: now,
-			updatedAt: now,
-			accessCount: 0,
-			lastAccessedAt: now,
-			embedding,
-			relatedExperiences: experienceData.relatedExperiences,
-			supersedes: experienceData.supersedes,
-			previousBelief: experienceData.previousBelief,
-			correctedBelief: experienceData.correctedBelief,
+	private asOptionalUuidArray(value: unknown): UUID[] | undefined {
+		const ids = this.asStringArray(value) as UUID[];
+		return ids.length > 0 ? ids : undefined;
+	}
+
+	private asOptionalEmbedding(value: unknown): number[] | undefined {
+		if (!Array.isArray(value)) {
+			return undefined;
+		}
+
+		const embedding = value.filter(
+			(item): item is number =>
+				typeof item === "number" && Number.isFinite(item),
+		);
+		return embedding.length > 0 ? embedding : undefined;
+	}
+
+	private clampScore(value: unknown, fallback: number): number {
+		if (typeof value !== "number" || !Number.isFinite(value)) {
+			return fallback;
+		}
+
+		return Math.max(0, Math.min(1, value));
+	}
+
+	private isExperienceType(value: unknown): value is ExperienceType {
+		return Object.values(ExperienceType).includes(value as ExperienceType);
+	}
+
+	private isOutcomeType(value: unknown): value is OutcomeType {
+		return Object.values(OutcomeType).includes(value as OutcomeType);
+	}
+
+	private cloneExperience(experience: Experience): Experience {
+		return {
+			...experience,
+			tags: [...experience.tags],
+			embedding: experience.embedding ? [...experience.embedding] : undefined,
+			relatedExperiences: experience.relatedExperiences
+				? [...experience.relatedExperiences]
+				: undefined,
 		};
+	}
 
-		// Store the experience
-		this.experiences.set(experience.id, experience);
-
-		// Update indexes
+	private indexExperience(experience: Experience): void {
 		if (!this.experiencesByDomain.has(experience.domain)) {
 			this.experiencesByDomain.set(experience.domain, new Set());
 		}
@@ -197,34 +127,158 @@ export class ExperienceService extends Service {
 			this.experiencesByType.set(experience.type, new Set());
 		}
 		this.experiencesByType.get(experience.type)?.add(experience.id);
-
-		// Save to memory service
-		await this.saveExperienceToMemory(experience);
-
-		// Check for contradictions and add relationships
-		const allExperiences = Array.from(this.experiences.values());
-		const contradictions = this.relationshipManager.findContradictions(
-			experience,
-			allExperiences,
-		);
-
-		for (const contradiction of contradictions) {
-			this.relationshipManager.addRelationship({
-				fromId: experience.id,
-				toId: contradiction.id,
-				type: "contradicts",
-				strength: 0.8,
-			});
-		}
-
-		logger.info(
-			`[ExperienceService] Recorded experience: ${experience.id} (${experience.type})`,
-		);
-
-		return experience;
 	}
 
-	private async saveExperienceToMemory(experience: Experience): Promise<void> {
+	private unindexExperience(experience: Experience): void {
+		const domainIndex = this.experiencesByDomain.get(experience.domain);
+		domainIndex?.delete(experience.id);
+		if (domainIndex && domainIndex.size === 0) {
+			this.experiencesByDomain.delete(experience.domain);
+		}
+
+		const typeIndex = this.experiencesByType.get(experience.type);
+		typeIndex?.delete(experience.id);
+		if (typeIndex && typeIndex.size === 0) {
+			this.experiencesByType.delete(experience.type);
+		}
+	}
+
+	private setExperience(experience: Experience): void {
+		const existing = this.experiences.get(experience.id);
+		if (existing) {
+			this.unindexExperience(existing);
+		}
+
+		this.experiences.set(experience.id, experience);
+		this.indexExperience(experience);
+	}
+
+	private parseExperienceMemory(memory: Memory): Experience | null {
+		if (!memory.content || typeof memory.content !== "object") {
+			return null;
+		}
+
+		const content = memory.content as Record<string, unknown>;
+		const rawData =
+			content.data &&
+			typeof content.data === "object" &&
+			!Array.isArray(content.data)
+				? (content.data as Partial<Experience>)
+				: null;
+		const isLegacyExperience = content.type === "experience";
+		if (!rawData && !isLegacyExperience) {
+			return null;
+		}
+
+		const memoryCreatedAt =
+			typeof memory.createdAt === "number" ? memory.createdAt : Date.now();
+		const experienceId =
+			typeof rawData?.id === "string"
+				? (rawData.id as UUID)
+				: memory.id
+					? (memory.id as UUID)
+					: null;
+		if (!experienceId) {
+			return null;
+		}
+
+		const legacyText = typeof content.text === "string" ? content.text : "";
+		const legacyContext =
+			typeof content.context === "string" ? content.context : "";
+
+		return {
+			id: experienceId,
+			agentId:
+				typeof rawData?.agentId === "string"
+					? (rawData.agentId as UUID)
+					: this.runtime.agentId,
+			type: this.isExperienceType(rawData?.type)
+				? rawData.type
+				: ExperienceType.LEARNING,
+			outcome: this.isOutcomeType(rawData?.outcome)
+				? rawData.outcome
+				: OutcomeType.NEUTRAL,
+			context:
+				typeof rawData?.context === "string" ? rawData.context : legacyContext,
+			action: typeof rawData?.action === "string" ? rawData.action : "",
+			result: typeof rawData?.result === "string" ? rawData.result : legacyText,
+			learning:
+				typeof rawData?.learning === "string" ? rawData.learning : legacyText,
+			domain:
+				typeof rawData?.domain === "string" && rawData.domain.trim().length > 0
+					? rawData.domain
+					: "general",
+			tags: this.asStringArray(rawData?.tags),
+			confidence: this.clampScore(rawData?.confidence, 0.5),
+			importance: this.clampScore(rawData?.importance, 0.5),
+			createdAt: this.toTimestamp(
+				rawData?.createdAt as number | Date | undefined,
+				memoryCreatedAt,
+			),
+			updatedAt: this.toTimestamp(
+				rawData?.updatedAt as number | Date | undefined,
+				memoryCreatedAt,
+			),
+			accessCount:
+				typeof rawData?.accessCount === "number" &&
+				Number.isFinite(rawData.accessCount)
+					? Math.max(0, rawData.accessCount)
+					: 0,
+			lastAccessedAt:
+				this.toOptionalTimestamp(rawData?.lastAccessedAt) ?? undefined,
+			embedding:
+				this.asOptionalEmbedding(memory.embedding) ??
+				this.asOptionalEmbedding(rawData?.embedding),
+			relatedExperiences: this.asOptionalUuidArray(rawData?.relatedExperiences),
+			supersedes:
+				typeof rawData?.supersedes === "string"
+					? (rawData.supersedes as UUID)
+					: undefined,
+			previousBelief:
+				typeof rawData?.previousBelief === "string"
+					? rawData.previousBelief
+					: undefined,
+			correctedBelief:
+				typeof rawData?.correctedBelief === "string"
+					? rawData.correctedBelief
+					: undefined,
+		};
+	}
+
+	private async generateEmbedding(
+		experienceData: Pick<
+			Experience,
+			"context" | "action" | "result" | "learning"
+		>,
+	): Promise<number[] | undefined> {
+		const embeddingText = `${experienceData.context} ${experienceData.action} ${experienceData.result} ${experienceData.learning}`;
+		const runModel = this.runtime.useModel.bind(this.runtime);
+
+		try {
+			const result = await runModel(ModelType.TEXT_EMBEDDING, {
+				text: embeddingText,
+			});
+			if (
+				Array.isArray(result) &&
+				result.length > 0 &&
+				result.some((value: number) => value !== 0)
+			) {
+				return result;
+			}
+
+			logger.warn(
+				"[ExperienceService] Embedding model returned empty/zero vector, storing without embedding",
+			);
+		} catch (err) {
+			logger.warn(
+				`[ExperienceService] Embedding generation failed, storing without embedding: ${err}`,
+			);
+		}
+
+		return undefined;
+	}
+
+	private buildExperienceMemory(experience: Experience): Memory {
 		const data: Record<string, JsonValue> = {
 			id: experience.id,
 			agentId: experience.agentId,
@@ -258,8 +312,9 @@ export class ExperienceService extends Service {
 			data.correctedBelief = experience.correctedBelief;
 		}
 
-		const memory = {
+		return {
 			id: experience.id,
+			unique: true,
 			entityId: this.runtime.agentId,
 			agentId: this.runtime.agentId,
 			roomId: this.runtime.agentId,
@@ -269,9 +324,112 @@ export class ExperienceService extends Service {
 				data,
 			},
 			createdAt: experience.createdAt,
+			embedding: experience.embedding,
+		};
+	}
+
+	private touchExperiences(experiences: Experience[]): void {
+		const now = Date.now();
+		for (const experience of experiences) {
+			experience.accessCount += 1;
+			experience.lastAccessedAt = now;
+			this.dirtyExperiences.add(experience.id);
+		}
+	}
+
+	private async loadExperiences(): Promise<void> {
+		// Load experiences from the "experiences" table (same table we write to)
+		const memories = await this.runtime.getMemories({
+			entityId: this.runtime.agentId,
+			tableName: "experiences",
+		});
+
+		for (const memory of memories) {
+			const experience = this.parseExperienceMemory(memory);
+			if (experience) {
+				this.setExperience(experience);
+			}
+		}
+
+		logger.info(
+			`[ExperienceService] Loaded ${this.experiences.size} experiences from memory`,
+		);
+	}
+
+	async recordExperience(
+		experienceData: Partial<Experience>,
+	): Promise<Experience> {
+		const now = Date.now();
+		const context = experienceData.context || "";
+		const action = experienceData.action || "";
+		const result = experienceData.result || "";
+		const learning = experienceData.learning || "";
+		const embedding = await this.generateEmbedding({
+			context,
+			action,
+			result,
+			learning,
+		});
+
+		const experience: Experience = {
+			id: uuidv4() as UUID,
+			agentId: this.runtime.agentId,
+			type: experienceData.type || ExperienceType.LEARNING,
+			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
+			context,
+			action,
+			result,
+			learning,
+			domain: experienceData.domain || "general",
+			tags: experienceData.tags ? [...experienceData.tags] : [],
+			confidence: experienceData.confidence ?? 0.5,
+			importance: experienceData.importance ?? 0.5,
+			createdAt: now,
+			updatedAt: now,
+			accessCount: 0,
+			lastAccessedAt: now,
+			embedding,
+			relatedExperiences: experienceData.relatedExperiences
+				? [...experienceData.relatedExperiences]
+				: undefined,
+			supersedes: experienceData.supersedes,
+			previousBelief: experienceData.previousBelief,
+			correctedBelief: experienceData.correctedBelief,
 		};
 
-		await this.runtime.createMemory(memory, "experiences", true);
+		this.setExperience(experience);
+
+		// Save to memory service
+		await this.saveExperienceToMemory(experience);
+
+		// Check for contradictions and add relationships
+		const allExperiences = Array.from(this.experiences.values());
+		const contradictions = this.relationshipManager.findContradictions(
+			experience,
+			allExperiences,
+		);
+
+		for (const contradiction of contradictions) {
+			this.relationshipManager.addRelationship({
+				fromId: experience.id,
+				toId: contradiction.id,
+				type: "contradicts",
+				strength: 0.8,
+			});
+		}
+
+		logger.info(
+			`[ExperienceService] Recorded experience: ${experience.id} (${experience.type})`,
+		);
+
+		return this.cloneExperience(experience);
+	}
+
+	private async saveExperienceToMemory(experience: Experience): Promise<void> {
+		await this.runtime.upsertMemory(
+			this.buildExperienceMemory(experience),
+			"experiences",
+		);
 	}
 
 	private async persistDirtyExperiences(): Promise<void> {
@@ -299,9 +457,104 @@ export class ExperienceService extends Service {
 		}
 	}
 
+	async getExperience(id: UUID): Promise<Experience | null> {
+		const experience = this.experiences.get(id);
+		return experience ? this.cloneExperience(experience) : null;
+	}
+
+	async listExperiences(query: ExperienceQuery = {}): Promise<Experience[]> {
+		return this.resolveExperiences(query, false);
+	}
+
+	async updateExperience(
+		id: UUID,
+		updates: Partial<Experience>,
+	): Promise<Experience | null> {
+		const existing = this.experiences.get(id);
+		if (!existing) {
+			return null;
+		}
+
+		const nextContext =
+			"context" in updates ? (updates.context ?? "") : existing.context;
+		const nextAction =
+			"action" in updates ? (updates.action ?? "") : existing.action;
+		const nextResult =
+			"result" in updates ? (updates.result ?? "") : existing.result;
+		const nextLearning =
+			"learning" in updates ? (updates.learning ?? "") : existing.learning;
+		const shouldRegenerateEmbedding =
+			"context" in updates ||
+			"action" in updates ||
+			"result" in updates ||
+			"learning" in updates;
+		const embedding = shouldRegenerateEmbedding
+			? await this.generateEmbedding({
+					context: nextContext,
+					action: nextAction,
+					result: nextResult,
+					learning: nextLearning,
+				})
+			: existing.embedding;
+		const updated: Experience = {
+			...existing,
+			...updates,
+			id: existing.id,
+			agentId: existing.agentId,
+			createdAt: existing.createdAt,
+			context: nextContext,
+			action: nextAction,
+			result: nextResult,
+			learning: nextLearning,
+			tags:
+				"tags" in updates
+					? Array.isArray(updates.tags)
+						? [...updates.tags]
+						: []
+					: [...existing.tags],
+			relatedExperiences:
+				"relatedExperiences" in updates
+					? updates.relatedExperiences
+						? [...updates.relatedExperiences]
+						: undefined
+					: existing.relatedExperiences
+						? [...existing.relatedExperiences]
+						: undefined,
+			embedding,
+			updatedAt: Date.now(),
+		};
+
+		this.setExperience(updated);
+		this.dirtyExperiences.delete(id);
+		await this.saveExperienceToMemory(updated);
+
+		return this.cloneExperience(updated);
+	}
+
+	async deleteExperience(id: UUID): Promise<boolean> {
+		const existing = this.experiences.get(id);
+		if (!existing) {
+			return false;
+		}
+
+		this.unindexExperience(existing);
+		this.experiences.delete(id);
+		this.dirtyExperiences.delete(id);
+		this.relationshipManager.removeExperience(id);
+		await this.runtime.deleteMemory(id);
+		return true;
+	}
+
 	async queryExperiences(query: ExperienceQuery): Promise<Experience[]> {
+		return this.resolveExperiences(query, true);
+	}
+
+	private async resolveExperiences(
+		query: ExperienceQuery,
+		trackAccess: boolean,
+	): Promise<Experience[]> {
 		let results: Experience[] = [];
-		const limit = query.limit || 10;
+		const limit = query.limit ?? 10;
 
 		if (query.query) {
 			// Semantic search path: over-fetch when filters will reduce the set
@@ -353,14 +606,11 @@ export class ExperienceService extends Service {
 			results.push(...related);
 		}
 
-		// Update access counts and mark dirty for batch persistence
-		for (const exp of results) {
-			exp.accessCount++;
-			exp.lastAccessedAt = Date.now();
-			this.dirtyExperiences.add(exp.id);
+		if (trackAccess) {
+			this.touchExperiences(results);
 		}
 
-		return results;
+		return results.map((experience) => this.cloneExperience(experience));
 	}
 
 	/** Apply query filters (type, outcome, domain, tags, confidence, importance, timeRange). */
@@ -375,7 +625,10 @@ export class ExperienceService extends Service {
 			filtered = filtered.filter((e) => types.includes(e.type));
 		}
 		if (query.outcome) {
-			filtered = filtered.filter((e) => e.outcome === query.outcome);
+			const outcomes = Array.isArray(query.outcome)
+				? query.outcome
+				: [query.outcome];
+			filtered = filtered.filter((e) => outcomes.includes(e.outcome));
 		}
 		if (query.domain) {
 			const domains = Array.isArray(query.domain)
@@ -401,8 +654,8 @@ export class ExperienceService extends Service {
 		if (query.timeRange) {
 			const { start, end } = query.timeRange;
 			filtered = filtered.filter((e) => {
-				if (start && e.createdAt < start) return false;
-				if (end && e.createdAt > end) return false;
+				if (start !== undefined && e.createdAt < start) return false;
+				if (end !== undefined && e.createdAt > end) return false;
 				return true;
 			});
 		}
@@ -502,12 +755,6 @@ export class ExperienceService extends Service {
 		// Sort by combined reranking score (highest first)
 		scored.sort((a, b) => b.score - a.score);
 		const results = scored.slice(0, limit).map((item) => item.experience);
-
-		for (const exp of results) {
-			exp.accessCount++;
-			exp.lastAccessedAt = now;
-			this.dirtyExperiences.add(exp.id);
-		}
 
 		return results;
 	}

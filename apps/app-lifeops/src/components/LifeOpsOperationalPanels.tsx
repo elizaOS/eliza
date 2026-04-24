@@ -1,4 +1,4 @@
-import { Badge, Button, Textarea, useApp } from "@elizaos/app-core";
+import { Badge, Button, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsCapabilityState,
@@ -7,21 +7,17 @@ import type {
 import {
   Activity,
   Clock3,
-  FileText,
   Loader2,
   Moon,
   RefreshCw,
-  Send,
   Sparkles,
   Sun,
   Unplug,
-  Wand2,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
-import { useLifeOpsStretchReminder } from "../hooks/useLifeOpsStretchReminder.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 import { SleepInspectionPanel } from "./SleepInspectionPanel.js";
 
@@ -147,41 +143,47 @@ export function LifeOpsCapabilitiesPanel() {
         </Button>
       }
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.capabilityHealth", {
-              defaultValue: "Health",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {status
-              ? `${status.summary.workingCount}/${status.summary.totalCount} working`
-              : t("common.loading", { defaultValue: "Loading" })}
-          </div>
-          {status ? (
+      {status ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.capabilityHealth", {
+                defaultValue: "Health",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${status.summary.workingCount}/${status.summary.totalCount} working`}
+            </div>
             <div className="mt-1 text-xs text-muted">
               {status.summary.degradedCount} degraded ·{" "}
               {status.summary.blockedCount} blocked
             </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.primaryCapability", {
-              defaultValue: "Awake clock",
-            })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {primary?.summary ?? "—"}
-          </div>
-          {status?.relativeTime ? (
-            <div className="mt-1 text-xs text-muted">
-              Computed {formatDateTime(status.relativeTime.computedAt)}
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.primaryCapability", {
+                defaultValue: "Awake clock",
+              })}
             </div>
-          ) : null}
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {primary?.summary ?? "—"}
+            </div>
+            {status.relativeTime ? (
+              <div className="mt-1 text-xs text-muted">
+                Computed {formatDateTime(status.relativeTime.computedAt)}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-sm font-semibold text-txt">
+          {capabilities.error ? (
+            <span className="text-danger">{capabilities.error}</span>
+          ) : (
+            t("common.loading", { defaultValue: "Loading" })
+          )}
+        </div>
+      )}
 
       {status ? (
         <div className="flex flex-wrap gap-2">
@@ -198,7 +200,7 @@ export function LifeOpsCapabilitiesPanel() {
         </div>
       ) : null}
 
-      {capabilities.error ? (
+      {capabilities.error && status ? (
         <div className="text-xs text-danger">{capabilities.error}</div>
       ) : null}
     </PanelShell>
@@ -303,185 +305,173 @@ export function LifeOpsSchedulePanel() {
         </Button>
       }
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.sleepStatus", {
-              defaultValue: "Sleep status",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {sleepLabel}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
-                  merged.uncertaintyReason
-                    ? ` · ${merged.uncertaintyReason}`
-                    : ""
-                }`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.awakeProbability", {
-              defaultValue: "Awake probability",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged
-              ? `${formatPercent(merged.awakeProbability.pAwake)} awake · ${formatPercent(merged.awakeProbability.pAsleep)} asleep`
-              : "—"}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${formatPercent(merged.awakeProbability.pUnknown)} unknown · state ${merged.circadianState} (${formatPercent(merged.stateConfidence)})`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.relativeTime", {
-              defaultValue: "Relative time",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {relativeWakeLabel}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged?.relativeTime.bedtimeTargetAt
-              ? t("lifeopspanels.bedtimeTarget", {
-                  defaultValue: "Bedtime target {{time}} · {{duration}}",
-                  time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
-                  duration: bedtimeRelativeLabel,
-                })
-              : t("lifeopspanels.bedtimeCalibrating", {
-                  defaultValue: "Bedtime target calibrating",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.sleepWindow", {
-              defaultValue: "Sleep window",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged?.currentSleepStartedAt
-              ? `Started ${formatDateTime(merged.currentSleepStartedAt)}`
-              : merged?.lastSleepStartedAt
-                ? `Last started ${formatDateTime(merged.lastSleepStartedAt)}`
-                : "—"}
-          </div>
-          {merged?.wakeAt || merged?.lastSleepDurationMinutes ? (
-            <div className="mt-1 text-xs text-muted">
-              {merged?.wakeAt
-                ? `Wake target ${formatDateTime(merged.wakeAt)}`
-                : null}
-              {merged?.lastSleepDurationMinutes
-                ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
-                : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.regularity", {
-              defaultValue: "Regularity",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged
-              ? `${merged.regularity.regularityClass.replace(/_/g, " ")} · SRI ${Math.round(merged.regularity.sri)}`
-              : "—"}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${Math.round(merged.regularity.bedtimeStddevMin)}m bedtime stddev · ${Math.round(merged.regularity.wakeStddevMin)}m wake stddev`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        {merged?.baseline ? (
+      {merged ? (
+        <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
             <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.baseline", {
-                defaultValue: "Personal baseline",
+              {t("lifeopspanels.sleepStatus", {
+                defaultValue: "Sleep status",
               })}
             </div>
             <div className="mt-1 text-sm font-semibold text-txt">
-              {`Wake ~${merged.baseline.medianWakeLocalHour.toFixed(1)}h · Bed ~${(merged.baseline.medianBedtimeLocalHour % 24).toFixed(1)}h`}
+              {sleepLabel}
             </div>
             <div className="mt-1 text-xs text-muted">
-              {`${merged.baseline.sampleCount} episodes · ${Math.round(merged.baseline.medianSleepDurationMin)}m median sleep · ${merged.baseline.windowDays}d window`}
+              {`${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
+                merged.uncertaintyReason ? ` · ${merged.uncertaintyReason}` : ""
+              }`}
             </div>
           </div>
-        ) : null}
-        {merged && merged.awakeProbability.contributingSources.length > 0 ? (
-          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
             <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.contributingSources", {
-                defaultValue: "Contributing evidence",
+              {t("lifeopspanels.awakeProbability", {
+                defaultValue: "Awake probability",
               })}
             </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {merged.awakeProbability.contributingSources
-                .slice(0, 8)
-                .map((contributor) => {
-                  const llr = contributor.logLikelihoodRatio;
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${formatPercent(merged.awakeProbability.pAwake)} awake · ${formatPercent(merged.awakeProbability.pAsleep)} asleep`}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {`${formatPercent(merged.awakeProbability.pUnknown)} unknown · state ${merged.circadianState} (${formatPercent(merged.stateConfidence)})`}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.relativeTime", {
+                defaultValue: "Relative time",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {relativeWakeLabel}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {merged.relativeTime.bedtimeTargetAt
+                ? t("lifeopspanels.bedtimeTarget", {
+                    defaultValue: "Bedtime target {{time}} · {{duration}}",
+                    time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
+                    duration: bedtimeRelativeLabel,
+                  })
+                : t("lifeopspanels.bedtimeCalibrating", {
+                    defaultValue: "Bedtime target calibrating",
+                  })}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.sleepWindow", {
+                defaultValue: "Sleep window",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {merged.currentSleepStartedAt
+                ? `Started ${formatDateTime(merged.currentSleepStartedAt)}`
+                : merged.lastSleepStartedAt
+                  ? `Last started ${formatDateTime(merged.lastSleepStartedAt)}`
+                  : "—"}
+            </div>
+            {merged.wakeAt || merged.lastSleepDurationMinutes ? (
+              <div className="mt-1 text-xs text-muted">
+                {merged.wakeAt
+                  ? `Wake target ${formatDateTime(merged.wakeAt)}`
+                  : null}
+                {merged.lastSleepDurationMinutes
+                  ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
+                  : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.regularity", {
+                defaultValue: "Regularity",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${merged.regularity.regularityClass.replace(/_/g, " ")} · SRI ${Math.round(merged.regularity.sri)}`}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {`${Math.round(merged.regularity.bedtimeStddevMin)}m bedtime stddev · ${Math.round(merged.regularity.wakeStddevMin)}m wake stddev`}
+            </div>
+          </div>
+          {merged.baseline ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.baseline", {
+                  defaultValue: "Personal baseline",
+                })}
+              </div>
+              <div className="mt-1 text-sm font-semibold text-txt">
+                {`Wake ~${merged.baseline.medianWakeLocalHour.toFixed(1)}h · Bed ~${(merged.baseline.medianBedtimeLocalHour % 24).toFixed(1)}h`}
+              </div>
+              <div className="mt-1 text-xs text-muted">
+                {`${merged.baseline.sampleCount} episodes · ${Math.round(merged.baseline.medianSleepDurationMin)}m median sleep · ${merged.baseline.windowDays}d window`}
+              </div>
+            </div>
+          ) : null}
+          {merged.awakeProbability.contributingSources.length > 0 ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.contributingSources", {
+                  defaultValue: "Contributing evidence",
+                })}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {merged.awakeProbability.contributingSources
+                  .slice(0, 8)
+                  .map((contributor) => {
+                    const llr = contributor.logLikelihoodRatio;
+                    const tone =
+                      llr > 0
+                        ? "bg-emerald-500/14 text-emerald-300"
+                        : "bg-amber-500/14 text-amber-300";
+                    return (
+                      <span
+                        key={`${contributor.source}:${llr.toFixed(4)}`}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                      >
+                        {`${contributor.source}: ${llr >= 0 ? "+" : ""}${llr.toFixed(2)}`}
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+          {merged.circadianRuleFirings.length > 0 ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.circadianRules", {
+                  defaultValue: "Rules that fired",
+                })}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {merged.circadianRuleFirings.slice(0, 8).map((firing) => {
                   const tone =
-                    llr > 0
-                      ? "bg-emerald-500/14 text-emerald-300"
-                      : "bg-amber-500/14 text-amber-300";
+                    firing.contributes === "awake" ||
+                    firing.contributes === "waking"
+                      ? "bg-sky-500/14 text-sky-300"
+                      : firing.contributes === "sleeping" ||
+                          firing.contributes === "napping"
+                        ? "bg-violet-500/14 text-violet-300"
+                        : "bg-amber-500/14 text-amber-300";
                   return (
                     <span
-                      key={`${contributor.source}:${llr.toFixed(4)}`}
+                      key={`${firing.name}:${firing.observedAt}`}
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                      title={firing.reason}
                     >
-                      {`${contributor.source}: ${llr >= 0 ? "+" : ""}${llr.toFixed(2)}`}
+                      {`${firing.name} -> ${firing.contributes} (${firing.weight.toFixed(2)})`}
                     </span>
                   );
                 })}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {merged && merged.circadianRuleFirings.length > 0 ? (
-          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.circadianRules", {
-                defaultValue: "Rules that fired",
-              })}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {merged.circadianRuleFirings.slice(0, 8).map((firing) => {
-                const tone =
-                  firing.contributes === "awake" ||
-                  firing.contributes === "waking"
-                    ? "bg-sky-500/14 text-sky-300"
-                    : firing.contributes === "sleeping" ||
-                        firing.contributes === "napping"
-                      ? "bg-violet-500/14 text-violet-300"
-                      : "bg-amber-500/14 text-amber-300";
-                return (
-                  <span
-                    key={`${firing.name}:${firing.observedAt}`}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
-                    title={firing.reason}
-                  >
-                    {`${firing.name} -> ${firing.contributes} (${firing.weight.toFixed(2)})`}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-sm font-semibold text-txt">
+          {t("common.loading", { defaultValue: "Loading" })}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -517,7 +507,7 @@ export function LifeOpsSchedulePanel() {
           </span>
         ) : null}
       </div>
-      <SleepInspectionPanel />
+      {merged ? <SleepInspectionPanel /> : null}
       <div className="flex flex-wrap gap-2 text-xs">
         {merged ? (
           <>
@@ -547,27 +537,20 @@ export function LifeOpsXPanel() {
   const { t } = useApp();
   const ownerX = useLifeOpsXConnector("owner");
   const agentX = useLifeOpsXConnector("agent");
-  const [draft, setDraft] = useState("");
   const status = ownerX.status;
   const agentStatus = agentX.status;
   const connected = status?.connected === true;
   const agentConnected = agentStatus?.connected === true;
-  const hasAgentWrite =
-    agentStatus?.grantedCapabilities.includes("x.write") === true;
-  const identity = readXIdentity(
+  const ownerIdentity = readXIdentity(
     status?.identity ?? null,
     t("lifeopspanels.notConnected", { defaultValue: "Not connected" }),
   );
+  const agentIdentity = readXIdentity(
+    agentStatus?.identity ?? null,
+    t("chat.agentType", { defaultValue: "Agent" }),
+  );
   const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
   const actionPending = ownerX.actionPending || agentX.actionPending;
-
-  const handlePost = useCallback(() => {
-    const text = draft.trim();
-    if (!text) {
-      return;
-    }
-    void agentX.post(text).then(() => setDraft(""));
-  }, [agentX, draft]);
 
   return (
     <PanelShell
@@ -607,119 +590,86 @@ export function LifeOpsXPanel() {
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.identity", { defaultValue: "Identity" })}
+            {t("lifeopspanels.owner", { defaultValue: "Owner" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{identity}</div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {ownerIdentity}
+          </div>
           <div className="mt-1 text-xs text-muted">
-            {status?.hasCredentials
-              ? t("lifeopspanels.credentialsReady", {
-                  defaultValue: "Credentials ready.",
-                })
-              : t("lifeopspanels.credentialsMissing", {
-                  defaultValue:
-                    "Connect through Eliza Cloud or configure local env.",
+            {connected
+              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+              : t("lifeopspanels.disconnected", {
+                  defaultValue: "Disconnected",
                 })}
           </div>
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.mode", { defaultValue: "Mode" })}
+            {t("chat.agentType", { defaultValue: "Agent" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{mode}</div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {agentIdentity}
+          </div>
           <div className="mt-1 text-xs text-muted">
-            {status?.grantedCapabilities?.length
-              ? status.grantedCapabilities.join(" · ")
-              : t("lifeopspanels.noCapabilities", {
-                  defaultValue: "No capabilities granted.",
+            {agentConnected
+              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+              : t("lifeopspanels.disconnected", {
+                  defaultValue: "Disconnected",
                 })}
           </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void ownerX.connect(mode)}
-            disabled={actionPending}
-          >
-            {actionPending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            {connected
-              ? t("lifeopspanels.reconnectOwnerX", {
-                  defaultValue: "Reconnect Owner X",
-                })
-              : t("lifeopspanels.connectOwnerX", {
-                  defaultValue: "Connect Owner X",
-                })}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void agentX.connect("cloud_managed")}
-            disabled={actionPending}
-          >
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void ownerX.connect(mode)}
+          disabled={actionPending}
+        >
+          {actionPending ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-            {agentConnected
-              ? t("lifeopspanels.reconnectAgentX", {
-                  defaultValue: "Reconnect Agent X",
-                })
-              : t("lifeopspanels.connectAgentX", {
-                  defaultValue: "Connect Agent X",
-                })}
-          </Button>
-          {connected ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              onClick={() => void ownerX.disconnect()}
-              disabled={actionPending}
-            >
-              <Unplug className="mr-1.5 h-3.5 w-3.5" />
-              {t("lifeopspanels.disconnectOwnerX", {
-                defaultValue: "Disconnect Owner",
+          )}
+          {connected
+            ? t("lifeopspanels.reconnectOwnerX", {
+                defaultValue: "Reconnect Owner X",
+              })
+            : t("lifeopspanels.connectOwnerX", {
+                defaultValue: "Connect Owner X",
               })}
-            </Button>
-          ) : null}
-        </div>
-
-        <Textarea
-          value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          className="min-h-[84px] rounded-2xl border-border/20 bg-bg/36 text-sm"
-          placeholder={t("lifeopspanels.xPostPlaceholder", {
-            defaultValue: "Write an X post",
-          })}
-        />
-        <div className="flex items-center justify-between gap-3">
-          {agentX.lastPost ? (
-            <div className="text-xs text-muted">
-              {agentX.lastPost.postId
-                ? `Last post ${agentX.lastPost.postId}.`
-                : `Last post status ${agentX.lastPost.status}.`}
-            </div>
-          ) : null}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void agentX.connect("cloud_managed")}
+          disabled={actionPending}
+        >
+          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+          {agentConnected
+            ? t("lifeopspanels.reconnectAgentX", {
+                defaultValue: "Reconnect Agent X",
+              })
+            : t("lifeopspanels.connectAgentX", {
+                defaultValue: "Connect Agent X",
+              })}
+        </Button>
+        {connected ? (
           <Button
             size="sm"
+            variant="ghost"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={
-              !draft.trim() ||
-              agentX.actionPending ||
-              !agentConnected ||
-              !hasAgentWrite
-            }
-            onClick={handlePost}
+            onClick={() => void ownerX.disconnect()}
+            disabled={actionPending}
           >
-            <Send className="mr-1.5 h-3.5 w-3.5" />
-            {t("lifeopspanels.post", { defaultValue: "Post" })}
+            <Unplug className="mr-1.5 h-3.5 w-3.5" />
+            {t("lifeopspanels.disconnectOwnerX", {
+              defaultValue: "Disconnect Owner",
+            })}
           </Button>
-        </div>
+        ) : null}
       </div>
 
       {status?.grant ? (
@@ -753,122 +703,6 @@ export function LifeOpsXPanel() {
         <div className="text-xs text-danger">
           {ownerX.error ?? agentX.error}
         </div>
-      ) : null}
-    </PanelShell>
-  );
-}
-
-export function LifeOpsStretchPanel() {
-  const { t } = useApp();
-  const stretch = useLifeOpsStretchReminder();
-  const reminder = stretch.stretchReminder;
-  const inspection = stretch.inspection;
-  const seedLabel = stretch.stretchTemplate
-    ? stretch.stretchTemplate.title
-    : t("lifeopspanels.stretchTemplateMissing", {
-        defaultValue: "Stretch template unavailable",
-      });
-
-  return (
-    <PanelShell
-      title={t("lifeopspanels.stretch", { defaultValue: "Stretch reminder" })}
-      icon={<Wand2 className="h-4 w-4 shrink-0 text-muted" />}
-      status={
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={() => void stretch.refresh()}
-          disabled={stretch.loading}
-        >
-          {stretch.loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-        </Button>
-      }
-    >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.template", { defaultValue: "Template" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{seedLabel}</div>
-          <div className="mt-1 text-xs text-muted">
-            {stretch.stretchTemplate?.description ??
-              t("lifeopspanels.templateUnavailable", {
-                defaultValue: "No stretch template loaded.",
-              })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.reminder", { defaultValue: "Reminder" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {reminder?.title ??
-              t("lifeopspanels.none", { defaultValue: "None" })}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {reminder
-              ? `${reminder.stepLabel} · ${reminder.state} · ${formatDateTime(reminder.scheduledFor)}`
-              : t("lifeopspanels.noStretchReminder", {
-                  defaultValue: "No stretch reminder is active yet.",
-                })}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={stretch.seedPending}
-          onClick={() => void stretch.createStretchReminder()}
-        >
-          {stretch.seedPending ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          )}
-          {t("lifeopspanels.createStretch", {
-            defaultValue: "Create stretch reminder",
-          })}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={!reminder || stretch.inspectionPending}
-          onClick={() => void stretch.inspectStretchReminder()}
-        >
-          <FileText className="mr-1.5 h-3.5 w-3.5" />
-          {t("lifeopspanels.inspectReminder", {
-            defaultValue: "Inspect reminder",
-          })}
-        </Button>
-      </div>
-
-      {inspection ? (
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-xs text-muted">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.inspection", { defaultValue: "Inspection" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {inspection.ownerType} · {inspection.ownerId}
-          </div>
-          <div className="mt-1">
-            {inspection.attempts.length} attempts ·{" "}
-            {inspection.reminderPlan
-              ? "reminder plan loaded"
-              : "no reminder plan"}
-          </div>
-        </div>
-      ) : null}
-
-      {stretch.error ? (
-        <div className="text-xs text-danger">{stretch.error}</div>
       ) : null}
     </PanelShell>
   );

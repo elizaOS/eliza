@@ -5,26 +5,27 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
+  ListLifeOpsCalendarsRequest,
 } from "@elizaos/app-lifeops/contracts";
 import {
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
   fetchGoogleCalendarEvent,
   fetchGoogleCalendarEvents,
+  listGoogleCalendars,
   updateGoogleCalendarEvent,
 } from "./google-calendar.js";
 import {
   resolveGoogleExecutionTarget,
   resolveGoogleGrants,
 } from "./google-connector-gateway.js";
-import {
-  ensureFreshGoogleAccessToken,
-} from "./google-oauth.js";
+import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsCalendarSyncState,
@@ -32,6 +33,7 @@ import {
 } from "./repository.js";
 import {
   fail,
+  normalizeOptionalBoolean,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
@@ -41,6 +43,7 @@ import {
 } from "./service-normalize-connector.js";
 import {
   createCalendarEventId,
+  findLinkedMailForCalendarEvent,
   isCalendarSyncStateFresh,
 } from "./service-normalize-gmail.js";
 import {
@@ -55,22 +58,36 @@ import {
   resolveNextCalendarEventWindow,
 } from "./service-normalize-calendar.js";
 import {
-  findLinkedMailForCalendarEvent,
-} from "./service-normalize-gmail.js";
-import {
   DEFAULT_CALENDAR_REMINDER_STEPS,
 } from "./service-constants.js";
 import {
-  normalizeOptionalBoolean,
-} from "./service-normalize.js";
-import { LifeOpsServiceError } from "./service-types.js";
+  calendarFeedPreferenceKey,
+  ensureLifeOpsCalendarFeedIncludes,
+  setLifeOpsCalendarFeedIncluded,
+} from "./owner-profile.js";
+import { ManagedGoogleClientError } from "./google-managed-client.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 export interface LifeOpsCalendarService {
+  listCalendars(
+    requestUrl: URL,
+    request?: ListLifeOpsCalendarsRequest,
+  ): Promise<LifeOpsCalendarSummary[]>;
+  setCalendarIncluded(
+    requestUrl: URL,
+    request: {
+      calendarId: string;
+      includeInFeed: boolean;
+      side?: LifeOpsConnectorSide;
+      mode?: LifeOpsConnectorMode;
+      grantId?: string;
+    },
+  ): Promise<LifeOpsCalendarSummary>;
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
@@ -117,10 +134,174 @@ export interface LifeOpsCalendarService {
 
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 
+type AggregatedCalendarFeedSource = {
+  calendar: Pick<
+    LifeOpsCalendarSummary,
+    "accountEmail" | "calendarId" | "grantId" | "summary"
+  >;
+  feed: LifeOpsCalendarFeed;
+};
+
+export function mergeAggregatedCalendarFeedEvents(
+  sources: readonly AggregatedCalendarFeedSource[],
+): LifeOpsCalendarEvent[] {
+  const dedupedEvents = new Map<string, LifeOpsCalendarEvent>();
+  for (const source of sources) {
+    for (const event of source.feed.events) {
+      const existing = dedupedEvents.get(event.id);
+      if (existing) {
+        continue;
+      }
+      dedupedEvents.set(event.id, {
+        ...event,
+        grantId: event.grantId ?? source.calendar.grantId,
+        accountEmail: event.accountEmail ?? source.calendar.accountEmail ?? undefined,
+        calendarSummary: event.calendarSummary ?? source.calendar.summary,
+      });
+    }
+  }
+  return [...dedupedEvents.values()].sort((a, b) =>
+    a.startAt.localeCompare(b.startAt),
+  );
+}
+
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
   return class extends Base {
+
+    public async listCalendars(
+      requestUrl: URL,
+      request?: ListLifeOpsCalendarsRequest,
+    ): Promise<LifeOpsCalendarSummary[]> {
+      const { hasGoogleCalendarReadCapability } = await import(
+        "./service-normalize-calendar.js"
+      );
+      const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
+      const side = normalizeOptionalConnectorSide(request?.side, "side");
+      const allGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((grant) => grant.provider === "google");
+      const grants = resolveGoogleGrants({
+        grants: allGrants,
+        requestedMode: mode,
+        requestedSide: side,
+        grantId: request?.grantId,
+      }).filter((grant) => hasGoogleCalendarReadCapability(grant));
+
+      const summaries: LifeOpsCalendarSummary[] = [];
+      for (const grant of grants) {
+        const entries =
+          resolveGoogleExecutionTarget(grant) === "cloud"
+            ? await (async () => {
+                try {
+                  return await this.googleManagedClient.listCalendars({
+                    side: grant.side,
+                    grantId: grant.id,
+                  });
+                } catch (error) {
+                  if (
+                    error instanceof ManagedGoogleClientError &&
+                    error.status === 404
+                  ) {
+                    throw new LifeOpsServiceError(
+                      503,
+                      "Google calendar discovery is unavailable for this connection. The connector backend needs the managed calendar-list route.",
+                    );
+                  }
+                  throw error;
+                }
+              })()
+            : await (async () => {
+                const accessToken = await ensureFreshGoogleAccessToken(
+                  grant.tokenRef ??
+                    fail(409, "Google Calendar token reference is missing."),
+                );
+                return listGoogleCalendars({ accessToken });
+              })();
+        for (const entry of entries) {
+          summaries.push({
+            provider: "google",
+            side: grant.side,
+            grantId: grant.id,
+            accountEmail:
+              typeof grant.identity.email === "string"
+                ? grant.identity.email.trim().toLowerCase()
+                : null,
+            calendarId: entry.calendarId,
+            summary: entry.summary,
+            description: entry.description,
+            primary: entry.primary,
+            accessRole: entry.accessRole,
+            backgroundColor: entry.backgroundColor,
+            foregroundColor: entry.foregroundColor,
+            timeZone: entry.timeZone,
+            selected: entry.selected,
+            // Preference plumbing lands in Phase 1.2; default to true so new
+            // calendars are never silently hidden from the agent.
+            includeInFeed: true,
+          });
+        }
+      }
+      const preferences = await ensureLifeOpsCalendarFeedIncludes(
+        this.runtime,
+        summaries.map((summary) => ({
+          grantId: summary.grantId,
+          calendarId: summary.calendarId,
+        })),
+      );
+      return summaries.map((summary) => ({
+        ...summary,
+        includeInFeed:
+          preferences.calendarFeedIncludes[
+            calendarFeedPreferenceKey(summary.grantId, summary.calendarId)
+          ] !== false,
+      }));
+    }
+
+    public async setCalendarIncluded(
+      requestUrl: URL,
+      request: {
+        calendarId: string;
+        includeInFeed: boolean;
+        side?: LifeOpsConnectorSide;
+        mode?: LifeOpsConnectorMode;
+        grantId?: string;
+      },
+    ): Promise<LifeOpsCalendarSummary> {
+      const calendarId = requireNonEmptyString(request.calendarId, "calendarId");
+      const includeInFeed = normalizeOptionalBoolean(
+        request.includeInFeed,
+        "includeInFeed",
+      );
+      if (includeInFeed === undefined) {
+        throw new LifeOpsServiceError(400, "includeInFeed must be a boolean");
+      }
+
+      const calendars = await this.listCalendars(requestUrl, {
+        mode: request.mode,
+        side: request.side,
+        grantId: request.grantId,
+      });
+      const calendar = calendars.find(
+        (entry) =>
+          entry.calendarId === calendarId &&
+          (request.grantId ? entry.grantId === request.grantId : true),
+      );
+      if (!calendar) {
+        throw new LifeOpsServiceError(404, "Calendar not found");
+      }
+
+      await setLifeOpsCalendarFeedIncluded(
+        this.runtime,
+        { grantId: calendar.grantId, calendarId },
+        includeInFeed,
+      );
+      return {
+        ...calendar,
+        includeInFeed,
+      };
+    }
 
     public async recordCalendarEventAudit(
       ownerId: string,
@@ -358,7 +539,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
       const { grantId } = request;
-      const calendarId = normalizeCalendarId(request.calendarId);
+      const explicitCalendarId = normalizeOptionalString(request.calendarId);
+      const includeHiddenCalendars =
+        normalizeOptionalBoolean(
+          request.includeHiddenCalendars,
+          "includeHiddenCalendars",
+        ) ?? false;
       const timeZone = normalizeCalendarTimeZone(request.timeZone);
       const { timeMin, timeMax } = resolveCalendarWindow({
         now,
@@ -368,6 +554,90 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
+
+      if (!grantId && !explicitCalendarId) {
+        let calendars: LifeOpsCalendarSummary[] = [];
+        try {
+          calendars = await this.listCalendars(requestUrl, {
+            mode,
+            side,
+          });
+        } catch (error) {
+          if (
+            error instanceof LifeOpsServiceError &&
+            error.status === 503 &&
+            error.message.includes("managed calendar-list route")
+          ) {
+            const allGrants = (
+              await this.repository.listConnectorGrants(this.agentId())
+            ).filter((g) => g.provider === "google");
+            const grants = resolveGoogleGrants({
+              grants: allGrants,
+              requestedSide: side,
+              requestedMode: mode,
+            });
+            if (grants.length > 0) {
+              return this.aggregateCalendarFeeds(
+                requestUrl,
+                grants,
+                "primary",
+                timeMin,
+                timeMax,
+                timeZone,
+                forceSync,
+                now,
+              );
+            }
+          }
+          throw error;
+        }
+        const selectedCalendars = calendars.filter(
+          (calendar) => includeHiddenCalendars || calendar.includeInFeed,
+        );
+        if (calendars.length === 0) {
+          const allGrants = (
+            await this.repository.listConnectorGrants(this.agentId())
+          ).filter((g) => g.provider === "google");
+          const grants = resolveGoogleGrants({
+            grants: allGrants,
+            requestedSide: side,
+            requestedMode: mode,
+          });
+          if (grants.length > 0) {
+            return this.aggregateCalendarFeeds(
+              requestUrl,
+              grants,
+              "primary",
+              timeMin,
+              timeMax,
+              timeZone,
+              forceSync,
+              now,
+            );
+          }
+        }
+        if (selectedCalendars.length === 0) {
+          return {
+            calendarId: "all",
+            events: [],
+            source: "cache",
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          };
+        }
+        return this.aggregateCalendarFeedsAcrossCalendars(
+          requestUrl,
+          selectedCalendars,
+          timeMin,
+          timeMax,
+          timeZone,
+          forceSync,
+          now,
+        );
+      }
+
+      const calendarId = normalizeCalendarId(explicitCalendarId);
 
       // Multi-account aggregation: when no grantId specified, check if
       // there are multiple grants and aggregate from all of them.
@@ -436,6 +706,71 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         timeMax,
         timeZone,
       });
+    }
+
+    public async aggregateCalendarFeedsAcrossCalendars(
+      requestUrl: URL,
+      calendars: readonly LifeOpsCalendarSummary[],
+      timeMin: string,
+      timeMax: string,
+      timeZone: string,
+      forceSync: boolean,
+      now: Date,
+    ): Promise<LifeOpsCalendarFeed> {
+      const results = await Promise.allSettled(
+        calendars.map((calendar) =>
+          this.getCalendarFeed(
+            requestUrl,
+            {
+              grantId: calendar.grantId,
+              calendarId: calendar.calendarId,
+              timeMin,
+              timeMax,
+              timeZone,
+              forceSync,
+            },
+            now,
+          ).then((feed) => ({
+            calendar,
+            feed,
+          })),
+        ),
+      );
+
+      const sources: AggregatedCalendarFeedSource[] = [];
+      let latestSyncedAt: string | null = null;
+      let source: "cache" | "synced" = "cache";
+
+      for (const result of results) {
+        if (result.status === "rejected") {
+          this.logLifeOpsWarn(
+            "calendar_feed_aggregate",
+            `Calendar failed: ${result.reason}`,
+            {},
+          );
+          continue;
+        }
+        const value = result.value;
+        sources.push(value);
+        if (value.feed.source === "synced") {
+          source = "synced";
+        }
+        if (
+          value.feed.syncedAt &&
+          (!latestSyncedAt || value.feed.syncedAt > latestSyncedAt)
+        ) {
+          latestSyncedAt = value.feed.syncedAt;
+        }
+      }
+
+      return {
+        calendarId: "all",
+        events: mergeAggregatedCalendarFeedEvents(sources),
+        source,
+        timeMin,
+        timeMax,
+        syncedAt: latestSyncedAt,
+      };
     }
 
     public async aggregateCalendarFeeds(

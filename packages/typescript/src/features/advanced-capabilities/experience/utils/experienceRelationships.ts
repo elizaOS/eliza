@@ -28,6 +28,23 @@ export class ExperienceRelationshipManager {
 		this.relationships.get(fromId)?.push(relationship);
 	}
 
+	removeExperience(experienceId: string): void {
+		this.relationships.delete(experienceId);
+
+		for (const [fromId, relationships] of this.relationships) {
+			const remaining = relationships.filter(
+				(relationship) => relationship.toId !== experienceId,
+			);
+			if (remaining.length === 0) {
+				this.relationships.delete(fromId);
+				continue;
+			}
+			if (remaining.length !== relationships.length) {
+				this.relationships.set(fromId, remaining);
+			}
+		}
+	}
+
 	findRelationships(
 		experienceId: string,
 		type?: string,

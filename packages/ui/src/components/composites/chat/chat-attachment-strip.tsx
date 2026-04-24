@@ -1,3 +1,5 @@
+// biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
+import * as React from "react";
 import { Button } from "../../ui/button";
 import type { ChatAttachmentItem, ChatVariant } from "./chat-types";
 

@@ -37,7 +37,10 @@ export function startOfLocalDayIso(date = new Date()): string {
 export function formatDurationSeconds(
   value: number | null | undefined,
 ): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "";
+  }
+  if (value <= 0) {
     return "0m";
   }
   const totalMinutes = Math.round(value / 60);

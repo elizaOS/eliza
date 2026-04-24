@@ -10,7 +10,7 @@
 		"allowJs": false,
 		"jsx": "react-jsx",
 		"skipLibCheck": true,
-		"ignoreDeprecations": "5.0",
+		"ignoreDeprecations": "6.0",
 		"allowSyntheticDefaultImports": true,
 		"strict": false,
 		"useUnknownInCatchVariables": false,

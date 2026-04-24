@@ -5,7 +5,6 @@
  * "ready" phase (WebSocket bindings, nav listener).
  */
 
-import { prefetchVrmToCache } from "@elizaos/app-companion/components/avatar/VrmEngine";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,
@@ -15,6 +14,7 @@ import {
   type StreamEventEnvelope,
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { prefetchVrmToCache } from "../components/companion/injected";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   COMPANION_ENABLED,

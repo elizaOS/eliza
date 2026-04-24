@@ -36,6 +36,7 @@ import type {
   AgentSelfStatusSnapshot,
   AgentStatus,
   CharacterData,
+  CharacterHistoryResponse,
   CodingAgentScratchWorkspace,
   CodingAgentStatus,
   CodingAgentTaskThread,
@@ -43,6 +44,10 @@ import type {
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
+  ExperienceListQuery,
+  ExperienceListResponse,
+  ExperienceRecord,
+  ExperienceUpdateInput,
   ExtensionStatus,
   LogsFilter,
   LogsResponse,
@@ -72,6 +77,7 @@ import type {
   TrainingTrajectoryList,
   TriggerHealthSnapshot,
   TriggerLastStatus,
+  TriggerEventDispatchResponse,
   TriggerRunRecord,
   TriggerSummary,
   UpdateStatus,
@@ -296,6 +302,10 @@ declare module "./client-base" {
       trigger?: TriggerSummary;
     }>;
     getTriggerRuns(id: string): Promise<{ runs: TriggerRunRecord[] }>;
+    emitTriggerEvent(
+      eventKind: string,
+      payload?: Record<string, unknown>,
+    ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
     getTrainingStatus(): Promise<TrainingStatus>;
     listTrainingTrajectories(opts?: {
@@ -427,6 +437,19 @@ declare module "./client-base" {
     updateCharacter(
       character: CharacterData,
     ): Promise<{ ok: boolean; character: CharacterData; agentName: string }>;
+    listCharacterHistory(options?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<CharacterHistoryResponse>;
+    listExperiences(
+      options?: ExperienceListQuery,
+    ): Promise<ExperienceListResponse>;
+    getExperience(id: string): Promise<{ experience: ExperienceRecord }>;
+    updateExperience(
+      id: string,
+      data: ExperienceUpdateInput,
+    ): Promise<{ experience: ExperienceRecord }>;
+    deleteExperience(id: string): Promise<{ ok: boolean }>;
     getUpdateStatus(force?: boolean): Promise<UpdateStatus>;
     setUpdateChannel(
       channel: "stable" | "beta" | "nightly",
@@ -1157,6 +1180,20 @@ ElizaClient.prototype.getTriggerRuns = async function (this: ElizaClient, id) {
   return this.fetch(`/api/triggers/${encodeURIComponent(id)}/runs`);
 };
 
+ElizaClient.prototype.emitTriggerEvent = async function (
+  this: ElizaClient,
+  eventKind,
+  payload = {},
+) {
+  return this.fetch(
+    `/api/triggers/events/${encodeURIComponent(eventKind)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    },
+  );
+};
+
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   return this.fetch("/api/triggers/health");
 };
@@ -1675,6 +1712,98 @@ ElizaClient.prototype.updateCharacter = async function (
   return this.fetch("/api/character", {
     method: "PUT",
     body: JSON.stringify(character),
+  });
+};
+
+ElizaClient.prototype.listCharacterHistory = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options?.offset === "number") {
+    params.set("offset", String(options.offset));
+  }
+  const qs = params.toString();
+  return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`);
+};
+
+ElizaClient.prototype.listExperiences = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  const appendMulti = (key: string, value?: string | string[]) => {
+    if (Array.isArray(value)) {
+      value
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => {
+          params.append(key, item);
+        });
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      params.append(key, value.trim());
+    }
+  };
+
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options?.offset === "number") {
+    params.set("offset", String(options.offset));
+  }
+  appendMulti("type", options?.type);
+  appendMulti("outcome", options?.outcome);
+  appendMulti("domain", options?.domain);
+  options?.tags
+    ?.map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => {
+      params.append("tag", tag);
+    });
+  const qs = params.toString();
+  const response = await this.fetch<{
+    data: ExperienceRecord[];
+    total: number;
+  }>(`/api/character/experiences${qs ? `?${qs}` : ""}`);
+  return {
+    experiences: response.data,
+    total: response.total,
+  };
+};
+
+ElizaClient.prototype.getExperience = async function (this: ElizaClient, id) {
+  const response = await this.fetch<{ data: ExperienceRecord }>(
+    `/api/character/experiences/${encodeURIComponent(id)}`,
+  );
+  return { experience: response.data };
+};
+
+ElizaClient.prototype.updateExperience = async function (
+  this: ElizaClient,
+  id,
+  data,
+) {
+  const response = await this.fetch<{ data: ExperienceRecord }>(
+    `/api/character/experiences/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+  return { experience: response.data };
+};
+
+ElizaClient.prototype.deleteExperience = async function (
+  this: ElizaClient,
+  id,
+) {
+  return this.fetch(`/api/character/experiences/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 };
 

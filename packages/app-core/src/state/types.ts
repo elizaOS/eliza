@@ -94,6 +94,18 @@ export interface TabCommittedDetail {
   uiShellMode: UiShellMode;
 }
 
+/**
+ * Optional flags for {@link AppActions.completeOnboarding} when finishing the
+ * full onboarding wizard (not RuntimeGate).
+ */
+export interface CompleteOnboardingOptions {
+  /**
+   * When true, opens the `@elizaos/app-companion` overlay and syncs the URL to
+   * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
+   */
+  launchCompanionOverlay?: boolean;
+}
+
 /** Tab commit subscription + deferred work (for multi-step navigation). */
 export interface NavigationEventsApi {
   subscribeTabCommitted: (
@@ -824,6 +836,7 @@ export interface AppActions {
 
   // Inventory
   loadInventory: () => Promise<void>;
+  loadWalletConfig: () => Promise<void>;
   loadBalances: () => Promise<void>;
   loadNfts: () => Promise<void>;
   executeBscTrade: (
@@ -916,8 +929,15 @@ export interface AppActions {
    * Used by RuntimeGate: the gate only picks a runtime target; it does
    * not collect provider/character info, so there is no submit payload.
    * Dispatches ONBOARDING_COMPLETE to the startup coordinator.
+   *
+   * The full wizard passes `{ launchCompanionOverlay: true }` so first-time
+   * setup lands in `@elizaos/app-companion` at `/apps/companion`. RuntimeGate
+   * omits options and lands on chat only.
    */
-  completeOnboarding: (landingTab?: Tab) => void;
+  completeOnboarding: (
+    landingTab?: Tab,
+    options?: CompleteOnboardingOptions,
+  ) => void;
 
   // Cloud
   handleCloudLogin: () => Promise<void>;

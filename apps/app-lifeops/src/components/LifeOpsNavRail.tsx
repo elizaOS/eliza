@@ -9,6 +9,7 @@ import {
 import {
   BriefcaseBusiness,
   CalendarDays,
+  CreditCard,
   LayoutDashboard,
   Mail,
   MessageSquare,
@@ -23,7 +24,7 @@ import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 interface LifeOpsNavRailProps {
   activeSection: LifeOpsSection;
   onNavigate: (section: LifeOpsSection) => void;
-  layout?: "sidebar" | "compact";
+  collapsible?: boolean;
 }
 
 interface NavGroup {
@@ -88,9 +89,15 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: "reminders",
-        label: "Work",
+        label: "Reminders",
         icon: <BriefcaseBusiness className="h-4 w-4" aria-hidden />,
         dotColor: "bg-amber-400",
+      },
+      {
+        id: "payments",
+        label: "Payments",
+        icon: <CreditCard className="h-4 w-4" aria-hidden />,
+        dotColor: "bg-green-400",
       },
     ],
   },
@@ -113,7 +120,7 @@ const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items);
 export function LifeOpsNavRail({
   activeSection,
   onNavigate,
-  layout = "sidebar",
+  collapsible = true,
 }: LifeOpsNavRailProps) {
   const collapsedRailItems = NAV_ITEMS.map((item) => {
     const isActive = item.id === activeSection;
@@ -130,52 +137,11 @@ export function LifeOpsNavRail({
     );
   });
 
-  if (layout === "compact") {
-    return (
-      <nav
-        aria-label="LifeOps sections"
-        data-testid="lifeops-nav-compact"
-        className="overflow-x-auto"
-      >
-        <div className="flex min-w-max items-center gap-2">
-          {NAV_ITEMS.map((item) => {
-            const isActive = item.id === activeSection;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={item.label}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => onNavigate(item.id)}
-                className={[
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors",
-                  isActive
-                    ? "border-accent/30 bg-accent/14 text-txt"
-                    : "border-border/20 bg-bg/60 text-muted hover:border-border/40 hover:bg-bg-muted/70 hover:text-txt",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "flex h-5 w-5 shrink-0 items-center justify-center",
-                    isActive ? "text-txt" : "text-muted/80",
-                  ].join(" ")}
-                >
-                  {item.icon}
-                </span>
-                <span className="whitespace-nowrap">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    );
-  }
-
   return (
     <TooltipProvider delayDuration={320} skipDelayDuration={120}>
       <Sidebar
         testId="lifeops-nav-rail"
-        collapsible
+        collapsible={collapsible}
         contentIdentity="lifeops"
         syncId="lifeops-sidebar"
         collapseButtonAriaLabel="Collapse LifeOps sidebar"
@@ -185,7 +151,7 @@ export function LifeOpsNavRail({
         headerClassName="!h-0 !min-h-0 !p-0 !m-0 !overflow-hidden"
         collapseButtonClassName="!h-7 !w-7 !border-0 !bg-transparent !shadow-none hover:!bg-bg-muted/60"
         aria-label="LifeOps sections"
-        collapsedRailItems={collapsedRailItems}
+        collapsedRailItems={collapsible ? collapsedRailItems : undefined}
       >
         <SidebarScrollRegion className="px-1 pb-3 pt-0">
           <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">

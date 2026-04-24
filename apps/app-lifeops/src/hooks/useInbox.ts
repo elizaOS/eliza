@@ -1,7 +1,7 @@
 import { client, useApp } from "@elizaos/app-core";
 import type {
-  LifeOpsInboxChannel,
   LifeOpsInbox,
+  LifeOpsInboxChannel,
   LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -28,15 +28,17 @@ export interface UseInboxResult {
 
 const DEFAULT_MAX_RESULTS = 40;
 
-export function useInbox(
-  opts: UseInboxOptions = {},
-): UseInboxResult {
+export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const { t } = useApp();
   const [feed, setFeed] = useState<LifeOpsInbox | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [channel, setChannel] = useState<InboxChannel>(opts.channel ?? "all");
   const [searchQuery, setSearchQuery] = useState(opts.searchQuery ?? "");
+
+  useEffect(() => {
+    setChannel(opts.channel ?? "all");
+  }, [opts.channel]);
 
   const fetch = useCallback(async () => {
     setLoading(true);

@@ -5,27 +5,18 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
-  useMediaQuery,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
 } from "../events/index.js";
 import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
-import {
-  type LifeOpsSection,
-  useLifeOpsSection,
-} from "../hooks/useLifeOpsSection.js";
+import { useLifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import {
   consumeQueuedLifeOpsGithubCallback,
   dispatchLifeOpsGithubCallbackFromWindowMessage,
@@ -37,17 +28,15 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   LifeOpsInboxSection,
 } from "./LifeOpsInboxSection.js";
-import { LifeOpsNavRail } from "./LifeOpsNavRail.js";
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
-  LifeOpsStretchPanel,
   LifeOpsXPanel,
 } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
+import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsResizableSidebar } from "./LifeOpsResizableSidebar.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
@@ -58,8 +47,8 @@ import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
+import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
-import { PermissionsPanel } from "./PermissionsPanel";
 
 type EnablePromptProps = {
   loading: boolean;
@@ -344,7 +333,7 @@ function buildAgentGithubSetup(params: {
           ? "0 / 1"
           : githubLoading
             ? t("common.loading", { defaultValue: "Loading" })
-            : t("lifeopspage.noCloudAgent", { defaultValue: "No cloud agent" })
+            : ""
       : t("lifeopspage.cloudRequired", { defaultValue: "Cloud required" }),
     connectLabel: primaryAgentGithubEntry?.github?.connected
       ? t("common.reconnect", { defaultValue: "Reconnect" })
@@ -380,15 +369,15 @@ function LifeOpsSettingsSectionView({
 }: LifeOpsSettingsSectionViewProps) {
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold tracking-tight text-txt">
-          {t("lifeopspage.setupTitle", { defaultValue: "Settings" })}
+          {t("lifeopspage.accessTitle", { defaultValue: "Access" })}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
             onClick={onRunSetupAgain}
           >
             {t("lifeopspage.runSetupAgain", {
@@ -398,7 +387,7 @@ function LifeOpsSettingsSectionView({
           <Button
             variant="surfaceDestructive"
             size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
             onClick={onDisableLifeOps}
             disabled={disableLifeOpsDisabled}
           >
@@ -418,10 +407,7 @@ function LifeOpsSettingsSectionView({
         <LifeOpsSchedulePanel />
         <LifeOpsCapabilitiesPanel />
         <LifeOpsXPanel />
-        <LifeOpsStretchPanel />
       </div>
-
-      <PermissionsPanel />
     </div>
   );
 }
@@ -449,52 +435,6 @@ function LifeOpsPageChat() {
       title="LifeOps"
       placeholderOverride={resolveLifeOpsChatPlaceholder(selection)}
     />
-  );
-}
-
-interface LifeOpsWorkspaceMainProps {
-  compactLayout: boolean;
-  section: LifeOpsSection;
-  navigate: (section: LifeOpsSection) => void;
-  children: ReactNode;
-}
-
-export function LifeOpsWorkspaceMain({
-  compactLayout,
-  section,
-  navigate,
-  children,
-}: LifeOpsWorkspaceMainProps) {
-  return (
-    <div className="flex h-full min-h-0 min-w-0">
-      {compactLayout ? null : (
-        <LifeOpsResizableSidebar
-          storageKey="lifeops:nav-rail-width"
-          defaultWidth={296}
-          minWidth={220}
-          maxWidth={420}
-          side="right"
-          testId="lifeops-nav-rail-resizable"
-          className="border-r border-border/12"
-        >
-          <LifeOpsNavRail activeSection={section} onNavigate={navigate} />
-        </LifeOpsResizableSidebar>
-      )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {compactLayout ? (
-          <div className="border-b border-border/12 px-4 py-3 sm:px-6">
-            <LifeOpsNavRail
-              activeSection={section}
-              onNavigate={navigate}
-              layout="compact"
-            />
-          </div>
-        ) : null}
-        <div className="min-h-0 flex-1 overflow-auto px-4 pb-6 pt-4 sm:px-6 sm:pb-8 sm:pt-5 lg:px-8 lg:pt-6">
-          {children}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -603,8 +543,7 @@ function LifeOpsWorkspaceInner() {
       ) {
         setGithubError(
           t("lifeopspage.githubDetailsPartial", {
-            defaultValue:
-              "Some GitHub cloud details are still unavailable. You can still connect accounts.",
+            defaultValue: "GitHub cloud details unavailable.",
           }),
         );
       }
@@ -1043,6 +982,8 @@ function LifeOpsWorkspaceInner() {
         );
       case "reminders":
         return <LifeOpsRemindersSection />;
+      case "payments":
+        return <LifeOpsPaymentsSection />;
       case "setup":
         return (
           <LifeOpsSettingsSectionView
@@ -1067,13 +1008,13 @@ function LifeOpsWorkspaceInner() {
     <AppWorkspaceChrome
       testId="lifeops-shell"
       main={
-        <LifeOpsWorkspaceMain
+        <LifeOpsWorkspaceShell
           compactLayout={compactLayout}
           section={section}
           navigate={navigate}
         >
           {mainContent}
-        </LifeOpsWorkspaceMain>
+        </LifeOpsWorkspaceShell>
       }
       chat={<LifeOpsPageChat />}
     />

@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory, Provider } from "../../types";
 import { addHeader } from "../../utils";
 import type { KnowledgeService } from "./service.ts";
+import { normalizeKnowledgeSourceValue } from "./utils.ts";
 
 export const knowledgeProvider: Provider = {
 	name: "KNOWLEDGE",
@@ -33,7 +34,7 @@ export const knowledgeProvider: Provider = {
 				const metadata = document.metadata as
 					| Record<string, unknown>
 					| undefined;
-				return metadata?.source === "upload";
+				return normalizeKnowledgeSourceValue(metadata?.source) === "upload";
 			})
 			.map((document) => document.id)
 			.filter(
@@ -62,8 +63,14 @@ export const knowledgeProvider: Provider = {
 				const rightMetadata = right.metadata as
 					| Record<string, unknown>
 					| undefined;
-				const leftUploadRank = leftMetadata?.source === "upload" ? 0 : 1;
-				const rightUploadRank = rightMetadata?.source === "upload" ? 0 : 1;
+				const leftUploadRank =
+					normalizeKnowledgeSourceValue(leftMetadata?.source) === "upload"
+						? 0
+						: 1;
+				const rightUploadRank =
+					normalizeKnowledgeSourceValue(rightMetadata?.source) === "upload"
+						? 0
+						: 1;
 				if (leftUploadRank !== rightUploadRank) {
 					return leftUploadRank - rightUploadRank;
 				}

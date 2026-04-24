@@ -1,46 +1,68 @@
-
-
 import { useCallback, useMemo, useState } from "react";
 import { client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
 import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
+import { useApp } from "@elizaos/app-core/state";
 import { Button, Input } from "@elizaos/ui";
 
-function DetailCard({ label, value }: { label: string; value: string }) {
+const LANES = ["top", "mid", "bot"] as const;
+
+function readString(
+  source: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = source?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function readNumber(
+  source: Record<string, unknown> | null,
+  key: string,
+): number | null {
+  const value = source?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatHeroClass(value: string | null): string {
+  if (!value) return "Not deployed";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatHeroLine(telemetry: Record<string, unknown> | null): string {
+  const heroClass = formatHeroClass(readString(telemetry, "heroClass"));
+  const lane = readString(telemetry, "heroLane");
+  const level = readNumber(telemetry, "heroLevel");
+  const hp = readNumber(telemetry, "heroHp");
+  const maxHp = readNumber(telemetry, "heroMaxHp");
+  const hpLabel = hp !== null && maxHp !== null ? `, ${hp}/${maxHp} HP` : "";
+  const laneLabel = lane ? ` ${lane}` : "";
+  const levelLabel = level !== null ? ` Lv${level}` : "";
+  return `${heroClass}${levelLabel}${laneLabel}${hpLabel}`;
+}
+
+function isLearnPrompt(prompt: string): boolean {
+  return /^learn\s+/i.test(prompt);
+}
+
+function isRelevantPrompt(prompt: string): boolean {
   return (
-    <div className="rounded-2xl border border-border/35 bg-bg/55 px-4 py-3">
-      <div className="text-xs-tight font-medium uppercase tracking-[0.16em] text-muted">
-        {label}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-txt">{value}</div>
-    </div>
+    isLearnPrompt(prompt) ||
+    /^reinforce\s+/i.test(prompt) ||
+    /^move\s+to\s+/i.test(prompt) ||
+    /^recall/i.test(prompt) ||
+    /^review strategy$/i.test(prompt)
   );
 }
 
-function formatTimestamp(value: string | number | null | undefined): string {
-  if (typeof value === "number") {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? "Not yet verified"
-      : date.toLocaleString();
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? "Not yet verified"
-      : date.toLocaleString();
-  }
-  return "Not yet verified";
-}
-
 function statusTone(status: string): string {
-  if (status === "running" || status === "connected") {
+  if (status === "running" || status === "ready") {
     return "border-ok/30 bg-ok/10 text-ok";
   }
-  if (status === "disconnected" || status === "offline") {
+  if (status === "degraded" || status === "failed") {
     return "border-danger/30 bg-danger/10 text-danger";
   }
-  return "border-warn/30 bg-warn/10 text-warn";
+  return "border-border/45 bg-bg-hover/70 text-muted-strong";
 }
 
 export function DefenseAgentsOperatorSurface({
@@ -49,130 +71,68 @@ export function DefenseAgentsOperatorSurface({
   focus = "all",
 }: AppOperatorSurfaceProps) {
   const { appRuns } = useApp();
-  const availableRuns = Array.isArray(appRuns) ? appRuns : [];
   const run = useMemo(
     () =>
-      [...availableRuns]
+      [...(Array.isArray(appRuns) ? appRuns : [])]
         .filter((candidate) => candidate.appName === appName)
         .sort((left, right) =>
           right.updatedAt.localeCompare(left.updatedAt),
         )[0] ?? null,
-    [appName, availableRuns],
+    [appName, appRuns],
   );
-  const [operatorMessage, setOperatorMessage] = useState("");
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
   const telemetry =
     run?.session?.telemetry && typeof run.session.telemetry === "object"
       ? (run.session.telemetry as Record<string, unknown>)
       : null;
-  const recentActivity = Array.isArray(telemetry?.recentActivity)
-    ? (telemetry.recentActivity as Array<Record<string, unknown>>)
-        .slice(-4)
-        .reverse()
-    : [];
-  const heroClass =
-    typeof telemetry?.heroClass === "string" ? telemetry.heroClass : "Unknown";
-  const heroLane =
-    typeof telemetry?.heroLane === "string" ? telemetry.heroLane : "unknown";
-  const heroLevel =
-    typeof telemetry?.heroLevel === "number"
-      ? `Lv${telemetry.heroLevel}`
-      : "Level unknown";
-  const heroHp =
-    typeof telemetry?.heroHp === "number" &&
-    typeof telemetry?.heroMaxHp === "number"
-      ? `${telemetry.heroHp}/${telemetry.heroMaxHp} HP`
-      : "HP unknown";
-  const autoPlayLabel =
-    telemetry?.autoPlay === true ? "Enabled" : "Operator-led";
-  const strategyLabel =
-    typeof telemetry?.strategyVersion === "number"
-      ? `Version ${telemetry.strategyVersion}`
-      : "Ready after launch";
-  const surfaceTitle =
-    variant === "live"
-      ? "Defense Live Dashboard"
-      : variant === "running"
-        ? "Defense Run Surface"
-        : "Live Operator Surface";
+  const heroLane = readString(telemetry, "heroLane");
+  const heroClass = readString(telemetry, "heroClass") ?? "mage";
+  const autoPlay = telemetry?.autoPlay === true;
+  const canSend = Boolean(run?.runId && run.session?.canSendCommands);
+  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).filter(
+    isRelevantPrompt,
+  );
+  const tacticalPrompts = suggestedPrompts.filter(
+    (prompt) => !/^auto[- ]?play/i.test(prompt),
+  );
   const showDashboard = focus !== "chat";
   const showChat = focus !== "dashboard";
 
-  const handleSendMessage = useCallback(async () => {
-    const content = operatorMessage.trim();
-    if (!run || content.length === 0 || sending) return;
+  const sendCommand = useCallback(
+    async (content: string, clearDraftOnSuccess = false) => {
+      const trimmed = content.trim();
+      if (!run?.runId || !trimmed || sendingCommand) return;
 
-    setSending(true);
-    setStatusMessage(null);
-    try {
-      const response = await client.sendAppRunMessage(run.runId, content);
-      setOperatorMessage("");
-      setStatusMessage(response.message ?? "Operator message sent.");
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? error.message
-          : "Failed to send the Defense operator message.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [operatorMessage, run, sending]);
-
-  const handlePrompt = useCallback(
-    async (prompt: string) => {
-      if (!run || sending) return;
-
-      setSending(true);
-      setStatusMessage(null);
+      setSendingCommand(trimmed);
+      setNotice(null);
       try {
-        const response = await client.sendAppRunMessage(run.runId, prompt);
-        setStatusMessage(response.message ?? "Suggested prompt sent.");
+        const response = await client.sendAppRunMessage(run.runId, trimmed);
+        if (clearDraftOnSuccess) {
+          setDraft((current) => (current.trim() === trimmed ? "" : current));
+        }
+        setNotice(response.message ?? "Command sent.");
       } catch (error) {
-        setStatusMessage(
-          error instanceof Error
-            ? error.message
-            : "Failed to send the Defense prompt.",
+        setNotice(
+          error instanceof Error ? error.message : "Defense command failed.",
         );
       } finally {
-        setSending(false);
+        setSendingCommand(null);
       }
     },
-    [run, sending],
+    [run?.runId, sendingCommand],
   );
 
   if (!run) {
     return (
-      <section className="space-y-3">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          Operator Surface
-        </div>
-        <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
-          <p className="text-xs leading-6 text-muted-strong">
-            Defense of the Agents uses a hosted spectator shell. Launch it to
-            monitor the agent, keep the autoplay script running, and steer the
-            hero with live chat guidance.
-          </p>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <DetailCard
-              label="Autoplay Loop"
-              value="Deploys, levels, recalls, and reinforces lanes."
-            />
-            <DetailCard
-              label="Strategy Review"
-              value="Scores current tactics and promotes better versions over time."
-            />
-            <DetailCard
-              label="Operator Chat"
-              value="Suggestions flow into the live session while the bot keeps playing."
-            />
-            <DetailCard
-              label="Viewer Shell"
-              value="The app opens a stable local shell instead of the broken remote overlay stack."
-            />
-          </div>
+      <section
+        className={variant === "live" ? "p-3" : ""}
+        data-testid="defense-operator-empty"
+      >
+        <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
+          Launch Defense of the Agents to open live controls.
         </div>
       </section>
     );
@@ -184,147 +144,117 @@ export function DefenseAgentsOperatorSurface({
       data-testid={
         variant === "live"
           ? "defense-live-operator-surface"
-          : variant === "running"
-            ? "defense-running-operator-surface"
-            : "defense-detail-operator-surface"
+          : "defense-detail-operator-surface"
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-          {surfaceTitle}
-        </div>
-        <span
-          className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${statusTone(run.status)}`}
-        >
-          {run.status}
-        </span>
-        <span className="inline-flex min-h-6 items-center rounded-full border border-border/35 bg-bg-hover/70 px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] text-muted-strong">
-          {run.viewerAttachment}
-        </span>
-      </div>
-
       {showDashboard ? (
-        <div className="grid gap-2 md:grid-cols-2">
-          <DetailCard
-            label="Agent Status"
-            value={`${heroClass} ${heroLevel} in ${heroLane} lane`}
-          />
-          <DetailCard label="Hero Health" value={heroHp} />
-          <DetailCard label="Autoplay Script" value={autoPlayLabel} />
-          <DetailCard label="Strategy Script" value={strategyLabel} />
+        <div className="rounded-2xl border border-border/35 bg-card/74 p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${statusTone(run.status)}`}
+            >
+              {run.status}
+            </span>
+            <span className="text-xs font-semibold text-txt">
+              {formatHeroLine(telemetry)}
+            </span>
+          </div>
+          {run.session?.summary ? (
+            <div className="mt-2 text-xs leading-5 text-muted-strong">
+              {run.session.summary}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {showDashboard ? (
-        <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            Session Summary
-          </div>
-          <p className="mt-2 text-xs leading-6 text-muted-strong">
-            {run.summary || run.health.message || "Run active."}
-          </p>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <DetailCard
-              label="Operator Channel"
-              value={
-                run.session?.canSendCommands
-                  ? "Ready for live suggestions and steering."
-                  : "Waiting for the live command channel."
-              }
-            />
-            <DetailCard
-              label="Last Verified"
-              value={formatTimestamp(run.lastHeartbeatAt ?? run.updatedAt)}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {showDashboard ? (
-        <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            Active Scripts
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <DetailCard
-              label="Autoplay Loop"
-              value={
-                telemetry?.autoPlay === true
-                  ? "Running lane-defense automation."
-                  : "Standing by for operator-led play."
-              }
-            />
-            <DetailCard
-              label="Strategy Review"
-              value={
-                typeof telemetry?.bestStrategyVersion === "number"
-                  ? `Tracking best version ${telemetry.bestStrategyVersion}.`
-                  : "Scoring strategy performance in-session."
-              }
-            />
-            <DetailCard
-              label="Viewer Shell"
-              value={
-                run.viewer
-                  ? "Local spectator shell is available for stable viewing."
-                  : "Viewer shell unavailable."
-              }
-            />
-            <DetailCard
-              label="Operator Steering"
-              value={
-                run.session?.canSendCommands
-                  ? "Chat guidance is live."
-                  : "Command bridge is reconnecting."
-              }
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-2" data-testid="defense-actions">
+          <Button
+            type="button"
+            variant={autoPlay ? "default" : "outline"}
+            size="sm"
+            className="min-h-9 rounded-xl shadow-sm"
+            data-testid="defense-command-autoplay"
+            disabled={!canSend || Boolean(sendingCommand)}
+            onClick={() =>
+              void sendCommand(autoPlay ? "Auto-play OFF" : "Auto-play ON")
+            }
+          >
+            {autoPlay ? "Autoplay On" : "Autoplay Off"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-9 rounded-xl shadow-sm"
+            data-testid="defense-command-recall"
+            disabled={!canSend || Boolean(sendingCommand)}
+            onClick={() => void sendCommand("Recall to base")}
+          >
+            Recall
+          </Button>
+          {LANES.map((lane) => {
+            const label = heroLane ? `Move ${lane}` : `Deploy ${lane}`;
+            const command = heroLane
+              ? `Move to ${lane} lane`
+              : `Deploy as ${heroClass} in ${lane} lane`;
+            return (
+              <Button
+                key={lane}
+                type="button"
+                variant={heroLane === lane ? "default" : "outline"}
+                size="sm"
+                className="min-h-9 rounded-xl shadow-sm"
+                data-testid={`defense-command-lane-${lane}`}
+                disabled={!canSend || Boolean(sendingCommand)}
+                onClick={() => void sendCommand(command)}
+              >
+                {label}
+              </Button>
+            );
+          })}
         </div>
       ) : null}
 
       {showChat ? (
-        <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            Steering
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="rounded-2xl border border-border/35 bg-card/74 p-3 shadow-sm">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <Input
-              value={operatorMessage}
-              onChange={(event) => setOperatorMessage(event.target.value)}
-              placeholder="Tell the hero how to rotate, defend, or adapt the current strategy."
-              className="min-h-11 rounded-xl"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Command the hero..."
+              className="min-h-10 rounded-xl"
+              data-testid="defense-chat-input"
+              disabled={!canSend}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  void handleSendMessage();
+                  void sendCommand(draft, true);
                 }
               }}
-              disabled={!run.session?.sessionId}
             />
             <Button
               type="button"
-              className="min-h-11 rounded-xl px-4 shadow-sm"
-              onClick={() => void handleSendMessage()}
-              disabled={
-                sending ||
-                !run.session?.canSendCommands ||
-                operatorMessage.trim().length === 0
-              }
+              className="min-h-10 rounded-xl px-4 shadow-sm"
+              data-testid="defense-chat-send"
+              disabled={!canSend || Boolean(sendingCommand) || !draft.trim()}
+              onClick={() => void sendCommand(draft, true)}
             >
-              {sending ? "Sending" : "Send"}
+              {sendingCommand === draft.trim() ? "Sending" : "Send"}
             </Button>
           </div>
-          {run.session?.suggestedPrompts?.length ? (
+          {tacticalPrompts.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {run.session.suggestedPrompts.map((prompt) => (
+              {tacticalPrompts.map((prompt) => (
                 <Button
                   key={prompt}
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="min-h-9 rounded-xl px-3 shadow-sm"
-                  onClick={() => void handlePrompt(prompt)}
-                  disabled={sending}
+                  className="min-h-8 rounded-xl px-3 shadow-sm"
+                  data-testid="defense-suggested-command"
+                  disabled={!canSend || Boolean(sendingCommand)}
+                  onClick={() => void sendCommand(prompt)}
                 >
                   {prompt}
                 </Button>
@@ -334,45 +264,12 @@ export function DefenseAgentsOperatorSurface({
         </div>
       ) : null}
 
-      {showChat && recentActivity.length > 0 ? (
-        <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
-            Recent Behavior
-          </div>
-          <div className="mt-3 space-y-2">
-            {recentActivity.map((entry) => {
-              const action =
-                typeof entry.action === "string" ? entry.action : "activity";
-              const detail =
-                typeof entry.detail === "string"
-                  ? entry.detail
-                  : "No detail captured.";
-              const ts =
-                typeof entry.ts === "number" || typeof entry.ts === "string"
-                  ? formatTimestamp(entry.ts)
-                  : "Unknown time";
-              return (
-                <div
-                  key={`${action}-${detail}-${ts}`}
-                  className="rounded-xl border border-border/30 bg-bg/60 px-3 py-2"
-                >
-                  <div className="text-xs-tight font-medium text-txt">
-                    {action}
-                  </div>
-                  <div className="mt-1 text-xs-tight leading-5 text-muted-strong">
-                    {detail}
-                  </div>
-                  <div className="mt-1 text-2xs text-muted">{ts}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {statusMessage ? (
-        <div className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs-tight leading-5 text-muted-strong">
-          {statusMessage}
+      {notice ? (
+        <div
+          className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs leading-5 text-muted-strong"
+          data-testid="defense-command-notice"
+        >
+          {notice}
         </div>
       ) : null}
     </section>

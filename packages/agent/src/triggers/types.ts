@@ -49,6 +49,7 @@ export interface TriggerSummary {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   runCount: number;
   nextRunAtMs?: number;
@@ -83,6 +84,7 @@ export interface CreateTriggerRequest {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -99,6 +101,7 @@ export interface UpdateTriggerRequest {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -116,6 +119,7 @@ export interface NormalizedTriggerDraft {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;

@@ -463,10 +463,7 @@ function absolutizeViewerHtmlAssetUrls(
     );
 }
 
-function buildViewerShellInjection(
-  agentName: string,
-  viewerUrl: string,
-): string {
+function buildViewerShellInjection(viewerUrl: string): string {
   const viewerBaseUrl = new URL("./", viewerUrl).toString();
 
   return `<base id="eliza-defense-viewer-base" href="${viewerBaseUrl}">
@@ -498,49 +495,9 @@ html, body { background: #000 !important; }
 #bottom-hud {
   transform: translateX(-50%) !important;
 }
-#eliza-defense-spectator-banner {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 2200;
-  max-width: min(420px, calc(100vw - 28px));
-  padding: 14px 16px;
-  border: 1px solid rgba(252, 211, 18, 0.35);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(14, 12, 8, 0.96), rgba(7, 6, 4, 0.92));
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-  color: #f6ead2;
-  font: 12px "Friz Quadrata", "Palatino Linotype", serif;
-}
-#eliza-defense-spectator-banner .eliza-defense-title {
-  color: #fcd312;
-  font-size: 15px;
-  margin-bottom: 6px;
-}
-#eliza-defense-spectator-banner .eliza-defense-body {
-  color: rgba(246, 234, 210, 0.82);
-  line-height: 1.5;
-}
-#eliza-defense-spectator-banner .eliza-defense-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(252, 211, 18, 0.4);
-  color: #fcd312;
-  text-decoration: none;
-  background: rgba(63, 48, 12, 0.48);
-}
-#eliza-defense-spectator-banner .eliza-defense-link:hover {
-  background: rgba(92, 70, 17, 0.62);
-}
 </style>
 <script id="eliza-defense-embedded-bootstrap">
 (() => {
-  const agentName = ${JSON.stringify(agentName)};
-  const fullSiteUrl = ${JSON.stringify(viewerUrl)};
   const hiddenIds = [
     "landing-overlay",
     "auth-modal",
@@ -586,40 +543,6 @@ html, body { background: #000 !important; }
       changed = true;
     }
     return changed;
-  };
-
-  const ensureBanner = () => {
-    if (
-      document.getElementById("eliza-defense-spectator-banner") ||
-      !document.body
-    ) {
-      return false;
-    }
-
-    const banner = document.createElement("div");
-    banner.id = "eliza-defense-spectator-banner";
-
-    const title = document.createElement("div");
-    title.className = "eliza-defense-title";
-    title.textContent = agentName
-      ? "Watching " + agentName
-      : "Watching Defense of the Agents";
-
-    const body = document.createElement("div");
-    body.className = "eliza-defense-body";
-    body.textContent =
-      "Eliza is steering this agent from the adjacent panel. Open the full site if you want to log in or join the battle yourself.";
-
-    const link = document.createElement("a");
-    link.className = "eliza-defense-link";
-    link.href = fullSiteUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Open Full Game";
-
-    banner.append(title, body, link);
-    document.body.appendChild(banner);
-    return true;
   };
 
   const scheduleEmbeddedViewerMode = () => {
@@ -668,8 +591,6 @@ html, body { background: #000 !important; }
       if (document.documentElement.dataset.elizaDefenseViewer !== "embedded") {
         document.documentElement.dataset.elizaDefenseViewer = "embedded";
       }
-
-      ensureBanner();
     } finally {
       observerApplying = false;
       if (observerPending) {
@@ -725,10 +646,7 @@ async function buildEmbeddedViewerHtml(
   }
 
   const absolutizedHtml = absolutizeViewerHtmlAssetUrls(html, viewerUrl);
-  const injection = buildViewerShellInjection(
-    resolveAgentName(runtime, null),
-    viewerUrl,
-  );
+  const injection = buildViewerShellInjection(viewerUrl);
 
   if (absolutizedHtml.includes("</head>")) {
     return absolutizedHtml.replace("</head>", `${injection}</head>`);
@@ -2053,9 +1971,7 @@ export async function refreshRunSession(
  *
  * Idempotent: every step is a no-op if the resource is already gone.
  */
-export async function stopRun(ctx: {
-  runtime: unknown | null;
-}): Promise<void> {
+export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
   const runtime = ctx.runtime as IAgentRuntime | null;
   try {
     stopGameLoop(runtime);

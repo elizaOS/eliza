@@ -357,6 +357,50 @@ export const lifeEmailUnsubscribes = pgTable("life_email_unsubscribes", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const lifePaymentSources = pgTable("life_payment_sources", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  kind: text("kind").notNull().default("manual"),
+  label: text("label").notNull().default(""),
+  institution: text("institution"),
+  accountMask: text("account_mask"),
+  status: text("status").notNull().default("active"),
+  lastSyncedAt: text("last_synced_at"),
+  transactionCount: integer("transaction_count").notNull().default(0),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const lifePaymentTransactions = pgTable(
+  "life_payment_transactions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    externalId: text("external_id"),
+    postedAt: text("posted_at").notNull(),
+    amountUsd: real("amount_usd").notNull().default(0),
+    direction: text("direction").notNull().default("debit"),
+    merchantRaw: text("merchant_raw").notNull().default(""),
+    merchantNormalized: text("merchant_normalized").notNull().default(""),
+    description: text("description"),
+    category: text("category"),
+    currency: text("currency").notNull().default("USD"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(
+      t.agentId,
+      t.sourceId,
+      t.postedAt,
+      t.amountUsd,
+      t.merchantNormalized,
+    ),
+  ],
+);
+
 export const lifeActivitySignals = pgTable(
   "life_activity_signals",
   {
@@ -997,8 +1041,6 @@ export const lifeTelemetryRollupDaily = pgTable(
     family: text("family").notNull(),
     localDate: text("local_date").notNull(),
     eventCount: integer("event_count").notNull().default(0),
-    transitionCount: integer("transition_count").notNull().default(0),
-    totalMinutes: integer("total_minutes").notNull().default(0),
     lastObservedAt: text("last_observed_at").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -1248,6 +1290,8 @@ export const lifeOpsSchema = {
   lifeSubscriptionCandidates,
   lifeSubscriptionCancellations,
   lifeEmailUnsubscribes,
+  lifePaymentSources,
+  lifePaymentTransactions,
   lifeActivitySignals,
   lifeChannelPolicies,
   lifeWebsiteAccessGrants,

@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider/evaluator docs for plugin-experience.
+ * Auto-generated canonical action/provider/evaluator docs for the Experience advanced capability.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 

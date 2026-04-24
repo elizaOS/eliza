@@ -20,7 +20,31 @@ export * from "./api/response.ts";
 export * from "./bridge/index.ts";
 export * from "./character-catalog.ts";
 export * from "./chat/index.ts";
-export * from "./components/index.ts";
+export * from "./components/apps/overlay-app-api.ts";
+export * from "./components/apps/overlay-app-registry.ts";
+export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
+export * from "./components/character/character-greeting.ts";
+export * from "./components/chat/widgets/shared.tsx";
+export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
+// Explicit named re-exports for the wallet helpers that renderer-side
+// modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
+// wildcard re-export above should carry these, but Vite's dev-time module
+// graph has been observed to miss symbols across nested `export *` chains
+// under HMR, so naming them directly guarantees the binding.
+export {
+  BSC_GAS_READY_THRESHOLD,
+  BSC_GAS_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+  toNormalizedAddress,
+} from "./components/inventory/constants.ts";
+export * from "./components/inventory/index.ts";
+export * from "./components/pages/ChatModalView.tsx";
+export { PhoneCompanionApp } from "./components/phone-companion/PhoneCompanionApp.tsx";
+export * from "./components/shared/LanguageDropdown.tsx";
+export * from "./components/shared/ThemeToggle.tsx";
+export * from "./components/workspace/AppWorkspaceChrome.tsx";
 export * from "./config/index.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
@@ -48,6 +72,7 @@ export * from "./platform/index.ts";
 export * from "./security/agent-vault-id.ts";
 export * from "./security/platform-secure-store.ts";
 export * from "./shell/index.ts";
+export * from "./state/CompanionSceneConfigContext.tsx";
 export * from "./state/index.ts";
 export * from "./types/index.ts";
 export * from "./utils/index.ts";

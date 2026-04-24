@@ -181,6 +181,22 @@ export type TriggerHealthSnapshot = _TriggerHealthSnapshot;
 export type CreateTriggerRequest = _CreateTriggerRequest;
 export type UpdateTriggerRequest = _UpdateTriggerRequest;
 
+export interface TriggerEventDispatchResponse {
+  ok: boolean;
+  eventKind: string;
+  matched: number;
+  results: Array<{
+    taskId?: string;
+    result: {
+      status: TriggerRunRecord["status"];
+      error?: string;
+      taskDeleted: boolean;
+      executionId?: string;
+    };
+    trigger?: TriggerSummary | null;
+  }>;
+}
+
 // Fine-tuning / training
 export type TrainingJobStatus =
   | "queued"
