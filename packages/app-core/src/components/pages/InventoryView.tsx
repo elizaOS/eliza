@@ -1,6 +1,11 @@
 import type {
   WalletAddresses,
   WalletConfigStatus,
+  WalletMarketMover,
+  WalletMarketOverviewResponse,
+  WalletMarketOverviewSource,
+  WalletMarketPrediction,
+  WalletMarketPriceSnapshot,
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared/contracts/wallet";
@@ -8,8 +13,7 @@ import {
   Button,
   cn,
   PageLayout,
-  Sidebar,
-  SidebarHeader,
+  SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
@@ -18,25 +22,31 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   BarChart3,
-  ChevronDown,
   Copy,
-  DollarSign,
   EyeOff,
   Image as ImageIcon,
   Layers3,
   type LucideIcon,
-  PieChart,
   RefreshCw,
-  Search,
   Send,
-  Settings,
   Sparkles,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api";
+import {
+  type ActivityEvent,
+  useActivityEvents,
+} from "../../hooks/useActivityEvents";
 import type { InventoryChainFilters } from "../../state/types";
 import { useApp } from "../../state/useApp";
 import { getNativeLogoUrl } from "../inventory/chainConfig";
@@ -47,9 +57,10 @@ import {
 } from "../inventory/constants";
 import { TokenLogo } from "../inventory/TokenLogo";
 import { useInventoryData } from "../inventory/useInventoryData";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 type DashboardWindow = "24h" | "7d" | "30d";
-type WalletRailTab = "tokens" | "defi" | "nfts" | "activity";
+type WalletRailTab = "tokens" | "defi" | "nfts";
 
 const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   ethereum: true,
@@ -58,12 +69,16 @@ const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
   avax: true,
   solana: true,
 };
+const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
 const HIDDEN_TOKEN_IDS_KEY = "milady:wallet:hidden-token-ids:v1";
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
-const VINCENT_APP_NAME = "@elizaos/app-vincent";
-
+const WALLET_SIDEBAR_WIDTH_KEY = "milady:wallets:sidebar:width";
+const WALLET_SIDEBAR_COLLAPSED_KEY = "milady:wallets:sidebar:collapsed";
+const WALLET_SIDEBAR_DEFAULT_WIDTH = 352;
+const WALLET_SIDEBAR_MIN_WIDTH = 240;
+const WALLET_SIDEBAR_MAX_WIDTH = 520;
 interface InventoryPositionAsset {
   id: string;
   kind: "token" | "nft";
@@ -78,6 +93,16 @@ interface PortfolioMover {
   realizedPnlBnb: number;
 }
 
+interface WalletTimelineEntry {
+  id: string;
+  timestamp: number;
+  title: string;
+  detail?: string;
+  href?: string;
+  icon: LucideIcon;
+  tone?: "default" | "ok" | "warn" | "danger";
+}
+
 const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -86,6 +111,13 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
 
 const compactFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
+});
+
+const compactDollarFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 1,
 });
 
 function resolveWalletAddresses({
@@ -150,6 +182,39 @@ function formatUsd(value: number): string {
   return usdFormatter.format(value);
 }
 
+function formatCompactUsd(value: number): string {
+  if (!Number.isFinite(value)) return compactDollarFormatter.format(0);
+  return compactDollarFormatter.format(value);
+}
+
+function formatMarketUsd(value: number): string {
+  if (!Number.isFinite(value)) return usdFormatter.format(0);
+  const fractionDigits =
+    value >= 1_000 ? 0 : value >= 1 ? 2 : value >= 0.01 ? 4 : 6;
+  const minimumFractionDigits = value >= 1 ? Math.min(2, fractionDigits) : 0;
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+function formatPercentDelta(value: number): string {
+  if (!Number.isFinite(value)) return "0.0%";
+  const magnitude = Math.abs(value).toLocaleString("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${magnitude}%`;
+}
+
+function formatProbability(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "No odds";
+  return `${Math.round(value * 100)}%`;
+}
+
 function formatBnb(value: string | null | undefined): string {
   if (!value) return "0 BNB";
   const parsed = Number.parseFloat(value);
@@ -168,15 +233,84 @@ function formatSignedBnb(value: number): string {
   return `${sign}${compactFormatter.format(Math.abs(value))} BNB`;
 }
 
-function shortAddress(address: string): string {
-  if (address.length <= 14) return address;
-  return `${address.slice(0, 6)}...${address.slice(-6)}`;
+function hasClosedTradePnl(
+  profile: WalletTradingProfileResponse | null,
+): boolean {
+  return (profile?.summary.evaluatedTrades ?? 0) > 0;
 }
 
-function providerLabel(provider: string | null | undefined): string {
+function clampWalletSidebarWidth(value: number): number {
+  return Math.min(
+    Math.max(value, WALLET_SIDEBAR_MIN_WIDTH),
+    WALLET_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function loadInitialWalletSidebarWidth(): number {
+  if (typeof window === "undefined") return WALLET_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(WALLET_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) return clampWalletSidebarWidth(parsed);
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return WALLET_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function loadInitialWalletSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(WALLET_SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function useWalletSidebarDesktopMode() {
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return true;
+    }
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      setIsDesktop(true);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(mediaQuery.matches);
+
+    update();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", update);
+      return () => mediaQuery.removeEventListener("change", update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
+
+  return isDesktop;
+}
+
+function providerLabel(
+  provider: string | null | undefined,
+  chain?: "evm" | "bsc" | "solana",
+): string {
   switch (provider) {
     case "eliza-cloud":
-      return "Eliza Cloud";
+      return chain === "solana" ? "Eliza Cloud / Helius" : "Eliza Cloud";
     case "alchemy":
       return "Alchemy";
     case "quicknode":
@@ -188,6 +322,32 @@ function providerLabel(provider: string | null | undefined): string {
     default:
       return "Not configured";
   }
+}
+
+function formatRelativeTimestamp(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  if (diff < 0) return "now";
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function formatMarketEndsAt(value: string | null): string | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatMarketGeneratedAt(value: string): string | null {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return formatRelativeTimestamp(timestamp);
 }
 
 function tradingProfileWindow(
@@ -428,92 +588,78 @@ function TokenIdentityIcon({
   );
 }
 
-function AssetAllocationStrip({ rows }: { rows: TokenRow[] }) {
+function allocationToneClass(index: number): string {
+  return index === 0
+    ? "bg-accent"
+    : index === 1
+      ? "bg-ok"
+      : index === 2
+        ? "bg-warn"
+        : index === 3
+          ? "bg-danger"
+          : "bg-muted";
+}
+
+function AssetAllocationStrip({
+  rows,
+  compact = false,
+}: {
+  rows: TokenRow[];
+  compact?: boolean;
+}) {
   const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
   const total = allocationRows.reduce((sum, row) => sum + row.valueUsd, 0);
   if (total <= 0 || allocationRows.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      <div className="flex h-2 overflow-hidden rounded-full bg-border/40">
+    <div className={cn("space-y-2", compact && "space-y-3")}>
+      <div
+        className={cn(
+          "flex overflow-hidden rounded-full bg-border/40",
+          compact ? "h-2.5" : "h-2",
+        )}
+      >
         {allocationRows.map((row, index) => (
           <span
             key={tokenId(row)}
-            className={cn(
-              "h-full",
-              index === 0
-                ? "bg-accent"
-                : index === 1
-                  ? "bg-ok"
-                  : index === 2
-                    ? "bg-warn"
-                    : index === 3
-                      ? "bg-danger"
-                      : "bg-muted",
-            )}
+            className={cn("h-full", allocationToneClass(index))}
             style={{ width: `${(row.valueUsd / total) * 100}%` }}
             title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
           />
         ))}
       </div>
-      <div className="grid gap-1">
-        {allocationRows.slice(0, 3).map((row) => (
-          <div
-            key={tokenId(row)}
-            className="flex items-center justify-between gap-2 text-[0.68rem]"
-          >
-            <span className="truncate text-muted">{row.symbol}</span>
-            <span className="shrink-0 font-mono text-txt">
-              {formatUsd(row.valueUsd)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function WalletCompositionPanel({ rows }: { rows: TokenRow[] }) {
-  const allocationRows = useMemo(() => assetAllocationRows(rows), [rows]);
-  const compositionRows =
-    allocationRows.length > 0 ? allocationRows : rows.slice(0, 5);
-
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={Wallet}
-        title="No visible tokens"
-        body="No indexed token balances."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <AssetAllocationStrip rows={rows} />
-      <div className="grid gap-2 sm:grid-cols-2">
-        {compositionRows.map((row) => (
-          <div
-            key={tokenId(row)}
-            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 p-3"
-          >
-            <TokenIdentityIcon row={row} size={36} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-txt">
-                {row.symbol}
-              </div>
-              <div className="truncate text-xs-tight text-muted">
-                {formatBalance(row.balance)}
-              </div>
+      {compact ? (
+        <div className="flex flex-wrap gap-2">
+          {allocationRows.slice(0, 3).map((row, index) => (
+            <div
+              key={tokenId(row)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-bg/35 px-2.5 py-1 text-[0.68rem] font-medium text-txt"
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  allocationToneClass(index),
+                )}
+              />
+              <span>{row.symbol}</span>
             </div>
-            {row.valueUsd > 0 ? (
-              <div className="shrink-0 font-mono text-sm font-semibold text-txt">
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-1">
+          {allocationRows.slice(0, 3).map((row) => (
+            <div
+              key={tokenId(row)}
+              className="flex items-center justify-between gap-2 text-[0.68rem]"
+            >
+              <span className="truncate text-muted">{row.symbol}</span>
+              <span className="shrink-0 font-mono text-txt">
                 {formatUsd(row.valueUsd)}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -603,9 +749,11 @@ function PortfolioMoverColumn({
 function PortfolioMoversPanel({
   rows,
   profile,
+  marketOverview,
 }: {
   rows: TokenRow[];
   profile: WalletTradingProfileResponse | null;
+  marketOverview: WalletMarketOverviewResponse | null;
 }) {
   const movers = useMemo(() => portfolioMovers(rows, profile), [rows, profile]);
   const gainers = useMemo(
@@ -634,13 +782,21 @@ function PortfolioMoversPanel({
   );
 
   if (movers.length === 0) {
-    return (
-      <EmptyState
-        icon={TrendingUp}
-        title="No movers"
-        body="No token P&L yet."
-      />
-    );
+    if (marketOverview?.movers.length) {
+      return (
+        <div className="space-y-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            Market-wide
+          </div>
+          <MarketMoverList
+            movers={marketOverview.movers}
+            source={marketOverview.sources.movers}
+          />
+        </div>
+      );
+    }
+
+    return <EmptyState icon={TrendingUp} title="No movers yet" />;
   }
 
   return (
@@ -661,39 +817,6 @@ function PortfolioMoversPanel({
   );
 }
 
-function AddressPill({ label, address }: { label: string; address: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(address).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    });
-  }, [address]);
-
-  return (
-    <Button
-      variant="outline"
-      className="min-w-0 justify-between gap-2 rounded-2xl border-border/35 bg-bg/35 px-3 py-2 text-left"
-      onClick={handleCopy}
-      title={address}
-    >
-      <span className="min-w-0">
-        <span className="block text-[0.65rem] uppercase tracking-[0.08em] text-muted">
-          {label}
-        </span>
-        <span className="block truncate font-mono text-xs text-txt">
-          {shortAddress(address)}
-        </span>
-      </span>
-      {copied ? (
-        <span className="text-xs text-ok">Copied</span>
-      ) : (
-        <Copy className="h-3.5 w-3.5 shrink-0 text-muted" />
-      )}
-    </Button>
-  );
-}
-
 function EmptyState({
   icon: Icon,
   title,
@@ -701,15 +824,450 @@ function EmptyState({
 }: {
   icon: LucideIcon;
   title: string;
-  body: string;
+  body?: string;
 }) {
   return (
     <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-2xl bg-bg/30 px-4 py-6 text-center">
       <Icon className="mb-3 h-5 w-5 text-muted" />
       <div className="text-sm font-semibold text-txt">{title}</div>
-      <div className="mt-1 max-w-sm text-xs-tight text-muted">{body}</div>
+      {body ? (
+        <div className="mt-1 max-w-sm text-xs-tight text-muted">{body}</div>
+      ) : null}
     </div>
   );
+}
+
+function MarketAvatar({
+  imageUrl,
+  label,
+}: {
+  imageUrl: string | null;
+  label: string;
+}) {
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={label}
+        className="h-11 w-11 shrink-0 rounded-2xl object-cover"
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bg/65 text-sm font-semibold text-txt">
+      {label.slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
+
+function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
+  const statusLabel = source.available
+    ? source.stale
+      ? "Cached"
+      : "Live"
+    : "Unavailable";
+
+  return (
+    <a
+      href={source.providerUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="transition-opacity hover:opacity-80"
+    >
+      <span className="inline-flex items-center gap-2 rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="normal-case tracking-normal text-txt">
+          {source.providerName}
+        </span>
+        <span
+          className={cn(
+            source.available
+              ? source.stale
+                ? "text-warn"
+                : "text-ok"
+              : "text-danger",
+          )}
+        >
+          {statusLabel}
+        </span>
+      </span>
+    </a>
+  );
+}
+
+function MarketSectionHeader({
+  icon: Icon,
+  title,
+  source,
+}: {
+  icon: LucideIcon;
+  title: string;
+  source: WalletMarketOverviewSource;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-txt">
+      <Icon className="h-4 w-4 text-accent" />
+      <span>{title}</span>
+      <MarketSourceBadge source={source} />
+    </div>
+  );
+}
+
+function MarketDataUnavailable({
+  title,
+  source,
+}: {
+  title: string;
+  source: WalletMarketOverviewSource;
+}) {
+  return (
+    <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3">
+      <div className="text-sm font-semibold text-danger">
+        {title} unavailable
+      </div>
+      <div className="mt-1 text-xs text-danger/80">
+        {source.error ?? `${source.providerName} did not return live data.`}
+      </div>
+    </div>
+  );
+}
+
+function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
+  const isPositive = snapshot.change24hPct >= 0;
+
+  return (
+    <div className="rounded-[26px] border border-border/30 bg-bg/40 p-4">
+      <div className="flex items-center gap-3">
+        <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            {snapshot.symbol}
+          </div>
+          <div className="truncate text-sm font-medium text-txt">
+            {snapshot.name}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div className="font-mono text-xl font-semibold text-txt">
+          {formatMarketUsd(snapshot.priceUsd)}
+        </div>
+        <div
+          className={cn(
+            "text-sm font-semibold",
+            isPositive ? "text-ok" : "text-danger",
+          )}
+        >
+          {formatPercentDelta(snapshot.change24hPct)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarketPriceGrid({
+  prices,
+  source,
+}: {
+  prices: WalletMarketPriceSnapshot[];
+  source: WalletMarketOverviewSource;
+}) {
+  if (!source.available) {
+    return <MarketDataUnavailable title="Spot prices" source={source} />;
+  }
+
+  if (prices.length === 0) {
+    return <EmptyState icon={BarChart3} title="No price snapshots yet" />;
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {prices.map((snapshot) => (
+        <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
+      ))}
+    </div>
+  );
+}
+
+function MarketMoverList({
+  movers,
+  source,
+}: {
+  movers: WalletMarketMover[];
+  source: WalletMarketOverviewSource;
+}) {
+  if (!source.available) {
+    return <MarketDataUnavailable title="Top movers" source={source} />;
+  }
+
+  if (movers.length === 0) {
+    return <EmptyState icon={TrendingUp} title="No market movers yet" />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {movers.map((mover) => {
+        const isPositive = mover.change24hPct >= 0;
+        return (
+          <div
+            key={mover.id}
+            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-3"
+          >
+            <MarketAvatar imageUrl={mover.imageUrl} label={mover.symbol} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-semibold text-txt">
+                  {mover.symbol}
+                </span>
+                <span className="truncate text-xs-tight text-muted">
+                  {mover.name}
+                </span>
+              </div>
+              {mover.marketCapRank !== null ? (
+                <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted">
+                  Cap rank #{mover.marketCapRank}
+                </div>
+              ) : null}
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="font-mono text-sm font-semibold text-txt">
+                {formatMarketUsd(mover.priceUsd)}
+              </div>
+              <div
+                className={cn(
+                  "text-xs font-semibold",
+                  isPositive ? "text-ok" : "text-danger",
+                )}
+              >
+                {formatPercentDelta(mover.change24hPct)}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MarketPredictionList({
+  predictions,
+  source,
+}: {
+  predictions: WalletMarketPrediction[];
+  source: WalletMarketOverviewSource;
+}) {
+  if (!source.available) {
+    return (
+      <MarketDataUnavailable title="Popular predictions" source={source} />
+    );
+  }
+
+  if (predictions.length === 0) {
+    return <EmptyState icon={Sparkles} title="No predictions yet" />;
+  }
+
+  return (
+    <div className="space-y-2">
+      {predictions.map((prediction) => {
+        const href = prediction.slug
+          ? `https://polymarket.com/event/${prediction.slug}`
+          : null;
+        const endsAtLabel = formatMarketEndsAt(prediction.endsAt);
+        const content = (
+          <div
+            key={prediction.id}
+            className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-3 transition-colors hover:bg-bg/50"
+          >
+            <MarketAvatar
+              imageUrl={prediction.imageUrl}
+              label={prediction.highlightedOutcomeLabel}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="line-clamp-2 text-sm font-medium text-txt">
+                {prediction.question}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted">
+                <span>
+                  {prediction.highlightedOutcomeLabel}{" "}
+                  {formatProbability(prediction.highlightedOutcomeProbability)}
+                </span>
+                <span>{formatCompactUsd(prediction.volume24hUsd)} 24h vol</span>
+                {endsAtLabel ? <span>Ends {endsAtLabel}</span> : null}
+              </div>
+            </div>
+          </div>
+        );
+
+        return href ? (
+          <a key={prediction.id} href={href} target="_blank" rel="noreferrer">
+            {content}
+          </a>
+        ) : (
+          <div key={prediction.id}>{content}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MarketPulseHero({
+  overview,
+  loading,
+  error,
+}: {
+  overview: WalletMarketOverviewResponse | null;
+  loading: boolean;
+  error: string | null;
+}) {
+  const updatedAtLabel = overview
+    ? formatMarketGeneratedAt(overview.generatedAt)
+    : null;
+
+  return (
+    <section className="space-y-6">
+      <div className="max-w-2xl">
+        <h2 className="text-2xl font-semibold leading-tight text-txt md:text-[2rem]">
+          No balances or trade history yet.
+        </h2>
+        <p className="mt-2 max-w-xl text-sm text-muted">
+          {overview?.stale
+            ? "Here's the latest cached market snapshot."
+            : "Here's what the market looks like right now."}
+        </p>
+        {overview ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+            <span
+              className={cn(
+                "rounded-full border px-2.5 py-1",
+                overview.stale
+                  ? "border-warn/30 bg-warn/10 text-warn"
+                  : "border-ok/30 bg-ok/10 text-ok",
+              )}
+            >
+              {overview.stale ? "Cached snapshot" : "Live feeds"}
+            </span>
+            {updatedAtLabel ? <span>Updated {updatedAtLabel}</span> : null}
+          </div>
+        ) : null}
+      </div>
+
+      {overview ? (
+        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.92fr)]">
+          <div className="space-y-4">
+            <div>
+              <MarketSectionHeader
+                icon={BarChart3}
+                title="Spot prices"
+                source={overview.sources.prices}
+              />
+              <MarketPriceGrid
+                prices={overview.prices}
+                source={overview.sources.prices}
+              />
+            </div>
+
+            <div>
+              <MarketSectionHeader
+                icon={TrendingUp}
+                title="Top movers"
+                source={overview.sources.movers}
+              />
+              <MarketMoverList
+                movers={overview.movers}
+                source={overview.sources.movers}
+              />
+            </div>
+          </div>
+
+          <div>
+            <MarketSectionHeader
+              icon={Sparkles}
+              title="Popular predictions"
+              source={overview.sources.predictions}
+            />
+            <MarketPredictionList
+              predictions={overview.predictions}
+              source={overview.sources.predictions}
+            />
+          </div>
+        </div>
+      ) : loading ? (
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          {["btc", "eth", "sol"].map((placeholderId) => (
+            <div
+              key={placeholderId}
+              className="h-28 animate-pulse rounded-[26px] border border-border/30 bg-bg/35"
+            />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="mt-6 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function activityEventMeta(eventType: string): {
+  icon: LucideIcon;
+  tone: WalletTimelineEntry["tone"];
+} {
+  if (eventType === "task_complete" || eventType === "blocked_auto_resolved") {
+    return { icon: Sparkles, tone: "ok" };
+  }
+  if (eventType === "blocked" || eventType === "escalation") {
+    return { icon: Activity, tone: "warn" };
+  }
+  if (eventType === "error") {
+    return { icon: Activity, tone: "danger" };
+  }
+  return { icon: Activity, tone: "default" };
+}
+
+function walletTimelineEntries({
+  profile,
+  events,
+}: {
+  profile: WalletTradingProfileResponse | null;
+  events: ActivityEvent[];
+}): WalletTimelineEntry[] {
+  const swapEntries = (profile?.recentSwaps ?? []).reduce<
+    WalletTimelineEntry[]
+  >((entries, swap) => {
+    const timestamp = Date.parse(swap.createdAt);
+    if (!Number.isFinite(timestamp)) return entries;
+    entries.push({
+      id: `swap:${swap.hash}`,
+      timestamp,
+      title: `${swap.side === "buy" ? "Bought" : "Sold"} ${swap.tokenSymbol}`,
+      detail: `${swap.inputAmount} ${swap.inputSymbol} -> ${swap.outputAmount} ${swap.outputSymbol}`,
+      href: swap.explorerUrl,
+      icon: ArrowLeftRight,
+      tone:
+        swap.status === "success"
+          ? "ok"
+          : swap.status === "pending"
+            ? "warn"
+            : "danger",
+    });
+    return entries;
+  }, []);
+  const agentEntries: WalletTimelineEntry[] = events.map((event) => {
+    const meta = activityEventMeta(event.eventType);
+    return {
+      id: `agent:${event.id}`,
+      timestamp: event.timestamp,
+      title: event.summary,
+      icon: meta.icon,
+      tone: meta.tone,
+    };
+  });
+
+  return [...swapEntries, ...agentEntries]
+    .sort((left, right) => right.timestamp - left.timestamp)
+    .slice(0, 18);
 }
 
 function PnlChart({
@@ -725,7 +1283,7 @@ function PnlChart({
   if (values.length < 2) {
     return (
       <div className="flex h-40 items-center justify-center rounded-3xl bg-bg/30 text-xs text-muted">
-        No P&L series yet
+        No realized P&L yet
       </div>
     );
   }
@@ -748,7 +1306,7 @@ function PnlChart({
       className="h-40 w-full rounded-3xl bg-bg/30"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      aria-label="Agent trading P&L chart"
+      aria-label="Trade P&L chart"
     >
       <polyline
         fill="none"
@@ -763,72 +1321,189 @@ function PnlChart({
   );
 }
 
-function StatCard({
-  label,
+function SummaryChip({
+  icon: Icon,
   value,
-  detail,
-  tone = "text-txt",
+  tone = "default",
+  title,
 }: {
-  label: string;
+  icon: LucideIcon;
   value: string;
-  detail?: string;
-  tone?: string;
+  tone?: "default" | "gain" | "loss";
+  title?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
-        {label}
-      </div>
-      <div className={cn("mt-1 text-xl font-semibold", tone)}>{value}</div>
-      {detail ? (
-        <div className="mt-1 text-xs-tight text-muted">{detail}</div>
-      ) : null}
+    <div
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
+        tone === "gain"
+          ? "border-ok/30 bg-ok/10 text-ok"
+          : tone === "loss"
+            ? "border-danger/30 bg-danger/10 text-danger"
+            : "border-border/35 bg-bg/35 text-txt",
+      )}
+      title={title}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <span>{value}</span>
     </div>
+  );
+}
+
+function WalletRailAddress({
+  address,
+  chains,
+  emptyLabel,
+}: {
+  address: string | null;
+  chains: string[];
+  emptyLabel: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (!address) return;
+    void navigator.clipboard.writeText(address).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  }, [address]);
+
+  return (
+    <button
+      type="button"
+      className="flex w-full min-w-0 items-center justify-between gap-3 py-1 text-left transition-colors hover:text-txt"
+      onClick={handleCopy}
+      disabled={!address}
+      title={address ?? emptyLabel}
+      aria-label={
+        address ? `Copy ${emptyLabel} address` : `${emptyLabel} unavailable`
+      }
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex shrink-0 -space-x-1.5">
+          {chains.map((chain) => (
+            <ChainLogoBadge
+              key={chain}
+              chain={chain}
+              size={18}
+              className="ring-1 ring-bg"
+            />
+          ))}
+        </span>
+        <span
+          className={cn(
+            "truncate font-mono text-xs",
+            address ? "text-txt" : "text-muted",
+          )}
+        >
+          {address ?? emptyLabel}
+        </span>
+      </span>
+      {address ? (
+        copied ? (
+          <span className="shrink-0 text-[0.68rem] font-semibold text-ok">
+            Copied
+          </span>
+        ) : (
+          <Copy className="h-3.5 w-3.5 shrink-0 text-muted" />
+        )
+      ) : null}
+    </button>
+  );
+}
+
+function WalletRailRpcButton({
+  walletConfig,
+  onOpenSettings,
+}: {
+  walletConfig: WalletConfigStatus | null;
+  onOpenSettings: () => void;
+}) {
+  const evmReady = Boolean(walletConfig?.evmBalanceReady);
+  const solanaReady = Boolean(walletConfig?.solanaBalanceReady);
+  const toneClass = !walletConfig
+    ? "bg-muted"
+    : evmReady && solanaReady
+      ? "bg-ok"
+      : evmReady || solanaReady
+        ? "bg-warn"
+        : "bg-danger";
+  const evmProvider = providerLabel(
+    walletConfig?.selectedRpcProviders?.evm,
+    "evm",
+  );
+  const solanaProvider = providerLabel(
+    walletConfig?.selectedRpcProviders?.solana,
+    "solana",
+  );
+
+  return (
+    <button
+      type="button"
+      className="inline-flex h-8 items-center gap-2 rounded-full border border-border/35 bg-bg/35 px-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/55"
+      onClick={onOpenSettings}
+      title={`EVM: ${evmProvider} • Solana: ${solanaProvider}`}
+      aria-label="Open RPC settings"
+    >
+      <span className={cn("h-2 w-2 rounded-full", toneClass)} />
+      RPC
+    </button>
   );
 }
 
 function WalletRailAccount({
   addresses,
+  portfolioValueUsd,
+  walletConfig,
+  onOpenSettings,
+  onRefresh,
+  refreshing,
 }: {
   addresses: { evmAddress: string | null; solanaAddress: string | null };
+  portfolioValueUsd: number;
+  walletConfig: WalletConfigStatus | null;
+  onOpenSettings: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
-  const primaryAddress = addresses.evmAddress ?? addresses.solanaAddress;
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    if (!primaryAddress) return;
-    void navigator.clipboard.writeText(primaryAddress).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    });
-  }, [primaryAddress]);
-
   return (
-    <div className="flex min-w-0 flex-col">
-      <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-txt">
-        <span>Account 1</span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted" />
-      </div>
-      {primaryAddress ? (
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.68rem] text-muted">
-          <span className="truncate">{shortAddress(primaryAddress)}</span>
-          <button
-            type="button"
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:text-txt"
-            onClick={handleCopy}
-            aria-label="Copy primary wallet address"
-            title="Copy primary wallet address"
-          >
-            {copied ? (
-              <span className="text-[0.6rem] text-ok">✓</span>
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
-          </button>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-mono text-xl font-semibold leading-none text-txt">
+          {formatUsd(portfolioValueUsd)}
         </div>
-      ) : (
-        <div className="mt-0.5 text-[0.68rem] text-muted">No address</div>
-      )}
+        <div className="flex items-center gap-2">
+          <WalletRailRpcButton
+            walletConfig={walletConfig}
+            onOpenSettings={onOpenSettings}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full border border-border/35 bg-bg/35 hover:bg-bg/55"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="Refresh wallet"
+            title="Refresh wallet"
+          >
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", refreshing && "animate-spin")}
+            />
+          </Button>
+        </div>
+      </div>
+      <WalletRailAddress
+        address={addresses.evmAddress}
+        chains={SUPPORTED_WALLET_CHAINS.filter((chain) => chain !== "solana")}
+        emptyLabel="No EVM address"
+      />
+      <WalletRailAddress
+        address={addresses.solanaAddress}
+        chains={["solana"]}
+        emptyLabel="No Solana address"
+      />
     </div>
   );
 }
@@ -845,7 +1520,7 @@ function WalletRailActionButton({
   return (
     <button
       type="button"
-      className="flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-bg/55 px-2 py-3 text-xs font-semibold text-txt transition-colors hover:bg-bg/80"
+      className="flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border border-border/35 bg-bg/55 px-2 py-3 text-xs font-semibold text-txt transition-[transform,background-color,border-color,color,box-shadow] duration-150 hover:border-border/55 hover:bg-bg/80 hover:shadow-sm active:scale-[0.99]"
       onClick={onClick}
       aria-label={label}
       title={label}
@@ -863,13 +1538,15 @@ function WalletRailEmpty({
 }: {
   icon: LucideIcon;
   title: string;
-  body: string;
+  body?: string;
 }) {
   return (
     <div className="flex min-h-[13rem] flex-col items-center justify-center px-5 text-center">
       <Icon className="mb-3 h-5 w-5 text-muted" />
       <div className="text-sm font-semibold text-txt">{title}</div>
-      <div className="mt-1 text-xs-tight text-muted">{body}</div>
+      {body ? (
+        <div className="mt-1 text-xs-tight text-muted">{body}</div>
+      ) : null}
     </div>
   );
 }
@@ -941,13 +1618,7 @@ function TokenRailRow({
 
 function RailNftList({ nfts }: { nfts: NftItem[] }) {
   if (nfts.length === 0) {
-    return (
-      <WalletRailEmpty
-        icon={ImageIcon}
-        title="No NFTs"
-        body="No indexed collections."
-      />
-    );
+    return <WalletRailEmpty icon={ImageIcon} title="No NFTs" />;
   }
 
   return (
@@ -989,13 +1660,7 @@ function RailPositionList({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return (
-      <WalletRailEmpty
-        icon={Layers3}
-        title="No DeFi assets"
-        body="No indexed LP tokens or position NFTs."
-      />
-    );
+    return <WalletRailEmpty icon={Layers3} title="No positions" />;
   }
 
   return (
@@ -1036,249 +1701,200 @@ function RailPositionList({
   );
 }
 
-function RailActivityList({
-  profile,
-}: {
-  profile: WalletTradingProfileResponse | null;
-}) {
-  const recent = profile?.recentSwaps ?? [];
-
-  if (recent.length === 0) {
-    return (
-      <WalletRailEmpty
-        icon={Activity}
-        title="No activity"
-        body="No settled wallet actions."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-1">
-      {recent.slice(0, 12).map((swap) => (
-        <a
-          key={swap.hash}
-          href={swap.explorerUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-w-0 items-center justify-between gap-3 rounded-2xl px-2.5 py-2.5 transition-colors hover:bg-bg/55"
-        >
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-txt">
-              {swap.side === "buy" ? "Bought" : "Sold"} {swap.tokenSymbol}
-            </div>
-            <div className="truncate text-xs-tight text-muted">
-              {swap.inputAmount} {swap.inputSymbol} {"->"} {swap.outputAmount}{" "}
-              {swap.outputSymbol}
-            </div>
-          </div>
-          <span
-            className={cn(
-              "shrink-0 rounded-full px-2 py-1 text-[0.62rem] uppercase",
-              swap.status === "success"
-                ? "bg-ok/10 text-ok"
-                : swap.status === "pending"
-                  ? "bg-warn/10 text-warn"
-                  : "bg-danger/10 text-danger",
-            )}
-          >
-            {swap.status}
-          </span>
-        </a>
-      ))}
-    </div>
-  );
-}
-
 function TokenRail({
   rows,
   nfts,
   positions,
   addresses,
   hiddenTokenIds,
-  searchQuery,
+  walletConfig,
   profile,
-  onSearchChange,
   onHideToken,
   onTokenAction,
   onWalletAction,
+  onOpenRpcSettings,
+  onRefresh,
+  refreshing,
+  walletEnabled,
+  onEnableWallet,
 }: {
   rows: TokenRow[];
   nfts: NftItem[];
   positions: InventoryPositionAsset[];
   addresses: { evmAddress: string | null; solanaAddress: string | null };
   hiddenTokenIds: Set<string>;
-  searchQuery: string;
+  walletConfig: WalletConfigStatus | null;
   profile: WalletTradingProfileResponse | null;
-  onSearchChange: (value: string) => void;
   onHideToken: (row: TokenRow) => void;
   onTokenAction: (row: TokenRow, action: "swap" | "bridge") => void;
-  onWalletAction: (action: "buy" | "swap" | "send" | "receive") => void;
+  onWalletAction: (action: "swap" | "send" | "receive") => void;
+  onOpenRpcSettings: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+  walletEnabled: boolean | null;
+  onEnableWallet: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<WalletRailTab>("tokens");
-  const filteredRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (hiddenTokenIds.has(tokenId(row))) return false;
-      if (!tokenHasInventory(row)) return false;
-      if (!query) return true;
-      return (
-        row.symbol.toLowerCase().includes(query) ||
-        row.name.toLowerCase().includes(query) ||
-        row.contractAddress?.toLowerCase().includes(query)
-      );
-    });
-  }, [hiddenTokenIds, rows, searchQuery]);
-  const totalUsd = useMemo(
-    () => filteredRows.reduce((sum, row) => sum + row.valueUsd, 0),
-    [filteredRows],
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    loadInitialWalletSidebarCollapsed,
   );
-  const pnlValue = parseAmount(profile?.summary.realizedPnlBnb);
-  const pnlClassName =
-    pnlValue === null || pnlValue === 0
-      ? "text-muted"
-      : pnlValue > 0
-        ? "text-ok"
-        : "text-danger";
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    loadInitialWalletSidebarWidth,
+  );
+  const isDesktopSidebar = useWalletSidebarDesktopMode();
+  const showIconOnlyTabs =
+    isDesktopSidebar && !sidebarCollapsed && sidebarWidth <= 304;
+  const visibleRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (hiddenTokenIds.has(tokenId(row))) return false;
+        return tokenHasInventory(row);
+      }),
+    [hiddenTokenIds, rows],
+  );
+  const totalUsd = useMemo(
+    () => visibleRows.reduce((sum, row) => sum + row.valueUsd, 0),
+    [visibleRows],
+  );
   const maxPnl = useMemo(
-    () => maxAbsTokenPnl(filteredRows, profile),
-    [filteredRows, profile],
+    () => maxAbsTokenPnl(visibleRows, profile),
+    [visibleRows, profile],
   );
   const tabs: Array<{
     id: WalletRailTab;
     label: string;
-    count: number;
     icon: LucideIcon;
   }> = [
     {
       id: "tokens",
       label: "Tokens",
-      count: filteredRows.length,
       icon: Wallet,
     },
-    { id: "defi", label: "DeFi", count: positions.length, icon: Layers3 },
-    { id: "nfts", label: "NFTs", count: nfts.length, icon: ImageIcon },
-    {
-      id: "activity",
-      label: "Activity",
-      count: profile?.recentSwaps.length ?? 0,
-      icon: Activity,
-    },
+    { id: "defi", label: "DeFi", icon: Layers3 },
+    { id: "nfts", label: "NFTs", icon: ImageIcon },
   ];
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(WALLET_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampWalletSidebarWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(WALLET_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+  const headerContent = (
+    <div className="space-y-4">
+      {visibleRows.length > 0 ? (
+        <AssetAllocationStrip rows={visibleRows} compact />
+      ) : null}
+
+      {walletEnabled === false ? (
+        <Button className="w-full rounded-2xl" onClick={onEnableWallet}>
+          Enable wallet
+        </Button>
+      ) : null}
+
+      <div className="grid grid-cols-3 gap-2">
+        <WalletRailActionButton
+          icon={ArrowLeftRight}
+          label="Swap"
+          onClick={() => onWalletAction("swap")}
+        />
+        <WalletRailActionButton
+          icon={Send}
+          label="Send"
+          onClick={() => onWalletAction("send")}
+        />
+        <WalletRailActionButton
+          icon={ArrowDownLeft}
+          label="Receive"
+          onClick={() => onWalletAction("receive")}
+        />
+      </div>
+
+      <div className="grid min-w-0 grid-cols-3 rounded-2xl bg-bg/45 p-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={cn(
+              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)-4px)] px-3 py-2 text-sm font-semibold transition-colors",
+              showIconOnlyTabs ? "px-2" : undefined,
+              activeTab === tab.id
+                ? "bg-bg text-txt shadow-sm"
+                : "text-muted hover:text-txt",
+            )}
+            onClick={() => setActiveTab(tab.id)}
+            aria-label={tab.label}
+            title={tab.label}
+          >
+            <tab.icon className="h-3.5 w-3.5 shrink-0" />
+            {!showIconOnlyTabs ? (
+              <span className="truncate">{tab.label}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <Sidebar
-      testId="wallet-token-sidebar"
-      className="!w-[22rem] !min-w-[22rem] xl:!w-[23rem] xl:!min-w-[23rem]"
-      bodyClassName="px-2 pb-3"
-      headerClassName="px-4 pb-3 pt-3"
+    <AppPageSidebar
+      testId="wallets-sidebar"
       collapsible
-      contentIdentity={`wallet-${activeTab}`}
-      collapseButtonLeading={<WalletRailAccount addresses={addresses} />}
-      collapseButtonTestId="wallet-token-sidebar-collapse-toggle"
-      expandButtonTestId="wallet-token-sidebar-expand-toggle"
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      resizable
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={WALLET_SIDEBAR_MIN_WIDTH}
+      maxWidth={WALLET_SIDEBAR_MAX_WIDTH}
+      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
+      contentIdentity={`wallets:${activeTab}`}
+      collapseButtonTestId="wallets-sidebar-collapse-toggle"
       collapseButtonAriaLabel="Collapse wallet"
+      expandButtonTestId="wallets-sidebar-expand-toggle"
       expandButtonAriaLabel="Expand wallet"
+      collapsedRailItems={tabs.map((tab) => (
+        <SidebarContent.RailItem
+          key={tab.id}
+          aria-label={tab.label}
+          title={tab.label}
+          active={activeTab === tab.id}
+          onClick={() => setActiveTab(tab.id)}
+        >
+          <tab.icon className="h-4 w-4" />
+        </SidebarContent.RailItem>
+      ))}
       mobileTitle="Wallet"
-      mobileMeta={`${filteredRows.length} tokens`}
-      header={
-        <SidebarHeader>
-          <div className="space-y-5">
-            <div>
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted">
-                Balance
-              </div>
-              <div className="mt-2 font-mono text-[2.35rem] font-semibold leading-none text-txt">
-                {formatUsd(totalUsd)}
-              </div>
-              <div className={cn("mt-2 text-sm font-semibold", pnlClassName)}>
-                {pnlValue !== null ? (
-                  <>
-                    {pnlValue > 0 ? "+" : ""}
-                    {formatBnb(profile?.summary.realizedPnlBnb)}
-                  </>
-                ) : (
-                  `${filteredRows.length} visible tokens`
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2">
-              <WalletRailActionButton
-                icon={DollarSign}
-                label="Buy"
-                onClick={() => onWalletAction("buy")}
-              />
-              <WalletRailActionButton
-                icon={ArrowLeftRight}
-                label="Swap"
-                onClick={() => onWalletAction("swap")}
-              />
-              <WalletRailActionButton
-                icon={Send}
-                label="Send"
-                onClick={() => onWalletAction("send")}
-              />
-              <WalletRailActionButton
-                icon={ArrowDownLeft}
-                label="Receive"
-                onClick={() => onWalletAction("receive")}
-              />
-            </div>
-
-            <div className="flex items-center gap-4 overflow-x-auto text-sm font-semibold">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1.5 border-b-2 pb-2 transition-colors",
-                    activeTab === tab.id
-                      ? "border-accent text-txt"
-                      : "border-transparent text-muted hover:text-txt",
-                  )}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <tab.icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                  {tab.count > 0 ? (
-                    <span className="ml-1 font-mono text-xs text-muted">
-                      {tab.count}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-
-            {activeTab === "tokens" ? (
-              <label className="flex h-10 items-center gap-2 rounded-full bg-bg/55 px-3 text-sm text-muted">
-                <Search className="h-4 w-4 shrink-0" />
-                <input
-                  value={searchQuery}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search tokens"
-                  aria-label="Search tokens"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="min-w-0 flex-1 bg-transparent text-txt outline-none placeholder:text-muted/70"
-                />
-              </label>
-            ) : null}
-          </div>
-        </SidebarHeader>
-      }
+      mobileMeta={null}
     >
-      <SidebarScrollRegion>
+      <div className="shrink-0 px-4 pb-3 pt-0">
+        <WalletRailAccount
+          addresses={addresses}
+          portfolioValueUsd={totalUsd}
+          walletConfig={walletConfig}
+          onOpenSettings={onOpenRpcSettings}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+        />
+        <div className="mt-4">{headerContent}</div>
+      </div>
+      <SidebarScrollRegion className="pt-0">
         <SidebarPanel className="space-y-1">
           {activeTab === "tokens" ? (
-            filteredRows.length === 0 ? (
-              <WalletRailEmpty
-                icon={Wallet}
-                title="No tokens"
-                body="No visible token balances."
-              />
+            visibleRows.length === 0 ? (
+              <WalletRailEmpty icon={Wallet} title="No assets" />
             ) : (
-              filteredRows.map((row) => (
+              visibleRows.map((row) => (
                 <TokenRailRow
                   key={tokenId(row)}
                   row={row}
@@ -1293,116 +1909,106 @@ function TokenRail({
             <RailPositionList positions={positions} />
           ) : activeTab === "nfts" ? (
             <RailNftList nfts={nfts} />
-          ) : (
-            <RailActivityList profile={profile} />
-          )}
+          ) : null}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 }
 
-function RpcStatusCard({
-  walletConfig,
-  onOpenSettings,
+function DashboardSection({
+  title,
+  icon: Icon,
+  action,
+  children,
 }: {
-  walletConfig: WalletConfigStatus | null;
-  onOpenSettings: () => void;
+  title: string;
+  icon: LucideIcon;
+  action?: ReactNode;
+  children: ReactNode;
 }) {
-  const rpcGood = Boolean(
-    walletConfig?.evmBalanceReady && walletConfig?.solanaBalanceReady,
-  );
-  const evmProvider = providerLabel(walletConfig?.selectedRpcProviders?.evm);
-  const solanaProvider = providerLabel(
-    walletConfig?.selectedRpcProviders?.solana,
-  );
-
   return (
-    <button
-      type="button"
-      data-testid="wallet-rpc-dashboard-link"
-      className="group rounded-2xl bg-bg/35 p-3 text-left transition-colors hover:bg-bg/55"
-      onClick={onOpenSettings}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[0.68rem] uppercase tracking-[0.08em] text-muted">
-            RPC
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-txt">
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                rpcGood ? "bg-ok" : "bg-warn",
-              )}
-            />
-            {rpcGood ? "Good" : "Needs attention"}
-          </div>
+    <section className="rounded-[28px] border border-border/30 bg-bg/45 px-5 py-5 md:px-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-txt">
+          <Icon className="h-4 w-4 text-accent" />
+          {title}
         </div>
-        <Settings className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
+        {action}
       </div>
-      <div className="mt-3 grid gap-2 text-xs-tight text-muted sm:grid-cols-2">
-        <div>
-          <span className="font-medium text-txt">EVM</span> {evmProvider}
-        </div>
-        <div>
-          <span className="font-medium text-txt">Solana</span> {solanaProvider}
-        </div>
-      </div>
-    </button>
+      {children}
+    </section>
   );
 }
 
-function ActivityList({
+function ActivityLog({
   profile,
+  events,
 }: {
   profile: WalletTradingProfileResponse | null;
+  events: ActivityEvent[];
 }) {
-  const recent = profile?.recentSwaps ?? [];
+  const entries = useMemo(
+    () => walletTimelineEntries({ profile, events }),
+    [events, profile],
+  );
 
-  if (recent.length === 0) {
-    return (
-      <EmptyState
-        icon={Activity}
-        title="No agent activity yet"
-        body="No settled agent trades."
-      />
-    );
+  if (entries.length === 0) {
+    return <EmptyState icon={Activity} title="No activity yet" />;
   }
 
   return (
     <div className="space-y-2">
-      {recent.slice(0, 6).map((swap) => (
-        <a
-          key={swap.hash}
-          href={swap.explorerUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-between gap-3 rounded-2xl bg-bg/35 px-3 py-2.5 text-sm transition-colors hover:bg-bg/55"
-        >
-          <span className="min-w-0">
-            <span className="block truncate font-medium text-txt">
-              {swap.side === "buy" ? "Bought" : "Sold"} {swap.tokenSymbol}
+      {entries.map((entry) => {
+        const toneClass =
+          entry.tone === "ok"
+            ? "bg-ok/10 text-ok"
+            : entry.tone === "warn"
+              ? "bg-warn/10 text-warn"
+              : entry.tone === "danger"
+                ? "bg-danger/10 text-danger"
+                : "bg-bg/55 text-muted";
+        const body = (
+          <div className="flex min-w-0 items-center gap-3 rounded-2xl bg-bg/35 px-3 py-2.5 text-sm transition-colors hover:bg-bg/55">
+            <span
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                toneClass,
+              )}
+            >
+              <entry.icon className="h-4 w-4" />
             </span>
-            <span className="block truncate text-xs-tight text-muted">
-              {swap.inputAmount} {swap.inputSymbol} {"->"} {swap.outputAmount}{" "}
-              {swap.outputSymbol}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-txt">
+                {entry.title}
+              </span>
+              {entry.detail ? (
+                <span className="block truncate text-xs-tight text-muted">
+                  {entry.detail}
+                </span>
+              ) : null}
             </span>
-          </span>
-          <span
-            className={cn(
-              "shrink-0 rounded-full px-2 py-1 text-[0.65rem] uppercase",
-              swap.status === "success"
-                ? "bg-ok/10 text-ok"
-                : swap.status === "pending"
-                  ? "bg-warn/10 text-warn"
-                  : "bg-danger/10 text-danger",
-            )}
-          >
-            {swap.status}
-          </span>
-        </a>
-      ))}
+            <span className="shrink-0 text-[0.68rem] font-medium text-muted">
+              {formatRelativeTimestamp(entry.timestamp)}
+            </span>
+          </div>
+        );
+
+        if (entry.href) {
+          return (
+            <a
+              key={entry.id}
+              href={entry.href}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {body}
+            </a>
+          );
+        }
+
+        return <div key={entry.id}>{body}</div>;
+      })}
     </div>
   );
 }
@@ -1411,13 +2017,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
   const visible = nfts.slice(0, 6);
 
   if (visible.length === 0) {
-    return (
-      <EmptyState
-        icon={ImageIcon}
-        title="No NFTs detected"
-        body="No indexed NFT collections."
-      />
-    );
+    return <EmptyState icon={ImageIcon} title="No NFTs" />;
   }
 
   return (
@@ -1459,13 +2059,7 @@ function LpPositionsPanel({
   positions: InventoryPositionAsset[];
 }) {
   if (positions.length === 0) {
-    return (
-      <EmptyState
-        icon={Layers3}
-        title="No LP assets detected"
-        body="No indexed LP tokens or position NFTs."
-      />
-    );
+    return <EmptyState icon={Layers3} title="No positions" />;
   }
 
   return (
@@ -1510,59 +2104,6 @@ function LpPositionsPanel({
   );
 }
 
-function VincentPanel({
-  connected,
-  busy,
-  error,
-  onConnect,
-  onOpen,
-}: {
-  connected: boolean;
-  busy: boolean;
-  error: string | null;
-  onConnect: () => void;
-  onOpen: () => void;
-}) {
-  return (
-    <div className="rounded-3xl bg-bg/35 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-            <Sparkles className="h-4 w-4 text-accent" />
-            Vincent trading
-          </div>
-          <div className="mt-1 max-w-xl text-xs-tight text-muted">
-            Hyperliquid and Polymarket execution.
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {connected ? (
-            <Button variant="outline" size="sm" onClick={onOpen}>
-              Open Vincent
-            </Button>
-          ) : (
-            <Button size="sm" onClick={onConnect} disabled={busy}>
-              {busy ? "Connecting" : "Connect Vincent"}
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 flex items-center gap-2 text-xs-tight text-muted">
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full",
-            connected ? "bg-ok" : "bg-muted",
-          )}
-        />
-        {connected ? "Connected to Vincent" : "Not connected"}
-      </div>
-      {error ? (
-        <div className="mt-2 text-xs-tight text-danger">{error}</div>
-      ) : null}
-    </div>
-  );
-}
-
 export function InventoryView() {
   const {
     walletEnabled,
@@ -1573,18 +2114,14 @@ export function InventoryView() {
     walletLoading,
     walletNftsLoading,
     walletError,
+    loadWalletConfig,
     loadBalances,
     loadNfts,
     setState,
     setTab,
     setActionNotice,
-    vincentConnected,
-    vincentLoginBusy,
-    vincentLoginError,
-    handleVincentLogin,
   } = useApp();
-
-  const [searchQuery, setSearchQuery] = useState("");
+  const { events: activityEvents } = useActivityEvents();
   const [hiddenTokenIds, setHiddenTokenIds] = useState<Set<string>>(() =>
     readHiddenTokenIds(),
   );
@@ -1592,40 +2129,94 @@ export function InventoryView() {
     useState<DashboardWindow>("30d");
   const [tradingProfile, setTradingProfile] =
     useState<WalletTradingProfileResponse | null>(null);
+  const [tradingProfileLoading, setTradingProfileLoading] = useState(false);
   const [tradingProfileError, setTradingProfileError] = useState<string | null>(
     null,
   );
+  const [marketOverview, setMarketOverview] =
+    useState<WalletMarketOverviewResponse | null>(null);
+  const [marketOverviewLoading, setMarketOverviewLoading] = useState(false);
+  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(
+    null,
+  );
   const initialLoadRef = useRef(false);
+  const tradingProfileRequestRef = useRef(0);
+  const marketOverviewRequestRef = useRef(0);
+
+  const loadTradingProfile = useCallback(async () => {
+    const requestId = tradingProfileRequestRef.current + 1;
+    tradingProfileRequestRef.current = requestId;
+    setTradingProfileLoading(true);
+    setTradingProfileError(null);
+
+    try {
+      const profile = await client.getWalletTradingProfile(
+        tradingProfileWindow(dashboardWindow),
+      );
+      if (tradingProfileRequestRef.current === requestId) {
+        setTradingProfile(profile);
+      }
+    } catch (cause) {
+      const message =
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Failed to load trading profile.";
+      if (tradingProfileRequestRef.current === requestId) {
+        setTradingProfile(null);
+        setTradingProfileError(message);
+      }
+    } finally {
+      if (tradingProfileRequestRef.current === requestId) {
+        setTradingProfileLoading(false);
+      }
+    }
+  }, [dashboardWindow]);
+
+  const loadMarketOverview = useCallback(async () => {
+    const requestId = marketOverviewRequestRef.current + 1;
+    marketOverviewRequestRef.current = requestId;
+    setMarketOverviewLoading(true);
+    setMarketOverviewError(null);
+
+    try {
+      const overview = await client.getWalletMarketOverview();
+      if (marketOverviewRequestRef.current === requestId) {
+        setMarketOverview(overview);
+      }
+    } catch (cause) {
+      const message =
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Failed to load market overview.";
+      if (marketOverviewRequestRef.current === requestId) {
+        setMarketOverviewError(message);
+      }
+    } finally {
+      if (marketOverviewRequestRef.current === requestId) {
+        setMarketOverviewLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (initialLoadRef.current) return;
     initialLoadRef.current = true;
+    void loadWalletConfig();
+    void loadMarketOverview();
     if (walletEnabled === false) return;
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts, walletEnabled]);
+  }, [
+    loadBalances,
+    loadMarketOverview,
+    loadNfts,
+    loadWalletConfig,
+    walletEnabled,
+  ]);
 
   useEffect(() => {
-    let cancelled = false;
-    setTradingProfileError(null);
-    void client
-      .getWalletTradingProfile(tradingProfileWindow(dashboardWindow))
-      .then((profile) => {
-        if (!cancelled) setTradingProfile(profile);
-      })
-      .catch((cause) => {
-        if (cancelled) return;
-        setTradingProfile(null);
-        const message =
-          cause instanceof Error && cause.message.trim().length > 0
-            ? cause.message.trim()
-            : "Failed to load trading profile.";
-        setTradingProfileError(message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dashboardWindow]);
+    void loadTradingProfile();
+  }, [loadTradingProfile]);
 
   const inventoryData = useInventoryData({
     walletBalances,
@@ -1646,19 +2237,9 @@ export function InventoryView() {
     () => inventoryData.tokenRowsAllChains.filter(tokenHasInventory),
     [inventoryData.tokenRowsAllChains],
   );
-
-  const hiddenCount = useMemo(
-    () =>
-      visibleAssetRows.filter((row) => hiddenTokenIds.has(tokenId(row))).length,
-    [hiddenTokenIds, visibleAssetRows],
-  );
   const displayedAssetRows = useMemo(
     () => visibleAssetRows.filter((row) => !hiddenTokenIds.has(tokenId(row))),
     [hiddenTokenIds, visibleAssetRows],
-  );
-  const displayedTotalUsd = useMemo(
-    () => displayedAssetRows.reduce((sum, row) => sum + row.valueUsd, 0),
-    [displayedAssetRows],
   );
   const lpPositions = useMemo(
     () =>
@@ -1670,12 +2251,19 @@ export function InventoryView() {
   );
 
   const pnlValue = parseAmount(tradingProfile?.summary.realizedPnlBnb);
-  const pnlTone =
-    pnlValue === null || pnlValue === 0
-      ? "text-txt"
-      : pnlValue > 0
-        ? "text-ok"
-        : "text-danger";
+  const showTradePnl = hasClosedTradePnl(tradingProfile);
+  const hasWalletTimeline =
+    activityEvents.length > 0 || (tradingProfile?.recentSwaps.length ?? 0) > 0;
+  const showMarketPulseHero =
+    walletEnabled === false ||
+    (!walletLoading &&
+      !walletNftsLoading &&
+      !tradingProfileLoading &&
+      displayedAssetRows.length === 0 &&
+      lpPositions.length === 0 &&
+      inventoryData.allNfts.length === 0 &&
+      !showTradePnl &&
+      !hasWalletTimeline);
 
   const handleHideToken = useCallback(
     (row: TokenRow) => {
@@ -1689,9 +2277,18 @@ export function InventoryView() {
   );
 
   const handleRefresh = useCallback(() => {
+    void loadWalletConfig();
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts]);
+    void loadTradingProfile();
+    void loadMarketOverview();
+  }, [
+    loadBalances,
+    loadMarketOverview,
+    loadNfts,
+    loadTradingProfile,
+    loadWalletConfig,
+  ]);
 
   const handleTokenAction = useCallback(
     (row: TokenRow, action: "swap" | "bridge") => {
@@ -1707,15 +2304,13 @@ export function InventoryView() {
   );
 
   const handleWalletAction = useCallback(
-    (action: "buy" | "swap" | "send" | "receive") => {
+    (action: "swap" | "send" | "receive") => {
       const prompt =
-        action === "buy"
-          ? "Prepare a token buy. Ask me for the token, amount, funding asset, slippage, and execution venue before any transaction."
-          : action === "swap"
-            ? "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction."
-            : action === "send"
-              ? "Prepare a transfer. Ask me for token, amount, recipient address, and network requirements before any transaction."
-              : "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.";
+        action === "swap"
+          ? "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction."
+          : action === "send"
+            ? "Prepare a transfer. Ask me for token, amount, recipient address, and network requirements before any transaction."
+            : "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.";
       dispatchWalletChatPrefill(prompt);
       setActionNotice(`Prepared ${action} in wallet chat.`);
     },
@@ -1731,17 +2326,10 @@ export function InventoryView() {
 
   const handleEnableWallet = useCallback(() => {
     setState("walletEnabled", true);
+    void loadWalletConfig();
     void loadBalances();
     void loadNfts();
-  }, [loadBalances, loadNfts, setState]);
-
-  const handleOpenVincent = useCallback(() => {
-    setState("activeOverlayApp", VINCENT_APP_NAME);
-  }, [setState]);
-
-  const handleConnectVincent = useCallback(() => {
-    void handleVincentLogin();
-  }, [handleVincentLogin]);
+  }, [loadBalances, loadNfts, loadWalletConfig, setState]);
 
   const tokenSidebar = (
     <TokenRail
@@ -1750,12 +2338,21 @@ export function InventoryView() {
       positions={lpPositions}
       addresses={addresses}
       hiddenTokenIds={hiddenTokenIds}
-      searchQuery={searchQuery}
+      walletConfig={walletConfig}
       profile={tradingProfile}
-      onSearchChange={setSearchQuery}
       onHideToken={handleHideToken}
       onTokenAction={handleTokenAction}
       onWalletAction={handleWalletAction}
+      onOpenRpcSettings={handleOpenRpcSettings}
+      onRefresh={handleRefresh}
+      refreshing={
+        walletLoading ||
+        walletNftsLoading ||
+        tradingProfileLoading ||
+        marketOverviewLoading
+      }
+      walletEnabled={walletEnabled}
+      onEnableWallet={handleEnableWallet}
     />
   );
 
@@ -1769,197 +2366,99 @@ export function InventoryView() {
       mobileSidebarLabel="Wallet"
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-7 px-5 py-6 sm:px-7 lg:px-9">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              <Wallet className="h-4 w-4" />
-              Wallet
-            </div>
-            <h1 className="mt-1 text-3xl font-semibold tracking-normal text-txt">
-              Dashboard
-            </h1>
-            <div className="mt-1 text-sm text-muted">
-              {displayedAssetRows.length} tokens, {inventoryData.allNfts.length}{" "}
-              NFTs
-              {hiddenCount > 0 ? `, ${hiddenCount} hidden` : ""}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="rounded-full"
-              onClick={handleRefresh}
-              disabled={walletLoading || walletNftsLoading}
-            >
-              <RefreshCw
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  (walletLoading || walletNftsLoading) && "animate-spin",
-                )}
-              />
-              Refresh
-            </Button>
-            {walletEnabled === false ? (
-              <Button className="rounded-full" onClick={handleEnableWallet}>
-                Enable wallet
-              </Button>
-            ) : null}
-          </div>
-        </header>
-
         {walletError ? (
           <div className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
             {walletError}
           </div>
         ) : null}
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
-          <div className="min-w-0">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
-              Current balance
-            </div>
-            <div className="mt-2 font-mono text-5xl font-semibold tracking-normal text-txt">
-              {formatUsd(displayedTotalUsd)}
-            </div>
-            <div className={cn("mt-3 text-base font-semibold", pnlTone)}>
-              {pnlValue !== null ? (
-                <>
-                  {pnlValue > 0 ? "+" : ""}
-                  {formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-                </>
-              ) : (
-                "No agent P&L loaded"
-              )}
-            </div>
-          </div>
-
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
-            <StatCard
-              label="Agent P&L"
-              value={formatBnb(tradingProfile?.summary.realizedPnlBnb)}
-              detail={`${tradingProfile?.summary.totalSwaps ?? 0} trades`}
-              tone={pnlTone}
-            />
-            <StatCard
-              label="Settled"
-              value={`${tradingProfile?.summary.successCount ?? 0}/${tradingProfile?.summary.settledCount ?? 0}`}
-              detail={`${tradingProfile?.summary.buyCount ?? 0} buys • ${tradingProfile?.summary.sellCount ?? 0} sells`}
-            />
-            <StatCard
-              label="Assets"
-              value={String(displayedAssetRows.length)}
-              detail={
-                hiddenCount > 0
-                  ? `${hiddenCount} hidden`
-                  : `${inventoryData.allNfts.length} NFTs`
-              }
-            />
-          </div>
-        </section>
-
-        <section className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <RpcStatusCard
-            walletConfig={walletConfig}
-            onOpenSettings={handleOpenRpcSettings}
+        {showMarketPulseHero ? (
+          <MarketPulseHero
+            overview={marketOverview}
+            loading={marketOverviewLoading}
+            error={marketOverviewError}
           />
-          <div className="grid gap-2 sm:grid-cols-2">
-            {addresses.evmAddress ? (
-              <AddressPill label="EVM" address={addresses.evmAddress} />
-            ) : null}
-            {addresses.solanaAddress ? (
-              <AddressPill label="Solana" address={addresses.solanaAddress} />
-            ) : null}
-            {!addresses.evmAddress && !addresses.solanaAddress ? (
-              <EmptyState
-                icon={Wallet}
-                title="No wallet addresses"
-                body="Configure wallet keys in settings."
-              />
-            ) : null}
+        ) : null}
+
+        {!showMarketPulseHero ? (
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1.22fr)_minmax(20rem,0.8fr)]">
+            <div className="space-y-8">
+              <DashboardSection
+                title="P&L"
+                icon={BarChart3}
+                action={
+                  <div className="flex rounded-full bg-bg/40 p-1">
+                    {DASHBOARD_WINDOWS.map((window) => (
+                      <button
+                        key={window}
+                        type="button"
+                        className={cn(
+                          "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                          dashboardWindow === window
+                            ? "bg-accent text-[color:var(--accent-foreground)]"
+                            : "text-muted hover:text-txt",
+                        )}
+                        onClick={() => setDashboardWindow(window)}
+                      >
+                        {window}
+                      </button>
+                    ))}
+                  </div>
+                }
+              >
+                {(showTradePnl && pnlValue !== null) ||
+                displayedAssetRows.length > 0 ? (
+                  <div className="mb-4 flex flex-wrap items-center gap-3">
+                    {showTradePnl && pnlValue !== null ? (
+                      <SummaryChip
+                        icon={pnlValue >= 0 ? TrendingUp : TrendingDown}
+                        value={`${pnlValue > 0 ? "+" : ""}${formatBnb(tradingProfile?.summary.realizedPnlBnb)}`}
+                        tone={pnlValue >= 0 ? "gain" : "loss"}
+                        title="Realized P&L"
+                      />
+                    ) : null}
+                    {displayedAssetRows.length > 0 ? (
+                      <div className="min-w-0 flex-1">
+                        <AssetAllocationStrip
+                          rows={displayedAssetRows}
+                          compact
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <PnlChart profile={tradingProfile} />
+                {tradingProfileError ? (
+                  <div className="mt-3 text-xs-tight text-danger">
+                    {tradingProfileError}
+                  </div>
+                ) : null}
+              </DashboardSection>
+
+              <DashboardSection title="Activity" icon={Activity}>
+                <ActivityLog profile={tradingProfile} events={activityEvents} />
+              </DashboardSection>
+            </div>
+
+            <div className="space-y-8">
+              <DashboardSection title="Movers" icon={TrendingUp}>
+                <PortfolioMoversPanel
+                  rows={displayedAssetRows}
+                  profile={tradingProfile}
+                  marketOverview={marketOverview}
+                />
+              </DashboardSection>
+
+              <DashboardSection title="LP positions" icon={Layers3}>
+                <LpPositionsPanel positions={lpPositions} />
+              </DashboardSection>
+
+              <DashboardSection title="NFTs" icon={ImageIcon}>
+                <NftPreview nfts={inventoryData.allNfts} />
+              </DashboardSection>
+            </div>
           </div>
-        </section>
-
-        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.22fr)_minmax(20rem,0.8fr)]">
-          <div className="space-y-8">
-            <section className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                  <BarChart3 className="h-4 w-4 text-accent" />
-                  Agent P&L
-                </div>
-                <div className="flex rounded-full bg-bg/35 p-1">
-                  {DASHBOARD_WINDOWS.map((window) => (
-                    <button
-                      key={window}
-                      type="button"
-                      className={cn(
-                        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                        dashboardWindow === window
-                          ? "bg-accent text-[color:var(--accent-foreground)]"
-                          : "text-muted hover:text-txt",
-                      )}
-                      onClick={() => setDashboardWindow(window)}
-                    >
-                      {window}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <PnlChart profile={tradingProfile} />
-              {tradingProfileError ? (
-                <div className="text-xs-tight text-danger">
-                  {tradingProfileError}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <Activity className="h-4 w-4 text-accent" />
-                Agent Activity
-              </div>
-              <ActivityList profile={tradingProfile} />
-            </section>
-          </div>
-
-          <div className="space-y-8">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <PieChart className="h-4 w-4 text-accent" />
-                Portfolio
-              </div>
-              <WalletCompositionPanel rows={displayedAssetRows} />
-              <PortfolioMoversPanel
-                rows={displayedAssetRows}
-                profile={tradingProfile}
-              />
-            </section>
-
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <Layers3 className="h-4 w-4 text-accent" />
-                LP positions
-              </div>
-              <LpPositionsPanel positions={lpPositions} />
-            </section>
-
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-                <ImageIcon className="h-4 w-4 text-accent" />
-                NFTs
-              </div>
-              <NftPreview nfts={inventoryData.allNfts} />
-            </section>
-
-            <VincentPanel
-              connected={vincentConnected}
-              busy={vincentLoginBusy}
-              error={vincentLoginError}
-              onConnect={handleConnectVincent}
-              onOpen={handleOpenVincent}
-            />
-          </div>
-        </div>
+        ) : null}
       </div>
     </PageLayout>
   );

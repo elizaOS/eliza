@@ -39,21 +39,27 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     }
   }, []);
 
+  const syncPairingState = useCallback(
+    (nextPairing: LifeOpsSignalPairingStatus | null) => {
+      pairingSessionIdRef.current = nextPairing?.sessionId ?? null;
+      setPairingStatus(nextPairing);
+    },
+    [],
+  );
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const nextStatus = await client.getSignalConnectorStatus(side);
       setStatus(nextStatus);
-      if (nextStatus.pairing) {
-        setPairingStatus(nextStatus.pairing);
-      }
+      syncPairingState(nextStatus.pairing);
       setError(null);
     } catch (cause) {
       setError(formatError(cause, "Signal connector status failed to load."));
     } finally {
       setLoading(false);
     }
-  }, [side]);
+  }, [side, syncPairingState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,9 +69,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         const nextStatus = await client.getSignalConnectorStatus(side);
         if (cancelled) return;
         setStatus(nextStatus);
-        if (nextStatus.pairing) {
-          setPairingStatus(nextStatus.pairing);
-        }
+        syncPairingState(nextStatus.pairing);
         setError(null);
       } catch (cause) {
         if (cancelled) return;
@@ -77,7 +81,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     return () => {
       cancelled = true;
     };
-  }, [side]);
+  }, [side, syncPairingState]);
 
   useEffect(() => {
     return () => {
@@ -112,6 +116,12 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       setError(null);
       const result = await client.startLifeOpsSignalPairing({ side });
       pairingSessionIdRef.current = result.sessionId;
+      setPairingStatus({
+        sessionId: result.sessionId,
+        state: "generating_qr",
+        qrDataUrl: null,
+        error: null,
+      });
       pollPairingStatus(result.sessionId);
       return result.sessionId;
     } catch (cause) {
@@ -150,13 +160,14 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         provider: "signal",
       });
       setStatus(nextStatus);
+      syncPairingState(nextStatus.pairing);
       setError(null);
     } catch (cause) {
       setError(formatError(cause, "Signal connector disconnect failed."));
     } finally {
       setActionPending(false);
     }
-  }, [side, clearPairingPoll]);
+  }, [side, clearPairingPoll, syncPairingState]);
 
   return {
     status,

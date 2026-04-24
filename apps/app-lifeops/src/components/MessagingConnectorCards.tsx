@@ -3,6 +3,7 @@ import {
   Button,
   client,
   isElectrobunRuntime,
+  openExternalUrl,
   useApp,
 } from "@elizaos/app-core";
 import type {
@@ -15,6 +16,7 @@ import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
 import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
+import { useWhatsAppConnector } from "../hooks/useWhatsAppConnector.js";
 
 function isIosRuntime(): boolean {
   if (
@@ -28,6 +30,12 @@ function isIosRuntime(): boolean {
   ).Capacitor;
   return capacitor?.getPlatform?.() === "ios";
 }
+
+const BLUEBUBBLES_INSTALL_URL = "https://bluebubbles.app/install/";
+const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+const WHATSAPP_SETUP_GUIDE_URL =
+  "https://docs.eliza.ai/plugin-setup-guide#whatsapp";
 
 function ConnectorCardShell({
   icon,
@@ -101,6 +109,19 @@ function TelegramIcon({ className }: { className?: string }) {
       className={className}
     >
       <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+    </svg>
+  );
+}
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M19.11 4.93A9.9 9.9 0 0 0 12.04 2c-5.5 0-9.96 4.45-9.96 9.94 0 1.75.46 3.47 1.34 4.99L2 22l5.23-1.37a9.97 9.97 0 0 0 4.81 1.23h.01c5.49 0 9.95-4.45 9.95-9.94a9.87 9.87 0 0 0-2.89-6.99ZM12.05 20.2h-.01a8.25 8.25 0 0 1-4.2-1.14l-.3-.18-3.1.81.83-3.02-.2-.31a8.22 8.22 0 0 1-1.28-4.42 8.29 8.29 0 0 1 8.3-8.27c2.22 0 4.31.86 5.87 2.42a8.2 8.2 0 0 1 2.43 5.85 8.29 8.29 0 0 1-8.34 8.26Zm4.53-6.18c-.25-.12-1.48-.73-1.71-.82-.23-.08-.39-.12-.56.12-.16.24-.64.82-.78.98-.14.16-.29.18-.54.06-.25-.12-1.05-.39-2-.24-.74.33-1.37-1.11-1.52-1.35-.14-.24-.02-.37.11-.49.11-.11.25-.29.37-.43.12-.14.16-.24.24-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.77-1.84-.2-.48-.4-.41-.56-.42h-.48c-.16 0-.43.06-.65.31-.22.24-.85.83-.85 2.03 0 1.19.87 2.35.99 2.51.12.16 1.7 2.59 4.12 3.63.58.25 1.03.4 1.38.51.58.18 1.1.15 1.52.09.46-.07 1.48-.61 1.69-1.2.21-.59.21-1.09.15-1.2-.06-.11-.22-.18-.47-.3Z" />
     </svg>
   );
 }
@@ -279,8 +300,17 @@ export function SignalConnectorCard() {
           disabled={busy}
           onClick={() => void signal.startPairing()}
         >
-          <QrCode className="mr-1.5 h-3.5 w-3.5" />
-          Link Signal
+          {signal.actionPending ? (
+            <>
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              Starting...
+            </>
+          ) : (
+            <>
+              <QrCode className="mr-1.5 h-3.5 w-3.5" />
+              Link Signal
+            </>
+          )}
         </Button>
       ) : null}
 
@@ -399,11 +429,8 @@ export function DiscordConnectorCard() {
 
   const handleOpenDesktopDiscord = useCallback(async () => {
     try {
-      await client.openBrowserWorkspaceTab({
-        url: "https://discord.com/channels/@me",
-        title: "Discord",
-        show: true,
-      });
+      await client.startDiscordConnector({ side: "owner" });
+      await discord.refresh();
       setTab("browser");
       setActionNotice(
         "Opened Discord in Milady Desktop Browser.",
@@ -419,7 +446,7 @@ export function DiscordConnectorCard() {
         4200,
       );
     }
-  }, [setActionNotice, setTab]);
+  }, [discord, setActionNotice, setTab]);
 
   return (
     <ConnectorCardShell
@@ -505,10 +532,7 @@ export function DiscordConnectorCard() {
       ) : null}
 
       {!available ? (
-        <div className="text-xs text-muted">
-          Discord needs either Your Browser connected through the LifeOps
-          extension or Milady Desktop Browser.
-        </div>
+        <div className="text-xs text-muted">Connect browser.</div>
       ) : null}
 
       {!dmInboxVisible && browserAccess.length > 0 ? (
@@ -796,6 +820,86 @@ export function TelegramConnectorCard() {
   );
 }
 
+export function WhatsAppConnectorCard() {
+  const whatsapp = useWhatsAppConnector();
+  const { setActionNotice } = useApp();
+  const isConnected = whatsapp.status?.connected === true;
+  const busy = whatsapp.loading;
+  const statusLabel = busy
+    ? "Checking..."
+    : isConnected
+      ? "Configured"
+      : "Needs setup";
+  const statusVariant: "ok" | "muted" | "warning" = isConnected
+    ? "ok"
+    : busy
+      ? "warning"
+      : "muted";
+
+  const handleOpenSetupGuide = useCallback(async () => {
+    try {
+      await openExternalUrl(WHATSAPP_SETUP_GUIDE_URL);
+      setActionNotice("Opened the WhatsApp setup guide.", "success", 3600);
+    } catch (cause) {
+      setActionNotice(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Milady could not open the WhatsApp setup guide.",
+        "error",
+        5000,
+      );
+    }
+  }, [setActionNotice]);
+
+  return (
+    <ConnectorCardShell
+      icon={<WhatsAppIcon className="h-5 w-5 shrink-0 text-muted" />}
+      platform="WhatsApp"
+      status={statusLabel}
+      statusVariant={statusVariant}
+    >
+      <div className="space-y-2">
+        <div className="text-xs text-muted">
+          {isConnected
+            ? "LifeOps can send WhatsApp messages through the configured Business Cloud API credentials. Inbound delivery still comes from your webhook setup."
+            : "Configure WhatsApp Business Cloud API access to let LifeOps send messages and receive inbound webhook events."}
+        </div>
+        {whatsapp.status?.phoneNumberId ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <Phone className="h-3.5 w-3.5" />
+            Phone number ID: {whatsapp.status.phoneNumberId}
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2">
+          {!isConnected ? (
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={() => void handleOpenSetupGuide()}
+            >
+              Open setup guide
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={busy}
+            onClick={() => void whatsapp.refresh()}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {whatsapp.error ? (
+        <div className="text-xs text-danger">{whatsapp.error}</div>
+      ) : null}
+    </ConnectorCardShell>
+  );
+}
+
 function formatIMessageSendMode(
   sendMode: "cli" | "private-api" | "apple-script" | "none",
 ): string {
@@ -826,22 +930,33 @@ function formatIMessageDiagnostic(code: string): string {
 
 export function IMessageConnectorCard() {
   const imessage = useIMessageConnector();
+  const { setActionNotice } = useApp();
   const iosRuntime = isIosRuntime();
   const status = imessage.status;
-  const busy = imessage.loading;
+  const installingImsg = imessage.actionPending === "install_imsg";
+  const busy = imessage.loading || installingImsg;
   const isConnected = status?.connected === true;
+  const hostPlatform = status?.hostPlatform ?? "unknown";
+  const runningOnMacHost = hostPlatform === "darwin";
   const isDegraded =
     isConnected &&
     status?.bridgeType === "bluebubbles" &&
     (status.sendMode === "apple-script" || status.helperConnected === false);
+  const needsFullDiskAccess = imessage.fullDiskAccess?.status === "revoked";
+  const showFullDiskAccessControls =
+    runningOnMacHost &&
+    needsFullDiskAccess &&
+    (status?.bridgeType === "imsg" || !isConnected);
+  const canOfferLocalMacSetup = !isConnected && runningOnMacHost;
   const bridgeLabel =
     status?.bridgeType === "bluebubbles"
       ? "BlueBubbles"
       : status?.bridgeType === "imsg"
         ? "imsg"
         : null;
-  const statusLabel =
-    busy && !status
+  const statusLabel = installingImsg
+    ? "Installing imsg..."
+    : busy && !status
       ? "Checking..."
       : isConnected
         ? bridgeLabel === "BlueBubbles" && status?.sendMode === "apple-script"
@@ -852,11 +967,70 @@ export function IMessageConnectorCard() {
         : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isDegraded
     ? "warning"
-    : isConnected
-      ? "ok"
-      : busy && !status
-        ? "warning"
-        : "muted";
+    : showFullDiskAccessControls
+      ? "warning"
+      : isConnected
+        ? "ok"
+        : busy && !status
+          ? "warning"
+          : "muted";
+
+  const handleInstallImsg = useCallback(async () => {
+    try {
+      const result = await imessage.installImsg();
+      setActionNotice(
+        `Installed imsg at ${result.cliPath} and restarted the agent.`,
+        "success",
+        4200,
+      );
+    } catch (cause) {
+      setActionNotice(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Milady could not install imsg automatically.",
+        "error",
+        5000,
+      );
+    }
+  }, [imessage, setActionNotice]);
+
+  const handleOpenBlueBubblesSetup = useCallback(async () => {
+    try {
+      await openExternalUrl(BLUEBUBBLES_INSTALL_URL);
+      setActionNotice(
+        "Opened the official BlueBubbles setup guide for this Mac.",
+        "success",
+        3600,
+      );
+    } catch (cause) {
+      setActionNotice(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Milady could not open the BlueBubbles setup guide.",
+        "error",
+        5000,
+      );
+    }
+  }, [setActionNotice]);
+
+  const handleOpenFullDiskAccess = useCallback(async () => {
+    try {
+      await openExternalUrl(MACOS_FULL_DISK_ACCESS_SETTINGS_URL);
+      setActionNotice(
+        "Opened macOS Full Disk Access settings.",
+        "success",
+        3600,
+      );
+    } catch (cause) {
+      setActionNotice(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Milady could not open Full Disk Access settings.",
+        "error",
+        5000,
+      );
+    }
+  }, [setActionNotice]);
 
   return (
     <ConnectorCardShell
@@ -875,8 +1049,76 @@ export function IMessageConnectorCard() {
               : "LifeOps is using the Mac-side imsg bridge for iMessage access."
             : iosRuntime
               ? "iMessage access must run through a paired Mac or BlueBubbles bridge. Connect this iPhone to a remote Mac or cloud backend that has iMessage configured."
-              : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
+              : canOfferLocalMacSetup
+                ? imessage.shellEnabled === false
+                  ? "Shell access is off. Enable it or set up BlueBubbles."
+                  : "Install imsg locally or set up BlueBubbles."
+                : "No iMessage bridge detected."}
         </div>
+        {canOfferLocalMacSetup ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy || imessage.shellEnabled === false}
+              onClick={() => void handleInstallImsg()}
+            >
+              {installingImsg ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Installing imsg
+                </>
+              ) : (
+                "Install imsg"
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={() => void handleOpenBlueBubblesSetup()}
+            >
+              Set Up BlueBubbles
+            </Button>
+            {showFullDiskAccessControls ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={busy}
+                onClick={() => void handleOpenFullDiskAccess()}
+              >
+                Open Full Disk Access
+              </Button>
+            ) : null}
+          </div>
+        ) : showFullDiskAccessControls ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={busy}
+              onClick={() => void handleOpenFullDiskAccess()}
+            >
+              Open Full Disk Access
+            </Button>
+          </div>
+        ) : null}
+        {canOfferLocalMacSetup && imessage.shellEnabled === false ? (
+          <div className="text-xs text-muted">
+            Enable Shell access in Milady Settings if you want the app to run
+            the `imsg` install for you automatically.
+          </div>
+        ) : null}
+        {showFullDiskAccessControls ? (
+          <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+            Full Disk Access is still blocked for the process running Milady, so
+            reading `~/Library/Messages/chat.db` may stay limited until you
+            allow it in System Settings → Privacy & Security → Full Disk Access.
+          </div>
+        ) : null}
         {status?.accountHandle ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Phone className="h-3.5 w-3.5" />
@@ -911,7 +1153,7 @@ export function IMessageConnectorCard() {
             {busy ? (
               <>
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                Refreshing
+                {installingImsg ? "Working..." : "Refreshing"}
               </>
             ) : (
               "Refresh"
@@ -951,6 +1193,7 @@ export function MessagingConnectorGrid() {
       <div className="space-y-1">
         <SignalConnectorCard />
         <DiscordConnectorCard />
+        <WhatsAppConnectorCard />
         <TelegramConnectorCard />
         <IMessageConnectorCard />
       </div>

@@ -117,4 +117,24 @@ describe("buildConversationsSidebarModel — Terminal channel", () => {
     expect(values).toContain(ALL_CONNECTORS_SOURCE_SCOPE);
     expect(values).toContain("discord");
   });
+
+  it("hides page-scoped conversations from the Messages scope", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [
+        makeConversation("main-1"),
+        {
+          ...makeConversation("page-settings"),
+          metadata: { scope: "page-settings" },
+          title: "Settings",
+        },
+      ],
+      inboxChats: [],
+      searchQuery: "",
+      sourceScope: ELIZA_SOURCE_SCOPE,
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+
+    expect(model.rows.map((row) => row.id)).toEqual(["main-1"]);
+  });
 });

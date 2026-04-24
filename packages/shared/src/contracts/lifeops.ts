@@ -484,6 +484,7 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "x_post_sent",
   "seeding_offered",
   "circadian_event_emitted",
+  "manual_override_accepted",
 ] as const;
 export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
 
@@ -1625,6 +1626,8 @@ export interface LifeOpsCalendarEvent {
   metadata: Record<string, unknown>;
   syncedAt: string;
   updatedAt: string;
+  /** Set on merged feeds so the UI can show which calendar an event came from. */
+  calendarSummary?: string;
   /** Set when aggregating across multiple Google accounts. */
   grantId?: string;
   /** Set when aggregating across multiple Google accounts. */
@@ -1640,12 +1643,63 @@ export interface LifeOpsCalendarFeed {
   syncedAt: string | null;
 }
 
+/**
+ * Summary of one Google Calendar the user has access to (from calendarList.list).
+ * `includeInFeed` reflects whether the user has opted this calendar into the
+ * aggregated sidebar feed / briefing. Defaults to true for every calendar the
+ * user can see — opt-out, never opt-in, so new calendars are not silently
+ * hidden from the agent's picture of the user's life.
+ */
+export interface LifeOpsCalendarSummary {
+  provider: "google";
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  accountEmail: string | null;
+  calendarId: string;
+  summary: string;
+  description: string | null;
+  primary: boolean;
+  accessRole: string;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  timeZone: string | null;
+  selected: boolean;
+  includeInFeed: boolean;
+}
+
+export interface ListLifeOpsCalendarsRequest {
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+}
+
+export interface ListLifeOpsCalendarsResponse {
+  calendars: LifeOpsCalendarSummary[];
+}
+
+export interface SetLifeOpsCalendarIncludedRequest {
+  calendarId: string;
+  includeInFeed: boolean;
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+}
+
+export interface SetLifeOpsCalendarIncludedResponse {
+  calendar: LifeOpsCalendarSummary;
+}
+
 export interface GetLifeOpsCalendarFeedRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
   /** Target a specific Google account by grant ID (multi-account). */
   grantId?: string;
   calendarId?: string;
+  /**
+   * Internal/agent override: when no calendarId is specified, include every
+   * authorized calendar instead of only the user's feed-enabled subset.
+   */
+  includeHiddenCalendars?: boolean;
   timeMin?: string;
   timeMax?: string;
   timeZone?: string;
@@ -2116,9 +2170,13 @@ export interface LifeOpsCalendarEventReminderOverride {
 }
 
 export interface LifeOpsCalendarEventUpdate {
+  side?: LifeOpsConnectorSide;
+  grantId?: string;
+  calendarId?: string;
   title?: string;
   startAt?: string;
   endAt?: string;
+  timeZone?: string;
   notes?: string;
   reminders?: LifeOpsCalendarEventReminderOverride[];
 }

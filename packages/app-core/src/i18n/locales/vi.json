@@ -2104,6 +2104,8 @@
   "settings.resetEverything": "Reset tất cả",
   "settings.rpcConfiguration": "Cấu hình RPC",
   "settings.sections.advanced.desc": "Xuất, nhập, và thao tác nguy hiểm",
+  "settings.sections.backupReset.desc": "Sao lưu agent, khôi phục từ bản sao lưu, hoặc xoá sạch và bắt đầu lại",
+  "settings.sections.backupReset.label": "Sao lưu & Đặt lại",
   "settings.sections.aimodel.desc": "Nhà cung cấp và cài đặt model",
   "settings.sections.aimodel.label": "Mô hình AI",
   "settings.sections.appearance.desc": "Gói nội dung, avatar VRM, hình nền và giao diện",

@@ -205,6 +205,16 @@ function formatEventWindow(
   )}`;
 }
 
+function eventOriginLabel(event: LifeOpsCalendarEvent): string | null {
+  const parts = [event.calendarSummary, event.accountEmail].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.join(" · ");
+}
+
 function toLocalDateKey(date: Date, timeZone: string): string {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -1154,7 +1164,7 @@ function CalendarColumn({
                       ) : null}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <AccountBadge label={event.accountEmail} />
+                      <AccountBadge label={eventOriginLabel(event)} />
                     </div>
                   </button>
                 ))}
@@ -1183,7 +1193,9 @@ function CalendarColumn({
               {workspace.selectedCalendarEvent.conferenceLink}
             </div>
           ) : null}
-          <AccountBadge label={workspace.selectedCalendarEvent.accountEmail} />
+          <AccountBadge
+            label={eventOriginLabel(workspace.selectedCalendarEvent)}
+          />
         </div>
       ) : null}
 

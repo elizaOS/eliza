@@ -8,6 +8,8 @@ import {
 
 const GOOGLE_CALENDAR_EVENTS_ENDPOINT =
   "https://www.googleapis.com/calendar/v3/calendars";
+const GOOGLE_CALENDAR_LIST_ENDPOINT =
+  "https://www.googleapis.com/calendar/v3/users/me/calendarList";
 
 function hasExplicitDateTimeOffset(dateTime: string): boolean {
   return /(?:[zZ]|[+-]\d{2}:\d{2})$/.test(dateTime);
@@ -274,6 +276,77 @@ export async function fetchGoogleCalendarEvents(args: {
     }
   }
   return events;
+}
+
+export interface GoogleCalendarListEntry {
+  calendarId: string;
+  summary: string;
+  description: string | null;
+  primary: boolean;
+  accessRole: string;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  timeZone: string | null;
+  selected: boolean;
+}
+
+interface GoogleCalendarListApiEntry {
+  id?: string;
+  summary?: string;
+  summaryOverride?: string;
+  description?: string;
+  primary?: boolean;
+  accessRole?: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  timeZone?: string;
+  selected?: boolean;
+  deleted?: boolean;
+  hidden?: boolean;
+}
+
+export async function listGoogleCalendars(args: {
+  accessToken: string;
+}): Promise<GoogleCalendarListEntry[]> {
+  const params = new URLSearchParams({
+    minAccessRole: "reader",
+    showDeleted: "false",
+    showHidden: "false",
+    fields:
+      "items(id,summary,summaryOverride,description,primary,accessRole,backgroundColor,foregroundColor,timeZone,selected,deleted,hidden)",
+  });
+  const response = await googleApiFetch(
+    `${GOOGLE_CALENDAR_LIST_ENDPOINT}?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+  );
+  const parsed = (await response.json()) as {
+    items?: GoogleCalendarListApiEntry[];
+  };
+  const entries: GoogleCalendarListEntry[] = [];
+  for (const item of parsed.items ?? []) {
+    if (item.deleted || item.hidden) continue;
+    const calendarId = item.id?.trim();
+    if (!calendarId) continue;
+    const summary = (item.summaryOverride?.trim() ||
+      item.summary?.trim() ||
+      calendarId);
+    entries.push({
+      calendarId,
+      summary,
+      description: item.description?.trim() || null,
+      primary: Boolean(item.primary),
+      accessRole: item.accessRole?.trim() || "reader",
+      backgroundColor: item.backgroundColor?.trim() || null,
+      foregroundColor: item.foregroundColor?.trim() || null,
+      timeZone: item.timeZone?.trim() || null,
+      selected: item.selected !== false,
+    });
+  }
+  return entries;
 }
 
 export async function fetchGoogleCalendarEvent(args: {

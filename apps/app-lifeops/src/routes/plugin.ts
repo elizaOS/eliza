@@ -101,6 +101,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
+  { type: "GET", path: "/api/lifeops/calendar/calendars" },
+  { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
   { type: "GET", path: "/api/lifeops/gmail/search" },
@@ -130,6 +132,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x/start" },
+  { type: "GET", path: "/api/lifeops/connectors/x/success", public: true },
   { type: "POST", path: "/api/lifeops/connectors/x/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
@@ -158,6 +161,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
   { type: "POST", path: "/api/lifeops/connectors/discord/connect" },
   { type: "POST", path: "/api/lifeops/connectors/discord/disconnect" },
+  // WhatsApp
+  { type: "GET", path: "/api/lifeops/connectors/whatsapp/status" },
   { type: "GET", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channels/phone-consent" },
@@ -177,11 +182,20 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/schedule/observations" },
   { type: "GET", path: "/api/lifeops/schedule/merged-state" },
   { type: "GET", path: "/api/lifeops/schedule/inspection" },
+  { type: "GET", path: "/api/lifeops/schedule/summary" },
   { type: "GET", path: "/api/lifeops/permissions/full-disk-access" },
   { type: "GET", path: "/api/lifeops/screen-time/summary" },
   { type: "GET", path: "/api/lifeops/screen-time/breakdown" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
+  { type: "GET", path: "/api/lifeops/payments/dashboard" },
+  { type: "GET", path: "/api/lifeops/payments/sources" },
+  { type: "POST", path: "/api/lifeops/payments/sources" },
+  { type: "POST", path: "/api/lifeops/payments/import-csv" },
+  { type: "GET", path: "/api/lifeops/payments/transactions" },
+  { type: "GET", path: "/api/lifeops/payments/recurring" },
+  { type: "POST", path: "/api/lifeops/email-unsubscribe/scan" },
+  { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },
   { type: "GET", path: "/api/lifeops/definitions" },
@@ -196,6 +210,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
 // ---------------------------------------------------------------------------
 
 const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+  // /api/lifeops/payments/sources/:sourceId
+  { type: "DELETE", path: "/api/lifeops/payments/sources/:sourceId" },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },

@@ -128,19 +128,19 @@ export function toSearchResults<T extends RegistryPluginInfo>(
  * Resolve a declared `heroImage` value to a URL the client can load.
  *
  * Accepts three shapes:
- *   - null / empty → null (no hero image)
+ *   - null / empty → `/api/apps/hero/<slug>` for generated fallback art
  *   - absolute URL / data URL / already-rooted `/api/...` or `/...` path → returned as-is
  *   - package-relative path (e.g. `"assets/hero.png"`) → rewritten to
  *     `/api/apps/hero/<slug>` so the runtime can stream it from the app's
- *     local package directory
+ *     local package directory or synthesize fallback art
  */
 export function resolveAppHeroImage(
   packageName: string,
   heroImage: string | null | undefined,
 ): string | null {
   const value = heroImage?.trim();
-  if (!value) return null;
   if (
+    value &&
     /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
       value,
     )

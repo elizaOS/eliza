@@ -4,7 +4,6 @@ import {
   MetaPill,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
@@ -15,6 +14,7 @@ import { client, type QueryResult } from "../../api";
 import { useApp } from "../../state";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 type MediaType = "all" | "image" | "video" | "audio";
 
@@ -284,7 +284,7 @@ export function MediaGalleryView({
     null;
 
   const mediaSidebar = (
-    <Sidebar testId="media-sidebar">
+    <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
         <div className="space-y-3 pt-4">
           {leftNav}
@@ -392,7 +392,7 @@ export function MediaGalleryView({
           )}
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

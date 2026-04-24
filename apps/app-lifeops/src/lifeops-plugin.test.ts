@@ -105,20 +105,25 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/website-blocker/status");
   });
 
-  it("Google callback and success routes are public", async () => {
+  it("connector callback and success routes are public", async () => {
     const routes = await loadRoutes();
 
     const callbackRoute = routes.find(
       (r) => r.path === "/api/lifeops/connectors/google/callback",
     );
-    const successRoute = routes.find(
+    const googleSuccessRoute = routes.find(
       (r) => r.path === "/api/lifeops/connectors/google/success",
+    );
+    const xSuccessRoute = routes.find(
+      (r) => r.path === "/api/lifeops/connectors/x/success",
     );
 
     expect(callbackRoute).toBeDefined();
     expect(callbackRoute?.public).toBe(true);
-    expect(successRoute).toBeDefined();
-    expect(successRoute?.public).toBe(true);
+    expect(googleSuccessRoute).toBeDefined();
+    expect(googleSuccessRoute?.public).toBe(true);
+    expect(xSuccessRoute).toBeDefined();
+    expect(xSuccessRoute?.public).toBe(true);
   });
 
   it("handlers delegate to the underlying handler modules", async () => {

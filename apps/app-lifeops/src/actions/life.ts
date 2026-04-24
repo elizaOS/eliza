@@ -3103,6 +3103,7 @@ export const lifeAction: Action & {
               ? "this week"
               : "today";
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
+          includeHiddenCalendars: true,
           timeMin: range.timeMin,
           timeMax: range.timeMax,
         });
@@ -3265,13 +3266,18 @@ export const lifeAction: Action & {
             !successCriteria ||
             !supportStrategy
           ) {
+            // A clarification request is a successful outcome from the
+            // agent's point of view — the agent chose to ask instead of
+            // invent an ungrounded goal. Callers rely on `success: true +
+            // data.noop: true` to distinguish a deliberate clarify from a
+            // handler error.
             return {
-              success: false,
+              success: true,
               text:
                 llmPlan.response ??
                 "What would count as success for that goal, and over what time window?",
               values: {
-                success: false,
+                success: true,
                 error: "NOOP_GOAL_UNGROUNDED",
                 noop: true,
                 suggestedOperation: "create_goal",

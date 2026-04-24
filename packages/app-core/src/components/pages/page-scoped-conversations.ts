@@ -11,6 +11,7 @@ export type PageScope =
   | "page-apps"
   | "page-phone"
   | "page-lifeops"
+  | "page-settings"
   | "page-wallet";
 
 export const PAGE_SCOPES: readonly PageScope[] = [
@@ -20,6 +21,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-apps",
   "page-phone",
   "page-lifeops",
+  "page-settings",
   "page-wallet",
 ] as const;
 
@@ -29,7 +31,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 7;
+export const PAGE_SCOPE_VERSION = 11;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -47,21 +49,21 @@ export interface PageScopeIntroCopy {
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
-    body: "Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about tabs, forms, pages, or browser setup.",
+    body: "Use me to work with the browser workspace. User Tabs are writable; Agent Tabs and App Tabs are read-only context. I can open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open everywhere else.",
     systemAddendum:
-      "You are answering inside the Browser view. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot a page, show or hide tabs, close tabs, explain what is open, and help connect Agent Browser Bridge for real Chrome control. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
+      "You are answering inside the Browser view. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
   },
   "page-character": {
     title: "Character chat",
-    body: "Use me to tune identity, bio, lore, style, examples, voice, avatar, greeting animation, and knowledge. Recommended: describe the personality or behavior you want, and I'll point to the right panel or draft exact copy. Ask me what to change next.",
+    body: "Use me to work with the Character hub. I can help you review Overview, refine Personality, manage Knowledge, inspect Experience, and explore Relationships. Recommended: tell me what you want to change or understand, and I'll point to the right section or draft exact copy. Ask me what to update next.",
     systemAddendum:
-      "You are answering inside the Character view. The user can edit identity fields, bio, lore, style, message examples, voice provider and voice id, avatar/VRM selection, greeting animation, and knowledge documents. The user edits these through UI panels (CharacterIdentityPanel, voice config, CharacterStylePanel, CharacterExamplesPanel, KnowledgeView). Recommend the next character-editing step based on live character state. Offer to answer questions or draft wording for any field. There is no general 'change my voice' action — guide the user to the relevant panel. Reference live character state when answering.",
+      "You are answering inside the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Help the user navigate those sections, recommend the next character step from live state, and draft exact wording when they need copy. Use Overview for high-level status and identity framing, Personality for editable persona/voice fields, Knowledge for uploaded reference material, Experience for surfaced learnings, and Relationships for contact and graph context. Guide the user to the relevant section instead of inventing a generic setter action. Reference live character state when answering.",
   },
   "page-automations": {
-    title: "Automations chat",
-    body: "Use me to create triggers, tasks, and n8n workflows; choose cron or interval schedules; enable, disable, inspect, or explain what is running. Recommended: tell me the event, schedule, and desired result, and I'll choose the right automation shape. Ask me to draft or troubleshoot one.",
+    title: "Automations",
+    body: "Create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
     systemAddendum:
-      "You are answering inside the Automations view. The user can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode, max runs, and enabled state; browse templates; inspect existing tasks, triggers, and workflows; and troubleshoot failed runs. Recommend whether a request should become a trigger, task, or workflow based on the user's goal. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks/triggers/workflows in context by display name. Never fabricate automation names.",
+      "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
   },
   "page-apps": {
     title: "Apps chat",
@@ -77,9 +79,15 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-lifeops": {
     title: "LifeOps chat",
-    body: "Use me to plan and inspect today, goals, reminders, calendar, messages, mail, sleep, screen time, social, connectors, and LifeOps setup. Recommended: start with capability readiness and the current overview, then ask me to create or adjust the next reminder, goal, reply draft, or schedule block. Ask me to explain any LifeOps item or turn it into an action.",
+    body: "Ask about the visible LifeOps item or the next action you want handled.",
     systemAddendum:
       "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
+  },
+  "page-settings": {
+    title: "Settings chat",
+    body: "Use me to tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Recommended: describe the capability you want to enable or troubleshoot, and I'll point to the right section or explain the tradeoffs.",
+    systemAddendum:
+      "You are answering inside the Settings view. The user can change cloud account state, AI models and providers, permissions, wallet RPC providers, feature toggles, appearance, updates, and connector-related configuration. Recommend the smallest concrete settings change that fits the user's goal and reference the visible section when possible. Ask follow-up questions when a setting affects security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   },
   "page-wallet": {
     title: "Wallet chat",
@@ -96,6 +104,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-apps": "Apps",
   "page-phone": "Phone",
   "page-lifeops": "LifeOps",
+  "page-settings": "Settings",
   "page-wallet": "Wallet",
 };
 
@@ -107,6 +116,7 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
  */
 export function getBrowserPageScopeCopy(state: {
   browserBridgeConnected: boolean;
+  browserBridgeInstallAvailable?: boolean;
   browserLabel?: string | null;
   profileLabel?: string | null;
 }): PageScopeIntroCopy {
@@ -116,15 +126,23 @@ export function getBrowserPageScopeCopy(state: {
     const where = profile ? `${browser} / ${profile}` : browser;
     return {
       title: "Browser chat",
-      body: `Agent Browser Bridge is connected in ${where}. Use me to open, navigate, refresh, snapshot, show, hide, or close tabs and explain what is currently open. Recommended: tell me the site or goal, and I'll choose the right browser action. Ask me questions about any current tab or page.`,
-      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. The user can ask you to open tabs, navigate URLs, refresh pages, snapshot pages, show or hide tabs, close tabs, inspect current browser state, and answer questions about the current page. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+      body: `Agent Browser Bridge is connected in ${where}. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Use me to open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open in any tab.`,
+      systemAddendum: `You are answering inside the Browser view. Agent Browser Bridge is connected in ${where}. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on the live tab list. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.`,
+    };
+  }
+  if (state.browserBridgeInstallAvailable === false) {
+    return {
+      title: "Browser chat",
+      body: "Use me with the embedded browser in this view. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Real Chrome control is unavailable in the current runtime, so I can help with embedded User Tabs, navigation, forms, and page questions only.",
+      systemAddendum:
+        "You are answering inside the Browser view. Agent Browser Bridge is not available in this runtime, so real Chrome control cannot be enabled from this session. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs remain read-only context. Help the user with the embedded browser only: opening User Tabs, navigating URLs, refreshing pages, and answering questions about the current embedded page or tab list. Do not recommend installing Agent Browser Bridge or promise real-browser tab control.",
     };
   }
   return {
     title: "Install Agent Browser Bridge",
-    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. Until it connects, I can still help with the embedded browser. Recommended: click Install Agent Browser Bridge, load the extension, then ask me to open a site or explain the tab list.",
+    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Until it connects, I can still help with the embedded browser.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
+      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
   };
 }
 
@@ -200,6 +218,24 @@ function findPageScopedConversation(
   )[0];
 }
 
+function findPageScopedConversations(
+  conversations: Conversation[],
+  scope: PageScope,
+  pageId?: string,
+): Conversation[] {
+  return conversations
+    .filter(
+      (conversation) =>
+        conversation.metadata?.scope === scope &&
+        (conversation.metadata?.pageId ?? undefined) === (pageId ?? undefined),
+    )
+    .sort(
+      (left, right) =>
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
+    );
+}
+
 export async function resolvePageScopedConversation(params: {
   scope: PageScope;
   title?: string;
@@ -227,6 +263,34 @@ export async function resolvePageScopedConversation(params: {
       metadata: desiredMetadata,
     });
     return conversation;
+  }
+
+  const { conversation } = await client.createConversation(title, {
+    metadata: desiredMetadata,
+  });
+  return conversation;
+}
+
+export async function resetPageScopedConversation(params: {
+  scope: PageScope;
+  title?: string;
+  pageId?: string;
+}): Promise<Conversation> {
+  const { scope, pageId } = params;
+  const title = params.title?.trim() || PAGE_SCOPE_DEFAULT_TITLE[scope];
+  const desiredMetadata = buildPageScopedConversationMetadata(scope, {
+    pageId,
+  });
+
+  const { conversations } = await client.listConversations();
+  const matching = findPageScopedConversations(conversations, scope, pageId);
+
+  if (matching.length > 0) {
+    await Promise.allSettled(
+      matching.map((conversation) =>
+        client.deleteConversation(conversation.id),
+      ),
+    );
   }
 
   const { conversation } = await client.createConversation(title, {

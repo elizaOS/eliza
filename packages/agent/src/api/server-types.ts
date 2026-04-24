@@ -40,6 +40,7 @@ export type ConversationScope =
   | "page-apps"
   | "page-phone"
   | "page-lifeops"
+  | "page-settings"
   | "page-wallet"
   | "page-browser"
   | "page-automations";

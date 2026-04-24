@@ -1,7 +1,6 @@
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
-import type { KnowledgeDocument } from "../../api/client-types-chat";
 import {
   APP_EMOTE_EVENT,
   dispatchWindowEvent,
@@ -11,18 +10,17 @@ import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useApp } from "../../state/useApp";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
-  EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
 } from "../../voice/types";
-import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
+import { CharacterHubView } from "./CharacterHubView";
 import {
   CharacterRoster,
   type CharacterRosterEntry,
@@ -40,8 +38,6 @@ import {
   buildVoiceConfigForCharacterEntry,
   type CharacterEditorVoiceConfig,
   DEFAULT_ELEVEN_FAST_MODEL,
-  EDGE_VOICE_GROUPS,
-  ELEVENLABS_VOICE_GROUPS,
 } from "./character-voice-config";
 
 /* Inline SVG icon helpers – avoids adding lucide-react as a dependency. */
@@ -76,18 +72,6 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-const ResetIcon = ({ className }: { className?: string }) => (
-  <Icon className={className} d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />
-);
-
-const ChevronIcon = ({ className }: { className?: string }) => (
-  <Icon className={className} d="M6 9l6 6 6-6" />
-);
-
-const PlusIcon = ({ className }: { className?: string }) => (
-  <Icon className={className} d="M12 5v14M5 12h14" />
-);
-
 import {
   Button,
   Dialog,
@@ -96,11 +80,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  PageLayout,
-  Sidebar,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
 } from "@elizaos/ui";
 import {
   type ChangeEvent,
@@ -220,14 +199,6 @@ export function CharacterEditor({
 
   /** ElevenLabs voices are available only when direct key or cloud voice routing is active. */
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
-  const elevenLabsVoiceGroups = ELEVENLABS_VOICE_GROUPS.map((group) => ({
-    label: t(group.labelKey, { defaultValue: group.defaultLabel }),
-    items: group.items,
-  }));
-  const edgeVoiceGroups = EDGE_VOICE_GROUPS.map((group) => ({
-    label: t(group.labelKey, { defaultValue: group.defaultLabel }),
-    items: group.items,
-  }));
 
   useEffect(() => {
     void loadCharacter();
@@ -265,22 +236,6 @@ export function CharacterEditor({
     | null
   >(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [knowledgeExpanded, setKnowledgeExpanded] = useState(true);
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<
-    KnowledgeDocument[]
-  >([]);
-  const [selectedKnowledgeDocumentId, setSelectedKnowledgeDocumentId] =
-    useState<string | null>(null);
-  const leftPanelRef = useRef<HTMLDivElement>(null);
-  const rightPanelRef = useRef<HTMLDivElement>(null);
-  const standaloneScrollRef = useRef<HTMLDivElement | null>(null);
-  const sectionRefs = useRef<Record<CharacterEditorPage, HTMLElement | null>>({
-    personality: null,
-    style: null,
-    examples: null,
-    knowledge: null,
-  });
-  const isProgrammaticScrollRef = useRef(false);
 
   // Sync rightTab with activePage (for overlay mode's right panel toggle)
   useEffect(() => {
@@ -294,76 +249,6 @@ export function CharacterEditor({
       setActivePage("knowledge");
     }
   }, [tab, activePage]);
-
-  useEffect(() => {
-    const container = standaloneScrollRef.current;
-    if (!container) return;
-
-    const updateActiveFromScroll = () => {
-      if (isProgrammaticScrollRef.current) return;
-      const containerTop = container.getBoundingClientRect().top;
-      const activationOffset = 80;
-      let current: CharacterEditorPage = "personality";
-      for (const page of CHARACTER_EDITOR_PAGES) {
-        const node = sectionRefs.current[page];
-        if (!node) continue;
-        const sectionTop = node.getBoundingClientRect().top - containerTop;
-        if (sectionTop - activationOffset <= 0) current = page;
-      }
-      setActivePage((prev) => (prev === current ? prev : current));
-    };
-
-    updateActiveFromScroll();
-    container.addEventListener("scroll", updateActiveFromScroll, {
-      passive: true,
-    });
-    return () =>
-      container.removeEventListener("scroll", updateActiveFromScroll);
-  }, []);
-
-  const scrollToSection = useCallback((page: CharacterEditorPage) => {
-    const node = sectionRefs.current[page];
-    if (!node) {
-      setActivePage(page);
-      return;
-    }
-    isProgrammaticScrollRef.current = true;
-    setActivePage(page);
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 600);
-  }, []);
-
-  const handleKnowledgeDocumentsChange = useCallback(
-    (documents: KnowledgeDocument[]) => {
-      setKnowledgeDocuments(documents);
-      setSelectedKnowledgeDocumentId((current) => {
-        if (current && documents.some((doc) => doc.id === current)) {
-          return current;
-        }
-        return documents[0]?.id ?? null;
-      });
-    },
-    [],
-  );
-
-  const handleKnowledgeDocumentSelect = useCallback(
-    (documentId: string) => {
-      setKnowledgeExpanded(true);
-      setSelectedKnowledgeDocumentId(documentId);
-      scrollToSection("knowledge");
-    },
-    [scrollToSection],
-  );
-
-  const handleKnowledgeUploadClick = useCallback(() => {
-    setKnowledgeExpanded(true);
-    scrollToSection("knowledge");
-    window.requestAnimationFrame(() => {
-      document.getElementById("ce-knowledge-upload-input")?.click();
-    });
-  }, [scrollToSection]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -423,16 +308,10 @@ export function CharacterEditor({
     usingAudioAnalysis: voice.usingAudioAnalysis,
     onSpeakingChange: handleChatAvatarSpeakingChange,
   });
-  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [, setVoiceLoading] = useState(false);
   const [voiceSaving, setVoiceSaving] = useState(false);
   const [voiceSaveError, setVoiceSaveError] = useState<string | null>(null);
-  const [voiceTesting, setVoiceTesting] = useState(false);
-  const [voiceTestAudio, setVoiceTestAudio] = useState<HTMLAudioElement | null>(
-    null,
-  );
-  const [selectedVoicePresetId, setSelectedVoicePresetId] = useState<
-    string | null
-  >(null);
+  const [, setSelectedVoicePresetId] = useState<string | null>(null);
   const [voiceSelectionLocked] = useState(false);
   const activeCharacterIdRef = useRef<string | null>(null);
 
@@ -669,34 +548,6 @@ export function CharacterEditor({
   }, []);
 
   /* ── Voice helpers ──────────────────────────────────────────────── */
-  const handleSelectPreset = useCallback(
-    (preset: (typeof PREMADE_VOICES)[0] | (typeof EDGE_BACKUP_VOICES)[0]) => {
-      setSelectedVoicePresetId(preset.id);
-      const isEdgeVoice = EDGE_BACKUP_VOICES.some((v) => v.id === preset.id);
-      setVoiceConfig((prev) => {
-        if (isEdgeVoice) {
-          const existingEdge = (prev.edge ?? {}) as Record<
-            string,
-            string | undefined
-          >;
-          return {
-            ...prev,
-            provider: "edge" as const,
-            edge: { ...existingEdge, voice: preset.voiceId },
-          };
-        }
-        const existing =
-          typeof prev.elevenlabs === "object" ? prev.elevenlabs : {};
-        return {
-          ...prev,
-          provider: "elevenlabs" as const,
-          elevenlabs: { ...existing, voiceId: preset.voiceId },
-        };
-      });
-    },
-    [],
-  );
-
   const applyVoicePresetForEntry = useCallback(
     (entry: CharacterRosterEntry) => {
       setVoiceSaveError(null);
@@ -757,13 +608,6 @@ export function CharacterEditor({
       if (isNewCharacter && entry.catchphrase) {
         // Immediate cleanup of old character's speech
         voice.stopSpeaking();
-        if (voiceTesting) {
-          if (voiceTestAudio) {
-            voiceTestAudio.pause();
-            voiceTestAudio.currentTime = 0;
-          }
-          setVoiceTesting(false);
-        }
 
         // Queue greeting animation to play after the VRM teleport-in dissolve finishes
         pendingGreetingRef.current = {
@@ -784,8 +628,6 @@ export function CharacterEditor({
       setState,
       voiceSelectionLocked,
       voice,
-      voiceTestAudio,
-      voiceTesting,
     ],
   );
 
@@ -796,10 +638,10 @@ export function CharacterEditor({
         setPendingNavigation({ kind: "page", page });
         return;
       }
-      scrollToSection(page);
+      setActivePage(page);
       if (page === "style" || page === "examples") setRightTab(page);
     },
-    [activePage, hasPendingChanges, scrollToSection],
+    [activePage, hasPendingChanges],
   );
 
   const requestCharacterSelection = useCallback(
@@ -964,14 +806,6 @@ export function CharacterEditor({
 
   /* ── Voice test ─────────────────────────────────────────────────── */
 
-  const handleStopTest = useCallback(() => {
-    if (voiceTestAudio) {
-      voiceTestAudio.pause();
-      voiceTestAudio.currentTime = 0;
-    }
-    setVoiceTesting(false);
-  }, [voiceTestAudio]);
-
   /* ── Persist voice config ───────────────────────────────────────── */
   const persistVoiceConfig = useCallback(async () => {
     setVoiceSaveError(null);
@@ -1091,7 +925,7 @@ export function CharacterEditor({
       setPendingNavigation(null);
 
       if (target.kind === "page") {
-        scrollToSection(target.page);
+        setActivePage(target.page);
         if (target.page === "style" || target.page === "examples") {
           setRightTab(target.page);
         }
@@ -1100,12 +934,7 @@ export function CharacterEditor({
 
       commitCharacterSelection(target.entry, true);
     },
-    [
-      commitCharacterSelection,
-      handleSaveAll,
-      pendingNavigation,
-      scrollToSection,
-    ],
+    [commitCharacterSelection, handleSaveAll, pendingNavigation],
   );
 
   useEffect(() => {
@@ -1244,13 +1073,7 @@ export function CharacterEditor({
   );
 
   /* ── Derived ────────────────────────────────────────────────────── */
-  const activeVoicePreset =
-    PREMADE_VOICES.find((p) => p.id === selectedVoicePresetId) ?? null;
-  const voiceSelectValue = selectedVoicePresetId ?? null;
   const combinedSaveError = voiceSaveError ?? characterSaveError;
-  const hasStandaloneHeaderFeedback = Boolean(
-    characterSaveSuccess || combinedSaveError,
-  );
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
@@ -1401,29 +1224,15 @@ export function CharacterEditor({
               className="flex flex-col flex-1 min-h-0 overflow-hidden"
             >
               <div
-                ref={leftPanelRef}
                 className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "personality" ? " hidden" : ""}`}
               >
                 <CharacterIdentityPanel
-                  d={d}
                   bioText={bioText}
-                  voiceSelectValue={voiceSelectValue}
-                  activeVoicePreset={activeVoicePreset}
-                  voiceTesting={voiceTesting}
-                  voiceLoading={voiceLoading}
-                  useElevenLabs={useElevenLabs}
-                  elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                  edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
-                  handleSelectPreset={handleSelectPreset}
-                  handleStopTest={handleStopTest}
-                  setVoiceTesting={setVoiceTesting}
-                  setVoiceTestAudio={setVoiceTestAudio}
                   t={t}
                 />
               </div>
               <div
-                ref={rightPanelRef}
                 className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "style" && activePage !== "examples" ? " hidden" : ""}`}
               >
                 <div
@@ -1466,379 +1275,32 @@ export function CharacterEditor({
           </div>
         )}
 
-        {/* ── Standalone page: standard PageLayout + Sidebar */}
+        {/* ── Standalone page: character hub */}
         {!sceneOverlay && (
-          <PageLayout
-            className="h-full"
-            contentPadding={false}
-            contentInnerClassName="flex w-full min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5 lg:px-6"
-            footer={
-              <WidgetHost
-                slot="character"
-                className="px-4 pt-3 sm:px-5 lg:px-6"
-              />
-            }
-            sidebar={
-              <Sidebar
-                testId="character-editor-sidebar"
-                collapsible={false}
-                contentIdentity="character-editor"
-                className="!mt-0 !h-full !rounded-none !border-0 !border-r !border-r-border/30 !bg-transparent !bg-none !shadow-none !backdrop-blur-none !ring-0"
-                footerClassName="!justify-start !px-1 !pb-2 !pt-1"
-                footer={
-                  <div className="flex w-full flex-col gap-2">
-                    {hasStandaloneHeaderFeedback ? (
-                      <div className="flex flex-col gap-1">
-                        {characterSaveSuccess && (
-                          <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-2 py-1 text-2xs font-semibold text-status-success">
-                            {characterSaveSuccess}
-                          </span>
-                        )}
-                        {combinedSaveError && (
-                          <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-                            {combinedSaveError}
-                          </span>
-                        )}
-                      </div>
-                    ) : null}
-                    <Button
-                      type="button"
-                      className="h-9 w-full justify-center rounded-sm text-sm font-semibold tracking-[0.02em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
-                      style={
-                        hasPendingChanges
-                          ? accentGradientStyle
-                          : idleSaveBtnStyle
-                      }
-                      disabled={
-                        characterSaving ||
-                        voiceSaving ||
-                        !hasPendingChanges ||
-                        !currentCharacter
-                      }
-                      onClick={() => void handleSaveAll()}
-                    >
-                      {characterSaving || voiceSaving
-                        ? t("charactereditor.Saving", {
-                            defaultValue: "saving...",
-                          })
-                        : t("charactereditor.Save", { defaultValue: "Save" })}
-                    </Button>
-                    <div className="flex items-center gap-0.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                        onClick={() =>
-                          document
-                            .getElementById("ce-vrm-upload-standalone")
-                            ?.click()
-                        }
-                        title={t("charactereditor.UploadVRM", {
-                          defaultValue: "Upload VRM",
-                        })}
-                        aria-label={t("charactereditor.UploadVRM", {
-                          defaultValue: "Upload VRM",
-                        })}
-                      >
-                        <UploadIcon className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                        onClick={handleExportCharacter}
-                        disabled={!currentCharacter}
-                        title={t("charactereditor.ExportJSON", {
-                          defaultValue: "Export JSON",
-                        })}
-                        aria-label={t("charactereditor.ExportJSON", {
-                          defaultValue: "Export JSON",
-                        })}
-                      >
-                        <DownloadIcon className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="ml-auto h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                        onClick={() => setResetConfirmOpen(true)}
-                        disabled={
-                          !activeCharacterRosterEntry || !currentCharacter
-                        }
-                        title={t("charactereditor.Reset", {
-                          defaultValue: "Reset",
-                        })}
-                        aria-label={t("charactereditor.Reset", {
-                          defaultValue: "Reset",
-                        })}
-                      >
-                        <ResetIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                }
-              >
-                <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
-                    <nav
-                      className="flex flex-col gap-1"
-                      aria-label="Character editor sections"
-                    >
-                      {CHARACTER_EDITOR_PAGES.filter(
-                        (page) => page !== "knowledge",
-                      ).map((page) => {
-                        const label =
-                          page === "personality"
-                            ? t("charactereditor.TabPersonality", {
-                                defaultValue: "Personality",
-                              })
-                            : page === "style"
-                              ? t("charactereditor.TabStyles", {
-                                  defaultValue: "Style",
-                                })
-                              : page === "examples"
-                                ? t("charactereditor.TabExamples", {
-                                    defaultValue: "Examples",
-                                  })
-                                : t("charactereditor.TabKnowledge", {
-                                    defaultValue: "Knowledge",
-                                  });
-                        return (
-                          <SidebarContent.Item
-                            key={page}
-                            active={activePage === page}
-                            onClick={() => scrollToSection(page)}
-                            aria-current={
-                              activePage === page ? "page" : undefined
-                            }
-                            className="items-center gap-2 px-2.5 py-2"
-                          >
-                            <SidebarContent.ItemTitle
-                              className={
-                                activePage === page
-                                  ? "font-semibold"
-                                  : "font-medium"
-                              }
-                            >
-                              {label}
-                            </SidebarContent.ItemTitle>
-                          </SidebarContent.Item>
-                        );
-                      })}
-
-                      <SidebarContent.Item
-                        as="div"
-                        active={activePage === "knowledge"}
-                        className="items-center gap-1 px-2.5 py-2"
-                      >
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                          onClick={() => {
-                            setKnowledgeExpanded((current) => !current);
-                            scrollToSection("knowledge");
-                          }}
-                          aria-expanded={knowledgeExpanded}
-                          aria-controls="character-knowledge-sidebar-list"
-                        >
-                          <ChevronIcon
-                            className={`h-3.5 w-3.5 shrink-0 transition-transform ${knowledgeExpanded ? "" : "-rotate-90"}`}
-                          />
-                          <SidebarContent.ItemTitle
-                            className={
-                              activePage === "knowledge"
-                                ? "font-semibold"
-                                : "font-medium"
-                            }
-                          >
-                            {t("charactereditor.TabKnowledge", {
-                              defaultValue: "Knowledge",
-                            })}
-                          </SidebarContent.ItemTitle>
-                        </button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-                          onClick={handleKnowledgeUploadClick}
-                          aria-label={t("knowledgeview.ChooseFiles", {
-                            defaultValue: "Choose files",
-                          })}
-                          title={t("knowledgeview.ChooseFiles", {
-                            defaultValue: "Choose files",
-                          })}
-                        >
-                          <PlusIcon className="h-3.5 w-3.5" />
-                        </Button>
-                      </SidebarContent.Item>
-
-                      {knowledgeExpanded ? (
-                        <div
-                          id="character-knowledge-sidebar-list"
-                          className="ml-5 flex flex-col gap-0.5 border-l border-border/25 pl-2"
-                        >
-                          {knowledgeDocuments.length > 0 ? (
-                            knowledgeDocuments.map((doc) => (
-                              <SidebarContent.Item
-                                key={doc.id}
-                                active={selectedKnowledgeDocumentId === doc.id}
-                                onClick={() =>
-                                  handleKnowledgeDocumentSelect(doc.id)
-                                }
-                                aria-current={
-                                  selectedKnowledgeDocumentId === doc.id
-                                    ? "page"
-                                    : undefined
-                                }
-                                className="items-center py-1.5 pl-2 pr-2"
-                              >
-                                <SidebarContent.ItemTitle className="truncate text-xs-tight font-medium">
-                                  {doc.filename}
-                                </SidebarContent.ItemTitle>
-                              </SidebarContent.Item>
-                            ))
-                          ) : (
-                            <div className="px-2 py-2 text-xs-tight text-muted">
-                              {t("knowledgeview.NoDocumentsYet", {
-                                defaultValue: "No documents yet",
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </nav>
-                  </SidebarPanel>
-                </SidebarScrollRegion>
-              </Sidebar>
-            }
-            mobileSidebarLabel={
-              activePage === "personality"
-                ? t("charactereditor.TabPersonality", {
-                    defaultValue: "Personality",
-                  })
-                : activePage === "style"
-                  ? t("charactereditor.TabStyles", { defaultValue: "Style" })
-                  : activePage === "examples"
-                    ? t("charactereditor.TabExamples", {
-                        defaultValue: "Examples",
-                      })
-                    : t("charactereditor.TabKnowledge", {
-                        defaultValue: "Knowledge",
-                      })
-            }
-            data-testid="character-editor-view"
-          >
-            <input
-              type="file"
-              id="ce-vrm-upload-standalone"
-              accept=".vrm"
-              className="hidden"
-              style={{ display: "none" }}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setState("selectedVrmIndex", 0);
-                }
-                e.target.value = "";
-              }}
-            />
-            <div
-              ref={standaloneScrollRef}
-              data-testid="character-editor-main-scroll"
-              className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
-            >
-              <section
-                ref={(el) => {
-                  sectionRefs.current.personality = el;
-                }}
-                aria-label={t("charactereditor.TabPersonality", {
-                  defaultValue: "Personality",
-                })}
-                className="flex min-w-0 flex-col scroll-mt-6"
-              >
-                <CharacterIdentityPanel
-                  d={d}
-                  bioText={bioText}
-                  voiceSelectValue={voiceSelectValue}
-                  activeVoicePreset={activeVoicePreset}
-                  voiceTesting={voiceTesting}
-                  voiceLoading={voiceLoading}
-                  useElevenLabs={useElevenLabs}
-                  elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                  edgeVoiceGroups={edgeVoiceGroups}
-                  handleFieldEdit={handleFieldEdit}
-                  handleSelectPreset={handleSelectPreset}
-                  handleStopTest={handleStopTest}
-                  setVoiceTesting={setVoiceTesting}
-                  setVoiceTestAudio={setVoiceTestAudio}
-                  t={t}
-                />
-              </section>
-
-              <section
-                ref={(el) => {
-                  sectionRefs.current.style = el;
-                }}
-                aria-label={t("charactereditor.TabStyles", {
-                  defaultValue: "Style",
-                })}
-                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
-              >
-                <CharacterStylePanel
-                  d={d}
-                  pendingStyleEntries={pendingStyleEntries}
-                  styleEntryDrafts={styleEntryDrafts}
-                  handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-                  handleAddStyleEntry={handleAddStyleEntry}
-                  handleRemoveStyleEntry={handleRemoveStyleEntry}
-                  handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-                  handleCommitStyleEntry={handleCommitStyleEntry}
-                  handleReorderStyleEntries={handleReorderStyleEntries}
-                  t={t}
-                />
-              </section>
-
-              <section
-                ref={(el) => {
-                  sectionRefs.current.examples = el;
-                }}
-                aria-label={t("charactereditor.TabExamples", {
-                  defaultValue: "Examples",
-                })}
-                className="mt-8 flex min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8"
-              >
-                <CharacterExamplesPanel
-                  d={d}
-                  normalizedMessageExamples={normalizedMessageExamples}
-                  handleFieldEdit={handleFieldEdit}
-                  t={t}
-                />
-              </section>
-
-              <section
-                ref={(el) => {
-                  sectionRefs.current.knowledge = el;
-                }}
-                aria-label={t("charactereditor.TabKnowledge", {
-                  defaultValue: "Knowledge",
-                })}
-                className="mt-8 flex min-h-[40vh] min-w-0 flex-col scroll-mt-6 border-t border-border/20 pt-8 pb-16"
-              >
-                <KnowledgeView
-                  embedded
-                  fileInputId="ce-knowledge-upload-input"
-                  onDocumentsChange={handleKnowledgeDocumentsChange}
-                  onSelectedDocumentIdChange={setSelectedKnowledgeDocumentId}
-                  selectedDocumentId={selectedKnowledgeDocumentId}
-                  showSelectorRail={false}
-                />
-              </section>
-            </div>
-          </PageLayout>
+          <CharacterHubView
+            d={d}
+            bioText={bioText}
+            normalizedMessageExamples={normalizedMessageExamples}
+            pendingStyleEntries={pendingStyleEntries}
+            styleEntryDrafts={styleEntryDrafts}
+            handleFieldEdit={handleFieldEdit}
+            applyFieldEdit={(field, value) => {
+              handleCharacterFieldInput(
+                field as keyof CharacterData,
+                value as CharacterData[keyof CharacterData],
+              );
+            }}
+            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+            applyStyleEdit={handleCharacterStyleInput}
+            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+            characterSaving={characterSaving}
+            characterSaveSuccess={characterSaveSuccess}
+            characterSaveError={characterSaveError}
+            hasPendingChanges={hasPendingChanges}
+            onSave={handleSaveCharacter}
+            onReset={() => setResetConfirmOpen(true)}
+            canReset={Boolean(activeCharacterRosterEntry && currentCharacter)}
+          />
         )}
       </div>
 

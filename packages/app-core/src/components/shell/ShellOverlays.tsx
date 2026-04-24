@@ -1,6 +1,6 @@
-import { GlobalEmoteOverlay } from "@elizaos/app-companion/components/companion/GlobalEmoteOverlay";
 import { Spinner, Z_SHELL_OVERLAY } from "@elizaos/ui";
 import type { ActionNotice } from "../../state/types";
+import { CompanionGlobalOverlay as GlobalEmoteOverlay } from "../companion/injected";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
 import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";

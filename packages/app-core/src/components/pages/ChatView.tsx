@@ -6,6 +6,7 @@ import {
   ChatThreadLayout,
   ChatTranscript,
   TypingIndicator,
+  useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
 import {
   type ChangeEvent,
@@ -589,6 +590,14 @@ export function ChatView({
     </>
   );
 
+  const defaultComposerLaneClassName =
+    "mx-auto w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 xl:px-10";
+  const defaultComposerShellClassName = `${defaultComposerLaneClassName} pt-1.5`;
+  const defaultComposerShellStyle = {
+    paddingBottom:
+      "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
+  } as const;
+
   const composerNode = isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -640,9 +649,15 @@ export function ChatView({
       />
     </ChatComposerShell>
   ) : (
-    <ChatComposerShell variant="default" before={<CodingAgentControlChip />}>
+    <ChatComposerShell
+      variant="default"
+      className={defaultComposerShellClassName}
+      style={defaultComposerShellStyle}
+      before={<CodingAgentControlChip />}
+    >
       <ChatComposer
         variant="default"
+        layout="inline"
         textareaRef={textareaRef}
         chatInput={chatInput}
         chatPendingImagesCount={chatPendingImages.length}
@@ -711,7 +726,9 @@ export function ChatView({
       composerHeight={composerHeight}
       imageDragOver={imageDragOver}
       messagesRef={messagesRef}
-      footerStack={auxiliaryNode}
+      footerStack={
+        <div className={defaultComposerLaneClassName}>{auxiliaryNode}</div>
+      }
       composer={composerNode}
       onDragOver={(event) => {
         event.preventDefault();
@@ -810,35 +827,40 @@ function InboxChatPanel({
   const transportSource =
     activeInboxChat.transportSource ?? activeInboxChat.source;
 
+  const loadInboxMessages = useCallback(async () => {
+    try {
+      const response = await client.getInboxMessages({
+        limit: 200,
+        roomId: activeInboxChat.id,
+        roomSource: transportSource,
+      });
+      // Server returns newest first; ChatTranscript expects
+      // oldest→newest (conversation layout) so reverse.
+      const next = [...response.messages]
+        .reverse()
+        .map((m): ConversationMessage => m);
+      setMessages(next);
+    } catch {
+      // Transient errors keep the last snapshot; next poll retries.
+    } finally {
+      setLoading(false);
+    }
+  }, [activeInboxChat.id, transportSource]);
+
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await client.getInboxMessages({
-          limit: 200,
-          roomId: activeInboxChat.id,
-          roomSource: transportSource,
-        });
-        if (cancelled) return;
-        // Server returns newest first; ChatTranscript expects
-        // oldest→newest (conversation layout) so reverse.
-        const next = [...response.messages]
-          .reverse()
-          .map((m): ConversationMessage => m);
-        setMessages(next);
-      } catch {
-        // Transient errors keep the last snapshot; next poll retries.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, 5_000);
+    (async () => {
+      await loadInboxMessages();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [activeInboxChat.id, transportSource]);
+  }, [loadInboxMessages]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadInboxMessages();
+  }, 15_000);
 
   useLayoutEffect(() => {
     if (messages.length === 0) return;

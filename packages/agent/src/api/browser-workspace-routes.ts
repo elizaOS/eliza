@@ -19,6 +19,7 @@ type OpenBrowserWorkspaceBody = {
   title?: string;
   show?: boolean;
   partition?: string;
+  kind?: "internal" | "standard";
   width?: number;
   height?: number;
 };

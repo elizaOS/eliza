@@ -19,6 +19,7 @@ import {
 } from "@elizaos/agent/config/config";
 import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   DEFAULT_WALLET_ROUTE_DEPENDENCIES,
   handleWalletRoutes,
@@ -34,7 +35,7 @@ function ensureWalletKeysInEnvAndConfig(_config: ElizaConfig): boolean {
 export async function handleWalletCoreRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: unknown,
+  state: unknown,
 ): Promise<boolean> {
   const method = req.method?.toUpperCase() ?? "GET";
   const url = new URL(
@@ -61,6 +62,22 @@ export async function handleWalletCoreRoutes(
   }
 
   const config = loadElizaConfig();
+  const routeState =
+    state && typeof state === "object"
+      ? (state as {
+          runtime?: unknown;
+          restartRuntime?: unknown;
+          scheduleRuntimeRestart?: unknown;
+        })
+      : null;
+  const restartRuntime =
+    typeof routeState?.restartRuntime === "function"
+      ? (routeState.restartRuntime as (reason: string) => Promise<boolean>)
+      : undefined;
+  const scheduleRuntimeRestart =
+    typeof routeState?.scheduleRuntimeRestart === "function"
+      ? (routeState.scheduleRuntimeRestart as (reason: string) => void)
+      : undefined;
 
   return handleWalletRoutes({
     req,
@@ -76,6 +93,8 @@ export async function handleWalletCoreRoutes(
     json: (r, data, status) => sendJson(r, status ?? 200, data),
     error: (r, message, status) => sendJsonError(r, status ?? 500, message),
     deps: DEFAULT_WALLET_ROUTE_DEPENDENCIES,
-    runtime: null,
+    restartRuntime,
+    scheduleRuntimeRestart,
+    runtime: (routeState?.runtime as AgentRuntime | null | undefined) ?? null,
   });
 }

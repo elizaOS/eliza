@@ -39,11 +39,13 @@ import {
   Zap,
 } from "lucide-react";
 import { startTransition, useEffect, useMemo, useState } from "react";
-import { client } from "../../../api";
+import { client, type RegistryAppInfo } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
 import { useApp } from "../../../state";
 import type { TranslateFn } from "../../../types";
+import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
+import { loadMergedCatalogApps } from "../../apps/catalog-loader";
 import { getRunAttentionReasons } from "../../apps/run-attention";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
@@ -208,12 +210,30 @@ function getClientErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function getAppRunIdentity(
+  run: AppRunSummary,
+  catalogAppsByName: ReadonlyMap<string, RegistryAppInfo>,
+): AppIdentitySource {
+  const catalogApp = catalogAppsByName.get(run.appName);
+
+  return {
+    name: run.appName,
+    displayName: catalogApp?.displayName ?? run.displayName,
+    description: catalogApp?.description ?? run.summary ?? null,
+    category: catalogApp?.category ?? "utility",
+    icon: catalogApp?.icon ?? null,
+    heroImage: catalogApp?.heroImage ?? null,
+  };
+}
+
 function AppRunCard({
   run,
   attentionReasons,
+  app,
 }: {
   run: AppRunSummary;
   attentionReasons: string[];
+  app: AppIdentitySource;
 }) {
   const healthDot =
     run.health.state === "healthy"
@@ -225,33 +245,38 @@ function AppRunCard({
 
   return (
     <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-2">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-2xs font-semibold text-txt">
-          {run.displayName}
+      <div className="flex items-start gap-2">
+        <div className="w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/10">
+          <AppHero app={app} className="aspect-[5/4]" imageOnly />
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
-          <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
-            role="img"
-            aria-label={run.health.state}
-            title={run.health.state}
-          />
-          <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
-          <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-2xs font-semibold text-txt">
+            {run.displayName}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
+              role="img"
+              aria-label={run.health.state}
+              title={run.health.state}
+            />
+            <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
+            <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
+          </div>
+          <div className="mt-1 line-clamp-2 text-3xs text-muted">
+            {run.summary || run.health.message || "Run active."}
+          </div>
+          {attentionReasons.length > 0 ? (
+            <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
+              <AlertTriangle
+                className="h-3 w-3 shrink-0"
+                aria-label="Needs attention"
+              />
+              <span className="truncate">{attentionReasons[0]}</span>
+            </div>
+          ) : null}
         </div>
       </div>
-      <div className="mt-1 line-clamp-2 text-3xs text-muted">
-        {run.summary || run.health.message || "Run active."}
-      </div>
-      {attentionReasons.length > 0 ? (
-        <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
-          <AlertTriangle
-            className="h-3 w-3 shrink-0"
-            aria-label="Needs attention"
-          />
-          <span className="truncate">{attentionReasons[0]}</span>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -262,11 +287,17 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const setTab = app?.setTab ?? (() => undefined);
   const setState = app?.setState ?? (() => undefined);
   const t = app?.t ?? fallbackTranslate;
+  const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
     Array.isArray(appRuns) ? appRuns : [],
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const catalogAppsByName = useMemo(
+    () =>
+      new Map(catalogApps.map((catalogApp) => [catalogApp.name, catalogApp])),
+    [catalogApps],
+  );
   const currentRun =
     runs.find((run) => run.viewerAttachment === "attached" && run.viewer) ??
     null;
@@ -293,6 +324,22 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
     (run) => (attentionMap.get(run.runId)?.length ?? 0) > 0,
   );
   const shouldHideWidget = !loading && runs.length === 0 && error === null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadMergedCatalogApps({ includeHiddenApps: true })
+      .then((apps) => {
+        if (!cancelled) {
+          setCatalogApps(apps);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -427,6 +474,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
                       key={run.runId}
                       run={run}
                       attentionReasons={reasons}
+                      app={getAppRunIdentity(run, catalogAppsByName)}
                     />
                   );
                 })}
@@ -439,6 +487,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
                 key={run.runId}
                 run={run}
                 attentionReasons={attentionMap.get(run.runId) ?? []}
+                app={getAppRunIdentity(run, catalogAppsByName)}
               />
             ))}
           </div>

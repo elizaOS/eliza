@@ -29,7 +29,9 @@ function toLocalInputValue(isoString: string | null): string {
     return "";
   }
   // datetime-local input expects "YYYY-MM-DDTHH:mm"
-  return new Date(parsed).toISOString().slice(0, 16);
+  const date = new Date(parsed);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function fromLocalInputValue(localValue: string): string | null {
@@ -46,6 +48,7 @@ export interface EventEditorDrawerProps {
   onClose: () => void;
   onSaved?: (event: LifeOpsCalendarEvent) => void;
   onDeleted?: (eventId: string) => void;
+  onChat?: (event: LifeOpsCalendarEvent) => void;
 }
 
 export function EventEditorDrawer({
@@ -54,6 +57,7 @@ export function EventEditorDrawer({
   onClose,
   onSaved,
   onDeleted,
+  onChat,
 }: EventEditorDrawerProps) {
   const { setActionNotice, t } = useApp();
   const [title, setTitle] = useState("");
@@ -108,10 +112,14 @@ export function EventEditorDrawer({
     setSaving(true);
     setError(null);
     try {
-      const result = await client.updateLifeOpsCalendarEvent(event.id, {
+      const result = await client.updateLifeOpsCalendarEvent(event.externalId, {
+        side: event.side,
+        grantId: event.grantId,
+        calendarId: event.calendarId,
         title: patch.title,
         startAt: patch.startAt,
         endAt: patch.endAt,
+        timeZone: event.timezone ?? undefined,
         notes: patch.description,
         reminders: patch.minutesBefore?.map((minutesBefore) => ({
           minutesBefore,
@@ -157,7 +165,11 @@ export function EventEditorDrawer({
     setDeleting(true);
     setError(null);
     try {
-      await client.deleteLifeOpsCalendarEvent(event.id);
+      await client.deleteLifeOpsCalendarEvent(event.externalId, {
+        side: event.side,
+        grantId: event.grantId,
+        calendarId: event.calendarId,
+      });
       setActionNotice(
         t("eventEditor.deleted", {
           defaultValue: "Event deleted.",
@@ -315,16 +327,28 @@ export function EventEditorDrawer({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
-            <Button
-              variant="surfaceDestructive"
-              size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={deleting || saving}
-              onClick={() => setConfirmDeleteOpen(true)}
-            >
-              {t("common.delete", { defaultValue: "Delete" })}
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/12 px-5 py-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {onChat ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+                  onClick={() => onChat(event)}
+                >
+                  {t("common.chat", { defaultValue: "Chat" })}
+                </Button>
+              ) : null}
+              <Button
+                variant="surfaceDestructive"
+                size="sm"
+                className="h-8 rounded-xl px-3 text-xs font-semibold"
+                disabled={deleting || saving}
+                onClick={() => setConfirmDeleteOpen(true)}
+              >
+                {t("common.delete", { defaultValue: "Delete" })}
+              </Button>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"

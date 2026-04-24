@@ -16,6 +16,7 @@
  * don't keep playing after a server-side pause.
  */
 
+import { useIntervalWhenDocumentVisible } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveApiUrl } from "../../utils/asset-url";
 
@@ -38,60 +39,55 @@ export function MusicPlayerGlobal() {
     if (!track) lastKey.current = "";
   }, [track]);
 
-  useEffect(() => {
-    let alive = true;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(resolveApiUrl("/music-player/status"));
-        if (!alive) return;
-        if (!res.ok) {
-          setTrack(null);
-          return;
-        }
-        const data = (await res.json()) as {
-          guildId?: string;
-          track?: { title?: string };
-          streamUrl?: string;
-          isPaused?: boolean;
-        };
-        if (!alive) return;
-        if (data.track?.title && data.guildId && data.streamUrl) {
-          const next: TrackInfo = {
-            title: data.track.title,
-            guildId: data.guildId,
-            streamUrl: resolveApiUrl(data.streamUrl),
-            isPaused: data.isPaused === true,
-          };
-          setTrack((prev) => {
-            if (!prev) return next;
-            if (
-              prev.guildId === next.guildId &&
-              prev.title === next.title &&
-              prev.streamUrl === next.streamUrl &&
-              prev.isPaused === next.isPaused
-            ) {
-              return prev;
-            }
-            return next;
-          });
-        } else {
-          setTrack(null);
-        }
-      } catch {
-        /* keep current state on network error */
+  // 5s (was 2s) — agent-driven pause/resume surfaces with up to a 5s delay in
+  // the UI. Accepted trade-off for significantly fewer background requests.
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch(resolveApiUrl("/music-player/status"));
+      if (!res.ok) {
+        setTrack(null);
+        return;
       }
-    };
-
-    void poll();
-    // Faster while something may be playing so pause/resume from the agent
-    // reflects in the UI without a long delay.
-    const id = setInterval(() => void poll(), 2_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
+      const data = (await res.json()) as {
+        guildId?: string;
+        track?: { title?: string };
+        streamUrl?: string;
+        isPaused?: boolean;
+      };
+      if (data.track?.title && data.guildId && data.streamUrl) {
+        const next: TrackInfo = {
+          title: data.track.title,
+          guildId: data.guildId,
+          streamUrl: resolveApiUrl(data.streamUrl),
+          isPaused: data.isPaused === true,
+        };
+        setTrack((prev) => {
+          if (!prev) return next;
+          if (
+            prev.guildId === next.guildId &&
+            prev.title === next.title &&
+            prev.streamUrl === next.streamUrl &&
+            prev.isPaused === next.isPaused
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      } else {
+        setTrack(null);
+      }
+    } catch {
+      /* keep current state on network error */
+    }
   }, []);
+
+  useEffect(() => {
+    void pollStatus();
+  }, [pollStatus]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void pollStatus();
+  }, 5_000);
 
   // Connect audio element when track identity changes (not on isPaused alone)
   useEffect(() => {

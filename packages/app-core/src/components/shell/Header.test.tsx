@@ -3,17 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  getTabGroupsMock,
-  isElectrobunRuntimeMock,
-  useMediaQueryMock,
-  useAppMock,
-} = vi.hoisted(() => ({
-  getTabGroupsMock: vi.fn(),
-  isElectrobunRuntimeMock: vi.fn(),
-  useMediaQueryMock: vi.fn(),
-  useAppMock: vi.fn(),
-}));
+var getTabGroupsMock = vi.fn();
+var isElectrobunRuntimeMock = vi.fn();
+var useMediaQueryMock = vi.fn();
+var useAppMock = vi.fn();
 
 vi.mock("@elizaos/app-companion/ui", () => ({
   InferenceCloudAlertButton: () => null,

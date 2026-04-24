@@ -109,7 +109,7 @@ export const DEFAULT_BROWSER_PERMISSION_STATE: BrowserBridgePermissionState = {
   incognitoEnabled: false,
 }
 export const DEFAULT_BROWSER_SETTINGS: BrowserBridgeSettings = {
-  enabled: false,
+  enabled: true,
   trackingMode: "current_tab",
   allowBrowserControl: false,
   requireConfirmationForAccountAffecting: true,

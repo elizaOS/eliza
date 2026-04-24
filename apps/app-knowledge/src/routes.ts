@@ -7,7 +7,10 @@ import {
 import { request as requestHttps } from "node:https";
 import net from "node:net";
 import { Readable } from "node:stream";
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/agent/api/route-helpers";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
@@ -16,11 +19,18 @@ import {
   parseClampedFloat,
   parsePositiveInteger,
 } from "@elizaos/agent/utils/number-parsing";
+import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  getKnowledgeDocumentDeleteability,
+  getKnowledgeDocumentEditability,
+  getKnowledgeDocumentProvenance,
+  getKnowledgeDocumentTitleFromMetadata,
+  presentKnowledgeDocument,
+} from "./document-presenter.js";
 import {
   getKnowledgeService,
   type KnowledgeServiceLike,
 } from "./service-loader.js";
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 
 export type KnowledgeRouteHelpers = RouteHelpers;
 
@@ -41,15 +51,30 @@ const BLOCKED_HOST_LITERALS = new Set([
   "metadata.google.internal",
 ]);
 
-function toSafeNumber(value: unknown, fallback: number): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+function isTextBackedContentType(
+  contentType: string,
+  filename: string,
+): boolean {
+  if (contentType.startsWith("text/")) return true;
+  if (
+    contentType === "application/json" ||
+    contentType === "application/xml" ||
+    contentType === "application/javascript" ||
+    contentType === "text/markdown"
+  ) {
+    return true;
   }
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
+
+  const lowerFilename = filename.toLowerCase();
+  return (
+    lowerFilename.endsWith(".md") ||
+    lowerFilename.endsWith(".mdx") ||
+    lowerFilename.endsWith(".txt") ||
+    lowerFilename.endsWith(".json") ||
+    lowerFilename.endsWith(".xml") ||
+    lowerFilename.endsWith(".csv") ||
+    lowerFilename.endsWith(".tsv")
+  );
 }
 
 function hasUuidId(memory: Memory): memory is Memory & { id: UUID } {
@@ -64,7 +89,7 @@ function hasUuidIdAndCreatedAt(
 
 async function countKnowledgeFragmentsForDocument(
   knowledgeService: KnowledgeServiceLike,
-  roomId: UUID,
+  roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<number> {
   let offset = 0;
@@ -99,7 +124,7 @@ async function countKnowledgeFragmentsForDocument(
 
 async function mapKnowledgeFragmentsByDocumentId(
   knowledgeService: KnowledgeServiceLike,
-  roomId: UUID,
+  roomId: UUID | undefined,
   documentIds: readonly UUID[],
 ): Promise<Map<UUID, number>> {
   const fragmentCounts = new Map<UUID, number>();
@@ -146,7 +171,7 @@ async function mapKnowledgeFragmentsByDocumentId(
 
 async function listKnowledgeFragmentsForDocument(
   knowledgeService: KnowledgeServiceLike,
-  roomId: UUID,
+  roomId: UUID | undefined,
   documentId: UUID,
 ): Promise<UUID[]> {
   let offset = 0;
@@ -709,13 +734,11 @@ export async function handleKnowledgeRoutes(
   if (method === "GET" && pathname === "/api/knowledge") {
     const documentCount = await knowledgeService.countMemories({
       tableName: "documents",
-      roomId: agentId,
       unique: false,
     });
 
     const fragmentCount = await knowledgeService.countMemories({
       tableName: "knowledge",
-      roomId: agentId,
       unique: false,
     });
 
@@ -733,13 +756,11 @@ export async function handleKnowledgeRoutes(
   if (method === "GET" && pathname === "/api/knowledge/stats") {
     const documentCount = await knowledgeService.countMemories({
       tableName: "documents",
-      roomId: agentId,
       unique: false,
     });
 
     const fragmentCount = await knowledgeService.countMemories({
       tableName: "knowledge",
-      roomId: agentId,
       unique: false,
     });
 
@@ -758,40 +779,31 @@ export async function handleKnowledgeRoutes(
 
     const documents = await knowledgeService.getMemories({
       tableName: "documents",
-      roomId: agentId,
       count: limit,
       offset: offset > 0 ? offset : undefined,
+    });
+    const total = await knowledgeService.countMemories({
+      tableName: "documents",
+      unique: false,
     });
 
     const documentIds = documents.filter(hasUuidId).map((doc) => doc.id);
     const fragmentCounts = await mapKnowledgeFragmentsByDocumentId(
       knowledgeService,
-      agentId,
+      undefined,
       documentIds,
     );
 
-    // Clean up documents for response (remove embeddings, format metadata)
-    const cleanedDocuments = documents.map((doc) => {
-      const metadata = doc.metadata as Record<string, unknown> | undefined;
-      const documentId = hasUuidId(doc) ? doc.id : null;
-      return {
-        id: doc.id,
-        filename: metadata?.filename || metadata?.title || "Untitled",
-        contentType: metadata?.fileType || metadata?.contentType || "unknown",
-        fileSize: toSafeNumber(metadata?.fileSize, 0),
-        createdAt: toSafeNumber(doc.createdAt, 0),
-        fragmentCount:
-          documentId !== null && fragmentCounts.has(documentId)
-            ? (fragmentCounts.get(documentId) ?? 0)
-            : 0,
-        source: metadata?.source || "upload",
-        url: metadata?.url,
-      };
-    });
+    const cleanedDocuments = documents.map((doc) =>
+      presentKnowledgeDocument(
+        doc,
+        hasUuidId(doc) ? (fragmentCounts.get(doc.id) ?? 0) : 0,
+      ),
+    );
 
     json(res, {
       documents: cleanedDocuments,
-      total: cleanedDocuments.length,
+      total,
       limit,
       offset: offset > 0 ? offset : 0,
     });
@@ -803,39 +815,76 @@ export async function handleKnowledgeRoutes(
   if (method === "GET" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
 
-    const documents = await knowledgeService.getMemories({
-      tableName: "documents",
-      roomId: agentId,
-      count: 10000,
-    });
-
-    const document = documents.find((d) => d.id === documentId);
-    if (!document) {
+    const document = await runtime.getMemoryById(documentId);
+    const documentMetadata = document?.metadata as
+      | Record<string, unknown>
+      | undefined;
+    const isDocument =
+      document?.agentId === agentId &&
+      (documentMetadata?.documentId === documentId ||
+        documentMetadata?.type === "document" ||
+        documentMetadata?.type === "custom");
+    if (!document || !isDocument) {
       error(res, "Document not found", 404);
       return true;
     }
 
-    // Get fragment count for this document
     const fragmentCount = await countKnowledgeFragmentsForDocument(
       knowledgeService,
-      agentId,
+      undefined,
       documentId,
     );
 
-    const metadata = document.metadata as Record<string, unknown> | undefined;
+    json(res, {
+      document: presentKnowledgeDocument(document, fragmentCount, {
+        includeContent: true,
+      }),
+    });
+    return true;
+  }
+
+  if (method === "PATCH" && docIdMatch) {
+    const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
+    const document = await runtime.getMemoryById(documentId);
+    if (!document || document.agentId !== agentId) {
+      error(res, "Document not found", 404);
+      return true;
+    }
+
+    const editability = getKnowledgeDocumentEditability(document);
+    if (!editability.canEditText) {
+      error(
+        res,
+        editability.reason || "This knowledge document cannot be edited.",
+        400,
+      );
+      return true;
+    }
+
+    const body = await readJsonBody<{ content?: string }>(req, res, {
+      maxBytes: KNOWLEDGE_UPLOAD_MAX_BODY_BYTES,
+    });
+    if (!body) return true;
+
+    if (typeof body.content !== "string" || body.content.trim().length === 0) {
+      error(res, "content must be a non-empty string");
+      return true;
+    }
+
+    if (typeof knowledgeService.updateKnowledgeDocument !== "function") {
+      error(res, "Knowledge document editing is unavailable", 503);
+      return true;
+    }
+
+    const result = await knowledgeService.updateKnowledgeDocument({
+      documentId,
+      content: body.content,
+    });
 
     json(res, {
-      document: {
-        id: document.id,
-        filename: metadata?.filename || metadata?.title || "Untitled",
-        contentType: metadata?.fileType || metadata?.contentType || "unknown",
-        fileSize: toSafeNumber(metadata?.fileSize, 0),
-        createdAt: toSafeNumber(document.createdAt, 0),
-        fragmentCount,
-        source: metadata?.source || "upload",
-        url: metadata?.url,
-        content: document.content,
-      },
+      ok: true,
+      documentId: result.documentId,
+      fragmentCount: result.fragmentCount,
     });
     return true;
   }
@@ -843,10 +892,25 @@ export async function handleKnowledgeRoutes(
   // ── DELETE /api/knowledge/documents/:id ─────────────────────────────────
   if (method === "DELETE" && docIdMatch) {
     const documentId = decodeURIComponent(docIdMatch[1]) as UUID;
+    const existingDocument = await runtime.getMemoryById(documentId);
+    if (!existingDocument || existingDocument.agentId !== agentId) {
+      error(res, "Document not found", 404);
+      return true;
+    }
+
+    const deleteability = getKnowledgeDocumentDeleteability(existingDocument);
+    if (!deleteability.canDelete) {
+      error(
+        res,
+        deleteability.reason || "This knowledge document cannot be deleted.",
+        400,
+      );
+      return true;
+    }
 
     const fragmentIds = await listKnowledgeFragmentsForDocument(
       knowledgeService,
-      agentId,
+      undefined,
       documentId,
     );
 
@@ -881,8 +945,13 @@ export async function handleKnowledgeRoutes(
     warnings?: string[];
   }> {
     let content = document.content;
-    let contentType = document.contentType || "text/plain";
+    const originalContentType = document.contentType || "text/plain";
+    let contentType = originalContentType;
     const warnings: string[] = [];
+    const textBacked = isTextBackedContentType(
+      originalContentType,
+      document.filename,
+    );
 
     // Image files: the content is base64-encoded binary which can't be
     // text-extracted. Convert to a text description for embedding.
@@ -937,7 +1006,15 @@ export async function handleKnowledgeRoutes(
       contentType,
       originalFilename: document.filename,
       content,
-      metadata: document.metadata,
+      metadata: {
+        ...document.metadata,
+        source: "upload",
+        filename: document.filename,
+        originalFilename: document.filename,
+        fileType: originalContentType,
+        contentType,
+        textBacked,
+      },
     });
 
     const warningsValue = (result as { warnings?: unknown }).warnings;
@@ -1123,6 +1200,11 @@ export async function handleKnowledgeRoutes(
         ...body.metadata,
         url: urlToFetch,
         source: isYouTubeUrl(urlToFetch) ? "youtube" : "url",
+        filename,
+        originalFilename: filename,
+        fileType: contentType,
+        contentType,
+        textBacked: true,
       },
     });
 
@@ -1162,9 +1244,7 @@ export async function handleKnowledgeRoutes(
       createdAt: Date.now(),
     };
 
-    const results = await knowledgeService.getKnowledge(searchMessage, {
-      roomId: agentId,
-    });
+    const results = await knowledgeService.getKnowledge(searchMessage);
 
     // Filter by threshold and limit
     const filteredResults = results
@@ -1177,7 +1257,13 @@ export async function handleKnowledgeRoutes(
           text: r.content?.text || "",
           similarity: r.similarity,
           documentId: meta?.documentId,
-          documentTitle: meta?.filename || meta?.title || "",
+          documentTitle: getKnowledgeDocumentTitleFromMetadata(
+            meta,
+            r.content?.text,
+          ),
+          documentProvenance: meta
+            ? getKnowledgeDocumentProvenance(meta)
+            : undefined,
           position: meta?.position,
         };
       });
@@ -1209,7 +1295,6 @@ export async function handleKnowledgeRoutes(
     while (true) {
       const fragmentBatch = await knowledgeService.getMemories({
         tableName: "knowledge",
-        roomId: agentId,
         count: FRAGMENT_COUNT_BATCH_SIZE,
         offset: fragmentOffset,
       });

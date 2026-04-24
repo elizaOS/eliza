@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-alpha.321",
+  "version": "2.0.0-alpha.339",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "src/index.ts",
@@ -25,6 +25,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./app-hero-art": "./src/app-hero-art.ts",
     "./connectors": "./src/connectors.ts",
     "./env-utils": "./src/env-utils.ts",
     "./runtime-env": "./src/runtime-env.ts",

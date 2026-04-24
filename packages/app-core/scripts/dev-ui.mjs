@@ -23,12 +23,8 @@ import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import * as JSON5Module from "json5";
-import {
-  CAPACITOR_PLUGIN_NAMES,
-  NATIVE_PLUGINS_ROOT,
-} from "../../../../apps/app/scripts/capacitor-plugin-names.mjs";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
@@ -48,6 +44,46 @@ if (existsSync(_worktreeEnvPath)) {
   const { config: dotenvConfig } = await import("dotenv");
   dotenvConfig({ path: _worktreeEnvPath, override: false });
 }
+
+function resolveCapacitorPluginNamesPath(devCwd) {
+  const rootAppsApp = path.join(
+    devCwd,
+    "apps",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
+  const nestedElizaAppsApp = path.join(
+    devCwd,
+    "eliza",
+    "apps",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
+  const elizaSubmodulePresent = existsSync(
+    path.join(devCwd, "eliza", "packages", "app-core", "package.json"),
+  );
+  if (existsSync(rootAppsApp) && elizaSubmodulePresent) {
+    return rootAppsApp;
+  }
+  if (existsSync(nestedElizaAppsApp)) {
+    return nestedElizaAppsApp;
+  }
+  if (existsSync(rootAppsApp)) {
+    return rootAppsApp;
+  }
+  throw new Error(
+    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootAppsApp}\n  ${nestedElizaAppsApp}`,
+  );
+}
+
+const _capacitorPluginNamesPath = resolveCapacitorPluginNamesPath(
+  process.cwd(),
+);
+const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
+  pathToFileURL(_capacitorPluginNamesPath).href,
+);
 
 syncElizaEnvAliases();
 

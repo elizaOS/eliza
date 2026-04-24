@@ -26,6 +26,7 @@ import { crossChannelSendAction } from "./actions/cross-channel-send.js";
 import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
+import { paymentsAction } from "./actions/payments.js";
 import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
@@ -245,6 +246,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     healthAction,
     subscriptionsAction,
     emailUnsubscribeAction,
+    paymentsAction,
     chatThreadControlAction,
   ],
   providers: [
@@ -383,7 +385,40 @@ const rawAppLifeOpsPlugin: Plugin = {
   },
 };
 
-export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
+// Sanitize: filter out any undefined actions/providers/services so a broken
+// circular import during test load doesn't crash runtime.registerPlugin with
+// an opaque "Cannot read properties of undefined" error. Log what was dropped
+// so the underlying import cycle stays visible.
+function sanitizePlugin(plugin: Plugin): Plugin {
+  const filter = <T extends { name?: string }>(arr: readonly T[] | undefined, label: string): T[] => {
+    if (!arr) return [];
+    const kept: T[] = [];
+    arr.forEach((entry, index) => {
+      if (!entry || typeof (entry as { name?: unknown }).name !== "string") {
+        logger.warn(
+          `[app-lifeops plugin] dropped undefined or unnamed ${label} entry at index ${index}; likely a circular-import casualty`,
+        );
+        return;
+      }
+      kept.push(entry);
+    });
+    return kept;
+  };
+  return {
+    ...plugin,
+    actions: filter(plugin.actions as Array<{ name?: string }>, "action") as Plugin["actions"],
+    providers: filter(plugin.providers as Array<{ name?: string }>, "provider") as Plugin["providers"],
+    services: (plugin.services ?? []).filter((service) => {
+      if (!service) {
+        logger.warn("[app-lifeops plugin] dropped undefined service");
+        return false;
+      }
+      return true;
+    }) as Plugin["services"],
+  };
+}
+
+export const appLifeOpsPlugin: Plugin = sanitizePlugin(rawAppLifeOpsPlugin);
 
 export {
   runMorningCheckinAction,

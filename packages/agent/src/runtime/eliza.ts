@@ -34,6 +34,12 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.js";
+
+import {
+  applyAdvancedCapabilitySettings,
+  resolveAdvancedCapabilitiesEnabled,
+} from "./advanced-capabilities-config.js";
+
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -126,6 +132,7 @@ import {
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
 } from "../providers/workspace.js";
 import { SandboxAuditLog } from "../security/audit-log.js";
 import {
@@ -860,6 +867,14 @@ function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
     return svc as AutonomyServiceLike;
   }
   return null;
+}
+
+async function startAndRegisterAutonomyService(
+  runtime: AgentRuntime,
+): Promise<AutonomyServiceLike> {
+  const service = await AutonomyService.start(runtime);
+  runtime.services.set("AUTONOMY" as never, [service as never]);
+  return service as AutonomyServiceLike;
 }
 
 type TrajectoryLoggerRuntimeLike = {
@@ -2476,12 +2491,17 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
-  const settings = {
-    MEMORY_SUMMARY_MODEL_TYPE:
-      process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
-    MEMORY_REFLECTION_MODEL_TYPE:
-      process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
-  };
+  const advancedCapabilitiesEnabled =
+    resolveAdvancedCapabilitiesEnabled(config);
+  const settings = applyAdvancedCapabilitySettings(
+    {
+      MEMORY_SUMMARY_MODEL_TYPE:
+        process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
+      MEMORY_REFLECTION_MODEL_TYPE:
+        process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
+    },
+    advancedCapabilitiesEnabled,
+  );
 
   // Collect secrets from process.env (API keys the plugins need)
   const secretKeys = [
@@ -3076,7 +3096,10 @@ export async function startEliza(
   // 4. Ensure workspace exists with required files
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
+  await ensureAgentWorkspace({
+    dir: workspaceDir,
+    ensureInitFiles: shouldBootstrapWorkspaceInitFiles(workspaceDir),
+  });
 
   // 4b. Ensure custom plugins directory exists for drop-in plugins
   await fs.mkdir(path.join(resolveStateDir(), CUSTOM_RUNTIME_PLUGINS_DIRNAME), {
@@ -3744,7 +3767,7 @@ export async function startEliza(
 
     if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
       try {
-        await AutonomyService.start(runtime);
+        await startAndRegisterAutonomyService(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
       } catch (err) {
         logger.warn(
@@ -4100,7 +4123,7 @@ export async function startEliza(
 
           if (hotReloadAutonomyEnabled && !newRuntime.getService("AUTONOMY")) {
             try {
-              await AutonomyService.start(newRuntime);
+              await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
               logger.warn(
                 `[eliza] AutonomyService failed to start after hot-reload: ${formatError(err)}`,

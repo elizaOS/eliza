@@ -4,7 +4,6 @@ import {
   Input,
   PageLayout,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
@@ -17,6 +16,7 @@ import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { SkillInfo } from "../../api";
 import { useApp } from "../../state";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
 
@@ -142,10 +142,30 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     selectedSkill?.scanStatus === "blocked";
 
   const skillsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="skills-sidebar"
+      collapsible
+      contentIdentity="skills"
       aria-label={t("skillsview.filterSkills", {
         defaultValue: "Skills list",
+      })}
+      collapsedRailItems={filteredSkills.map((skill) => {
+        const selected = selectedSkillId === skill.id;
+        return (
+          <SidebarContent.RailItem
+            key={skill.id}
+            aria-label={skill.name}
+            title={skill.name}
+            active={selected}
+            indicatorTone={skill.enabled ? "accent" : undefined}
+            onClick={() => {
+              setSelectedId(skill.id);
+              setState("skillCreateFormOpen", false);
+            }}
+          >
+            {skill.name.charAt(0).toUpperCase()}
+          </SidebarContent.RailItem>
+        );
       })}
     >
       <SidebarHeader
@@ -280,7 +300,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

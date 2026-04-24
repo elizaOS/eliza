@@ -235,11 +235,6 @@ export function patchElizaCoreRolesSubpath(root, log = console.log) {
     }
   }
 
-  if (!patchedAny) {
-    log(
-      "[patch-deps] @elizaos/core/roles subpath already installed in every cache location",
-    );
-  }
   return patchedAny;
 }
 

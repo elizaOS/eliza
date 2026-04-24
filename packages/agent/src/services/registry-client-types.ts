@@ -23,7 +23,8 @@ export interface RegistryAppMeta {
    * URL or package-relative path to a full-card hero image. Apps declare
    * this in `package.json` → `elizaos.app.heroImage` as a relative path
    * (e.g. `"assets/hero.png"`); the runtime resolves it to a served
-   * URL before surfacing the field on `RegistryAppInfo`.
+   * URL before surfacing the field on `RegistryAppInfo`, and falls back
+   * to generated `/api/apps/hero/<slug>` artwork when an app ships none.
    */
   heroImage: string | null;
   capabilities: string[];

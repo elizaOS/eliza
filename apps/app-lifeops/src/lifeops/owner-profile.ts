@@ -230,6 +230,183 @@ export async function readLifeOpsOwnerProfile(
   return resolveLifeOpsOwnerProfile(metadata, configuredName);
 }
 
+export interface LifeOpsCalendarFeedPreferences {
+  calendarFeedIncludes: Record<string, boolean>;
+  updatedAt: string | null;
+}
+
+const DEFAULT_CALENDAR_FEED_PREFERENCES: LifeOpsCalendarFeedPreferences = {
+  calendarFeedIncludes: {},
+  updatedAt: null,
+};
+
+/**
+ * Preference key for a calendar under a specific account grant. Google returns
+ * `calendarId: "primary"` for every account's primary calendar, so keying on
+ * `calendarId` alone would collide across multi-account users. The grantId
+ * disambiguates the account.
+ */
+export function calendarFeedPreferenceKey(
+  grantId: string,
+  calendarId: string,
+): string {
+  return `${grantId}:${calendarId}`;
+}
+
+export interface CalendarFeedPreferenceIdentifier {
+  grantId: string;
+  calendarId: string;
+}
+
+function normalizeCalendarFeedIncludes(
+  value: unknown,
+): Record<string, boolean> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const normalized: Record<string, boolean> = {};
+  for (const [rawCalendarId, rawIncluded] of Object.entries(value)) {
+    const calendarId = rawCalendarId.trim();
+    if (!calendarId || typeof rawIncluded !== "boolean") {
+      continue;
+    }
+    normalized[calendarId] = rawIncluded;
+  }
+  return normalized;
+}
+
+function resolveCalendarFeedPreferences(
+  metadata: Record<string, unknown> | null | undefined,
+): LifeOpsCalendarFeedPreferences {
+  const stored = isRecord(metadata?.calendarFeedPreferences)
+    ? metadata.calendarFeedPreferences
+    : null;
+  const updatedAt =
+    stored && typeof stored.updatedAt === "string"
+      ? normalizeProfileValue(stored.updatedAt, 64)
+      : null;
+  return {
+    ...DEFAULT_CALENDAR_FEED_PREFERENCES,
+    calendarFeedIncludes: normalizeCalendarFeedIncludes(
+      stored?.calendarFeedIncludes,
+    ),
+    updatedAt,
+  };
+}
+
+export async function readLifeOpsCalendarFeedPreferences(
+  runtime: IAgentRuntime,
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const metadata = isRecord(task?.metadata) ? task.metadata : null;
+  return resolveCalendarFeedPreferences(metadata);
+}
+
+function normalizeCalendarFeedIdentifiers(
+  identifiers: readonly CalendarFeedPreferenceIdentifier[],
+): CalendarFeedPreferenceIdentifier[] {
+  const seen = new Set<string>();
+  const result: CalendarFeedPreferenceIdentifier[] = [];
+  for (const id of identifiers) {
+    const grantId = typeof id?.grantId === "string" ? id.grantId.trim() : "";
+    const calendarId =
+      typeof id?.calendarId === "string" ? id.calendarId.trim() : "";
+    if (!grantId || !calendarId) {
+      continue;
+    }
+    const key = calendarFeedPreferenceKey(grantId, calendarId);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({ grantId, calendarId });
+  }
+  return result;
+}
+
+export async function ensureLifeOpsCalendarFeedIncludes(
+  runtime: IAgentRuntime,
+  identifiers: readonly CalendarFeedPreferenceIdentifier[],
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const normalizedIdentifiers = normalizeCalendarFeedIdentifiers(identifiers);
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const currentMetadata = isRecord(task?.metadata) ? task.metadata : null;
+  const current = resolveCalendarFeedPreferences(currentMetadata);
+  const missingIdentifiers = normalizedIdentifiers.filter(
+    ({ grantId, calendarId }) =>
+      !(
+        calendarFeedPreferenceKey(grantId, calendarId) in
+        current.calendarFeedIncludes
+      ),
+  );
+  if (missingIdentifiers.length === 0) {
+    return current;
+  }
+
+  const taskId = await ensureLifeOpsSchedulerTask(runtime);
+  const metadata =
+    currentMetadata && task?.id === taskId
+      ? currentMetadata
+      : buildFallbackSchedulerMetadata(runtime.agentId);
+  const nextCalendarFeedIncludes = { ...current.calendarFeedIncludes };
+  for (const { grantId, calendarId } of missingIdentifiers) {
+    nextCalendarFeedIncludes[calendarFeedPreferenceKey(grantId, calendarId)] =
+      true;
+  }
+  const next: LifeOpsCalendarFeedPreferences = {
+    calendarFeedIncludes: nextCalendarFeedIncludes,
+    updatedAt: new Date().toISOString(),
+  };
+  await runtime.updateTask(taskId, {
+    metadata: {
+      ...(metadata ?? {}),
+      calendarFeedPreferences: next,
+    },
+  });
+  return next;
+}
+
+export async function setLifeOpsCalendarFeedIncluded(
+  runtime: IAgentRuntime,
+  identifier: CalendarFeedPreferenceIdentifier,
+  included: boolean,
+): Promise<LifeOpsCalendarFeedPreferences> {
+  const grantId =
+    typeof identifier?.grantId === "string" ? identifier.grantId.trim() : "";
+  const calendarId =
+    typeof identifier?.calendarId === "string"
+      ? identifier.calendarId.trim()
+      : "";
+  if (!grantId) {
+    throw new Error("grantId is required");
+  }
+  if (!calendarId) {
+    throw new Error("calendarId is required");
+  }
+
+  const taskId = await ensureLifeOpsSchedulerTask(runtime);
+  const task = await readLifeOpsSchedulerTask(runtime);
+  const metadata =
+    isRecord(task?.metadata) && task.id === taskId
+      ? task.metadata
+      : buildFallbackSchedulerMetadata(runtime.agentId);
+  const current = resolveCalendarFeedPreferences(metadata);
+  const next: LifeOpsCalendarFeedPreferences = {
+    calendarFeedIncludes: {
+      ...current.calendarFeedIncludes,
+      [calendarFeedPreferenceKey(grantId, calendarId)]: included,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  await runtime.updateTask(taskId, {
+    metadata: {
+      ...(metadata ?? {}),
+      calendarFeedPreferences: next,
+    },
+  });
+  return next;
+}
+
 /**
  * Meeting preferences — stored alongside the owner profile in the LifeOps
  * scheduler task's metadata. Consumed by scheduling-with-others actions to

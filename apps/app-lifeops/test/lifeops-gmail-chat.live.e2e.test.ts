@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createConversation,
   postConversationMessage,
@@ -321,37 +322,49 @@ describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
     await server?.close();
   });
 
-  it("searches Gmail narratively with the real agent runtime", async () => {
-    const { conversationId } = await createConversation(server?.port ?? 0, {
-      title: "gmail search",
-    });
-    const responseText = await sendChat(
-      server?.port ?? 0,
-      conversationId,
-      "Search my email and tell me if anyone named Suran emailed me.",
-    );
+  stochasticTest(
+    "searches Gmail narratively with the real agent runtime",
+    async () => {
+      const { conversationId } = await createConversation(server?.port ?? 0, {
+        title: "gmail search",
+      });
+      const responseText = await sendChat(
+        server?.port ?? 0,
+        conversationId,
+        "Search my email and tell me if anyone named Suran emailed me.",
+      );
 
-    expect(responseText).toMatch(/suran/i);
-  }, 180_000);
+      expect(responseText).toMatch(/suran/i);
+    },
+    { perRunTimeoutMs: 180_000, label: "gmail-chat/narrative-search" },
+  );
 
   describe("strict single-attempt", () => {
-    it("finds reply-needed Gmail items with the real agent runtime on the first attempt", async () => {
-      const responseText = await runReplyNeededFlow(
-        server?.port ?? 0,
-        "gmail venue strict",
-      );
+    stochasticTest(
+      "finds reply-needed Gmail items with the real agent runtime on the first attempt",
+      async () => {
+        const responseText = await runReplyNeededFlow(
+          server?.port ?? 0,
+          "gmail venue strict",
+        );
 
-      expect(responseText).toMatch(/venue|morgan/i);
-    }, 180_000);
+        expect(responseText).toMatch(/venue|morgan/i);
+      },
+      { perRunTimeoutMs: 180_000, label: "gmail-chat/reply-needed-strict" },
+    );
 
-    it("drafts a Gmail reply from prior conversation context on the first attempt", async () => {
-      const responseText = await runDraftFlow(
-        server?.port ?? 0,
-        "gmail draft strict",
-      );
+    stochasticTest(
+      "drafts a Gmail reply from prior conversation context on the first attempt",
+      async () => {
+        const responseText = await runDraftFlow(
+          server?.port ?? 0,
+          "gmail draft strict",
+        );
 
-      expect(responseText).toMatch(/next week|thank/i);
-    }, 180_000);
+        expect(responseText).toMatch(/next week|thank/i);
+      },
+      { perRunTimeoutMs: 180_000, label: "gmail-chat/draft-strict" },
+    );
   });
 
   describe("recovery coverage", () => {

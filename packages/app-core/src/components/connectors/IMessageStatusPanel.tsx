@@ -1,27 +1,12 @@
 import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "../../api";
+import { client, type IMessageApiStatus } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 
-type IMessageStatus = {
-  available: boolean;
-  connected: boolean;
-  chatDbAvailable?: boolean;
-  sendOnly?: boolean;
-  chatDbPath?: string;
-  reason?: string | null;
-  permissionAction?: {
-    type: "full_disk_access";
-    label: string;
-    url: string;
-    instructions: string[];
-  } | null;
-};
-
 export function IMessageStatusPanel() {
   const { t } = useApp();
-  const [status, setStatus] = useState<IMessageStatus | null>(null);
+  const [status, setStatus] = useState<IMessageApiStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const permissionAction =
@@ -29,14 +14,14 @@ export function IMessageStatusPanel() {
       ? status.permissionAction
       : null;
   const isSendOnly = status?.sendOnly === true;
-  const canReadMessages = status?.connected === true && status?.chatDbAvailable !== false;
+  const canReadMessages =
+    status?.connected === true && status?.chatDbAvailable !== false;
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await client.fetch("/api/imessage/status");
-      setStatus(res as IMessageStatus);
+      setStatus(await client.getIMessageStatus());
     } catch (nextError) {
       setError(
         nextError instanceof Error ? nextError.message : String(nextError),
@@ -109,10 +94,10 @@ export function IMessageStatusPanel() {
                   defaultValue:
                     "iMessage can send, but Milady cannot read local messages until Full Disk Access is granted.",
                 })
-            : t("pluginsview.IMessageNotConnected", {
-                defaultValue:
-                  "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
-              })}
+              : t("pluginsview.IMessageNotConnected", {
+                  defaultValue:
+                    "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
+                })}
         </div>
         {error ? <div className="text-danger">{error}</div> : null}
         {!error && status?.reason ? (

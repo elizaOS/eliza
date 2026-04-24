@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzePluginStateDrift } from "./plugins-compat-routes";
+import {
+  analyzePluginStateDrift,
+  resolveAdvancedCapabilityCompatStatus,
+} from "./plugins-compat-routes";
 
 describe("analyzePluginStateDrift", () => {
   const pluginList: Parameters<typeof analyzePluginStateDrift>[0] = [
@@ -131,5 +134,25 @@ describe("analyzePluginStateDrift", () => {
     expect(report.summary.withDrift).toBe(1);
     expect(report.summary.byFlag.active_but_disabled).toBe(1);
     expect(report.plugins[0]?.drift_flags).toContain("active_but_disabled");
+  });
+
+  it("treats experience as an advanced capability instead of a runtime plugin package", () => {
+    const status = resolveAdvancedCapabilityCompatStatus(
+      "experience",
+      {
+        plugins: {
+          entries: {
+            experience: { enabled: true },
+          },
+        },
+      },
+      {
+        getService(serviceType: string) {
+          return serviceType === "EXPERIENCE" ? { ok: true } : null;
+        },
+      },
+    );
+
+    expect(status).toEqual({ enabled: true, isActive: true });
   });
 });

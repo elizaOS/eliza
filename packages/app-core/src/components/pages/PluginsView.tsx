@@ -33,12 +33,12 @@ import {
   Button,
   PageLayoutHeader,
   PagePanel,
-  Sidebar,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
   useLinkedSidebarSelection,
 } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
@@ -1297,11 +1297,28 @@ function PluginListView({
         data-testid="plugins-shell"
       >
         {showDesktopSubgroupSidebar && (
-          <Sidebar
+          <AppPageSidebar
             className="hidden lg:flex"
             testId="plugins-subgroup-sidebar"
+            collapsible
+            contentIdentity="plugins-subgroups"
             aria-label={t("pluginsview.PluginTypes", {
               defaultValue: "Plugin types",
+            })}
+            collapsedRailItems={subgroupTags.map((tag) => {
+              const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
+              const isActive = subgroupFilter === tag.id;
+              return (
+                <SidebarContent.RailItem
+                  key={tag.id}
+                  aria-label={tag.label}
+                  title={tag.label}
+                  active={isActive}
+                  onClick={() => setSubgroupFilter(tag.id)}
+                >
+                  <Icon className="h-4 w-4" />
+                </SidebarContent.RailItem>
+              );
             })}
           >
             <SidebarScrollRegion className="pt-4">
@@ -1311,7 +1328,7 @@ function PluginListView({
                 )}
               </SidebarPanel>
             </SidebarScrollRegion>
-          </Sidebar>
+          </AppPageSidebar>
         )}
 
         <PagePanel.ContentArea>

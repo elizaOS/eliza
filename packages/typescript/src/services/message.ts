@@ -1266,6 +1266,15 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
 );
 
+// Actions the planner selects as explicit delegation / orchestration intent.
+// These cannot be evaluated by keyword-overlap against the user's message
+// (e.g. "build me an app" does not contain "spawn" or "agent"), so the
+// metadata-based corrector must not override them with a keyword-matched
+// alternative like a cross-channel send action.
+const EXPLICIT_INTENT_ACTIONS = new Set(
+	["SPAWN_AGENT"].map(normalizeActionIdentifier),
+);
+
 function shouldAttemptCanonicalActionRepair(
 	rawPlannerActions: string[],
 	normalizedActions: string[],
@@ -1799,11 +1808,20 @@ export function suggestOwnedActionFromMetadata(
 	};
 }
 
-function findOwnedActionCorrectionFromMetadata(
+export function findOwnedActionCorrectionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): ActionOwnershipSuggestion | null {
+	const hasExplicitIntent = (responseContent?.actions ?? []).some(
+		(actionName) =>
+			typeof actionName === "string" &&
+			EXPLICIT_INTENT_ACTIONS.has(normalizeActionIdentifier(actionName)),
+	);
+	if (hasExplicitIntent) {
+		return null;
+	}
+
 	const currentAction = responseContent?.actions?.find(
 		(actionName) =>
 			typeof actionName === "string" &&

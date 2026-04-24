@@ -1,6 +1,7 @@
 # Mistral Vibe CLI Environment
 
-This directory provides a reproducible development environment for the Mistral Vibe CLI (`vibe`), including **170+ skills** from multiple skill libraries.
+This directory provides a reproducible development environment for the Mistral Vibe CLI (`vibe`).
+`./setup.sh` creates a fresh local `.isolated_home/.vibe`, and `./sync_skills.sh` can import extra skill libraries from external checkouts when you want them.
 
 ## Prerequisites
 
@@ -19,7 +20,7 @@ This directory provides a reproducible development environment for the Mistral V
     ```bash
     ./setup.sh
     ```
-    This installs `mistral-vibe` via `uv` internally in `.isolated_home`.
+    This installs `mistral-vibe` via `uv` into `.isolated_home` and creates starter `.vibe/config.toml` and `.vibe/.env.example` files there.
 
 3.  **Configure API Key**:
     Add your Mistral API key to `.isolated_home/.vibe/.env`:
@@ -32,9 +33,9 @@ This directory provides a reproducible development environment for the Mistral V
     vibe
     ```
 
-## Skill Libraries
+## Optional Skill Libraries
 
-This environment includes skills from multiple sources:
+This environment can import skills from multiple sources after you clone those upstream repositories into `references/skills-sources/` and run `./sync_skills.sh`:
 
 ### Anthropic Skills (16 skills)
 Official skills from [anthropics/skills](https://github.com/anthropics/skills):
@@ -64,7 +65,7 @@ Comprehensive skill collection from [wshobson/agents](https://github.com/wshobso
 
 ## Updating Skills
 
-To update skills from upstream repositories:
+This repo does not vendor the upstream skill repositories. After cloning them into `references/skills-sources/`, sync or update them with:
 
 ```bash
 cd references/skills-sources/anthropics-skills && git pull
@@ -77,7 +78,6 @@ cd ../..
 
 - `docs/README.md`: Official Mistral Vibe documentation
 - `docs/AGENTS.md`: Agent types and configuration
-- `references/mistral-vibe-src/`: Full source code
 
 ## API Keys Configuration
 
@@ -107,4 +107,4 @@ args = ["-y", "@modelcontextprotocol/server-github"]
 env = { "GITHUB_PERSONAL_ACCESS_TOKEN" = "${GITHUB_TOKEN}" }
 ```
 
-See `config.toml` for more MCP server examples (web fetch, filesystem, search).
+`./setup.sh` writes a starter `config.toml` with fetch enabled and commented MCP examples for filesystem, GitHub, Brave Search, and Puppeteer.

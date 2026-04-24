@@ -206,6 +206,7 @@ describe("discord browser scraper (end-to-end vs fake bridge)", () => {
     expect(createRequest?.body).toMatchObject({
       url: "https://discord.com/channels/@me",
       partition: "lifeops-discord-agent-42-owner",
+      kind: "internal",
       show: true,
     });
   });

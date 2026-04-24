@@ -1,6 +1,7 @@
 import { useBootConfig } from "../../config";
 import type {
   CompanionInferenceNotice,
+  CompanionSceneStatus,
   ResolveCompanionInferenceNoticeArgs,
 } from "../../config/boot-config";
 import { getBootConfig } from "../../config/boot-config";
@@ -32,4 +33,20 @@ export function CompanionGlobalOverlay() {
   return CompanionGlobalOverlayComponent ? (
     <CompanionGlobalOverlayComponent />
   ) : null;
+}
+
+const DEFAULT_COMPANION_SCENE_STATUS: CompanionSceneStatus = {
+  avatarReady: false,
+  teleportKey: "",
+};
+
+export function useCompanionSceneStatus(): CompanionSceneStatus {
+  return (
+    getBootConfig().useCompanionSceneStatus?.() ??
+    DEFAULT_COMPANION_SCENE_STATUS
+  );
+}
+
+export function prefetchVrmToCache(url: string): Promise<void> | void {
+  return getBootConfig().prefetchVrmToCache?.(url);
 }

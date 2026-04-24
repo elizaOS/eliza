@@ -9,7 +9,7 @@ ext {
 
 apply plugin: 'com.android.library'
 android {
-    namespace "ai.eliza.plugins.mobilesignals"
+    namespace = "ai.eliza.plugins.mobilesignals"
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
 
     defaultConfig {

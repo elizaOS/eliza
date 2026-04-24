@@ -95,6 +95,16 @@ export type LifeOpsScheduleInspection = {
   };
 };
 
+/**
+ * Lightweight read-only summary for UI consumers. Reads cached `life_*`
+ * tables; never re-runs inspection probes. The scheduler tick is the sole
+ * writer of fresh analyses.
+ */
+export type LifeOpsScheduleSummary = {
+  insight: LifeOpsScheduleInsightRecord | null;
+  sleepEpisodes: LifeOpsScheduleSleepEpisodeInspection[];
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -1022,6 +1032,68 @@ export const __internal = {
   firstActiveAfterWake,
   ACTIVITY_EVENT_MAX_WINDOW_MS,
 };
+
+/**
+ * Lightweight read that only touches cached tables. Safe to call at UI
+ * cadence (every minute or on panel mount) without re-running probes.
+ * The scheduler tick is the sole writer of fresh analyses via
+ * {@link inspectLifeOpsSchedule}.
+ *
+ * Returns the last 7 days of persisted sleep episodes alongside the
+ * current merged state so the UI can render the episode browser without
+ * triggering I/O for iMessage / Continuity / NSWorkspace probes.
+ */
+export async function readScheduleSummary(args: {
+  repository: LifeOpsRepository;
+  agentId: string;
+  timezone: string;
+  now?: Date;
+}): Promise<LifeOpsScheduleSummary> {
+  const now = args.now ?? new Date();
+  const nowMs = now.getTime();
+  const sevenDaysAgoIso = new Date(
+    nowMs - 7 * 24 * 60 * 60 * 1_000,
+  ).toISOString();
+  const [mergedState, episodes] = await Promise.all([
+    args.repository.getScheduleMergedState(
+      args.agentId,
+      "local",
+      args.timezone,
+    ),
+    args.repository.listSleepEpisodesBetween(
+      args.agentId,
+      sevenDaysAgoIso,
+      now.toISOString(),
+      { includeOpen: true, limit: 200 },
+    ),
+  ]);
+  const insight: LifeOpsScheduleInsightRecord | null = mergedState
+    ? {
+        ...mergedState,
+        id: `lifeops-schedule:${args.agentId}:${mergedState.effectiveDayKey}`,
+        agentId: args.agentId,
+        metadata: {},
+      }
+    : null;
+  return {
+    insight,
+    sleepEpisodes: episodes.map((episode) => {
+      const startMs = Date.parse(episode.startAt);
+      const endMs = episode.endAt ? Date.parse(episode.endAt) : null;
+      return {
+        startAt: episode.startAt,
+        endAt: episode.endAt,
+        durationMinutes: toDurationMinutes(startMs, endMs, nowMs),
+        current: episode.endAt === null,
+        confidence: episode.confidence,
+        source:
+          episode.source === "manual"
+            ? "activity_gap"
+            : episode.source,
+      };
+    }),
+  };
+}
 
 export async function refreshLifeOpsScheduleInsight(args: {
   runtime: IAgentRuntime;

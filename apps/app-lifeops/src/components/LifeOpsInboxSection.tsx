@@ -1,8 +1,10 @@
 import {
   Button,
+  client,
   Input,
   openExternalUrl,
   Spinner,
+  useMediaQuery,
   useApp,
 } from "@elizaos/app-core";
 import {
@@ -11,6 +13,7 @@ import {
   type LifeOpsInboxMessage,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  ArrowLeft,
   AtSign,
   ExternalLink,
   MessageCircle,
@@ -22,12 +25,23 @@ import {
   Shield,
   Smartphone,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo } from "react";
+import {
+  type JSX,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   type InboxChannel,
   useInbox,
 } from "../hooks/useInbox.js";
-import { buildReplyPrefill, postToChat } from "./LifeOpsChatAdapter.js";
+import {
+  buildMessageChatPrefill,
+  buildReplyPrefill,
+  useLifeOpsChatLauncher,
+} from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
   useLifeOpsSelection,
@@ -292,9 +306,13 @@ function MessageRow({
 function ReaderPane({
   message,
   onReply,
+  onChat,
+  onBack,
 }: {
   message: LifeOpsInboxMessage | null;
   onReply: (msg: LifeOpsInboxMessage) => void;
+  onChat: (msg: LifeOpsInboxMessage) => void;
+  onBack?: () => void;
 }) {
   const { t } = useApp();
 
@@ -318,6 +336,18 @@ function ReaderPane({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-bg/10">
       <div className="flex items-start gap-3 border-b border-border/12 px-5 py-4">
+        {onBack ? (
+          <button
+            type="button"
+            aria-label={t("lifeopsInbox.backToList", {
+              defaultValue: "Back to inbox list",
+            })}
+            onClick={onBack}
+            className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-bg-muted/40 hover:text-txt"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        ) : null}
         <div
           className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${style.bg} ${style.text}`}
         >
@@ -366,6 +396,18 @@ function ReaderPane({
           <MessageSquareReply className="mr-1.5 h-3.5 w-3.5" />
           {t("lifeopsInbox.reply", { defaultValue: "Reply" })}
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+          onClick={() => onChat(message)}
+        >
+          <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+          {t("common.chat", { defaultValue: "Chat" })}
+        </Button>
+        {message.channel === "gmail" ? (
+          <InboxUnsubscribeButton message={message} />
+        ) : null}
         {message.deepLink ? (
           <Button
             size="sm"
@@ -384,6 +426,139 @@ function ReaderPane({
   );
 }
 
+function InboxUnsubscribeButton({
+  message,
+}: {
+  message: LifeOpsInboxMessage;
+}): JSX.Element {
+  const [state, setState] = useState<"idle" | "working" | "done" | "error">(
+    "idle",
+  );
+  const [note, setNote] = useState<string | null>(null);
+
+  const onClick = useCallback(async () => {
+    // LifeOpsInboxMessage doesn't carry the raw From email — fall back to the
+    // sender display name and let the server resolve / fail cleanly.
+    const senderEmail = message.sender.displayName;
+    if (!senderEmail || !senderEmail.includes("@")) {
+      window.alert(
+        "Could not infer sender email for unsubscribe. Open the message's source and try from the Payments & Subscriptions page.",
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Unsubscribe from ${senderEmail} and create a filter to auto-trash future mail?`,
+      )
+    ) {
+      return;
+    }
+    setState("working");
+    try {
+      const result = await client.unsubscribeLifeOpsEmailSender({
+        senderEmail,
+        blockAfter: true,
+        trashExisting: false,
+        confirmed: true,
+      });
+      setState(result.record.status === "succeeded" ? "done" : "error");
+      setNote(result.record.status);
+    } catch (error) {
+      setState("error");
+      setNote(error instanceof Error ? error.message : String(error));
+    }
+  }, [message.sender.displayName]);
+
+  const label =
+    state === "working"
+      ? "Unsubscribing…"
+      : state === "done"
+        ? "Unsubscribed"
+        : state === "error"
+          ? `Failed${note ? `: ${note}` : ""}`
+          : "Unsubscribe";
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
+      disabled={state === "working" || state === "done"}
+      onClick={() => void onClick()}
+      title="Send RFC 8058 one-click unsubscribe and create a Gmail filter"
+    >
+      {label}
+    </Button>
+  );
+}
+
+function InboxListPane({
+  inbox,
+  selectedMessageId,
+  onSelect,
+  onReply,
+  emptyLabel,
+}: {
+  inbox: ReturnType<typeof useInbox>;
+  selectedMessageId: string | null;
+  onSelect: (args: Partial<LifeOpsSelection>) => void;
+  onReply: (msg: LifeOpsInboxMessage) => void;
+  emptyLabel?: string;
+}) {
+  const { t } = useApp();
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-border/10 px-3 py-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted" />
+          <Input
+            value={inbox.searchQuery}
+            onChange={(e) => inbox.setSearchQuery(e.target.value)}
+            placeholder={t("lifeopsInbox.search", {
+              defaultValue: "Search…",
+            })}
+            aria-label={t("lifeopsInbox.searchAria", {
+              defaultValue: "Search inbox",
+            })}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+      </div>
+
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        role="listbox"
+        aria-label={t("lifeopsInbox.listAria", {
+          defaultValue: "Messages",
+        })}
+      >
+        {inbox.messages.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs text-muted">
+            {inbox.searchQuery
+              ? t("lifeopsInbox.noResults", {
+                  defaultValue: "No matches.",
+                })
+              : t("lifeopsInbox.empty", {
+                  defaultValue: emptyLabel ?? "Inbox clear.",
+                })}
+          </div>
+        ) : (
+          inbox.messages.map((msg) => (
+            <MessageRow
+              key={msg.id}
+              message={msg}
+              selected={msg.id === selectedMessageId}
+              onSelect={() => onSelect({ messageId: msg.id })}
+              onReply={() => onReply(msg)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export interface LifeOpsInboxSectionProps {
   selection?: LifeOpsSelection;
   onSelect?: (args: Partial<LifeOpsSelection>) => void;
@@ -397,6 +572,8 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selection = props.selection ?? ctx.selection;
   const onSelect = props.onSelect ?? ctx.select;
   const { t } = useApp();
+  const { openLifeOpsChat } = useLifeOpsChatLauncher();
+  const compactLayout = useMediaQuery("(max-width: 767px)");
   const allowedChannels = props.channels ?? LIFEOPS_INBOX_CHANNELS;
   const channelFilters = useMemo<InboxChannel[]>(
     () =>
@@ -454,8 +631,17 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       snippet: msg.snippet,
       deepLink: msg.deepLink,
     });
-    postToChat(text);
-  }, []);
+    openLifeOpsChat(text, { messageId: msg.id });
+  }, [openLifeOpsChat]);
+
+  const handleChat = useCallback(
+    (msg: LifeOpsInboxMessage) => {
+      openLifeOpsChat(buildMessageChatPrefill(msg), {
+        messageId: msg.id,
+      });
+    },
+    [openLifeOpsChat],
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -490,12 +676,13 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   useEffect(() => {
     if (
+      !compactLayout &&
       inbox.messages.length > 0 &&
       (!selectedMessageId || selectedIndex === -1)
     ) {
       onSelect({ messageId: inbox.messages[0].id });
     }
-  }, [inbox.messages, onSelect, selectedIndex, selectedMessageId]);
+  }, [compactLayout, inbox.messages, onSelect, selectedIndex, selectedMessageId]);
 
   return (
     <section
@@ -530,56 +717,42 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="flex w-72 shrink-0 flex-col border-r border-border/12">
-            <div className="border-b border-border/10 px-3 py-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted" />
-                <Input
-                  value={inbox.searchQuery}
-                  onChange={(e) => inbox.setSearchQuery(e.target.value)}
-                  placeholder={t("lifeopsInbox.search", {
-                    defaultValue: "Search…",
-                  })}
-                  aria-label={t("lifeopsInbox.searchAria", {
-                    defaultValue: "Search inbox",
-                  })}
-                  className="h-8 pl-8 text-xs"
+          {compactLayout ? (
+            selectedMessage ? (
+              <ReaderPane
+                message={selectedMessage}
+                onReply={handleReply}
+                onChat={handleChat}
+                onBack={() => onSelect({ messageId: null })}
+              />
+            ) : (
+              <InboxListPane
+                inbox={inbox}
+                selectedMessageId={selectedMessageId}
+                onSelect={onSelect}
+                onReply={handleReply}
+                emptyLabel={props.emptyLabel}
+              />
+            )
+          ) : (
+            <>
+              <div className="flex w-72 shrink-0 flex-col border-r border-border/12">
+                <InboxListPane
+                  inbox={inbox}
+                  selectedMessageId={selectedMessageId}
+                  onSelect={onSelect}
+                  onReply={handleReply}
+                  emptyLabel={props.emptyLabel}
                 />
               </div>
-            </div>
 
-            <div
-              className="min-h-0 flex-1 overflow-y-auto"
-              role="listbox"
-              aria-label={t("lifeopsInbox.listAria", {
-                defaultValue: "Messages",
-              })}
-            >
-              {inbox.messages.length === 0 ? (
-                <div className="px-4 py-8 text-center text-xs text-muted">
-                  {inbox.searchQuery
-                    ? t("lifeopsInbox.noResults", {
-                        defaultValue: "No matches.",
-                      })
-                    : t("lifeopsInbox.empty", {
-                        defaultValue: props.emptyLabel ?? "Inbox clear.",
-                      })}
-                </div>
-              ) : (
-                inbox.messages.map((msg) => (
-                  <MessageRow
-                    key={msg.id}
-                    message={msg}
-                    selected={msg.id === selectedMessageId}
-                    onSelect={() => onSelect({ messageId: msg.id })}
-                    onReply={() => handleReply(msg)}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-
-          <ReaderPane message={selectedMessage} onReply={handleReply} />
+              <ReaderPane
+                message={selectedMessage}
+                onReply={handleReply}
+                onChat={handleChat}
+              />
+            </>
+          )}
         </div>
       )}
     </section>

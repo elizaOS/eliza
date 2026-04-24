@@ -5,10 +5,10 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^6.20.0",
-    "recharts": "^2.10.0",
+    "react-router-dom": "^7.0.0",
+    "recharts": "^3.0.0",
     "prismjs": "^1.29.0",
-    "react-markdown": "^9.0.0"
+    "react-markdown": "^10.0.0"
   },
   "scripts": {
     "start": "vite",

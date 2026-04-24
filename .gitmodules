@@ -9,6 +9,7 @@
 [submodule "plugins/plugin-cli"]
 	path = plugins/plugin-cli
 	url = https://github.com/elizaos-plugins/plugin-cli.git
+	branch = alpha
 [submodule "plugins/plugin-commands"]
 	path = plugins/plugin-commands
 	url = https://github.com/elizaos-plugins/plugin-commands.git
@@ -40,6 +41,7 @@
 [submodule "plugins/plugin-imessage"]
 	path = plugins/plugin-imessage
 	url = https://github.com/elizaOS-plugins/plugin-imessage.git
+	branch = alpha
 [submodule "plugins/plugin-local-ai"]
 	path = plugins/plugin-local-ai
 	url = https://github.com/elizaos-plugins/plugin-local-ai.git
@@ -71,10 +73,6 @@
 [submodule "plugins/plugin-pdf"]
 	path = plugins/plugin-pdf
 	url = https://github.com/elizaos-plugins/plugin-pdf.git
-	branch = alpha
-[submodule "plugins/plugin-selfcontrol"]
-	path = plugins/plugin-selfcontrol
-	url = https://github.com/elizaos-plugins/plugin-selfcontrol.git
 	branch = alpha
 [submodule "plugins/plugin-shell"]
 	path = plugins/plugin-shell
