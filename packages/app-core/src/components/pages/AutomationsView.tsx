@@ -4950,7 +4950,7 @@ function AutomationsLayout() {
 
             <AutomationCollapsibleSection
               sectionKey="agent-owned"
-              label="Agent Owned"
+              label="Internal"
               icon={<SquareTerminal className="h-3.5 w-3.5" aria-hidden />}
               count={agentOwnedItems.length}
               collapsed={collapsedSections.has("agent-owned")}
