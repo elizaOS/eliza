@@ -84,9 +84,10 @@ export function MusicPlayerGlobal() {
     };
 
     void poll();
-    // Faster while something may be playing so pause/resume from the agent
-    // reflects in the UI without a long delay.
-    const id = setInterval(() => void poll(), 2_000);
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void poll();
+    }, 5_000);
     return () => {
       alive = false;
       clearInterval(id);
