@@ -53,7 +53,7 @@ function cadenceLabel(cadence: LifeOpsRecurringCharge["cadence"]): string {
   }
 }
 
-export function LifeOpsPaymentsSection(): JSX.Element {
+export function LifeOpsPaymentsSection(): JSX.Element | null {
   const [dashboard, setDashboard] = useState<LifeOpsPaymentsDashboard | null>(
     null,
   );
