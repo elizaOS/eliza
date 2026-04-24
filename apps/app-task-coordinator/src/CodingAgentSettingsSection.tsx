@@ -1,5 +1,11 @@
 import { type AgentPreflightResult, client, useApp } from "@elizaos/app-core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { AgentTabsSection } from "./AgentTabsSection";
 import {
   ADAPTER_NAME_TO_TAB,
@@ -21,6 +27,23 @@ import {
 import { GlobalPrefsSection } from "./GlobalPrefsSection";
 import { LlmProviderSection } from "./LlmProviderSection";
 import { ModelConfigSection } from "./ModelConfigSection";
+
+function AgentAdvancedSettingsDisclosure({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <details className="group rounded-xl border border-border/60 bg-card/45 px-3 py-2">
+      <summary className="cursor-pointer select-none list-none text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:text-txt">
+        Defaults and workspace
+      </summary>
+      <div className="mt-3 flex flex-col gap-4 border-t border-border/40 pt-3">
+        {children}
+      </div>
+    </details>
+  );
+}
 
 export function CodingAgentSettingsSection() {
   const { t, elizaCloudConnected } = useApp();
@@ -422,26 +445,11 @@ export function CodingAgentSettingsSection() {
         </div>
       )}
 
-      <LlmProviderSection
-        llmProvider={llmProvider}
-        isCloud={isCloud}
-        prefs={prefs}
-        setPref={setPref}
-      />
-
-      <GlobalPrefsSection
-        prefs={prefs}
-        selectionStrategy={selectionStrategy}
-        approvalPreset={approvalPreset}
-        setPref={setPref}
-      />
-
       <AgentTabsSection
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         availableAgents={availableAgents}
         llmProvider={llmProvider}
-        preflightLoaded={preflightLoaded}
         preflightByAgent={preflightByAgent}
         authInProgress={authInProgress}
         authResult={authResult}
@@ -451,6 +459,13 @@ export function CodingAgentSettingsSection() {
           setPref("PARALLAX_DEFAULT_AGENT_TYPE", agent);
         }}
         onAuth={handleAuth}
+      />
+
+      <LlmProviderSection
+        llmProvider={llmProvider}
+        isCloud={isCloud}
+        prefs={prefs}
+        setPref={setPref}
       />
 
       <ModelConfigSection
@@ -465,6 +480,15 @@ export function CodingAgentSettingsSection() {
         isDynamic={isDynamic}
         setPref={setPref}
       />
+
+      <AgentAdvancedSettingsDisclosure>
+        <GlobalPrefsSection
+          prefs={prefs}
+          selectionStrategy={selectionStrategy}
+          approvalPreset={approvalPreset}
+          setPref={setPref}
+        />
+      </AgentAdvancedSettingsDisclosure>
     </div>
   );
 }

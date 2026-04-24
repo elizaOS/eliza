@@ -217,6 +217,7 @@ describe("PageScopedChatPane", () => {
     expect(intro.textContent).toContain("Overview");
     expect(intro.textContent).toContain("Personality");
     expect(intro.textContent).toContain("Knowledge");
+    expect(intro.textContent).toContain("Skills");
     expect(intro.textContent).toContain("Experience");
     expect(intro.textContent).toContain("Relationships");
   });

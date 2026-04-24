@@ -32,7 +32,9 @@ export function LlmProviderSection({
         </SettingsControls.FieldLabel>
         <Select
           value={llmProvider}
-          onValueChange={(value: string) => setPref("PARALLAX_LLM_PROVIDER", value)}
+          onValueChange={(value: string) =>
+            setPref("PARALLAX_LLM_PROVIDER", value)
+          }
         >
           <SettingsControls.SelectTrigger variant="compact">
             <SelectValue />
@@ -55,22 +57,6 @@ export function LlmProviderSection({
             </SelectItem>
           </SelectContent>
         </Select>
-        <SettingsControls.FieldDescription>
-          {llmProvider === "subscription"
-            ? t("codingagentsettingssection.LlmProviderDescSubscription", {
-                defaultValue:
-                  "Use each CLI's built-in login (Claude Code, Codex, and Gemini subscriptions).",
-              })
-            : isCloud
-              ? t("codingagentsettingssection.LlmProviderDescCloud", {
-                  defaultValue:
-                    "Route all agent LLM calls through Eliza Cloud. Gemini CLI is not supported.",
-                })
-              : t("codingagentsettingssection.LlmProviderDescApiKeys", {
-                  defaultValue:
-                    "Provide your own API keys for each provider (Anthropic, OpenAI, Google).",
-                })}
-        </SettingsControls.FieldDescription>
       </SettingsControls.Field>
 
       {llmProvider === "api_keys" && (
@@ -88,11 +74,6 @@ export function LlmProviderSection({
               value={prefs.ANTHROPIC_API_KEY || ""}
               onChange={(e) => setPref("ANTHROPIC_API_KEY", e.target.value)}
             />
-            <SettingsControls.FieldDescription>
-              {t("codingagentsettingssection.AnthropicApiKeyDesc", {
-                defaultValue: "For Claude Code and Aider (Anthropic provider).",
-              })}
-            </SettingsControls.FieldDescription>
           </SettingsControls.Field>
           <SettingsControls.Field>
             <SettingsControls.FieldLabel>
@@ -107,11 +88,6 @@ export function LlmProviderSection({
               value={prefs.OPENAI_API_KEY || ""}
               onChange={(e) => setPref("OPENAI_API_KEY", e.target.value)}
             />
-            <SettingsControls.FieldDescription>
-              {t("codingagentsettingssection.OpenaiApiKeyDesc", {
-                defaultValue: "For Codex and Aider (OpenAI provider).",
-              })}
-            </SettingsControls.FieldDescription>
           </SettingsControls.Field>
           <SettingsControls.Field>
             <SettingsControls.FieldLabel>
@@ -128,11 +104,6 @@ export function LlmProviderSection({
                 setPref("GOOGLE_GENERATIVE_AI_API_KEY", e.target.value)
               }
             />
-            <SettingsControls.FieldDescription>
-              {t("codingagentsettingssection.GoogleApiKeyDesc", {
-                defaultValue: "For Gemini CLI and Aider (Google provider).",
-              })}
-            </SettingsControls.FieldDescription>
           </SettingsControls.Field>
         </div>
       )}

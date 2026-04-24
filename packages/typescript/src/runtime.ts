@@ -152,6 +152,11 @@ import {
 } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import { resolveProviderContexts } from "./utils/context-catalog";
+import {
+	getActiveRoutingContextsForTurn,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
@@ -3414,6 +3419,10 @@ export class AgentRuntime implements IAgentRuntime {
 			skipCache || !message.id
 				? emptyObj
 				: (await this.stateCache.get(message.id)) || emptyObj;
+		const activeContexts = getActiveRoutingContextsForTurn(
+			cachedState,
+			message,
+		);
 		const providerNames = new Set<string>();
 		if (filterList && filterList.length > 0) {
 			for (const name of filterList) {
@@ -3421,6 +3430,15 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		} else {
 			for (const p of this.providers.filter((p) => !p.private && !p.dynamic)) {
+				if (
+					activeContexts.length > 0 &&
+					!shouldIncludeByContext(
+						resolveProviderContexts(p),
+						activeContexts,
+					)
+				) {
+					continue;
+				}
 				providerNames.add(p.name);
 			}
 		}

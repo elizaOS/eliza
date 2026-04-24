@@ -15,10 +15,27 @@ import {
   SidebarPanel,
   SidebarScrollRegion,
   Spinner,
-  Switch,
   useLinkedSidebarSelection,
 } from "@elizaos/ui";
-import { AlertTriangle, Download, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  Brain,
+  Cloud,
+  Cpu,
+  Download,
+  Image,
+  type LucideIcon,
+  Palette,
+  Puzzle,
+  RefreshCw,
+  Shield,
+  SlidersHorizontal,
+  Terminal,
+  Upload,
+  User,
+  Wallet,
+} from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
   forwardRef,
@@ -30,23 +47,18 @@ import {
 } from "react";
 import { CodingAgentSettingsSection } from "../../app-shell/task-coordinator-slots.js";
 import { useApp } from "../../state";
-import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
-import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
-import { TrainingSettingsPanel } from "../settings/TrainingSettings";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
-
-type SettingsComplexity = "simple" | "advanced";
 
 const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
 const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
@@ -57,36 +69,12 @@ const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
 interface SettingsSectionDef {
   id: string;
   label: string;
+  defaultLabel: string;
+  icon: LucideIcon;
   description?: string;
+  defaultDescription?: string;
   keywords?: string[];
   keywordKeys?: string[];
-  /**
-   * Visibility level. "simple" sections show in both Simple and Advanced
-   * modes. "advanced" sections only show when the user toggles Advanced.
-   * Sections default to "simple" if omitted.
-   */
-  level?: SettingsComplexity;
-}
-
-const SETTINGS_COMPLEXITY_STORAGE_KEY = "milady.settings.complexity";
-
-function readStoredComplexity(): SettingsComplexity {
-  if (typeof window === "undefined") return "simple";
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_COMPLEXITY_STORAGE_KEY);
-    return raw === "advanced" ? "advanced" : "simple";
-  } catch {
-    return "simple";
-  }
-}
-
-function writeStoredComplexity(value: SettingsComplexity): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(SETTINGS_COMPLEXITY_STORAGE_KEY, value);
-  } catch {
-    /* ignore quota / privacy-mode failures */
-  }
 }
 
 function clampSettingsSidebarWidth(value: number): number {
@@ -130,7 +118,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "identity",
     label: "settings.sections.identity.label",
+    defaultLabel: "Basics",
+    icon: User,
     description: "settings.sections.identity.desc",
+    defaultDescription: "Name, voice, and system prompt.",
     keywords: [
       "identity",
       "name",
@@ -141,22 +132,24 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "agent",
     ],
     keywordKeys: ["settings.keyword.voice"],
-    level: "simple",
   },
   {
     id: "cloud",
     label: "providerswitcher.elizaCloud",
+    defaultLabel: "Cloud",
+    icon: Cloud,
     description: "settings.sections.cloud.desc",
+    defaultDescription: "Account, credits, and cloud services.",
     keywords: ["cloud", "billing", "credits", "auth", "subscription"],
     keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
-    level: "simple",
   },
   {
-    // Cloud and direct-provider model routing. Local model runtime controls are
-    // split into the advanced Local Models section below.
     id: "ai-model",
     label: "settings.sections.aimodel.label",
+    defaultLabel: "AI Models",
+    icon: Brain,
     description: "settings.sections.aimodel.desc",
+    defaultDescription: "Cloud, local, and direct-provider routing.",
     keywords: [
       "model",
       "provider",
@@ -184,12 +177,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.apiKey",
       "settings.keyword.inference",
     ],
-    level: "simple",
   },
   {
     id: "local-models",
     label: "settings.sections.localModels.label",
+    defaultLabel: "Local Models",
+    icon: Cpu,
     description: "settings.sections.localModels.desc",
+    defaultDescription: "Download and assign local models.",
     keywords: [
       "local",
       "llama",
@@ -202,12 +197,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "gpu",
       "vram",
     ],
-    level: "advanced",
   },
   {
     id: "coding-agents",
     label: "settings.sections.codingagents.label",
+    defaultLabel: "Task Agents",
+    icon: Terminal,
     description: "settings.codingAgentsDescription",
+    defaultDescription: "Claude Code, Codex, Gemini, and Aider.",
     keywords: [
       "codex",
       "agent",
@@ -219,12 +216,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "task coordinator",
       "task agents",
     ],
-    level: "advanced",
   },
   {
     id: "media",
     label: "settings.sections.media.label",
+    defaultLabel: "Media",
+    icon: Image,
     description: "settings.sections.media.desc",
+    defaultDescription: "Image, video, audio, vision, and voice.",
     keywords: [
       "audio",
       "voice",
@@ -241,12 +240,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.camera",
       "settings.keyword.microphone",
     ],
-    level: "simple",
   },
   {
     id: "appearance",
     label: "settings.sections.appearance.label",
+    defaultLabel: "Appearance",
+    icon: Palette,
     description: "settings.sections.appearance.desc",
+    defaultDescription: "Language, theme, and content packs.",
     keywords: [
       "appearance",
       "theme",
@@ -263,12 +264,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.avatar",
       "settings.keyword.appearance",
     ],
-    level: "simple",
   },
   {
     id: "capabilities",
     label: "settings.sections.capabilities.label",
+    defaultLabel: "Capabilities",
+    icon: SlidersHorizontal,
     description: "settings.sections.capabilities.desc",
+    defaultDescription: "Agent features and automation surfaces.",
     keywords: [
       "capabilities",
       "wallet",
@@ -276,17 +279,25 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "computer use",
       "desktop automation",
       "screenshots",
+      "training",
+      "auto-training",
       "enable",
       "disable",
       "feature",
     ],
-    keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
-    level: "advanced",
+    keywordKeys: [
+      "settings.keyword.wallet",
+      "settings.keyword.browser",
+      "settings.keyword.training",
+    ],
   },
   {
     id: "wallet-rpc",
     label: "settings.sections.walletrpc.label",
+    defaultLabel: "Wallet & RPC",
+    icon: Wallet,
     description: "settings.sections.walletrpc.desc",
+    defaultDescription: "Wallet network and RPC providers.",
     keywords: [
       "wallet",
       "rpc",
@@ -303,7 +314,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "feature-toggles",
     label: "settings.sections.features.label",
+    defaultLabel: "Features",
+    icon: Puzzle,
     description: "settings.sections.features.desc",
+    defaultDescription: "LifeOps opt-ins.",
     keywords: [
       "feature",
       "toggle",
@@ -322,7 +336,10 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "permissions",
     label: "settings.sections.permissions.label",
+    defaultLabel: "Permissions",
+    icon: Shield,
     description: "settings.sections.permissions.desc",
+    defaultDescription: "Browser and device access.",
     keywords: [
       "permissions",
       "desktop",
@@ -333,57 +350,24 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
-    level: "simple",
-  },
-  {
-    id: "learned-skills",
-    label: "settings.sections.learnedSkills.label",
-    description: "settings.sections.learnedSkills.desc",
-    keywords: [
-      "learned",
-      "skills",
-      "curated",
-      "trajectory",
-      "training",
-      "agent",
-      "promote",
-      "disable",
-    ],
-    keywordKeys: ["settings.keyword.skills", "settings.keyword.training"],
-  },
-  {
-    id: "auto-training",
-    label: "settings.sections.autoTraining.label",
-    description: "settings.sections.autoTraining.desc",
-    keywords: [
-      "auto",
-      "training",
-      "auto-train",
-      "trigger",
-      "threshold",
-      "cooldown",
-      "vertex",
-      "atropos",
-      "tinker",
-      "native",
-      "trajectory",
-      "fine-tune",
-      "fine tune",
-    ],
-    keywordKeys: ["settings.keyword.training"],
   },
   {
     id: "updates",
     label: "settings.sections.updates.label",
+    defaultLabel: "Updates",
+    icon: RefreshCw,
     description: "settings.sections.updates.desc",
+    defaultDescription: "Software updates.",
     keywords: ["updates", "release", "version", "download"],
     keywordKeys: ["settings.keyword.updates"],
-    level: "advanced",
   },
   {
     id: "advanced",
     label: "settings.sections.backupReset.label",
+    defaultLabel: "Backup & Reset",
+    icon: Archive,
     description: "settings.sections.backupReset.desc",
+    defaultDescription: "Export, import, and reset.",
     keywords: [
       "advanced",
       "export",
@@ -402,22 +386,23 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.import",
       "settings.keyword.reset",
     ],
-    level: "advanced",
   },
 ];
 
 function matchesSettingsSection(
   section: SettingsSectionDef,
   query: string,
-  t: (key: string) => string,
+  t: (key: string, vars?: Record<string, unknown>) => string,
 ): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
+  const label = t(section.label, { defaultValue: section.defaultLabel });
+  const description = section.description
+    ? t(section.description, { defaultValue: section.defaultDescription })
+    : "";
   return (
-    t(section.label).toLowerCase().includes(normalized) ||
-    (section.description
-      ? t(section.description).toLowerCase().includes(normalized)
-      : false) ||
+    label.toLowerCase().includes(normalized) ||
+    description.toLowerCase().includes(normalized) ||
     (section.keywords ?? []).some((keyword) =>
       keyword.toLowerCase().includes(normalized),
     ) ||
@@ -425,6 +410,13 @@ function matchesSettingsSection(
       t(key).toLowerCase().includes(normalized),
     )
   );
+}
+
+function settingsSectionLabel(
+  section: SettingsSectionDef,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): string {
+  return t(section.label, { defaultValue: section.defaultLabel });
 }
 
 function readSettingsHashSection(): string | null {
@@ -437,14 +429,24 @@ function readSettingsHashSection(): string | null {
 interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
   title?: string;
   description?: string;
+  showDescription?: boolean;
   bodyClassName?: string;
 }
 
 const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
   function SettingsSection(
-    { title, description, bodyClassName, className, children, ...props },
+    {
+      title,
+      description,
+      showDescription = false,
+      bodyClassName,
+      className,
+      children,
+      ...props
+    },
     ref,
   ) {
+    const panelDescription = showDescription ? description : undefined;
     if (title || description) {
       return (
         <PagePanel.CollapsibleSection
@@ -454,7 +456,7 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
           variant="section"
           heading={title ?? ""}
           headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
-          description={description}
+          description={panelDescription}
           descriptionClassName="mt-0.5 text-xs leading-snug text-muted"
           bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
           className={cn("rounded-2xl", className)}
@@ -565,9 +567,6 @@ function AdvancedSection() {
               <div className="font-medium text-sm">
                 {t("settings.exportAgent")}
               </div>
-              <div className="text-xs text-muted">
-                {t("settings.exportAgentShort")}
-              </div>
             </div>
           </Button>
 
@@ -584,9 +583,6 @@ function AdvancedSection() {
             <div>
               <div className="font-medium text-sm">
                 {t("settings.importAgent")}
-              </div>
-              <div className="text-xs text-muted">
-                {t("settings.importAgentShort")}
               </div>
             </div>
           </Button>
@@ -824,9 +820,6 @@ export function SettingsView({
     () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [complexity, setComplexity] = useState<SettingsComplexity>(() =>
-    readStoredComplexity(),
-  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     readStoredSettingsSidebarCollapsed,
   );
@@ -834,10 +827,6 @@ export function SettingsView({
     readStoredSettingsSidebarWidth,
   );
   const shellRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    writeStoredComplexity(complexity);
-  }, [complexity]);
 
   const handleSidebarCollapsedChange = useCallback((next: boolean) => {
     setSidebarCollapsed(next);
@@ -859,15 +848,12 @@ export function SettingsView({
   }, []);
 
   const visibleSections = useMemo(() => {
-    const searchActive = searchQuery.trim().length > 0;
     return SETTINGS_SECTIONS.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
       if (!matchesSettingsSection(section, searchQuery, t)) return false;
-      if (complexity === "advanced") return true;
-      if (searchActive) return true;
-      return section.level !== "advanced";
+      return true;
     });
-  }, [complexity, searchQuery, t, walletEnabled]);
+  }, [searchQuery, t, walletEnabled]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -982,43 +968,21 @@ export function SettingsView({
       collapseButtonAriaLabel="Collapse settings"
       expandButtonAriaLabel="Expand settings"
       mobileTitle={t("nav.settings")}
-      mobileMeta={activeSectionDef ? t(activeSectionDef.label) : undefined}
+      mobileMeta={
+        activeSectionDef ? settingsSectionLabel(activeSectionDef, t) : undefined
+      }
       header={
-        <div className="space-y-2">
-          <SidebarHeader
-            search={{
-              value: searchQuery,
-              onChange: (event) => setSearchQuery(event.target.value),
-              onClear: () => setSearchQuery(""),
-              placeholder: searchLabel,
-              "aria-label": searchLabel,
-              autoComplete: "off",
-              spellCheck: false,
-            }}
-          />
-          <div className="px-3 pb-2">
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card/45 px-3 py-2.5">
-              <Label
-                htmlFor="settings-advanced-toggle"
-                className="cursor-pointer select-none text-xs font-medium text-muted"
-              >
-                {t("settings.showAdvanced", {
-                  defaultValue: "Show advanced",
-                })}
-              </Label>
-              <Switch
-                id="settings-advanced-toggle"
-                checked={complexity === "advanced"}
-                onCheckedChange={(checked) =>
-                  setComplexity(checked ? "advanced" : "simple")
-                }
-                aria-label={t("settings.showAdvanced", {
-                  defaultValue: "Show advanced",
-                })}
-              />
-            </div>
-          </div>
-        </div>
+        <SidebarHeader
+          search={{
+            value: searchQuery,
+            onChange: (event) => setSearchQuery(event.target.value),
+            onClear: () => setSearchQuery(""),
+            placeholder: searchLabel,
+            "aria-label": searchLabel,
+            autoComplete: "off",
+            spellCheck: false,
+          }}
+        />
       }
     >
       <SidebarScrollRegion className="pt-0">
@@ -1031,29 +995,35 @@ export function SettingsView({
             <nav className="space-y-1.5" aria-label={t("nav.settings")}>
               {visibleSections.map((section) => {
                 const isActive = activeSection === section.id;
+                const Icon = section.icon;
                 return (
                   <SidebarContent.Item
                     key={section.id}
                     as="div"
                     active={isActive}
-                    className="gap-2"
+                    className="gap-2 py-2"
                     ref={registerSidebarItem(section.id)}
                   >
                     <SidebarContent.ItemButton
                       onClick={() => handleSectionChange(section.id)}
                       aria-current={isActive ? "page" : undefined}
+                      className="items-center gap-2.5"
                     >
+                      <SidebarContent.ItemIcon
+                        active={isActive}
+                        className="mt-0 h-8 w-8 rounded-lg p-1.5"
+                      >
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </SidebarContent.ItemIcon>
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle
-                          className={isActive ? "font-semibold" : "font-medium"}
+                          className={cn(
+                            "text-sm leading-5",
+                            isActive ? "font-semibold" : "font-medium",
+                          )}
                         >
-                          {t(section.label)}
+                          {settingsSectionLabel(section, t)}
                         </SidebarContent.ItemTitle>
-                        {section.description ? (
-                          <SidebarContent.ItemDescription>
-                            {t(section.description)}
-                          </SidebarContent.ItemDescription>
-                        ) : null}
                       </SidebarContent.ItemBody>
                     </SidebarContent.ItemButton>
                   </SidebarContent.Item>
@@ -1072,11 +1042,10 @@ export function SettingsView({
         <SettingsSection
           id="identity"
           title={t("settings.sections.identity.label", {
-            defaultValue: "Identity",
+            defaultValue: "Basics",
           })}
           description={t("settings.sections.identity.desc", {
-            defaultValue:
-              "Agent name, speaking voice, and system prompt. Avatar and VRM stay in Appearance.",
+            defaultValue: "Name, voice, and system prompt.",
           })}
           ref={registerContentItem("identity")}
         >
@@ -1095,113 +1064,109 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {(visibleSectionIds.has("ai-model") ||
-        visibleSectionIds.has("media") ||
-        visibleSectionIds.has("appearance")) && (
-        <div className="grid gap-5 xl:grid-cols-2 items-start">
-          <div className="flex flex-col gap-5 min-w-0">
-            {visibleSectionIds.has("ai-model") && (
-              <SettingsSection
-                id="ai-model"
-                title={t("settings.sections.aimodel.label")}
-                description={t("settings.sections.aimodel.desc")}
-                ref={registerContentItem("ai-model")}
-              >
-                <ProviderSwitcher showAdvanced={complexity === "advanced"} />
-              </SettingsSection>
-            )}
-
-            {visibleSectionIds.has("appearance") && (
-              <SettingsSection
-                id="appearance"
-                title={t("settings.sections.appearance.label", {
-                  defaultValue: "Appearance",
-                })}
-                description={t("settings.sections.appearance.desc", {
-                  defaultValue:
-                    "Content packs, VRM avatars, backgrounds, and themes",
-                })}
-                ref={registerContentItem("appearance")}
-              >
-                <AppearanceSettingsSection />
-              </SettingsSection>
-            )}
-          </div>
-
-          {visibleSectionIds.has("media") && (
-            <SettingsSection
-              id="media"
-              title={t("settings.sections.media.label")}
-              description={t("settings.sections.media.desc")}
-              ref={registerContentItem("media")}
-            >
-              <MediaSettingsSection showAdvanced={complexity === "advanced"} />
-            </SettingsSection>
-          )}
-        </div>
+      {visibleSectionIds.has("ai-model") && (
+        <SettingsSection
+          id="ai-model"
+          title={t("settings.sections.aimodel.label", {
+            defaultValue: "AI Models",
+          })}
+          description={t("settings.sections.aimodel.desc", {
+            defaultValue: "Cloud, local, and direct-provider routing.",
+          })}
+          ref={registerContentItem("ai-model")}
+        >
+          <ProviderSwitcher />
+        </SettingsSection>
       )}
 
-      {(visibleSectionIds.has("local-models") ||
-        visibleSectionIds.has("coding-agents")) && (
-        <div className="grid gap-5 xl:grid-cols-2 items-start">
-          {visibleSectionIds.has("local-models") && (
-            <SettingsSection
-              id="local-models"
-              title={t("settings.sections.localModels.label", {
-                defaultValue: "Local models",
-              })}
-              description={t("settings.sections.localModels.desc", {
-                defaultValue:
-                  "Run llama.cpp models on this machine. Browse the curated catalog, download, and switch between local models.",
-              })}
-              ref={registerContentItem("local-models")}
-            >
-              <LocalInferencePanel />
-            </SettingsSection>
-          )}
-
-          {visibleSectionIds.has("coding-agents") && (
-            <SettingsSection
-              id="coding-agents"
-              title={t("settings.sections.codingagents.label")}
-              description={t("settings.codingAgentsDescription")}
-              ref={registerContentItem("coding-agents")}
-            >
-              <CodingAgentSettingsSection />
-            </SettingsSection>
-          )}
-        </div>
+      {visibleSectionIds.has("local-models") && (
+        <SettingsSection
+          id="local-models"
+          title={t("settings.sections.localModels.label", {
+            defaultValue: "Local Models",
+          })}
+          description={t("settings.sections.localModels.desc", {
+            defaultValue: "Download and assign local models.",
+          })}
+          ref={registerContentItem("local-models")}
+        >
+          <LocalInferencePanel />
+        </SettingsSection>
       )}
 
-      {(visibleSectionIds.has("capabilities") ||
-        visibleSectionIds.has("permissions")) && (
-        <div className="grid gap-5 xl:grid-cols-2 items-start">
-          {visibleSectionIds.has("capabilities") && (
-            <SettingsSection
-              id="capabilities"
-              title={t("settings.sections.capabilities.label", {
-                defaultValue: "Capabilities",
-              })}
-              description={t("settings.sections.capabilities.desc", {
-                defaultValue: "Enable or disable agent capabilities",
-              })}
-              ref={registerContentItem("capabilities")}
-            >
-              <CapabilitiesSection />
-            </SettingsSection>
-          )}
+      {visibleSectionIds.has("coding-agents") && (
+        <SettingsSection
+          id="coding-agents"
+          title={t("settings.sections.codingagents.label", {
+            defaultValue: "Task Agents",
+          })}
+          description={t("settings.codingAgentsDescription", {
+            defaultValue: "Claude Code, Codex, Gemini, and Aider.",
+          })}
+          ref={registerContentItem("coding-agents")}
+        >
+          <CodingAgentSettingsSection />
+        </SettingsSection>
+      )}
 
-          {visibleSectionIds.has("permissions") && (
-            <SettingsSection
-              id="permissions"
-              title={t("settings.sections.permissions.label")}
-              description={t("settings.sections.permissions.desc")}
-              ref={registerContentItem("permissions")}
-            >
-              <PermissionsSection />
-            </SettingsSection>
-          )}
-        </div>
+      {visibleSectionIds.has("media") && (
+        <SettingsSection
+          id="media"
+          title={t("settings.sections.media.label", {
+            defaultValue: "Media",
+          })}
+          description={t("settings.sections.media.desc", {
+            defaultValue: "Image, video, audio, vision, and voice.",
+          })}
+          ref={registerContentItem("media")}
+        >
+          <MediaSettingsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("appearance") && (
+        <SettingsSection
+          id="appearance"
+          title={t("settings.sections.appearance.label", {
+            defaultValue: "Appearance",
+          })}
+          description={t("settings.sections.appearance.desc", {
+            defaultValue: "Language, theme, and content packs.",
+          })}
+          ref={registerContentItem("appearance")}
+        >
+          <AppearanceSettingsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("capabilities") && (
+        <SettingsSection
+          id="capabilities"
+          title={t("settings.sections.capabilities.label", {
+            defaultValue: "Capabilities",
+          })}
+          description={t("settings.sections.capabilities.desc", {
+            defaultValue: "Agent features and automation surfaces.",
+          })}
+          ref={registerContentItem("capabilities")}
+        >
+          <CapabilitiesSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("permissions") && (
+        <SettingsSection
+          id="permissions"
+          title={t("settings.sections.permissions.label", {
+            defaultValue: "Permissions",
+          })}
+          description={t("settings.sections.permissions.desc", {
+            defaultValue: "Browser and device access.",
+          })}
+          ref={registerContentItem("permissions")}
+        >
+          <PermissionsSection />
+        </SettingsSection>
       )}
 
       {visibleSectionIds.has("wallet-rpc") && (
@@ -1232,33 +1197,6 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("learned-skills") && (
-        <SettingsSection
-          id="learned-skills"
-          title={t("settings.sections.learnedSkills.label")}
-          description={t("settings.sections.learnedSkills.desc")}
-          ref={registerContentItem("learned-skills")}
-        >
-          <LearnedSkillsPanel />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("auto-training") && (
-        <SettingsSection
-          id="auto-training"
-          title={t("settings.sections.autoTraining.label", {
-            defaultValue: "Auto-training",
-          })}
-          description={t("settings.sections.autoTraining.desc", {
-            defaultValue:
-              "Counts completed trajectories per task and fires a training run when the threshold is hit.",
-          })}
-          ref={registerContentItem("auto-training")}
-        >
-          <TrainingSettingsPanel />
-        </SettingsSection>
-      )}
-
       {visibleSectionIds.has("updates") && (
         <SettingsSection
           id="updates"
@@ -1286,6 +1224,7 @@ export function SettingsView({
           id="settings-empty"
           title={t("settingsview.NoMatchingSettings")}
           description={t("settings.noMatchingSettingsDescription")}
+          showDescription
         >
           <Button
             variant="outline"
@@ -1303,14 +1242,14 @@ export function SettingsView({
     <PageLayout
       className={cn("h-full", inModal && "min-h-0")}
       data-testid="settings-shell"
-      footer={<WidgetHost slot="settings" />}
-      footerClassName="pt-2"
       sidebar={settingsSidebar}
       contentRef={contentContainerRef}
       contentClassName={SETTINGS_CONTENT_CLASS}
       contentInnerClassName={SETTINGS_CONTENT_WIDTH_CLASS}
       mobileSidebarLabel={
-        activeSectionDef ? t(activeSectionDef.label) : t("nav.settings")
+        activeSectionDef
+          ? settingsSectionLabel(activeSectionDef, t)
+          : t("nav.settings")
       }
     >
       <div ref={shellRef} className={`w-full ${SETTINGS_SECTION_STACK_CLASS}`}>

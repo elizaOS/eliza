@@ -69,6 +69,8 @@ vi.mock("@elizaos/ui", () => {
       size?: string;
       variant?: string;
     }) => <button {...props}>{children}</button>,
+    Card: passThrough("section"),
+    CardContent: passThrough("div"),
     Input: (props: InputHTMLAttributes<HTMLInputElement>) => (
       <input {...props} />
     ),
@@ -187,8 +189,6 @@ function renderHub() {
       characterSaveError={null}
       hasPendingChanges={false}
       onSave={async () => ({})}
-      onReset={() => {}}
-      canReset={false}
     />,
   );
 }
@@ -286,6 +286,8 @@ describe("CharacterHubView experience tab", () => {
     await waitFor(() => {
       expect(clientMock.deleteExperience).toHaveBeenCalledWith("exp-1");
     });
-    expect(await screen.findByText("No experiences recorded yet.")).toBeTruthy();
+    expect(
+      await screen.findByText("No experiences recorded yet."),
+    ).toBeTruthy();
   });
 });

@@ -1,23 +1,3 @@
-/**
- * FeatureTogglesSection — opt-in registry for LifeOps capabilities.
- *
- * Reads `/api/cloud/features` for the canonical list (defaults +
- * local/cloud overrides) and toggles via `/api/cloud/features/sync` and the
- * `TOGGLE_LIFEOPS_FEATURE` chat action's underlying upsert. Cloud-managed
- * rows are read-only locally — the user has to remove the Cloud package to
- * deactivate them, which preserves the contract that Cloud is the source
- * of truth for managed entitlements (Commandment 4).
- *
- * Travel features get a Cloud-aware UX:
- *  - Cloud-linked, Cloud-managed row → "Enabled via Eliza Cloud travel
- *    billing" badge and a disabled switch (managed upstream).
- *  - Not Cloud-linked → "Sign in to Eliza Cloud to enable, or toggle on
- *    locally (requires your own travel-provider credentials)" hint, and
- *    the Sync
- *    button switches to a "Sign in to Cloud" CTA wired into the existing
- *    `handleCloudLogin` flow from `useApp`.
- */
-
 import type {
   LifeOpsFeatureFlagRowDto,
   LifeOpsFeatureFlagsResponse,
@@ -174,15 +154,8 @@ export function FeatureTogglesSection() {
   }, [elizaCloudConnected, handleSignIn, handleSync, signInBusy, syncing]);
 
   return (
-    <div className="border-t border-border/40 pt-4">
-      <div className="flex items-center justify-between gap-3 pb-3">
-        <div>
-          <h3 className="text-xs font-semibold">Feature opt-ins</h3>
-          <p className="text-xs-tight text-muted">
-            Turn LifeOps capabilities on or off. Anything that can spend money
-            or call out to a paid third party is off until you opt in.
-          </p>
-        </div>
+    <div>
+      <div className="flex items-center justify-end gap-3 pb-3">
         {headerCta}
       </div>
 
@@ -220,15 +193,14 @@ export function FeatureTogglesSection() {
                       {feature.label}
                     </span>
                     <span
-                      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
+                      className={`h-2.5 w-2.5 rounded-full border ${badge.className}`}
                       title={
                         feature.packageId
                           ? `Cloud package ${feature.packageId}`
-                          : undefined
+                          : badge.label
                       }
-                    >
-                      {badge.label}
-                    </span>
+                      aria-hidden
+                    />
                     {showCloudBillingTag && (
                       <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
                         Cloud-managed travel billing

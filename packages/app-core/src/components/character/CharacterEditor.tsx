@@ -1298,8 +1298,6 @@ export function CharacterEditor({
             characterSaveError={characterSaveError}
             hasPendingChanges={hasPendingChanges}
             onSave={handleSaveCharacter}
-            onReset={() => setResetConfirmOpen(true)}
-            canReset={Boolean(activeCharacterRosterEntry && currentCharacter)}
           />
         )}
       </div>

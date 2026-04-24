@@ -4,12 +4,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const {
+  unsubscribeLifeOpsEmailSenderMock,
   openExternalUrlMock,
   openLifeOpsChatMock,
   useInboxMock,
   useMediaQueryMock,
 } = vi.hoisted(
   () => ({
+    unsubscribeLifeOpsEmailSenderMock: vi.fn(),
     openExternalUrlMock: vi.fn(),
     openLifeOpsChatMock: vi.fn(),
     useInboxMock: vi.fn(),
@@ -21,6 +23,9 @@ vi.mock("@elizaos/app-core", () => ({
   Button: "button",
   Input: "input",
   Spinner: () => null,
+  client: {
+    unsubscribeLifeOpsEmailSender: unsubscribeLifeOpsEmailSenderMock,
+  },
   openExternalUrl: openExternalUrlMock,
   useApp: () => ({
     t: (
@@ -54,7 +59,9 @@ import { LifeOpsInboxSection } from "./LifeOpsInboxSection";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   useInboxMock.mockReset();
+  unsubscribeLifeOpsEmailSenderMock.mockReset();
   openLifeOpsChatMock.mockReset();
   useMediaQueryMock.mockReset();
   useMediaQueryMock.mockReturnValue(true);
@@ -77,8 +84,14 @@ describe("LifeOpsInboxSection", () => {
           sender: {
             avatarUrl: null,
             displayName: "Fluhr, Michael",
+            email: "michael@example.test",
+            id: "sender-1",
           },
           snippet: "Hey Seb, Yes, this is in progress.",
+          sourceRef: {
+            channel: "gmail",
+            externalId: "msg-1",
+          },
           subject: "Fluhr, Michael",
           unread: true,
         },
@@ -121,8 +134,14 @@ describe("LifeOpsInboxSection", () => {
           sender: {
             avatarUrl: null,
             displayName: "Fluhr, Michael",
+            email: "michael@example.test",
+            id: "sender-1",
           },
           snippet: "Hey Seb, Yes, this is in progress.",
+          sourceRef: {
+            channel: "gmail",
+            externalId: "msg-1",
+          },
           subject: "Fluhr, Michael",
           unread: true,
         },
@@ -147,5 +166,69 @@ describe("LifeOpsInboxSection", () => {
     expect(openLifeOpsChatMock).toHaveBeenCalledWith("chat context", {
       messageId: "msg-1",
     });
+  });
+
+  it("uses the sender email for Gmail unsubscribe actions", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    unsubscribeLifeOpsEmailSenderMock.mockResolvedValue({
+      record: {
+        status: "succeeded",
+      },
+    });
+
+    useInboxMock.mockReturnValue({
+      channel: "all",
+      error: null,
+      loading: false,
+      messages: [
+        {
+          id: "msg-1",
+          channel: "gmail",
+          deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
+          receivedAt: "2026-04-22T12:00:00.000Z",
+          sender: {
+            avatarUrl: null,
+            displayName: "Fluhr, Michael",
+            email: "michael@example.test",
+            id: "sender-1",
+          },
+          snippet: "Hey Seb, Yes, this is in progress.",
+          sourceRef: {
+            channel: "gmail",
+            externalId: "msg-1",
+          },
+          subject: "Fluhr, Michael",
+          unread: true,
+        },
+      ],
+      refresh: vi.fn(),
+      searchQuery: "",
+      setChannel: vi.fn(),
+      setSearchQuery: vi.fn(),
+    });
+
+    render(
+      <LifeOpsInboxSection
+        title="Mail"
+        selection={{ messageId: "msg-1", eventId: null, reminderId: null }}
+        onSelect={vi.fn()}
+        channels={["gmail"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "Unsubscribe from michael@example.test and create a filter to auto-trash future mail?",
+    );
+    expect(unsubscribeLifeOpsEmailSenderMock).toHaveBeenCalledWith({
+      senderEmail: "michael@example.test",
+      blockAfter: true,
+      trashExisting: false,
+      confirmed: true,
+    });
+
+    confirmSpy.mockRestore();
   });
 });

@@ -366,9 +366,11 @@ function TabScrollView({
 function TabContentView({
   children,
   chatScope,
+  chatDisabled = false,
 }: {
   children: ReactNode;
   chatScope?: PageScope;
+  chatDisabled?: boolean;
 }) {
   const { activeGameRunId, appsSubTab } = useApp();
   const gameOwnsChat =
@@ -380,7 +382,7 @@ function TabContentView({
     <AppWorkspaceChrome
       testId="tab-content-view"
       chatScope={chatScope}
-      chatDisabled={gameOwnsChat}
+      chatDisabled={chatDisabled || gameOwnsChat}
       main={
         <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
           {children}
@@ -490,7 +492,7 @@ function ViewRouter({
         );
       case "settings":
         return (
-          <TabContentView>
+          <TabContentView chatDisabled>
             <SettingsView key="settings-root" />
           </TabContentView>
         );
@@ -974,6 +976,7 @@ export function App() {
           <AppWorkspaceChrome
             testId="settings-workspace"
             chatScope="page-settings"
+            chatDisabled
             main={
               <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                 <LazyViewBoundary>

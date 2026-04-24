@@ -35,18 +35,14 @@ import {
   getApiKeyField,
   getNestedValue,
   getProvidersForCategory,
-  MEDIA_API_SOURCE_CATEGORY_KEYS,
   type MediaCategory,
   setNestedValue,
 } from "./media-settings-types";
+import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { VoiceConfigView } from "./VoiceConfigView";
-
-// ── Re-exports (public API) ──────────────────────────────────────────
 
 export { DesktopMediaControlPanel } from "./media-settings-providers";
 export { DESKTOP_MEDIA_CLICK_AUDIT } from "./media-settings-types";
-
-// ── Shared classes ───────────────────────────────────────────────────
 
 const SEGMENTED_BUTTON_BASE =
   "flex-1 basis-[calc(50%-0.125rem)] sm:basis-0 min-h-touch rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal";
@@ -58,8 +54,6 @@ const SEGMENTED_BUTTON_INACTIVE =
 function segmentedButtonClass(active: boolean): string {
   return `${SEGMENTED_BUTTON_BASE} ${active ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE}`;
 }
-
-// ── Main component ───────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<MediaCategory, typeof Image> = {
   image: Image,
@@ -109,17 +103,7 @@ const CLOUD_MODEL_OPTIONS: Record<
   ],
 };
 
-interface MediaSettingsSectionProps {
-  /**
-   * When true, render the 3D companion performance controls (GPU power mode,
-   * half frame-rate toggle, animate-in-background). Hidden by default.
-   */
-  showAdvanced?: boolean;
-}
-
-export function MediaSettingsSection({
-  showAdvanced = false,
-}: MediaSettingsSectionProps = {}) {
+export function MediaSettingsSection() {
   const { setTimeout } = useTimeout();
 
   const {
@@ -140,7 +124,6 @@ export function MediaSettingsSection({
   const [activeTab, setActiveTab] = useState<MediaCategory>("image");
   const [dirty, setDirty] = useState(false);
 
-  // Load config on mount
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -150,7 +133,6 @@ export function MediaSettingsSection({
     })();
   }, []);
 
-  // Get current category config
   const getCategoryConfig = useCallback(
     (category: MediaCategory) => {
       return ((mediaConfig as Record<string, unknown>)[category] ??
@@ -159,7 +141,6 @@ export function MediaSettingsSection({
     [mediaConfig],
   );
 
-  // Get mode for category
   const getMode = useCallback(
     (category: MediaCategory): MediaMode => {
       const cfg = getCategoryConfig(category);
@@ -168,7 +149,6 @@ export function MediaSettingsSection({
     [getCategoryConfig],
   );
 
-  // Get provider for category
   const getProvider = useCallback(
     (category: MediaCategory): string => {
       const cfg = getCategoryConfig(category);
@@ -177,7 +157,6 @@ export function MediaSettingsSection({
     [getCategoryConfig],
   );
 
-  // Update category config
   const updateCategoryConfig = useCallback(
     (category: MediaCategory, updates: Record<string, unknown>) => {
       setMediaConfig((prev) => ({
@@ -195,7 +174,6 @@ export function MediaSettingsSection({
     [],
   );
 
-  // Update nested value in config
   const updateNestedValue = useCallback((path: string, value: unknown) => {
     setMediaConfig(
       (prev) =>
@@ -208,7 +186,6 @@ export function MediaSettingsSection({
     setDirty(true);
   }, []);
 
-  // Save handler
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveError(null);
@@ -227,7 +204,6 @@ export function MediaSettingsSection({
     }
   }, [mediaConfig, setTimeout]);
 
-  // Check if provider is configured
   const isProviderConfigured = useCallback(
     (category: MediaCategory): boolean => {
       if (category === "voice") return true;
@@ -268,109 +244,13 @@ export function MediaSettingsSection({
     <div className="flex flex-col gap-4">
       <MusicPlayerSettingsPanel />
 
-      {COMPANION_ENABLED && showAdvanced && (
-        <div
-          className="rounded-xl border border-border bg-card/60 px-3 py-3 flex flex-col gap-3"
-          data-testid="settings-companion-vrm-power"
-        >
-          <div className="min-w-0">
-            <div className="text-xs font-semibold text-txt">
-              {t("settings.companionVrmPower.label")}
-            </div>
-            <div className="text-2xs text-muted mt-1 leading-snug">
-              {t("settings.companionVrmPower.desc")}
-            </div>
-          </div>
-          <SettingsControls.SegmentedGroup>
-            {COMPANION_VRM_POWER_OPTIONS.map((mode) => {
-              const active = companionVrmPowerMode === mode;
-              return (
-                <Button
-                  key={mode}
-                  type="button"
-                  variant={active ? "default" : "ghost"}
-                  size="sm"
-                  className={segmentedButtonClass(active)}
-                  onClick={() => setCompanionVrmPowerMode(mode)}
-                  aria-pressed={active}
-                >
-                  {t(`settings.companionVrmPower.${mode}`)}
-                </Button>
-              );
-            })}
-          </SettingsControls.SegmentedGroup>
-          <div
-            className="flex flex-col gap-2 pt-3"
-            data-testid="settings-companion-half-framerate"
-          >
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-txt">
-                {t("settings.companionHalfFramerate.label")}
-              </div>
-              <div className="text-2xs text-muted mt-1 leading-snug">
-                {t("settings.companionHalfFramerate.desc")}
-              </div>
-            </div>
-            <SettingsControls.SegmentedGroup>
-              {COMPANION_HALF_FRAMERATE_OPTIONS.map((mode) => {
-                const active = companionHalfFramerateMode === mode;
-                return (
-                  <Button
-                    key={mode}
-                    type="button"
-                    variant={active ? "default" : "ghost"}
-                    size="sm"
-                    className={segmentedButtonClass(active)}
-                    onClick={() => setCompanionHalfFramerateMode(mode)}
-                    aria-pressed={active}
-                  >
-                    {t(`settings.companionHalfFramerate.${mode}`)}
-                  </Button>
-                );
-              })}
-            </SettingsControls.SegmentedGroup>
-          </div>
-          <div
-            className="flex flex-col gap-2 pt-3"
-            data-testid="settings-companion-animate-when-hidden"
-          >
-            <div className="text-xs font-semibold text-txt">
-              {t("settings.companionAnimateWhenHidden.title")}
-            </div>
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0 flex-1 text-2xs text-muted leading-snug pr-2">
-                {t("settings.companionAnimateWhenHidden.desc")}
-              </div>
-              <Switch
-                className="shrink-0"
-                checked={companionAnimateWhenHidden}
-                onCheckedChange={(v: boolean) =>
-                  setCompanionAnimateWhenHidden(v)
-                }
-                aria-label={t("settings.companionAnimateWhenHidden.title")}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* biome-ignore lint/a11y/useSemanticElements: existing pattern */}
-      <div
+      <section
         className="flex flex-col gap-4 rounded-xl border border-border/70 bg-card/85 px-3 py-3 shadow-sm"
         data-testid="settings-media-generate-group"
-        role="region"
         aria-label={t("mediasettingssection.GenerateGroupRegionLabel", {
           defaultValue: "Media generation by category",
         })}
       >
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("mediasettingssection.GenerateGroupTitle", {
-            defaultValue: "Generation",
-          })}
-        </p>
-
-        {/* Category tabs — icon + underline style. Status dots removed in
-            favour of the single "Configured / Needs setup" pill shown below. */}
         <div
           role="tablist"
           className="flex flex-wrap items-stretch gap-x-1 border-b border-border/40"
@@ -400,22 +280,11 @@ export function MediaSettingsSection({
           })}
         </div>
 
-        {/* Voice tab — render VoiceConfigView instead of media config */}
         {activeTab === "voice" ? (
           <VoiceConfigView />
         ) : (
           <>
-            {/* Mode toggle (cloud vs own-key) */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <span className="text-xs font-semibold text-muted w-full sm:w-auto">
-                {t("mediasettingssection.APISourceForCategory", {
-                  category: t(
-                    MEDIA_API_SOURCE_CATEGORY_KEYS[
-                      activeTab as keyof typeof MEDIA_API_SOURCE_CATEGORY_KEYS
-                    ],
-                  ),
-                })}
-              </span>
               <CloudSourceModeToggle
                 mode={currentMode}
                 onChange={(mode) => {
@@ -430,7 +299,6 @@ export function MediaSettingsSection({
                 }}
               />
 
-              {/* Status badge */}
               <span
                 className={`ml-auto inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-2xs font-medium ${
                   configured
@@ -447,7 +315,6 @@ export function MediaSettingsSection({
               </span>
             </div>
 
-            {/* Cloud mode status */}
             {currentMode === "cloud" && (
               <>
                 <CloudConnectionStatus
@@ -505,7 +372,6 @@ export function MediaSettingsSection({
               </>
             )}
 
-            {/* Own-key mode: provider selection */}
             {currentMode === "own-key" && (
               <div className="flex flex-col gap-3">
                 <div className="text-xs font-semibold text-muted">
@@ -556,7 +422,6 @@ export function MediaSettingsSection({
                     })}
                 </div>
 
-                {/* API Key input */}
                 {apiKeyField && (
                   <div className="flex flex-col gap-2">
                     <span className="text-xs font-semibold">
@@ -602,7 +467,95 @@ export function MediaSettingsSection({
             />
           </>
         )}
-      </div>
+      </section>
+
+      {COMPANION_ENABLED && (
+        <AdvancedSettingsDisclosure title="Companion performance">
+          <div
+            className="flex flex-col gap-3"
+            data-testid="settings-companion-vrm-power"
+          >
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-txt">
+                {t("settings.companionVrmPower.label")}
+              </div>
+              <div className="mt-1 text-2xs leading-snug text-muted">
+                {t("settings.companionVrmPower.desc")}
+              </div>
+            </div>
+            <SettingsControls.SegmentedGroup>
+              {COMPANION_VRM_POWER_OPTIONS.map((mode) => {
+                const active = companionVrmPowerMode === mode;
+                return (
+                  <Button
+                    key={mode}
+                    type="button"
+                    variant={active ? "default" : "ghost"}
+                    size="sm"
+                    className={segmentedButtonClass(active)}
+                    onClick={() => setCompanionVrmPowerMode(mode)}
+                    aria-pressed={active}
+                  >
+                    {t(`settings.companionVrmPower.${mode}`)}
+                  </Button>
+                );
+              })}
+            </SettingsControls.SegmentedGroup>
+            <div
+              className="flex flex-col gap-2 pt-3"
+              data-testid="settings-companion-half-framerate"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-txt">
+                  {t("settings.companionHalfFramerate.label")}
+                </div>
+                <div className="mt-1 text-2xs leading-snug text-muted">
+                  {t("settings.companionHalfFramerate.desc")}
+                </div>
+              </div>
+              <SettingsControls.SegmentedGroup>
+                {COMPANION_HALF_FRAMERATE_OPTIONS.map((mode) => {
+                  const active = companionHalfFramerateMode === mode;
+                  return (
+                    <Button
+                      key={mode}
+                      type="button"
+                      variant={active ? "default" : "ghost"}
+                      size="sm"
+                      className={segmentedButtonClass(active)}
+                      onClick={() => setCompanionHalfFramerateMode(mode)}
+                      aria-pressed={active}
+                    >
+                      {t(`settings.companionHalfFramerate.${mode}`)}
+                    </Button>
+                  );
+                })}
+              </SettingsControls.SegmentedGroup>
+            </div>
+            <div
+              className="flex flex-col gap-2 pt-3"
+              data-testid="settings-companion-animate-when-hidden"
+            >
+              <div className="text-xs font-semibold text-txt">
+                {t("settings.companionAnimateWhenHidden.title")}
+              </div>
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0 flex-1 pr-2 text-2xs leading-snug text-muted">
+                  {t("settings.companionAnimateWhenHidden.desc")}
+                </div>
+                <Switch
+                  className="shrink-0"
+                  checked={companionAnimateWhenHidden}
+                  onCheckedChange={(v: boolean) =>
+                    setCompanionAnimateWhenHidden(v)
+                  }
+                  aria-label={t("settings.companionAnimateWhenHidden.title")}
+                />
+              </div>
+            </div>
+          </div>
+        </AdvancedSettingsDisclosure>
+      )}
     </div>
   );
 }

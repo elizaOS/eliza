@@ -437,12 +437,10 @@ function InboxUnsubscribeButton({
   const [note, setNote] = useState<string | null>(null);
 
   const onClick = useCallback(async () => {
-    // LifeOpsInboxMessage doesn't carry the raw From email — fall back to the
-    // sender display name and let the server resolve / fail cleanly.
-    const senderEmail = message.sender.displayName;
-    if (!senderEmail || !senderEmail.includes("@")) {
+    const senderEmail = message.sender.email?.trim().toLowerCase() || null;
+    if (!senderEmail) {
       window.alert(
-        "Could not infer sender email for unsubscribe. Open the message's source and try from the Payments & Subscriptions page.",
+        "This message does not include a sender email for unsubscribe.",
       );
       return;
     }
@@ -467,7 +465,7 @@ function InboxUnsubscribeButton({
       setState("error");
       setNote(error instanceof Error ? error.message : String(error));
     }
-  }, [message.sender.displayName]);
+  }, [message.sender.email]);
 
   const label =
     state === "working"

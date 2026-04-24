@@ -1,9 +1,8 @@
-import { useApp, type AgentPreflightResult } from "@elizaos/app-core";
+import { type AgentPreflightResult, useApp } from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import {
   AGENT_LABELS,
-  AGENT_TABS,
   type AgentTab,
   type AuthResult,
   type LlmProvider,
@@ -14,7 +13,6 @@ interface AgentTabsSectionProps {
   setActiveTab: (agent: AgentTab) => void;
   availableAgents: AgentTab[];
   llmProvider: LlmProvider;
-  preflightLoaded: boolean;
   preflightByAgent: Partial<Record<AgentTab, AgentPreflightResult>>;
   authInProgress: AgentTab | null;
   authResult: AuthResult | null;
@@ -27,7 +25,6 @@ export function AgentTabsSection({
   activeTab,
   availableAgents,
   llmProvider,
-  preflightLoaded,
   preflightByAgent,
   authInProgress,
   authResult,
@@ -47,6 +44,18 @@ export function AgentTabsSection({
             installState === "installed" &&
             preflightByAgent[agent]?.auth?.status === "unauthenticated";
           const isAuthenticating = authInProgress === agent;
+          const statusLabel =
+            installState === "installed"
+              ? t("codingagentsettingssection.Installed")
+              : installState === "missing"
+                ? t("codingagentsettingssection.NotInstalled")
+                : t("codingagentsettingssection.Unknown");
+          const statusClass =
+            installState === "installed"
+              ? "bg-ok"
+              : installState === "missing"
+                ? "bg-muted"
+                : "bg-warn";
 
           if (needsAuth) {
             return (
@@ -82,27 +91,15 @@ export function AgentTabsSection({
                   : "text-muted hover:bg-bg-hover hover:text-txt"
               }`}
               onClick={() => onSelectAgent(agent)}
+              aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
             >
               <span className="inline-flex items-center gap-1.5">
                 <span>{AGENT_LABELS[agent]}</span>
-                {installState === "installed" &&
-                  llmProvider === "subscription" &&
-                  preflightByAgent[agent]?.auth?.status === "authenticated" && (
-                    <span className="text-2xs font-medium text-ok opacity-90">
-                      ✓
-                    </span>
-                  )}
-                {installState === "installed" &&
-                  llmProvider !== "subscription" && (
-                    <span className="text-2xs font-medium opacity-80">
-                      {t("codingagentsettingssection.Installed")}
-                    </span>
-                  )}
-                {installState === "unknown" && (
-                  <span className="text-2xs font-medium opacity-70">
-                    {t("codingagentsettingssection.Unknown")}
-                  </span>
-                )}
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${statusClass}`}
+                  title={statusLabel}
+                  aria-hidden
+                />
               </span>
             </Button>
           );
@@ -163,22 +160,6 @@ export function AgentTabsSection({
               </SettingsControls.MutedText>
             )}
         </div>
-      )}
-
-      {preflightLoaded && (
-        <SettingsControls.MutedText className="mt-1.5">
-          {t("codingagentsettingssection.Availability")}{" "}
-          {AGENT_TABS.map((agent) => {
-            const installState = getInstallState(agent);
-            const label =
-              installState === "installed"
-                ? t("codingagentsettingssection.Installed")
-                : installState === "missing"
-                  ? t("codingagentsettingssection.NotInstalled")
-                  : t("codingagentsettingssection.Unknown");
-            return `${AGENT_LABELS[agent]}: ${label}`;
-          }).join(" · ")}
-        </SettingsControls.MutedText>
       )}
     </>
   );
