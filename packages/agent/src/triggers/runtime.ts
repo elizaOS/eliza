@@ -267,10 +267,12 @@ async function dispatchWorkflow(
     );
     return { ok: false, error: "N8N_DISPATCH service not registered" };
   }
-  const result = await svc.execute(
-    trigger.workflowId,
-    event ? { eventKind: event.kind, eventPayload: event.payload ?? {} } : {},
-  );
+  const result = event
+    ? await svc.execute(trigger.workflowId, {
+        eventKind: event.kind,
+        eventPayload: event.payload ?? {},
+      })
+    : await svc.execute(trigger.workflowId);
   return result.ok
     ? { ok: true, executionId: result.executionId }
     : { ok: false, error: result.error ?? "workflow execution failed" };

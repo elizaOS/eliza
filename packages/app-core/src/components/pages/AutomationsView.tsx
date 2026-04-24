@@ -34,6 +34,7 @@ import {
   GitBranch,
   Grid3x3,
   LayoutDashboard,
+  ArrowRight,
   type LucideIcon,
   Mail,
   Pause,
@@ -2979,6 +2980,71 @@ function DetailFactList({
   );
 }
 
+function getWorkflowFlowNodes(workflow: N8nWorkflow | null): Array<{
+  id: string;
+  label: string;
+  type: string;
+}> {
+  const nodes = workflow?.nodes ?? [];
+  return [...nodes]
+    .sort((left, right) => {
+      const leftX = left.position?.[0] ?? 0;
+      const rightX = right.position?.[0] ?? 0;
+      if (leftX !== rightX) return leftX - rightX;
+      const leftY = left.position?.[1] ?? 0;
+      const rightY = right.position?.[1] ?? 0;
+      if (leftY !== rightY) return leftY - rightY;
+      return left.name.localeCompare(right.name);
+    })
+    .map((node) => ({
+      id: node.id ?? node.name,
+      label: node.name,
+      type: (node.type ?? "node").split(".").pop() ?? "node",
+    }));
+}
+
+function WorkflowDataFlowStrip({
+  workflow,
+}: {
+  workflow: N8nWorkflow | null;
+}) {
+  const flowNodes = getWorkflowFlowNodes(workflow);
+  if (flowNodes.length === 0) {
+    return (
+      <div className="px-4 py-3 text-xs-tight text-muted/70">
+        Generate the workflow to see its data path.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 py-3">
+      <span className="rounded-full border border-border/25 bg-bg/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+        Input
+      </span>
+      {flowNodes.map((node, index) => (
+        <div key={node.id} className="flex items-center gap-2">
+          <ArrowRight className="h-3 w-3 text-muted/50" aria-hidden />
+          <span className="max-w-[12rem] truncate rounded-full border border-border/25 bg-bg/45 px-2.5 py-1 text-xs text-txt">
+            {node.label}
+          </span>
+          <span className="hidden rounded bg-bg/40 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-muted/60 sm:inline">
+            {node.type}
+          </span>
+          {index === flowNodes.length - 1 ? (
+            <>
+              <ArrowRight className="h-3 w-3 text-muted/50" aria-hidden />
+              <span className="rounded-full border border-border/25 bg-bg/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                Output
+              </span>
+            </>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TriggerAutomationDetailPane({
   automation,
   onPromoteToWorkflow,
@@ -3617,6 +3683,10 @@ function WorkflowAutomationDetailPane({
             status={n8nStatus}
           />
         </div>
+      </DetailSection>
+
+      <DetailSection title="Data flow">
+        <WorkflowDataFlowStrip workflow={graphWorkflow} />
       </DetailSection>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.95fr)]">

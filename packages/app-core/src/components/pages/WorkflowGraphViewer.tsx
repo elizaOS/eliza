@@ -446,6 +446,19 @@ function NodeDetailDrawer({
       <div className="flex-1 overflow-y-auto space-y-4 px-4 py-3">
         {node && (
           <>
+            {node.notes?.trim() ? (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Step
+                </div>
+                <div className="rounded bg-bg/40 border border-border/20 px-2 py-2">
+                  <p className="text-xs leading-relaxed text-txt/80">
+                    {node.notes.trim()}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             {/* Parameters */}
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wider text-muted">
