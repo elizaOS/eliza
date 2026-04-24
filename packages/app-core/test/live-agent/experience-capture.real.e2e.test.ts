@@ -9,6 +9,11 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { experienceEvaluator } from "../../../typescript/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
 import { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
+import {
+  type Experience,
+  ExperienceType,
+  OutcomeType,
+} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
 
 type Extraction = {
   type: string;
@@ -37,6 +42,32 @@ type RuntimeHarness = {
   getService: (serviceType: string) => ExperienceService | null;
   getSetting: (key: string) => string | undefined;
   queueExtraction: (extractions: Extraction[]) => void;
+};
+
+type ExpectedRecordedExperience = Partial<
+  Pick<
+    Experience,
+    | "action"
+    | "confidence"
+    | "context"
+    | "domain"
+    | "importance"
+    | "learning"
+    | "outcome"
+    | "result"
+    | "tags"
+    | "type"
+  >
+>;
+
+type ExtractionScenario = {
+  name: string;
+  recentTexts: string[];
+  extraction: Extraction[];
+  expectedRecordedDelta: number;
+  expectedExperiences?: ExpectedRecordedExperience[];
+  triggerEntityId?: UUID;
+  messageCountBeforeTrigger?: string;
 };
 
 function nextUuid(label: string): UUID {
@@ -189,15 +220,10 @@ async function seedConversation(
 async function runExtractionCase(
   runtime: RuntimeHarness,
   service: ExperienceService,
-  options: {
-    recentTexts: string[];
-    extraction: Extraction[];
-    expectedRecordedDelta: number;
-    triggerEntityId?: UUID;
-    messageCountBeforeTrigger?: string;
-  },
-): Promise<void> {
+  options: Omit<ExtractionScenario, "name">,
+): Promise<Experience[]> {
   const before = await service.listExperiences({ limit: 100 });
+  const beforeIds = new Set(before.map((experience) => experience.id));
   const roomId = nextUuid("experience-room");
   const triggerEntityId = options.triggerEntityId ?? runtime.agentId;
   const recentMessages = await seedConversation(
@@ -226,7 +252,7 @@ async function runExtractionCase(
   if (!shouldRun) {
     const after = await service.listExperiences({ limit: 100 });
     expect(after).toHaveLength(before.length);
-    return;
+    return [];
   }
 
   if (options.recentTexts.length >= 3) {
@@ -237,6 +263,59 @@ async function runExtractionCase(
 
   const after = await service.listExperiences({ limit: 100 });
   expect(after).toHaveLength(before.length + options.expectedRecordedDelta);
+  const recorded = after.filter((experience) => !beforeIds.has(experience.id));
+  expect(recorded).toHaveLength(options.expectedRecordedDelta);
+
+  if (options.expectedExperiences) {
+    expect(recorded).toHaveLength(options.expectedExperiences.length);
+    for (const [index, expected] of options.expectedExperiences.entries()) {
+      const actual = recorded[index];
+      expect(
+        actual,
+        `expected recorded experience at index ${index}`,
+      ).toBeTruthy();
+      if (!actual) continue;
+      expectExperienceToMatch(actual, expected);
+    }
+  }
+
+  return recorded;
+}
+
+function expectExperienceToMatch(
+  actual: Experience,
+  expected: ExpectedRecordedExperience,
+): void {
+  if (expected.action !== undefined) {
+    expect(actual.action).toBe(expected.action);
+  }
+  if (expected.confidence !== undefined) {
+    expect(actual.confidence).toBe(expected.confidence);
+  }
+  if (expected.context !== undefined) {
+    expect(actual.context).toBe(expected.context);
+  }
+  if (expected.domain !== undefined) {
+    expect(actual.domain).toBe(expected.domain);
+  }
+  if (expected.importance !== undefined) {
+    expect(actual.importance).toBe(expected.importance);
+  }
+  if (expected.learning !== undefined) {
+    expect(actual.learning).toBe(expected.learning);
+  }
+  if (expected.outcome !== undefined) {
+    expect(actual.outcome).toBe(expected.outcome);
+  }
+  if (expected.result !== undefined) {
+    expect(actual.result).toBe(expected.result);
+  }
+  if (expected.tags !== undefined) {
+    expect(actual.tags).toEqual(expected.tags);
+  }
+  if (expected.type !== undefined) {
+    expect(actual.type).toBe(expected.type);
+  }
 }
 
 describe("Experience Capture E2E", () => {
@@ -254,134 +333,232 @@ describe("Experience Capture E2E", () => {
     await experienceService.stop();
   });
 
-  it("records expected experiences, skips non-experiences, and retrieves the right result 3/3 times", async () => {
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "Let me run the Python script.",
-        "It failed with ModuleNotFoundError for pandas.",
-        "Installing dependencies fixed it and the script completed.",
-      ],
-      extraction: [
-        {
-          type: "CORRECTION",
-          learning:
-            "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
-          context: "Debugging a local Python script failure.",
-          confidence: 0.92,
-        },
-      ],
-      expectedRecordedDelta: 1,
-    });
+  it("runs extraction scenarios, verifies recorded fields, skips non-experiences, and retrieves the right result 3/3 times", async () => {
+    const formedScenarios: ExtractionScenario[] = [
+      {
+        name: "dependency correction",
+        recentTexts: [
+          "Let me run the Python script.",
+          "It failed with ModuleNotFoundError for pandas.",
+          "Installing dependencies fixed it and the script completed.",
+        ],
+        extraction: [
+          {
+            type: "CORRECTION",
+            learning:
+              "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            context: "Debugging a local Python script failure.",
+            confidence: 0.92,
+          },
+        ],
+        expectedRecordedDelta: 1,
+        expectedExperiences: [
+          {
+            action: "pattern_recognition",
+            confidence: 0.9,
+            context: "Debugging a local Python script failure.",
+            domain: "shell",
+            importance: 0.8,
+            learning:
+              "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            outcome: OutcomeType.POSITIVE,
+            result:
+              "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            tags: ["extracted", "novel", ExperienceType.CORRECTION],
+            type: ExperienceType.CORRECTION,
+          },
+        ],
+      },
+      {
+        name: "terminal discovery",
+        recentTexts: [
+          "I need to inspect API output quickly from the terminal.",
+          "jq is installed here and can parse JSON cleanly.",
+          "Using jq made the payload inspection much faster.",
+        ],
+        extraction: [
+          {
+            type: "DISCOVERY",
+            learning:
+              "Use jq to parse JSON responses directly in the terminal when inspecting API output.",
+            context: "Inspecting API payloads from the CLI.",
+            confidence: 0.9,
+          },
+        ],
+        expectedRecordedDelta: 1,
+        expectedExperiences: [
+          {
+            action: "pattern_recognition",
+            confidence: 0.9,
+            context: "Inspecting API payloads from the CLI.",
+            domain: "shell",
+            importance: 0.8,
+            learning:
+              "Use jq to parse JSON responses directly in the terminal when inspecting API output.",
+            outcome: OutcomeType.NEUTRAL,
+            result:
+              "Use jq to parse JSON responses directly in the terminal when inspecting API output.",
+            tags: ["extracted", "novel", ExperienceType.DISCOVERY],
+            type: ExperienceType.DISCOVERY,
+          },
+        ],
+      },
+      {
+        name: "environment restart learning",
+        recentTexts: [
+          "I changed an environment variable for the dev server.",
+          "The app still showed stale values until I restarted it.",
+          "Restarting the dev server picked up the new environment variable.",
+        ],
+        extraction: [
+          {
+            type: "LEARNING",
+            learning:
+              "Restart the dev server after changing environment variables so the new values are loaded.",
+            context: "Local development after environment changes.",
+            confidence: 0.88,
+          },
+        ],
+        expectedRecordedDelta: 1,
+        expectedExperiences: [
+          {
+            action: "pattern_recognition",
+            confidence: 0.88,
+            context: "Local development after environment changes.",
+            domain: "coding",
+            importance: 0.8,
+            learning:
+              "Restart the dev server after changing environment variables so the new values are loaded.",
+            outcome: OutcomeType.NEUTRAL,
+            result:
+              "Restart the dev server after changing environment variables so the new values are loaded.",
+            tags: ["extracted", "novel", ExperienceType.LEARNING],
+            type: ExperienceType.LEARNING,
+          },
+        ],
+      },
+      {
+        name: "sensitive-context sanitization",
+        recentTexts: [
+          "I almost included /Users/shawwalters/secrets.env in notes.",
+          "The debug output included 10.20.30.40 and shaw@example.com.",
+          "I redacted them before using the note.",
+        ],
+        extraction: [
+          {
+            type: "LEARNING",
+            learning:
+              "Redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+            context:
+              "Debugging from /Users/shawwalters/project with shaw@example.com and 10.20.30.40.",
+            confidence: 0.93,
+          },
+        ],
+        expectedRecordedDelta: 1,
+        expectedExperiences: [
+          {
+            action: "pattern_recognition",
+            confidence: 0.9,
+            context:
+              "Debugging from /Users/[USER]/project with [EMAIL] and [IP].",
+            domain: "coding",
+            importance: 0.8,
+            learning:
+              "Redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
+            outcome: OutcomeType.NEUTRAL,
+            result:
+              "Redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+            tags: ["extracted", "novel", ExperienceType.LEARNING],
+            type: ExperienceType.LEARNING,
+          },
+        ],
+      },
+    ];
 
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "I need to inspect API output quickly from the terminal.",
-        "jq is installed here and can parse JSON cleanly.",
-        "Using jq made the payload inspection much faster.",
-      ],
-      extraction: [
-        {
-          type: "DISCOVERY",
-          learning:
-            "Use jq to parse JSON responses directly in the terminal when inspecting API output.",
-          context: "Inspecting API payloads from the CLI.",
-          confidence: 0.9,
-        },
-      ],
-      expectedRecordedDelta: 1,
-    });
+    const skippedScenarios: ExtractionScenario[] = [
+      {
+        name: "low confidence hunch",
+        recentTexts: [
+          "A user asked me to remember a weak hunch.",
+          "I think it might matter later, but I am not sure.",
+          "This is too uncertain to record confidently.",
+        ],
+        extraction: [
+          {
+            type: "LEARNING",
+            learning: "Maybe this uncertain hunch matters later.",
+            context: "A low-confidence conversation snippet.",
+            confidence: 0.2,
+          },
+        ],
+        expectedRecordedDelta: 0,
+      },
+      {
+        name: "user-authored trigger",
+        recentTexts: [
+          "The user sent a message about pandas dependencies.",
+          "This was a user-authored note, not an agent-authored message.",
+          "The evaluator should not run on user messages.",
+        ],
+        triggerEntityId: nextUuid("experience-user"),
+        extraction: [
+          {
+            type: "LEARNING",
+            learning:
+              "This should never be recorded because the trigger is not from the agent.",
+            context: "User-authored message should not trigger extraction.",
+            confidence: 0.99,
+          },
+        ],
+        expectedRecordedDelta: 0,
+      },
+      {
+        name: "duplicate dependency correction",
+        recentTexts: [
+          "I saw the pandas ModuleNotFoundError again.",
+          "Installing the dependency fixed the same Python script.",
+          "This is the same lesson as before.",
+        ],
+        extraction: [
+          {
+            type: "CORRECTION",
+            learning:
+              "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            context: "Revisiting the same dependency fix.",
+            confidence: 0.95,
+          },
+        ],
+        expectedRecordedDelta: 0,
+      },
+      {
+        name: "conversation too short",
+        recentTexts: [
+          "Only one message exists here.",
+          "Two messages are not enough for extraction.",
+        ],
+        extraction: [
+          {
+            type: "LEARNING",
+            learning:
+              "This should not record because there are fewer than three messages.",
+            context: "Conversation too short.",
+            confidence: 0.99,
+          },
+        ],
+        expectedRecordedDelta: 0,
+      },
+    ];
 
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "I changed an environment variable for the dev server.",
-        "The app still showed stale values until I restarted it.",
-        "Restarting the dev server picked up the new environment variable.",
-      ],
-      extraction: [
-        {
-          type: "LEARNING",
-          learning:
-            "Restart the dev server after changing environment variables so the new values are loaded.",
-          context: "Local development after environment changes.",
-          confidence: 0.88,
-        },
-      ],
-      expectedRecordedDelta: 1,
-    });
+    for (const scenario of formedScenarios) {
+      await runExtractionCase(runtime, experienceService, scenario);
+    }
 
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "A user asked me to remember a weak hunch.",
-        "I think it might matter later, but I am not sure.",
-        "This is too uncertain to record confidently.",
-      ],
-      extraction: [
-        {
-          type: "LEARNING",
-          learning: "Maybe this uncertain hunch matters later.",
-          context: "A low-confidence conversation snippet.",
-          confidence: 0.2,
-        },
-      ],
-      expectedRecordedDelta: 0,
-    });
-
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "The user sent a message about pandas dependencies.",
-        "This was a user-authored note, not an agent-authored message.",
-        "The evaluator should not run on user messages.",
-      ],
-      triggerEntityId: nextUuid("experience-user"),
-      extraction: [
-        {
-          type: "LEARNING",
-          learning:
-            "This should never be recorded because the trigger is not from the agent.",
-          context: "User-authored message should not trigger extraction.",
-          confidence: 0.99,
-        },
-      ],
-      expectedRecordedDelta: 0,
-    });
-
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "I saw the pandas ModuleNotFoundError again.",
-        "Installing the dependency fixed the same Python script.",
-        "This is the same lesson as before.",
-      ],
-      extraction: [
-        {
-          type: "CORRECTION",
-          learning:
-            "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
-          context: "Revisiting the same dependency fix.",
-          confidence: 0.95,
-        },
-      ],
-      expectedRecordedDelta: 0,
-    });
-
-    await runExtractionCase(runtime, experienceService, {
-      recentTexts: [
-        "Only one message exists here.",
-        "Two messages are not enough for extraction.",
-      ],
-      extraction: [
-        {
-          type: "LEARNING",
-          learning:
-            "This should not record because there are fewer than three messages.",
-          context: "Conversation too short.",
-          confidence: 0.99,
-        },
-      ],
-      expectedRecordedDelta: 0,
-    });
+    for (const scenario of skippedScenarios) {
+      await runExtractionCase(runtime, experienceService, scenario);
+    }
 
     const allExperiences = await experienceService.listExperiences({ limit: 20 });
-    expect(allExperiences).toHaveLength(3);
+    expect(allExperiences).toHaveLength(formedScenarios.length);
 
     const retrievalCases = [
       {
