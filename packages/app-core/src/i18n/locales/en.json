@@ -1976,6 +1976,7 @@
   "providerswitcher.restartRequiredHint": "Some provider changes apply after restart. {{appName}} restarts automatically after save.",
   "providerswitcher.savedRestartingAgent": "Saved. Restarting agent...",
   "providerswitcher.savingRestarting": "Saving & restarting...",
+  "providerswitcher.selectProvider": "Provider",
   "providerswitcher.selectAIProvider": "Select AI provider",
   "providerswitcher.smallModelDescription": "Fast model for simple tasks",
   "providerswitcher.smallModelLabel": "Small Model",
