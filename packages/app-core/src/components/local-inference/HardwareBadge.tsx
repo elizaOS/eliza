@@ -1,4 +1,4 @@
-import { Cpu, Gauge, HardDrive } from "lucide-react";
+import { AlertTriangle, Cpu, Gauge, HardDrive } from "lucide-react";
 import type { HardwareProbe } from "../../api/client-local-inference";
 import { bucketLabel } from "./hub-utils";
 
@@ -33,12 +33,13 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
       <div className="flex min-w-0 items-center gap-2">
         <Gauge className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <div className="font-medium" title="Recommended preset">
-          {bucketLabel(hardware.recommendedBucket)}
+          Preset: {bucketLabel(hardware.recommendedBucket)}
         </div>
       </div>
       {hardware.source === "os-fallback" && (
-        <div className="text-xs text-muted-foreground sm:col-span-3">
-          Install plugin-local-ai for full GPU detection
+        <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground sm:col-span-3">
+          <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
+          <span>Install plugin-local-ai for full GPU detection</span>
         </div>
       )}
     </div>

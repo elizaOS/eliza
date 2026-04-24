@@ -1,4 +1,5 @@
 import { Button, Input, Label, useTimeout } from "@elizaos/ui";
+import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -73,11 +74,15 @@ interface SubscriptionProviderPanelProps {
   bodyOverride?: ReactNode;
 }
 
-function StatusDot({ connected }: { connected: boolean }) {
+function StatusIcon({ connected }: { connected: boolean }) {
   return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-ok" : "bg-warn"}`}
-    />
+    <span className={connected ? "text-ok" : "text-warn"}>
+      {connected ? (
+        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+      )}
+    </span>
   );
 }
 
@@ -116,7 +121,7 @@ function SubscriptionProviderPanel({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <StatusDot connected={connected} />
+          <StatusIcon connected={connected} />
           <span className="text-xs font-semibold">
             {connected ? titleConnected : titleDisconnected}
           </span>
@@ -124,14 +129,18 @@ function SubscriptionProviderPanel({
         {connected && (
           <Button
             variant="outline"
-            size="sm"
-            className="!mt-0 h-8 rounded-lg"
+            size="icon"
+            className="!mt-0 h-8 w-8 rounded-lg"
             onClick={onDisconnect}
             disabled={disconnecting}
+            aria-label={t("providerswitcher.disconnect")}
+            title={t("providerswitcher.disconnect")}
           >
-            {disconnecting
-              ? t("providerswitcher.disconnecting")
-              : t("providerswitcher.disconnect")}
+            {disconnecting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <LogOut className="h-3.5 w-3.5" aria-hidden />
+            )}
           </Button>
         )}
       </div>

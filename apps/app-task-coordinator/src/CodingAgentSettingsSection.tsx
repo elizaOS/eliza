@@ -1,4 +1,5 @@
 import { type AgentPreflightResult, client, useApp } from "@elizaos/app-core";
+import { ExternalLink, Terminal } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -407,22 +408,41 @@ export function CodingAgentSettingsSection() {
 
   if (preflightLoaded && installedAgents.length === 0) {
     return (
-      <div className="flex flex-col gap-2 text-xs">
-        <div className="text-muted">
-          {t("codingagentsettingssection.NoSupportedCLIs")}
-        </div>
-        <div className="flex flex-col gap-1 text-xs-tight text-muted">
+      <div className="flex flex-col gap-2 text-xs text-muted">
+        <div>{t("codingagentsettingssection.NoSupportedCLIs")}</div>
+        <div className="grid gap-2">
           {AGENT_TABS.map((agent) => {
             const preflight = preflightByAgent[agent];
             return (
-              <div key={agent}>
-                <span className="font-semibold">{AGENT_LABELS[agent]}:</span>{" "}
-                {preflight?.installCommand
-                  ? `${t("codingagentsettingssection.InstallWith", {
-                      defaultValue: "Install with",
-                    })} ${preflight.installCommand}`
-                  : ""}
-                {preflight?.docsUrl ? ` (${preflight.docsUrl})` : ""}
+              <div
+                key={agent}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold text-txt">
+                    {AGENT_LABELS[agent]}
+                  </div>
+                  {preflight?.installCommand ? (
+                    <code className="inline-flex max-w-full items-center gap-1 truncate rounded border border-border/50 bg-bg px-1.5 py-0.5 text-2xs text-muted-strong">
+                      <Terminal className="h-3 w-3 shrink-0" aria-hidden />
+                      <span className="truncate">
+                        {preflight.installCommand}
+                      </span>
+                    </code>
+                  ) : null}
+                </div>
+                {preflight?.docsUrl ? (
+                  <a
+                    href={preflight.docsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-bg-hover hover:text-txt"
+                    aria-label={`${AGENT_LABELS[agent]} docs`}
+                    title={`${AGENT_LABELS[agent]} docs`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                  </a>
+                ) : null}
               </div>
             );
           })}
@@ -447,7 +467,6 @@ export function CodingAgentSettingsSection() {
 
       <AgentTabsSection
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
         availableAgents={availableAgents}
         llmProvider={llmProvider}
         preflightByAgent={preflightByAgent}

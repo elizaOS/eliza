@@ -17,12 +17,14 @@ import {
   Mail,
   Plug2,
   Plus,
+  ToggleRight,
   Unplug,
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
+import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
@@ -946,6 +948,20 @@ export function LifeOpsSettingsSection({
       </div>
 
       <BrowserBridgeSetupPanel />
+
+      <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+            <ToggleRight className="h-4 w-4 text-muted" aria-hidden />
+          </div>
+          <h3 className="text-sm font-semibold text-txt">
+            {t("lifeopssettings.featuresTitle", {
+              defaultValue: "Features",
+            })}
+          </h3>
+        </div>
+        <LifeOpsFeatureTogglesSection />
+      </section>
     </section>
   );
 }

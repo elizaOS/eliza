@@ -47,73 +47,22 @@ export const SOLANA_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.solana;
 
 export type CloudRpcStatusProps = {
   connected: boolean;
-  credits: number | null;
-  creditsLow: boolean;
-  creditsCritical: boolean;
-  topUpUrl: string | null;
   loginBusy: boolean;
   onLogin: () => void;
 };
 
 export function CloudRpcStatus({
   connected,
-  credits,
-  creditsLow,
-  creditsCritical,
   loginBusy,
   onLogin,
 }: CloudRpcStatusProps) {
-  const { t, setState, setTab } = useApp();
+  const { t } = useApp();
   if (connected) {
-    return (
-      <div className="flex items-center gap-2 text-xs">
-        <span className="inline-block w-2 h-2 rounded-full bg-ok" />
-        <span className="font-semibold">
-          {t("configpageview.ConnectedToElizaCloud", {
-            defaultValue: "Connected to Eliza Cloud",
-          })}
-        </span>
-        {credits !== null && (
-          <span className="text-muted ml-auto">
-            {t("configpageview.Credits")}{" "}
-            <span
-              className={
-                creditsCritical
-                  ? "text-danger font-bold"
-                  : creditsLow
-                    ? "rounded-md bg-warn-subtle px-1.5 py-0.5 text-txt font-bold"
-                    : ""
-              }
-            >
-              ${credits.toFixed(2)}
-            </span>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => {
-                setState("cloudDashboardView", "billing");
-                setTab("settings");
-              }}
-              className="ml-1.5 text-2xs h-auto p-0"
-            >
-              {t("configpageview.TopUp")}
-            </Button>
-          </span>
-        )}
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2 text-xs">
-        <span className="inline-block w-2 h-2 rounded-full bg-muted" />
-        <span className="text-muted">
-          {t("configpageview.RequiresElizaCloud", {
-            defaultValue: "Requires Eliza Cloud",
-          })}
-        </span>
-      </div>
+    <div className="flex justify-start">
       <Button
         variant="default"
         size="sm"
@@ -123,7 +72,9 @@ export function CloudRpcStatus({
       >
         {loginBusy
           ? t("configpageview.Connecting", { defaultValue: "Connecting..." })
-          : t("configpageview.LogIn", { defaultValue: "Log in" })}
+          : t("elizaclouddashboard.ConnectElizaCloud", {
+              defaultValue: "Connect to Eliza Cloud",
+            })}
       </Button>
     </div>
   );
@@ -244,10 +195,6 @@ export function RpcConfigSection<T extends string>({
         {selectedProvider === "eliza-cloud" ? (
           <CloudRpcStatus
             connected={cloud.connected}
-            credits={cloud.credits}
-            creditsLow={cloud.creditsLow}
-            creditsCritical={cloud.creditsCritical}
-            topUpUrl={cloud.topUpUrl}
             loginBusy={cloud.loginBusy}
             onLogin={() => void cloud.onLogin()}
           />

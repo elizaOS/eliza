@@ -1,4 +1,5 @@
 import { Button, ConnectionStatus } from "@elizaos/ui";
+import { CheckCircle2, WifiOff } from "lucide-react";
 import { useApp } from "../../state";
 
 export type CloudSourceMode = "cloud" | "own-key";
@@ -70,13 +71,24 @@ export function CloudConnectionStatus({
         className="border-0 bg-transparent px-0 py-0 shadow-none"
       />
       <span
-        className={`rounded-full border px-1.5 py-0.5 text-2xs font-medium ${
+        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
           connected
-            ? "border-ok/30 bg-ok-subtle text-txt"
-            : "border-warn/35 bg-warn-subtle text-txt"
+            ? "border-ok/30 bg-ok-subtle text-ok"
+            : "border-warn/35 bg-warn-subtle text-warn"
         }`}
+        title={
+          connected ? t("appsview.Active") : t("cloudsourcecontrols.Offline")
+        }
+        role="img"
+        aria-label={
+          connected ? t("appsview.Active") : t("cloudsourcecontrols.Offline")
+        }
       >
-        {connected ? t("appsview.Active") : t("cloudsourcecontrols.Offline")}
+        {connected ? (
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <WifiOff className="h-3.5 w-3.5" aria-hidden />
+        )}
       </span>
     </div>
   );

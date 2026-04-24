@@ -1,40 +1,16 @@
+import { useApp } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/api";
+import { Button, Switch } from "@elizaos/ui";
+import { Cloud, DollarSign, Loader2, LogIn, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   LifeOpsFeatureFlagRowDto,
   LifeOpsFeatureFlagsResponse,
   LifeOpsFeatureFlagsSyncResponse,
   LifeOpsFeatureToggleResponse,
-} from "@elizaos/app-lifeops/lifeops/feature-flags.types";
-import { Button, Switch } from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "../../api";
-import { useApp } from "../../state";
+} from "../lifeops/feature-flags.types";
 
-type FeatureSource = "default" | "local" | "cloud";
-
-function sourceBadge(source: FeatureSource): {
-  label: string;
-  className: string;
-} {
-  switch (source) {
-    case "cloud":
-      return {
-        label: "Cloud",
-        className: "border-accent/40 bg-accent/10 text-accent",
-      };
-    case "local":
-      return {
-        label: "Local",
-        className: "border-ok/40 bg-ok/10 text-ok",
-      };
-    default:
-      return {
-        label: "Default",
-        className: "border-border/40 bg-card/40 text-muted",
-      };
-  }
-}
-
-export function FeatureTogglesSection() {
+export function LifeOpsFeatureTogglesSection() {
   const { elizaCloudConnected, handleCloudLogin } = useApp();
   const [features, setFeatures] = useState<LifeOpsFeatureFlagRowDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,8 +92,6 @@ export function FeatureTogglesSection() {
     setError(null);
     try {
       await handleCloudLogin();
-      // After login the cloud-features sync route will auto-promote
-      // travel keys; refresh the list to pick that up.
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -135,8 +109,14 @@ export function FeatureTogglesSection() {
           className="!mt-0 h-9 rounded-lg"
           onClick={() => void handleSignIn()}
           disabled={signInBusy}
+          title="Sign in to Cloud"
         >
-          {signInBusy ? "Opening sign-in…" : "Sign in to Cloud"}
+          {signInBusy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <LogIn className="h-3.5 w-3.5" aria-hidden />
+          )}
+          <span>{signInBusy ? "Opening" : "Sign in"}</span>
         </Button>
       );
     }
@@ -147,8 +127,13 @@ export function FeatureTogglesSection() {
         className="!mt-0 h-9 rounded-lg"
         onClick={() => void handleSync()}
         disabled={syncing}
+        title="Sync from Cloud"
       >
-        {syncing ? "Syncing…" : "Sync from Cloud"}
+        <RefreshCw
+          className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`}
+          aria-hidden
+        />
+        <span>{syncing ? "Syncing" : "Sync"}</span>
       </Button>
     );
   }, [elizaCloudConnected, handleSignIn, handleSync, signInBusy, syncing]);
@@ -171,11 +156,16 @@ export function FeatureTogglesSection() {
       )}
 
       {loading ? (
-        <p className="text-xs text-muted">Loading…</p>
+        <div
+          className="inline-flex items-center text-muted"
+          role="status"
+          aria-label="Loading features"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        </div>
       ) : (
         <ul className="space-y-2">
           {features.map((feature) => {
-            const badge = sourceBadge(feature.source);
             const isCloudManaged = feature.source === "cloud";
             const isBusy = busyKey === feature.featureKey;
             const showCloudBillingTag =
@@ -192,39 +182,36 @@ export function FeatureTogglesSection() {
                     <span className="text-xs font-semibold">
                       {feature.label}
                     </span>
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full border ${badge.className}`}
-                      title={
-                        feature.packageId
-                          ? `Cloud package ${feature.packageId}`
-                          : badge.label
-                      }
-                      aria-hidden
-                    />
-                    {showCloudBillingTag && (
-                      <span className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-                        Cloud-managed travel billing
+                    {isCloudManaged && (
+                      <span
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-accent/35 bg-accent/10 text-accent"
+                        title={
+                          feature.packageId
+                            ? `Managed by cloud package ${feature.packageId}`
+                            : "Managed by Cloud"
+                        }
+                      >
+                        <Cloud className="h-3 w-3" aria-hidden />
+                        <span className="sr-only">Cloud-managed</span>
                       </span>
                     )}
-                    {feature.costsMoney && !showCloudBillingTag && (
-                      <span className="rounded border border-warn/40 bg-warn/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn">
-                        Costs money
+                    {(feature.costsMoney || showCloudBillingTag) && (
+                      <span
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-warn/35 bg-warn/10 text-warn"
+                        title="May use billable services"
+                      >
+                        <DollarSign className="h-3 w-3" aria-hidden />
+                        <span className="sr-only">May cost money</span>
                       </span>
                     )}
                   </div>
                   <p className="text-xs leading-relaxed text-muted">
                     {feature.description}
                   </p>
-                  {isCloudManaged && (
-                    <p className="text-xs-tight text-muted">
-                      Managed by your Eliza Cloud package — disable it from the
-                      Cloud dashboard.
-                    </p>
-                  )}
                   {showCloudHint && (
                     <p className="text-xs-tight text-muted">
-                      Sign in to Eliza Cloud to enable, or toggle on locally
-                      (requires your own travel-provider credentials).
+                      Cloud sign-in enables managed billing; local toggle uses
+                      your credentials.
                     </p>
                   )}
                 </div>

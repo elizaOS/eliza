@@ -14,8 +14,10 @@ import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
 // -- Bundled widget component imports ----------------------------------------
 
+import { MusicLibraryCharacterWidget } from "../components/character/MusicLibraryCharacterWidget";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
+import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 import { WALLET_STATUS_WIDGET } from "../components/chat/widgets/wallet-status";
@@ -65,7 +67,16 @@ function seedLegacyWidgets(
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
 seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
-seedLegacyWidgets([WALLET_STATUS_WIDGET, BROWSER_STATUS_WIDGET]);
+seedLegacyWidgets([
+  WALLET_STATUS_WIDGET,
+  BROWSER_STATUS_WIDGET,
+  MUSIC_PLAYER_WIDGET,
+]);
+registerWidgetComponent(
+  "music-library",
+  "music-library.playlists",
+  MusicLibraryCharacterWidget,
+);
 
 /**
  * Public API for plugins outside app-core to seed their own widget components.
@@ -143,6 +154,24 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: BROWSER_STATUS_WIDGET.order,
     defaultEnabled: BROWSER_STATUS_WIDGET.defaultEnabled,
   },
+  {
+    id: MUSIC_PLAYER_WIDGET.id,
+    pluginId: MUSIC_PLAYER_WIDGET.pluginId,
+    slot: "chat-sidebar",
+    label: "Music",
+    icon: "Music",
+    order: MUSIC_PLAYER_WIDGET.order,
+    defaultEnabled: MUSIC_PLAYER_WIDGET.defaultEnabled,
+  },
+  {
+    id: "music-library.playlists",
+    pluginId: "music-library",
+    slot: "character",
+    label: "Music Library",
+    icon: "ListMusic",
+    order: 250,
+    defaultEnabled: true,
+  },
 ];
 
 // -- Resolution --------------------------------------------------------------
@@ -166,6 +195,8 @@ const BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS = new Set([
   "browser-workspace",
 ]);
 
+const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set(["music-player"]);
+
 interface ResolvedWidget {
   declaration: PluginWidgetDeclaration;
   Component: React.ComponentType<WidgetProps> | null;
@@ -178,6 +209,14 @@ function isWidgetEnabled(
   plugins: readonly WidgetPluginState[],
   source: WidgetDeclarationSource,
 ): boolean {
+  if (
+    source === "builtin" &&
+    declaration.defaultEnabled !== false &&
+    ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS.has(declaration.pluginId)
+  ) {
+    return true;
+  }
+
   if (plugins.length === 0) {
     return (
       declaration.defaultEnabled !== false &&

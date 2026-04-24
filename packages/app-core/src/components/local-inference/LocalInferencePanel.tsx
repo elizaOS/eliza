@@ -1,4 +1,5 @@
 import { Button } from "@elizaos/ui";
+import { CheckCircle2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -293,10 +294,7 @@ export function LocalInferencePanel() {
           [
             ["curated", "Curated"],
             ["search", "Search"],
-            [
-              "downloads",
-              `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`,
-            ],
+            ["downloads", "Downloads"],
           ] as const
         ).map(([id, label]) => {
           const active = tab === id;
@@ -311,7 +309,14 @@ export function LocalInferencePanel() {
                   : "border-transparent text-muted hover:text-txt"
               }`}
             >
-              {label}
+              <span className="inline-flex items-center gap-1.5">
+                {label}
+                {id === "downloads" && hub.downloads.length > 0 ? (
+                  <span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-[10px] leading-none text-muted">
+                    {hub.downloads.length}
+                  </span>
+                ) : null}
+              </span>
             </button>
           );
         })}
@@ -356,7 +361,7 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <AdvancedSettingsDisclosure title="Advanced local routing">
+      <AdvancedSettingsDisclosure title="Local routing">
         <div className="flex flex-col gap-4">
           <ProvidersList />
           <RoutingMatrix />
@@ -369,7 +374,6 @@ export function LocalInferencePanel() {
           <ExternalInstalledSummary
             installed={hub.installed}
             onActivate={handleActivate}
-            onUninstall={handleUninstall}
             active={hub.active}
             busy={busy}
           />
@@ -387,7 +391,6 @@ function ExternalInstalledSummary({
 }: {
   installed: InstalledModel[];
   onActivate: (id: string) => void;
-  onUninstall: (id: string) => void;
   active: ActiveModelState;
   busy: boolean;
 }) {
@@ -422,14 +425,14 @@ function ExternalInstalledSummary({
                 </div>
               </div>
               {isActive ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-lg"
-                  disabled
+                <span
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-ok/35 bg-ok/10 text-ok"
+                  title="Active"
+                  role="img"
+                  aria-label="Active"
                 >
-                  Active
-                </Button>
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                </span>
               ) : (
                 <Button
                   size="sm"
@@ -437,6 +440,7 @@ function ExternalInstalledSummary({
                   onClick={() => onActivate(m.id)}
                   disabled={busy}
                 >
+                  <Play className="h-3.5 w-3.5" aria-hidden />
                   Activate
                 </Button>
               )}
@@ -462,9 +466,6 @@ function appendTokenParam(url: string): string {
   return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 
-/**
- * Drop-in exports for prop-less consumption by the settings panel.
- */
 export default LocalInferencePanel;
 
 // Avoid "unused" lints for re-exports that consumers may want.
