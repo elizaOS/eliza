@@ -37,6 +37,14 @@ export interface NavigationStateDeps {
   setAppsSubTab: (value: "browse" | "running" | "games") => void;
 }
 
+function shouldUseHashNavigation(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.location.protocol === "file:" ||
+    new URLSearchParams(window.location.search).get("appWindow") === "1"
+  );
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────
 
 export function useNavigationState(deps: NavigationStateDeps) {
@@ -65,7 +73,7 @@ export function useNavigationState(deps: NavigationStateDeps) {
       }
       const path = pathForTab(newTab);
       try {
-        if (window.location.protocol === "file:") {
+        if (shouldUseHashNavigation()) {
           window.location.hash = path;
         } else {
           window.history.pushState(null, "", path);

@@ -8,13 +8,14 @@ export type DetachedSurface =
   | "plugins"
   | "connectors"
   | "cloud";
-export type ManagedSurface = DetachedSurface | "settings";
+export type ManagedSurface = DetachedSurface | "settings" | "app";
 
 export interface ManagedWindowSnapshot {
   id: string;
   surface: ManagedSurface;
   title: string;
   singleton: boolean;
+  alwaysOnTop: boolean;
 }
 
 export interface ManagedWindowFrame {
@@ -26,9 +27,11 @@ export interface ManagedWindowFrame {
 
 export interface ManagedWindowLike {
   focus(): void;
+  setAlwaysOnTop(flag: boolean): void;
   on(event: "close" | "focus", handler: () => void): void;
   webview: {
     on(event: "dom-ready", handler: () => void): void;
+    loadURL?: (url: string) => void;
     toggleDevTools?: () => void;
     openDevTools?: () => void;
   };
@@ -66,6 +69,7 @@ const SURFACE_LABELS: Record<ManagedSurface, string> = {
   connectors: "Connectors",
   cloud: "Cloud",
   settings: "Settings",
+  app: "App",
 };
 
 const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
@@ -77,6 +81,7 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
   settings: { x: 180, y: 120, width: 1240, height: 900 },
+  app: { x: 180, y: 120, width: 1280, height: 900 },
 };
 
 export function isDetachedSurface(value: string): value is DetachedSurface {
@@ -92,7 +97,7 @@ export function isDetachedSurface(value: string): value is DetachedSurface {
 }
 
 function isManagedSurface(value: string): value is ManagedSurface {
-  return value === "settings" || isDetachedSurface(value);
+  return value === "settings" || value === "app" || isDetachedSurface(value);
 }
 
 function ordinalTitle(surface: ManagedSurface, ordinal: number): string {
@@ -127,6 +132,30 @@ export function buildSurfaceShellQuery(
   return base;
 }
 
+export function buildSurfaceWindowRendererUrl(
+  rendererUrl: string,
+  surface: ManagedSurface,
+  tabHint?: string,
+  browse?: string,
+): string {
+  const renderer = new URL(rendererUrl);
+  renderer.search = buildSurfaceShellQuery(surface, tabHint, browse);
+  renderer.hash = "";
+  return renderer.toString();
+}
+
+export function buildAppWindowRendererUrl(
+  rendererUrl: string,
+  routePath: string,
+): string {
+  const renderer = new URL(rendererUrl);
+  const route = new URL(routePath, "http://milady.local");
+  const appRoute = `${route.pathname}${route.search}${route.hash}`;
+  renderer.searchParams.set("appWindow", "1");
+  renderer.hash = appRoute;
+  return renderer.toString();
+}
+
 export class SurfaceWindowManager {
   private readonly createWindowFn: SurfaceWindowManagerOptions["createWindow"];
   private readonly resolveRendererUrlFn: SurfaceWindowManagerOptions["resolveRendererUrl"];
@@ -151,11 +180,12 @@ export class SurfaceWindowManager {
   listWindows(surface?: ManagedSurface): ManagedWindowSnapshot[] {
     const windows = Array.from(this.windows.values())
       .filter((entry) => (surface ? entry.surface === surface : true))
-      .map(({ id, surface: entrySurface, title, singleton }) => ({
+      .map(({ id, surface: entrySurface, title, singleton, alwaysOnTop }) => ({
         id,
         surface: entrySurface,
         title,
         singleton,
+        alwaysOnTop,
       }));
 
     return windows.sort((left, right) => {
@@ -180,15 +210,49 @@ export class SurfaceWindowManager {
   async openSurfaceWindow(
     surface: DetachedSurface,
     browse?: string,
+    alwaysOnTop = false,
   ): Promise<ManagedWindowSnapshot> {
     const seed = surface === "browser" ? browse : undefined;
-    return this.createManagedWindow(surface, undefined, false, seed);
+    return this.createManagedWindow(
+      surface,
+      undefined,
+      false,
+      seed,
+      undefined,
+      undefined,
+      alwaysOnTop,
+    );
+  }
+
+  async openAppWindow(options: {
+    title: string;
+    path: string;
+    alwaysOnTop?: boolean;
+  }): Promise<ManagedWindowSnapshot> {
+    return this.createManagedWindow(
+      "app",
+      undefined,
+      false,
+      undefined,
+      options.path,
+      options.title,
+      options.alwaysOnTop === true,
+    );
   }
 
   focusWindow(id: string): boolean {
     const existing = this.windows.get(id);
     if (!existing) return false;
     existing.window.focus();
+    this.notifyRegistryChanged();
+    return true;
+  }
+
+  setWindowAlwaysOnTop(id: string, flag: boolean): boolean {
+    const existing = this.windows.get(id);
+    if (!existing) return false;
+    existing.window.setAlwaysOnTop(flag);
+    existing.alwaysOnTop = flag;
     this.notifyRegistryChanged();
     return true;
   }
@@ -210,6 +274,7 @@ export class SurfaceWindowManager {
       surface: entry.surface,
       title: entry.title,
       singleton: entry.singleton,
+      alwaysOnTop: entry.alwaysOnTop,
     };
   }
 
@@ -218,6 +283,9 @@ export class SurfaceWindowManager {
     tabHint: string | undefined,
     singleton: boolean,
     browse?: string,
+    routePath?: string,
+    titleOverride?: string,
+    alwaysOnTop = false,
   ): Promise<ManagedWindowSnapshot> {
     if (!isManagedSurface(surface)) {
       throw new Error(`Unsupported surface: ${surface}`);
@@ -226,26 +294,34 @@ export class SurfaceWindowManager {
     const rendererUrl = await this.resolveRendererUrlFn();
     const preload = this.readPreloadFn();
     const existingCount = this.listWindows(surface).length;
-    const title = singleton
-      ? ordinalTitle(surface, 1)
-      : ordinalTitle(surface, existingCount + 1);
-    const query = buildSurfaceShellQuery(surface, tabHint, browse);
+    const title = titleOverride
+      ? titleOverride
+      : singleton
+        ? ordinalTitle(surface, 1)
+        : ordinalTitle(surface, existingCount + 1);
+    const url = routePath
+      ? buildAppWindowRendererUrl(rendererUrl, routePath)
+      : buildSurfaceWindowRendererUrl(rendererUrl, surface, tabHint, browse);
     const id = `${surface}_${++this.counter}`;
 
     const window = this.createWindowFn({
       title,
-      url: `${rendererUrl}${query}`,
+      url,
       preload,
       frame: SURFACE_FRAMES[surface],
       titleBarStyle: "default",
       transparent: false,
     });
+    if (alwaysOnTop) {
+      window.setAlwaysOnTop(true);
+    }
 
     const record: ManagedWindowRecord = {
       id,
       surface,
       title,
       singleton,
+      alwaysOnTop,
       window,
     };
 
@@ -255,6 +331,9 @@ export class SurfaceWindowManager {
     window.webview.on("dom-ready", () => {
       this.injectApiBaseFn(window);
     });
+    setTimeout(() => {
+      window.webview.loadURL?.(url);
+    }, 0);
     window.on("close", () => {
       this.windows.delete(id);
       this.notifyRegistryChanged();

@@ -46,8 +46,14 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":
     "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: launchAppAction, stopAppAction. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
+  "page-connectors":
+    "The user is in the Connectors view. They can inspect connector availability, authentication state, setup requirements, webhook readiness, and integration health. When the user asks what to do, recommend the smallest connector setup or troubleshooting action that fits the visible state. Never invent connected accounts, permissions, webhook state, or delivery results.",
+  "page-plugins":
+    "The user is in the Plugins view. They can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. When the user asks what to do, recommend the smallest plugin setup or troubleshooting action that fits the visible state. Never invent installed plugins, credentials, or enabled capabilities.",
   "page-lifeops":
     "The user is in the LifeOps view. They can inspect the overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. The LifeOps app provider and actions are the authoritative execution path for creating or changing personal workflows, reminders, goals, schedules, inbox drafts, connector setup, and executive-assistant follow-through. When the user asks what to do, recommend capability readiness and overview review first, then suggest the smallest concrete LifeOps action. Reference only live LifeOps state below; never invent reminders, messages, calendar events, goals, or connector status.",
+  "page-settings":
+    "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   "page-wallet":
     "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset, amount, destination, slippage/risk limits, and execution path before invoking any available action. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when connected or suggest connecting it when not connected. Never invent balances, positions, fills, or execution support.",
   "automation-draft":
@@ -604,6 +610,10 @@ async function renderLiveStateForScope(
       return renderAppsLiveState();
     case "page-lifeops":
       return renderLifeOpsLiveState();
+    case "page-connectors":
+    case "page-plugins":
+    case "page-settings":
+      return null;
     case "page-wallet":
       return renderWalletLiveState();
     default:
@@ -622,7 +632,7 @@ function formatSourceTail(entries: SourceTailEntry[]): string {
 export const pageScopedContextProvider: Provider = {
   name: "page-scoped-context",
   description:
-    "Operational context for the current page-scoped chat (Browser, Character, Apps, LifeOps, Automations, Wallet).",
+    "Operational context for the current page-scoped chat (Browser, Character, Apps, Connectors, Plugins, Settings, LifeOps, Automations, Wallet).",
   dynamic: false,
   position: 5,
 

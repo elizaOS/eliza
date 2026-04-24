@@ -9,7 +9,9 @@ export type PageScope =
   | "page-character"
   | "page-automations"
   | "page-apps"
+  | "page-connectors"
   | "page-phone"
+  | "page-plugins"
   | "page-lifeops"
   | "page-settings"
   | "page-wallet";
@@ -19,7 +21,9 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-character",
   "page-automations",
   "page-apps",
+  "page-connectors",
   "page-phone",
+  "page-plugins",
   "page-lifeops",
   "page-settings",
   "page-wallet",
@@ -61,7 +65,7 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-automations": {
     title: "Automations",
-    body: "Create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
+    body: "Use me to create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
     systemAddendum:
       "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
   },
@@ -71,15 +75,27 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
   },
+  "page-connectors": {
+    title: "Connectors chat",
+    body: "Use me to inspect connector readiness, setup steps, auth state, and integration health. Recommended: ask what to connect or troubleshoot.",
+    systemAddendum:
+      "You are answering inside the Connectors view. The user can inspect connector availability, authentication state, setup requirements, and integration health. Recommend the smallest connector action that fits the user's goal, reference visible connector state when present, and never invent connected accounts, permissions, webhook state, or delivery results.",
+  },
   "page-phone": {
     title: "Phone chat",
     body: "Use me to review calls, SMS, contacts, imported vCards, caller context, and transcript notes. Recommended: ask me to draft a reply, summarize a call, decide who to call back, or organize a contact from the phone workspace. Ask me what to do with any visible call or message.",
     systemAddendum:
       "You are answering inside the Android Phone view. The user can place calls through Android Telecom, open the dialer, send SMS through Android SMS, review recent calls, browse contacts, import vCards, and save call transcripts or summaries. Recommend the smallest concrete phone action that fits the user's goal. For calls or SMS, confirm the target number/contact and message content before sending. When discussing calls, messages, contacts, or transcripts, ground the answer in visible phone surface state when present and never invent call logs, contacts, message bodies, transcripts, or delivery results.",
   },
+  "page-plugins": {
+    title: "Plugins chat",
+    body: "Use me to inspect installed plugins, configuration gaps, registry options, and runtime plugin health.",
+    systemAddendum:
+      "You are answering inside the Plugins view. The user can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. Recommend the smallest plugin setup or troubleshooting action that fits the user's goal, reference visible plugin state when present, and never invent installed plugins, credentials, or enabled capabilities.",
+  },
   "page-lifeops": {
     title: "LifeOps chat",
-    body: "Ask about the visible LifeOps item or the next action you want handled.",
+    body: "Ask me about the visible LifeOps item or the next action you want handled.",
     systemAddendum:
       "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
   },
@@ -102,7 +118,9 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-character": "Character",
   "page-automations": "Automations",
   "page-apps": "Apps",
+  "page-connectors": "Connectors",
   "page-phone": "Phone",
+  "page-plugins": "Plugins",
   "page-lifeops": "LifeOps",
   "page-settings": "Settings",
   "page-wallet": "Wallet",
