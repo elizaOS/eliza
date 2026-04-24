@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Maximize2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type React from "react";
 import {
   createContext,
@@ -95,6 +95,50 @@ function AppWorkspaceChatDockToggleButton({
         <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
       )}
     </button>
+  );
+}
+
+function MobileWorkspacePaneSwitcher({
+  chatOpen,
+  onChat,
+  onMain,
+}: {
+  chatOpen: boolean;
+  onChat: () => void;
+  onMain: () => void;
+}): JSX.Element {
+  return (
+    <div
+      className="flex shrink-0 justify-center border-b border-border/35 bg-bg/92 px-2 py-1.5"
+      data-testid="app-workspace-mobile-pane-switcher"
+    >
+      <div className="inline-flex h-[2.375rem] items-center rounded-md border border-border/40 bg-card/55 p-0.5">
+        <button
+          type="button"
+          aria-label="Show main pane"
+          aria-current={!chatOpen ? "page" : undefined}
+          data-testid="app-workspace-mobile-pane-main"
+          onClick={onMain}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
+            !chatOpen ? "bg-accent text-accent-fg" : "text-muted hover:text-txt"
+          }`}
+        >
+          <Maximize2 className="h-4 w-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          aria-label="Show page chat"
+          aria-current={chatOpen ? "page" : undefined}
+          data-testid="app-workspace-mobile-pane-chat"
+          onClick={onChat}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
+            chatOpen ? "bg-accent text-accent-fg" : "text-muted hover:text-txt"
+          }`}
+        >
+          <PanelRightOpen className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -322,10 +366,24 @@ export function AppWorkspaceChrome({
   return (
     <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
       <div
-        className="flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)]"
+        className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)] ${
+          isMobileViewport ? "flex-col" : ""
+        }`}
         data-testid={testId}
       >
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {isMobileViewport && !chatDisabled ? (
+          <MobileWorkspacePaneSwitcher
+            chatOpen={!effectiveCollapsed}
+            onChat={() => handleToggle(false)}
+            onMain={() => handleToggle(true)}
+          />
+        ) : null}
+
+        <div
+          className={`relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+            isMobileViewport && !effectiveCollapsed ? "hidden" : "flex"
+          }`}
+        >
           {nav}
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             {main}
@@ -338,17 +396,7 @@ export function AppWorkspaceChrome({
             data-testid={`${testId}-chat-sidebar`}
             data-collapsed
           >
-            {isMobileViewport ? (
-              <button
-                type="button"
-                data-testid={`${testId}-chat-expand`}
-                className="fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
-                aria-label="Open page chat"
-                onClick={() => handleToggle(false)}
-              >
-                <PanelRightOpen className="h-4 w-4" />
-              </button>
-            ) : (
+            {isMobileViewport ? null : (
               <AppWorkspaceChatDockToggleButton
                 collapsed
                 testId={`${testId}-chat-expand`}
@@ -358,45 +406,21 @@ export function AppWorkspaceChrome({
         ) : (
           <>
             {isMobileViewport ? (
-              <button
-                type="button"
-                className="fixed inset-x-0 z-40 bg-bg/65 backdrop-blur-[2px]"
-                style={{
-                  top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                  bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-                }}
-                aria-label="Dismiss page chat"
-                onClick={() => handleToggle(true)}
-                data-testid={`${testId}-chat-backdrop`}
-              />
+              <aside
+                className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-bg"
+                data-testid={`${testId}-chat-sidebar`}
+              >
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  {chatContent}
+                </div>
+              </aside>
             ) : null}
-            <aside
-              className={
-                isMobileViewport
-                  ? "fixed right-0 z-50 flex w-[min(24rem,92vw)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden bg-bg shadow-2xl"
-                  : "relative flex shrink-0 flex-col overflow-hidden bg-bg"
-              }
-              style={
-                isMobileViewport
-                  ? {
-                      top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                      bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-                    }
-                  : { width: `${chatWidth}px`, minWidth: `${chatWidth}px` }
-              }
-              data-testid={`${testId}-chat-sidebar`}
-            >
-              {isMobileViewport ? (
-                <button
-                  type="button"
-                  className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/18 bg-bg/90 text-muted shadow-sm backdrop-blur transition-colors hover:bg-bg-muted/80 hover:text-txt"
-                  aria-label="Close page chat"
-                  onClick={() => handleToggle(true)}
-                >
-                  <PanelRightClose className="h-4 w-4" aria-hidden />
-                </button>
-              ) : null}
-              {isMobileViewport ? null : (
+            {!isMobileViewport ? (
+              <aside
+                className="relative flex shrink-0 flex-col overflow-hidden bg-bg"
+                style={{ width: `${chatWidth}px`, minWidth: `${chatWidth}px` }}
+                data-testid={`${testId}-chat-sidebar`}
+              >
                 <hr
                   aria-label="Resize chat"
                   aria-orientation="vertical"
@@ -408,13 +432,11 @@ export function AppWorkspaceChrome({
                   onPointerDown={handleResizePointerDown}
                   className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
                 />
-              )}
-              <div
-                className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isMobileViewport ? "pt-9" : ""}`}
-              >
-                {chatContent}
-              </div>
-            </aside>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  {chatContent}
+                </div>
+              </aside>
+            ) : null}
             {!isMobileViewport && !hideCollapseButton ? (
               <AppWorkspaceChatDockToggleButton
                 collapsed={false}

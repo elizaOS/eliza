@@ -48,7 +48,7 @@ export const ChatModalView = memo(function ChatModalView({
         >
           <DrawerSheetContent
             aria-describedby={undefined}
-            className="h-[min(calc(100dvh-1rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),36rem)] p-0"
+            className="!inset-0 !left-0 !right-0 !bottom-0 !top-0 !h-[100dvh] !max-h-none !rounded-none !border-0 p-0"
             data-chat-game-sidebar-overlay
             showCloseButton={false}
           >
