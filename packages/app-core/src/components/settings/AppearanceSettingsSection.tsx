@@ -1,11 +1,3 @@
-/**
- * AppearanceSettingsSection — content pack loading, VRM selection,
- * backgrounds, and color scheme customization.
- *
- * Migrated from the splash screen to Settings so packs can be managed
- * at any time, not just during onboarding.
- */
-
 import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
 import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
 import { Button, Input } from "@elizaos/ui";
@@ -260,11 +252,6 @@ export function AppearanceSettingsSection() {
   );
 
   const isDark = uiTheme === "dark";
-  const activeDescription = BUILTIN_THEMES.find(
-    (t) => t.id === themeId,
-  )?.description;
-
-  /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="space-y-6">
       <section className="space-y-2">
@@ -290,9 +277,6 @@ export function AppearanceSettingsSection() {
                     {language.label}
                   </span>
                 </div>
-                <span className="text-2xs uppercase tracking-[0.18em] text-muted">
-                  {language.id}
-                </span>
                 {isActive ? (
                   <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
                 ) : null}
@@ -302,7 +286,6 @@ export function AppearanceSettingsSection() {
         </div>
       </section>
 
-      {/* Light / Dark mode */}
       <section className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.mode", { defaultValue: "Mode" })}
@@ -323,7 +306,6 @@ export function AppearanceSettingsSection() {
         </div>
       </section>
 
-      {/* Theme picker */}
       <section className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.theme", { defaultValue: "Theme" })}
@@ -364,12 +346,8 @@ export function AppearanceSettingsSection() {
             );
           })}
         </div>
-        {activeDescription && (
-          <p className="text-xs-tight text-muted">{activeDescription}</p>
-        )}
       </section>
 
-      {/* Loaded packs */}
       {loadedPacks.length > 0 && (
         <section className="space-y-2">
           <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
@@ -422,7 +400,6 @@ export function AppearanceSettingsSection() {
         </section>
       )}
 
-      {/* Load from URL or folder */}
       <section className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
           {t("settings.appearance.loadPack", {
@@ -492,10 +469,8 @@ export function AppearanceSettingsSection() {
   );
 }
 
-/* ── Internal helpers ───────────────────────────────────────────── */
-
 function selectableTileClass(active: boolean): string {
-  return `relative flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-colors ${
+  return `relative flex min-h-11 flex-col items-center justify-center gap-1.5 rounded-lg border p-3 transition-colors ${
     active
       ? "border-accent bg-accent/8"
       : "border-border/50 hover:border-accent/40 hover:bg-bg-hover"
@@ -517,14 +492,15 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+      aria-label={label}
+      title={label}
+      className={`flex h-10 w-10 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
         active
           ? "border-accent bg-accent/8 text-txt"
           : "border-border/50 text-muted hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
       }`}
     >
       {icon}
-      {label}
     </button>
   );
 }

@@ -82,6 +82,7 @@ export function toInboxMessage(
     sender: {
       id: senderId ?? `${channel}-${index}`,
       displayName: message.senderName || "Unknown",
+      email: message.senderEmail?.trim().toLowerCase() || null,
       avatarUrl: null,
     },
     subject,

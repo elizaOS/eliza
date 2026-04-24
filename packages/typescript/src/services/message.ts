@@ -85,10 +85,12 @@ import {
 	CONTEXT_ROUTING_STATE_KEY,
 	type ContextRoutingDecision,
 	getActiveRoutingContexts,
+	inferContextRoutingFromMessage,
 	mergeContextRouting,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
+import { getUserMessageText } from "../utils/message-text";
 import {
 	createStreamingContext,
 	MarkableExtractor,
@@ -1752,10 +1754,7 @@ export function suggestOwnedActionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,
 ): ActionOwnershipSuggestion | null {
-	const messageText =
-		typeof message.content?.text === "string"
-			? message.content.text.trim()
-			: "";
+	const messageText = getUserMessageText(message);
 	if (
 		messageText.length === 0 ||
 		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
@@ -1921,7 +1920,18 @@ function shouldAttemptActionRescue(
 }
 
 function getMessageText(message: Memory): string {
-	return typeof message.content?.text === "string" ? message.content.text : "";
+	return getUserMessageText(message);
+}
+
+function resolveTurnContextRouting(
+	message: Memory,
+	candidate: unknown,
+): ContextRoutingDecision {
+	const parsed = parseContextRoutingMetadata(candidate);
+	if (getActiveRoutingContexts(parsed).length > 0) {
+		return parsed;
+	}
+	return inferContextRoutingFromMessage(message);
 }
 
 function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {

@@ -2200,6 +2200,7 @@ export type LifeOpsInboxChannel = (typeof LIFEOPS_INBOX_CHANNELS)[number];
 export interface LifeOpsInboxMessageSender {
   id: string;
   displayName: string;
+  email: string | null;
   avatarUrl: string | null;
 }
 

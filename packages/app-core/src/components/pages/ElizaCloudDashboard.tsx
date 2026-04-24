@@ -1,14 +1,3 @@
-/**
- * ElizaCloudDashboard — settings "Cloud" section.
- *
- * Two views:
- *   - "overview" (default): account id, balance, status, Top-up button
- *   - "billing":            top-up payment form + auto top-up + portal link
- *
- * The settings cloud tab is deliberately NOT an agent manager — agent
- * lifecycle lives elsewhere (plugins view, dedicated cloud app).
- */
-
 import {
   Button,
   Dialog,
@@ -502,9 +491,6 @@ export function CloudDashboard() {
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10">
           <Zap className="h-6 w-6 text-txt" />
         </div>
-        <p className="mb-6 text-sm leading-relaxed text-muted">
-          {t("elizaclouddashboard.ScaleYourAgents")}
-        </p>
         <Button
           variant="default"
           size="sm"
@@ -536,10 +522,8 @@ export function CloudDashboard() {
   const overviewContent = (
     <div className="px-4 py-3 sm:px-5 sm:py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted">
-            {t("elizaclouddashboard.Balance", { defaultValue: "Balance" })}
-          </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <CreditCard className="h-4 w-4 shrink-0 text-muted" aria-hidden />
           <span
             className={`text-lg font-semibold tracking-tight tabular-nums ${creditStatusColor}`}
           >
@@ -625,15 +609,16 @@ export function CloudDashboard() {
         </Button>
         <Button
           variant="outline"
-          size="sm"
-          className="rounded-lg"
+          size="icon"
+          className="h-8 w-8 rounded-lg"
           onClick={handleRefresh}
           disabled={refreshing || billingLoading}
+          aria-label={t("common.refresh")}
+          title={t("common.refresh")}
         >
           <RefreshCw
-            className={`mr-1.5 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
           />
-          {t("common.refresh")}
         </Button>
         <Button
           type="button"

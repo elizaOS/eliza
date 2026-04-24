@@ -1,3 +1,4 @@
+import { Cpu, Gauge, HardDrive } from "lucide-react";
 import type { HardwareProbe } from "../../api/client-local-inference";
 import { bucketLabel } from "./hub-utils";
 
@@ -5,11 +6,6 @@ interface HardwareBadgeProps {
   hardware: HardwareProbe;
 }
 
-/**
- * Summary of the user's detected hardware with the recommended preset.
- * Sits above the catalog so users understand why certain models are
- * marked as tight/won't-fit.
- */
 export function HardwareBadge({ hardware }: HardwareBadgeProps) {
   const gpuText = hardware.gpu
     ? `${hardware.gpu.backend.toUpperCase()} · ${hardware.gpu.totalVramGb.toFixed(1)} GB VRAM`
@@ -17,34 +13,31 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
   const chipLabel = hardware.appleSilicon ? "Apple Silicon" : hardware.arch;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-wrap items-center gap-4 text-sm">
-      <div>
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Your device
-        </div>
-        <div className="font-medium">
+    <div className="grid gap-2 rounded-xl border border-border bg-card p-3 text-sm sm:grid-cols-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="truncate font-medium" title="CPU and memory">
           {hardware.totalRamGb.toFixed(0)} GB RAM · {hardware.cpuCores} cores ·{" "}
           {chipLabel}
         </div>
       </div>
-      <div className="h-8 w-px bg-border" aria-hidden />
-      <div>
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          GPU
+      <div className="flex min-w-0 items-center gap-2">
+        <HardDrive
+          className="h-4 w-4 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <div className="truncate font-medium" title="GPU">
+          {gpuText}
         </div>
-        <div className="font-medium">{gpuText}</div>
       </div>
-      <div className="h-8 w-px bg-border" aria-hidden />
-      <div>
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Recommended preset
-        </div>
-        <div className="font-medium">
+      <div className="flex min-w-0 items-center gap-2">
+        <Gauge className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="font-medium" title="Recommended preset">
           {bucketLabel(hardware.recommendedBucket)}
         </div>
       </div>
       {hardware.source === "os-fallback" && (
-        <div className="ml-auto text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground sm:col-span-3">
           Install plugin-local-ai for full GPU detection
         </div>
       )}

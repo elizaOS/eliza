@@ -1,28 +1,7 @@
-/**
- * Settings → Learned Skills panel.
- *
- * Surfaces the curated learning loop's outputs: skills the agent extracted
- * from successful trajectories (`agent-generated`) and refinements it
- * applied to existing skills (`agent-refined`). Human-authored skills are
- * filtered out — they live in the standard skills view.
- *
- * Backend contract:
- *   GET    /api/skills/curated                            → list
- *   POST   /api/skills/curated/:name/promote              → proposed → active
- *   POST   /api/skills/curated/:name/disable              → active → disabled
- *   DELETE /api/skills/curated/:name                      → remove
- */
-
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@elizaos/ui";
+import { Button, Card, CardContent } from "@elizaos/ui";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "../../api";
+import { client } from "../../api/client";
 
 type CuratedStatus = "active" | "proposed" | "disabled";
 type CuratedSource = "human" | "agent-generated" | "agent-refined";
@@ -39,9 +18,7 @@ interface CuratedSkill {
 }
 
 interface ListResponse {
-  ok: boolean;
   skills: CuratedSkill[];
-  counts: { active: number; proposed: number; disabled: number };
 }
 
 function formatScore(score: number | undefined): string {
@@ -55,7 +32,7 @@ function formatDate(iso: string): string {
   return new Date(ms).toLocaleString();
 }
 
-export function LearnedSkillsPanel() {
+export function CharacterLearnedSkillsSection() {
   const [skills, setSkills] = useState<CuratedSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -66,7 +43,6 @@ export function LearnedSkillsPanel() {
     setErrorMessage(null);
     try {
       const res = (await client.fetch("/api/skills/curated")) as ListResponse;
-      // Only show agent-derived skills; human skills live elsewhere.
       const filtered = res.skills.filter((s) => s.source !== "human");
       setSkills(filtered);
     } catch (err) {
@@ -119,46 +95,42 @@ export function LearnedSkillsPanel() {
     grouped.disabled.length === 0;
 
   return (
-    <Card
-      className="border-border/60 bg-card/92 shadow-sm"
-      data-testid="settings-learned-skills-panel"
+    <section
+      className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
+      data-testid="character-learned-skills-panel"
     >
-      <CardHeader className="px-4 py-4 pb-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-sm">Learned Skills</CardTitle>
-            <CardDescription className="mt-1 text-xs-tight leading-5">
-              Skills the agent has drafted or refined from real trajectories.
-              Promote a proposal to start using it, disable to keep it on disk
-              but inactive, or delete to remove.
-            </CardDescription>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-txt">Skills</h2>
+          <div className="mt-1 text-2xs text-muted">
+            {loading
+              ? "Loading"
+              : `${grouped.proposed.length} proposed · ${grouped.active.length} active · ${grouped.disabled.length} disabled`}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
-            onClick={() => {
-              void refresh();
-            }}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
         </div>
-      </CardHeader>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 rounded-lg"
+          onClick={() => {
+            void refresh();
+          }}
+          disabled={loading}
+          aria-label="Refresh learned skills"
+          title="Refresh"
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+          />
+        </Button>
+      </div>
 
-      <CardContent className="flex flex-col gap-4 px-4 pb-4">
+      <div className="flex flex-col gap-4">
         {errorMessage ? (
           <div className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2.5 text-xs-tight leading-5 text-danger">
             {errorMessage}
           </div>
         ) : null}
-
-        <div className="text-2xs text-muted">
-          {loading
-            ? "Loading…"
-            : `${grouped.proposed.length} proposed · ${grouped.active.length} active · ${grouped.disabled.length} disabled`}
-        </div>
 
         {grouped.proposed.length > 0 ? (
           <SkillSection
@@ -189,12 +161,11 @@ export function LearnedSkillsPanel() {
 
         {isEmpty ? (
           <div className="rounded-xl border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
-            No learned skills yet. The agent stages new proposals here after
-            successful trajectories.
+            No learned skills yet.
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -233,11 +204,11 @@ function SkillSection({
                     <div className="text-xs-tight text-muted">
                       {skill.description}
                     </div>
-                    <div className="text-2xs uppercase tracking-wide text-muted">
-                      source: {skill.source} · refinedCount:{" "}
-                      {skill.refinedCount} · score:{" "}
-                      {formatScore(skill.lastEvalScore)} · created:{" "}
-                      {formatDate(skill.createdAt)}
+                    <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs uppercase tracking-wide text-muted">
+                      <span>{skill.source}</span>
+                      <span>{skill.refinedCount} refinements</span>
+                      <span>{formatScore(skill.lastEvalScore)} score</span>
+                      <span>{formatDate(skill.createdAt)}</span>
                     </div>
                     {skill.derivedFromTrajectory ? (
                       <div className="text-2xs text-muted">

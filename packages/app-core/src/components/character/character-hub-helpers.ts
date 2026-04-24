@@ -14,6 +14,7 @@ export const CHARACTER_HUB_SECTIONS = [
   "overview",
   "personality",
   "knowledge",
+  "skills",
   "experience",
   "relationships",
 ] as const;
@@ -30,6 +31,8 @@ export function getCharacterHubSectionLabel(
       return "Personality";
     case "knowledge":
       return "Knowledge";
+    case "skills":
+      return "Skills";
     case "experience":
       return "Experience";
     case "relationships":
@@ -120,8 +123,6 @@ export function buildCharacterOverviewItems(options: {
           ? `Changed ${entry.fieldsChanged.join(", ")}.`
           : "Personality changed.",
       timestamp: new Date(entry.timestamp).toISOString(),
-      badge: entry.source,
-      meta: null,
     }),
   );
 
@@ -135,11 +136,6 @@ export function buildCharacterOverviewItems(options: {
           ? "Learned knowledge added by the agent."
           : "Knowledge document added to the character workspace.",
       timestamp: toIsoString(document.createdAt),
-      badge: document.source,
-      meta:
-        typeof document.fragmentCount === "number"
-          ? `${document.fragmentCount} fragments`
-          : null,
     }),
   );
 
@@ -151,8 +147,6 @@ export function buildCharacterOverviewItems(options: {
       description:
         experience.context || experience.action || "Experience recorded.",
       timestamp: toIsoString(experience.updatedAt ?? experience.createdAt),
-      badge: experience.outcome,
-      meta: experience.domain || null,
     }),
   );
 
@@ -161,10 +155,13 @@ export function buildCharacterOverviewItems(options: {
       id: `relationship:${item.personId}:${item.summary}:${item.timestamp ?? "na"}`,
       kind: "relationship",
       title: item.summary,
-      description: item.detail || item.personName,
+      description:
+        item.type === "relationship"
+          ? "Relationship signal updated."
+          : item.type === "identity"
+            ? `Identity linked for ${item.personName}.`
+            : "Relationship fact recorded.",
       timestamp: item.timestamp,
-      badge: item.type,
-      meta: item.personName,
     }));
 
   return [

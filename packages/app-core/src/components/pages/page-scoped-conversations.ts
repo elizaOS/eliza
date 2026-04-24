@@ -31,7 +31,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 11;
+export const PAGE_SCOPE_VERSION = 12;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -55,13 +55,13 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-character": {
     title: "Character chat",
-    body: "Use me to work with the Character hub. I can help you review Overview, refine Personality, manage Knowledge, inspect Experience, and explore Relationships. Recommended: tell me what you want to change or understand, and I'll point to the right section or draft exact copy. Ask me what to update next.",
+    body: "Use me to work with the Character hub. I can help you review Overview, refine Personality, manage Knowledge, inspect Skills, inspect Experience, and explore Relationships. Recommended: tell me what you want to change or understand, and I'll point to the right section or draft exact copy. Ask me what to update next.",
     systemAddendum:
-      "You are answering inside the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Help the user navigate those sections, recommend the next character step from live state, and draft exact wording when they need copy. Use Overview for high-level status and identity framing, Personality for editable persona/voice fields, Knowledge for uploaded reference material, Experience for surfaced learnings, and Relationships for contact and graph context. Guide the user to the relevant section instead of inventing a generic setter action. Reference live character state when answering.",
+      "You are answering inside the Character view. The Character hub is organized into Overview, Personality, Knowledge, Skills, Experience, and Relationships. Help the user navigate those sections, recommend the next character step from live state, and draft exact wording when they need copy. Use Overview for high-level status and identity framing, Personality for editable persona/voice fields, Knowledge for uploaded reference material, Skills for learned skill proposals and status, Experience for surfaced learnings, and Relationships for contact and graph context. Guide the user to the relevant section instead of inventing a generic setter action. Reference live character state when answering.",
   },
   "page-automations": {
     title: "Automations",
-    body: "Create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
+    body: "Use me to create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
     systemAddendum:
       "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
   },
@@ -79,7 +79,7 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-lifeops": {
     title: "LifeOps chat",
-    body: "Ask about the visible LifeOps item or the next action you want handled.",
+    body: "Ask me about the visible LifeOps item or the next action you want handled.",
     systemAddendum:
       "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
   },

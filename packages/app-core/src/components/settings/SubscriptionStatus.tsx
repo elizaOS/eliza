@@ -1,12 +1,3 @@
-/**
- * SubscriptionStatus — Anthropic + OpenAI subscription provider cards.
- *
- * Both providers share an OAuth flow (start → exchange code → connected).
- * Anthropic also supports a setup-token tab. The shared
- * `<SubscriptionProviderPanel>` renders the common header / status / OAuth
- * shell; provider-specific bits (token tab, callback hint) are slots.
- */
-
 import { Button, Input, Label, useTimeout } from "@elizaos/ui";
 import {
   type ReactNode,

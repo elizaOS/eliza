@@ -1,11 +1,8 @@
 import type { Memory } from "../../../types/index.ts";
+import { normalizeUserMessageText } from "../../../utils/message-text.ts";
 
 export function normalizeMessageText(message: Memory): string {
-	const text =
-		typeof message.content === "string"
-			? message.content
-			: (message.content?.text ?? "");
-	return text.toLowerCase().replace(/\s+/g, " ").trim();
+	return normalizeUserMessageText(message);
 }
 
 export function looksLikeNonActionableChatter(message: Memory): boolean {

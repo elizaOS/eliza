@@ -1,9 +1,3 @@
-/**
- * In-app surface for plugin-music-player: polls /music-player/status for any
- * actively playing track (guild-agnostic), then connects an <audio> element
- * to the broadcast stream for that guild.
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -113,9 +107,6 @@ export function MusicPlayerSettingsPanel() {
         <div className="text-xs font-semibold text-txt">
           {t("musicplayersettings.Title")}
         </div>
-        <div className="text-2xs text-muted mt-1 leading-snug">
-          {t("musicplayersettings.Description")}
-        </div>
       </div>
 
       <div className="text-2xs text-muted space-y-1">
@@ -140,9 +131,6 @@ export function MusicPlayerSettingsPanel() {
           </div>
         )}
       </div>
-      <p className="text-2xs text-muted leading-snug">
-        {t("musicplayersettings.AudioElementHint")}
-      </p>
       {/* biome-ignore lint/a11y/useMediaCaption: raw agent audio stream has no caption track */}
       <audio
         ref={audioRef}

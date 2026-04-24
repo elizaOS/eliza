@@ -12,6 +12,7 @@ import type {
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
@@ -24,11 +25,6 @@ import { ProvidersList } from "./ProvidersList";
 import { RoutingMatrix } from "./RoutingMatrix";
 import { SlotAssignments } from "./SlotAssignments";
 
-/**
- * Settings page entry for local inference. Owns the hub snapshot state,
- * subscribes to the download SSE stream, and dispatches mutations back
- * through the typed client helpers.
- */
 type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
@@ -277,18 +273,6 @@ export function LocalInferencePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Local models
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          Run llama.cpp on this machine, this mobile device, or on a paired
-          device. Enable alongside cloud providers — the agent will prefer
-          whichever handler has the highest priority for each ModelType. Use the
-          slot assignments below to pin a specific local model to a slot, or
-          leave them unset to let cloud take priority when configured.
-        </p>
-      </header>
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
       <FirstRunOffer
@@ -308,7 +292,7 @@ export function LocalInferencePanel() {
         {(
           [
             ["curated", "Curated"],
-            ["search", "Search HuggingFace"],
+            ["search", "Search"],
             [
               "downloads",
               `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`,
@@ -372,21 +356,25 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <ProvidersList />
-      <RoutingMatrix />
-      <SlotAssignments
-        installed={hub.installed}
-        assignments={hub.assignments}
-        onChange={handleAssignmentsChange}
-      />
-      <DevicesPanel />
-      <ExternalInstalledSummary
-        installed={hub.installed}
-        onActivate={handleActivate}
-        onUninstall={handleUninstall}
-        active={hub.active}
-        busy={busy}
-      />
+      <AdvancedSettingsDisclosure title="Advanced local routing">
+        <div className="flex flex-col gap-4">
+          <ProvidersList />
+          <RoutingMatrix />
+          <SlotAssignments
+            installed={hub.installed}
+            assignments={hub.assignments}
+            onChange={handleAssignmentsChange}
+          />
+          <DevicesPanel />
+          <ExternalInstalledSummary
+            installed={hub.installed}
+            onActivate={handleActivate}
+            onUninstall={handleUninstall}
+            active={hub.active}
+            busy={busy}
+          />
+        </div>
+      </AdvancedSettingsDisclosure>
     </div>
   );
 }

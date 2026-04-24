@@ -7,6 +7,7 @@ import {
 } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useApp } from "../../state";
+import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
 import {
   normalizeReleaseNotesUrl,
@@ -50,10 +51,13 @@ export function ReleaseCenterView() {
   }, [desktopRuntime, releaseNotesUrlDirty]);
 
   useEffect(() => {
-    if (!desktopRuntime) return;
     void loadUpdateStatus();
+  }, [loadUpdateStatus]);
+
+  useEffect(() => {
+    if (!desktopRuntime) return;
     void refreshNativeState();
-  }, [desktopRuntime, loadUpdateStatus, refreshNativeState]);
+  }, [desktopRuntime, refreshNativeState]);
 
   useEffect(() => {
     if (!desktopRuntime) return;
@@ -99,26 +103,21 @@ export function ReleaseCenterView() {
     [],
   );
 
-  if (!desktopRuntime) {
-    return (
-      <p className="text-xs leading-5 text-muted">
-        {t("releasecenterview.WebReadOnly", {
-          defaultValue:
-            "This web session is read-only for release management. Open the app in the desktop shell to check for updates, apply downloaded builds, or manage the detached release notes window.",
-        })}
-      </p>
-    );
-  }
-
   const detachReleaseCenter = async () => {
+    if (!desktopRuntime) return;
     await openDesktopSurfaceWindow("release");
   };
 
   const refreshReleaseState = async () => {
-    await Promise.all([loadUpdateStatus(true), refreshNativeState()]);
+    if (desktopRuntime) {
+      await Promise.all([loadUpdateStatus(true), refreshNativeState()]);
+      return;
+    }
+    await loadUpdateStatus(true);
   };
 
   const checkForDesktopUpdate = async () => {
+    if (!desktopRuntime) return;
     const snapshot = await invokeDesktopBridgeRequest<DesktopUpdaterSnapshot>({
       rpcMethod: "desktopCheckForUpdates",
       ipcChannel: "desktop:checkForUpdates",
@@ -130,6 +129,7 @@ export function ReleaseCenterView() {
   };
 
   const applyDesktopUpdate = async () => {
+    if (!desktopRuntime) return;
     await invokeDesktopBridgeRequest<void>({
       rpcMethod: "desktopApplyUpdate",
       ipcChannel: "desktop:applyUpdate",
@@ -137,6 +137,10 @@ export function ReleaseCenterView() {
   };
 
   const openReleaseNotesWindow = async () => {
+    if (!desktopRuntime) {
+      await openExternalUrl(releaseNotesUrl);
+      return;
+    }
     await invokeDesktopBridgeRequest({
       rpcMethod: "desktopOpenReleaseNotesWindow",
       ipcChannel: "desktop:openReleaseNotesWindow",
@@ -226,7 +230,6 @@ export function ReleaseCenterView() {
         </div>
       )}
 
-      {/* Version info — compact dl */}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
         {versionRows.map((row) => (
           <div
@@ -241,31 +244,32 @@ export function ReleaseCenterView() {
         ))}
       </dl>
 
-      {/* Actions */}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          className="h-9 rounded-lg px-3 text-xs font-medium"
-          disabled={
-            busyAction === "check-updates" ||
-            updateLoading ||
-            autoUpdateDisabled
-          }
-          onClick={() =>
-            void runAction(
-              "check-updates",
-              checkForDesktopUpdate,
-              t("releasecenterview.CheckStarted", {
-                defaultValue: "Desktop update check started.",
-              }),
-            )
-          }
-        >
-          {t("releasecenterview.CheckDownloadUpdate", {
-            defaultValue: "Check / Download Update",
-          })}
-        </Button>
-        {nativeUpdater?.updateReady && (
+        {desktopRuntime ? (
+          <Button
+            size="sm"
+            className="h-9 rounded-lg px-3 text-xs font-medium"
+            disabled={
+              busyAction === "check-updates" ||
+              updateLoading ||
+              autoUpdateDisabled
+            }
+            onClick={() =>
+              void runAction(
+                "check-updates",
+                checkForDesktopUpdate,
+                t("releasecenterview.CheckStarted", {
+                  defaultValue: "Desktop update check started.",
+                }),
+              )
+            }
+          >
+            {t("releasecenterview.CheckDownloadUpdate", {
+              defaultValue: "Check / Download Update",
+            })}
+          </Button>
+        ) : null}
+        {desktopRuntime && nativeUpdater?.updateReady && (
           <Button
             size="sm"
             className="h-9 rounded-lg px-3 text-xs font-medium"
@@ -302,28 +306,29 @@ export function ReleaseCenterView() {
         >
           {t("common.refresh")}
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-9 rounded-lg px-3 text-xs font-medium"
-          disabled={busyAction === "detach-release"}
-          onClick={() =>
-            void runAction(
-              "detach-release",
-              detachReleaseCenter,
-              t("releasecenterview.DetachedOpened", {
-                defaultValue: "Detached release center opened.",
-              }),
-            )
-          }
-        >
-          {t("releasecenterview.OpenDetachedReleaseCenter", {
-            defaultValue: "Open Detached Release Center",
-          })}
-        </Button>
+        {desktopRuntime ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 rounded-lg px-3 text-xs font-medium"
+            disabled={busyAction === "detach-release"}
+            onClick={() =>
+              void runAction(
+                "detach-release",
+                detachReleaseCenter,
+                t("releasecenterview.DetachedOpened", {
+                  defaultValue: "Detached release center opened.",
+                }),
+              )
+            }
+          >
+            {t("releasecenterview.OpenDetachedReleaseCenter", {
+              defaultValue: "Open Detached Release Center",
+            })}
+          </Button>
+        ) : null}
       </div>
 
-      {/* Release notes URL */}
       <div className="border-t border-border/40 pt-4">
         <label
           htmlFor="release-notes-url"
@@ -355,14 +360,18 @@ export function ReleaseCenterView() {
                   "open-release-notes",
                   openReleaseNotesWindow,
                   t("releasecenterview.ReleaseNotesOpened", {
-                    defaultValue: "Release notes window opened.",
+                    defaultValue: "Release notes opened.",
                   }),
                 )
               }
             >
-              {t("releasecenterview.OpenBrowserViewWindow", {
-                defaultValue: "Open BrowserView Window",
-              })}
+              {desktopRuntime
+                ? t("releasecenterview.OpenBrowserViewWindow", {
+                    defaultValue: "Open BrowserView Window",
+                  })
+                : t("releasecenterview.OpenReleaseNotes", {
+                    defaultValue: "Open Release Notes",
+                  })}
             </Button>
             <Button
               size="sm"
@@ -374,7 +383,9 @@ export function ReleaseCenterView() {
                   async () => {
                     setReleaseNotesUrlDirty(false);
                     setReleaseNotesUrl(
-                      normalizeReleaseNotesUrl(nativeUpdater?.baseUrl),
+                      normalizeReleaseNotesUrl(
+                        nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl,
+                      ),
                     );
                   },
                   t("releasecenterview.ReleaseNotesReset", {
