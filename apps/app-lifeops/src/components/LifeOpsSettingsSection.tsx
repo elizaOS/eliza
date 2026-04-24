@@ -604,7 +604,13 @@ function GoogleConnectorSideCard({
                 defaultValue: "Calendar feed",
               })}
             </span>
-            {calendars.length > 0 ? (
+            {calendarError ? (
+              <span className="text-danger">
+                {t("lifeopssettings.calendarFeedIssue", {
+                  defaultValue: "Issue",
+                })}
+              </span>
+            ) : calendars.length > 0 ? (
               <span className="text-muted">
                 {calendars.filter((calendar) => calendar.includeInFeed).length}/
                 {calendars.length}
@@ -664,6 +670,9 @@ function GoogleConnectorSideCard({
                 })}
               </div>
             )}
+            {calendarError ? (
+              <div className="text-xs text-danger">{calendarError}</div>
+            ) : null}
           </div>
         </details>
       ) : null}
@@ -675,10 +684,6 @@ function GoogleConnectorSideCard({
         />
       ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
-      {calendarError ? (
-        <div className="text-xs text-danger">{calendarError}</div>
-      ) : null}
-
       <GithubRow github={github} compactLayout={compactLayout} />
     </section>
   );
