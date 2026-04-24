@@ -9,8 +9,9 @@
  * doesn't flood the terminal with ECONNREFUSED errors.
  *
  * Usage:
- *   node eliza/packages/app-core/scripts/dev-ui.mjs            # starts both API + UI
- *   node eliza/packages/app-core/scripts/dev-ui.mjs --ui-only  # starts only the vite UI (API assumed running)
+ *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Milady repo root — API + UI
+ *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
+ *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execFileSync, execSync, spawn } from "node:child_process";
 import {
@@ -75,6 +76,36 @@ function resolveCapacitorPluginNamesPath(devCwd) {
   }
   throw new Error(
     `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootAppsApp}\n  ${nestedElizaAppsApp}`,
+  );
+}
+
+/** Relative to `cwd` for `spawn(..., { cwd })` — Milady monorepo vs eliza repo root. */
+function resolveDevServerEntryRelativePath(devCwd) {
+  const miladyMonorepoEntry = path.join(
+    devCwd,
+    "eliza",
+    "packages",
+    "app-core",
+    "src",
+    "runtime",
+    "dev-server.ts",
+  );
+  if (existsSync(miladyMonorepoEntry)) {
+    return "eliza/packages/app-core/src/runtime/dev-server.ts";
+  }
+  const elizaRepoEntry = path.join(
+    devCwd,
+    "packages",
+    "app-core",
+    "src",
+    "runtime",
+    "dev-server.ts",
+  );
+  if (existsSync(elizaRepoEntry)) {
+    return "packages/app-core/src/runtime/dev-server.ts";
+  }
+  throw new Error(
+    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Milady-style checkout) or packages/app-core/... (eliza repo root).`,
   );
 }
 
@@ -862,6 +893,8 @@ if (uiOnly) {
     );
   }
 
+  const devServerEntry = resolveDevServerEntryRelativePath(cwd);
+
   const apiCmd = hasBun
     ? [
         "bun",
@@ -871,7 +904,7 @@ if (uiOnly) {
           filePath,
         ]),
         "--watch",
-        "eliza/packages/app-core/src/runtime/dev-server.ts",
+        devServerEntry,
       ]
     : [
         "node",
@@ -879,7 +912,7 @@ if (uiOnly) {
         "--import",
         "tsx",
         "--watch",
-        "eliza/packages/app-core/src/runtime/dev-server.ts",
+        devServerEntry,
       ];
   const childEnv = createDevChildEnv(process.env);
   apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
