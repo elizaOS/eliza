@@ -171,7 +171,10 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
 
 function getNavigationPathFromWindow(): string {
   if (typeof window === "undefined") return "/";
-  return window.location.protocol === "file:"
+  const usesHashRoute =
+    window.location.protocol === "file:" ||
+    new URLSearchParams(window.location.search).get("appWindow") === "1";
+  return usesHashRoute
     ? window.location.hash.replace(/^#/, "") || "/"
     : window.location.pathname;
 }

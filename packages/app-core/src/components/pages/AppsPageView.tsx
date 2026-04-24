@@ -11,6 +11,14 @@ import { AppsView } from "./AppsView";
 
 type AppsPageViewRenderer = () => React.ReactElement;
 
+function shouldUseHashNavigation(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.location.protocol === "file:" ||
+    new URLSearchParams(window.location.search).get("appWindow") === "1"
+  );
+}
+
 export function AppsPageView({
   inModal,
   appsView: AppsViewRenderer = AppsView as AppsPageViewRenderer,
@@ -33,13 +41,12 @@ export function AppsPageView({
     if (appsSubTab !== "games" || !activeGameRun) return;
     const slug = getAppSlug(activeGameRun.appName);
     try {
-      const currentPath =
-        window.location.protocol === "file:"
-          ? window.location.hash.replace(/^#/, "") || "/"
-          : window.location.pathname;
+      const currentPath = shouldUseHashNavigation()
+        ? window.location.hash.replace(/^#/, "") || "/"
+        : window.location.pathname;
       const expected = `/apps/${slug}`;
       if (currentPath !== expected) {
-        if (window.location.protocol === "file:") {
+        if (shouldUseHashNavigation()) {
           window.location.hash = expected;
         } else {
           window.history.replaceState(null, "", expected);

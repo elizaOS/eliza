@@ -3,6 +3,7 @@ import {
   type JSX,
   type LazyExoticComponent,
   lazy,
+  type ReactNode,
   Suspense,
 } from "react";
 import { CodingAgentSettingsSection } from "../app-shell/task-coordinator-slots.js";
@@ -11,6 +12,7 @@ import { ChatView } from "../components/pages/ChatView";
 import { ConfigPageView } from "../components/pages/ConfigPageView";
 import { CloudDashboard } from "../components/pages/ElizaCloudDashboard";
 import { HeartbeatsView } from "../components/pages/HeartbeatsView";
+import type { PageScope } from "../components/pages/page-scoped-conversations";
 import { ReleaseCenterView } from "../components/pages/ReleaseCenterView";
 import { MediaSettingsSection } from "../components/settings/MediaSettingsSection";
 import { PermissionsSection } from "../components/settings/PermissionsSection";
@@ -18,6 +20,7 @@ import { ProviderSwitcher } from "../components/settings/ProviderSwitcher";
 import { VoiceConfigView } from "../components/settings/VoiceConfigView";
 import { PairingView } from "../components/shell/PairingView";
 import { StartupFailureView } from "../components/shell/StartupFailureView";
+import { AppWorkspaceChrome } from "../components/workspace/AppWorkspaceChrome";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
@@ -122,6 +125,26 @@ function DetachedChatView(): JSX.Element {
   );
 }
 
+function DetachedWorkspaceView({
+  children,
+  chatScope,
+}: {
+  children: ReactNode;
+  chatScope: PageScope;
+}): JSX.Element {
+  return (
+    <AppWorkspaceChrome
+      testId={`detached-${chatScope}`}
+      chatScope={chatScope}
+      main={
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
+      }
+    />
+  );
+}
+
 function OnboardingBlockedView(): JSX.Element {
   const { t } = useApp();
   return (
@@ -157,25 +180,35 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return <DetachedChatView />;
     case "connectors":
       return (
-        <DetachedLazyBoundary>
-          <ConnectorsPageView />
-        </DetachedLazyBoundary>
+        <DetachedWorkspaceView chatScope="page-connectors">
+          <DetachedLazyBoundary>
+            <ConnectorsPageView />
+          </DetachedLazyBoundary>
+        </DetachedWorkspaceView>
       );
     case "plugins":
       return (
-        <DetachedLazyBoundary>
-          <PluginsPageView />
-        </DetachedLazyBoundary>
+        <DetachedWorkspaceView chatScope="page-plugins">
+          <DetachedLazyBoundary>
+            <PluginsPageView />
+          </DetachedLazyBoundary>
+        </DetachedWorkspaceView>
       );
     case "triggers":
-      return <HeartbeatsView />;
+      return (
+        <DetachedWorkspaceView chatScope="page-automations">
+          <HeartbeatsView />
+        </DetachedWorkspaceView>
+      );
     case "settings":
       return (
-        <DetachedLazyBoundary>
-          <section className="w-full px-4 py-4 lg:px-6">
-            <DetachedSettingsSectionView section={target.settingsSection} />
-          </section>
-        </DetachedLazyBoundary>
+        <DetachedWorkspaceView chatScope="page-settings">
+          <DetachedLazyBoundary>
+            <section className="w-full overflow-y-auto px-4 py-4 lg:px-6">
+              <DetachedSettingsSectionView section={target.settingsSection} />
+            </section>
+          </DetachedLazyBoundary>
+        </DetachedWorkspaceView>
       );
     default: {
       const _exhaustive: never = target.tab;

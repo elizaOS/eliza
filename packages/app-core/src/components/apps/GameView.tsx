@@ -16,6 +16,7 @@ import {
   useIntervalWhenDocumentVisible,
   useTimeout,
 } from "@elizaos/ui";
+import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,
@@ -160,6 +161,15 @@ export const DESKTOP_GAME_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     coverage: "automated",
   },
   {
+    id: "game-native-always-on-top",
+    entryPoint: "game",
+    label: "Toggle Game Window Always On Top",
+    expectedAction:
+      "Toggle whether the native game window floats above other windows.",
+    runtimeRequirement: "desktop",
+    coverage: "automated",
+  },
+  {
     id: "game-native-snapshot",
     entryPoint: "game",
     label: "Snapshot Game Window",
@@ -186,6 +196,7 @@ export function DesktopGameWindowControls({
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [boundsLabel, setBoundsLabel] = useState(
     t("gameview.BoundsUnavailable", { defaultValue: "Bounds unavailable." }),
   );
@@ -199,6 +210,7 @@ export function DesktopGameWindowControls({
           defaultValue: "Waiting for native game window.",
         }),
       );
+      setAlwaysOnTop(false);
     } else {
       const bounds = await invokeDesktopBridgeRequest<{
         x: number;
@@ -214,6 +226,18 @@ export function DesktopGameWindowControls({
         setBoundsLabel(
           `${bounds.width}x${bounds.height} @ ${bounds.x},${bounds.y}`,
         );
+      }
+      const windows = await invokeDesktopBridgeRequest<{
+        windows: Array<{ id: string; alwaysOnTop: boolean }>;
+      }>({
+        rpcMethod: "canvasListWindows",
+        ipcChannel: "canvas:listWindows",
+      });
+      const currentWindow = windows?.windows.find(
+        (item) => item.id === gameWindowId,
+      );
+      if (currentWindow) {
+        setAlwaysOnTop(currentWindow.alwaysOnTop);
       }
     }
 
@@ -379,6 +403,49 @@ export function DesktopGameWindowControls({
         disabled={!gameWindowId || busyAction === "game-native-hide"}
       >
         {t("gameview.HideWindow", { defaultValue: "Hide Window" })}
+      </Button>
+      <Button
+        variant={alwaysOnTop ? "default" : "outline"}
+        size="sm"
+        className="h-7 gap-1.5 text-xs shadow-sm hover:border-accent"
+        onClick={() =>
+          void runAction(
+            "game-native-always-on-top",
+            async () => {
+              if (!gameWindowId) {
+                throw new Error(
+                  t("gameview.GameWindowNotReadyYet", {
+                    defaultValue: "Game window not ready yet.",
+                  }),
+                );
+              }
+              const next = !alwaysOnTop;
+              await invokeDesktopBridgeRequest<void>({
+                rpcMethod: "canvasSetAlwaysOnTop",
+                ipcChannel: "canvas:setAlwaysOnTop",
+                params: { id: gameWindowId, flag: next },
+              });
+              setAlwaysOnTop(next);
+            },
+            alwaysOnTop
+              ? t("gameview.NativeGameWindowNormal", {
+                  defaultValue: "Native game window acts like a normal window.",
+                })
+              : t("gameview.NativeGameWindowPinned", {
+                  defaultValue: "Native game window stays on top.",
+                }),
+          )
+        }
+        disabled={!gameWindowId || busyAction === "game-native-always-on-top"}
+      >
+        {alwaysOnTop ? (
+          <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+        ) : (
+          <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        {alwaysOnTop
+          ? t("gameview.NormalWindow", { defaultValue: "Normal Window" })
+          : t("gameview.KeepOnTop", { defaultValue: "Keep On Top" })}
       </Button>
       <Button
         variant="outline"

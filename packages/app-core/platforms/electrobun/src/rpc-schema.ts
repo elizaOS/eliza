@@ -82,6 +82,14 @@ export interface WindowOptions {
   title?: string;
 }
 
+export interface DesktopManagedWindowSnapshot {
+  id: string;
+  surface: string;
+  title: string;
+  singleton: boolean;
+  alwaysOnTop: boolean;
+}
+
 export interface ClipboardWriteOptions {
   text?: string;
   html?: string;
@@ -229,6 +237,7 @@ export interface CanvasWindowOptions {
   y?: number;
   title?: string;
   transparent?: boolean;
+  alwaysOnTop?: boolean;
 }
 
 export interface CanvasWindowInfo {
@@ -236,6 +245,7 @@ export interface CanvasWindowInfo {
   url: string;
   bounds: WindowBounds;
   title: string;
+  alwaysOnTop: boolean;
 }
 
 // -- GPU Window / GPU View --
@@ -685,8 +695,17 @@ export type ElizaDesktopRPCSchema = {
             | "connectors"
             | "cloud";
           browse?: string;
+          alwaysOnTop?: boolean;
         };
-        response: undefined;
+        response: DesktopManagedWindowSnapshot | null;
+      };
+      desktopOpenAppWindow: {
+        params: { title: string; path: string; alwaysOnTop?: boolean };
+        response: DesktopManagedWindowSnapshot | null;
+      };
+      desktopSetManagedWindowAlwaysOnTop: {
+        params: { id: string; flag: boolean };
+        response: { success: boolean };
       };
 
       // ---- Browser Workspace ----
@@ -904,6 +923,10 @@ export type ElizaDesktopRPCSchema = {
         params: { id: string } & WindowBounds;
         response: undefined;
       };
+      canvasSetAlwaysOnTop: {
+        params: { id: string; flag: boolean };
+        response: undefined;
+      };
       canvasListWindows: {
         params: undefined;
         response: { windows: CanvasWindowInfo[] };
@@ -912,7 +935,7 @@ export type ElizaDesktopRPCSchema = {
       // ---- Game ----
       /** Opens a game client URL in a dedicated isolated BrowserWindow. */
       gameOpenWindow: {
-        params: { url: string; title?: string };
+        params: { url: string; title?: string; alwaysOnTop?: boolean };
         response: { id: string };
       };
 
@@ -1275,6 +1298,9 @@ export type ElizaDesktopRPCSchema = {
       desktopWindowUnmaximize: undefined;
       desktopWindowClose: undefined;
       desktopShutdownStarted: { reason: string };
+      desktopManagedWindowsChanged: {
+        windows: DesktopManagedWindowSnapshot[];
+      };
 
       // Canvas: Window events
       canvasWindowEvent: {
@@ -1469,6 +1495,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
+  "desktop:openAppWindow": "desktopOpenAppWindow",
+  "desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
@@ -1543,6 +1571,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "canvas:focus": "canvasFocus",
   "canvas:getBounds": "canvasGetBounds",
   "canvas:setBounds": "canvasSetBounds",
+  "canvas:setAlwaysOnTop": "canvasSetAlwaysOnTop",
   "canvas:listWindows": "canvasListWindows",
 
   // Game
@@ -1663,6 +1692,7 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:windowUnmaximize": "desktopWindowUnmaximize",
   "desktop:windowClose": "desktopWindowClose",
   "desktop:shutdownStarted": "desktopShutdownStarted",
+  "desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
   "canvas:windowEvent": "canvasWindowEvent",
   "talkmode:audioChunkPush": "talkmodeAudioChunkPush",
   "talkmode:stateChanged": "talkmodeStateChanged",

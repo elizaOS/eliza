@@ -66,12 +66,12 @@ import {
 import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import chalk from "chalk";
 import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
 } from "@elizaos/shared/runtime-env";
+import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
@@ -90,15 +90,16 @@ const isMiladyMonorepo =
 const bundleRoot = isMiladyMonorepo ? miladyRoot : elizaRoot;
 
 function resolveRendererAppDir() {
-  const cwd = process.cwd();
   const miladyApp = path.join(miladyRoot, "apps", "app");
   const elizaApp = path.join(elizaRoot, "apps", "app");
+  if (isMiladyMonorepo && existsSync(path.join(miladyApp, "package.json"))) {
+    return miladyApp;
+  }
+
+  const cwd = process.cwd();
   const cwdNorm = path.resolve(cwd);
   const elizaNorm = path.resolve(elizaRoot);
-  if (
-    cwdNorm === elizaNorm ||
-    cwdNorm.startsWith(`${elizaNorm}${path.sep}`)
-  ) {
+  if (cwdNorm === elizaNorm || cwdNorm.startsWith(`${elizaNorm}${path.sep}`)) {
     if (existsSync(path.join(elizaApp, "package.json"))) {
       return elizaApp;
     }
@@ -123,7 +124,13 @@ function resolveElectrobunDir() {
       "electrobun",
     );
   }
-  return path.join(elizaRoot, "packages", "app-core", "platforms", "electrobun");
+  return path.join(
+    elizaRoot,
+    "packages",
+    "app-core",
+    "platforms",
+    "electrobun",
+  );
 }
 
 const devServerEntry = isMiladyMonorepo
@@ -132,7 +139,9 @@ const devServerEntry = isMiladyMonorepo
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
-const defaultElizaNamespace = appDir.replace(/\\/g, "/").includes("/eliza/apps/app")
+const defaultElizaNamespace = appDir
+  .replace(/\\/g, "/")
+  .includes("/eliza/apps/app")
   ? "eliza"
   : "milady";
 
@@ -634,29 +643,22 @@ async function launch() {
   console.log("");
 
   if (!skipApi) {
-    pushChild(
-      "api",
-      "bun",
-      ["--watch", devServerEntry],
-      bundleRoot,
-      {
-        NODE_ENV: "development",
-        ELIZA_API_PORT: apiPort,
-        ELIZA_HEADLESS: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_NAMESPACE:
-          process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-        ...(rendererUrlForShell
-          ? { ELIZA_RENDERER_URL: rendererUrlForShell }
-          : {}),
-        ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
-        ...screenshotEnvApi,
-        ...(desktopDevLogPath
-          ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
-          : {}),
-      },
-    );
+    pushChild("api", "bun", ["--watch", devServerEntry], bundleRoot, {
+      NODE_ENV: "development",
+      ELIZA_API_PORT: apiPort,
+      ELIZA_HEADLESS: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+      ...(rendererUrlForShell
+        ? { ELIZA_RENDERER_URL: rendererUrlForShell }
+        : {}),
+      ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+      ...screenshotEnvApi,
+      ...(desktopDevLogPath
+        ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
+        : {}),
+    });
     await waitForPort(Number(apiPort));
     await waitForApiRoute(Number(apiPort), "/api/status");
   }
@@ -683,8 +685,7 @@ async function launch() {
         ELIZA_PORT: String(uiDevPort),
         ELIZA_UI_PORT: String(uiDevPort),
         ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE:
-          process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
       },
     );
     await waitForPort(uiDevPort);
@@ -708,18 +709,15 @@ async function launch() {
           ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
         }
       : {}),
-    ...(rendererUrlForShell
-      ? { ELIZA_RENDERER_URL: rendererUrlForShell }
-      : {}),
+    ...(rendererUrlForShell ? { ELIZA_RENDERER_URL: rendererUrlForShell } : {}),
     ...(skipApi
       ? {}
-        : {
-            ELIZA_API_PORT: apiPort,
-            ELIZA_UI_PORT: String(uiDevPort),
-            ELIZA_NAMESPACE:
-              process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-            ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
-          }),
+      : {
+          ELIZA_API_PORT: apiPort,
+          ELIZA_UI_PORT: String(uiDevPort),
+          ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+          ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+        }),
     ELIZA_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
     ...screenshotEnvElectrobun,
   });
