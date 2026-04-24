@@ -201,7 +201,7 @@ export function EventEditorDrawer({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent
-          className="fixed bottom-0 right-0 top-0 m-0 h-full w-full max-w-sm translate-x-0 translate-y-0 overflow-y-auto rounded-l-2xl rounded-r-none border-l border-t-0 border-border/16 bg-bg p-0 shadow-xl duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full sm:w-96"
+          className="fixed bottom-0 right-0 top-0 !left-auto !right-0 !top-0 m-0 h-full w-[min(24rem,100vw)] max-w-[100vw] !translate-x-0 !translate-y-0 overflow-y-auto rounded-l-2xl rounded-r-none border-l border-t-0 border-border/16 bg-bg p-0 shadow-xl duration-200 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-right-full"
           data-testid="event-editor-drawer"
         >
           <div className="flex items-center justify-between gap-3 border-b border-border/12 px-5 py-4">
