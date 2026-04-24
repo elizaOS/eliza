@@ -1,19 +1,3 @@
-/**
- * Config + fetch helpers for the ClawVille Eliza app plugin.
- *
- * ClawVille uses a "runtime-trust" identity model: the plugin passes the
- * Eliza runtime's agentId + character name directly to ClawVille's
- * /api/agent/connect endpoint, and ClawVille derives a stable key of the
- * form `eliza:<elizaAgentId>`. No token exchange, no external identity
- * provider, no OAuth flow. The @clawville/app-clawville plugin itself
- * is the trust boundary — if it's running inside a curated Eliza build,
- * ClawVille accepts its claims at face value.
- *
- * This mirrors the simplicity of app-babylon's auth module but is even
- * simpler because there's no token cache, no X-Api-Key header, and no
- * /auth endpoint to call.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 
 const FETCH_TIMEOUT_MS = 8_000;
@@ -64,10 +48,10 @@ export interface ClawvilleConfig {
   apiBaseUrl: string;
   /** Base URL of ClawVille's web viewer (default: https://clawville.world/game) */
   viewerUrl: string;
-  /** Eliza runtime agent ID — becomes the stable `eliza:<id>` key in ClawVille */
-  elizaAgentId: string | undefined;
-  /** Eliza character display name — used as the in-game pet name on first spawn */
-  elizaCharacterName: string | undefined;
+  /** Milady runtime agent ID — becomes the stable `milady:<id>` key in ClawVille */
+  miladyAgentId: string | undefined;
+  /** Character display name — used as the in-game pet name on first spawn */
+  miladyCharacterName: string | undefined;
   /** Previously-stored ClawVille sessionId (populated after first connect) */
   storedSessionId: string | undefined;
   /** Previously-stored ClawVille bot UUID (opaque primary key from openclaw_bots) */
@@ -88,11 +72,14 @@ export function resolveClawvilleConfig(
     viewerUrl: (
       resolveSettingLike(runtime, "CLAWVILLE_VIEWER_URL") ?? DEFAULT_VIEWER_URL
     ).replace(/\/+$/, ""),
-    elizaAgentId: rt?.agentId,
-    elizaCharacterName: rt?.character?.name,
+    miladyAgentId: rt?.agentId,
+    miladyCharacterName: rt?.character?.name,
     storedSessionId: resolveSettingLike(runtime, "CLAWVILLE_SESSION_ID"),
     storedUuid: resolveSettingLike(runtime, "CLAWVILLE_BOT_UUID"),
-    storedWalletAddress: resolveSettingLike(runtime, "CLAWVILLE_WALLET_ADDRESS"),
+    storedWalletAddress: resolveSettingLike(
+      runtime,
+      "CLAWVILLE_WALLET_ADDRESS",
+    ),
     runtime,
   };
 }
@@ -128,6 +115,12 @@ export interface ClawvilleConnectResponse {
   identityType: string;
   autonomyMode: string;
   walletAddress: string | null;
+  sessionTicket?: {
+    ticket: string;
+    url: string;
+    expiresAt: string;
+    instruction: string;
+  };
 }
 
 /**
@@ -137,18 +130,19 @@ export interface ClawvilleConnectResponse {
 export async function clawvilleConnect(
   config: ClawvilleConfig,
 ): Promise<ClawvilleConnectResponse> {
-  if (!config.elizaAgentId) {
+  if (!config.miladyAgentId) {
     throw new Error(
-      "ClawVille plugin: runtime.agentId is missing — can't derive a eliza identity",
+      "ClawVille plugin: runtime.agentId is missing; cannot derive a Milady identity.",
     );
   }
 
   const url = new URL("/api/agent/connect", config.apiBaseUrl);
+  const characterName = config.miladyCharacterName ?? "Milady Agent";
   const body = {
-    elizaAgentId: config.elizaAgentId,
-    elizaCharacterName: config.elizaCharacterName ?? "ElizaAgent",
-    // Give the plugin a sensible default avatar; ClawVille auto-picks if omitted.
-    name: config.elizaCharacterName ?? "ElizaAgent",
+    miladyAgentId: config.miladyAgentId,
+    agentName: characterName,
+    characterName,
+    name: characterName,
     species: "cat",
     color: 0x66bbff,
     homeX: 640,
@@ -176,7 +170,7 @@ export async function clawvilleConnect(
 
 /**
  * GET /api/agent/:sessionId/perception — current world state for an
- * established session. Used by refreshRunSession to keep the Eliza side
+ * established session. Used by refreshRunSession to keep the host side
  * panel fresh without triggering another /connect round-trip.
  */
 export async function clawvillePerception(

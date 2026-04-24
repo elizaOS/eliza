@@ -42,6 +42,18 @@ export function getKnowledgeDocumentSummary(
   return `${getKnowledgeSourceLabel(doc.source, t)} • ${fragmentLabel} • ${formatByteSize(doc.fileSize)}`;
 }
 
+function formatKnowledgeTimestamp(value?: number): string | null {
+  if (!value) return null;
+  const timestamp = value < 1_000_000_000_000 ? value * 1000 : value;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 /* ── Document Viewer ────────────────────────────────────────────────── */
 
 export function DocumentViewer({
@@ -114,6 +126,7 @@ export function DocumentViewer({
   }, [documentId, reloadToken, t]);
 
   const previewText = doc?.content?.text?.trim();
+  const documentCreatedLabel = formatKnowledgeTimestamp(doc?.createdAt);
 
   const handleSave = async () => {
     if (!documentId || !doc) return;
@@ -200,6 +213,14 @@ export function DocumentViewer({
                     <span className="truncate">{doc.provenance.detail}</span>
                   </>
                 ) : null}
+                <span>•</span>
+                <span>{getKnowledgeTypeLabel(doc.contentType)}</span>
+                {documentCreatedLabel ? (
+                  <>
+                    <span>•</span>
+                    <span>{documentCreatedLabel}</span>
+                  </>
+                ) : null}
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {doc.canEditText ? (
@@ -270,14 +291,61 @@ export function DocumentViewer({
                   defaultValue: "Fragments",
                 })}
               </div>
-              <div className="space-y-3">
-                {fragments.map((fragment) => (
-                  <div key={fragment.id} className="py-3">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-txt/90">
-                      {fragment.text}
-                    </p>
-                  </div>
-                ))}
+              <div className="divide-y divide-border/20">
+                {fragments.map((fragment, index) => {
+                  const createdLabel = formatKnowledgeTimestamp(
+                    fragment.createdAt,
+                  );
+                  return (
+                    <article
+                      key={fragment.id}
+                      className="grid gap-3 py-4 sm:grid-cols-[4rem_minmax(0,1fr)]"
+                    >
+                      <div className="flex items-start gap-2 sm:block">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/35 bg-bg-muted/20 text-xs font-bold text-muted-strong">
+                          {index + 1}
+                        </div>
+                        <div className="mt-0.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/60 sm:mt-2">
+                          {t("knowledgeview.Chunk", {
+                            defaultValue: "Chunk",
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="mb-2 flex flex-wrap items-center gap-2 text-2xs text-muted">
+                          {fragment.position !== undefined ? (
+                            <span>
+                              {t("knowledgeview.FragmentPosition", {
+                                defaultValue: "position {{position}}",
+                                position: fragment.position,
+                              })}
+                            </span>
+                          ) : null}
+                          {createdLabel ? (
+                            <>
+                              {fragment.position !== undefined ? (
+                                <span>•</span>
+                              ) : null}
+                              <span>{createdLabel}</span>
+                            </>
+                          ) : null}
+                          {(fragment.position !== undefined ||
+                            createdLabel) && <span>•</span>}
+                          <span>
+                            {t("knowledgeview.CharacterCount", {
+                              defaultValue: "{{count}} chars",
+                              count: fragment.text.length,
+                            })}
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/90">
+                          {fragment.text}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
                 {fragments.length === 0 && (
                   <PagePanel.Empty
                     variant="inset"

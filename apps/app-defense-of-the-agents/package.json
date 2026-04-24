@@ -36,7 +36,7 @@
     "app": {
       "displayName": "Defense of the Agents",
       "category": "game",
-    "heroImage": "assets/hero.png",
+      "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "https://www.defenseoftheagents.com/",
       "capabilities": [
