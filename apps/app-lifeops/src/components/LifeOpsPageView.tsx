@@ -412,6 +412,7 @@ function LifeOpsSettingsSectionView({
         agentGithub={agentGithub}
         githubError={githubError}
       />
+      <PermissionsPanel />
       <MessagingConnectorGrid />
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -420,8 +421,6 @@ function LifeOpsSettingsSectionView({
         <LifeOpsXPanel />
         <LifeOpsStretchPanel />
       </div>
-
-      <PermissionsPanel />
     </div>
   );
 }
@@ -555,12 +554,11 @@ function LifeOpsWorkspaceInner() {
         connectionsResult.status === "rejected" ||
         agentsResult.status === "rejected"
       ) {
-          setGithubError(
-            t("lifeopspage.githubDetailsPartial", {
-              defaultValue:
-                "GitHub cloud details unavailable.",
-            }),
-          );
+        setGithubError(
+          t("lifeopspage.githubDetailsPartial", {
+            defaultValue: "GitHub cloud details unavailable.",
+          }),
+        );
       }
     } catch (cause) {
       setGithubError(

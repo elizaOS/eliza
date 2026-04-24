@@ -59,7 +59,9 @@ const packageJsonCandidates = workspaceRootCandidates.flatMap((root) => [
   path.join(root, "eliza", "package.json"),
 ]);
 const extensionPackageJsonCandidates = uniquePaths(
-  extensionRootCandidates.map((candidate) => path.join(candidate, "package.json")),
+  extensionRootCandidates.map((candidate) =>
+    path.join(candidate, "package.json"),
+  ),
 );
 const buildInfoCandidates = workspaceRootCandidates.flatMap((root) => [
   path.join(root, "dist", "build-info.json"),

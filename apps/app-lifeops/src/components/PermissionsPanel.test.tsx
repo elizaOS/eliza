@@ -1,19 +1,39 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { getLifeOpsFullDiskAccessStatusMock } = vi.hoisted(() => ({
+const {
+  getLifeOpsFullDiskAccessStatusMock,
+  getPermissionsMock,
+  openExternalUrlMock,
+  openPermissionSettingsMock,
+  requestPermissionMock,
+} = vi.hoisted(() => ({
   getLifeOpsFullDiskAccessStatusMock: vi.fn(),
+  getPermissionsMock: vi.fn(),
+  openExternalUrlMock: vi.fn(),
+  openPermissionSettingsMock: vi.fn(),
+  requestPermissionMock: vi.fn(),
 }));
 
 vi.mock("@elizaos/app-core", () => ({
   Button: "button",
+  openExternalUrl: openExternalUrlMock,
 }));
 
 vi.mock("@elizaos/app-core/api", () => ({
   client: {
     getLifeOpsFullDiskAccessStatus: getLifeOpsFullDiskAccessStatusMock,
+    getPermissions: getPermissionsMock,
+    openPermissionSettings: openPermissionSettingsMock,
+    requestPermission: requestPermissionMock,
   },
 }));
 
@@ -31,11 +51,15 @@ function setUserAgent(userAgent: string): void {
 afterEach(() => {
   cleanup();
   getLifeOpsFullDiskAccessStatusMock.mockReset();
+  getPermissionsMock.mockReset();
+  openExternalUrlMock.mockReset();
+  openPermissionSettingsMock.mockReset();
+  requestPermissionMock.mockReset();
   setUserAgent(originalUserAgent);
 });
 
 describe("PermissionsPanel", () => {
-  it("shows only the macOS full disk access entry and clarifies which app needs access", async () => {
+  it("shows macOS automation permissions and guides to the first missing privacy pane", async () => {
     setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)");
     getLifeOpsFullDiskAccessStatusMock.mockResolvedValue({
       status: "revoked",
@@ -44,17 +68,38 @@ describe("PermissionsPanel", () => {
       reason:
         "Full Disk Access is required to read chat.db. Grant it to the app running Milady, such as Milady.app, Terminal, iTerm, or Cursor, then relaunch.",
     });
+    getPermissionsMock.mockResolvedValue({
+      accessibility: {
+        id: "accessibility",
+        status: "not-determined",
+        canRequest: true,
+        lastChecked: Date.now(),
+      },
+      "screen-recording": {
+        id: "screen-recording",
+        status: "denied",
+        canRequest: false,
+        lastChecked: Date.now(),
+      },
+    });
+    requestPermissionMock.mockResolvedValue({
+      id: "accessibility",
+      status: "denied",
+      canRequest: false,
+      lastChecked: Date.now(),
+    });
 
     render(<PermissionsPanel />);
 
+    expect(await screen.findByText("Mac Permissions")).toBeTruthy();
+    expect(screen.getByText("Accessibility")).toBeTruthy();
+    expect(screen.getByText("Screen Recording")).toBeTruthy();
     expect(screen.getByText("Full Disk Access")).toBeTruthy();
     expect(
       screen.getByText(
-        "Read iMessage chat.db for wake detection. Grant Full Disk Access to the app running Milady: usually Milady.app, or Terminal, iTerm, or Cursor in local dev.",
+        "Allows Milady to focus windows, click, type, and guide real browser or desktop actions.",
       ),
     ).toBeTruthy();
-    expect(screen.queryByText("Accessibility")).toBeNull();
-    expect(screen.queryByText("Screen Recording")).toBeNull();
     expect(screen.queryByText("Notifications")).toBeNull();
     expect(screen.queryByText("Microphone")).toBeNull();
 
@@ -65,5 +110,12 @@ describe("PermissionsPanel", () => {
       ),
     ).toBeTruthy();
     expect(getLifeOpsFullDiskAccessStatusMock).toHaveBeenCalledOnce();
+    expect(getPermissionsMock).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByText("Start Mac Permission Setup"));
+
+    await waitFor(() => {
+      expect(requestPermissionMock).toHaveBeenCalledWith("accessibility");
+    });
   });
 });

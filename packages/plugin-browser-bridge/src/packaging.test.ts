@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/agent/runtime", () => ({
+  VERSION: "2.0.0-alpha.0",
+}));
+
 import { resolveBrowserBridgeReleaseManifest } from "./packaging";
 
 describe("browser bridge packaging", () => {
