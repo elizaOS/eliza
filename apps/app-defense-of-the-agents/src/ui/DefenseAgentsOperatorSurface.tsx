@@ -1,8 +1,12 @@
-import { useCallback, useMemo, useState } from "react";
-import { client } from "@elizaos/app-core/api";
+import { client, type AppRunSummary } from "@elizaos/app-core/api";
+import {
+  type GameOperatorAction,
+  type GameOperatorEvent,
+  GameOperatorShell,
+} from "@elizaos/app-core/components/apps/surfaces/GameOperatorShell";
 import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
 import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/ui";
+import { useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;
 
@@ -55,22 +59,110 @@ function isRelevantPrompt(prompt: string): boolean {
   );
 }
 
-function statusTone(status: string): string {
-  if (status === "running" || status === "ready") {
-    return "border-ok/30 bg-ok/10 text-ok";
+function statusLabel(status: string): string {
+  if (status === "running" || status === "ready") return "Live";
+  if (status === "degraded" || status === "failed") return "Needs attention";
+  if (status === "respawning") return "Respawning";
+  return "Starting";
+}
+
+function statusTone(status: string): "live" | "attention" | "idle" {
+  if (status === "running" || status === "ready") return "live";
+  if (status === "degraded" || status === "failed") return "attention";
+  return "idle";
+}
+
+function replaceRun(appRuns: AppRunSummary[], nextRun: AppRunSummary) {
+  return [
+    ...appRuns.filter((candidate) => candidate.runId !== nextRun.runId),
+    nextRun,
+  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+function localEventId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function cleanDefenseMessage(message: string): string {
+  if (message.includes("Too many requests") || message.includes("(429)")) {
+    return "Defense controls are rate-limited right now. Try again shortly.";
   }
-  if (status === "degraded" || status === "failed") {
-    return "border-danger/30 bg-danger/10 text-danger";
+  if (message.startsWith("Defense control API unavailable")) {
+    return "Defense controls are temporarily unavailable.";
   }
-  return "border-border/45 bg-bg-hover/70 text-muted-strong";
+  return message;
+}
+
+function collectRunEvents(
+  run: AppRunSummary,
+  telemetry: Record<string, unknown> | null,
+  localEvents: GameOperatorEvent[],
+): GameOperatorEvent[] {
+  const serverEvents = (run.recentEvents ?? [])
+    .filter((event) => event.kind !== "refresh")
+    .map((event) => ({
+      id: event.eventId,
+      label: event.kind,
+      message: cleanDefenseMessage(event.message),
+      tone:
+        event.severity === "error"
+          ? "error"
+          : event.severity === "warning"
+            ? "warning"
+            : "info",
+      timestamp: event.createdAt,
+    })) satisfies GameOperatorEvent[];
+
+  const activityEvents: GameOperatorEvent[] =
+    run.session?.activity?.map((entry) => ({
+      id: entry.id,
+      label: entry.type,
+      message: cleanDefenseMessage(entry.message),
+      tone:
+        entry.severity === "error"
+          ? "error"
+          : entry.severity === "warning"
+            ? "warning"
+            : "info",
+      timestamp: entry.timestamp ?? null,
+    })) ?? [];
+
+  const recentActivity: GameOperatorEvent[] = Array.isArray(
+    telemetry?.recentActivity,
+  )
+    ? (
+        telemetry.recentActivity as Array<{
+          ts?: number;
+          action?: string;
+          detail?: string;
+        }>
+      )
+        .filter(
+          (entry) =>
+            typeof entry.detail === "string" && entry.detail.trim().length > 0,
+        )
+        .map((entry, index) => ({
+          id: `defense-telemetry-${entry.ts ?? index}-${index}`,
+          label: entry.action ?? "game",
+          message: cleanDefenseMessage(entry.detail ?? ""),
+          tone: entry.action === "error" ? "error" : "info",
+          timestamp: entry.ts ?? null,
+        }))
+    : [];
+
+  return [
+    ...serverEvents,
+    ...activityEvents,
+    ...recentActivity,
+    ...localEvents,
+  ];
 }
 
 export function DefenseAgentsOperatorSurface({
   appName,
   variant = "detail",
-  focus = "all",
 }: AppOperatorSurfaceProps) {
-  const { appRuns } = useApp();
+  const { appRuns, setState } = useApp();
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]
@@ -81,7 +173,7 @@ export function DefenseAgentsOperatorSurface({
     [appName, appRuns],
   );
   const [draft, setDraft] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [localEvents, setLocalEvents] = useState<GameOperatorEvent[]>([]);
   const [sendingCommand, setSendingCommand] = useState<string | null>(null);
 
   const telemetry =
@@ -92,14 +184,9 @@ export function DefenseAgentsOperatorSurface({
   const heroClass = readString(telemetry, "heroClass") ?? "mage";
   const autoPlay = telemetry?.autoPlay === true;
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
-  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).filter(
-    isRelevantPrompt,
-  );
-  const tacticalPrompts = suggestedPrompts.filter(
-    (prompt) => !/^auto[- ]?play/i.test(prompt),
-  );
-  const showDashboard = focus !== "chat";
-  const showChat = focus !== "dashboard";
+  const tacticalPrompts = (run?.session?.suggestedPrompts ?? [])
+    .filter(isRelevantPrompt)
+    .filter((prompt) => !/^auto[- ]?play/i.test(prompt));
 
   const sendCommand = useCallback(
     async (content: string, clearDraftOnSuccess = false) => {
@@ -107,22 +194,59 @@ export function DefenseAgentsOperatorSurface({
       if (!run?.runId || !trimmed || sendingCommand) return;
 
       setSendingCommand(trimmed);
-      setNotice(null);
+      setLocalEvents((current) => [
+        ...current,
+        {
+          id: localEventId("defense-user"),
+          label: "You",
+          message: trimmed,
+          tone: "user",
+          timestamp: Date.now(),
+        },
+      ]);
+
       try {
         const response = await client.sendAppRunMessage(run.runId, trimmed);
+        if (response.run) {
+          setState("appRuns", replaceRun(appRuns, response.run));
+        }
         if (clearDraftOnSuccess) {
           setDraft((current) => (current.trim() === trimmed ? "" : current));
         }
-        setNotice(response.message ?? "Command sent.");
+        setLocalEvents((current) => [
+          ...current,
+          {
+            id: localEventId("defense-game"),
+            label: response.disposition === "queued" ? "Queued" : "Defense",
+            message: response.message ?? "Command accepted.",
+            tone:
+              response.disposition === "accepted"
+                ? "success"
+                : response.disposition === "queued"
+                  ? "info"
+                  : "error",
+            timestamp: Date.now(),
+          },
+        ]);
       } catch (error) {
-        setNotice(
-          error instanceof Error ? error.message : "Defense command failed.",
-        );
+        setLocalEvents((current) => [
+          ...current,
+          {
+            id: localEventId("defense-error"),
+            label: "Error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Defense command failed.",
+            tone: "error",
+            timestamp: Date.now(),
+          },
+        ]);
       } finally {
         setSendingCommand(null);
       }
     },
-    [run?.runId, sendingCommand],
+    [appRuns, run?.runId, sendingCommand, setState],
   );
 
   if (!run) {
@@ -132,146 +256,76 @@ export function DefenseAgentsOperatorSurface({
         data-testid="defense-operator-empty"
       >
         <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch Defense of the Agents to open live controls.
+          Launch Defense of the Agents to open game chat.
         </div>
       </section>
     );
   }
 
+  const primaryActions: GameOperatorAction[] = [
+    {
+      id: "autoplay",
+      label: autoPlay ? "Autoplay on" : "Autoplay off",
+      command: autoPlay ? "Auto-play OFF" : "Auto-play ON",
+      active: autoPlay,
+      testId: "defense-command-autoplay",
+    },
+    {
+      id: "recall",
+      label: "Recall",
+      command: "Recall to base",
+      testId: "defense-command-recall",
+    },
+    ...LANES.map((lane) => ({
+      id: `lane-${lane}`,
+      label: heroLane ? `Move ${lane}` : `Deploy ${lane}`,
+      command: heroLane
+        ? `Move to ${lane} lane`
+        : `Deploy as ${heroClass} in ${lane} lane`,
+      active: heroLane === lane,
+      testId: `defense-command-lane-${lane}`,
+    })),
+  ];
+
+  const suggestedActions = tacticalPrompts.map((prompt) => ({
+    id: prompt,
+    label: prompt,
+    command: prompt,
+    testId: "defense-suggested-command",
+  }));
+
+  const events = collectRunEvents(run, telemetry, localEvents);
+
   return (
-    <section
-      className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
-      data-testid={
+    <GameOperatorShell
+      surfaceTestId={
         variant === "live"
           ? "defense-live-operator-surface"
           : "defense-detail-operator-surface"
       }
-    >
-      {showDashboard ? (
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${statusTone(run.status)}`}
-            >
-              {run.status}
-            </span>
-            <span className="text-xs font-semibold text-txt">
-              {formatHeroLine(telemetry)}
-            </span>
-          </div>
-          {run.session?.summary ? (
-            <div className="mt-2 text-xs leading-5 text-muted-strong">
-              {run.session.summary}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {showDashboard ? (
-        <div className="grid grid-cols-2 gap-2" data-testid="defense-actions">
-          <Button
-            type="button"
-            variant={autoPlay ? "default" : "outline"}
-            size="sm"
-            className="min-h-9 rounded-xl shadow-sm"
-            data-testid="defense-command-autoplay"
-            disabled={!canSend || Boolean(sendingCommand)}
-            onClick={() =>
-              void sendCommand(autoPlay ? "Auto-play OFF" : "Auto-play ON")
-            }
-          >
-            {autoPlay ? "Autoplay On" : "Autoplay Off"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="min-h-9 rounded-xl shadow-sm"
-            data-testid="defense-command-recall"
-            disabled={!canSend || Boolean(sendingCommand)}
-            onClick={() => void sendCommand("Recall to base")}
-          >
-            Recall
-          </Button>
-          {LANES.map((lane) => {
-            const label = heroLane ? `Move ${lane}` : `Deploy ${lane}`;
-            const command = heroLane
-              ? `Move to ${lane} lane`
-              : `Deploy as ${heroClass} in ${lane} lane`;
-            return (
-              <Button
-                key={lane}
-                type="button"
-                variant={heroLane === lane ? "default" : "outline"}
-                size="sm"
-                className="min-h-9 rounded-xl shadow-sm"
-                data-testid={`defense-command-lane-${lane}`}
-                disabled={!canSend || Boolean(sendingCommand)}
-                onClick={() => void sendCommand(command)}
-              >
-                {label}
-              </Button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {showChat ? (
-        <div className="rounded-2xl border border-border/35 bg-card/74 p-3 shadow-sm">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <Input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Command the hero..."
-              className="min-h-10 rounded-xl"
-              data-testid="defense-chat-input"
-              disabled={!canSend}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendCommand(draft, true);
-                }
-              }}
-            />
-            <Button
-              type="button"
-              className="min-h-10 rounded-xl px-4 shadow-sm"
-              data-testid="defense-chat-send"
-              disabled={!canSend || Boolean(sendingCommand) || !draft.trim()}
-              onClick={() => void sendCommand(draft, true)}
-            >
-              {sendingCommand === draft.trim() ? "Sending" : "Send"}
-            </Button>
-          </div>
-          {tacticalPrompts.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {tacticalPrompts.map((prompt) => (
-                <Button
-                  key={prompt}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-8 rounded-xl px-3 shadow-sm"
-                  data-testid="defense-suggested-command"
-                  disabled={!canSend || Boolean(sendingCommand)}
-                  onClick={() => void sendCommand(prompt)}
-                >
-                  {prompt}
-                </Button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div
-          className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs leading-5 text-muted-strong"
-          data-testid="defense-command-notice"
-        >
-          {notice}
-        </div>
-      ) : null}
-    </section>
+      title="Defense command"
+      statusLabel={statusLabel(run.status)}
+      statusTone={statusTone(run.status)}
+      objective={run.session?.goalLabel ?? run.session?.summary ?? run.summary}
+      detailItems={[
+        { label: "Hero", value: formatHeroLine(telemetry) },
+        { label: "Mode", value: autoPlay ? "Autoplay" : "Manual" },
+      ]}
+      primaryActions={primaryActions}
+      suggestedActions={suggestedActions}
+      events={events}
+      emptyEventsLabel="Commands and match events will appear here. Start with a lane move, recall, or a strategy note."
+      draft={draft}
+      inputPlaceholder="Command the hero..."
+      canSend={canSend}
+      sending={Boolean(sendingCommand)}
+      chatInputTestId="defense-chat-input"
+      chatSendTestId="defense-chat-send"
+      noticeTestId="defense-command-notice"
+      variant={variant}
+      onDraftChange={setDraft}
+      onSendDraft={() => void sendCommand(draft, true)}
+      onCommand={(command) => void sendCommand(command)}
+    />
   );
 }

@@ -1117,7 +1117,7 @@
   "gameview.LaunchGpuDiagnostics": "Launch GPU Diagnostics",
   "gameview.LogLoadFailed": "Failed to load logs: {{message}}",
   "gameview.MobileSurfaceChat": "Chat",
-  "gameview.MobileSurfaceDashboard": "Dashboard",
+  "gameview.MobileSurfaceDashboard": "Actions",
   "gameview.MobileSurfaceGame": "Game",
   "gameview.NativeGameActionFailed": "Native game action failed.",
   "gameview.NativeGameStateRefreshed": "Native game state refreshed.",

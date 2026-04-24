@@ -342,10 +342,17 @@ function TabContentView({
   children: ReactNode;
   chatScope?: PageScope;
 }) {
+  const { activeGameRunId, appsSubTab } = useApp();
+  const gameOwnsChat =
+    chatScope === "page-apps" &&
+    appsSubTab === "games" &&
+    activeGameRunId.trim().length > 0;
+
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
       chatScope={chatScope}
+      chatDisabled={gameOwnsChat}
       main={
         <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
           {children}

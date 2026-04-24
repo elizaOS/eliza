@@ -143,6 +143,8 @@ export interface AppWorkspaceChromeProps {
   chatDefaultCollapsed?: boolean;
   /** Hide the default bottom-right collapse control when chat content owns it. */
   hideCollapseButton?: boolean;
+  /** Disable the right chat rail for focused surfaces that own their own chat. */
+  chatDisabled?: boolean;
   /** data-testid applied to the root element. */
   testId?: string;
 }
@@ -181,6 +183,7 @@ export function AppWorkspaceChrome({
   onToggleChat,
   chatDefaultCollapsed = false,
   hideCollapseButton = false,
+  chatDisabled = false,
   testId = "app-workspace-chrome",
 }: AppWorkspaceChromeProps): JSX.Element {
   const isControlled = chatCollapsedProp !== undefined;
@@ -329,8 +332,7 @@ export function AppWorkspaceChrome({
           </div>
         </div>
 
-        {/* Collapsible right-side chat sidebar */}
-        {effectiveCollapsed ? (
+        {chatDisabled ? null : effectiveCollapsed ? (
           <aside
             className="w-0 min-w-0 shrink-0"
             data-testid={`${testId}-chat-sidebar`}
