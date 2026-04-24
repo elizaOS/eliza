@@ -243,6 +243,124 @@ const emptyLocalInferenceHub = {
   hardware: emptyLocalInferenceHardware,
 };
 
+const emptyWalletConfig = {
+  evmAddress: null,
+  solanaAddress: null,
+  selectedRpcProviders: {
+    evm: "eliza-cloud",
+    bsc: "eliza-cloud",
+    solana: "eliza-cloud",
+  },
+  legacyCustomChains: [],
+  alchemyKeySet: false,
+  infuraKeySet: false,
+  ankrKeySet: false,
+  nodeRealBscRpcSet: false,
+  quickNodeBscRpcSet: false,
+  managedBscRpcReady: false,
+  cloudManagedAccess: false,
+  evmBalanceReady: false,
+  ethereumBalanceReady: false,
+  baseBalanceReady: false,
+  bscBalanceReady: false,
+  avalancheBalanceReady: false,
+  solanaBalanceReady: false,
+  heliusKeySet: false,
+  birdeyeKeySet: false,
+  evmChains: [],
+  walletSource: "none",
+  pluginEvmLoaded: false,
+  pluginEvmRequired: false,
+  executionReady: false,
+  executionBlockedReason: null,
+  evmSigningCapability: "none",
+  solanaSigningAvailable: false,
+  wallets: [],
+  primary: {
+    evm: "local",
+    solana: "local",
+  },
+};
+
+const emptyWalletBalances = {
+  evm: null,
+  solana: null,
+};
+
+const emptyWalletNfts = {
+  evm: [],
+  solana: null,
+};
+
+const emptyWalletTradingProfile = {
+  window: "30d",
+  source: "all",
+  generatedAt: new Date(0).toISOString(),
+  summary: {
+    totalSwaps: 0,
+    buyCount: 0,
+    sellCount: 0,
+    settledCount: 0,
+    successCount: 0,
+    revertedCount: 0,
+    tradeWinRate: null,
+    txSuccessRate: null,
+    winningTrades: 0,
+    evaluatedTrades: 0,
+    realizedPnlBnb: "0",
+    volumeBnb: "0",
+  },
+  pnlSeries: [],
+  tokenBreakdown: [],
+  recentSwaps: [],
+};
+
+const emptyWalletMarketSource = {
+  providerId: "coingecko",
+  providerName: "CoinGecko",
+  providerUrl: "https://www.coingecko.com",
+  available: false,
+  stale: false,
+  error: null,
+};
+
+const emptyWalletMarketOverview = {
+  generatedAt: new Date(0).toISOString(),
+  cacheTtlSeconds: 300,
+  stale: false,
+  sources: {
+    prices: emptyWalletMarketSource,
+    movers: emptyWalletMarketSource,
+    predictions: {
+      providerId: "polymarket",
+      providerName: "Polymarket",
+      providerUrl: "https://polymarket.com",
+      available: false,
+      stale: false,
+      error: null,
+    },
+  },
+  prices: [],
+  movers: [],
+  predictions: [],
+};
+
+const stubCharacter = {
+  name: "Chen",
+  username: "chen",
+  bio: ["A concise local assistant for UI smoke tests."],
+  system: "You are Chen, a concise assistant for UI smoke tests.",
+  adjectives: ["focused", "direct"],
+  topics: [],
+  style: {
+    all: [],
+    chat: [],
+    post: [],
+  },
+  messageExamples: [],
+  postExamples: [],
+};
+
 function parsePositiveInt(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -780,12 +898,62 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/character") {
-    sendJson(req, res, 200, { character: {}, agentName: "Chen" });
+    sendJson(req, res, 200, { character: stubCharacter, agentName: "Chen" });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/character/history") {
+    sendJson(req, res, 200, { history: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/character/experiences") {
+    sendJson(req, res, 200, { data: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/relationships/activity") {
+    sendJson(req, res, 200, { activity: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/knowledge/documents") {
+    sendJson(req, res, 200, {
+      documents: [],
+      total: 0,
+      limit: parsePositiveInt(url.searchParams.get("limit"), 100),
+      offset: parsePositiveInt(url.searchParams.get("offset"), 0),
+    });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/wallet/addresses") {
     sendJson(req, res, 200, { evmAddress: null, solanaAddress: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/config") {
+    sendJson(req, res, 200, emptyWalletConfig);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/balances") {
+    sendJson(req, res, 200, emptyWalletBalances);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/nfts") {
+    sendJson(req, res, 200, emptyWalletNfts);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/trading/profile") {
+    sendJson(req, res, 200, emptyWalletTradingProfile);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/market-overview") {
+    sendJson(req, res, 200, emptyWalletMarketOverview);
     return;
   }
 

@@ -149,20 +149,25 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.queryByTestId("mobile-chat")).toBeNull();
     expect(screen.queryByTestId("mobile-shell-chat-resize-handle")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("mobile-shell-chat-expand"));
+    expect(
+      screen.getByTestId("app-workspace-mobile-pane-switcher"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-chat"));
 
     const openSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
-    expect(openSidebar.className).toContain("fixed");
+    expect(openSidebar.className).toContain("w-full");
+    expect(openSidebar.className).toContain("flex-1");
     expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
-    expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
+    expect(screen.queryByTestId("mobile-shell-chat-backdrop")).toBeNull();
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close page chat" }));
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
 
     const closedSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
     expect(closedSidebar.getAttribute("data-collapsed")).not.toBeNull();
     expect(screen.queryByTestId("mobile-chat")).toBeNull();
-    expect(screen.getByTestId("mobile-shell-chat-expand")).toBeTruthy();
+    expect(screen.getByTestId("app-workspace-mobile-pane-chat")).toBeTruthy();
   });
 
   it("lets main-pane content open chat through the workspace chrome context", () => {
@@ -197,7 +202,12 @@ describe("AppWorkspaceChrome", () => {
     fireEvent.click(screen.getByTestId("main-open-chat"));
 
     expect(screen.getByTestId("main-chat")).toBeTruthy();
-    expect(screen.getByTestId("main-chat-shell-chat-backdrop")).toBeTruthy();
+    expect(screen.queryByTestId("main-chat-shell-chat-backdrop")).toBeNull();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-chat")
+        .getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("lets chat content own the collapse control row", () => {

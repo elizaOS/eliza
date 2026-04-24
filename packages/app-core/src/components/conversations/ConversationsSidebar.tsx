@@ -728,6 +728,7 @@ export function ConversationsSidebar({
       <AppPageSidebar
         testId="conversations-sidebar"
         variant={mobile ? "mobile" : isGameModal ? "game-modal" : "default"}
+        className={mobile || isGameModal ? "!mt-0" : undefined}
         collapsible={!mobile && !isGameModal}
         collapsed={!mobile && !isGameModal ? sidebarCollapsed : undefined}
         onCollapsedChange={

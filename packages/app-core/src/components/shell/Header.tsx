@@ -64,6 +64,7 @@ const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
 
 interface HeaderProps {
+  mobileCenter?: ReactNode;
   mobileLeft?: ReactNode;
   pageRightExtras?: ReactNode;
   transparent?: boolean;
@@ -83,6 +84,7 @@ function shouldShowMacDesktopTitleBar(): boolean {
 }
 
 export function Header({
+  mobileCenter,
   mobileLeft,
   pageRightExtras,
   transparent: _transparent = false,
@@ -408,14 +410,21 @@ export function Header({
                   {mobileLeft}
                 </div>
                 <div
-                  className="pointer-events-none h-[2.375rem] min-w-0"
+                  className={
+                    mobileCenter
+                      ? "flex h-[2.375rem] min-w-0 items-center justify-center"
+                      : "pointer-events-none h-[2.375rem] min-w-0"
+                  }
                   data-testid={
                     showMacDesktopTitleBar
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  aria-hidden="true"
-                />
+                  data-no-camera-drag={mobileCenter ? "true" : undefined}
+                  aria-hidden={mobileCenter ? undefined : "true"}
+                >
+                  {mobileCenter}
+                </div>
                 <div
                   className="flex min-w-0 items-center justify-end gap-1"
                   data-no-camera-drag="true"

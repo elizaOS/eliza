@@ -7,18 +7,13 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   Layers3,
+  ListTodo,
   MessagesSquare,
+  PanelLeft,
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
-import {
-  Button,
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-  ErrorBoundary,
-} from "@elizaos/ui";
+import { Button, ErrorBoundary } from "@elizaos/ui";
 import {
   type ComponentType,
   type LazyExoticComponent,
@@ -72,6 +67,7 @@ import type { FlaminaGuideTopic } from "./state/types";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+type MobileChatSurface = "left" | "center" | "right";
 
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
@@ -275,6 +271,72 @@ function WalletChatGuideActions() {
         </Button>
       ))}
     </>
+  );
+}
+
+function MobileChatSurfaceSwitcher({
+  active,
+  onChange,
+  showRight,
+  t,
+}: {
+  active: MobileChatSurface;
+  onChange: (surface: MobileChatSurface) => void;
+  showRight: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const options: Array<{
+    icon: typeof PanelLeft;
+    label: string;
+    surface: MobileChatSurface;
+  }> = [
+    {
+      icon: PanelLeft,
+      label: t("conversations.chats", { defaultValue: "Chats" }),
+      surface: "left",
+    },
+    {
+      icon: MessagesSquare,
+      label: t("nav.chat", { defaultValue: "Chat" }),
+      surface: "center",
+    },
+    ...(showRight
+      ? [
+          {
+            icon: ListTodo,
+            label: t("taskseventspanel.Title", {
+              defaultValue: "Tasks & Events",
+            }),
+            surface: "right" as const,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <div
+      className="inline-flex h-[2.375rem] items-center rounded-md border border-border/40 bg-card/55 p-0.5"
+      data-testid="chat-mobile-surface-switcher"
+    >
+      {options.map((option) => (
+        <button
+          key={option.surface}
+          type="button"
+          aria-label={option.label}
+          aria-current={active === option.surface ? "page" : undefined}
+          title={option.label}
+          data-testid={`chat-mobile-surface-${option.surface}`}
+          onClick={() => onChange(option.surface)}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
+            active === option.surface
+              ? "bg-accent text-accent-fg"
+              : "text-muted hover:text-txt"
+          }`}
+        >
+          <option.icon className="h-4 w-4" aria-hidden />
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -605,7 +667,6 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
-  const [tasksEventsPanelOpen, setTasksEventsPanelOpen] = useState(false);
   const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -637,7 +698,8 @@ export function App() {
       ? window.innerWidth < CHAT_MOBILE_BREAKPOINT_PX
       : false,
   );
-  const [mobileConversationsOpen, setMobileConversationsOpen] = useState(false);
+  const [mobileChatSurface, setMobileChatSurface] =
+    useState<MobileChatSurface>("center");
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
   const [characterHeaderActions, setCharacterHeaderActions] =
     useState<ReactNode | null>(null);
@@ -656,31 +718,14 @@ export function App() {
   const mobileChatControls = useMemo(
     () =>
       isChatMobileLayout ? (
-        <div className="flex items-center gap-2 w-max">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`inline-flex h-[2.375rem] w-[2.375rem] min-w-[2.375rem] items-center justify-center rounded-none border-0 !bg-transparent p-0 text-muted shadow-none ring-0 transition-colors hover:!bg-transparent hover:text-txt active:!bg-transparent ${
-              mobileConversationsOpen
-                ? "text-accent"
-                : "text-muted hover:text-txt"
-            }`}
-            onClick={() => {
-              setTasksEventsPanelOpen(false);
-              setMobileConversationsOpen(true);
-            }}
-            aria-label={t("aria.openChannelsPanel", {
-              defaultValue: "Open channels panel",
-            })}
-          >
-            <MessagesSquare className="h-4 w-4" aria-hidden />
-            <span className="sr-only">
-              {t("conversations.channels", { defaultValue: "Channels" })}
-            </span>
-          </Button>
-        </div>
+        <MobileChatSurfaceSwitcher
+          active={mobileChatSurface}
+          onChange={setMobileChatSurface}
+          showRight={isChat}
+          t={t}
+        />
       ) : undefined,
-    [isChatMobileLayout, mobileConversationsOpen, t],
+    [isChat, isChatMobileLayout, mobileChatSurface, t],
   );
 
   // Keep hook order stable across onboarding/auth state transitions.
@@ -728,19 +773,18 @@ export function App() {
 
   useEffect(() => {
     if (!isChatMobileLayout) {
-      setMobileConversationsOpen(false);
-      setTasksEventsPanelOpen(false);
+      setMobileChatSurface("center");
     }
   }, [isChatMobileLayout]);
 
   useEffect(() => {
     if (!isChatWorkspace) {
-      setMobileConversationsOpen(false);
+      setMobileChatSurface("center");
     }
-    if (!isChat) {
-      setTasksEventsPanelOpen(false);
+    if (!isChat && mobileChatSurface === "right") {
+      setMobileChatSurface("center");
     }
-  }, [isChat, isChatWorkspace]);
+  }, [isChat, isChatWorkspace, mobileChatSurface]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {
@@ -838,18 +882,8 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header
-            mobileLeft={mobileChatControls}
-            tasksEventsPanelOpen={
-              isChat && (isChatMobileLayout ? tasksEventsPanelOpen : true)
-            }
-            onToggleTasksPanel={
-              isChat && isChatMobileLayout
-                ? () => {
-                    setMobileConversationsOpen(false);
-                    setTasksEventsPanelOpen((open) => !open);
-                  }
-                : undefined
-            }
+            mobileCenter={mobileChatControls}
+            tasksEventsPanelOpen={isChat && !isChatMobileLayout}
           />
           <div className="flex flex-1 min-h-0 relative">
             {!isChatMobileLayout && isChat ? (
@@ -859,54 +893,38 @@ export function App() {
               />
             ) : null}
             {isChatMobileLayout ? (
-              <>
-                <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden pt-2 px-2">
-                  {isChat && tasksEventsPanelOpen ? (
-                    <TasksEventsPanel
-                      open
-                      events={activityEvents}
-                      clearEvents={clearActivityEvents}
-                      mobile
+              <div
+                className={`flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden ${
+                  mobileChatSurface === "center" ? "px-2 pt-2" : ""
+                }`}
+              >
+                {mobileChatSurface === "left" ? (
+                  <ConversationsSidebar
+                    key="chat-sidebar-mobile"
+                    mobile
+                    onClose={() => setMobileChatSurface("center")}
+                  />
+                ) : mobileChatSurface === "right" && isChat ? (
+                  <TasksEventsPanel
+                    open
+                    events={activityEvents}
+                    clearEvents={clearActivityEvents}
+                    mobile
+                  />
+                ) : isChat ? (
+                  <>
+                    <DeferredSetupChecklist
+                      className="mb-3"
+                      onOpenTask={handleDeferredTaskOpen}
                     />
-                  ) : isChat ? (
-                    <>
-                      <DeferredSetupChecklist
-                        className="mb-3"
-                        onOpenTask={handleDeferredTaskOpen}
-                      />
-                      <ChatView />
-                    </>
-                  ) : (
-                    <LazyViewBoundary>
-                      <ConnectorsPageView />
-                    </LazyViewBoundary>
-                  )}
-                </div>
-
-                {mobileConversationsOpen && (
-                  <DrawerSheet
-                    open={mobileConversationsOpen}
-                    onOpenChange={setMobileConversationsOpen}
-                  >
-                    <DrawerSheetContent
-                      aria-describedby={undefined}
-                      className="h-[min(calc(100dvh-1rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),46rem)] p-0"
-                      showCloseButton
-                    >
-                      <DrawerSheetHeader className="sr-only">
-                        <DrawerSheetTitle>
-                          {t("conversations.chats")}
-                        </DrawerSheetTitle>
-                      </DrawerSheetHeader>
-                      <ConversationsSidebar
-                        key="chat-sidebar-mobile"
-                        mobile
-                        onClose={() => setMobileConversationsOpen(false)}
-                      />
-                    </DrawerSheetContent>
-                  </DrawerSheet>
+                    <ChatView />
+                  </>
+                ) : (
+                  <LazyViewBoundary>
+                    <ConnectorsPageView />
+                  </LazyViewBoundary>
                 )}
-              </>
+              </div>
             ) : (
               <>
                 <ConversationsSidebar key="chat-sidebar-desktop" />
@@ -1078,17 +1096,15 @@ export function App() {
       isAppsToolPage,
       isDesktopWorkspacePage,
       isChatMobileLayout,
-      mobileConversationsOpen,
+      mobileChatSurface,
       mobileChatControls,
       characterHeaderActions,
-      tasksEventsPanelOpen,
       handleDeferredTaskOpen,
       activityEvents,
       clearActivityEvents,
       customActionsPanelOpen,
       handleToggleWidgetsCollapsed,
       settingsInitialSection,
-      t,
       widgetsPanelCollapsed,
     ],
   );
