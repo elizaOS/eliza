@@ -8,8 +8,10 @@
  * Mode selection mirrors n8n-routes proxy:
  *   - Cloud mode → POST ${cloudBaseUrl}/api/v1/agents/${agentId}/n8n/workflows/{id}/execute
  *                  Authorization: Bearer ${cloud.apiKey}
- *   - Local mode → POST ${sidecar.host}/rest/workflows/{id}/run
- *                  X-N8N-API-KEY: ${sidecar.getApiKey()}
+ *   - Local mode → GET workflow via /api/v1 with X-N8N-API-KEY, then
+ *                  POST ${sidecar.host}/rest/workflows/{id}/run with the
+ *                  local owner n8n-auth cookie. n8n's manual run endpoint is
+ *                  an internal UI route and does not accept API-key auth.
  *   - Disabled   → immediate `{ ok: false, error: "n8n disabled" }` (no fetch)
  *
  * This module is I/O only — it does not own the sidecar lifecycle, and
@@ -18,6 +20,9 @@
  * should ensure the autostart handle has completed before dispatch.
  */
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
@@ -39,6 +44,7 @@ export interface N8nDispatchConfigLike extends N8nModeConfigLike {
     localEnabled?: boolean;
     host?: string | null;
     apiKey?: string;
+    stateDir?: string;
   };
 }
 
@@ -84,6 +90,14 @@ export interface CreateN8nDispatchServiceOptions {
    * a deterministic value.
    */
   resolveAgentId?: (runtime: AgentRuntime) => string;
+  /**
+   * Local-only auth hook. Tests inject a deterministic cookie; production
+   * reads the sidecar owner credentials and logs in to n8n.
+   */
+  getLocalOwnerCookie?: (
+    host: string,
+    config: N8nDispatchConfigLike,
+  ) => Promise<string | null>;
 }
 
 const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.how";
@@ -101,6 +115,71 @@ function defaultResolveAgentId(runtime: AgentRuntime): string {
     character?: { id?: string };
   };
   return ref.agentId ?? ref.character?.id ?? ZERO_AGENT_ID;
+}
+
+function defaultStateDir(): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir();
+  return path.join(home, ".eliza", "n8n");
+}
+
+function extractAuthCookie(res: Response): string | null {
+  const headers = res.headers as Headers & { getSetCookie?: () => string[] };
+  const list =
+    typeof headers.getSetCookie === "function"
+      ? headers.getSetCookie()
+      : (headers.get("set-cookie") ?? "")
+          .split(/,(?=\s*[\w-]+=)/)
+          .filter((value) => value.length > 0);
+  for (const raw of list) {
+    const first = raw.split(";")[0]?.trim();
+    if (first?.startsWith("n8n-auth=")) return first;
+  }
+  return null;
+}
+
+async function defaultGetLocalOwnerCookie(
+  host: string,
+  config: N8nDispatchConfigLike,
+): Promise<string | null> {
+  const stateDir = config.n8n?.stateDir?.trim() || defaultStateDir();
+  const ownerPath = path.join(stateDir, "owner.json");
+  let owner: { email?: unknown; password?: unknown };
+  try {
+    owner = JSON.parse(await fs.readFile(ownerPath, "utf-8")) as {
+      email?: unknown;
+      password?: unknown;
+    };
+  } catch (error) {
+    logger.warn(
+      `[n8n-dispatch] failed to read local n8n owner credentials: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+
+  if (typeof owner.email !== "string" || typeof owner.password !== "string") {
+    return null;
+  }
+
+  const response = await fetch(`${host.replace(/\/+$/, "")}/rest/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      emailOrLdapLoginId: owner.email,
+      password: owner.password,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch((error: unknown) => {
+    logger.warn(
+      `[n8n-dispatch] local n8n owner login failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  });
+
+  return response?.ok ? extractAuthCookie(response) : null;
 }
 
 function extractExecutionId(body: unknown): string | undefined {
@@ -128,6 +207,15 @@ async function readJsonBody(res: Response): Promise<unknown> {
   }
 }
 
+function extractWorkflowBody(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== "object") return null;
+  const obj = body as Record<string, unknown>;
+  if (obj.data && typeof obj.data === "object") {
+    return obj.data as Record<string, unknown>;
+  }
+  return obj;
+}
+
 /**
  * Construct the dispatch service. The returned value is registered under
  * `"N8N_DISPATCH"` on the runtime by `ensureN8nDispatchService` in
@@ -143,6 +231,7 @@ export function createN8nDispatchService(
     isNativePlatform = isNativeServerPlatform,
     peekSidecar = peekN8nSidecar,
     resolveAgentId = defaultResolveAgentId,
+    getLocalOwnerCookie = defaultGetLocalOwnerCookie,
   } = options;
 
   const execute = async (
@@ -164,6 +253,7 @@ export function createN8nDispatchService(
 
     let url: string;
     let headers: Record<string, string>;
+    let requestBody: Record<string, unknown> = payload;
 
     if (mode === "cloud") {
       const apiKey = config.cloud?.apiKey?.trim();
@@ -191,13 +281,56 @@ export function createN8nDispatchService(
       if (!apiKey) {
         return { ok: false, error: "n8n local api key missing" };
       }
-      url = `${host.replace(/\/+$/, "")}/rest/workflows/${encodeURIComponent(
+
+      const baseHost = host.replace(/\/+$/, "");
+      const workflowResponse = await fetchImpl(
+        `${baseHost}/api/v1/workflows/${encodeURIComponent(id)}`,
+        {
+          method: "GET",
+          headers: {
+            "X-N8N-API-KEY": apiKey,
+            Accept: "application/json",
+          },
+        },
+      ).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn(
+          `[n8n-dispatch] workflow fetch failed for ${id}: ${message}`,
+        );
+        return null;
+      });
+      if (!workflowResponse) {
+        return { ok: false, error: "n8n workflow fetch failed" };
+      }
+      if (!workflowResponse.ok) {
+        return {
+          ok: false,
+          error: `n8n workflow fetch returned ${workflowResponse.status}: ${workflowResponse.statusText}`,
+        };
+      }
+      const workflow = extractWorkflowBody(
+        await readJsonBody(workflowResponse),
+      );
+      if (!workflow) {
+        return { ok: false, error: "n8n workflow fetch returned invalid body" };
+      }
+
+      const cookie = await getLocalOwnerCookie(baseHost, config);
+      if (!cookie) {
+        return { ok: false, error: "n8n local owner login failed" };
+      }
+
+      url = `${baseHost}/rest/workflows/${encodeURIComponent(
         id,
-      )}/run`;
+      )}/run?partialExecutionVersion=1`;
       headers = {
-        "X-N8N-API-KEY": apiKey,
+        cookie,
         "Content-Type": "application/json",
         Accept: "application/json",
+      };
+      requestBody = {
+        ...payload,
+        workflowData: workflow,
       };
     }
 
@@ -206,7 +339,7 @@ export function createN8nDispatchService(
       res = await fetchImpl(url, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -221,8 +354,8 @@ export function createN8nDispatchService(
       };
     }
 
-    const body = await readJsonBody(res);
-    const executionId = extractExecutionId(body);
+    const responseBody = await readJsonBody(res);
+    const executionId = extractExecutionId(responseBody);
     return executionId ? { ok: true, executionId } : { ok: true };
   };
 

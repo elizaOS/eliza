@@ -138,9 +138,6 @@ export function HeartbeatForm({
               : (kickerLabelCreate ?? t("heartbeatsview.createHeartbeat"))}
           </FieldLabel>
           <h2 className="text-2xl font-semibold text-txt">{modalTitle}</h2>
-          <p className="text-sm text-muted/75">
-            Simple prompts that can run once, repeat, or hand off to a workflow.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -194,7 +191,9 @@ export function HeartbeatForm({
           data-testid="heartbeats-editor-panel"
         >
           <div>
-            <FieldLabel variant="form">Task name</FieldLabel>
+            <FieldLabel variant="form">
+              {form.kind === "workflow" ? "Schedule name" : "Task name"}
+            </FieldLabel>
             <Input
               variant="form"
               value={form.displayName}
