@@ -344,12 +344,6 @@ function formatMarketEndsAt(value: string | null): string | null {
   });
 }
 
-function formatMarketGeneratedAt(value: string): string | null {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return null;
-  return formatRelativeTimestamp(timestamp);
-}
-
 function tradingProfileWindow(
   window: DashboardWindow,
 ): WalletTradingProfileWindow {
@@ -863,12 +857,6 @@ function MarketAvatar({
 }
 
 function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
-  const statusLabel = source.available
-    ? source.stale
-      ? "Cached"
-      : "Live"
-    : "Unavailable";
-
   return (
     <a
       href={source.providerUrl}
@@ -876,21 +864,8 @@ function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
       rel="noreferrer"
       className="transition-opacity hover:opacity-80"
     >
-      <span className="inline-flex items-center gap-2 rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-        <span className="normal-case tracking-normal text-txt">
-          {source.providerName}
-        </span>
-        <span
-          className={cn(
-            source.available
-              ? source.stale
-                ? "text-warn"
-                : "text-ok"
-              : "text-danger",
-          )}
-        >
-          {statusLabel}
-        </span>
+      <span className="inline-flex items-center rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold text-txt">
+        {source.providerName}
       </span>
     </a>
   );
@@ -1120,10 +1095,6 @@ function MarketPulseHero({
   loading: boolean;
   error: string | null;
 }) {
-  const updatedAtLabel = overview
-    ? formatMarketGeneratedAt(overview.generatedAt)
-    : null;
-
   return (
     <section className="space-y-6">
       <div className="max-w-2xl">
@@ -1135,21 +1106,6 @@ function MarketPulseHero({
             ? "Here's the latest cached market snapshot."
             : "Here's what the market looks like right now."}
         </p>
-        {overview ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-            <span
-              className={cn(
-                "rounded-full border px-2.5 py-1",
-                overview.stale
-                  ? "border-warn/30 bg-warn/10 text-warn"
-                  : "border-ok/30 bg-ok/10 text-ok",
-              )}
-            >
-              {overview.stale ? "Cached snapshot" : "Live feeds"}
-            </span>
-            {updatedAtLabel ? <span>Updated {updatedAtLabel}</span> : null}
-          </div>
-        ) : null}
       </div>
 
       {overview ? (
