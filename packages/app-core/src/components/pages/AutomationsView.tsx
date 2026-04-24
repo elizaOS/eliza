@@ -67,6 +67,7 @@ import type {
   Conversation,
   N8nStatusResponse,
   N8nWorkflow,
+  N8nWorkflowWriteRequest,
   TriggerSummary,
   WorkbenchTask,
 } from "../../api/client";
@@ -152,6 +153,8 @@ const NODE_CLASS_ORDER = [
 
 const PAGE_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 const DESCRIBE_WORKFLOW_PROMPT = "Describe your workflow";
+const WORKFLOW_PROMPT_PLACEHOLDER =
+  "Describe the trigger and steps, e.g. when a GitHub issue opens, summarize it and post to Discord";
 const AUTOMATIONS_OVERVIEW_VISIBILITY_EVENT =
   "milady:automations:overview-visibility";
 
@@ -177,6 +180,29 @@ function prefillPageChat(text: string, options?: { select?: boolean }): void {
       },
     }),
   );
+}
+
+function buildWorkflowCopyRequest(
+  workflow: N8nWorkflow,
+  name: string,
+): N8nWorkflowWriteRequest {
+  return {
+    name,
+    nodes:
+      workflow.nodes?.map((node) => ({
+        name: node.name,
+        type: node.type,
+        typeVersion: node.typeVersion ?? 1,
+        position: node.position ?? [0, 0],
+        parameters: node.parameters ?? {},
+        ...(node.notes ? { notes: node.notes } : {}),
+        ...(node.notesInFlow !== undefined
+          ? { notesInFlow: node.notesInFlow }
+          : {}),
+      })) ?? [],
+    connections: workflow.connections ?? {},
+    settings: {},
+  };
 }
 
 // Reads `#automations.trigger=<id>` from the URL hash. The LifeOps chat-sidebar
@@ -429,41 +455,6 @@ function buildWorkflowCompilationPrompt(item: AutomationItem): string {
   lines.push(
     "Ask follow-up questions only when workflow intent is genuinely ambiguous.",
   );
-  return lines.join("\n");
-}
-
-function buildWorkflowDuplicationPrompt(item: AutomationItem): string {
-  const lines = [
-    "Duplicate this n8n workflow into a new workflow draft.",
-    `Existing workflow name: ${item.title}`,
-    `Description: ${item.description || "No description provided."}`,
-    "Recreate the same workflow structure, preserving the intent, nodes, and connections.",
-  ];
-
-  if (item.schedules.length > 0) {
-    lines.push("Preserve these schedules on the new workflow:");
-    for (const schedule of item.schedules) {
-      lines.push(`- ${buildTriggerSchedulePrompt(schedule)}`);
-    }
-  }
-
-  if (item.workflow) {
-    lines.push("Existing workflow JSON:");
-    lines.push(
-      JSON.stringify(
-        {
-          id: item.workflow.id,
-          name: item.workflow.name,
-          description: item.workflow.description,
-          nodes: item.workflow.nodes ?? [],
-          connections: item.workflow.connections ?? {},
-        },
-        null,
-        2,
-      ),
-    );
-  }
-
   return lines.join("\n");
 }
 
@@ -864,8 +855,13 @@ function useAutomationsViewController() {
     if (editingId) {
       const updated = await updateTrigger(editingId, buildUpdateRequest(form));
       if (updated) {
-        setSelectedItemId(`trigger:${updated.id}`);
-        setSelectedItemKind("trigger");
+        if (updated.kind === "workflow" && updated.workflowId) {
+          setSelectedItemId(`workflow:${updated.workflowId}`);
+          setSelectedItemKind("workflow");
+        } else {
+          setSelectedItemId(`trigger:${updated.id}`);
+          setSelectedItemKind("trigger");
+        }
         await refreshAutomations();
         closeEditor();
       }
@@ -874,8 +870,13 @@ function useAutomationsViewController() {
 
     const created = await createTrigger(buildCreateRequest(form));
     if (created) {
-      setSelectedItemId(`trigger:${created.id}`);
-      setSelectedItemKind("trigger");
+      if (created.kind === "workflow" && created.workflowId) {
+        setSelectedItemId(`workflow:${created.workflowId}`);
+        setSelectedItemKind("workflow");
+      } else {
+        setSelectedItemId(`trigger:${created.id}`);
+        setSelectedItemKind("trigger");
+      }
       void loadTriggerRuns(created.id);
       await refreshAutomations();
       closeEditor();
@@ -1004,18 +1005,22 @@ function useAutomationsViewController() {
 
   const modalTitle =
     editorMode === "trigger"
-      ? editingId
-        ? t("heartbeatsview.editTitle", {
-            name:
-              form.displayName.trim() ||
-              t("automations.taskLabel", {
-                defaultValue: "Task",
-              }),
-            defaultValue: "Edit {{name}}",
-          })
-        : t("automations.newTask", {
-            defaultValue: "New task",
-          })
+      ? form.kind === "workflow"
+        ? editingId
+          ? `Edit ${form.displayName.trim() || "schedule"}`
+          : "New schedule"
+        : editingId
+          ? t("heartbeatsview.editTitle", {
+              name:
+                form.displayName.trim() ||
+                t("automations.taskLabel", {
+                  defaultValue: "Task",
+                }),
+              defaultValue: "Edit {{name}}",
+            })
+          : t("automations.newTask", {
+              defaultValue: "New task",
+            })
       : editingTaskId
         ? t("automations.editTask", {
             defaultValue: "Edit task",
@@ -1381,9 +1386,6 @@ function CreateAutomationDialog({
       <DialogContent className="w-[min(calc(100vw-1.5rem),34rem)] max-w-none">
         <DialogHeader>
           <DialogTitle>Create automation</DialogTitle>
-          <DialogDescription>
-            Choose the simpler task shape unless you need a multi-step workflow.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1393,9 +1395,6 @@ function CreateAutomationDialog({
             className="rounded-xl border border-border/30 bg-bg/30 p-4 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
           >
             <div className="text-sm font-semibold text-txt">Task</div>
-            <div className="mt-1 text-xs-tight text-muted/80">
-              A simple prompt you can run on a schedule or hook to an event.
-            </div>
           </button>
           <button
             type="button"
@@ -1403,9 +1402,6 @@ function CreateAutomationDialog({
             className="rounded-xl border border-border/30 bg-bg/30 p-4 text-left transition-colors hover:border-accent/40 hover:bg-accent/5"
           >
             <div className="text-sm font-semibold text-txt">Workflow</div>
-            <div className="mt-1 text-xs-tight text-muted/80">
-              A graph-based n8n pipeline for deterministic multi-step work.
-            </div>
           </button>
         </div>
       </DialogContent>
@@ -2278,27 +2274,23 @@ function AutomationsDashboard({
   const taskHighlights = useMemo(
     () =>
       sortAutomationsByUpdatedAtDesc(
-        visibleItems.filter(
-          (item) => !item.isDraft && item.type !== "n8n_workflow",
-        ),
-      ).slice(0, 5),
+        visibleItems.filter((item) => item.type !== "n8n_workflow"),
+      ).slice(0, 6),
     [visibleItems],
   );
   const workflowHighlights = useMemo(
     () =>
       sortAutomationsByUpdatedAtDesc(
-        visibleItems.filter(
-          (item) => item.type === "n8n_workflow" && !item.isDraft,
-        ),
-      ).slice(0, 5),
+        visibleItems.filter((item) => item.type === "n8n_workflow"),
+      ).slice(0, 6),
     [visibleItems],
   );
 
   const taskCount = visibleItems.filter(
-    (item) => !item.isDraft && item.type !== "n8n_workflow",
+    (item) => item.type !== "n8n_workflow",
   ).length;
   const workflowCount = visibleItems.filter(
-    (item) => item.type === "n8n_workflow" && !item.isDraft,
+    (item) => item.type === "n8n_workflow",
   ).length;
 
   const activeCount = visibleItems.filter(
@@ -2308,7 +2300,6 @@ function AutomationsDashboard({
     ({ schedule }) => schedule.enabled,
   ).length;
   const draftCount = visibleItems.filter((item) => item.isDraft).length;
-  const totalCount = visibleItems.filter((item) => !item.isDraft).length;
 
   const upcoming = useMemo(
     () =>
@@ -2353,11 +2344,6 @@ function AutomationsDashboard({
         .slice(0, 5),
     [scheduledEntries],
   );
-  const pausedEntries = useMemo(
-    () =>
-      scheduledEntries.filter(({ schedule }) => !schedule.enabled).slice(0, 5),
-    [scheduledEntries],
-  );
   const taskIdeas = useMemo(
     () => AUTOMATION_DRAFT_EXAMPLES.filter((idea) => idea.kind === "task"),
     [],
@@ -2390,24 +2376,8 @@ function AutomationsDashboard({
       trailing: formatRelativePast(schedule.lastRunAtIso, t),
     }));
 
-    for (const { key, item, schedule } of pausedEntries) {
-      if (next.some((entry) => entry.item.id === item.id)) {
-        continue;
-      }
-      next.push({
-        key: `paused:${key}`,
-        item,
-        tone: "warning",
-        title: getOverviewDisplayTitle(item),
-        groupLabel: getAutomationGroupLabel(item),
-        meta: "Paused",
-        detail: scheduleLabel(schedule, t, uiLanguage),
-        trailing: "Paused",
-      });
-    }
-
     return next.slice(0, 6);
-  }, [failures, pausedEntries, t, uiLanguage]);
+  }, [failures, t, uiLanguage]);
 
   if (taskCount === 0 && workflowCount === 0) {
     return (
@@ -2493,9 +2463,6 @@ function AutomationsDashboard({
                 Overview
               </div>
               <h2 className="text-lg font-semibold text-txt">Automations</h2>
-              <p className="text-xs-tight text-muted/75">
-                {taskCount} tasks · {workflowCount} workflows
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -2533,9 +2500,7 @@ function AutomationsDashboard({
                 <span className="tabular-nums">{attentionEntries.length}</span>
               }
               detail={
-                attentionEntries.length > 0
-                  ? "Failures or paused runs"
-                  : "Nothing urgent"
+                attentionEntries.length > 0 ? "Failed runs" : "Nothing urgent"
               }
               tone={attentionEntries.length > 0 ? "danger" : "ok"}
             />
@@ -2584,16 +2549,7 @@ function AutomationsDashboard({
           ) : (
             <div className="flex h-full min-h-[11.75rem] flex-col justify-between gap-3 px-4 py-4">
               <div className="space-y-1">
-                <div className="text-sm font-medium text-txt">
-                  No scheduled run is queued.
-                </div>
-                <div className="text-xs-tight text-muted/70">
-                  {activeScheduleCount > 0
-                    ? "Your live schedules will show up here when a next run is available."
-                    : totalCount > 0
-                      ? "Everything here is manual, event-driven, or still unscheduled."
-                      : "Start with a task or workflow and the next run will show up here."}
-                </div>
+                <div className="text-sm font-medium text-txt">None queued.</div>
               </div>
               {draftItems[0] ? (
                 <Button
@@ -2610,63 +2566,27 @@ function AutomationsDashboard({
         </DetailSection>
       </section>
 
+      {attentionEntries.length > 0 ? (
+        <DetailSection title="Needs attention">
+          <div className="divide-y divide-border/20">
+            {attentionEntries.map((entry) => (
+              <OverviewListItem
+                key={entry.key}
+                onClick={() => onSelectItem(entry.item)}
+                title={entry.title}
+                badge={entry.groupLabel}
+                meta={entry.meta}
+                detail={entry.detail}
+                trailing={entry.trailing}
+                tone={entry.tone}
+              />
+            ))}
+          </div>
+        </DetailSection>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-2">
-        <DetailSection title="Needs attention" className="h-full">
-          {attentionEntries.length > 0 ? (
-            <div className="divide-y divide-border/20">
-              {attentionEntries.map((entry) => (
-                <OverviewListItem
-                  key={entry.key}
-                  onClick={() => onSelectItem(entry.item)}
-                  title={entry.title}
-                  badge={entry.groupLabel}
-                  meta={entry.meta}
-                  detail={entry.detail}
-                  trailing={entry.trailing}
-                  tone={entry.tone}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="px-3 py-4 text-xs-tight text-muted/70">
-              Nothing urgent right now.
-            </div>
-          )}
-        </DetailSection>
-
-        <DetailSection title="Drafts" className="h-full">
-          {draftItems.length > 0 ? (
-            <div className="divide-y divide-border/20">
-              {draftItems.map((item) => (
-                <OverviewListItem
-                  key={item.id}
-                  onClick={() => onSelectItem(item)}
-                  title={getOverviewDisplayTitle(item)}
-                  badge={item.type === "n8n_workflow" ? "Workflow" : "Task"}
-                  meta={item.isDraft ? "In progress" : undefined}
-                  trailing={formatRelativePast(item.updatedAt, t)}
-                  tone="warning"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="px-3 py-4 text-xs-tight text-muted/70">
-              No drafts right now.
-            </div>
-          )}
-        </DetailSection>
-
-        <DetailSection
-          title="Upcoming runs"
-          className="h-full"
-          action={
-            <span className="text-[10px] uppercase tracking-[0.12em] text-muted/60">
-              {activeScheduleCount > 0
-                ? `${activeScheduleCount} live`
-                : "none live"}
-            </span>
-          }
-        >
+        <DetailSection title="Upcoming runs" className="h-full">
           {upcoming.length > 0 ? (
             <div className="divide-y divide-border/20">
               {upcoming.map(({ key, item, schedule }) => (
@@ -2691,9 +2611,7 @@ function AutomationsDashboard({
             </div>
           ) : (
             <div className="px-3 py-4 text-xs-tight text-muted/70">
-              {scheduledEntries.length > 0
-                ? "Nothing is queued right now."
-                : "No time-based schedules yet."}
+              {scheduledEntries.length > 0 ? "None queued." : "No schedules."}
             </div>
           )}
         </DetailSection>
@@ -2722,9 +2640,7 @@ function AutomationsDashboard({
             </div>
           ) : (
             <div className="px-3 py-4 text-xs-tight text-muted/70">
-              {scheduledEntries.length > 0
-                ? "No runs have completed yet."
-                : "Runs will show up here once something executes."}
+              No runs yet.
             </div>
           )}
         </DetailSection>
@@ -2753,14 +2669,18 @@ function AutomationsDashboard({
                   onClick={() => onSelectItem(item)}
                   title={getOverviewDisplayTitle(item)}
                   badge={
-                    item.schedules.length > 0
-                      ? formatScheduleCount(item.schedules.length)
-                      : undefined
+                    item.isDraft
+                      ? "Draft"
+                      : item.schedules.length > 0
+                        ? formatScheduleCount(item.schedules.length)
+                        : undefined
                   }
                   meta={
-                    item.schedules.length > 0
-                      ? scheduleLabel(item.schedules[0], t, uiLanguage)
-                      : "Event or manual"
+                    item.isDraft
+                      ? "In progress"
+                      : item.schedules.length > 0
+                        ? scheduleLabel(item.schedules[0], t, uiLanguage)
+                        : "Event or manual"
                   }
                   trailing={formatRelativePast(item.updatedAt, t)}
                   tone={getAutomationStatusTone(item)}
@@ -2795,11 +2715,17 @@ function AutomationsDashboard({
                   key={item.id}
                   onClick={() => onSelectItem(item)}
                   title={getOverviewDisplayTitle(item)}
-                  badge={`${getWorkflowNodeCount(item)} nodes`}
+                  badge={
+                    item.isDraft
+                      ? "Draft"
+                      : `${getWorkflowNodeCount(item)} nodes`
+                  }
                   meta={
-                    item.schedules.length > 0
-                      ? scheduleLabel(item.schedules[0], t, uiLanguage)
-                      : "Event or manual"
+                    item.isDraft
+                      ? "In progress"
+                      : item.schedules.length > 0
+                        ? scheduleLabel(item.schedules[0], t, uiLanguage)
+                        : "Event or manual"
                   }
                   trailing={formatRelativePast(item.updatedAt, t)}
                   tone={getAutomationStatusTone(item)}
@@ -3299,7 +3225,9 @@ function WorkflowAutomationDetailPane({
   onDeleteDraft,
   onDeleteWorkflow,
   onDuplicateWorkflow,
+  onGenerateWorkflow,
   onRefreshWorkflows,
+  onScheduleWorkflow,
   onStartLocalN8n,
   onToggleWorkflowActive,
 }: {
@@ -3311,7 +3239,9 @@ function WorkflowAutomationDetailPane({
   onDeleteDraft: (item: AutomationItem) => Promise<void>;
   onDeleteWorkflow: (item: AutomationItem) => Promise<void>;
   onDuplicateWorkflow: (item: AutomationItem) => Promise<void>;
+  onGenerateWorkflow: (item: AutomationItem, prompt: string) => Promise<void>;
   onRefreshWorkflows: () => Promise<void>;
+  onScheduleWorkflow: (item: AutomationItem) => void;
   onStartLocalN8n: () => Promise<void>;
   onToggleWorkflowActive: (item: AutomationItem) => Promise<void>;
 }) {
@@ -3321,6 +3251,11 @@ function WorkflowAutomationDetailPane({
     automation.workflow ?? null,
   );
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowPrompt, setWorkflowPrompt] = useState("");
+  const [workflowPromptError, setWorkflowPromptError] = useState<string | null>(
+    null,
+  );
+  const [workflowPromptSaving, setWorkflowPromptSaving] = useState(false);
   const workflowGenerating = useWorkflowGenerationState(automation.workflowId);
   const busy =
     workflowOpsBusy ||
@@ -3339,6 +3274,7 @@ function WorkflowAutomationDetailPane({
     (idea) => idea.kind === "workflow",
   );
   const showWorkflowStarterIdeas = automation.isDraft || nodeCount === 0;
+  const showWorkflowPromptBox = automation.isDraft || nodeCount === 0;
   const handleDescribeWorkflow = useCallback(() => {
     chatChrome?.openChat();
     prefillPageChat(DESCRIBE_WORKFLOW_PROMPT, { select: true });
@@ -3350,6 +3286,27 @@ function WorkflowAutomationDetailPane({
     },
     [chatChrome],
   );
+  const submitWorkflowPrompt = useCallback(async () => {
+    const prompt = workflowPrompt.trim();
+    if (!prompt) {
+      setWorkflowPromptError("Describe what this workflow should do.");
+      return;
+    }
+    setWorkflowPromptError(null);
+    setWorkflowPromptSaving(true);
+    try {
+      await onGenerateWorkflow(automation, prompt);
+      setWorkflowPrompt("");
+      chatChrome?.openChat();
+      prefillPageChat(prompt, { select: false });
+    } catch (error) {
+      setWorkflowPromptError(
+        error instanceof Error ? error.message : "Failed to generate workflow.",
+      );
+    } finally {
+      setWorkflowPromptSaving(false);
+    }
+  }, [automation, chatChrome, onGenerateWorkflow, workflowPrompt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3401,12 +3358,7 @@ function WorkflowAutomationDetailPane({
       <DetailHeader
         icon={<Workflow className="h-3.5 w-3.5" aria-hidden />}
         title={getAutomationDisplayTitle(automation)}
-        description={
-          automation.description ||
-          (automation.isDraft
-            ? "Describe the trigger and steps in the sidebar."
-            : null)
-        }
+        description={null}
         status={
           <DetailStatusIndicator
             label={
@@ -3461,6 +3413,12 @@ function WorkflowAutomationDetailPane({
                   )
                 }
                 tone={workflowIsActive ? "warning" : "ok"}
+              />
+              <IconAction
+                label="Schedule workflow"
+                onClick={() => onScheduleWorkflow(automation)}
+                disabled={busy}
+                icon={<Clock3 className="h-3.5 w-3.5" />}
               />
               <IconAction
                 label="Duplicate workflow"
@@ -3553,6 +3511,43 @@ function WorkflowAutomationDetailPane({
         />
       </div>
 
+      {showWorkflowPromptBox && (
+        <DetailSection title="Create workflow">
+          <div className="p-3">
+            <div className="flex flex-col gap-2 rounded-full border border-border/30 bg-bg/50 p-1.5 shadow-sm sm:flex-row sm:items-center">
+              <Input
+                data-workflow-prompt-input="true"
+                value={workflowPrompt}
+                onChange={(event) => setWorkflowPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submitWorkflowPrompt();
+                  }
+                }}
+                placeholder={WORKFLOW_PROMPT_PLACEHOLDER}
+                className="min-h-10 flex-1 border-0 bg-transparent px-4 shadow-none focus-visible:ring-0"
+                autoFocus={automation.isDraft}
+              />
+              <Button
+                variant="default"
+                size="sm"
+                className="h-10 shrink-0 rounded-full px-5"
+                disabled={workflowPromptSaving || busy}
+                onClick={() => void submitWorkflowPrompt()}
+              >
+                {workflowPromptSaving ? "Generating..." : "Generate"}
+              </Button>
+            </div>
+            {workflowPromptError && (
+              <div className="mt-2 text-xs text-danger">
+                {workflowPromptError}
+              </div>
+            )}
+          </div>
+        </DetailSection>
+      )}
+
       <DetailSection
         title="Workflow graph"
         action={
@@ -3561,7 +3556,13 @@ function WorkflowAutomationDetailPane({
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={handleDescribeWorkflow}
+              onClick={() => {
+                const input = document.querySelector<HTMLInputElement>(
+                  "[data-workflow-prompt-input='true']",
+                );
+                input?.focus();
+                if (!input) handleDescribeWorkflow();
+              }}
             >
               {DESCRIBE_WORKFLOW_PROMPT}
             </Button>
@@ -3574,8 +3575,14 @@ function WorkflowAutomationDetailPane({
             loading={workflowLoading}
             isGenerating={workflowGenerating}
             emptyStateActionLabel={DESCRIBE_WORKFLOW_PROMPT}
-            emptyStateHelpText="Describe the trigger and steps in the sidebar."
-            onEmptyStateAction={handleDescribeWorkflow}
+            emptyStateHelpText="Describe it above to generate the graph."
+            onEmptyStateAction={() => {
+              const input = document.querySelector<HTMLInputElement>(
+                "[data-workflow-prompt-input='true']",
+              );
+              input?.focus();
+              if (!input) handleDescribeWorkflow();
+            }}
             status={n8nStatus}
           />
         </div>
@@ -3881,7 +3888,6 @@ function AutomationsSidebarChat({
 
 function AutomationsLayout() {
   const { activeConversationId, conversations } = useApp();
-  const chatChrome = useAppWorkspaceChatChrome();
   const ctx = useAutomationsViewContext();
   const {
     closeEditor,
@@ -3904,6 +3910,7 @@ function AutomationsLayout() {
     selectedItemId,
     setEditingId,
     setEditorOpen,
+    setEditorMode,
     setField,
     setFilter,
     setForm,
@@ -4245,6 +4252,79 @@ function AutomationsLayout() {
     [ctx, selectedItemId, setSelectedItemId, setSelectedItemKind],
   );
 
+  const bindConversationToWorkflow = useCallback(
+    async (
+      conversation: Conversation,
+      workflow: N8nWorkflow,
+      bridgeConversationId?: string | null,
+    ): Promise<Conversation> => {
+      const reboundMetadata = buildWorkflowConversationMetadata(
+        workflow.id,
+        workflow.name,
+        bridgeConversationId ?? undefined,
+      );
+      const { conversation: reboundConversation } =
+        await client.updateConversation(conversation.id, {
+          title: workflow.name,
+          metadata: reboundMetadata,
+        });
+      setActiveWorkflowConversation(reboundConversation);
+      return reboundConversation;
+    },
+    [],
+  );
+
+  const selectWorkflowById = useCallback(
+    (workflowId: string) => {
+      setShowDashboard(false);
+      setSelectedItemId(`workflow:${workflowId}`);
+      setSelectedItemKind("workflow");
+      setEditorOpen(false);
+      setEditingId(null);
+      ctx.setEditingTaskId(null);
+    },
+    [ctx, setEditingId, setEditorOpen, setSelectedItemId, setSelectedItemKind],
+  );
+
+  const generateWorkflowFromPrompt = useCallback(
+    async ({
+      prompt,
+      title,
+      conversation,
+      bridgeConversationId,
+      workflowId,
+    }: {
+      prompt: string;
+      title?: string;
+      conversation?: Conversation | null;
+      bridgeConversationId?: string | null;
+      workflowId?: string | null;
+    }): Promise<N8nWorkflow> => {
+      setWorkflowOpsBusy(true);
+      setPageNotice(null);
+      try {
+        const workflow = await client.generateN8nWorkflow({
+          prompt,
+          ...(title?.trim() ? { name: title.trim() } : {}),
+          ...(workflowId ? { workflowId } : {}),
+        });
+        if (conversation) {
+          await bindConversationToWorkflow(
+            conversation,
+            workflow,
+            bridgeConversationId,
+          );
+        }
+        await ctx.refreshAutomations();
+        selectWorkflowById(workflow.id);
+        return workflow;
+      } finally {
+        setWorkflowOpsBusy(false);
+      }
+    },
+    [bindConversationToWorkflow, ctx, selectWorkflowById],
+  );
+
   const createWorkflowDraft = useCallback(
     async (options?: { initialPrompt?: string; title?: string }) => {
       setPageNotice(null);
@@ -4275,19 +4355,16 @@ function AutomationsLayout() {
         setActiveWorkflowConversation(conversation);
 
         if (options?.initialPrompt?.trim()) {
-          await client.sendConversationMessage(
-            conversation.id,
-            `[SYSTEM]${WORKFLOW_SYSTEM_ADDENDUM}[/SYSTEM]\n\n${options.initialPrompt.trim()}`,
-            "DM",
-            undefined,
-            undefined,
-            buildAutomationResponseRoutingMetadata(metadata),
-          );
+          await generateWorkflowFromPrompt({
+            prompt: options.initialPrompt.trim(),
+            title: options.title?.trim() || undefined,
+            conversation,
+            bridgeConversationId,
+          });
+          return;
         }
 
-        const data = options?.initialPrompt
-          ? await refreshAutomationsWithDraftBinding(conversation)
-          : await ctx.refreshAutomations();
+        const data = await ctx.refreshAutomations();
         const resolvedItem = findAutomationForConversation(
           data,
           conversation.id,
@@ -4295,13 +4372,6 @@ function AutomationsLayout() {
 
         setSelectedItemId(resolvedItem?.id ?? `workflow-draft:${draftId}`);
         setSelectedItemKind("workflow");
-
-        if (!options?.initialPrompt?.trim()) {
-          window.requestAnimationFrame(() => {
-            chatChrome?.openChat();
-            prefillPageChat(DESCRIBE_WORKFLOW_PROMPT, { select: true });
-          });
-        }
       } catch (error) {
         setPageNotice(
           error instanceof Error
@@ -4315,7 +4385,7 @@ function AutomationsLayout() {
       conversations,
       ctx,
       findAutomationForConversation,
-      refreshAutomationsWithDraftBinding,
+      generateWorkflowFromPrompt,
       resolvedSelectedItem,
       setFilter,
       setEditingId,
@@ -4323,7 +4393,6 @@ function AutomationsLayout() {
       setSelectedItemId,
       setSelectedItemKind,
       showAutomationsList,
-      chatChrome,
     ],
   );
 
@@ -4432,6 +4501,62 @@ function AutomationsLayout() {
     [ctx, t],
   );
 
+  const handleGenerateWorkflow = useCallback(
+    async (item: AutomationItem, prompt: string) => {
+      const conversationId = item.room?.conversationId;
+      const conversation = conversationId
+        ? (conversations.find((candidate) => candidate.id === conversationId) ??
+          null)
+        : null;
+      const title =
+        item.title.trim() && item.title !== WORKFLOW_DRAFT_TITLE
+          ? item.title
+          : undefined;
+
+      await generateWorkflowFromPrompt({
+        prompt,
+        title,
+        conversation,
+        bridgeConversationId: item.room?.terminalBridgeConversationId,
+        workflowId: item.hasBackingWorkflow ? item.workflowId : null,
+      });
+    },
+    [conversations, generateWorkflowFromPrompt],
+  );
+
+  const handleScheduleWorkflow = useCallback(
+    (item: AutomationItem) => {
+      if (!item.workflowId) {
+        setPageNotice("Generate the workflow before scheduling it.");
+        return;
+      }
+
+      setForm({
+        ...emptyForm,
+        displayName: `Run ${item.title}`,
+        kind: "workflow",
+        workflowId: item.workflowId,
+        workflowName: item.title,
+      });
+      setEditorMode("trigger");
+      setEditingId(null);
+      ctx.setEditingTaskId(null);
+      setSelectedItemId(null);
+      setSelectedItemKind(null);
+      setEditorOpen(true);
+      setShowDashboard(false);
+    },
+    [
+      ctx,
+      setEditingId,
+      setEditorMode,
+      setEditorOpen,
+      setForm,
+      setSelectedItemId,
+      setSelectedItemKind,
+    ],
+  );
+
   const handleDeleteWorkflow = useCallback(
     async (item: AutomationItem) => {
       if (!item.workflowId) {
@@ -4441,10 +4566,13 @@ function AutomationsLayout() {
         title: t("automations.n8n.deleteWorkflow", {
           defaultValue: "Delete workflow",
         }),
-        message: t("automations.n8n.deleteConfirmWorkflow", {
-          defaultValue: 'Delete "{{name}}"? This cannot be undone.',
-          name: item.title,
-        }),
+        message:
+          item.schedules.length > 0
+            ? `Delete "${item.title}" and ${item.schedules.length} attached schedule${item.schedules.length === 1 ? "" : "s"}? This cannot be undone.`
+            : t("automations.n8n.deleteConfirmWorkflow", {
+                defaultValue: 'Delete "{{name}}"? This cannot be undone.',
+                name: item.title,
+              }),
         confirmLabel: t("automations.n8n.deleteWorkflow", {
           defaultValue: "Delete workflow",
         }),
@@ -4457,6 +4585,9 @@ function AutomationsLayout() {
       setPageNotice(null);
       try {
         await client.deleteN8nWorkflow(item.workflowId);
+        await Promise.all(
+          item.schedules.map((schedule) => client.deleteTrigger(schedule.id)),
+        );
         await ctx.refreshAutomations();
       } catch (error) {
         setPageNotice(
@@ -4482,13 +4613,11 @@ function AutomationsLayout() {
       setPageNotice(null);
       try {
         const workflow = await client.getN8nWorkflow(item.workflowId);
-        await createWorkflowDraft({
-          title: `${item.title} Copy`,
-          initialPrompt: buildWorkflowDuplicationPrompt({
-            ...item,
-            workflow,
-          }),
-        });
+        const copy = await client.createN8nWorkflow(
+          buildWorkflowCopyRequest(workflow, `${item.title} Copy`),
+        );
+        await ctx.refreshAutomations();
+        selectWorkflowById(copy.id);
       } catch (error) {
         setPageNotice(
           error instanceof Error
@@ -4497,7 +4626,7 @@ function AutomationsLayout() {
         );
       }
     },
-    [createWorkflowDraft],
+    [ctx, selectWorkflowById],
   );
 
   const handleDeleteDraft = useCallback(
@@ -4552,10 +4681,7 @@ function AutomationsLayout() {
   const taskItems = useMemo(
     () =>
       visibleItems.filter(
-        (item) =>
-          item.type === "automation_draft" ||
-          item.trigger != null ||
-          (item.task != null && !item.system),
+        (item) => item.type === "automation_draft" || item.trigger != null,
       ),
     [visibleItems],
   );
@@ -4818,10 +4944,18 @@ function AutomationsLayout() {
               onToggleTriggerEnabled={onToggleTriggerEnabled}
               saveFormAsTemplate={saveFormAsTemplate}
               loadTriggerRuns={loadTriggerRuns}
-              kickerLabelCreate="New task"
-              kickerLabelEdit="Edit task"
-              submitLabelCreate="Create task"
-              submitLabelEdit="Save task"
+              kickerLabelCreate={
+                form.kind === "workflow" ? "New schedule" : "New task"
+              }
+              kickerLabelEdit={
+                form.kind === "workflow" ? "Edit schedule" : "Edit task"
+              }
+              submitLabelCreate={
+                form.kind === "workflow" ? "Create schedule" : "Create task"
+              }
+              submitLabelEdit={
+                form.kind === "workflow" ? "Save schedule" : "Save task"
+              }
             />
           )
         ) : activeSubpage === "node-catalog" ? (
@@ -4859,7 +4993,9 @@ function AutomationsLayout() {
             onDeleteDraft={handleDeleteDraft}
             onDeleteWorkflow={handleDeleteWorkflow}
             onDuplicateWorkflow={handleDuplicateWorkflow}
+            onGenerateWorkflow={handleGenerateWorkflow}
             onRefreshWorkflows={handleRefreshWorkflows}
+            onScheduleWorkflow={handleScheduleWorkflow}
             onStartLocalN8n={handleStartLocalN8n}
             onToggleWorkflowActive={handleToggleWorkflowActive}
           />

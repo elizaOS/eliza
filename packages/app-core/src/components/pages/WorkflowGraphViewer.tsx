@@ -15,13 +15,7 @@ import {
   type Node,
   ReactFlow,
 } from "@xyflow/react";
-import {
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Maximize2,
-  X,
-} from "lucide-react";
+import { ExternalLink, Maximize2, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -369,16 +363,9 @@ function NodeDetailDrawer({
   labelId,
 }: NodeDetailDrawerProps) {
   const { t, activeAgentProfile, uiTheme } = useApp();
-  const [rawJsonOpen, setRawJsonOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const isOpen = node !== null;
-
-  // Reset raw JSON section when node changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on node identity change
-  useEffect(() => {
-    setRawJsonOpen(false);
-  }, [node?.id, node?.name]);
 
   // Focus the close button when drawer opens
   useEffect(() => {
@@ -459,16 +446,6 @@ function NodeDetailDrawer({
       <div className="flex-1 overflow-y-auto space-y-4 px-4 py-3">
         {node && (
           <>
-            {/* Internal name */}
-            <div className="space-y-1">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-                Name
-              </div>
-              <pre className="font-mono text-xs text-txt/80 break-all whitespace-pre-wrap">
-                {node.name}
-              </pre>
-            </div>
-
             {/* Parameters */}
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -491,30 +468,6 @@ function NodeDetailDrawer({
                 <p className="text-xs text-muted/60 italic">
                   {t("workflowGraph.nodeDrawer.noParameters")}
                 </p>
-              )}
-            </div>
-
-            {/* Raw JSON — collapsible */}
-            <div className="space-y-1">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted hover:text-txt transition-colors"
-                onClick={() => setRawJsonOpen((v) => !v)}
-                aria-expanded={rawJsonOpen}
-              >
-                <span>{t("workflowGraph.nodeDrawer.rawJsonLabel")}</span>
-                {rawJsonOpen ? (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                )}
-              </button>
-              {rawJsonOpen && (
-                <div className="rounded border border-border/20 bg-bg/40 p-2 overflow-auto max-h-64">
-                  <pre className="font-mono text-xs text-txt/70 whitespace-pre-wrap break-all">
-                    {JSON.stringify(node, null, 2)}
-                  </pre>
-                </div>
               )}
             </div>
           </>

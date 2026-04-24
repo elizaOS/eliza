@@ -336,7 +336,7 @@ function buildWorkflowDraftItem(room: AutomationRoomRecord): AutomationItem {
     type: "n8n_workflow",
     source: "workflow_draft",
     title,
-    description: "Workflow draft under construction in its dedicated room.",
+    description: "",
     status: "draft",
     enabled: true,
     system: false,
