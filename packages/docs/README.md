@@ -1,6 +1,6 @@
 # elizaOS Documentation
 
-Welcome to the official documentation repository for [elizaOS](https://github.com/elizaos/elizaos) - a powerful framework for building AI agents with memory, planning, and tool use capabilities.
+Welcome to the official documentation repository for [elizaOS](https://github.com/elizaos/eliza) - a powerful framework for building AI agents with memory, planning, and tool use capabilities.
 
 ## 📚 About This Documentation
 

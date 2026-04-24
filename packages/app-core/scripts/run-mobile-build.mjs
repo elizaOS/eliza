@@ -1194,6 +1194,10 @@ function patchAndroidGradle() {
       patched,
       "com.google.firebase:firebase-common-ktx:21.0.0",
     );
+    patched = patched.replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
