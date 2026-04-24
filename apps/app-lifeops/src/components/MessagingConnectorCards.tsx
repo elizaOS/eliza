@@ -58,15 +58,15 @@ function ConnectorCardShell({
         : "bg-muted/40";
 
   return (
-    <div className="space-y-2 py-3">
+    <div className="space-y-2 rounded-2xl border border-border/20 bg-card/14 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           {icon}
           <span className="text-sm font-medium text-txt">{platform}</span>
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
           />
-          <span className="text-xs text-muted">{status}</span>
+          <span className="min-w-0 truncate text-xs text-muted">{status}</span>
         </div>
       </div>
       {children}
@@ -500,17 +500,11 @@ export function DiscordConnectorCard() {
           ) : null}
           {dmInboxVisible ? (
             <div className="text-xs text-muted">
-              LifeOps can currently see your Discord DM list.
               {visibleDmLabels.length > 0
-                ? ` Visible now: ${visibleDmLabels.join(", ")}.`
-                : ""}
+                ? visibleDmLabels.join(", ")
+                : "DM inbox visible"}
             </div>
-          ) : (
-            <div className="text-xs text-muted">
-              LifeOps sees your Discord session, but not the DM inbox yet. Use{" "}
-              Show Discord DMs to focus the right tab.
-            </div>
-          )}
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -588,6 +582,7 @@ export function TelegramConnectorCard() {
   const [phoneInput, setPhoneInput] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
+  const [loginOpen, setLoginOpen] = useState(false);
 
   const isConnected = telegram.status?.connected === true;
   const authError = telegram.status?.authError ?? telegram.error;
@@ -603,6 +598,16 @@ export function TelegramConnectorCard() {
       setPhoneInput(telegram.status.phone);
     }
   }, [telegram.status?.phone, phoneInput]);
+
+  useEffect(() => {
+    if (isConnected) {
+      setLoginOpen(false);
+      return;
+    }
+    if (authState !== "idle" && authState !== "error") {
+      setLoginOpen(true);
+    }
+  }, [authState, isConnected]);
 
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
@@ -628,8 +633,14 @@ export function TelegramConnectorCard() {
     void telegram.cancelAuth();
   }, [telegram]);
 
+  const showStartStep =
+    !isConnected &&
+    !loginOpen &&
+    (authState === "idle" || authState === "error");
   const showPhoneStep =
-    !isConnected && (authState === "idle" || authState === "error");
+    !isConnected &&
+    loginOpen &&
+    (authState === "idle" || authState === "error");
   const showCodeStep =
     authState === "waiting_for_provisioning_code" ||
     authState === "waiting_for_code";
@@ -658,6 +669,17 @@ export function TelegramConnectorCard() {
       status={statusLabel}
       statusVariant={statusVariant}
     >
+      {showStartStep ? (
+        <Button
+          size="sm"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          disabled={busy}
+          onClick={() => setLoginOpen(true)}
+        >
+          {authState === "error" ? "Retry" : "Connect"}
+        </Button>
+      ) : null}
+
       {showPhoneStep ? (
         <div className="flex items-center gap-2">
           <input
@@ -761,46 +783,6 @@ export function TelegramConnectorCard() {
               )}
             </div>
           ) : null}
-          <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-            Reads recent chats and sends a test note to Saved Messages.
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={busy}
-            onClick={() => void telegram.verify()}
-          >
-            {telegram.verifyPending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            Verify Read + Send
-          </Button>
-          {telegram.verification ? (
-            <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-              <div>
-                Read:{" "}
-                {telegram.verification.read.ok
-                  ? `${telegram.verification.read.dialogCount} recent chats`
-                  : (telegram.verification.read.error ?? "failed")}
-              </div>
-              <div>
-                Send:{" "}
-                {telegram.verification.send.ok
-                  ? `sent to ${telegram.verification.send.target}`
-                  : (telegram.verification.send.error ?? "failed")}
-              </div>
-              {telegram.verification.read.dialogs.length > 0 ? (
-                <div className="mt-1 truncate">
-                  Recent:{" "}
-                  {telegram.verification.read.dialogs
-                    .slice(0, 3)
-                    .map((dialog) => dialog.title)
-                    .join(", ")}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -859,11 +841,6 @@ export function WhatsAppConnectorCard() {
       statusVariant={statusVariant}
     >
       <div className="space-y-2">
-        <div className="text-xs text-muted">
-          {isConnected
-            ? "LifeOps can send WhatsApp messages through the configured Business Cloud API credentials. Inbound delivery still comes from your webhook setup."
-            : "Configure WhatsApp Business Cloud API access to let LifeOps send messages and receive inbound webhook events."}
-        </div>
         {whatsapp.status?.phoneNumberId ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Phone className="h-3.5 w-3.5" />
@@ -1042,18 +1019,14 @@ export function IMessageConnectorCard() {
       <div className="space-y-2">
         <div className="text-xs text-muted">
           {isConnected
-            ? bridgeLabel === "BlueBubbles"
-              ? status?.sendMode === "private-api"
-                ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
-                : "LifeOps is using the Mac-side BlueBubbles bridge. Sends are currently using the AppleScript fallback."
-              : "LifeOps is using the Mac-side imsg bridge for iMessage access."
+            ? (bridgeLabel ?? "Connected")
             : iosRuntime
-              ? "iMessage access must run through a paired Mac or BlueBubbles bridge. Connect this iPhone to a remote Mac or cloud backend that has iMessage configured."
+              ? "Requires paired Mac"
               : canOfferLocalMacSetup
                 ? imessage.shellEnabled === false
-                  ? "Shell access is off. Enable it or set up BlueBubbles."
-                  : "Install imsg locally or set up BlueBubbles."
-                : "No iMessage bridge detected."}
+                  ? "Shell access off"
+                  : "Mac setup available"
+                : "No bridge detected"}
         </div>
         {canOfferLocalMacSetup ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -1187,9 +1160,6 @@ export function IMessageConnectorCard() {
 export function MessagingConnectorGrid() {
   return (
     <div className="space-y-1">
-      <div className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-        Messaging
-      </div>
       <div className="space-y-1">
         <SignalConnectorCard />
         <DiscordConnectorCard />
