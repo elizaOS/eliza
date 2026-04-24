@@ -51,6 +51,20 @@ const TASK_INTENT_TERMS: string[] = [
   "check off",
 ];
 
+const LIST_INTENT_TERMS: string[] = [
+  "list tasks",
+  "show tasks",
+  "my tasks",
+  "what are my tasks",
+  "task list",
+];
+
+export function looksLikeListTaskIntent(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return findKeywordTermMatch(trimmed, LIST_INTENT_TERMS) !== undefined;
+}
+
 interface TaskExtraction {
   operation?: string;
   name?: string;
@@ -182,6 +196,17 @@ export const manageTasksAction: Action = {
 
       // ── LIST ──
       if (operation === "list") {
+        // Defensive: validate may admit this turn based on recent messages,
+        // and the LLM extractor occasionally classifies vague prompts as
+        // "list" by default. Require the current message to actually look
+        // like a list request before dumping tasks into chat.
+        if (!looksLikeListTaskIntent(text)) {
+          return {
+            success: false,
+            text: "",
+            error: "list operation requires explicit task-listing intent",
+          };
+        }
         if (workbenchTasks.length === 0) {
           const msg = "You have no tasks right now.";
           if (callback)
