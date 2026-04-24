@@ -274,69 +274,35 @@ function WalletChatGuideActions() {
   );
 }
 
-function MobileChatSurfaceSwitcher({
-  active,
-  onChange,
-  showRight,
-  t,
-}: {
-  active: MobileChatSurface;
-  onChange: (surface: MobileChatSurface) => void;
-  showRight: boolean;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}) {
-  const options: Array<{
-    icon: typeof PanelLeft;
-    label: string;
-    surface: MobileChatSurface;
-  }> = [
-    {
-      icon: PanelLeft,
-      label: t("conversations.chats", { defaultValue: "Chats" }),
-      surface: "left",
-    },
-    {
-      icon: MessagesSquare,
-      label: t("nav.chat", { defaultValue: "Chat" }),
-      surface: "center",
-    },
-    ...(showRight
-      ? [
-          {
-            icon: ListTodo,
-            label: t("taskseventspanel.Title", {
-              defaultValue: "Tasks & Events",
-            }),
-            surface: "right" as const,
-          },
-        ]
-      : []),
-  ];
+interface MobileChatSurfaceButtonProps {
+  active: boolean;
+  icon: typeof PanelLeft;
+  label: string;
+  onClick: () => void;
+  surface: MobileChatSurface;
+}
 
+function MobileChatSurfaceButton({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+  surface,
+}: MobileChatSurfaceButtonProps) {
   return (
-    <div
-      className="inline-flex h-[2.375rem] items-center rounded-md border border-border/40 bg-card/55 p-0.5"
-      data-testid="chat-mobile-surface-switcher"
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      data-testid={`chat-mobile-surface-${surface}`}
+      onClick={onClick}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/55 text-muted shadow-sm transition-colors hover:text-txt ${
+        active ? "border-accent/70 bg-accent text-accent-fg" : ""
+      }`}
     >
-      {options.map((option) => (
-        <button
-          key={option.surface}
-          type="button"
-          aria-label={option.label}
-          aria-current={active === option.surface ? "page" : undefined}
-          title={option.label}
-          data-testid={`chat-mobile-surface-${option.surface}`}
-          onClick={() => onChange(option.surface)}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
-            active === option.surface
-              ? "bg-accent text-accent-fg"
-              : "text-muted hover:text-txt"
-          }`}
-        >
-          <option.icon className="h-4 w-4" aria-hidden />
-        </button>
-      ))}
-    </div>
+      <Icon className="h-4 w-4" aria-hidden />
+    </button>
   );
 }
 
@@ -715,18 +681,41 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
-  const mobileChatControls = useMemo(
-    () =>
-      isChatMobileLayout ? (
-        <MobileChatSurfaceSwitcher
-          active={mobileChatSurface}
-          onChange={setMobileChatSurface}
-          showRight={isChat}
-          t={t}
+  const mobileChatControls = useMemo(() => {
+    if (!isChatMobileLayout) return null;
+
+    return {
+      center: (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "center"}
+          icon={MessagesSquare}
+          label={t("nav.chat", { defaultValue: "Chat" })}
+          onClick={() => setMobileChatSurface("center")}
+          surface="center"
         />
-      ) : undefined,
-    [isChat, isChatMobileLayout, mobileChatSurface, t],
-  );
+      ),
+      left: (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "left"}
+          icon={PanelLeft}
+          label={t("conversations.chats", { defaultValue: "Chats" })}
+          onClick={() => setMobileChatSurface("left")}
+          surface="left"
+        />
+      ),
+      right: isChat ? (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "right"}
+          icon={ListTodo}
+          label={t("taskseventspanel.Title", {
+            defaultValue: "Tasks & Events",
+          })}
+          onClick={() => setMobileChatSurface("right")}
+          surface="right"
+        />
+      ) : null,
+    };
+  }, [isChat, isChatMobileLayout, mobileChatSurface, t]);
 
   // Keep hook order stable across onboarding/auth state transitions.
   // Otherwise React can throw when onboarding completes and the main shell mounts.
@@ -882,7 +871,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header
-            mobileCenter={mobileChatControls}
+            mobileCenter={mobileChatControls?.center}
+            mobileLeft={mobileChatControls?.left}
+            pageRightExtras={mobileChatControls?.right}
             tasksEventsPanelOpen={isChat && !isChatMobileLayout}
           />
           <div className="flex flex-1 min-h-0 relative">
