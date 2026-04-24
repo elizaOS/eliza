@@ -1199,7 +1199,7 @@ function AutomationCollapsibleSection({
       data-testid={`automation-section-${sectionKey}`}
       className="group/section space-y-0"
     >
-      <div className="flex items-center gap-1 pr-1">
+      <div className="flex items-center gap-1">
         <button
           type="button"
           onClick={() => onToggleCollapsed(sectionKey)}
@@ -1221,16 +1221,18 @@ function AutomationCollapsibleSection({
             onClick={onAdd}
             aria-label={addLabel ?? "Add"}
             title={addLabel}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
           </button>
         ) : null}
       </div>
       {collapsed ? null : count === 0 ? (
-        <div className="px-3 py-1 text-2xs text-muted/70">{emptyLabel}</div>
+        <div className="py-1 pl-8 pr-1 text-2xs text-muted/70">
+          {emptyLabel}
+        </div>
       ) : (
-        <div className="space-y-0">{children}</div>
+        <div className="space-y-0 pl-3 pr-0.5">{children}</div>
       )}
     </section>
   );
@@ -3916,7 +3918,7 @@ function AutomationSidebarItem({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       aria-current={selected ? "page" : undefined}
-      className={`group flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left transition-colors ${
+      className={`group flex w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-sm)] py-1 pl-2 pr-1.5 text-left transition-colors ${
         selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
       } ${item.system ? "opacity-60" : ""}`}
     >
@@ -3924,7 +3926,7 @@ function AutomationSidebarItem({
       <span className={`truncate text-xs-tight ${titleClass}`}>
         {getAutomationDisplayTitle(item)}
       </span>
-      <StatusDot tone={tone} />
+      <StatusDot tone={tone} className="ml-auto h-1.5 w-1.5 shrink-0" />
     </button>
   );
 }
@@ -5030,7 +5032,10 @@ function AutomationsLayout() {
         </SidebarContent.RailItem>
       ))}
     >
-      <SidebarScrollRegion className="px-1 pb-2 pt-0">
+      <SidebarScrollRegion
+        className="!px-0 !pb-2 !pt-0 [scrollbar-gutter:auto]"
+        style={{ scrollbarGutter: "auto" }}
+      >
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
           {isLoading && (
             <div className="flex items-center gap-2 px-2 py-1.5 text-2xs text-muted">
@@ -5043,7 +5048,7 @@ function AutomationsLayout() {
             type="button"
             onClick={showOverview}
             aria-current={showDashboard ? "page" : undefined}
-            className={`mt-0.5 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left text-xs-tight transition-colors ${
+            className={`mt-0 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1 text-left text-xs-tight transition-colors ${
               showDashboard
                 ? "bg-accent/15 text-txt"
                 : "text-txt hover:bg-bg-muted/50"
@@ -5087,12 +5092,12 @@ function AutomationsLayout() {
 
             <AutomationCollapsibleSection
               sectionKey="agent-owned"
-              label="Agent Owned"
+              label="Internal"
               icon={<SquareTerminal className="h-3.5 w-3.5" aria-hidden />}
               count={agentOwnedItems.length}
               collapsed={collapsedSections.has("agent-owned")}
               onToggleCollapsed={toggleSectionCollapsed}
-              emptyLabel="No agent-owned automations"
+              emptyLabel="No internal automations"
             >
               {agentOwnedItems.map(renderItem)}
             </AutomationCollapsibleSection>
