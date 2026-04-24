@@ -1,10 +1,4 @@
-import {
-  Badge,
-  Button,
-  SegmentedControl,
-  useApp,
-  useMediaQuery,
-} from "@elizaos/app-core";
+import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsCalendarSummary,
@@ -12,8 +6,21 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/app-lifeops/contracts";
-import { Copy, ExternalLink, GitBranch, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Cloud,
+  Copy,
+  ExternalLink,
+  GitBranch,
+  HardDrive,
+  Mail,
+  Plug2,
+  Plus,
+  Unplug,
+  X,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
@@ -141,32 +148,34 @@ function sideTitle(side: LifeOpsConnectorSide, t: TranslateFn): string {
       });
 }
 
-function capabilityLabels(
+function capabilityItems(
   capabilities: readonly LifeOpsGoogleCapability[],
   t: TranslateFn,
-): string[] {
-  const labels: string[] = [];
+): Array<{ key: "calendar" | "mail"; label: string }> {
+  const items: Array<{ key: "calendar" | "mail"; label: string }> = [];
   if (
     capabilities.includes("google.calendar.read") ||
     capabilities.includes("google.calendar.write")
   ) {
-    labels.push(
-      t("lifeopssettings.capabilityCalendar", {
+    items.push({
+      key: "calendar",
+      label: t("lifeopssettings.capabilityCalendar", {
         defaultValue: "Cal",
       }),
-    );
+    });
   }
   if (
     capabilities.includes("google.gmail.triage") ||
     capabilities.includes("google.gmail.send")
   ) {
-    labels.push(
-      t("lifeopssettings.capabilityMail", {
+    items.push({
+      key: "mail",
+      label: t("lifeopssettings.capabilityMail", {
         defaultValue: "Mail",
       }),
-    );
+    });
   }
-  return labels;
+  return items;
 }
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -194,6 +203,102 @@ function GoogleIcon({ className }: { className?: string }) {
         d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
       />
     </svg>
+  );
+}
+
+type StatusTone = "ok" | "warning" | "muted";
+
+function statusDotClassName(tone: StatusTone): string {
+  switch (tone) {
+    case "ok":
+      return "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]";
+    case "warning":
+      return "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]";
+    default:
+      return "bg-muted/45";
+  }
+}
+
+function StatusDot({
+  label,
+  tone,
+  className = "",
+}: {
+  label: string;
+  tone: StatusTone;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-label={label}
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClassName(tone)} ${className}`}
+      role="img"
+      title={label}
+    />
+  );
+}
+
+function IconOnlyLabel({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center justify-center" title={label}>
+      {children}
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+function ModeLabel({
+  mode,
+  label,
+}: {
+  mode: VisibleConnectorMode;
+  label: string;
+}) {
+  const Icon = mode === "cloud_managed" ? Cloud : HardDrive;
+  return (
+    <IconOnlyLabel label={label}>
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+    </IconOnlyLabel>
+  );
+}
+
+function MiniMeter({
+  label,
+  tone,
+  total,
+  value,
+}: {
+  label: string;
+  tone: StatusTone;
+  total: number;
+  value: number;
+}) {
+  const boundedTotal = Math.max(total, 0);
+  const boundedValue =
+    boundedTotal > 0 ? Math.min(Math.max(value, 0), boundedTotal) : 0;
+  const width =
+    boundedTotal > 0 ? `${(boundedValue / boundedTotal) * 100}%` : "0%";
+  const fill =
+    tone === "ok"
+      ? "bg-emerald-500"
+      : tone === "warning"
+        ? "bg-amber-500"
+        : "bg-muted/45";
+  return (
+    <span
+      aria-label={label}
+      className="relative inline-flex h-1.5 w-16 overflow-hidden rounded-full bg-bg/70"
+      role="img"
+      title={label}
+    >
+      <span className={`h-full rounded-full ${fill}`} style={{ width }} />
+    </span>
   );
 }
 
@@ -262,57 +367,84 @@ function PendingAuthBanner({
   );
 }
 
-function GithubRow({
-  github,
-  compactLayout,
-}: {
-  github: GithubSetupState;
-  compactLayout: boolean;
-}) {
+function GithubRow({ github }: { github: GithubSetupState }) {
   const { t } = useApp();
+  const identity = github.identity.trim();
+  const identityLower = identity.toLowerCase();
+  const showIdentity =
+    identity.length > 0 &&
+    identityLower !== "not linked" &&
+    identityLower !== "no agent" &&
+    identityLower !== "cloud required";
+  const linked =
+    github.status.trim().startsWith("1 /") ||
+    (showIdentity && !identityLower.includes("not linked"));
+  const tone: StatusTone = linked
+    ? "ok"
+    : github.connectDisabled
+      ? "muted"
+      : "warning";
+  const status = linked
+    ? t("lifeopssettings.connected", { defaultValue: "Connected" })
+    : t("lifeopssettings.notConnected", { defaultValue: "Not connected" });
   return (
     <div className="space-y-2 pt-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
           <GitBranch className="h-4 w-4 shrink-0" />
           <span>GitHub</span>
+          <StatusDot label={status} tone={tone} />
         </div>
-        <div className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
-          {github.identity}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {showIdentity ? (
+          <div className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
+            {identity}
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {github.onConnect ? (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={github.connectDisabled}
               onClick={github.onConnect}
-            >
-              {github.connectLabel ??
+              title={
+                github.connectLabel ??
                 t("common.connect", {
                   defaultValue: "Connect",
-                })}
+                })
+              }
+              aria-label={
+                github.connectLabel ??
+                t("common.connect", {
+                  defaultValue: "Connect",
+                })
+              }
+            >
+              <Plug2 className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
           {github.onDisconnect ? (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={github.disconnectDisabled}
               onClick={github.onDisconnect}
-            >
-              {t("common.disconnect", {
+              title={t("common.disconnect", {
                 defaultValue: "Disconnect",
               })}
+              aria-label={t("common.disconnect", {
+                defaultValue: "Disconnect",
+              })}
+            >
+              <Unplug className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
         </div>
       </div>
-      {!compactLayout && github.status.trim().length > 0 ? (
-        <div className="text-xs text-muted">{github.status}</div>
-      ) : null}
     </div>
   );
 }
@@ -349,17 +481,29 @@ function GoogleConnectorSideCard({
     null,
   );
   const [calendarFeedOpen, setCalendarFeedOpen] = useState(false);
-  const compactLayout = useMediaQuery("(max-width: 767px)");
   const connectedAccounts = accounts.filter((account) => account.connected);
   const primaryIdentity = readIdentity(
     connectedAccounts[0]?.identity ?? status?.identity ?? null,
     t,
   );
+  const emptyIdentityLabel = t("lifeopssettings.googleNotConnected", {
+    defaultValue: "Google not connected",
+  });
+  const showPrimaryIdentity =
+    status?.connected === true ||
+    primaryIdentity.primary !== emptyIdentityLabel;
   const currentStatusLabel = statusLabel(
     status?.reason ?? "disconnected",
     status?.connected === true,
     t,
   );
+  const currentStatusTone: StatusTone = status?.connected
+    ? "ok"
+    : status?.reason === "needs_reauth" ||
+        status?.reason === "config_missing" ||
+        status?.reason === "token_missing"
+      ? "warning"
+      : "muted";
   const controlDisabled = loading || actionPending;
   const visibleMode: VisibleConnectorMode =
     activeMode === "local" ? "local" : "cloud_managed";
@@ -453,16 +597,13 @@ function GoogleConnectorSideCard({
               <div className="text-sm font-semibold text-txt">
                 {sideTitle(side, t)}
               </div>
-              <Badge
-                variant={status?.connected ? "secondary" : "outline"}
-                className="text-2xs"
-              >
-                {currentStatusLabel}
-              </Badge>
+              <StatusDot label={currentStatusLabel} tone={currentStatusTone} />
             </div>
-            <div className="mt-1 truncate text-sm font-semibold text-txt">
-              {primaryIdentity.primary}
-            </div>
+            {showPrimaryIdentity ? (
+              <div className="mt-1 truncate text-sm font-semibold text-txt">
+                {primaryIdentity.primary}
+              </div>
+            ) : null}
             {primaryIdentity.secondary ? (
               <div className="mt-0.5 truncate text-xs text-muted">
                 {primaryIdentity.secondary}
@@ -481,7 +622,12 @@ function GoogleConnectorSideCard({
             onValueChange={(mode) => void selectMode(mode)}
             items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
               value: mode,
-              label: modeLabel(mode, t),
+              label: (
+                <ModeLabel
+                  mode={mode}
+                  label={modeLabel(mode as LifeOpsConnectorMode, t)}
+                />
+              ),
               disabled: controlDisabled,
             }))}
             className="min-w-40 flex-1 bg-bg/40 p-0.5 sm:w-auto sm:flex-none"
@@ -490,17 +636,29 @@ function GoogleConnectorSideCard({
           {!status?.connected ? (
             <Button
               size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={controlDisabled}
               onClick={() => void connect()}
+              title={
+                status?.reason === "needs_reauth"
+                  ? t("common.reconnect", {
+                      defaultValue: "Reconnect",
+                    })
+                  : t("common.connect", {
+                      defaultValue: "Connect",
+                    })
+              }
+              aria-label={
+                status?.reason === "needs_reauth"
+                  ? t("common.reconnect", {
+                      defaultValue: "Reconnect",
+                    })
+                  : t("common.connect", {
+                      defaultValue: "Connect",
+                    })
+              }
             >
-              {status?.reason === "needs_reauth"
-                ? t("common.reconnect", {
-                    defaultValue: "Reconnect",
-                  })
-                : t("common.connect", {
-                    defaultValue: "Connect",
-                  })}
+              <Plug2 className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
           {status?.connected &&
@@ -508,26 +666,34 @@ function GoogleConnectorSideCard({
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={controlDisabled}
               onClick={() => void connectAdditional()}
-            >
-              {t("common.add", {
+              title={t("common.add", {
                 defaultValue: "Add",
               })}
+              aria-label={t("common.add", {
+                defaultValue: "Add",
+              })}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
           {status?.connected && connectedAccounts.length <= 1 ? (
             <Button
               size="sm"
               variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={controlDisabled}
               onClick={() => void disconnect()}
-            >
-              {t("common.disconnect", {
+              title={t("common.disconnect", {
                 defaultValue: "Disconnect",
               })}
+              aria-label={t("common.disconnect", {
+                defaultValue: "Disconnect",
+              })}
+            >
+              <Unplug className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
         </div>
@@ -537,7 +703,10 @@ function GoogleConnectorSideCard({
         <div className="grid gap-2">
           {connectedAccounts.map((account) => {
             const accountIdentity = readIdentity(account.identity ?? null, t);
-            const labels = capabilityLabels(account.grantedCapabilities, t);
+            const capabilities = capabilityItems(
+              account.grantedCapabilities,
+              t,
+            );
             const isPreferred =
               preferredGrantId != null &&
               account.grant?.id === preferredGrantId;
@@ -552,11 +721,12 @@ function GoogleConnectorSideCard({
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {isPreferred ? (
-                      <Badge variant="secondary" className="text-3xs">
-                        {t("lifeopssettings.active", {
+                      <StatusDot
+                        label={t("lifeopssettings.active", {
                           defaultValue: "Active",
                         })}
-                      </Badge>
+                        tone="ok"
+                      />
                     ) : null}
                     {account.grant?.id ? (
                       <button
@@ -577,12 +747,22 @@ function GoogleConnectorSideCard({
                     ) : null}
                   </div>
                 </div>
-                {labels.length > 0 ? (
+                {capabilities.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {labels.map((label) => (
-                      <Badge key={label} variant="outline" className="text-3xs">
-                        {label}
-                      </Badge>
+                    {capabilities.map((capability) => (
+                      <span
+                        key={capability.key}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/26 bg-card/28 text-muted"
+                        title={capability.label}
+                        aria-label={capability.label}
+                        role="img"
+                      >
+                        {capability.key === "calendar" ? (
+                          <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+                        ) : (
+                          <Mail className="h-3.5 w-3.5" aria-hidden />
+                        )}
+                      </span>
                     ))}
                   </div>
                 ) : null}
@@ -599,22 +779,29 @@ function GoogleConnectorSideCard({
           onToggle={(event) => setCalendarFeedOpen(event.currentTarget.open)}
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-txt">
-            <span>
+            <span className="inline-flex items-center gap-2">
+              <CalendarDays className="h-3.5 w-3.5 text-muted" aria-hidden />
               {t("lifeopssettings.calendarFeedTitle", {
                 defaultValue: "Calendar feed",
               })}
             </span>
             {calendarError ? (
-              <span className="text-danger">
-                {t("lifeopssettings.calendarFeedIssue", {
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-danger"
+                aria-label={t("lifeopssettings.calendarFeedIssue", {
                   defaultValue: "Issue",
                 })}
-              </span>
+                role="img"
+              />
             ) : calendars.length > 0 ? (
-              <span className="text-muted">
-                {calendars.filter((calendar) => calendar.includeInFeed).length}/
-                {calendars.length}
-              </span>
+              <MiniMeter
+                label={`${calendars.filter((calendar) => calendar.includeInFeed).length}/${calendars.length}`}
+                tone="ok"
+                total={calendars.length}
+                value={
+                  calendars.filter((calendar) => calendar.includeInFeed).length
+                }
+              />
             ) : null}
           </summary>
           <div className="mt-3 space-y-2">
@@ -684,7 +871,7 @@ function GoogleConnectorSideCard({
         />
       ) : null}
       {error ? <div className="text-xs text-danger">{error}</div> : null}
-      <GithubRow github={github} compactLayout={compactLayout} />
+      <GithubRow github={github} />
     </section>
   );
 }
@@ -692,7 +879,6 @@ function GoogleConnectorSideCard({
 export function LifeOpsSettingsSection({
   ownerGithub = DEFAULT_OWNER_GITHUB,
   agentGithub = DEFAULT_AGENT_GITHUB,
-  githubError = null,
   cloudAction = null,
 }: LifeOpsSettingsSectionProps = {}) {
   const { t } = useApp();
@@ -742,10 +928,6 @@ export function LifeOpsSettingsSection({
             {cloudAction.label}
           </Button>
         </div>
-      ) : null}
-
-      {githubError ? (
-        <div className="py-1 text-xs text-muted">{githubError}</div>
       ) : null}
 
       <MobileSignalsSetupCard />

@@ -112,6 +112,27 @@ function PanelShell({
   );
 }
 
+function StatusDot({
+  connected,
+  label,
+}: {
+  connected: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      aria-label={label}
+      className={`inline-block h-2.5 w-2.5 rounded-full ${
+        connected
+          ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]"
+          : "bg-muted/45"
+      }`}
+      role="img"
+      title={label}
+    />
+  );
+}
+
 export function LifeOpsCapabilitiesPanel() {
   const { t } = useApp();
   const capabilities = useLifeOpsCapabilitiesStatus();
@@ -541,14 +562,8 @@ export function LifeOpsXPanel() {
   const agentStatus = agentX.status;
   const connected = status?.connected === true;
   const agentConnected = agentStatus?.connected === true;
-  const ownerIdentity = readXIdentity(
-    status?.identity ?? null,
-    t("lifeopspanels.notConnected", { defaultValue: "Not connected" }),
-  );
-  const agentIdentity = readXIdentity(
-    agentStatus?.identity ?? null,
-    t("chat.agentType", { defaultValue: "Agent" }),
-  );
+  const ownerIdentity = readXIdentity(status?.identity ?? null, "");
+  const agentIdentity = readXIdentity(agentStatus?.identity ?? null, "");
   const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
   const actionPending = ownerX.actionPending || agentX.actionPending;
 
@@ -558,25 +573,27 @@ export function LifeOpsXPanel() {
       icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" />}
       status={
         <div className="flex items-center gap-2">
-          <Badge
-            variant={connected ? "secondary" : "outline"}
-            className="text-2xs"
-          >
-            {connected
-              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
-              : t("lifeopspanels.disconnected", {
-                  defaultValue: "Disconnected",
-                })}
-          </Badge>
+          <StatusDot
+            connected={connected}
+            label={
+              connected
+                ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+                : t("lifeopspanels.disconnected", {
+                    defaultValue: "Disconnected",
+                  })
+            }
+          />
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={() => {
               void ownerX.refresh();
               void agentX.refresh();
             }}
             disabled={ownerX.loading || agentX.loading}
+            title={t("common.refresh", { defaultValue: "Refresh" })}
+            aria-label={t("common.refresh", { defaultValue: "Refresh" })}
           >
             {ownerX.loading || agentX.loading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -592,30 +609,44 @@ export function LifeOpsXPanel() {
           <div className="text-[11px] uppercase tracking-wide text-muted">
             {t("lifeopspanels.owner", { defaultValue: "Owner" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {ownerIdentity}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {connected
-              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
-              : t("lifeopspanels.disconnected", {
-                  defaultValue: "Disconnected",
-                })}
+          <div className="mt-1 flex items-center gap-2">
+            <StatusDot
+              connected={connected}
+              label={
+                connected
+                  ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+                  : t("lifeopspanels.disconnected", {
+                      defaultValue: "Disconnected",
+                    })
+              }
+            />
+            {ownerIdentity ? (
+              <div className="min-w-0 truncate text-sm font-semibold text-txt">
+                {ownerIdentity}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
             {t("chat.agentType", { defaultValue: "Agent" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {agentIdentity}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {agentConnected
-              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
-              : t("lifeopspanels.disconnected", {
-                  defaultValue: "Disconnected",
-                })}
+          <div className="mt-1 flex items-center gap-2">
+            <StatusDot
+              connected={agentConnected}
+              label={
+                agentConnected
+                  ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+                  : t("lifeopspanels.disconnected", {
+                      defaultValue: "Disconnected",
+                    })
+              }
+            />
+            {agentIdentity ? (
+              <div className="min-w-0 truncate text-sm font-semibold text-txt">
+                {agentIdentity}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -626,19 +657,22 @@ export function LifeOpsXPanel() {
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           onClick={() => void ownerX.connect(mode)}
           disabled={actionPending}
+          title={
+            connected
+              ? t("lifeopspanels.reconnectOwnerX", {
+                  defaultValue: "Reconnect Owner X",
+                })
+              : t("lifeopspanels.connectOwnerX", {
+                  defaultValue: "Connect Owner X",
+                })
+          }
         >
           {actionPending ? (
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
           ) : (
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
           )}
-          {connected
-            ? t("lifeopspanels.reconnectOwnerX", {
-                defaultValue: "Reconnect Owner X",
-              })
-            : t("lifeopspanels.connectOwnerX", {
-                defaultValue: "Connect Owner X",
-              })}
+          {t("lifeopspanels.owner", { defaultValue: "Owner" })}
         </Button>
         <Button
           size="sm"
@@ -646,15 +680,18 @@ export function LifeOpsXPanel() {
           className="h-8 rounded-xl px-3 text-xs font-semibold"
           onClick={() => void agentX.connect("cloud_managed")}
           disabled={actionPending}
+          title={
+            agentConnected
+              ? t("lifeopspanels.reconnectAgentX", {
+                  defaultValue: "Reconnect Agent X",
+                })
+              : t("lifeopspanels.connectAgentX", {
+                  defaultValue: "Connect Agent X",
+                })
+          }
         >
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          {agentConnected
-            ? t("lifeopspanels.reconnectAgentX", {
-                defaultValue: "Reconnect Agent X",
-              })
-            : t("lifeopspanels.connectAgentX", {
-                defaultValue: "Connect Agent X",
-              })}
+          {t("chat.agentType", { defaultValue: "Agent" })}
         </Button>
         {connected ? (
           <Button

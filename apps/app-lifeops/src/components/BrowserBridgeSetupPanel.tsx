@@ -388,6 +388,53 @@ function buildStateBadgeLabel(
   return "Download";
 }
 
+function BridgeDot({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warning" | "muted";
+}) {
+  const className =
+    tone === "ok"
+      ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]"
+      : tone === "warning"
+        ? "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]"
+        : "bg-muted/45";
+  return (
+    <span
+      aria-label={label}
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${className}`}
+      role="img"
+      title={label}
+    />
+  );
+}
+
+function BridgeMeter({
+  connected,
+  total,
+}: {
+  connected: number;
+  total: number;
+}) {
+  const safeTotal = Math.max(total, 0);
+  const width =
+    safeTotal > 0
+      ? `${(Math.min(Math.max(connected, 0), safeTotal) / safeTotal) * 100}%`
+      : "0%";
+  return (
+    <span
+      aria-label={`${connected}/${total} browser profiles connected`}
+      className="inline-flex h-1.5 w-16 overflow-hidden rounded-full bg-bg/70"
+      role="img"
+      title={`${connected}/${total} browser profiles connected`}
+    >
+      <span className="h-full rounded-full bg-emerald-500" style={{ width }} />
+    </span>
+  );
+}
+
 function installHint(
   browser: BrowserBridgeKind,
   currentBrowser: BrowserBridgeKind | null,
@@ -887,6 +934,12 @@ export function BrowserBridgeSetupPanel() {
       ],
     };
   }, [companions.length, connectedCompanions.length, draft]);
+  const connectionTone =
+    connectionSummary.badgeVariant === "default"
+      ? "ok"
+      : connectionSummary.badgeVariant === "secondary"
+        ? "warning"
+        : "muted";
 
   const updateDraft = <K extends keyof SettingsDraft>(
     key: K,
@@ -1279,29 +1332,22 @@ export function BrowserBridgeSetupPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-start gap-2 text-muted">
-          <ShieldCheck className="mt-0.5 h-4 w-4" />
-          <div>
-            <div className="text-sm font-semibold text-txt">Your Browser</div>
-            <div className="text-xs text-muted">
-              Connect a real Chrome or Safari profile, or use Milady Desktop
-              Browser when you want built-in browser access.
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-muted">
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <div className="text-sm font-semibold text-txt">Your Browser</div>
+          <BridgeDot label={connectionSummary.badge} tone={connectionTone} />
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={connectionSummary.badgeVariant}>
-            {connectionSummary.badge}
-          </Badge>
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={loading}
             onClick={() => void refresh({ preserveDraft: true })}
+            title="Refresh"
+            aria-label="Refresh"
           >
-            <RefreshCw className="mr-1.5 h-3 w-3" />
-            Refresh
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       </div>
@@ -1310,22 +1356,23 @@ export function BrowserBridgeSetupPanel() {
           {statusMessage}
         </div>
       ) : null}
-      {error ? (
-        <div className="rounded-2xl bg-danger/10 px-3 py-1.5 text-xs text-danger">
-          {error}
-        </div>
-      ) : null}
 
       <details className="rounded-2xl border border-border/18 bg-card/12 px-4 py-3">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-txt">
           <span>Browser profiles</span>
-          <span className="text-xs font-medium text-muted">
-            {connectedCompanions.length}/{companions.length}
-          </span>
+          <BridgeMeter
+            connected={connectedCompanions.length}
+            total={companions.length}
+          />
         </summary>
 
         <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
           <div className="space-y-4">
+            {error ? (
+              <div className="rounded-2xl bg-danger/10 px-3 py-1.5 text-xs text-danger">
+                {error}
+              </div>
+            ) : null}
             <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_94%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
@@ -1506,238 +1553,244 @@ export function BrowserBridgeSetupPanel() {
             })}
           </div>
         </div>
-      </details>
 
-      <details className="rounded-3xl border border-border/18 bg-card/12 px-5 py-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-txt">
-          Advanced Browser Rules
-        </summary>
-        <div className="mt-4 space-y-4">
-          {draft ? (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-muted">
-                  These settings control what LifeOps is allowed to see or
-                  automate in Your Browser.
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold"
-                  disabled={savingSettings || loading}
-                  onClick={() => void saveSettings()}
-                >
-                  {savingSettings ? "Saving..." : "Save"}
-                </Button>
-              </div>
-
-              <div className="divide-y divide-border/18">
-                <BrowserSettingRow
-                  checked={draft.enabled}
-                  hint="Master switch for owner-side browser visibility."
-                  label="Enabled"
-                  onCheckedChange={(checked) => updateDraft("enabled", checked)}
-                />
-                <BrowserSettingRow
-                  checked={draft.allowBrowserControl}
-                  hint="Required if LifeOps should open Discord, switch tabs, or navigate for you."
-                  label="Browser control"
-                  onCheckedChange={(checked) =>
-                    updateDraft("allowBrowserControl", checked)
-                  }
-                />
-                <BrowserSettingRow
-                  checked={draft.requireConfirmationForAccountAffecting}
-                  hint="Ask before actions that could change accounts or submit data."
-                  label="Require confirmation"
-                  onCheckedChange={(checked) =>
-                    updateDraft(
-                      "requireConfirmationForAccountAffecting",
-                      checked,
-                    )
-                  }
-                />
-                <BrowserSettingRow
-                  checked={draft.incognitoEnabled}
-                  hint="Include incognito windows when the browser has granted that permission."
-                  label="Incognito"
-                  onCheckedChange={(checked) =>
-                    updateDraft("incognitoEnabled", checked)
-                  }
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted">Tracking</Label>
-                  <div className="text-[11px] text-muted">
-                    Choose whether LifeOps sees only the current tab or multiple
-                    active tabs.
+        <details className="mt-4 rounded-2xl border border-border/18 bg-card/12 px-4 py-3">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-txt">
+            Advanced Browser Rules
+          </summary>
+          <div className="mt-4 space-y-4">
+            {draft ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-muted">
+                    These settings control what LifeOps is allowed to see or
+                    automate in Your Browser.
                   </div>
-                  <SegmentedControl<BrowserBridgeTrackingMode>
-                    value={draft.trackingMode}
-                    onValueChange={(mode) => updateDraft("trackingMode", mode)}
-                    items={(["off", "current_tab", "active_tabs"] as const).map(
-                      (mode) => ({
-                        value: mode,
-                        label: trackingModeLabel(mode),
-                      }),
-                    )}
-                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
-                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted">Site access</Label>
-                  <div className="text-[11px] text-muted">
-                    Restrict LifeOps to the current site, an allow-list, or all
-                    sites.
-                  </div>
-                  <SegmentedControl<BrowserBridgeSiteAccessMode>
-                    value={draft.siteAccessMode}
-                    onValueChange={(mode) =>
-                      updateDraft("siteAccessMode", mode)
-                    }
-                    items={BROWSER_BRIDGE_SITE_ACCESS_MODES.map((mode) => ({
-                      value: mode,
-                      label: siteAccessModeLabel(mode),
-                    }))}
-                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
-                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-max-tabs"
-                    className="text-xs text-muted"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    disabled={savingSettings || loading}
+                    onClick={() => void saveSettings()}
                   >
-                    Max remembered tabs
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    Controls how much recent browser context LifeOps keeps
-                    around.
-                  </div>
-                  <Input
-                    id="browser-bridge-max-tabs"
-                    value={draft.maxRememberedTabs}
-                    onChange={(event) =>
+                    {savingSettings ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+
+                <div className="divide-y divide-border/18">
+                  <BrowserSettingRow
+                    checked={draft.enabled}
+                    hint="Master switch for owner-side browser visibility."
+                    label="Enabled"
+                    onCheckedChange={(checked) =>
+                      updateDraft("enabled", checked)
+                    }
+                  />
+                  <BrowserSettingRow
+                    checked={draft.allowBrowserControl}
+                    hint="Required if LifeOps should open Discord, switch tabs, or navigate for you."
+                    label="Browser control"
+                    onCheckedChange={(checked) =>
+                      updateDraft("allowBrowserControl", checked)
+                    }
+                  />
+                  <BrowserSettingRow
+                    checked={draft.requireConfirmationForAccountAffecting}
+                    hint="Ask before actions that could change accounts or submit data."
+                    label="Require confirmation"
+                    onCheckedChange={(checked) =>
                       updateDraft(
-                        "maxRememberedTabs",
-                        event.currentTarget.value,
+                        "requireConfirmationForAccountAffecting",
+                        checked,
                       )
                     }
-                    inputMode="numeric"
+                  />
+                  <BrowserSettingRow
+                    checked={draft.incognitoEnabled}
+                    hint="Include incognito windows when the browser has granted that permission."
+                    label="Incognito"
+                    onCheckedChange={(checked) =>
+                      updateDraft("incognitoEnabled", checked)
+                    }
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-pause-until"
-                    className="text-xs text-muted"
-                  >
-                    Pause until
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    Temporarily stop browser visibility without disconnecting
-                    your paired browser.
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted">Tracking</Label>
+                    <div className="text-[11px] text-muted">
+                      Choose whether LifeOps sees only the current tab or
+                      multiple active tabs.
+                    </div>
+                    <SegmentedControl<BrowserBridgeTrackingMode>
+                      value={draft.trackingMode}
+                      onValueChange={(mode) =>
+                        updateDraft("trackingMode", mode)
+                      }
+                      items={(
+                        ["off", "current_tab", "active_tabs"] as const
+                      ).map((mode) => ({
+                        value: mode,
+                        label: trackingModeLabel(mode),
+                      }))}
+                      className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                      buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                    />
                   </div>
-                  <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted">Site access</Label>
+                    <div className="text-[11px] text-muted">
+                      Restrict LifeOps to the current site, an allow-list, or
+                      all sites.
+                    </div>
+                    <SegmentedControl<BrowserBridgeSiteAccessMode>
+                      value={draft.siteAccessMode}
+                      onValueChange={(mode) =>
+                        updateDraft("siteAccessMode", mode)
+                      }
+                      items={BROWSER_BRIDGE_SITE_ACCESS_MODES.map((mode) => ({
+                        value: mode,
+                        label: siteAccessModeLabel(mode),
+                      }))}
+                      className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                      buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-max-tabs"
+                      className="text-xs text-muted"
+                    >
+                      Max remembered tabs
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      Controls how much recent browser context LifeOps keeps
+                      around.
+                    </div>
                     <Input
-                      id="browser-bridge-pause-until"
-                      type="datetime-local"
-                      value={draft.pauseUntilLocal}
+                      id="browser-bridge-max-tabs"
+                      value={draft.maxRememberedTabs}
                       onChange={(event) =>
                         updateDraft(
-                          "pauseUntilLocal",
+                          "maxRememberedTabs",
                           event.currentTarget.value,
                         )
                       }
-                      className="min-w-0 flex-1"
+                      inputMode="numeric"
                     />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 rounded-xl px-3 text-xs font-semibold"
-                      onClick={() =>
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-pause-until"
+                      className="text-xs text-muted"
+                    >
+                      Pause until
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      Temporarily stop browser visibility without disconnecting
+                      your paired browser.
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
+                      <Input
+                        id="browser-bridge-pause-until"
+                        type="datetime-local"
+                        value={draft.pauseUntilLocal}
+                        onChange={(event) =>
+                          updateDraft(
+                            "pauseUntilLocal",
+                            event.currentTarget.value,
+                          )
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 rounded-xl px-3 text-xs font-semibold"
+                        onClick={() =>
+                          updateDraft(
+                            "pauseUntilLocal",
+                            formatDateTimeLocalValue(
+                              new Date(
+                                Date.now() + 60 * 60 * 1000,
+                              ).toISOString(),
+                            ),
+                          )
+                        }
+                      >
+                        1h
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 rounded-xl px-3 text-xs font-semibold"
+                        onClick={() => updateDraft("pauseUntilLocal", "")}
+                      >
+                        Now
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-granted-origins"
+                      className="text-xs text-muted"
+                    >
+                      Granted origins
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      When Site access is set to Granted sites, only these
+                      origins are readable.
+                    </div>
+                    <Textarea
+                      id="browser-bridge-granted-origins"
+                      rows={3}
+                      placeholder="https://mail.google.com"
+                      value={draft.grantedOriginsText}
+                      onChange={(event) =>
                         updateDraft(
-                          "pauseUntilLocal",
-                          formatDateTimeLocalValue(
-                            new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                          ),
+                          "grantedOriginsText",
+                          event.currentTarget.value,
                         )
                       }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-blocked-origins"
+                      className="text-xs text-muted"
                     >
-                      1h
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 rounded-xl px-3 text-xs font-semibold"
-                      onClick={() => updateDraft("pauseUntilLocal", "")}
-                    >
-                      Now
-                    </Button>
+                      Blocked origins
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      These origins are never readable, even if broader site
+                      access is enabled.
+                    </div>
+                    <Textarea
+                      id="browser-bridge-blocked-origins"
+                      rows={3}
+                      placeholder="https://bank.example.com"
+                      value={draft.blockedOriginsText}
+                      onChange={(event) =>
+                        updateDraft(
+                          "blockedOriginsText",
+                          event.currentTarget.value,
+                        )
+                      }
+                    />
                   </div>
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-granted-origins"
-                    className="text-xs text-muted"
-                  >
-                    Granted origins
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    When Site access is set to Granted sites, only these origins
-                    are readable.
-                  </div>
-                  <Textarea
-                    id="browser-bridge-granted-origins"
-                    rows={3}
-                    placeholder="https://mail.google.com"
-                    value={draft.grantedOriginsText}
-                    onChange={(event) =>
-                      updateDraft(
-                        "grantedOriginsText",
-                        event.currentTarget.value,
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-blocked-origins"
-                    className="text-xs text-muted"
-                  >
-                    Blocked origins
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    These origins are never readable, even if broader site
-                    access is enabled.
-                  </div>
-                  <Textarea
-                    id="browser-bridge-blocked-origins"
-                    rows={3}
-                    placeholder="https://bank.example.com"
-                    value={draft.blockedOriginsText}
-                    onChange={(event) =>
-                      updateDraft(
-                        "blockedOriginsText",
-                        event.currentTarget.value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            </>
-          ) : loading ? (
-            <div className="text-xs text-muted">Loading</div>
-          ) : null}
-        </div>
+              </>
+            ) : loading ? (
+              <div className="text-xs text-muted">Loading</div>
+            ) : null}
+          </div>
+        </details>
       </details>
     </div>
   );
