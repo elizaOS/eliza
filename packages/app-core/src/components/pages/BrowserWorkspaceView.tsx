@@ -13,6 +13,7 @@ import {
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  useIntervalWhenDocumentVisible,
   WorkspaceLayout,
 } from "@elizaos/ui";
 import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
@@ -697,13 +698,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     void loadBrowserBridgeState();
   }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void loadWorkspace({ preferTabId: selectedTabId, silent: true });
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [loadWorkspace, selectedTabId]);
+  useIntervalWhenDocumentVisible(() => {
+    void loadWorkspace({ preferTabId: selectedTabId, silent: true });
+  }, POLL_INTERVAL_MS);
 
   useEffect(() => {
     if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
@@ -713,35 +710,28 @@ export function BrowserWorkspaceView(): JSX.Element {
     void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
   }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
 
-  useEffect(() => {
-    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
+  useIntervalWhenDocumentVisible(
+    () => {
+      if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+        return;
+      }
       void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
+    },
+    POLL_INTERVAL_MS,
+    Boolean(selectedTabId) && isBrowserWorkspaceSessionMode(workspace.mode),
+  );
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void loadBrowserWalletState();
-    }, 5_000);
-    return () => window.clearInterval(timer);
-  }, [loadBrowserWalletState]);
+  useIntervalWhenDocumentVisible(() => {
+    void loadBrowserWalletState();
+  }, 5_000);
 
-  useEffect(() => {
-    if (workspace.mode !== "web" || !browserBridgeSupported) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
+  useIntervalWhenDocumentVisible(
+    () => {
       void loadBrowserBridgeState({ silent: true });
-    }, BROWSER_BRIDGE_POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
+    },
+    BROWSER_BRIDGE_POLL_INTERVAL_MS,
+    workspace.mode === "web" && browserBridgeSupported,
+  );
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
