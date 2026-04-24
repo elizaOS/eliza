@@ -937,7 +937,7 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   const isPositive = snapshot.change24hPct >= 0;
 
   return (
-    <div className="rounded-[26px] border border-border/30 bg-bg/40 p-4">
+    <div className="min-w-0 rounded-[26px] border border-border/30 bg-bg/40 p-4">
       <div className="flex items-center gap-3">
         <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
         <div className="min-w-0">
@@ -949,13 +949,13 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
           </div>
         </div>
       </div>
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div className="font-mono text-xl font-semibold text-txt">
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0 font-mono text-lg font-semibold text-txt sm:text-xl">
           {formatMarketUsd(snapshot.priceUsd)}
         </div>
         <div
           className={cn(
-            "text-sm font-semibold",
+            "shrink-0 text-sm font-semibold",
             isPositive ? "text-ok" : "text-danger",
           )}
         >
@@ -982,7 +982,7 @@ function MarketPriceGrid({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
       {prices.map((snapshot) => (
         <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
       ))}
@@ -1193,7 +1193,7 @@ function MarketPulseHero({
           </div>
         </div>
       ) : loading ? (
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((placeholderId) => (
             <div
               key={placeholderId}
