@@ -849,7 +849,10 @@ function InboxChatPanel({
       }
     };
     void load();
-    const timer = window.setInterval(load, 5_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      load();
+    }, 15_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
