@@ -129,6 +129,44 @@ describe("buildTriggerConfig — workflow propagation", () => {
   });
 });
 
+describe("event triggers", () => {
+  it("requires an event kind for event triggers", () => {
+    const result = normalizeTriggerDraft({
+      input: {
+        displayName: "Message router",
+        instructions: "Handle the message",
+        triggerType: "event",
+        wakeMode: "inject_now",
+        enabled: true,
+        createdBy: "api",
+      },
+      fallback: FALLBACK,
+    });
+
+    expect(result.draft).toBeUndefined();
+    expect(result.error).toBe("eventKind is required for event triggers");
+  });
+
+  it("propagates eventKind onto TriggerConfig", () => {
+    const triggerId = "00000000-0000-0000-0000-000000000004" as UUID;
+    const config = buildTriggerConfig({
+      triggerId,
+      draft: {
+        displayName: "Message router",
+        instructions: "Handle the message",
+        triggerType: "event",
+        eventKind: "message.received",
+        wakeMode: "inject_now",
+        enabled: true,
+        createdBy: "api",
+      },
+    });
+
+    expect(config.triggerType).toBe("event");
+    expect(config.eventKind).toBe("message.received");
+  });
+});
+
 describe("buildTriggerDedupeKey — workflow discrimination", () => {
   it("produces different keys for text vs workflow kind with the same instructions", () => {
     const base = {
@@ -156,6 +194,23 @@ describe("buildTriggerDedupeKey — workflow discrimination", () => {
     };
     const key1 = buildTriggerDedupeKey({ ...base, workflowId: "wf-1" });
     const key2 = buildTriggerDedupeKey({ ...base, workflowId: "wf-2" });
+    expect(key1).not.toBe(key2);
+  });
+
+  it("produces different keys for different event kinds", () => {
+    const base = {
+      triggerType: "event" as const,
+      instructions: "run job",
+      wakeMode: "inject_now" as const,
+    };
+    const key1 = buildTriggerDedupeKey({
+      ...base,
+      eventKind: "message.received",
+    });
+    const key2 = buildTriggerDedupeKey({
+      ...base,
+      eventKind: "gmail.message.received",
+    });
     expect(key1).not.toBe(key2);
   });
 });

@@ -77,6 +77,7 @@ import type {
   TrainingTrajectoryList,
   TriggerHealthSnapshot,
   TriggerLastStatus,
+  TriggerEventDispatchResponse,
   TriggerRunRecord,
   TriggerSummary,
   UpdateStatus,
@@ -301,6 +302,10 @@ declare module "./client-base" {
       trigger?: TriggerSummary;
     }>;
     getTriggerRuns(id: string): Promise<{ runs: TriggerRunRecord[] }>;
+    emitTriggerEvent(
+      eventKind: string,
+      payload?: Record<string, unknown>,
+    ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
     getTrainingStatus(): Promise<TrainingStatus>;
     listTrainingTrajectories(opts?: {
@@ -1173,6 +1178,20 @@ ElizaClient.prototype.runTriggerNow = async function (this: ElizaClient, id) {
 
 ElizaClient.prototype.getTriggerRuns = async function (this: ElizaClient, id) {
   return this.fetch(`/api/triggers/${encodeURIComponent(id)}/runs`);
+};
+
+ElizaClient.prototype.emitTriggerEvent = async function (
+  this: ElizaClient,
+  eventKind,
+  payload = {},
+) {
+  return this.fetch(
+    `/api/triggers/events/${encodeURIComponent(eventKind)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    },
+  );
 };
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
