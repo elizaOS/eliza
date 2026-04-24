@@ -10,6 +10,7 @@ import {
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
+import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
@@ -365,29 +366,39 @@ function LifeOpsSettingsSectionView({
 }: LifeOpsSettingsSectionViewProps) {
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold tracking-tight text-txt">
           {t("lifeopspage.accessTitle", { defaultValue: "Access" })}
         </h2>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={onRunSetupAgain}
-          >
-            {t("lifeopspage.runSetupAgain", {
+            title={t("lifeopspage.runSetupAgain", {
               defaultValue: "Run setup again",
             })}
+            aria-label={t("lifeopspage.runSetupAgain", {
+              defaultValue: "Run setup again",
+            })}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
           <Button
             variant="surfaceDestructive"
             size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={onDisableLifeOps}
             disabled={disableLifeOpsDisabled}
+            title={t("lifeopspage.disable", {
+              defaultValue: "Disable LifeOps",
+            })}
+            aria-label={t("lifeopspage.disable", {
+              defaultValue: "Disable LifeOps",
+            })}
           >
-            {t("lifeopspage.disable", { defaultValue: "Disable LifeOps" })}
+            <Power className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       </div>

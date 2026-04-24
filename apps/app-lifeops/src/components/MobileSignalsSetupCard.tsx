@@ -6,7 +6,13 @@ import {
   type MobileSignalsSetupAction,
 } from "@elizaos/app-core/bridge/native-plugins";
 import { isNative } from "@elizaos/app-core/platform";
-import { Activity, RefreshCw, Settings } from "lucide-react";
+import {
+  Activity,
+  Monitor,
+  RefreshCw,
+  Settings,
+  Smartphone,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TranslateOptions = { defaultValue?: string } & Record<
@@ -64,6 +70,31 @@ function nonMobileBadgeLabel(t: TranslateFn): string {
     : t("lifeopssettings.deviceSetupWeb", {
         defaultValue: "Web",
       });
+}
+
+function DeviceRuntimeGlyph({
+  label,
+  nativeMobile,
+  ready,
+}: {
+  label: string;
+  nativeMobile: boolean;
+  ready: boolean;
+}) {
+  const Icon = nativeMobile ? Smartphone : Monitor;
+  const tone = ready
+    ? "border-emerald-500/30 bg-emerald-500/12 text-emerald-500"
+    : "border-border/50 bg-bg/40 text-muted";
+  return (
+    <span
+      aria-label={label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border ${tone}`}
+      role="img"
+      title={label}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  );
 }
 
 export function MobileSignalsSetupCard() {
@@ -169,12 +200,18 @@ export function MobileSignalsSetupCard() {
   const needsRequest = actions.some(
     (action) => action.status !== "ready" && action.canRequest,
   );
+  const runtimeLabel = nativeMobile
+    ? (permissionStatus?.status ?? "checking")
+    : nonMobileBadgeLabel(t);
+  const runtimeReady = nativeMobile
+    ? permissionStatus?.status === "granted"
+    : true;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/92 shadow-sm">
-      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="rounded-2xl border border-border/40 bg-card/62 shadow-sm">
+      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/40 bg-bg/36">
             <Activity className="h-5 w-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
@@ -184,18 +221,11 @@ export function MobileSignalsSetupCard() {
                   defaultValue: "Device Data",
                 })}
               </div>
-              <Badge
-                variant={
-                  permissionStatus?.status === "granted"
-                    ? "secondary"
-                    : "outline"
-                }
-                className="text-2xs"
-              >
-                {nativeMobile
-                  ? (permissionStatus?.status ?? "checking")
-                  : nonMobileBadgeLabel(t)}
-              </Badge>
+              <DeviceRuntimeGlyph
+                label={runtimeLabel}
+                nativeMobile={nativeMobile}
+                ready={runtimeReady}
+              />
             </div>
             {message ? <p className="text-xs text-muted">{message}</p> : null}
           </div>

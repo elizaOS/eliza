@@ -10,26 +10,22 @@ import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,
 } from "@elizaos/shared/contracts/lifeops";
-import { Loader2, MessageCircle, Phone, QrCode } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  ExternalLink,
+  Loader2,
+  MessageCircle,
+  Phone,
+  Plug2,
+  QrCode,
+  RefreshCw,
+  Unplug,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useDiscordConnector } from "../hooks/useDiscordConnector.js";
 import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 import { useWhatsAppConnector } from "../hooks/useWhatsAppConnector.js";
-
-function isIosRuntime(): boolean {
-  if (
-    typeof navigator !== "undefined" &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent)
-  ) {
-    return true;
-  }
-  const capacitor = (
-    globalThis as { Capacitor?: { getPlatform?: () => string } }
-  ).Capacitor;
-  return capacitor?.getPlatform?.() === "ios";
-}
 
 const BLUEBUBBLES_INSTALL_URL = "https://bluebubbles.app/install/";
 const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
@@ -44,7 +40,7 @@ function ConnectorCardShell({
   statusVariant,
   children,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   platform: string;
   status: string;
   statusVariant: "ok" | "muted" | "warning";
@@ -65,12 +61,46 @@ function ConnectorCardShell({
           <span className="text-sm font-medium text-txt">{platform}</span>
           <span
             className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
+            title={status}
+            aria-label={status}
+            role="img"
           />
-          <span className="min-w-0 truncate text-xs text-muted">{status}</span>
         </div>
       </div>
       {children}
     </div>
+  );
+}
+
+function AccessPips({
+  items,
+  label,
+}: {
+  items: Array<"ok" | "warning" | "muted">;
+  label: string;
+}) {
+  const dots = items.length > 0 ? items : ["muted" as const];
+  const slots = ["a", "b", "c", "d", "e", "f"] as const;
+  return (
+    <span
+      aria-label={label}
+      className="inline-flex items-center gap-1"
+      role="img"
+      title={label}
+    >
+      {slots.slice(0, dots.slice(0, 6).length).map((slot, slotIndex) => {
+        const tone = dots[slotIndex];
+        const color =
+          tone === "ok"
+            ? "bg-emerald-500"
+            : tone === "warning"
+              ? "bg-amber-500"
+              : "bg-muted/45";
+        return (
+          <span key={slot} className={`h-1.5 w-1.5 rounded-full ${color}`} />
+        );
+      })}
+    </span>
   );
 }
 
@@ -296,20 +326,16 @@ export function SignalConnectorCard() {
       {!isConnected && !isPairing ? (
         <Button
           size="sm"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
           onClick={() => void signal.startPairing()}
+          title="Link Signal"
+          aria-label="Link Signal"
         >
           {signal.actionPending ? (
-            <>
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              Starting...
-            </>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
           ) : (
-            <>
-              <QrCode className="mr-1.5 h-3.5 w-3.5" />
-              Link Signal
-            </>
+            <QrCode className="h-3.5 w-3.5" aria-hidden />
           )}
         </Button>
       ) : null}
@@ -333,10 +359,12 @@ export function SignalConnectorCard() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={() => void signal.stopPairing()}
+            title="Cancel"
+            aria-label="Cancel"
           >
-            Cancel
+            <Unplug className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       ) : null}
@@ -352,11 +380,13 @@ export function SignalConnectorCard() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={busy}
             onClick={() => void signal.disconnect()}
+            title="Disconnect"
+            aria-label="Disconnect"
           >
-            Disconnect
+            <Unplug className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       ) : null}
@@ -426,6 +456,13 @@ export function DiscordConnectorCard() {
     : pairing || authPending
       ? "warning"
       : "muted";
+  const browserAccessTones = browserAccess.map((access) =>
+    access.active && access.tabState === "dm_inbox_visible"
+      ? "ok"
+      : access.active || access.available
+        ? "warning"
+        : "muted",
+  );
 
   const handleOpenDesktopDiscord = useCallback(async () => {
     try {
@@ -458,18 +495,31 @@ export function DiscordConnectorCard() {
       {showConnectButton ? (
         <Button
           size="sm"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          className="h-8 w-8 rounded-xl p-0"
           disabled={busy || !available}
           onClick={() => void discord.connect()}
-        >
-          {browserAccessActionLabel(preferredAccess?.nextAction) ??
+          title={
+            browserAccessActionLabel(preferredAccess?.nextAction) ??
             (authPending
               ? "Open Discord Login"
               : isConnected
                 ? "Show Discord DMs"
                 : pairing
                   ? "Open Discord"
-                  : "Connect Discord")}
+                  : "Connect Discord")
+          }
+          aria-label={
+            browserAccessActionLabel(preferredAccess?.nextAction) ??
+            (authPending
+              ? "Open Discord Login"
+              : isConnected
+                ? "Show Discord DMs"
+                : pairing
+                  ? "Open Discord"
+                  : "Connect Discord")
+          }
+        >
+          <Plug2 className="h-3.5 w-3.5" aria-hidden />
         </Button>
       ) : null}
 
@@ -482,11 +532,13 @@ export function DiscordConnectorCard() {
         <Button
           size="sm"
           variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
           onClick={() => void handleOpenDesktopDiscord()}
+          title="Open in Milady Desktop Browser"
+          aria-label="Open in Milady Desktop Browser"
         >
-          Open in Milady Desktop Browser
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden />
         </Button>
       ) : null}
 
@@ -508,64 +560,63 @@ export function DiscordConnectorCard() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={busy}
             onClick={() => void discord.disconnect()}
+            title="Disconnect"
+            aria-label="Disconnect"
           >
-            Disconnect
+            <Unplug className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       ) : null}
 
-      {!isConnected && authPending ? (
-        <div className="text-xs text-muted">
-          {preferredAccess
-            ? browserAccessMessage(preferredAccess)
-            : "LifeOps found Discord, but that browser session still needs you to log in."}
-        </div>
-      ) : null}
-
-      {!available ? (
-        <div className="text-xs text-muted">Connect browser.</div>
-      ) : null}
-
       {!dmInboxVisible && browserAccess.length > 0 ? (
-        <div className="space-y-2">
-          {browserAccess.map((access) => {
-            const badge = browserAccessBadge(access);
-            return (
-              <div
-                key={`${access.source}:${access.browser ?? "desktop"}:${access.profileId ?? "default"}`}
-                className="rounded-2xl border border-border/20 bg-card/18 px-3 py-2"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-xs font-semibold text-txt">
-                    {browserAccessTitle(access)}
+        <details className="rounded-2xl bg-bg/24 px-3 py-2">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-txt">Sources</span>
+            <AccessPips
+              items={browserAccessTones}
+              label={`${browserAccess.length} browser sources`}
+            />
+          </summary>
+          <div className="mt-2 space-y-2">
+            {browserAccess.map((access) => {
+              const badge = browserAccessBadge(access);
+              return (
+                <div
+                  key={`${access.source}:${access.browser ?? "desktop"}:${access.profileId ?? "default"}`}
+                  className="rounded-2xl border border-border/20 bg-card/18 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-txt">
+                      {browserAccessTitle(access)}
+                    </div>
+                    <Badge variant={badge.variant} className="text-2xs">
+                      {badge.label}
+                    </Badge>
                   </div>
-                  <Badge variant={badge.variant} className="text-2xs">
-                    {badge.label}
-                  </Badge>
+                  <div className="mt-1 text-xs text-muted">
+                    {browserAccessMessage(access)}
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted/80">
+                    {access.canControl ? "Control on" : "Control off"}
+                    {access.siteAccessOk === false
+                      ? " • Discord not granted yet"
+                      : ""}
+                    {access.tabState === "dm_inbox_visible"
+                      ? " • DM inbox visible"
+                      : access.tabState === "discord_open"
+                        ? " • Discord open"
+                        : access.tabState === "background_discord"
+                          ? " • Discord tab found"
+                          : ""}
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-muted">
-                  {browserAccessMessage(access)}
-                </div>
-                <div className="mt-1 text-[11px] text-muted/80">
-                  {access.canControl ? "Control on" : "Control off"}
-                  {access.siteAccessOk === false
-                    ? " • Discord not granted yet"
-                    : ""}
-                  {access.tabState === "dm_inbox_visible"
-                    ? " • DM inbox visible"
-                    : access.tabState === "discord_open"
-                      ? " • Discord open"
-                      : access.tabState === "background_discord"
-                        ? " • Discord tab found"
-                        : ""}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </details>
       ) : null}
 
       {discord.error ? (
@@ -672,11 +723,13 @@ export function TelegramConnectorCard() {
       {showStartStep ? (
         <Button
           size="sm"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
           onClick={() => setLoginOpen(true)}
+          title={authState === "error" ? "Retry" : "Connect"}
+          aria-label={authState === "error" ? "Retry" : "Connect"}
         >
-          {authState === "error" ? "Retry" : "Connect"}
+          <Plug2 className="h-3.5 w-3.5" aria-hidden />
         </Button>
       ) : null}
 
@@ -786,11 +839,13 @@ export function TelegramConnectorCard() {
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={busy}
             onClick={() => void telegram.disconnect()}
+            title="Disconnect"
+            aria-label="Disconnect"
           >
-            Disconnect
+            <Unplug className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       ) : null}
@@ -851,21 +906,25 @@ export function WhatsAppConnectorCard() {
           {!isConnected ? (
             <Button
               size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              className="h-8 w-8 rounded-xl p-0"
               disabled={busy}
               onClick={() => void handleOpenSetupGuide()}
+              title="Open setup guide"
+              aria-label="Open setup guide"
             >
-              Open setup guide
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </Button>
           ) : null}
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={busy}
             onClick={() => void whatsapp.refresh()}
+            title="Refresh"
+            aria-label="Refresh"
           >
-            Refresh
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       </div>
@@ -908,7 +967,6 @@ function formatIMessageDiagnostic(code: string): string {
 export function IMessageConnectorCard() {
   const imessage = useIMessageConnector();
   const { setActionNotice } = useApp();
-  const iosRuntime = isIosRuntime();
   const status = imessage.status;
   const installingImsg = imessage.actionPending === "install_imsg";
   const busy = imessage.loading || installingImsg;
@@ -951,6 +1009,19 @@ export function IMessageConnectorCard() {
         : busy && !status
           ? "warning"
           : "muted";
+  const bridgePips: Array<"ok" | "warning" | "muted"> = [
+    isConnected ? "ok" : "muted",
+    status?.privateApiEnabled === false || status?.helperConnected === false
+      ? "warning"
+      : isConnected
+        ? "ok"
+        : "muted",
+    status?.sendMode === "apple-script"
+      ? "warning"
+      : isConnected
+        ? "ok"
+        : "muted",
+  ];
 
   const handleInstallImsg = useCallback(async () => {
     try {
@@ -1017,17 +1088,6 @@ export function IMessageConnectorCard() {
       statusVariant={statusVariant}
     >
       <div className="space-y-2">
-        <div className="text-xs text-muted">
-          {isConnected
-            ? (bridgeLabel ?? "Connected")
-            : iosRuntime
-              ? "Requires paired Mac"
-              : canOfferLocalMacSetup
-                ? imessage.shellEnabled === false
-                  ? "Shell access off"
-                  : "Mac setup available"
-                : "No bridge detected"}
-        </div>
         {canOfferLocalMacSetup ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -1099,56 +1159,75 @@ export function IMessageConnectorCard() {
           </div>
         ) : null}
         {isConnected ? (
-          <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-            <div>
-              Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">
+                {bridgeLabel ?? "Bridge"}
+              </span>
+              <AccessPips items={bridgePips} label="iMessage bridge status" />
+            </summary>
+            <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>
+                Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
+              </div>
+              {status?.privateApiEnabled !== null ? (
+                <div>
+                  Private API:{" "}
+                  {status.privateApiEnabled ? "enabled" : "disabled"}
+                </div>
+              ) : null}
+              {status?.helperConnected !== null ? (
+                <div>
+                  Helper:{" "}
+                  {status.helperConnected ? "connected" : "disconnected"}
+                </div>
+              ) : null}
             </div>
-            {status?.privateApiEnabled !== null ? (
-              <div>
-                Private API: {status.privateApiEnabled ? "enabled" : "disabled"}
-              </div>
-            ) : null}
-            {status?.helperConnected !== null ? (
-              <div>
-                Helper: {status.helperConnected ? "connected" : "disconnected"}
-              </div>
-            ) : null}
-          </div>
+          </details>
         ) : null}
         <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            className="h-8 w-8 rounded-xl p-0"
             disabled={busy}
             onClick={() => void imessage.refresh()}
+            title="Refresh"
+            aria-label="Refresh"
           >
             {busy ? (
-              <>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                {installingImsg ? "Working..." : "Refreshing"}
-              </>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             ) : (
-              "Refresh"
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
           </Button>
-          {status?.lastCheckedAt ? (
-            <span className="text-xs text-muted">
-              Checked {new Date(status.lastCheckedAt).toLocaleTimeString()}
-            </span>
-          ) : null}
         </div>
         {status?.error ? (
           <div className="text-xs text-danger">{status.error}</div>
         ) : null}
-        {status?.diagnostics.map((diagnostic) => (
-          <div
-            key={diagnostic}
-            className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted"
-          >
-            {formatIMessageDiagnostic(diagnostic)}
-          </div>
-        ))}
+        {status?.diagnostics.length ? (
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">
+                Diagnostics
+              </span>
+              <AccessPips
+                items={status.diagnostics.map(() => "warning")}
+                label={`${status.diagnostics.length} diagnostics`}
+              />
+            </summary>
+            <div className="mt-2 space-y-2">
+              {status.diagnostics.map((diagnostic) => (
+                <div
+                  key={diagnostic}
+                  className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted"
+                >
+                  {formatIMessageDiagnostic(diagnostic)}
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
         {imessage.error ? (
           <div className="text-xs text-danger">{imessage.error}</div>
         ) : null}
