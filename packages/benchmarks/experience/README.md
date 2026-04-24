@@ -1,6 +1,6 @@
-# Experience Plugin Benchmark
+# Experience Benchmark
 
-Benchmark suite for evaluating the ElizaOS experience plugin's retrieval quality, reranking correctness, and learning cycle effectiveness.
+Benchmark suite for evaluating the built-in advanced capabilities experience service retrieval quality, reranking correctness, and learning cycle effectiveness.
 
 ## What it tests
 
@@ -56,10 +56,6 @@ The `ExperienceGenerator` creates realistic experiences using domain-specific te
 - **Ground truth clusters**: each experience is tagged with a cluster for precision/recall evaluation
 - **Reproducible**: seeded random generation for deterministic results
 
-## Cross-language coverage
+## Runtime coverage
 
-The experience plugin is implemented in three languages. This benchmark tests the Python implementation directly, but the same reranking algorithm (similarity 70% + quality 30%) is implemented identically in:
-
-- **TypeScript** (`plugins/plugin-experience/typescript/service.ts`) — uses vector embeddings + cosine similarity
-- **Python** (`plugins/plugin-experience/python/elizaos_plugin_experience/service.py`) — uses token overlap + Jaccard similarity
-- **Rust** (`plugins/plugin-experience/rust/src/service.rs`) — uses token overlap + Jaccard similarity
+The runtime experience service is built into advanced capabilities in TypeScript (`packages/typescript/src/features/advanced-capabilities/experience/service.ts`) and uses embeddings with reranking. This benchmark uses a local Python in-memory model (`elizaos_experience_bench/service.py`) so retrieval, reranking, and learning-cycle checks remain runnable without a separate experience plugin checkout.

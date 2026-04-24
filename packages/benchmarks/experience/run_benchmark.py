@@ -23,7 +23,6 @@ from pathlib import Path
 
 # Add paths
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "plugins" / "plugin-experience" / "python"))
 
 from elizaos_experience_bench.runner import ExperienceBenchmarkRunner
 from elizaos_experience_bench.types import BenchmarkConfig, BenchmarkMode
