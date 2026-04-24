@@ -1,4 +1,4 @@
-import { Badge, Button, Textarea, useApp } from "@elizaos/app-core";
+import { Badge, Button, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsCapabilityState,
@@ -7,21 +7,17 @@ import type {
 import {
   Activity,
   Clock3,
-  FileText,
   Loader2,
   Moon,
   RefreshCw,
-  Send,
   Sparkles,
   Sun,
   Unplug,
-  Wand2,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import { useLifeOpsScheduleState } from "../hooks/useLifeOpsScheduleState.js";
-import { useLifeOpsStretchReminder } from "../hooks/useLifeOpsStretchReminder.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
 import { SleepInspectionPanel } from "./SleepInspectionPanel.js";
 
@@ -541,27 +537,20 @@ export function LifeOpsXPanel() {
   const { t } = useApp();
   const ownerX = useLifeOpsXConnector("owner");
   const agentX = useLifeOpsXConnector("agent");
-  const [draft, setDraft] = useState("");
   const status = ownerX.status;
   const agentStatus = agentX.status;
   const connected = status?.connected === true;
   const agentConnected = agentStatus?.connected === true;
-  const hasAgentWrite =
-    agentStatus?.grantedCapabilities.includes("x.write") === true;
-  const identity = readXIdentity(
+  const ownerIdentity = readXIdentity(
     status?.identity ?? null,
     t("lifeopspanels.notConnected", { defaultValue: "Not connected" }),
   );
+  const agentIdentity = readXIdentity(
+    agentStatus?.identity ?? null,
+    t("chat.agentType", { defaultValue: "Agent" }),
+  );
   const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
   const actionPending = ownerX.actionPending || agentX.actionPending;
-
-  const handlePost = useCallback(() => {
-    const text = draft.trim();
-    if (!text) {
-      return;
-    }
-    void agentX.post(text).then(() => setDraft(""));
-  }, [agentX, draft]);
 
   return (
     <PanelShell
@@ -601,118 +590,86 @@ export function LifeOpsXPanel() {
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.identity", { defaultValue: "Identity" })}
+            {t("lifeopspanels.owner", { defaultValue: "Owner" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{identity}</div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {ownerIdentity}
+          </div>
           <div className="mt-1 text-xs text-muted">
-            {status?.hasCredentials
-              ? t("lifeopspanels.credentialsReady", {
-                  defaultValue: "Credentials ready.",
-                })
-              : t("lifeopspanels.credentialsMissing", {
-                  defaultValue: "Not configured.",
+            {connected
+              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+              : t("lifeopspanels.disconnected", {
+                  defaultValue: "Disconnected",
                 })}
           </div>
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.mode", { defaultValue: "Mode" })}
+            {t("chat.agentType", { defaultValue: "Agent" })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{mode}</div>
+          <div className="mt-1 text-sm font-semibold text-txt">
+            {agentIdentity}
+          </div>
           <div className="mt-1 text-xs text-muted">
-            {status?.grantedCapabilities?.length
-              ? status.grantedCapabilities.join(" · ")
-              : t("lifeopspanels.noCapabilities", {
-                  defaultValue: "No access.",
+            {agentConnected
+              ? t("lifeopspanels.connected", { defaultValue: "Connected" })
+              : t("lifeopspanels.disconnected", {
+                  defaultValue: "Disconnected",
                 })}
           </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void ownerX.connect(mode)}
-            disabled={actionPending}
-          >
-            {actionPending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            {connected
-              ? t("lifeopspanels.reconnectOwnerX", {
-                  defaultValue: "Reconnect Owner X",
-                })
-              : t("lifeopspanels.connectOwnerX", {
-                  defaultValue: "Connect Owner X",
-                })}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            onClick={() => void agentX.connect("cloud_managed")}
-            disabled={actionPending}
-          >
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void ownerX.connect(mode)}
+          disabled={actionPending}
+        >
+          {actionPending ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
             <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-            {agentConnected
-              ? t("lifeopspanels.reconnectAgentX", {
-                  defaultValue: "Reconnect Agent X",
-                })
-              : t("lifeopspanels.connectAgentX", {
-                  defaultValue: "Connect Agent X",
-                })}
-          </Button>
-          {connected ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              onClick={() => void ownerX.disconnect()}
-              disabled={actionPending}
-            >
-              <Unplug className="mr-1.5 h-3.5 w-3.5" />
-              {t("lifeopspanels.disconnectOwnerX", {
-                defaultValue: "Disconnect Owner",
+          )}
+          {connected
+            ? t("lifeopspanels.reconnectOwnerX", {
+                defaultValue: "Reconnect Owner X",
+              })
+            : t("lifeopspanels.connectOwnerX", {
+                defaultValue: "Connect Owner X",
               })}
-            </Button>
-          ) : null}
-        </div>
-
-        <Textarea
-          value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          className="min-h-[84px] rounded-2xl border-border/20 bg-bg/36 text-sm"
-          placeholder={t("lifeopspanels.xPostPlaceholder", {
-            defaultValue: "Write an X post",
-          })}
-        />
-        <div className="flex items-center justify-between gap-3">
-          {agentX.lastPost ? (
-            <div className="text-xs text-muted">
-              {agentX.lastPost.postId
-                ? `Last post ${agentX.lastPost.postId}.`
-                : `Last post status ${agentX.lastPost.status}.`}
-            </div>
-          ) : null}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-xl px-3 text-xs font-semibold"
+          onClick={() => void agentX.connect("cloud_managed")}
+          disabled={actionPending}
+        >
+          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+          {agentConnected
+            ? t("lifeopspanels.reconnectAgentX", {
+                defaultValue: "Reconnect Agent X",
+              })
+            : t("lifeopspanels.connectAgentX", {
+                defaultValue: "Connect Agent X",
+              })}
+        </Button>
+        {connected ? (
           <Button
             size="sm"
+            variant="ghost"
             className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={
-              !draft.trim() ||
-              agentX.actionPending ||
-              !agentConnected ||
-              !hasAgentWrite
-            }
-            onClick={handlePost}
+            onClick={() => void ownerX.disconnect()}
+            disabled={actionPending}
           >
-            <Send className="mr-1.5 h-3.5 w-3.5" />
-            {t("lifeopspanels.post", { defaultValue: "Post" })}
+            <Unplug className="mr-1.5 h-3.5 w-3.5" />
+            {t("lifeopspanels.disconnectOwnerX", {
+              defaultValue: "Disconnect Owner",
+            })}
           </Button>
-        </div>
+        ) : null}
       </div>
 
       {status?.grant ? (
@@ -746,119 +703,6 @@ export function LifeOpsXPanel() {
         <div className="text-xs text-danger">
           {ownerX.error ?? agentX.error}
         </div>
-      ) : null}
-    </PanelShell>
-  );
-}
-
-export function LifeOpsStretchPanel() {
-  const { t } = useApp();
-  const stretch = useLifeOpsStretchReminder();
-  const reminder = stretch.stretchReminder;
-  const inspection = stretch.inspection;
-  const seedLabel = stretch.stretchTemplate
-    ? stretch.stretchTemplate.title
-    : t("lifeopspanels.stretchTemplateMissing", {
-        defaultValue: "Unavailable",
-      });
-
-  return (
-    <PanelShell
-      title={t("lifeopspanels.stretch", { defaultValue: "Stretch reminder" })}
-      icon={<Wand2 className="h-4 w-4 shrink-0 text-muted" />}
-      status={
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={() => void stretch.refresh()}
-          disabled={stretch.loading}
-        >
-          {stretch.loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
-          )}
-        </Button>
-      }
-    >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.template", { defaultValue: "Template" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">{seedLabel}</div>
-          {stretch.stretchTemplate?.description ? (
-            <div className="mt-1 text-xs text-muted">
-              {stretch.stretchTemplate.description}
-            </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.reminder", { defaultValue: "Reminder" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {reminder?.title ??
-              t("lifeopspanels.none", { defaultValue: "None" })}
-          </div>
-          {reminder ? (
-            <div className="mt-1 text-xs text-muted">
-              {`${reminder.stepLabel} · ${reminder.state} · ${formatDateTime(reminder.scheduledFor)}`}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={stretch.seedPending}
-          onClick={() => void stretch.createStretchReminder()}
-        >
-          {stretch.seedPending ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-          )}
-          {t("lifeopspanels.createStretch", {
-            defaultValue: "Create stretch reminder",
-          })}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={!reminder || stretch.inspectionPending}
-          onClick={() => void stretch.inspectStretchReminder()}
-        >
-          <FileText className="mr-1.5 h-3.5 w-3.5" />
-          {t("lifeopspanels.inspectReminder", {
-            defaultValue: "Inspect reminder",
-          })}
-        </Button>
-      </div>
-
-      {inspection ? (
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-xs text-muted">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.inspection", { defaultValue: "Inspection" })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {inspection.ownerType} · {inspection.ownerId}
-          </div>
-          <div className="mt-1">
-            {inspection.attempts.length} attempts ·{" "}
-            {inspection.reminderPlan
-              ? "reminder plan loaded"
-              : "no reminder plan"}
-          </div>
-        </div>
-      ) : null}
-
-      {stretch.error ? (
-        <div className="text-xs text-danger">{stretch.error}</div>
       ) : null}
     </PanelShell>
   );
