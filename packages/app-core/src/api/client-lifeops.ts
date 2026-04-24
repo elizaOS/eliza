@@ -5,6 +5,7 @@ import type {
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailManageResult,
@@ -14,7 +15,9 @@ import type {
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoogleConnectorStatus,
+  ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
+  SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/app-lifeops/contracts";
 import { ElizaClient } from "./client-base";
 
@@ -27,6 +30,12 @@ declare module "./client-base" {
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
+    getLifeOpsCalendars(
+      options?: ListLifeOpsCalendarsRequest,
+    ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
+    setLifeOpsCalendarIncluded(
+      data: SetLifeOpsCalendarIncludedRequest,
+    ): Promise<{ calendar: LifeOpsCalendarSummary }>;
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
@@ -94,11 +103,40 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   appendOptionalParam(params, "mode", options.mode);
   appendOptionalParam(params, "side", options.side);
   appendOptionalParam(params, "calendarId", options.calendarId);
+  appendOptionalParam(
+    params,
+    "includeHiddenCalendars",
+    options.includeHiddenCalendars,
+  );
   appendOptionalParam(params, "timeMin", options.timeMin);
   appendOptionalParam(params, "timeMax", options.timeMax);
   appendOptionalParam(params, "timeZone", options.timeZone);
   appendOptionalParam(params, "forceSync", options.forceSync);
   return this.fetch(`/api/lifeops/calendar/feed${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.getLifeOpsCalendars = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "mode", options.mode);
+  appendOptionalParam(params, "side", options.side);
+  appendOptionalParam(params, "grantId", options.grantId);
+  return this.fetch(`/api/lifeops/calendar/calendars${buildQuery(params)}`);
+};
+
+ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch(
+    `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailTriage = async function (

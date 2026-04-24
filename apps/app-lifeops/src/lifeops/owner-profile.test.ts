@@ -1,8 +1,10 @@
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import {
+  ensureLifeOpsCalendarFeedIncludes,
   readLifeOpsMeetingPreferences,
   readLifeOpsOwnerProfile,
+  setLifeOpsCalendarFeedIncluded,
   updateLifeOpsOwnerProfile,
 } from "./owner-profile.js";
 import { LIFEOPS_TASK_NAME, LIFEOPS_TASK_TAGS } from "./scheduler-task.js";
@@ -87,6 +89,127 @@ describe("owner profile scheduler metadata reads", () => {
       "task-1",
       expect.objectContaining({
         description: "Process life-ops reminders and scheduled workflows",
+      }),
+    );
+  });
+
+  test("ensureLifeOpsCalendarFeedIncludes defaults unseen calendars to true without overwriting stored false values", async () => {
+    const schedulerTask = {
+      id: "task-1" as UUID,
+      name: LIFEOPS_TASK_NAME,
+      tags: [...LIFEOPS_TASK_TAGS],
+      metadata: {
+        lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+        calendarFeedPreferences: {
+          calendarFeedIncludes: {
+            "grant-a:primary": false,
+          },
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
+      },
+    } as Task;
+    const updateTask = vi.fn(async () => undefined);
+    const runtime = makeRuntime({
+      updateTask,
+      getTasks: vi.fn(async () => [schedulerTask]),
+    });
+
+    const next = await ensureLifeOpsCalendarFeedIncludes(runtime, [
+      { grantId: "grant-a", calendarId: "primary" },
+      { grantId: "grant-a", calendarId: "family@example.com" },
+    ]);
+
+    expect(next.calendarFeedIncludes).toEqual({
+      "grant-a:primary": false,
+      "grant-a:family@example.com": true,
+    });
+    expect(updateTask).toHaveBeenLastCalledWith(
+      "task-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          calendarFeedPreferences: expect.objectContaining({
+            calendarFeedIncludes: {
+              "grant-a:primary": false,
+              "grant-a:family@example.com": true,
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("ensureLifeOpsCalendarFeedIncludes does not collide across grants with the same primary calendarId", async () => {
+    // Regression for multi-account users: Google returns `calendarId: "primary"`
+    // for every account's primary calendar, so keying on `calendarId` alone
+    // silently merged account A's and account B's preferences. Compositing the
+    // grantId into the key separates them.
+    const schedulerTask = {
+      id: "task-1" as UUID,
+      name: LIFEOPS_TASK_NAME,
+      tags: [...LIFEOPS_TASK_TAGS],
+      metadata: {
+        lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+        calendarFeedPreferences: {
+          calendarFeedIncludes: {
+            "grant-a:primary": false,
+          },
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
+      },
+    } as Task;
+    const updateTask = vi.fn(async () => undefined);
+    const runtime = makeRuntime({
+      updateTask,
+      getTasks: vi.fn(async () => [schedulerTask]),
+    });
+
+    const next = await ensureLifeOpsCalendarFeedIncludes(runtime, [
+      { grantId: "grant-a", calendarId: "primary" },
+      { grantId: "grant-b", calendarId: "primary" },
+    ]);
+
+    expect(next.calendarFeedIncludes).toEqual({
+      "grant-a:primary": false,
+      "grant-b:primary": true,
+    });
+  });
+
+  test("setLifeOpsCalendarFeedIncluded persists an explicit include toggle", async () => {
+    const schedulerTask = {
+      id: "task-1" as UUID,
+      name: LIFEOPS_TASK_NAME,
+      tags: [...LIFEOPS_TASK_TAGS],
+      metadata: {
+        lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+        calendarFeedPreferences: {
+          calendarFeedIncludes: {
+            "grant-a:primary": true,
+          },
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
+      },
+    } as Task;
+    const updateTask = vi.fn(async () => undefined);
+    const runtime = makeRuntime({
+      updateTask,
+      getTasks: vi.fn(async () => [schedulerTask]),
+    });
+
+    const next = await setLifeOpsCalendarFeedIncluded(
+      runtime,
+      { grantId: "grant-a", calendarId: "primary" },
+      false,
+    );
+
+    expect(next.calendarFeedIncludes).toEqual({ "grant-a:primary": false });
+    expect(updateTask).toHaveBeenLastCalledWith(
+      "task-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          calendarFeedPreferences: expect.objectContaining({
+            calendarFeedIncludes: { "grant-a:primary": false },
+          }),
+        }),
       }),
     );
   });

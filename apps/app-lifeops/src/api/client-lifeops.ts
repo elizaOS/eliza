@@ -57,6 +57,7 @@ import type {
   LifeOpsCalendarEventMutationResult,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarSummary,
   LifeOpsCapabilitiesStatus,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -91,9 +92,11 @@ import type {
   LifeOpsInbox,
   LifeOpsXConnectorStatus,
   ManageLifeOpsGmailMessagesRequest,
+  ListLifeOpsCalendarsRequest,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
+  SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
@@ -389,6 +392,12 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
+    getLifeOpsCalendars(
+      options?: ListLifeOpsCalendarsRequest,
+    ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
+    setLifeOpsCalendarIncluded(
+      data: SetLifeOpsCalendarIncludedRequest,
+    ): Promise<{ calendar: LifeOpsCalendarSummary }>;
     getLifeOpsGmailTriage(
       options?: GetLifeOpsGmailTriageRequest,
     ): Promise<LifeOpsGmailTriageFeed>;
@@ -1055,6 +1064,12 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   if (options.calendarId) {
     params.set("calendarId", options.calendarId);
   }
+  if (options.includeHiddenCalendars !== undefined) {
+    params.set(
+      "includeHiddenCalendars",
+      String(options.includeHiddenCalendars),
+    );
+  }
   if (options.timeMin) {
     params.set("timeMin", options.timeMin);
   }
@@ -1069,6 +1084,39 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   }
   const query = params.toString();
   return this.fetch(`/api/lifeops/calendar/feed${query ? `?${query}` : ""}`);
+};
+
+ElizaClient.prototype.getLifeOpsCalendars = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.mode) {
+    params.set("mode", options.mode);
+  }
+  if (options.side) {
+    params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
+  const query = params.toString();
+  return this.fetch(
+    `/api/lifeops/calendar/calendars${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch(
+    `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailTriage = async function (
