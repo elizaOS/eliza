@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { useWorkspaceMobileSidebarControls } from "@elizaos/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AppWorkspaceChrome,
@@ -168,6 +169,117 @@ describe("AppWorkspaceChrome", () => {
     expect(closedSidebar.getAttribute("data-collapsed")).not.toBeNull();
     expect(screen.queryByTestId("mobile-chat")).toBeNull();
     expect(screen.getByTestId("app-workspace-mobile-pane-chat")).toBeTruthy();
+  });
+
+  it("splits mobile controls into left sidebar, content, and right chat", async () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function RegisteredSidebar() {
+      const controls = useWorkspaceMobileSidebarControls();
+      const [open, setOpen] = useState(false);
+
+      useEffect(() => {
+        return controls?.register({
+          id: "test-sidebar",
+          label: "Test sidebar",
+          open,
+          setOpen,
+        });
+      }, [controls, open]);
+
+      return (
+        <div data-testid={open ? "registered-sidebar-open" : "main-content"}>
+          {open ? "Sidebar" : "Main"}
+        </div>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        testId="three-pane-shell"
+        main={<RegisteredSidebar />}
+        chat={<div data-testid="three-pane-chat">Chat content</div>}
+      />,
+    );
+
+    const leftButton = await screen.findByTestId(
+      "app-workspace-mobile-pane-left",
+    );
+    expect(screen.getByTestId("app-workspace-mobile-pane-main")).toBeTruthy();
+    expect(screen.getByTestId("app-workspace-mobile-pane-chat")).toBeTruthy();
+
+    fireEvent.click(leftButton);
+
+    expect(screen.getByTestId("registered-sidebar-open")).toBeTruthy();
+    expect(leftButton.getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
+
+    expect(screen.getByTestId("main-content")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-main")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-chat"));
+
+    expect(screen.getByTestId("three-pane-chat")).toBeTruthy();
+    expect(screen.queryByTestId("registered-sidebar-open")).toBeNull();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-chat")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("omits the mobile right pane button when chat is disabled", async () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function RegisteredSidebar() {
+      const controls = useWorkspaceMobileSidebarControls();
+      const [open, setOpen] = useState(false);
+
+      useEffect(() => {
+        return controls?.register({
+          id: "disabled-chat-sidebar",
+          open,
+          setOpen,
+        });
+      }, [controls, open]);
+
+      return (
+        <div data-testid={open ? "disabled-chat-sidebar-open" : "main-only"}>
+          {open ? "Sidebar" : "Main"}
+        </div>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        chatDisabled
+        testId="disabled-chat-shell"
+        main={<RegisteredSidebar />}
+      />,
+    );
+
+    const leftButton = await screen.findByTestId(
+      "app-workspace-mobile-pane-left",
+    );
+
+    expect(screen.getByTestId("app-workspace-mobile-pane-main")).toBeTruthy();
+    expect(screen.queryByTestId("app-workspace-mobile-pane-chat")).toBeNull();
+
+    fireEvent.click(leftButton);
+    expect(screen.getByTestId("disabled-chat-sidebar-open")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
+    expect(screen.getByTestId("main-only")).toBeTruthy();
+    expect(screen.queryByTestId("disabled-chat-shell-chat-sidebar")).toBeNull();
   });
 
   it("lets main-pane content open chat through the workspace chrome context", () => {
