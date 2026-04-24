@@ -462,14 +462,10 @@ function BrowserCompanionRow({
     localWorkspaceAvailable,
   );
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
-  const installLabel = installButtonLabel(
-    browser,
-    releaseManifest,
-    {
-      hasLocalArtifact,
-      localWorkspaceAvailable,
-    },
-  );
+  const installLabel = installButtonLabel(browser, releaseManifest, {
+    hasLocalArtifact,
+    localWorkspaceAvailable,
+  });
   const buildBadgeLabel = buildStateBadgeLabel(
     hasLocalArtifact,
     localWorkspaceAvailable,
@@ -1127,7 +1123,9 @@ export function BrowserBridgeSetupPanel() {
       ) {
         navigatePreOpenedWindow(preOpenWindow(), CHROME_EXTENSIONS_URL);
         if (!options?.silent) {
-          setStatusMessage("Opened chrome://extensions/ in this browser profile.");
+          setStatusMessage(
+            "Opened chrome://extensions/ in this browser profile.",
+          );
         }
         setError(null);
         return true;
@@ -1195,15 +1193,18 @@ export function BrowserBridgeSetupPanel() {
           const folderResult = await openPackageTarget("chrome_build", true, {
             silent: true,
           });
-          const managerOpened = preOpenedChromeManager
-            ? (navigatePreOpenedWindow(
-                preOpenedChromeManager,
-                CHROME_EXTENSIONS_URL,
-              ),
-              true)
-            : await openBrowserManager("chrome", {
-                silent: true,
-              });
+          let managerOpened: boolean;
+          if (preOpenedChromeManager) {
+            navigatePreOpenedWindow(
+              preOpenedChromeManager,
+              CHROME_EXTENSIONS_URL,
+            );
+            managerOpened = true;
+          } else {
+            managerOpened = await openBrowserManager("chrome", {
+              silent: true,
+            });
+          }
           setStatusMessage(
             managerOpened
               ? folderResult.opened
@@ -1288,16 +1289,21 @@ export function BrowserBridgeSetupPanel() {
             </div>
           </div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={loading}
-          onClick={() => void refresh({ preserveDraft: true })}
-        >
-          <RefreshCw className="mr-1.5 h-3 w-3" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Badge variant={connectionSummary.badgeVariant}>
+            {connectionSummary.badge}
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={loading}
+            onClick={() => void refresh({ preserveDraft: true })}
+          >
+            <RefreshCw className="mr-1.5 h-3 w-3" />
+            Refresh
+          </Button>
+        </div>
       </div>
       {statusMessage ? (
         <div className="rounded-2xl bg-card/22 px-3 py-2 text-xs text-txt">
@@ -1310,185 +1316,197 @@ export function BrowserBridgeSetupPanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_94%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-txt">
-                  {connectionSummary.title}
-                </div>
-                <div className="max-w-xl text-xs leading-relaxed text-muted">
-                  {connectionSummary.detail}
-                </div>
-              </div>
-              <Badge variant={connectionSummary.badgeVariant}>
-                {connectionSummary.badge}
-              </Badge>
-            </div>
+      <details className="rounded-2xl border border-border/18 bg-card/12 px-4 py-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-txt">
+          <span>Browser profiles</span>
+          <span className="text-xs font-medium text-muted">
+            {connectedCompanions.length}/{companions.length}
+          </span>
+        </summary>
 
-            {connectionSummary.steps.length > 0 ? (
-              <div className="mt-4 grid gap-2">
-                {connectionSummary.steps.map((step) => (
-                  <div
-                    key={step}
-                    className="rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted"
-                  >
-                    {step}
+        <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_94%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-txt">
+                    {connectionSummary.title}
                   </div>
-                ))}
-              </div>
-            ) : null}
-
-            {primaryCompanion ? (
-              <div className="mt-4 rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted">
-                Primary browser:{" "}
-                <span className="font-semibold text-txt">
-                  {primaryCompanion.browser === "safari" ? "Safari" : "Chrome"}{" "}
-                  / {primaryCompanion.profileLabel}
-                </span>
-                {" • "}
-                {permissionSummary(primaryCompanion.permissions)}
-              </div>
-            ) : null}
-
-            {isElectrobunRuntime() ? (
-              <div className="mt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold"
-                  onClick={() => void openDesktopBrowser()}
-                >
-                  <Monitor className="mr-1.5 h-3 w-3" />
-                  Open Milady Desktop Browser
-                </Button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-semibold text-txt">
-              Connected Browsers
-            </div>
-            {companions.length > 0 ? (
-              <div className="grid gap-2">
-                {companions.map((companion) => (
-                  <div
-                    key={companion.id}
-                    className="rounded-2xl bg-card/16 px-3 py-3 text-xs"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="text-2xs">
-                        {companion.browser}/{companion.profileLabel}
-                      </Badge>
-                      <Badge variant="secondary" className="text-2xs">
-                        {companion.connectionState}
-                      </Badge>
-                      <span className="text-muted">
-                        {formatTimestamp(companion.lastSeenAt) ?? "Never seen"}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-muted">
-                      {permissionSummary(companion.permissions)}
-                    </div>
+                  <div className="max-w-xl text-xs leading-relaxed text-muted">
+                    {connectionSummary.detail}
                   </div>
-                ))}
+                </div>
+                <Badge variant={connectionSummary.badgeVariant}>
+                  {connectionSummary.badge}
+                </Badge>
               </div>
-            ) : (
-              <div className="rounded-2xl bg-card/14 px-3 py-3 text-xs text-muted">
-                No browser profiles have connected yet. After installing the
-                extension, open its popup once in the browser profile you want
-                LifeOps to use.
-              </div>
-            )}
-          </div>
-        </div>
 
-        <div className="space-y-3">
-          <div className="text-sm font-semibold text-txt">
-            Connect a Browser
-          </div>
-          <BrowserCompanionRow
-            currentBrowser={currentBrowser}
-            browser="chrome"
-            buildPath={packageStatus?.chromeBuildPath}
-            packagePath={packageStatus?.chromePackagePath}
-            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
-            releaseManifest={packageStatus?.releaseManifest ?? null}
-            busy={
-              buildingBrowser === "chrome" ||
-              pairingBrowser === "chrome" ||
-              installingBrowser === "chrome"
-            }
-            pairing={pairings.chrome ?? null}
-            onInstall={installCompanion}
-            onBuild={buildPackage}
-            onCreatePairing={createPairing}
-            onCopyPairing={copyPairing}
-            onDownload={downloadPackage}
-            onOpenTarget={openPackageTarget}
-            onOpenManager={openBrowserManager}
-          />
-          <BrowserCompanionRow
-            currentBrowser={currentBrowser}
-            browser="safari"
-            buildPath={packageStatus?.safariWebExtensionPath}
-            packagePath={packageStatus?.safariPackagePath}
-            appPath={packageStatus?.safariAppPath}
-            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
-            releaseManifest={packageStatus?.releaseManifest ?? null}
-            busy={
-              buildingBrowser === "safari" ||
-              pairingBrowser === "safari" ||
-              installingBrowser === "safari"
-            }
-            pairing={pairings.safari ?? null}
-            onInstall={installCompanion}
-            onBuild={buildPackage}
-            onCreatePairing={createPairing}
-            onCopyPairing={copyPairing}
-            onDownload={downloadPackage}
-            onOpenTarget={openPackageTarget}
-            onOpenManager={openBrowserManager}
-          />
+              {connectionSummary.steps.length > 0 ? (
+                <div className="mt-4 grid gap-2">
+                  {connectionSummary.steps.map((step) => (
+                    <div
+                      key={step}
+                      className="rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted"
+                    >
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
-          {(["chrome", "safari"] as const).map((browser) => {
-            const payload = pairingPayloads[browser];
-            if (!payload) {
-              return null;
-            }
-            return (
-              <div key={browser} className="space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-txt">
-                    {browser === "chrome" ? "Chrome" : "Safari"} pairing
+              {primaryCompanion ? (
+                <div className="mt-4 rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted">
+                  Primary browser:{" "}
+                  <span className="font-semibold text-txt">
+                    {primaryCompanion.browser === "safari"
+                      ? "Safari"
+                      : "Chrome"}{" "}
+                    / {primaryCompanion.profileLabel}
                   </span>
+                  {" • "}
+                  {permissionSummary(primaryCompanion.permissions)}
+                </div>
+              ) : null}
+
+              {isElectrobunRuntime() ? (
+                <div className="mt-4">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void copyPairing(browser)}
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    onClick={() => void openDesktopBrowser()}
                   >
-                    <Copy className="mr-1.5 h-3 w-3" />
-                    Copy
+                    <Monitor className="mr-1.5 h-3 w-3" />
+                    Open Milady Desktop Browser
                   </Button>
                 </div>
-                <Textarea
-                  readOnly
-                  rows={5}
-                  value={payload}
-                  className="font-mono text-xs"
-                />
-                <div className="text-[11px] text-muted">
-                  Manual fallback only. Automatic pairing should work as soon as
-                  the extension popup can see this app in the same browser
-                  profile.
-                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-txt">
+                Connected Browsers
               </div>
-            );
-          })}
+              {companions.length > 0 ? (
+                <div className="grid gap-2">
+                  {companions.map((companion) => (
+                    <div
+                      key={companion.id}
+                      className="rounded-2xl bg-card/16 px-3 py-3 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="text-2xs">
+                          {companion.browser}/{companion.profileLabel}
+                        </Badge>
+                        <Badge variant="secondary" className="text-2xs">
+                          {companion.connectionState}
+                        </Badge>
+                        <span className="text-muted">
+                          {formatTimestamp(companion.lastSeenAt) ??
+                            "Never seen"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-muted">
+                        {permissionSummary(companion.permissions)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-card/14 px-3 py-3 text-xs text-muted">
+                  No browser profiles have connected yet. After installing the
+                  extension, open its popup once in the browser profile you want
+                  LifeOps to use.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-txt">
+              Connect a Browser
+            </div>
+            <BrowserCompanionRow
+              currentBrowser={currentBrowser}
+              browser="chrome"
+              buildPath={packageStatus?.chromeBuildPath}
+              packagePath={packageStatus?.chromePackagePath}
+              localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
+              releaseManifest={packageStatus?.releaseManifest ?? null}
+              busy={
+                buildingBrowser === "chrome" ||
+                pairingBrowser === "chrome" ||
+                installingBrowser === "chrome"
+              }
+              pairing={pairings.chrome ?? null}
+              onInstall={installCompanion}
+              onBuild={buildPackage}
+              onCreatePairing={createPairing}
+              onCopyPairing={copyPairing}
+              onDownload={downloadPackage}
+              onOpenTarget={openPackageTarget}
+              onOpenManager={openBrowserManager}
+            />
+            <BrowserCompanionRow
+              currentBrowser={currentBrowser}
+              browser="safari"
+              buildPath={packageStatus?.safariWebExtensionPath}
+              packagePath={packageStatus?.safariPackagePath}
+              appPath={packageStatus?.safariAppPath}
+              localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
+              releaseManifest={packageStatus?.releaseManifest ?? null}
+              busy={
+                buildingBrowser === "safari" ||
+                pairingBrowser === "safari" ||
+                installingBrowser === "safari"
+              }
+              pairing={pairings.safari ?? null}
+              onInstall={installCompanion}
+              onBuild={buildPackage}
+              onCreatePairing={createPairing}
+              onCopyPairing={copyPairing}
+              onDownload={downloadPackage}
+              onOpenTarget={openPackageTarget}
+              onOpenManager={openBrowserManager}
+            />
+
+            {(["chrome", "safari"] as const).map((browser) => {
+              const payload = pairingPayloads[browser];
+              if (!payload) {
+                return null;
+              }
+              return (
+                <div key={browser} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-txt">
+                      {browser === "chrome" ? "Chrome" : "Safari"} pairing
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void copyPairing(browser)}
+                    >
+                      <Copy className="mr-1.5 h-3 w-3" />
+                      Copy
+                    </Button>
+                  </div>
+                  <Textarea
+                    readOnly
+                    rows={5}
+                    value={payload}
+                    className="font-mono text-xs"
+                  />
+                  <div className="text-[11px] text-muted">
+                    Manual fallback only. Automatic pairing should work as soon
+                    as the extension popup can see this app in the same browser
+                    profile.
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </details>
 
       <details className="rounded-3xl border border-border/18 bg-card/12 px-5 py-4">
         <summary className="cursor-pointer list-none text-sm font-semibold text-txt">

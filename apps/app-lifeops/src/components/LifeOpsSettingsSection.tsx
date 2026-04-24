@@ -12,7 +12,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/app-lifeops/contracts";
-import { Copy, ExternalLink, GitBranch, Plug2, X } from "lucide-react";
+import { Copy, ExternalLink, GitBranch, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
@@ -345,7 +345,10 @@ function GoogleConnectorSideCard({
   const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
-  const [calendarPendingId, setCalendarPendingId] = useState<string | null>(null);
+  const [calendarPendingId, setCalendarPendingId] = useState<string | null>(
+    null,
+  );
+  const [calendarFeedOpen, setCalendarFeedOpen] = useState(false);
   const compactLayout = useMediaQuery("(max-width: 767px)");
   const connectedAccounts = accounts.filter((account) => account.connected);
   const primaryIdentity = readIdentity(
@@ -439,30 +442,36 @@ function GoogleConnectorSideCard({
   );
 
   return (
-    <section className="space-y-3 px-4 py-4">
-      <div className="flex items-center gap-3">
-        <div className="text-sm font-semibold text-txt">
-          {sideTitle(side, t)}
-        </div>
-      </div>
-
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold text-txt">
-          {primaryIdentity.primary}
-        </div>
-        {primaryIdentity.secondary ? (
-          <div className="mt-1 truncate text-xs text-muted">
-            {primaryIdentity.secondary}
+    <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+            <GoogleIcon className="h-5 w-5" />
           </div>
-        ) : null}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-          <GoogleIcon className="h-4 w-4 shrink-0" />
-          <span>Google</span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-sm font-semibold text-txt">
+                {sideTitle(side, t)}
+              </div>
+              <Badge
+                variant={status?.connected ? "secondary" : "outline"}
+                className="text-2xs"
+              >
+                {currentStatusLabel}
+              </Badge>
+            </div>
+            <div className="mt-1 truncate text-sm font-semibold text-txt">
+              {primaryIdentity.primary}
+            </div>
+            {primaryIdentity.secondary ? (
+              <div className="mt-0.5 truncate text-xs text-muted">
+                {primaryIdentity.secondary}
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <SegmentedControl<VisibleConnectorMode>
             aria-label={t("lifeopssettings.googleModeAria", {
               defaultValue: "{{side}} Google mode",
@@ -475,7 +484,7 @@ function GoogleConnectorSideCard({
               label: modeLabel(mode, t),
               disabled: controlDisabled,
             }))}
-            className="w-full bg-bg/40 p-0.5 sm:w-auto"
+            className="min-w-40 flex-1 bg-bg/40 p-0.5 sm:w-auto sm:flex-none"
             buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
           />
           {!status?.connected ? (
@@ -522,12 +531,6 @@ function GoogleConnectorSideCard({
             </Button>
           ) : null}
         </div>
-      </div>
-
-      <div
-        className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}
-      >
-        {currentStatusLabel}
       </div>
 
       {connectedAccounts.length > 0 ? (
@@ -590,68 +593,81 @@ function GoogleConnectorSideCard({
       ) : null}
 
       {status?.connected ? (
-        <div className="space-y-2 rounded-2xl bg-bg/30 px-3 py-3">
-          <div className="text-xs font-semibold text-txt">
-            {t("lifeopssettings.calendarFeedTitle", {
-              defaultValue: "Which calendars appear in your feed?",
-            })}
-          </div>
-          <div className="text-xs leading-5 text-muted">
-            {t("lifeopssettings.calendarFeedDescription", {
-              defaultValue:
-                "These toggles affect the sidebar feed and proactive briefings. Direct calendar actions still read every authorized calendar.",
-            })}
-          </div>
-          {calendarLoading ? (
-            <div className="text-xs text-muted">
-              {t("lifeopssettings.loadingCalendars", {
-                defaultValue: "Loading calendars…",
+        <details
+          className="rounded-2xl bg-bg/30 px-3 py-3"
+          open={calendarFeedOpen}
+          onToggle={(event) =>
+            setCalendarFeedOpen(event.currentTarget.open)
+          }
+        >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-txt">
+            <span>
+              {t("lifeopssettings.calendarFeedTitle", {
+                defaultValue: "Calendar feed",
               })}
-            </div>
-          ) : calendars.length > 0 ? (
-            <div className="grid gap-2">
-              {calendars.map((calendar) => {
-                const disabled =
-                  controlDisabled || calendarPendingId === calendar.calendarId;
-                return (
-                  <label
-                    key={`${calendar.grantId}:${calendar.calendarId}`}
-                    className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
-                      checked={calendar.includeInFeed}
-                      disabled={disabled}
-                      onChange={() => void toggleCalendar(calendar)}
-                    />
-                    <span
-                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          calendar.backgroundColor ?? "rgba(148, 163, 184, 0.8)",
-                      }}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-txt">
-                        {calendar.summary}
+            </span>
+            {calendars.length > 0 ? (
+              <span className="text-muted">
+                {calendars.filter((calendar) => calendar.includeInFeed).length}/
+                {calendars.length}
+              </span>
+            ) : null}
+          </summary>
+          <div className="mt-3 space-y-2">
+            {calendarLoading ? (
+              <div className="text-xs text-muted">
+                {t("lifeopssettings.loadingCalendars", {
+                  defaultValue: "Loading calendars…",
+                })}
+              </div>
+            ) : calendars.length > 0 ? (
+              <div className="grid gap-2">
+                {calendars.map((calendar) => {
+                  const disabled =
+                    controlDisabled ||
+                    calendarPendingId === calendar.calendarId;
+                  return (
+                    <label
+                      key={`${calendar.grantId}:${calendar.calendarId}`}
+                      className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
+                        checked={calendar.includeInFeed}
+                        disabled={disabled}
+                        onChange={() => void toggleCalendar(calendar)}
+                      />
+                      <span
+                        className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            calendar.backgroundColor ??
+                            "rgba(148, 163, 184, 0.8)",
+                        }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-txt">
+                          {calendar.summary}
+                        </span>
+                        <span className="block truncate text-muted">
+                          {calendar.accountEmail ?? calendar.calendarId}
+                        </span>
                       </span>
-                      <span className="block truncate text-muted">
-                        {calendar.accountEmail ?? calendar.calendarId}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-xs text-muted">
-              {t("lifeopssettings.noCalendars", {
-                defaultValue: "No readable calendars found for this connector.",
-              })}
-            </div>
-          )}
-        </div>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-muted">
+                {t("lifeopssettings.noCalendars", {
+                  defaultValue:
+                    "No readable calendars found for this connector.",
+                })}
+              </div>
+            )}
+          </div>
+        </details>
       ) : null}
 
       {visibleAuthUrl ? (
@@ -712,13 +728,8 @@ export function LifeOpsSettingsSection({
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-txt">
-          {t("lifeopssettings.accounts", {
-            defaultValue: "Accounts",
-          })}
-        </div>
-        {cloudAction ? (
+      {cloudAction ? (
+        <div className="flex justify-end">
           <Button
             size="sm"
             variant="outline"
@@ -727,8 +738,8 @@ export function LifeOpsSettingsSection({
           >
             {cloudAction.label}
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {githubError ? (
         <div className="py-1 text-xs text-muted">{githubError}</div>

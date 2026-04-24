@@ -28,11 +28,7 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   LifeOpsInboxSection,
 } from "./LifeOpsInboxSection.js";
-import {
-  LifeOpsCapabilitiesPanel,
-  LifeOpsSchedulePanel,
-  LifeOpsXPanel,
-} from "./LifeOpsOperationalPanels";
+import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
 import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
@@ -403,11 +399,7 @@ function LifeOpsSettingsSectionView({
       />
       <MessagingConnectorGrid />
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <LifeOpsSchedulePanel />
-        <LifeOpsCapabilitiesPanel />
-        <LifeOpsXPanel />
-      </div>
+      <LifeOpsXPanel />
     </div>
   );
 }

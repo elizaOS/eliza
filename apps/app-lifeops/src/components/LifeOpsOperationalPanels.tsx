@@ -554,7 +554,7 @@ export function LifeOpsXPanel() {
 
   return (
     <PanelShell
-      title={t("lifeopspanels.xAccount", { defaultValue: "X account" })}
+      title={t("lifeopspanels.xAccount", { defaultValue: "X" })}
       icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" />}
       status={
         <div className="flex items-center gap-2">
@@ -671,20 +671,6 @@ export function LifeOpsXPanel() {
           </Button>
         ) : null}
       </div>
-
-      {status?.grant ? (
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="text-2xs">
-            {status.grant.provider}
-          </Badge>
-          <Badge variant="outline" className="text-2xs">
-            {status.grant.mode}
-          </Badge>
-          <Badge variant="outline" className="text-2xs">
-            {status.grantedScopes.length} scopes
-          </Badge>
-        </div>
-      ) : null}
 
       {ownerX.pendingAuthUrl || agentX.pendingAuthUrl ? (
         <a
