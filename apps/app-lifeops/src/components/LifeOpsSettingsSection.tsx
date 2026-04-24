@@ -596,9 +596,7 @@ function GoogleConnectorSideCard({
         <details
           className="rounded-2xl bg-bg/30 px-3 py-3"
           open={calendarFeedOpen}
-          onToggle={(event) =>
-            setCalendarFeedOpen(event.currentTarget.open)
-          }
+          onToggle={(event) => setCalendarFeedOpen(event.currentTarget.open)}
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-txt">
             <span>
