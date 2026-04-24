@@ -72,6 +72,7 @@
   "workspaces": [
     "packages/*",
     "packages/native-plugins/*",
+    "packages/app-core/deploy/cloud-agent-template",
     "apps/*",
     "plugins/*",
     "plugins/*/typescript",
