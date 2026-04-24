@@ -187,11 +187,19 @@ function hasCodexCliSubscriptionAuth(): boolean {
  * awaited without `await` — silently marking every user as
  * "configured: true".
  */
+export type SubscriptionCredentialSource =
+  | "app"
+  | "claude-code-cli"
+  | "setup-token"
+  | "codex-cli"
+  | null;
+
 export function getSubscriptionStatus(): Array<{
   provider: SubscriptionProvider;
   configured: boolean;
   valid: boolean;
   expiresAt: number | null;
+  source: SubscriptionCredentialSource;
 }> {
   const providers: SubscriptionProvider[] = [
     "anthropic-subscription",
@@ -206,14 +214,17 @@ export function getSubscriptionStatus(): Array<{
     const claudeBlob =
       provider === "anthropic-subscription" ? readClaudeCodeOAuthBlob() : null;
     let importedClaudeAuth: string | null = null;
+    let claudeSource: SubscriptionCredentialSource = null;
     if (provider === "anthropic-subscription") {
       if (claudeBlob?.accessToken) {
         // Blob exists with a parsed accessToken — the user has Claude
         // Code installed and authenticated. Expiry is validated
         // below via the `valid` field.
         importedClaudeAuth = claudeBlob.accessToken;
+        claudeSource = "claude-code-cli";
       } else {
         importedClaudeAuth = readConfiguredAnthropicSetupToken();
+        if (importedClaudeAuth) claudeSource = "setup-token";
       }
     }
     const importedCodexAuth =
@@ -231,6 +242,18 @@ export function getSubscriptionStatus(): Array<{
       ? blobExpiresAt === null || blobExpiresAt > Date.now()
       : false;
 
+    // App-owned credentials take priority over system/CLI sources —
+    // they represent an explicit in-app OAuth, and they're the only
+    // source the DELETE /api/subscription/{provider} route can clear.
+    let source: SubscriptionCredentialSource = null;
+    if (stored !== null) {
+      source = "app";
+    } else if (provider === "anthropic-subscription" && claudeSource) {
+      source = claudeSource;
+    } else if (importedCodexAuth) {
+      source = "codex-cli";
+    }
+
     return {
       provider,
       configured:
@@ -241,6 +264,7 @@ export function getSubscriptionStatus(): Array<{
           ? blobValid
           : Boolean(importedCodexAuth),
       expiresAt: stored?.credentials.expires ?? blobExpiresAt,
+      source,
     };
   });
 }

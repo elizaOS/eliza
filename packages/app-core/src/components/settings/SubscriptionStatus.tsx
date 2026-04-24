@@ -34,9 +34,22 @@ export interface SubscriptionStatusProps {
     configured: boolean;
     valid: boolean;
     expiresAt: number | null;
+    source?:
+      | "app"
+      | "claude-code-cli"
+      | "setup-token"
+      | "codex-cli"
+      | null;
   }>;
   anthropicConnected: boolean;
   setAnthropicConnected: (v: boolean) => void;
+  /**
+   * True when Claude Code CLI credentials exist on this machine but the user
+   * has NOT linked their subscription via the in-app OAuth flow. In this
+   * state the panel shows a read-only notice and hides the Disconnect
+   * button — the app can't clear CLI-owned credentials.
+   */
+  anthropicCliDetected: boolean;
   openaiConnected: boolean;
   setOpenaiConnected: (v: boolean) => void;
   handleSelectSubscription: (
@@ -49,6 +62,15 @@ export interface SubscriptionStatusProps {
 interface SubscriptionProviderPanelProps {
   providerId: SubscriptionProviderSelectionId;
   connected: boolean;
+  /**
+   * Whether this panel owns credentials it can actually delete via
+   * `DELETE /api/subscription/{provider}`. When false (e.g. Claude Code CLI
+   * credentials detected on disk), the Disconnect button is hidden since
+   * clicking it would be a no-op and just confuse the user.
+   */
+  canDisconnect?: boolean;
+  /** Optional notice rendered below the header (e.g. for CLI-detected state). */
+  externalNotice?: ReactNode;
   configuredButInvalid: boolean;
   titleConnected: string;
   titleDisconnected: string;
@@ -92,6 +114,8 @@ function StatusDot({ connected }: { connected: boolean }) {
 
 function SubscriptionProviderPanel({
   connected,
+  canDisconnect = true,
+  externalNotice,
   configuredButInvalid,
   titleConnected,
   titleDisconnected,
@@ -130,7 +154,7 @@ function SubscriptionProviderPanel({
             {connected ? titleConnected : titleDisconnected}
           </span>
         </div>
-        {connected && (
+        {connected && canDisconnect && (
           <Button
             variant="outline"
             size="sm"
@@ -146,6 +170,8 @@ function SubscriptionProviderPanel({
       </div>
 
       {warningBanner}
+
+      {externalNotice}
 
       {configuredButInvalid && (
         <div className="text-xs text-warn">{invalidWarning}</div>
@@ -216,6 +242,7 @@ export function SubscriptionStatus({
   subscriptionStatus,
   anthropicConnected,
   setAnthropicConnected,
+  anthropicCliDetected,
   openaiConnected,
   setOpenaiConnected,
   handleSelectSubscription,
@@ -551,11 +578,27 @@ export function SubscriptionStatus({
         <SubscriptionProviderPanel
           providerId="anthropic-subscription"
           connected={anthropicConnected}
+          externalNotice={
+            anthropicCliDetected && !anthropicConnected ? (
+              <div className="rounded-lg border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
+                <div className="font-semibold">
+                  {t("subscriptionstatus.ClaudeCodeCliDetectedTitle")}
+                </div>
+                <p className="mt-1 text-muted">
+                  {t("subscriptionstatus.ClaudeCodeCliDetectedBody")}
+                </p>
+              </div>
+            ) : undefined
+          }
           configuredButInvalid={Boolean(
             anthropicStatus?.configured && !anthropicStatus.valid,
           )}
           titleConnected={t("subscriptionstatus.ConnectedToClaudeSubscription")}
-          titleDisconnected={t("subscriptionstatus.ClaudeSubscriptionTitle")}
+          titleDisconnected={
+            anthropicCliDetected
+              ? t("subscriptionstatus.ClaudeCodeCliDetectedTitle")
+              : t("subscriptionstatus.ClaudeSubscriptionTitle")
+          }
           loginLabel={t("onboarding.loginWithAnthropic")}
           loginHint={t("subscriptionstatus.RequiresClaudePro")}
           connectedSummary={t("subscriptionstatus.YourClaudeSubscrip")}

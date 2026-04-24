@@ -150,9 +150,16 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       configured: boolean;
       valid: boolean;
       expiresAt: number | null;
+      source?:
+        | "app"
+        | "claude-code-cli"
+        | "setup-token"
+        | "codex-cli"
+        | null;
     }>
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);
+  const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
   const [openaiConnected, setOpenaiConnected] = useState(false);
 
   const hasManualSelection = useRef(false);
@@ -289,7 +296,22 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       (s) =>
         s.provider === "openai-subscription" || s.provider === "openai-codex",
     );
-    setAnthropicConnected(Boolean(anthStatus?.configured && anthStatus?.valid));
+    // Only treat as "connected" when credentials were linked via the in-app
+    // OAuth flow (source === "app"). Claude Code CLI credentials detected on
+    // the machine are surfaced separately — the app can't disconnect them.
+    const anthAppConnected = Boolean(
+      anthStatus?.configured &&
+        anthStatus?.valid &&
+        anthStatus?.source === "app",
+    );
+    setAnthropicConnected(anthAppConnected);
+    setAnthropicCliDetected(
+      Boolean(
+        anthStatus?.configured &&
+          anthStatus?.valid &&
+          anthStatus?.source === "claude-code-cli",
+      ),
+    );
     setOpenaiConnected(Boolean(oaiStatus?.configured && oaiStatus?.valid));
   }, [subscriptionStatus]);
 
@@ -787,6 +809,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           subscriptionStatus={subscriptionStatus}
           anthropicConnected={anthropicConnected}
           setAnthropicConnected={setAnthropicConnected}
+          anthropicCliDetected={anthropicCliDetected}
           openaiConnected={openaiConnected}
           setOpenaiConnected={setOpenaiConnected}
           handleSelectSubscription={handleSelectSubscription}
