@@ -31,7 +31,6 @@ import {
 import {
   LifeOpsCapabilitiesPanel,
   LifeOpsSchedulePanel,
-  LifeOpsStretchPanel,
   LifeOpsXPanel,
 } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
@@ -50,7 +49,6 @@ import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
-import { PermissionsPanel } from "./PermissionsPanel";
 
 type EnablePromptProps = {
   loading: boolean;
@@ -409,10 +407,7 @@ function LifeOpsSettingsSectionView({
         <LifeOpsSchedulePanel />
         <LifeOpsCapabilitiesPanel />
         <LifeOpsXPanel />
-        <LifeOpsStretchPanel />
       </div>
-
-      <PermissionsPanel />
     </div>
   );
 }
