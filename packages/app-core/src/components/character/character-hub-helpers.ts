@@ -172,13 +172,9 @@ export function buildCharacterOverviewItems(options: {
     ...knowledgeItems,
     ...experienceItems,
     ...relationshipItems,
-  ]
-    .sort((left, right) => {
-      const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : 0;
-      const rightTime = right.timestamp
-        ? new Date(right.timestamp).getTime()
-        : 0;
-      return rightTime - leftTime;
-    })
-    .slice(0, 50);
+  ].sort((left, right) => {
+    const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : 0;
+    const rightTime = right.timestamp ? new Date(right.timestamp).getTime() : 0;
+    return rightTime - leftTime;
+  });
 }

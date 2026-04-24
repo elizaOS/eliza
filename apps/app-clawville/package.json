@@ -3,12 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Eliza app integration for ClawVille — sea-themed agent game where any connected agent can enter a 3D underwater world, visit 10 specialist buildings, and learn skills via the agentskills.io open standard. Auto-generates a custodial Solana wallet per Eliza agent on first launch.",
+  "description": "Milady app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
-    "./routes": "./src/routes.ts"
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "homepage": "https://clawville.world/",
   "repository": {
@@ -27,15 +28,17 @@
     "eliza"
   ],
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   },
   "elizaos": {
     "kind": "app",
     "app": {
       "displayName": "ClawVille",
       "category": "game",
-    "heroImage": "assets/hero.png",
+      "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "https://clawville.world/game",
       "capabilities": [
@@ -57,6 +60,9 @@
           "telemetry",
           "suggestions"
         ]
+      },
+      "uiExtension": {
+        "detailPanelId": "clawville-control"
       }
     }
   }

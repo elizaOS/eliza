@@ -7,6 +7,14 @@ import {
   SidebarScrollRegion,
 } from "@elizaos/ui";
 import {
+  BookOpen,
+  Brain,
+  LayoutDashboard,
+  type LucideIcon,
+  Network,
+  PencilLine,
+} from "lucide-react";
+import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -32,7 +40,10 @@ import {
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
-import { CharacterOverviewSection } from "./CharacterOverviewSection";
+import {
+  type CharacterOverviewInsight,
+  CharacterOverviewSection,
+} from "./CharacterOverviewSection";
 import { CharacterPersonalityTimeline } from "./CharacterPersonalityTimeline";
 import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
 import {
@@ -45,6 +56,99 @@ import {
 } from "./character-hub-helpers";
 
 type CharacterStyleSection = "all" | "chat" | "post";
+
+const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
+  overview: "/character",
+  personality: "/character/personality",
+  knowledge: "/character/knowledge",
+  experience: "/character/experience",
+  relationships: "/character/relationships",
+};
+
+const CHARACTER_SECTION_META: Record<
+  CharacterHubSection,
+  {
+    description: string;
+    icon: LucideIcon;
+  }
+> = {
+  overview: {
+    description: "Recent character activity",
+    icon: LayoutDashboard,
+  },
+  personality: {
+    description: "Bio, style rules, examples",
+    icon: PencilLine,
+  },
+  knowledge: {
+    description: "Documents, chunks, CRUD",
+    icon: BookOpen,
+  },
+  experience: {
+    description: "Learnings, confidence, review",
+    icon: Brain,
+  },
+  relationships: {
+    description: "People, facts, graph context",
+    icon: Network,
+  },
+};
+
+function getSectionFromLocation(tab: string): CharacterHubSection {
+  if (typeof window === "undefined") return "overview";
+  const pathname = window.location.pathname.toLowerCase();
+  if (pathname.endsWith("/personality")) return "personality";
+  if (pathname.endsWith("/knowledge")) return "knowledge";
+  if (pathname.endsWith("/experience")) return "experience";
+  if (pathname.endsWith("/relationships")) return "relationships";
+  if (tab === "knowledge") return "knowledge";
+  return "overview";
+}
+
+function updateCharacterSectionPath(
+  section: CharacterHubSection,
+  mode: "push" | "replace" = "push",
+): void {
+  if (typeof window === "undefined") return;
+  const path = CHARACTER_SECTION_PATHS[section];
+  if (!path || window.location.pathname === path) return;
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    null,
+    "",
+    path,
+  );
+}
+
+function countDuplicateValues(values: string[]): number {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) continue;
+    if (seen.has(normalized)) {
+      duplicates.add(normalized);
+    }
+    seen.add(normalized);
+  }
+  return duplicates.size;
+}
+
+const DEFAULT_KNOWLEDGE_FILENAMES = new Set([
+  "eliza-overview.txt",
+  "eliza-history.txt",
+  "eliza-cloud-basics.txt",
+]);
+
+function isDefaultKnowledgeDocument(document: KnowledgeDocument): boolean {
+  const normalizedFilename = document.filename.trim().toLowerCase();
+  return (
+    document.source === "bundled" ||
+    document.source === "character" ||
+    document.provenance.kind === "bundled" ||
+    document.provenance.kind === "character" ||
+    DEFAULT_KNOWLEDGE_FILENAMES.has(normalizedFilename)
+  );
+}
 
 function mergeCharacterPatch(
   base: CharacterData,
@@ -99,8 +203,8 @@ export function CharacterHubView({
   canReset: boolean;
 }) {
   const { setActionNotice, setTab, tab, t } = useApp();
-  const [activeSection, setActiveSection] = useState<CharacterHubSection>(
-    tab === "knowledge" ? "knowledge" : "overview",
+  const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
+    getSectionFromLocation(tab),
   );
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<
     KnowledgeDocument[]
@@ -202,14 +306,16 @@ export function CharacterHubView({
   }, [flushPendingAutoSave]);
 
   useEffect(() => {
-    if (tab === "knowledge") {
-      setActiveSection("knowledge");
-    }
+    setActiveSection(getSectionFromLocation(tab));
   }, [tab]);
 
   useEffect(() => {
-    setTab(activeSection === "knowledge" ? "knowledge" : "character");
-  }, [activeSection, setTab]);
+    const handlePopState = () => {
+      setActiveSection(getSectionFromLocation(tab));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [tab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,21 +431,167 @@ export function CharacterHubView({
     };
   }, []);
 
+  const customKnowledgeDocuments = useMemo(
+    () =>
+      knowledgeDocuments.filter(
+        (document) => !isDefaultKnowledgeDocument(document),
+      ),
+    [knowledgeDocuments],
+  );
+  const needsKnowledgeUpload = customKnowledgeDocuments.length === 0;
+
   const overviewItems = useMemo(
     () =>
       buildCharacterOverviewItems({
         history: historyEntries,
-        documents: knowledgeDocuments,
+        documents: customKnowledgeDocuments,
         experiences: experienceRecords,
         relationshipActivity,
       }),
     [
+      customKnowledgeDocuments,
       experienceRecords,
       historyEntries,
-      knowledgeDocuments,
       relationshipActivity,
     ],
   );
+  const balancedOverviewItems = useMemo(() => {
+    const byKind = new Map<string, typeof overviewItems>();
+    for (const item of overviewItems) {
+      const bucket = byKind.get(item.kind) ?? [];
+      if (bucket.length < 4) {
+        bucket.push(item);
+        byKind.set(item.kind, bucket);
+      }
+    }
+    return Array.from(byKind.values())
+      .flat()
+      .sort((left, right) => {
+        const leftTime = left.timestamp
+          ? new Date(left.timestamp).getTime()
+          : 0;
+        const rightTime = right.timestamp
+          ? new Date(right.timestamp).getTime()
+          : 0;
+        return rightTime - leftTime;
+      });
+  }, [overviewItems]);
+
+  const styleRules = d.style?.all ?? [];
+  const duplicateStyleRules = countDuplicateValues(styleRules);
+  const postExamples = d.postExamples ?? [];
+  const duplicatePostExamples = countDuplicateValues(postExamples);
+  const lowConfidenceExperiences = experienceRecords.filter(
+    (experience) => experience.confidence < 0.55,
+  ).length;
+  const overviewInsights: CharacterOverviewInsight[] = [
+    ...(hasPendingChanges
+      ? [
+          {
+            id: "pending-personality",
+            section: "personality" as const,
+            title: "Unsaved personality changes",
+            detail: "Bio edits still need a manual save.",
+            tone: "warn" as const,
+          },
+        ]
+      : []),
+    ...(duplicateStyleRules > 0
+      ? [
+          {
+            id: "duplicate-style",
+            section: "personality" as const,
+            title: "Duplicate style rules",
+            detail: `${duplicateStyleRules} repeated style rule ${duplicateStyleRules === 1 ? "entry" : "entries"} should be merged.`,
+            tone: "warn" as const,
+          },
+        ]
+      : []),
+    ...(duplicatePostExamples > 0
+      ? [
+          {
+            id: "duplicate-posts",
+            section: "personality" as const,
+            title: "Duplicate post examples",
+            detail: `${duplicatePostExamples} repeated post example ${duplicatePostExamples === 1 ? "entry" : "entries"} should be trimmed.`,
+            tone: "warn" as const,
+          },
+        ]
+      : []),
+    ...(needsKnowledgeUpload
+      ? [
+          {
+            id:
+              knowledgeDocuments.length === 0
+                ? "empty-knowledge"
+                : "default-knowledge-only",
+            section: "knowledge" as const,
+            title:
+              knowledgeDocuments.length === 0
+                ? "No knowledge uploaded"
+                : "Only default knowledge loaded",
+            detail:
+              "Upload documents, notes, or links to give this character source material that is specific to your workspace.",
+            tone: "warn" as const,
+          },
+        ]
+      : []),
+    ...(knowledgeDocuments.some((document) => document.fragmentCount === 0)
+      ? [
+          {
+            id: "empty-fragments",
+            section: "knowledge" as const,
+            title: "Knowledge without chunks",
+            detail: "At least one document has no retrievable chunks.",
+            tone: "danger" as const,
+          },
+        ]
+      : []),
+    ...(lowConfidenceExperiences > 0
+      ? [
+          {
+            id: "low-confidence-experience",
+            section: "experience" as const,
+            title: "Experience review needed",
+            detail: `${lowConfidenceExperiences} learned ${lowConfidenceExperiences === 1 ? "experience has" : "experiences have"} low confidence.`,
+            tone: "warn" as const,
+          },
+        ]
+      : []),
+    ...(experienceError
+      ? [
+          {
+            id: "experience-error",
+            section: "experience" as const,
+            title: "Experience load failed",
+            detail: experienceError,
+            tone: "danger" as const,
+          },
+        ]
+      : []),
+    ...(relationshipActivityError
+      ? [
+          {
+            id: "relationship-error",
+            section: "relationships" as const,
+            title: "Relationship activity failed",
+            detail: relationshipActivityError,
+            tone: "danger" as const,
+          },
+        ]
+      : []),
+    ...(historyError
+      ? [
+          {
+            id: "history-error",
+            section: "personality" as const,
+            title: "Personality history failed",
+            detail: historyError,
+            tone: "danger" as const,
+          },
+        ]
+      : []),
+  ];
 
   const timelineItems = useMemo(
     () => historyEntries.map(mapHistoryEntryToTimelineItem),
@@ -352,11 +604,27 @@ export function CharacterHubView({
 
   const activeSectionLabel = getCharacterHubSectionLabel(activeSection);
 
+  const navigateToSection = useCallback(
+    (section: CharacterHubSection) => {
+      setActiveSection(section);
+      if (section === "knowledge") {
+        if (tab !== "knowledge") {
+          setTab("knowledge");
+        } else {
+          updateCharacterSectionPath(section);
+        }
+        return;
+      }
+      updateCharacterSectionPath(section);
+    },
+    [setTab, tab],
+  );
+
   const scrollPersonalitySectionIntoView = (
     section: "bio" | "style" | "examples" | "evolution",
   ) => {
     if (activeSection !== "personality") {
-      setActiveSection("personality");
+      navigateToSection("personality");
       requestAnimationFrame(() => {
         personalitySectionRefs.current[section]?.scrollIntoView({
           behavior: "smooth",
@@ -377,19 +645,19 @@ export function CharacterHubView({
   ) => {
     if (item.kind === "knowledge") {
       setSelectedKnowledgeDocumentId(item.id.replace("knowledge:", ""));
-      setActiveSection("knowledge");
+      navigateToSection("knowledge");
       return;
     }
     if (item.kind === "experience") {
       setSelectedExperienceId(item.id.replace("experience:", ""));
-      setActiveSection("experience");
+      navigateToSection("experience");
       return;
     }
     if (item.kind === "relationship") {
-      setActiveSection("relationships");
+      navigateToSection("relationships");
       return;
     }
-    setActiveSection("personality");
+    navigateToSection("personality");
   };
 
   const handleSaveExperience = async (
@@ -537,35 +805,53 @@ export function CharacterHubView({
   }, [clearPendingAutoSave, onReset]);
 
   const sectionNav = (
-    <SidebarPanel className="gap-3 bg-transparent p-0 shadow-none">
+    <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
+      <SidebarContent.SectionLabel className="px-2">
+        Character
+      </SidebarContent.SectionLabel>
       <nav className="flex flex-col gap-1" aria-label="Character hub sections">
-        {CHARACTER_HUB_SECTIONS.map((section) => (
-          <SidebarContent.Item
-            key={section}
-            active={activeSection === section}
-            onClick={() => setActiveSection(section)}
-            aria-current={activeSection === section ? "page" : undefined}
-            className="items-center gap-2 px-2.5 py-2"
-          >
-            <SidebarContent.ItemTitle
-              className={
-                activeSection === section ? "font-semibold" : "font-medium"
-              }
-            >
-              {getCharacterHubSectionLabel(section)}
-            </SidebarContent.ItemTitle>
-          </SidebarContent.Item>
-        ))}
+        {CHARACTER_HUB_SECTIONS.map((section) =>
+          (() => {
+            const meta = CHARACTER_SECTION_META[section];
+            const Icon = meta.icon;
+            const active = activeSection === section;
+            return (
+              <SidebarContent.Item
+                key={section}
+                active={active}
+                onClick={() => navigateToSection(section)}
+                aria-current={active ? "page" : undefined}
+                className="items-center gap-2 px-2.5 py-2"
+              >
+                <SidebarContent.ItemIcon
+                  active={active}
+                  className={`mt-0 h-8 w-8 bg-transparent p-0 group-hover:bg-transparent ${
+                    active ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" aria-hidden />
+                </SidebarContent.ItemIcon>
+                <SidebarContent.ItemBody>
+                  <SidebarContent.ItemTitle
+                    className={`truncate text-sm leading-5 ${
+                      active ? "font-semibold" : "font-medium"
+                    }`}
+                  >
+                    {getCharacterHubSectionLabel(section)}
+                  </SidebarContent.ItemTitle>
+                </SidebarContent.ItemBody>
+              </SidebarContent.Item>
+            );
+          })(),
+        )}
       </nav>
     </SidebarPanel>
   );
 
   const contextualSidebar =
     activeSection === "personality" ? (
-      <SidebarPanel className="gap-2 bg-transparent p-0 shadow-none">
-        <div className="px-2.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted/70">
-          Personality
-        </div>
+      <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
+        <SidebarContent.SectionLabel>Personality</SidebarContent.SectionLabel>
         <div className="flex flex-col gap-1">
           {(
             [
@@ -588,29 +874,8 @@ export function CharacterHubView({
         </div>
       </SidebarPanel>
     ) : activeSection === "knowledge" ? (
-      <SidebarPanel className="gap-2 bg-transparent p-0 shadow-none">
-        <div className="flex items-center justify-between gap-2 px-2.5">
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Documents
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-            onClick={() =>
-              document.getElementById("character-hub-knowledge-upload")?.click()
-            }
-            title={t("knowledgeview.ChooseFiles", {
-              defaultValue: "Choose files",
-            })}
-            aria-label={t("knowledgeview.ChooseFiles", {
-              defaultValue: "Choose files",
-            })}
-          >
-            +
-          </Button>
-        </div>
+      <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
+        <SidebarContent.SectionLabel>Documents</SidebarContent.SectionLabel>
         <div className="ml-2 flex flex-col gap-0.5 border-l border-border/25 pl-2">
           {knowledgeDocuments.length > 0 ? (
             knowledgeDocuments.map((document) => (
@@ -643,8 +908,13 @@ export function CharacterHubView({
     if (activeSection === "overview") {
       return (
         <CharacterOverviewSection
-          items={overviewItems}
+          insights={overviewInsights}
+          items={balancedOverviewItems}
+          needsKnowledgeUpload={needsKnowledgeUpload}
           onOpenItem={handleOverviewOpen}
+          onOpenIdentitySettings={() => setTab("settings")}
+          onOpenKnowledgeUpload={() => navigateToSection("knowledge")}
+          onOpenSection={navigateToSection}
         />
       );
     }
@@ -825,8 +1095,9 @@ export function CharacterHubView({
             {relationshipActivityError}
           </div>
         ) : null}
-        <div className="min-h-[56rem]">
+        <div className="min-h-[40rem]">
           <RelationshipsWorkspaceView
+            embedded
             onViewMemories={() => {
               setTab("memories");
             }}

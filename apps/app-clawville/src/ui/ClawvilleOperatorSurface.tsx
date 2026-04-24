@@ -4,7 +4,28 @@ import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/
 import { useApp } from "@elizaos/app-core/state";
 import { Button, Input } from "@elizaos/ui";
 
-const LANES = ["top", "mid", "bot"] as const;
+const PRIMARY_COMMANDS = [
+  {
+    id: "move-krusty",
+    label: "Move Krusty Krab",
+    command: "Move to Krusty Krab",
+  },
+  {
+    id: "move-chum",
+    label: "Move Chum Bucket",
+    command: "Move to Chum Bucket",
+  },
+  {
+    id: "visit-nearest",
+    label: "Visit Nearest",
+    command: "Visit the nearest building",
+  },
+  {
+    id: "ask-npc",
+    label: "Ask NPC",
+    command: "Ask the nearest NPC what to learn next",
+  },
+] as const;
 
 function readString(
   source: Record<string, unknown> | null,
@@ -24,35 +45,10 @@ function readNumber(
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function formatHeroClass(value: string | null): string {
-  if (!value) return "Not deployed";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatHeroLine(telemetry: Record<string, unknown> | null): string {
-  const heroClass = formatHeroClass(readString(telemetry, "heroClass"));
-  const lane = readString(telemetry, "heroLane");
-  const level = readNumber(telemetry, "heroLevel");
-  const hp = readNumber(telemetry, "heroHp");
-  const maxHp = readNumber(telemetry, "heroMaxHp");
-  const hpLabel = hp !== null && maxHp !== null ? `, ${hp}/${maxHp} HP` : "";
-  const laneLabel = lane ? ` ${lane}` : "";
-  const levelLabel = level !== null ? ` Lv${level}` : "";
-  return `${heroClass}${levelLabel}${laneLabel}${hpLabel}`;
-}
-
-function isLearnPrompt(prompt: string): boolean {
-  return /^learn\s+/i.test(prompt);
-}
-
-function isRelevantPrompt(prompt: string): boolean {
-  return (
-    isLearnPrompt(prompt) ||
-    /^reinforce\s+/i.test(prompt) ||
-    /^move\s+to\s+/i.test(prompt) ||
-    /^recall/i.test(prompt) ||
-    /^review strategy$/i.test(prompt)
-  );
+function shortenWallet(value: string | null): string {
+  if (!value) return "No wallet";
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function statusTone(status: string): string {
@@ -65,7 +61,7 @@ function statusTone(status: string): string {
   return "border-border/45 bg-bg-hover/70 text-muted-strong";
 }
 
-export function DefenseAgentsOperatorSurface({
+export function ClawvilleOperatorSurface({
   appName,
   variant = "detail",
   focus = "all",
@@ -88,16 +84,13 @@ export function DefenseAgentsOperatorSurface({
     run?.session?.telemetry && typeof run.session.telemetry === "object"
       ? (run.session.telemetry as Record<string, unknown>)
       : null;
-  const heroLane = readString(telemetry, "heroLane");
-  const heroClass = readString(telemetry, "heroClass") ?? "mage";
-  const autoPlay = telemetry?.autoPlay === true;
+  const nearestBuilding =
+    readString(telemetry, "nearestBuildingLabel") ??
+    readString(telemetry, "nearestBuildingId") ??
+    "reef";
+  const walletLabel = shortenWallet(readString(telemetry, "walletAddress"));
+  const knowledgeCount = readNumber(telemetry, "knowledgeCount");
   const canSend = Boolean(run?.runId && run.session?.canSendCommands);
-  const suggestedPrompts = (run?.session?.suggestedPrompts ?? []).filter(
-    isRelevantPrompt,
-  );
-  const tacticalPrompts = suggestedPrompts.filter(
-    (prompt) => !/^auto[- ]?play/i.test(prompt),
-  );
   const showDashboard = focus !== "chat";
   const showChat = focus !== "dashboard";
 
@@ -116,7 +109,7 @@ export function DefenseAgentsOperatorSurface({
         setNotice(response.message ?? "Command sent.");
       } catch (error) {
         setNotice(
-          error instanceof Error ? error.message : "Defense command failed.",
+          error instanceof Error ? error.message : "ClawVille command failed.",
         );
       } finally {
         setSendingCommand(null);
@@ -129,10 +122,10 @@ export function DefenseAgentsOperatorSurface({
     return (
       <section
         className={variant === "live" ? "p-3" : ""}
-        data-testid="defense-operator-empty"
+        data-testid="clawville-operator-empty"
       >
         <div className="rounded-2xl border border-border/35 bg-card/74 p-4 text-xs text-muted-strong">
-          Launch Defense of the Agents to open live controls.
+          Launch ClawVille to open live controls.
         </div>
       </section>
     );
@@ -143,8 +136,8 @@ export function DefenseAgentsOperatorSurface({
       className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
       data-testid={
         variant === "live"
-          ? "defense-live-operator-surface"
-          : "defense-detail-operator-surface"
+          ? "clawville-live-operator-surface"
+          : "clawville-detail-operator-surface"
       }
     >
       {showDashboard ? (
@@ -156,63 +149,34 @@ export function DefenseAgentsOperatorSurface({
               {run.status}
             </span>
             <span className="text-xs font-semibold text-txt">
-              {formatHeroLine(telemetry)}
+              Near {nearestBuilding}
             </span>
           </div>
-          {run.session?.summary ? (
-            <div className="mt-2 text-xs leading-5 text-muted-strong">
-              {run.session.summary}
-            </div>
-          ) : null}
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-strong">
+            <span>{walletLabel}</span>
+            {knowledgeCount !== null ? (
+              <span>{knowledgeCount} skills learned</span>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {showDashboard ? (
-        <div className="grid grid-cols-2 gap-2" data-testid="defense-actions">
-          <Button
-            type="button"
-            variant={autoPlay ? "default" : "outline"}
-            size="sm"
-            className="min-h-9 rounded-xl shadow-sm"
-            data-testid="defense-command-autoplay"
-            disabled={!canSend || Boolean(sendingCommand)}
-            onClick={() =>
-              void sendCommand(autoPlay ? "Auto-play OFF" : "Auto-play ON")
-            }
-          >
-            {autoPlay ? "Autoplay On" : "Autoplay Off"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="min-h-9 rounded-xl shadow-sm"
-            data-testid="defense-command-recall"
-            disabled={!canSend || Boolean(sendingCommand)}
-            onClick={() => void sendCommand("Recall to base")}
-          >
-            Recall
-          </Button>
-          {LANES.map((lane) => {
-            const label = heroLane ? `Move ${lane}` : `Deploy ${lane}`;
-            const command = heroLane
-              ? `Move to ${lane} lane`
-              : `Deploy as ${heroClass} in ${lane} lane`;
-            return (
-              <Button
-                key={lane}
-                type="button"
-                variant={heroLane === lane ? "default" : "outline"}
-                size="sm"
-                className="min-h-9 rounded-xl shadow-sm"
-                data-testid={`defense-command-lane-${lane}`}
-                disabled={!canSend || Boolean(sendingCommand)}
-                onClick={() => void sendCommand(command)}
-              >
-                {label}
-              </Button>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-2" data-testid="clawville-actions">
+          {PRIMARY_COMMANDS.map((item) => (
+            <Button
+              key={item.id}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-9 rounded-xl shadow-sm"
+              data-testid={`clawville-command-${item.id}`}
+              disabled={!canSend || Boolean(sendingCommand)}
+              onClick={() => void sendCommand(item.command)}
+            >
+              {item.label}
+            </Button>
+          ))}
         </div>
       ) : null}
 
@@ -222,9 +186,9 @@ export function DefenseAgentsOperatorSurface({
             <Input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Command the hero..."
+              placeholder="Tell ClawVille what to do..."
               className="min-h-10 rounded-xl"
-              data-testid="defense-chat-input"
+              data-testid="clawville-chat-input"
               disabled={!canSend}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -236,23 +200,23 @@ export function DefenseAgentsOperatorSurface({
             <Button
               type="button"
               className="min-h-10 rounded-xl px-4 shadow-sm"
-              data-testid="defense-chat-send"
+              data-testid="clawville-chat-send"
               disabled={!canSend || Boolean(sendingCommand) || !draft.trim()}
               onClick={() => void sendCommand(draft, true)}
             >
               {sendingCommand === draft.trim() ? "Sending" : "Send"}
             </Button>
           </div>
-          {tacticalPrompts.length > 0 ? (
+          {run.session?.suggestedPrompts?.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {tacticalPrompts.map((prompt) => (
+              {run.session.suggestedPrompts.map((prompt) => (
                 <Button
                   key={prompt}
                   type="button"
                   variant="outline"
                   size="sm"
                   className="min-h-8 rounded-xl px-3 shadow-sm"
-                  data-testid="defense-suggested-command"
+                  data-testid="clawville-suggested-command"
                   disabled={!canSend || Boolean(sendingCommand)}
                   onClick={() => void sendCommand(prompt)}
                 >
@@ -267,7 +231,7 @@ export function DefenseAgentsOperatorSurface({
       {notice ? (
         <div
           className="rounded-2xl border border-border/35 bg-card/70 px-4 py-3 text-xs leading-5 text-muted-strong"
-          data-testid="defense-command-notice"
+          data-testid="clawville-command-notice"
         >
           {notice}
         </div>

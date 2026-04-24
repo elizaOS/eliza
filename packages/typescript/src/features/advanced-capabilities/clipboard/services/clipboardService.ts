@@ -12,8 +12,14 @@ import type {
 	ClipboardWriteOptions,
 } from "../types.ts";
 
+function defaultClipboardBasePath(): string {
+	return path.join(os.homedir(), ".eliza", "clipboard");
+}
+
 export const DEFAULT_CLIPBOARD_CONFIG: ClipboardConfig = {
-	basePath: path.join(os.homedir(), ".eliza", "clipboard"),
+	get basePath(): string {
+		return defaultClipboardBasePath();
+	},
 	maxFileSize: 1024 * 1024, // 1MB
 	allowedExtensions: [".md", ".txt"],
 };

@@ -524,10 +524,12 @@ function GraphTooltip({ state }: { state: TooltipState }) {
 export function RelationshipsGraphPanel({
   snapshot,
   selectedGroupId,
+  compact = false,
   onSelectGroupId,
 }: {
   snapshot: RelationshipsGraphSnapshot | null;
   selectedGroupId: string | null;
+  compact?: boolean;
   onSelectGroupId: (groupId: string) => void;
 }) {
   const [tooltip, setTooltip] = useState<TooltipState>(null);
@@ -597,13 +599,15 @@ export function RelationshipsGraphPanel({
   const hideTooltip = () => setTooltip(null);
 
   return (
-    <div className="space-y-4">
+    <div className={compact ? "space-y-3" : "space-y-4"}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
             Identity Graph
           </div>
-          <div className="mt-2 text-xl font-semibold text-txt">
+          <div
+            className={`${compact ? "mt-1 text-lg" : "mt-2 text-xl"} font-semibold text-txt`}
+          >
             Canonical people and cross-person relationships
           </div>
           <div className="mt-2 text-xs text-muted">
@@ -625,7 +629,7 @@ export function RelationshipsGraphPanel({
         <GraphTooltip state={tooltip} />
         <svg
           viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
-          className="h-[24rem] w-full"
+          className={`${compact ? "h-[20rem]" : "h-[30rem]"} w-full`}
           role="img"
           aria-label="Relationships graph"
         >
