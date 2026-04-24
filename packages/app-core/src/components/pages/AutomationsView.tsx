@@ -97,6 +97,7 @@ import {
   buildUpdateRequest,
   emptyForm,
   formFromTrigger,
+  humanizeEventKind,
   type HeartbeatTemplate,
   loadUserTemplates,
   localizedExecutionStatus,
@@ -329,6 +330,10 @@ function collectScheduledAutomationEntries(
   );
 }
 
+function isTimeBasedTrigger(trigger: TriggerSummary): boolean {
+  return trigger.triggerType !== "event";
+}
+
 function formatScheduleCount(count: number): string {
   return count === 1 ? "1 schedule" : `${count} schedules`;
 }
@@ -408,6 +413,7 @@ function getTriggerWakeModeLabel(trigger: TriggerSummary): string {
 function getTriggerStartModeLabel(trigger: TriggerSummary): string {
   if (trigger.triggerType === "once") return "One time";
   if (trigger.triggerType === "cron") return "Cron schedule";
+  if (trigger.triggerType === "event") return "Event";
   return "Repeating";
 }
 
@@ -420,6 +426,9 @@ function buildTriggerSchedulePrompt(trigger: TriggerSummary): string {
   }
   if (trigger.triggerType === "cron") {
     return `Schedule: cron ${trigger.cronExpression ?? ""}.`;
+  }
+  if (trigger.triggerType === "event") {
+    return `Event: ${trigger.eventKind ?? "event"}.`;
   }
   return `Schedule type: ${trigger.triggerType}.`;
 }
@@ -2297,7 +2306,10 @@ function AutomationsDashboard({
     (item) => item.enabled && !item.isDraft,
   ).length;
   const activeScheduleCount = scheduledEntries.filter(
-    ({ schedule }) => schedule.enabled,
+    ({ schedule }) => schedule.enabled && isTimeBasedTrigger(schedule),
+  ).length;
+  const activeEventCount = scheduledEntries.filter(
+    ({ schedule }) => schedule.enabled && schedule.triggerType === "event",
   ).length;
   const draftCount = visibleItems.filter((item) => item.isDraft).length;
 
@@ -2307,6 +2319,7 @@ function AutomationsDashboard({
         .filter(
           ({ schedule }) =>
             schedule.enabled &&
+            isTimeBasedTrigger(schedule) &&
             typeof schedule.nextRunAtMs === "number" &&
             schedule.nextRunAtMs > now,
         )
@@ -3017,7 +3030,9 @@ function TriggerAutomationDetailPane({
     { failureCount: 0, successCount: 0 },
   );
   const nextRunLabel = trigger.nextRunAtMs
-    ? formatRelativeFuture(trigger.nextRunAtMs, t)
+    ? trigger.triggerType === "event"
+      ? `On ${humanizeEventKind(trigger.eventKind ?? "event")}`
+      : formatRelativeFuture(trigger.nextRunAtMs, t)
     : "Event or manual";
   const whatRuns =
     trigger.kind === "workflow"
@@ -3110,10 +3125,13 @@ function TriggerAutomationDetailPane({
           label="Next run"
           value={nextRunLabel}
           detail={formatDateTime(trigger.nextRunAtMs, {
-            fallback: "No time-based run queued",
+            fallback:
+              trigger.triggerType === "event"
+                ? "Waiting for event input"
+                : "No time-based run queued",
             locale: uiLanguage,
           })}
-          tone={trigger.nextRunAtMs ? "ok" : "default"}
+          tone={trigger.nextRunAtMs || trigger.triggerType === "event" ? "ok" : "default"}
         />
         <OverviewMetricCard
           label="Last run"
@@ -3196,6 +3214,16 @@ function TriggerAutomationDetailPane({
                 label: "Trigger type",
                 value: getTriggerStartModeLabel(trigger),
               },
+              ...(trigger.triggerType === "event"
+                ? [
+                    {
+                      label: "Event",
+                      value: trigger.eventKind
+                        ? humanizeEventKind(trigger.eventKind)
+                        : "Unknown",
+                    },
+                  ]
+                : []),
               {
                 label: "Wake mode",
                 value: getTriggerWakeModeLabel(trigger),

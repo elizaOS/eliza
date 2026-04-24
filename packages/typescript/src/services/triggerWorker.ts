@@ -33,8 +33,10 @@ interface AutonomyServiceLike {
 }
 
 export interface TriggerDispatchExecuteOptions {
-	source: "scheduler" | "manual";
+	source: "scheduler" | "manual" | "event";
 	force?: boolean;
+	eventKind?: string;
+	eventPayload?: Record<string, unknown>;
 }
 
 function appendRunRecord(
@@ -219,6 +221,7 @@ export async function executeTriggerDispatch(
 		error: errorMessage || undefined,
 		latencyMs: finishedAt - startedAt,
 		source: options.source,
+		eventKind: options.eventKind,
 	};
 
 	const updatedTrigger: TriggerConfig = {
