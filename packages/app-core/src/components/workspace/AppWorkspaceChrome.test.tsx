@@ -156,6 +156,13 @@ describe("AppWorkspaceChrome", () => {
     expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
     expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close page chat" }));
+
+    const closedSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
+    expect(closedSidebar.getAttribute("data-collapsed")).not.toBeNull();
+    expect(screen.queryByTestId("mobile-chat")).toBeNull();
+    expect(screen.getByTestId("mobile-shell-chat-expand")).toBeTruthy();
   });
 
   it("lets main-pane content open chat through the workspace chrome context", () => {

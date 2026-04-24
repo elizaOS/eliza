@@ -365,7 +365,7 @@ export function AppWorkspaceChrome({
                   top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
                   bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
                 }}
-                aria-label="Close page chat"
+                aria-label="Dismiss page chat"
                 onClick={() => handleToggle(true)}
                 data-testid={`${testId}-chat-backdrop`}
               />
@@ -386,6 +386,16 @@ export function AppWorkspaceChrome({
               }
               data-testid={`${testId}-chat-sidebar`}
             >
+              {isMobileViewport ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/18 bg-bg/90 text-muted shadow-sm backdrop-blur transition-colors hover:bg-bg-muted/80 hover:text-txt"
+                  aria-label="Close page chat"
+                  onClick={() => handleToggle(true)}
+                >
+                  <PanelRightClose className="h-4 w-4" aria-hidden />
+                </button>
+              ) : null}
               {isMobileViewport ? null : (
                 <hr
                   aria-label="Resize chat"
@@ -399,7 +409,9 @@ export function AppWorkspaceChrome({
                   className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
                 />
               )}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div
+                className={`flex min-h-0 flex-1 flex-col overflow-hidden ${isMobileViewport ? "pt-9" : ""}`}
+              >
                 {chatContent}
               </div>
             </aside>
