@@ -4,7 +4,7 @@ import { logger } from "../../logger";
 import type { UUID } from "../../types";
 import type { KnowledgeService } from "./service.ts";
 import type { AddKnowledgeOptions } from "./types.ts";
-import { isBinaryContentType, isTextBackedKnowledgeContent } from "./utils.ts";
+import { isTextBackedKnowledgeContent } from "./utils.ts";
 
 export function getKnowledgePath(runtimePath?: string): string {
 	const knowledgePath =

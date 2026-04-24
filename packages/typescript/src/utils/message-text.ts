@@ -3,8 +3,7 @@ import type { Memory } from "../types/memory";
 const KNOWLEDGE_AUGMENTATION_PREFIX =
 	"Answer the user request using the contextual knowledge";
 const USER_REQUEST_WRAPPER = /<user_request>\s*([\s\S]*?)\s*<\/user_request>/i;
-const LANGUAGE_INSTRUCTION_SUFFIX =
-	/\n*\[language instruction:[^\]]*\]\s*$/i;
+const LANGUAGE_INSTRUCTION_SUFFIX = /\n*\[language instruction:[^\]]*\]\s*$/i;
 
 export function extractUserText(raw: string): string {
 	let text = raw;
