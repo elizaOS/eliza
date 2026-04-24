@@ -1,5 +1,8 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+import { basename } from "node:path";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
+import type { Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/lifeops";
 import {
   getIMessageBackendStatus,
@@ -18,6 +21,69 @@ import {
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 type JsonRecord = Record<string, unknown>;
+
+type NativeIMessageStatus = {
+  available: boolean;
+  connected: boolean;
+  chatDbAvailable: boolean;
+  sendOnly: boolean;
+  chatDbPath: string;
+  reason: string | null;
+  permissionAction: {
+    type: "full_disk_access";
+    label: string;
+    url: string;
+    instructions: string[];
+  } | null;
+};
+
+type NativeIMessageMessage = {
+  id: string;
+  text: string;
+  handle: string;
+  chatId: string;
+  timestamp: number;
+  isFromMe: boolean;
+  hasAttachments: boolean;
+  attachmentPaths?: string[];
+};
+
+type NativeIMessageChat = {
+  chatId: string;
+  chatType: "direct" | "group";
+  displayName?: string;
+  participants: Array<{ handle: string; isPhoneNumber: boolean }>;
+};
+
+type NativeIMessageServiceLike = {
+  isConnected(): boolean;
+  getStatus?(): NativeIMessageStatus;
+  sendMessage(
+    to: string,
+    text: string,
+    options?: { mediaUrl?: string; maxBytes?: number },
+  ): Promise<{
+    success: boolean;
+    messageId?: string;
+    chatId?: string;
+    error?: string;
+  }>;
+  getMessages?(options?: {
+    chatId?: string;
+    limit?: number;
+  }): Promise<NativeIMessageMessage[]>;
+  getRecentMessages?(limit?: number): Promise<NativeIMessageMessage[]>;
+  getChats?(): Promise<NativeIMessageChat[]>;
+};
+
+type RuntimeWithPluginLifecycle = {
+  getPluginOwnership?: (pluginName: string) => { plugin: Plugin } | null;
+  registerPlugin?: (plugin: Plugin) => Promise<void>;
+  reloadPlugin?: (plugin: Plugin) => Promise<void>;
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+};
+
+const NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS = 8_000;
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -39,6 +105,176 @@ function coerceBackend(value: unknown): IMessageBackend | undefined {
   return raw === "imsg" || raw === "bluebubbles" || raw === "none"
     ? raw
     : undefined;
+}
+
+function normalizeHostPlatform(): LifeOpsIMessageConnectorStatus["hostPlatform"] {
+  return process.platform === "darwin" ||
+    process.platform === "linux" ||
+    process.platform === "win32"
+    ? process.platform
+    : "unknown";
+}
+
+async function waitForNativeIMessageService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): Promise<boolean> {
+  const runtimeWithLifecycle = runtime as typeof runtime & RuntimeWithPluginLifecycle;
+  if (typeof runtimeWithLifecycle.getServiceLoadPromise !== "function") {
+    return Boolean(runtime.getService("imessage"));
+  }
+
+  await Promise.race([
+    runtimeWithLifecycle.getServiceLoadPromise("imessage"),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("native iMessage service load timed out")),
+        NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS,
+      ),
+    ),
+  ]);
+
+  return Boolean(runtime.getService("imessage"));
+}
+
+async function ensureNativeIMessagePluginLoaded(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): Promise<boolean> {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  if (runtime.getService("imessage")) {
+    return true;
+  }
+
+  const runtimeWithLifecycle = runtime as typeof runtime & RuntimeWithPluginLifecycle;
+  if (
+    typeof runtimeWithLifecycle.registerPlugin !== "function" &&
+    typeof runtimeWithLifecycle.reloadPlugin !== "function"
+  ) {
+    return false;
+  }
+
+  const mod = await import("@elizaos/plugin-imessage");
+  const plugin = (mod.default ??
+    (mod as { plugin?: Plugin }).plugin) as Plugin | undefined;
+  if (!plugin) {
+    return false;
+  }
+
+  const existingOwnership =
+    typeof runtimeWithLifecycle.getPluginOwnership === "function"
+      ? runtimeWithLifecycle.getPluginOwnership("imessage")
+      : null;
+  if (existingOwnership && typeof runtimeWithLifecycle.reloadPlugin === "function") {
+    await runtimeWithLifecycle.reloadPlugin(plugin);
+    return waitForNativeIMessageService(runtime);
+  }
+
+  if (typeof runtimeWithLifecycle.registerPlugin === "function") {
+    await runtimeWithLifecycle.registerPlugin(plugin);
+    return waitForNativeIMessageService(runtime);
+  }
+
+  return false;
+}
+
+async function getNativeIMessageService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): Promise<NativeIMessageServiceLike | null> {
+  let service = runtime.getService("imessage") as NativeIMessageServiceLike | null;
+  if (service) {
+    return service;
+  }
+
+  try {
+    await ensureNativeIMessagePluginLoaded(runtime);
+  } catch (error) {
+    logger.warn(
+      `[lifeops-imessage] failed to load native iMessage plugin: ${String(error)}`,
+    );
+  }
+
+  service = runtime.getService("imessage") as NativeIMessageServiceLike | null;
+  return service ?? null;
+}
+
+function nativeStatusToLifeOps(
+  service: NativeIMessageServiceLike,
+  checkedAt: string,
+): LifeOpsIMessageConnectorStatus {
+  const status = service.getStatus?.();
+  const diagnostics: string[] = [];
+  const connected = status?.connected ?? service.isConnected();
+
+  if (status && !status.chatDbAvailable) {
+    diagnostics.push(
+      status.permissionAction?.type === "full_disk_access"
+        ? "full_disk_access_required"
+        : "chat_db_unavailable",
+    );
+  }
+  if (!connected) {
+    diagnostics.push("native_bridge_not_connected");
+  }
+
+  return {
+    available: true,
+    connected,
+    bridgeType: "native",
+    hostPlatform: normalizeHostPlatform(),
+    accountHandle: null,
+    sendMode: connected ? "apple-script" : "none",
+    helperConnected: null,
+    privateApiEnabled: null,
+    diagnostics,
+    lastSyncAt: null,
+    lastCheckedAt: checkedAt,
+    error: status?.reason ?? null,
+  };
+}
+
+function nativeMessageToLifeOps(message: NativeIMessageMessage): IMessageRecord {
+  const attachmentPaths = message.attachmentPaths ?? [];
+  return {
+    id: message.id,
+    fromHandle: message.isFromMe ? "me" : message.handle,
+    toHandles: message.isFromMe && message.handle ? [message.handle] : [],
+    text: message.text,
+    isFromMe: message.isFromMe,
+    sentAt: new Date(message.timestamp || Date.now()).toISOString(),
+    chatId: message.chatId,
+    attachments:
+      attachmentPaths.length > 0
+        ? attachmentPaths.map((path) => ({
+            name: basename(path),
+            path,
+          }))
+        : undefined,
+  };
+}
+
+function nativeChatToLifeOps(chat: NativeIMessageChat): IMessageChat {
+  const participants = chat.participants.map((participant) => participant.handle);
+  return {
+    id: chat.chatId,
+    name: chat.displayName ?? (participants.join(", ") || chat.chatId),
+    participants,
+  };
+}
+
+function filterSince(
+  messages: IMessageRecord[],
+  since: string | undefined,
+): IMessageRecord[] {
+  if (!since) {
+    return messages;
+  }
+  const sinceMs = Date.parse(since);
+  if (!Number.isFinite(sinceMs)) {
+    return messages;
+  }
+  return messages.filter((message) => Date.parse(message.sentAt) >= sinceMs);
 }
 
 function readConfiguredConnectors(): {
@@ -104,19 +340,19 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 ) {
   class LifeOpsIMessageServiceMixin extends Base {
     async getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus> {
+      const checkedAt = new Date().toISOString();
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService) {
+        return nativeStatusToLifeOps(nativeService, checkedAt);
+      }
+
       const config = resolveLifeOpsIMessageBridgeConfig();
       const status = await getIMessageBackendStatus(config);
-      const checkedAt = new Date().toISOString();
       return {
         available: status.backend !== "none",
         connected: status.backend !== "none",
         bridgeType: status.backend,
-        hostPlatform:
-          process.platform === "darwin" ||
-          process.platform === "linux" ||
-          process.platform === "win32"
-            ? process.platform
-            : "unknown",
+        hostPlatform: normalizeHostPlatform(),
         accountHandle: status.accountHandle,
         sendMode: status.sendMode,
         helperConnected: status.helperConnected,
@@ -131,6 +367,19 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     async sendIMessage(
       req: IMessageSendRequest,
     ): Promise<{ ok: true; messageId?: string }> {
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService) {
+        const result = await nativeService.sendMessage(req.to, req.text, {
+          ...(req.attachmentPaths?.[0]
+            ? { mediaUrl: req.attachmentPaths[0] }
+            : {}),
+        });
+        if (!result.success) {
+          throw new Error(result.error ?? "native iMessage send failed");
+        }
+        return { ok: true, messageId: result.messageId };
+      }
+
       return sendIMessageBridge(req, resolveLifeOpsIMessageBridgeConfig());
     }
 
@@ -139,10 +388,26 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       since?: string;
       limit?: number;
     }): Promise<IMessageRecord[]> {
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService) {
+        const rows = nativeService.getMessages
+          ? await nativeService.getMessages({
+              chatId: opts.chatId,
+              limit: opts.limit,
+            })
+          : await nativeService.getRecentMessages?.(opts.limit);
+        return filterSince((rows ?? []).map(nativeMessageToLifeOps), opts.since);
+      }
+
       return readIMessagesBridge(opts, resolveLifeOpsIMessageBridgeConfig());
     }
 
     async listIMessageChats(): Promise<IMessageChat[]> {
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService?.getChats) {
+        return (await nativeService.getChats()).map(nativeChatToLifeOps);
+      }
+
       return listIMessageChatsBridge(resolveLifeOpsIMessageBridgeConfig());
     }
 
@@ -151,12 +416,38 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       chatId?: string;
       limit?: number;
     }): Promise<IMessageRecord[]> {
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService) {
+        const rows = nativeService.getMessages
+          ? await nativeService.getMessages({
+              chatId: opts.chatId,
+              limit: Math.max(opts.limit ?? 100, 100),
+            })
+          : await nativeService.getRecentMessages?.(Math.max(opts.limit ?? 100, 100));
+        const query = opts.query.trim().toLowerCase();
+        return (rows ?? [])
+          .map(nativeMessageToLifeOps)
+          .filter((message) => message.text.toLowerCase().includes(query))
+          .slice(0, opts.limit ?? 100);
+      }
+
       return searchIMessagesBridge(opts, resolveLifeOpsIMessageBridgeConfig());
     }
 
     async getIMessageDeliveryStatus(
       messageIds: string[],
     ): Promise<IMessageDeliveryResult[]> {
+      const nativeService = await getNativeIMessageService(this.runtime);
+      if (nativeService) {
+        return messageIds.map((messageId) => ({
+          messageId,
+          status: "unknown",
+          isRead: null,
+          isDelivered: null,
+          checkedAt: new Date().toISOString(),
+        }));
+      }
+
       return getIMessageDeliveryStatus(
         messageIds,
         resolveLifeOpsIMessageBridgeConfig(),

@@ -31,7 +31,6 @@ function isIosRuntime(): boolean {
   return capacitor?.getPlatform?.() === "ios";
 }
 
-const BLUEBUBBLES_INSTALL_URL = "https://bluebubbles.app/install/";
 const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 const WHATSAPP_SETUP_GUIDE_URL =
@@ -912,7 +911,7 @@ function formatIMessageSendMode(
     case "private-api":
       return "BlueBubbles Private API";
     case "apple-script":
-      return "BlueBubbles AppleScript fallback";
+      return "Messages.app AppleScript";
     default:
       return "Unavailable";
   }
@@ -920,6 +919,12 @@ function formatIMessageSendMode(
 
 function formatIMessageDiagnostic(code: string): string {
   switch (code) {
+    case "full_disk_access_required":
+      return "Full Disk Access is required before Milady can read incoming Messages history.";
+    case "chat_db_unavailable":
+      return "Milady could not open Messages chat.db for incoming message reads.";
+    case "native_bridge_not_connected":
+      return "The native Messages bridge is loaded but not connected yet.";
     case "bluebubbles_private_api_disabled":
       return "BlueBubbles Private API is disabled, so sends rely on AppleScript.";
     case "bluebubbles_helper_disconnected":
@@ -936,34 +941,37 @@ export function IMessageConnectorCard() {
   const { setActionNotice } = useApp();
   const iosRuntime = isIosRuntime();
   const status = imessage.status;
-  const installingImsg = imessage.actionPending === "install_imsg";
-  const busy = imessage.loading || installingImsg;
+  const busy = imessage.loading;
   const isConnected = status?.connected === true;
   const hostPlatform = status?.hostPlatform ?? "unknown";
   const runningOnMacHost = hostPlatform === "darwin";
+  const nativeReadDegraded =
+    status?.diagnostics.includes("full_disk_access_required") ||
+    status?.diagnostics.includes("chat_db_unavailable");
   const isDegraded =
-    isConnected &&
-    status?.bridgeType === "bluebubbles" &&
-    (status.sendMode === "apple-script" || status.helperConnected === false);
+    Boolean(isConnected && nativeReadDegraded) ||
+    Boolean(
+      isConnected &&
+        status?.bridgeType === "bluebubbles" &&
+        (status.sendMode === "apple-script" || status.helperConnected === false),
+    );
   const needsFullDiskAccess = imessage.fullDiskAccess?.status === "revoked";
   const showFullDiskAccessControls =
-    runningOnMacHost &&
-    needsFullDiskAccess &&
-    (status?.bridgeType === "imsg" || !isConnected);
-  const canOfferLocalMacSetup = !isConnected && runningOnMacHost;
+    runningOnMacHost && (needsFullDiskAccess || nativeReadDegraded);
   const bridgeLabel =
-    status?.bridgeType === "bluebubbles"
-      ? "BlueBubbles"
-      : status?.bridgeType === "imsg"
-        ? "imsg"
-        : null;
-  const statusLabel = installingImsg
-    ? "Installing imsg..."
-    : busy && !status
+    status?.bridgeType === "native"
+      ? "Messages.app"
+      : status?.bridgeType === "bluebubbles"
+        ? "BlueBubbles"
+        : status?.bridgeType === "imsg"
+          ? "imsg"
+          : null;
+  const statusLabel =
+    busy && !status
       ? "Checking..."
       : isConnected
-        ? bridgeLabel === "BlueBubbles" && status?.sendMode === "apple-script"
-          ? "Connected via BlueBubbles (AppleScript send)"
+        ? bridgeLabel === "Messages.app" && nativeReadDegraded
+          ? "Connected, needs Full Disk Access"
           : bridgeLabel
             ? `Connected via ${bridgeLabel}`
             : "Connected"
@@ -977,44 +985,6 @@ export function IMessageConnectorCard() {
         : busy && !status
           ? "warning"
           : "muted";
-
-  const handleInstallImsg = useCallback(async () => {
-    try {
-      const result = await imessage.installImsg();
-      setActionNotice(
-        `Installed imsg at ${result.cliPath} and restarted the agent.`,
-        "success",
-        4200,
-      );
-    } catch (cause) {
-      setActionNotice(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Milady could not install imsg automatically.",
-        "error",
-        5000,
-      );
-    }
-  }, [imessage, setActionNotice]);
-
-  const handleOpenBlueBubblesSetup = useCallback(async () => {
-    try {
-      await openExternalUrl(BLUEBUBBLES_INSTALL_URL);
-      setActionNotice(
-        "Opened the official BlueBubbles setup guide for this Mac.",
-        "success",
-        3600,
-      );
-    } catch (cause) {
-      setActionNotice(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Milady could not open the BlueBubbles setup guide.",
-        "error",
-        5000,
-      );
-    }
-  }, [setActionNotice]);
 
   const handleOpenFullDiskAccess = useCallback(async () => {
     try {
@@ -1045,58 +1015,22 @@ export function IMessageConnectorCard() {
       <div className="space-y-2">
         <div className="text-xs text-muted">
           {isConnected
-            ? bridgeLabel === "BlueBubbles"
+            ? bridgeLabel === "Messages.app"
+              ? nativeReadDegraded
+                ? "Milady can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
+                : "Milady is using the native Mac Messages bridge for iMessage send and receive."
+              : bridgeLabel === "BlueBubbles"
               ? status?.sendMode === "private-api"
                 ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
                 : "LifeOps is using the Mac-side BlueBubbles bridge. Sends are currently using the AppleScript fallback."
               : "LifeOps is using the Mac-side imsg bridge for iMessage access."
             : iosRuntime
-              ? "iMessage access must run through a paired Mac or BlueBubbles bridge. Connect this iPhone to a remote Mac or cloud backend that has iMessage configured."
-              : canOfferLocalMacSetup
-                ? imessage.shellEnabled === false
-                  ? "Your agent is already running on a Mac, but Shell access is turned off. Turn it back on and Milady can install imsg for you, or set up BlueBubbles instead."
-                  : "Your agent is already running on a Mac. Milady can install imsg locally for you, or you can set up BlueBubbles on this machine instead."
-                : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
+              ? "iMessage access must run through a paired Mac or a remote Mac backend that has iMessage configured."
+              : runningOnMacHost
+                ? "Milady could not load the native Messages bridge. Refresh after enabling the iMessage connector or restarting the agent."
+                : "iMessage bridging requires a Mac host running Messages.app."}
         </div>
-        {canOfferLocalMacSetup ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={busy || imessage.shellEnabled === false}
-              onClick={() => void handleInstallImsg()}
-            >
-              {installingImsg ? (
-                <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  Installing imsg
-                </>
-              ) : (
-                "Install imsg"
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 rounded-xl px-3 text-xs font-semibold"
-              disabled={busy}
-              onClick={() => void handleOpenBlueBubblesSetup()}
-            >
-              Set Up BlueBubbles
-            </Button>
-            {showFullDiskAccessControls ? (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 rounded-xl px-3 text-xs font-semibold"
-                disabled={busy}
-                onClick={() => void handleOpenFullDiskAccess()}
-              >
-                Open Full Disk Access
-              </Button>
-            ) : null}
-          </div>
-        ) : showFullDiskAccessControls ? (
+        {showFullDiskAccessControls ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
@@ -1107,12 +1041,6 @@ export function IMessageConnectorCard() {
             >
               Open Full Disk Access
             </Button>
-          </div>
-        ) : null}
-        {canOfferLocalMacSetup && imessage.shellEnabled === false ? (
-          <div className="text-xs text-muted">
-            Enable Shell access in Milady Settings if you want the app to run
-            the `imsg` install for you automatically.
           </div>
         ) : null}
         {showFullDiskAccessControls ? (
@@ -1156,7 +1084,7 @@ export function IMessageConnectorCard() {
             {busy ? (
               <>
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                {installingImsg ? "Working..." : "Refreshing"}
+                Refreshing
               </>
             ) : (
               "Refresh"

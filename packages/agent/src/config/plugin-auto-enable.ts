@@ -210,7 +210,7 @@ export function isConnectorConfigured(
     case "discordLocal":
       return Boolean(config.clientId && config.clientSecret);
     case "imessage":
-      return Boolean(config.cliPath);
+      return Boolean(config.enabled === true || config.cliPath || config.dbPath);
     case "signal":
       return Boolean(
         config.authDir ||

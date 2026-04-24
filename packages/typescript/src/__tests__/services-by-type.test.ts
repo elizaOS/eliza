@@ -182,6 +182,33 @@ describe("Service Type System", () => {
 	});
 
 	describe("Eager service start via registerPlugin", () => {
+		it("should preserve rawPath plugin routes", async () => {
+			await runtime.registerPlugin({
+				name: "route-plugin",
+				description: "Test plugin with raw and namespaced routes",
+				routes: [
+					{
+						type: "GET",
+						path: "/api/raw-route",
+						rawPath: true,
+						handler: async () => {},
+					},
+					{
+						type: "GET",
+						path: "/status",
+						handler: async () => {},
+					},
+				],
+			});
+
+			expect(runtime.routes.map((route) => route.path)).toEqual(
+				expect.arrayContaining([
+					"/api/raw-route",
+					"/route-plugin/status",
+				]),
+			);
+		});
+
 		it("should start services eagerly when registered via plugin", async () => {
 			const plugin = {
 				name: "test-eager-plugin",
